@@ -45,11 +45,21 @@ These anchors are live on the page:
 - `#pricing` — Essential vs Full Service
 - `#audit` — lead capture form
 
-## Form backend
+## Form submissions (audit leads)
 
-The audit form currently **stubs** submit (success UI + console log). Wire to:
+Submissions email **info@mandelrealtygroup.com** via [Resend](https://resend.com) (same provider as the Stravo app).
 
-- Formspree / Resend / Supabase edge function — when ready, update `src/components/AuditSection.tsx`.
+### One-time Vercel setup
+
+1. Get your **Resend API key** from [resend.com/api-keys](https://resend.com/api-keys)  
+   (You may already have one in Supabase — you can reuse the same key.)
+2. In **Vercel** → your `mandelrealty-marketing` project → **Settings** → **Environment Variables**
+3. Add:
+   - `RESEND_API_KEY` = your Resend key
+   - (Optional) `RESEND_FROM` = `Mandel Realty Group <info@mandelrealtygroup.com>` after you verify `mandelrealtygroup.com` in Resend. Until then, emails send from `onboarding@resend.dev` but still **deliver to info@mandelrealtygroup.com**.
+4. **Redeploy** the project (Deployments → ⋯ → Redeploy)
+
+Test the form on the live site — you should receive an email at info@mandelrealtygroup.com within a minute.
 
 ## Screenshots
 

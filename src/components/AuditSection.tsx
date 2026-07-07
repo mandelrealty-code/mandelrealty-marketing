@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { EMAIL, EMAIL_HREF, PHONE, PHONE_HREF } from "../lib/constants";
+import { submitAuditLead } from "../lib/submitAuditLead";
 import { SectionReveal } from "./SectionReveal";
 
 type FormState = {
@@ -22,15 +23,20 @@ export function AuditSection() {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    // Stub — wire to Supabase, Resend, or Formspree when backend is chosen
-    await new Promise((r) => setTimeout(r, 800));
-    console.info("[MRG audit lead]", form);
-    setSubmitting(false);
-    setSubmitted(true);
+    setError(null);
+    try {
+      await submitAuditLead(form);
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not submit. Please call us instead.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const field = (key: keyof FormState, label: string, opts?: { optional?: boolean; type?: string }) => (
@@ -70,7 +76,7 @@ export function AuditSection() {
             <div className="rounded-2xl border border-mrg-gold/40 bg-mrg-gold/10 p-8 text-center">
               <p className="font-display text-2xl text-mrg-text">You're booked in our queue.</p>
               <p className="mt-3 text-mrg-muted">
-                Ryan will reach out shortly to confirm your audit time. Or call now:{" "}
+                We'll reach out shortly to confirm your audit time. Or call now:{" "}
                 <a href={PHONE_HREF} className="font-semibold text-mrg-gold">
                   {PHONE}
                 </a>
@@ -78,11 +84,24 @@ export function AuditSection() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-mrg-border bg-mrg-surface p-6 sm:p-8">
+              <input
+                type="text"
+                name="_gotcha"
+                tabIndex={-1}
+                autoComplete="off"
+                className="hidden"
+                aria-hidden
+              />
               {field("name", "Name")}
               {field("email", "Email", { type: "email" })}
               {field("phone", "Phone", { type: "tel" })}
               {field("address", "Property address / neighbourhood")}
               {field("earnings", "Rough current monthly earnings", { optional: true })}
+              {error && (
+                <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {error}
+                </p>
+              )}
               <button
                 type="submit"
                 disabled={submitting}
