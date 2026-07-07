@@ -1,7 +1,7 @@
-export const PHONE = "647-824-5935";
-export const PHONE_HREF = "tel:+16478245935";
-export const EMAIL = "ryanmandel@rogers.com";
-export const EMAIL_HREF = "mailto:ryanmandel@rogers.com";
+export const PHONE = "647-381-7325";
+export const PHONE_HREF = "tel:+16473817325";
+export const EMAIL = "info@mandelrealtygroup.com";
+export const EMAIL_HREF = "mailto:info@mandelrealtygroup.com";
 
 export const HERO_AMOUNT = 26995;
 
