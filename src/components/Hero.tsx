@@ -13,7 +13,7 @@ export function Hero() {
             Toronto Short-Term Rental Management
           </p>
           <h1 className="font-display text-[clamp(3.5rem,14vw,7.5rem)] leading-[0.95] tracking-tight text-mrg-text">
-            <CountUp value={HERO_AMOUNT} />
+            <CountUp value={HERO_AMOUNT} startOnMount />
             <span className="text-mrg-gold">.</span>
           </h1>
         </SectionReveal>
