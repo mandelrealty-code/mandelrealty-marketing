@@ -10,8 +10,16 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-mrg-border/60 bg-mrg-bg/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4">
-        <a href="#" className="font-display text-xl text-mrg-text sm:text-2xl">
-          MRG<span className="text-mrg-gold">.</span>
+        <a href="#" className="flex items-center gap-2.5 sm:gap-3">
+          <img
+            src="/mrg-logo.png"
+            alt=""
+            aria-hidden
+            className="h-7 w-7 shrink-0 brightness-0 invert sm:h-8 sm:w-8"
+          />
+          <span className="font-display text-xl text-mrg-text sm:text-2xl">
+            MRG<span className="text-mrg-gold">.</span>
+          </span>
         </a>
         <nav className="hidden items-center gap-8 md:flex">
           {NAV.map((item) => (
