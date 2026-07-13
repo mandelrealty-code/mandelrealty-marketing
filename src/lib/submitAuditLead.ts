@@ -1,3 +1,5 @@
+import { getAuditSubmitHeaders, getAuditSubmitUrl } from "./audit-api";
+
 export type AuditLeadPayload = {
   name: string;
   email: string;
@@ -7,9 +9,9 @@ export type AuditLeadPayload = {
 };
 
 export async function submitAuditLead(payload: AuditLeadPayload): Promise<void> {
-  const response = await fetch("/api/audit", {
+  const response = await fetch(getAuditSubmitUrl(), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuditSubmitHeaders(),
     body: JSON.stringify({ ...payload, _gotcha: "" }),
   });
 

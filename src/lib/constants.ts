@@ -68,18 +68,38 @@ export const BAR_COMPARISONS = [
 ] as const;
 
 export const HOW_CARDS = [
-  { title: "Professional photography & full relisting", icon: "📷" },
-  { title: "Earned Superhost in the first season", icon: "★" },
-  { title: "PriceLabs dynamic pricing — rates adjust daily", icon: "📈" },
-  { title: "24/7 guest communication", icon: "💬" },
-  { title: "Post-checkout inspection every stay", icon: "✓" },
+  {
+    step: "01",
+    title: "Professional photography & full relisting",
+    detail: "New photos, new copy, new positioning on Airbnb.",
+  },
+  {
+    step: "02",
+    title: "Earned Superhost in the first season",
+    detail: "Reviews, response time, and standards — all protected from day one.",
+  },
+  {
+    step: "03",
+    title: "Dynamic pricing",
+    detail: "Rates adjust daily based on demand, season, and local events.",
+  },
+  {
+    step: "04",
+    title: "24/7 guest communication",
+    detail: "Every inquiry answered fast. Every issue handled before it becomes a review.",
+  },
+  {
+    step: "05",
+    title: "Post-checkout inspection every stay",
+    detail: "Damage caught early. Supplies restocked. Listing always guest-ready.",
+  },
 ] as const;
 
 export const ESSENTIAL_FEATURES = [
   "Professional listing photography",
   "Design, furniture & staging advisory",
   "Full listing overhaul (title, description, SEO)",
-  "PriceLabs dynamic pricing — daily",
+  "Dynamic pricing — daily",
   "24/7 guest communication",
   "Cleaning coordination",
   "Superhost strategy & monitoring",

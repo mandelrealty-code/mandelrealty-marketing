@@ -1,7 +1,109 @@
-import { motion, useInView } from "framer-motion";
+import { motion, useInView, useReducedMotion } from "framer-motion";
 import { useRef } from "react";
 import { BAR_COMPARISONS } from "../lib/constants";
 import { SectionReveal } from "./SectionReveal";
+
+const GROWTH_SCREENSHOTS = [
+  {
+    year: "2025",
+    period: "Before MRG",
+    amount: "$26,995",
+    src: "/proof/2025-comparison.png",
+    alt: "Airbnb earnings comparison showing 2025 monthly earnings before MRG",
+  },
+  {
+    year: "2026",
+    period: "With MRG",
+    amount: "$33,713",
+    src: "/proof/2026-comparison.png",
+    alt: "Airbnb earnings comparison showing 2026 monthly earnings with MRG",
+  },
+] as const;
+
+function GrowthComparison() {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-60px" });
+  const reducedMotion = useReducedMotion();
+
+  return (
+    <div ref={ref} className="relative mx-auto max-w-5xl px-6 sm:px-10 lg:px-14">
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_80%_60%_at_50%_45%,rgba(201,168,76,0.1),transparent)]" />
+      <motion.div
+        className="pointer-events-none absolute left-1/2 top-[58%] hidden h-px w-[min(72%,520px)] -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-transparent via-mrg-gold/30 to-transparent sm:block"
+        initial={{ scaleX: 0, opacity: 0 }}
+        animate={inView ? { scaleX: 1, opacity: 1 } : { scaleX: 0, opacity: 0 }}
+        transition={{ duration: 0.8, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      />
+
+      <div className="relative flex items-center justify-center -space-x-8 sm:-space-x-12 md:-space-x-16">
+        {GROWTH_SCREENSHOTS.map((shot, index) => (
+          <motion.div
+            key={shot.year}
+            className={`flex w-[min(44vw,300px)] flex-col items-center sm:w-[min(38vw,320px)] md:w-[min(34vw,340px)] ${index === 0 ? "z-[1]" : "z-[2]"}`}
+            initial={{ opacity: 0, y: 32, x: index === 0 ? -24 : 24 }}
+            animate={inView ? { opacity: 1, y: 0, x: 0 } : { opacity: 0, y: 32 }}
+            transition={{
+              duration: 0.7,
+              delay: index * 0.14,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+          >
+            <div className="mb-4 text-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-mrg-gold">
+                {shot.year}
+              </p>
+              <p className="mt-1 text-sm text-mrg-muted">{shot.period}</p>
+              <p className="mt-1 font-display text-2xl text-mrg-text sm:text-3xl">{shot.amount}</p>
+            </div>
+
+            <motion.div
+              className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-white shadow-[0_16px_48px_rgba(0,0,0,0.45)] ring-1 ring-mrg-gold/20"
+              whileHover={reducedMotion ? undefined : { y: -6, scale: 1.015 }}
+              transition={{ type: "spring", stiffness: 300, damping: 22 }}
+            >
+              <motion.div
+                className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-br from-white/10 via-transparent to-transparent"
+                initial={{ opacity: 0 }}
+                animate={inView ? { opacity: 1 } : { opacity: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.14 + 0.3 }}
+              />
+              <img
+                src={shot.src}
+                alt={shot.alt}
+                className="block h-auto max-h-[min(52vh,520px)] w-full object-contain object-top"
+                loading="lazy"
+                decoding="async"
+              />
+            </motion.div>
+          </motion.div>
+        ))}
+
+        <motion.div
+          className="absolute left-1/2 top-[58%] z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1"
+          initial={{ opacity: 0, scale: 0.6 }}
+          animate={inView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.6 }}
+          transition={{ duration: 0.5, delay: 0.45, type: "spring", stiffness: 260, damping: 18 }}
+        >
+          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-mrg-gold/40 bg-mrg-bg/95 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-sm sm:h-12 sm:w-12">
+            <span className="font-display text-lg text-mrg-gold sm:text-xl">→</span>
+          </div>
+          <span className="rounded-full border border-mrg-gold/25 bg-mrg-bg/95 px-3 py-1 text-xs font-bold tracking-wide text-mrg-gold shadow-lg backdrop-blur-sm sm:text-sm">
+            +159%
+          </span>
+        </motion.div>
+      </div>
+
+      <motion.p
+        className="mt-8 text-center text-sm text-mrg-muted"
+        initial={{ opacity: 0, y: 12 }}
+        animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 }}
+        transition={{ duration: 0.5, delay: 0.55 }}
+      >
+        Side-by-side from the Airbnb host dashboard — May–Aug 2026 beat all of 2025
+      </motion.p>
+    </div>
+  );
+}
 
 function MonthBars({
   month,
@@ -58,11 +160,15 @@ export function ProofSection() {
         <SectionReveal>
           <h2 className="font-display text-4xl text-mrg-text sm:text-5xl">The Numbers. Verified.</h2>
           <p className="mt-4 max-w-xl text-mrg-muted">
-            Every figure below is pulled directly from the Airbnb host dashboard. Screenshots on file.
+            Every figure below is pulled directly from the Airbnb host dashboard.
           </p>
         </SectionReveal>
 
-        <SectionReveal delay={0.1} className="mt-12 overflow-x-auto">
+        <SectionReveal delay={0.08} className="mt-12 sm:mt-14">
+          <GrowthComparison />
+        </SectionReveal>
+
+        <SectionReveal delay={0.1} className="mt-16 overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-mrg-border text-xs uppercase tracking-wider text-mrg-muted">
@@ -116,25 +222,6 @@ export function ProofSection() {
           All figures CAD, gross host earnings before management fee. July &amp; August are
           full-season, apples-to-apples comparisons.
         </p>
-
-        <SectionReveal delay={0.25} className="mt-10 grid gap-4 sm:grid-cols-3">
-          {[
-            "Airbnb earnings dashboard — full year 2025",
-            "Airbnb earnings dashboard — May–Aug 2026 comparison",
-            "Superhost badge — earned first season under MRG",
-          ].map((caption) => (
-            <div
-              key={caption}
-              className="flex aspect-[4/3] flex-col items-center justify-center rounded-2xl border border-dashed border-mrg-border bg-mrg-surface p-4 text-center"
-            >
-              <span className="mb-2 text-2xl opacity-40">📊</span>
-              <p className="text-xs text-mrg-muted">{caption}</p>
-              <p className="mt-1 text-[10px] uppercase tracking-wider text-mrg-gold/70">
-                Screenshot placeholder
-              </p>
-            </div>
-          ))}
-        </SectionReveal>
       </div>
     </section>
   );

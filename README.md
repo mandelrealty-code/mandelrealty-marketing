@@ -47,19 +47,39 @@ These anchors are live on the page:
 
 ## Form submissions (audit leads)
 
-Submissions email **info@mandelrealtygroup.com** via [Resend](https://resend.com) (same provider as the Stravo app).
+Submissions email **info@mandelrealtygroup.com** via [Resend](https://resend.com).
 
-### One-time Vercel setup
+### Production (Vercel) — required
 
 1. Get your **Resend API key** from [resend.com/api-keys](https://resend.com/api-keys)  
-   (You may already have one in Supabase — you can reuse the same key.)
-2. In **Vercel** → your `mandelrealty-marketing` project → **Settings** → **Environment Variables**
-3. Add:
-   - `RESEND_API_KEY` = your Resend key
-   - (Optional) `RESEND_FROM` = `Mandel Realty Group <info@mandelrealtygroup.com>` after you verify `mandelrealtygroup.com` in Resend. Until then, emails send from `onboarding@resend.dev` but still **deliver to info@mandelrealtygroup.com**.
-4. **Redeploy** the project (Deployments → ⋯ → Redeploy)
+   (You may already have one in Supabase project secrets — same key works.)
+2. Vercel → `mandelrealty-marketing` → **Settings** → **Environment Variables**
+3. Add `RESEND_API_KEY` = your Resend key (all environments: Production, Preview, Development)
+4. **Redeploy** (Deployments → ⋯ → Redeploy)
 
-Test the form on the live site — you should receive an email at info@mandelrealtygroup.com within a minute.
+Optional: `RESEND_FROM` = `Mandel Realty Group <info@mandelrealtygroup.com>` after verifying `mandelrealtygroup.com` in Resend. Until then, emails send from `onboarding@resend.dev` but still deliver to **info@mandelrealtygroup.com**.
+
+### Local testing
+
+```bash
+cp .env.example .env.local
+# Edit .env.local — set RESEND_API_KEY
+npm run dev
+```
+
+The dev server now handles `POST /api/audit` so the form works on localhost without Vercel.
+
+### Alternative: Supabase edge function
+
+A `send-audit-lead` function lives in `property-cleaner-hub/supabase/functions/` and reuses `RESEND_API_KEY` from Supabase secrets. Deploy with:
+
+```bash
+cd ../property-cleaner-hub
+supabase functions deploy send-audit-lead --no-verify-jwt
+```
+
+Then set `VITE_AUDIT_API_URL` on Vercel to  
+`https://hyndmdjvjlsbthlqrxge.supabase.co/functions/v1/send-audit-lead`
 
 ## Screenshots
 

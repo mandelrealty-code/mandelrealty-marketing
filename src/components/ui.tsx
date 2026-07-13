@@ -3,20 +3,22 @@ import { PHONE, PHONE_HREF } from "../lib/constants";
 export function AuditButton({
   className = "",
   size = "default",
+  label,
 }: {
   className?: string;
   size?: "default" | "large";
+  label?: string;
 }) {
   const base =
-    "inline-flex items-center justify-center rounded-full font-semibold transition-all bg-mrg-gold text-mrg-bg hover:bg-mrg-gold-light active:scale-[0.98]";
+    "inline-flex items-center justify-center rounded-lg font-semibold uppercase tracking-wide transition-all bg-mrg-gold text-mrg-bg hover:bg-mrg-gold-light active:scale-[0.98]";
   const sizes =
     size === "large"
-      ? "px-8 py-4 text-base sm:text-lg w-full sm:w-auto"
-      : "px-6 py-3 text-sm sm:text-base";
+      ? "px-8 py-4 text-sm sm:text-base w-full sm:w-auto"
+      : "px-5 py-2.5 text-xs sm:text-sm";
 
   return (
     <a href="#audit" className={`${base} ${sizes} ${className}`}>
-      Book Your Free 15-Min Revenue Audit
+      {label ?? "Book Your Free 15-Min Revenue Audit"}
     </a>
   );
 }
