@@ -12,10 +12,10 @@ export function Header() {
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4">
         <a href="#" className="flex items-center gap-2.5 sm:gap-3">
           <img
-            src="/mrg-logo.png"
+            src="/mrg-logo-white.png"
             alt=""
             aria-hidden
-            className="h-7 w-7 shrink-0 brightness-0 invert sm:h-8 sm:w-8"
+            className="h-7 w-auto shrink-0 sm:h-8"
           />
           <span className="font-display text-xl text-mrg-text sm:text-2xl">
             MRG<span className="text-mrg-gold">.</span>
