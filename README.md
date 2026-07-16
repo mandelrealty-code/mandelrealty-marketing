@@ -57,7 +57,9 @@ Submissions email **info@mandelrealtygroup.com** via [Resend](https://resend.com
 3. Add `RESEND_API_KEY` = your Resend key (all environments: Production, Preview, Development)
 4. **Redeploy** (Deployments → ⋯ → Redeploy)
 
-Optional: `RESEND_FROM` = `Mandel Realty Group <info@mandelrealtygroup.com>` after verifying `mandelrealtygroup.com` in Resend. Until then, emails send from `onboarding@resend.dev` but still deliver to **info@mandelrealtygroup.com**.
+Optional: `RESEND_FROM` = `Mandel Realty Group <info@mandelrealtygroup.com>` after verifying `mandelrealtygroup.com` in Resend. Until then, emails send from `onboarding@resend.dev`.
+
+**Important for customer confirmation emails:** Resend’s test sender (`onboarding@resend.dev`) can usually only deliver to your own verified Resend account email. To send confirmation emails to form submitters, verify your domain in Resend and set `RESEND_FROM` to an address on that domain (e.g. `Mandel Realty Group <info@mandelrealtygroup.com>`).
 
 ### Local testing
 

@@ -3,8 +3,14 @@ import tailwindcss from "@tailwindcss/vite";
 import type { IncomingMessage } from "node:http";
 import { loadEnv } from "vite";
 import { defineConfig, type Plugin } from "vite";
+import {
+  LEAD_INBOX,
+  buildCustomerConfirmationHtml,
+  buildLeadNotificationHtml,
+  sendResendEmail,
+} from "./shared/auditEmails.js";
 
-function readJsonBody(req: IncomingMessage): Promise<Record<string, string>> {
+function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let raw = "";
     req.on("data", (chunk) => {
@@ -12,21 +18,13 @@ function readJsonBody(req: IncomingMessage): Promise<Record<string, string>> {
     });
     req.on("end", () => {
       try {
-        resolve((raw ? JSON.parse(raw) : {}) as Record<string, string>);
+        resolve((raw ? JSON.parse(raw) : {}) as Record<string, unknown>);
       } catch {
         reject(new Error("Invalid JSON body"));
       }
     });
     req.on("error", reject);
   });
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function auditDevApiPlugin(env: Record<string, string>): Plugin {
@@ -56,51 +54,66 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
 
         try {
           const body = await readJsonBody(req);
-          const { name, email, phone, address, earnings, _gotcha } = body;
+          const name = String(body.name ?? "").trim();
+          const email = String(body.email ?? "").trim();
+          const phone = String(body.phone ?? "").trim();
+          const address = String(body.address ?? "").trim();
+          const earnings = String(body.earnings ?? "").trim();
+          const contactConsent = body.contactConsent === true || body.contactConsent === "true";
+          const marketingOptIn = body.marketingOptIn === true || body.marketingOptIn === "true";
 
-          if (_gotcha) {
+          if (body._gotcha) {
             json(200, { ok: true });
             return;
           }
 
-          if (!name?.trim() || !email?.trim() || !phone?.trim() || !address?.trim()) {
+          if (!name || !email || !phone || !address) {
             json(400, { error: "Please fill in all required fields." });
+            return;
+          }
+
+          if (!contactConsent) {
+            json(400, {
+              error: "Please confirm we can contact you about your free revenue audit.",
+            });
             return;
           }
 
           const from =
             env.RESEND_FROM?.trim() || "Mandel Realty Group <onboarding@resend.dev>";
-          const html = `
-            <h2>New Revenue Audit Request</h2>
-            <p><strong>Name:</strong> ${escapeHtml(name.trim())}</p>
-            <p><strong>Email:</strong> ${escapeHtml(email.trim())}</p>
-            <p><strong>Phone:</strong> ${escapeHtml(phone.trim())}</p>
-            <p><strong>Property:</strong> ${escapeHtml(address.trim())}</p>
-            <p><strong>Rough monthly earnings:</strong> ${escapeHtml(earnings?.trim() || "Not provided")}</p>
-            <hr />
-            <p style="color:#666;font-size:12px;">Submitted from mandelrealtygroup.com audit form</p>
-          `;
 
-          const emailResponse = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              from,
-              to: ["info@mandelrealtygroup.com"],
-              reply_to: email.trim(),
-              subject: `Revenue Audit Request — ${name.trim()}`,
-              html,
+          const leadResult = await sendResendEmail({
+            apiKey,
+            from,
+            to: [LEAD_INBOX],
+            replyTo: email,
+            subject: `Revenue Audit Request — ${name}`,
+            html: buildLeadNotificationHtml({
+              name,
+              email,
+              phone,
+              address,
+              earnings,
+              marketingOptIn,
             }),
           });
 
-          const emailData = (await emailResponse.json()) as { message?: string };
-
-          if (!emailResponse.ok) {
-            json(500, { error: emailData.message ?? "Failed to send email." });
+          if (!leadResult.ok) {
+            json(500, { error: leadResult.message ?? "Failed to send email." });
             return;
+          }
+
+          const customerResult = await sendResendEmail({
+            apiKey,
+            from,
+            to: [email],
+            replyTo: LEAD_INBOX,
+            subject: "We've got your free revenue audit request",
+            html: buildCustomerConfirmationHtml({ name, address }),
+          });
+
+          if (!customerResult.ok) {
+            console.error("[audit-dev] customer confirmation failed", customerResult.message);
           }
 
           json(200, { ok: true });

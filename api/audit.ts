@@ -1,14 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-
-const LEAD_INBOX = "info@mandelrealtygroup.com";
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+import {
+  LEAD_INBOX,
+  buildCustomerConfirmationHtml,
+  buildLeadNotificationHtml,
+  sendResendEmail,
+} from "../shared/auditEmails.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -22,51 +18,67 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const body = req.body ?? {};
-  const { name, email, phone, address, earnings, _gotcha } = body as Record<string, string>;
+  const { name, email, phone, address, earnings, contactConsent, marketingOptIn, _gotcha } =
+    body as Record<string, string | boolean>;
 
-  // Honeypot — bots fill hidden fields
   if (_gotcha) {
     return res.status(200).json({ ok: true });
   }
 
-  if (!name?.trim() || !email?.trim() || !phone?.trim() || !address?.trim()) {
+  const nameStr = String(name ?? "").trim();
+  const emailStr = String(email ?? "").trim();
+  const phoneStr = String(phone ?? "").trim();
+  const addressStr = String(address ?? "").trim();
+  const earningsStr = String(earnings ?? "").trim();
+  const consented = contactConsent === true || contactConsent === "true";
+  const marketing = marketingOptIn === true || marketingOptIn === "true";
+
+  if (!nameStr || !emailStr || !phoneStr || !addressStr) {
     return res.status(400).json({ error: "Please fill in all required fields." });
+  }
+
+  if (!consented) {
+    return res.status(400).json({
+      error: "Please confirm we can contact you about your free revenue audit.",
+    });
   }
 
   const from =
     process.env.RESEND_FROM?.trim() || "Mandel Realty Group <onboarding@resend.dev>";
 
-  const html = `
-    <h2>New Revenue Audit Request</h2>
-    <p><strong>Name:</strong> ${escapeHtml(name.trim())}</p>
-    <p><strong>Email:</strong> ${escapeHtml(email.trim())}</p>
-    <p><strong>Phone:</strong> ${escapeHtml(phone.trim())}</p>
-    <p><strong>Property:</strong> ${escapeHtml(address.trim())}</p>
-    <p><strong>Rough monthly earnings:</strong> ${escapeHtml(earnings?.trim() || "Not provided")}</p>
-    <hr />
-    <p style="color:#666;font-size:12px;">Submitted from mandelrealtygroup.com audit form</p>
-  `;
-
-  const emailResponse = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: [LEAD_INBOX],
-      reply_to: email.trim(),
-      subject: `Revenue Audit Request — ${name.trim()}`,
-      html,
+  const leadResult = await sendResendEmail({
+    apiKey,
+    from,
+    to: [LEAD_INBOX],
+    replyTo: emailStr,
+    subject: `Revenue Audit Request — ${nameStr}`,
+    html: buildLeadNotificationHtml({
+      name: nameStr,
+      email: emailStr,
+      phone: phoneStr,
+      address: addressStr,
+      earnings: earningsStr,
+      marketingOptIn: marketing,
     }),
   });
 
-  const emailData = (await emailResponse.json()) as { message?: string };
+  if (!leadResult.ok) {
+    console.error("[audit] Resend lead error", leadResult.message);
+    return res.status(500).json({ error: leadResult.message ?? "Failed to send email." });
+  }
 
-  if (!emailResponse.ok) {
-    console.error("[audit] Resend error", emailData);
-    return res.status(500).json({ error: emailData.message ?? "Failed to send email." });
+  const customerResult = await sendResendEmail({
+    apiKey,
+    from,
+    to: [emailStr],
+    replyTo: LEAD_INBOX,
+    subject: "We've got your free revenue audit request",
+    html: buildCustomerConfirmationHtml({ name: nameStr, address: addressStr }),
+  });
+
+  if (!customerResult.ok) {
+    // Lead email already sent — don't fail the form, but log for ops
+    console.error("[audit] Resend customer confirmation error", customerResult.message);
   }
 
   return res.status(200).json({ ok: true });

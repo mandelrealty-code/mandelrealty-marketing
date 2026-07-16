@@ -6,6 +6,8 @@ export type AuditLeadPayload = {
   phone: string;
   address: string;
   earnings: string;
+  contactConsent: boolean;
+  marketingOptIn: boolean;
 };
 
 export async function submitAuditLead(payload: AuditLeadPayload): Promise<void> {
