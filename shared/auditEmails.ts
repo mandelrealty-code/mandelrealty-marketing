@@ -135,3 +135,31 @@ export async function sendResendEmail(input: {
   }
   return { ok: true };
 }
+
+/** Safe message shown on the website — never leak provider/DNS details. */
+export const AUDIT_UNAVAILABLE_MESSAGE =
+  "The free revenue audit is currently not available. Please call or email us directly.";
+
+export function toPublicAuditError(message?: string): string {
+  if (!message) return AUDIT_UNAVAILABLE_MESSAGE;
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("domain") ||
+    lower.includes("verified") ||
+    lower.includes("resend") ||
+    lower.includes("not configured") ||
+    lower.includes("failed to send") ||
+    lower.includes("api key")
+  ) {
+    return AUDIT_UNAVAILABLE_MESSAGE;
+  }
+  // Keep known validation messages as-is
+  if (
+    lower.includes("required") ||
+    lower.includes("confirm we can contact") ||
+    lower.includes("fill in")
+  ) {
+    return message;
+  }
+  return AUDIT_UNAVAILABLE_MESSAGE;
+}

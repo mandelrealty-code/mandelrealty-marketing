@@ -1,9 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
+  AUDIT_UNAVAILABLE_MESSAGE,
   LEAD_INBOX,
   buildCustomerConfirmationHtml,
   buildLeadNotificationHtml,
   sendResendEmail,
+  toPublicAuditError,
 } from "../shared/auditEmails.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -14,7 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.error("[audit] RESEND_API_KEY is not set on Vercel");
-    return res.status(503).json({ error: "Email service is not configured yet." });
+    return res.status(503).json({ error: AUDIT_UNAVAILABLE_MESSAGE });
   }
 
   const body = req.body ?? {};
@@ -64,7 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!leadResult.ok) {
     console.error("[audit] Resend lead error", leadResult.message);
-    return res.status(500).json({ error: leadResult.message ?? "Failed to send email." });
+    return res.status(500).json({ error: toPublicAuditError(leadResult.message) });
   }
 
   const customerResult = await sendResendEmail({
@@ -77,7 +79,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   });
 
   if (!customerResult.ok) {
-    // Lead email already sent — don't fail the form, but log for ops
     console.error("[audit] Resend customer confirmation error", customerResult.message);
   }
 

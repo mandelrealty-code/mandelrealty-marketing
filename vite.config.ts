@@ -4,10 +4,12 @@ import type { IncomingMessage } from "node:http";
 import { loadEnv } from "vite";
 import { defineConfig, type Plugin } from "vite";
 import {
+  AUDIT_UNAVAILABLE_MESSAGE,
   LEAD_INBOX,
   buildCustomerConfirmationHtml,
   buildLeadNotificationHtml,
   sendResendEmail,
+  toPublicAuditError,
 } from "./shared/auditEmails.js";
 
 function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -45,10 +47,7 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
         };
 
         if (!apiKey) {
-          json(503, {
-            error:
-              "Email service is not configured yet. Add RESEND_API_KEY to .env.local and restart the dev server.",
-          });
+          json(503, { error: AUDIT_UNAVAILABLE_MESSAGE });
           return;
         }
 
@@ -99,7 +98,8 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
           });
 
           if (!leadResult.ok) {
-            json(500, { error: leadResult.message ?? "Failed to send email." });
+            console.error("[audit-dev] lead email failed", leadResult.message);
+            json(500, { error: toPublicAuditError(leadResult.message) });
             return;
           }
 
@@ -117,8 +117,9 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
           }
 
           json(200, { ok: true });
-        } catch {
-          json(500, { error: "Failed to send email." });
+        } catch (err) {
+          console.error("[audit-dev] unexpected error", err);
+          json(500, { error: AUDIT_UNAVAILABLE_MESSAGE });
         }
       });
     },
