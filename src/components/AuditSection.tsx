@@ -23,7 +23,6 @@ export function AuditSection() {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [contactConsent, setContactConsent] = useState(false);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,10 +36,10 @@ export function AuditSection() {
     setError(null);
     try {
       await submitAuditLead({ ...form, contactConsent, marketingOptIn });
-      setSubmitted(true);
+      // Full page navigate so Google Ads can track /thank-you as a conversion destination
+      window.location.assign("/thank-you");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit. Please call us instead.");
-    } finally {
       setSubmitting(false);
     }
   };
@@ -78,77 +77,64 @@ export function AuditSection() {
         </SectionReveal>
 
         <SectionReveal delay={0.1} className="mt-10">
-          {submitted ? (
-            <div className="rounded-2xl border border-mrg-gold/40 bg-mrg-gold/10 p-8 text-center">
-              <p className="font-display text-2xl text-mrg-text">You're in — check your inbox.</p>
-              <p className="mt-3 text-mrg-muted">
-                We just sent a confirmation email and will reach out shortly to schedule your
-                15-minute audit. Or call now:{" "}
-                <a href={PHONE_HREF} className="font-semibold text-mrg-gold">
-                  {PHONE}
-                </a>
-              </p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-mrg-border bg-mrg-surface p-6 sm:p-8">
+          <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-mrg-border bg-mrg-surface p-6 sm:p-8">
+            <input
+              type="text"
+              name="_gotcha"
+              tabIndex={-1}
+              autoComplete="off"
+              className="hidden"
+              aria-hidden
+            />
+            {field("name", "Name")}
+            {field("email", "Email", { type: "email" })}
+            {field("phone", "Phone", { type: "tel" })}
+            {field("address", "Property address / neighbourhood")}
+            {field("earnings", "Rough current monthly earnings", { optional: true })}
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-mrg-border/70 bg-mrg-bg/40 px-4 py-3">
               <input
-                type="text"
-                name="_gotcha"
-                tabIndex={-1}
-                autoComplete="off"
-                className="hidden"
-                aria-hidden
+                type="checkbox"
+                required
+                checked={contactConsent}
+                onChange={(e) => setContactConsent(e.target.checked)}
+                className="mt-1 h-4 w-4 shrink-0 accent-mrg-gold"
               />
-              {field("name", "Name")}
-              {field("email", "Email", { type: "email" })}
-              {field("phone", "Phone", { type: "tel" })}
-              {field("address", "Property address / neighbourhood")}
-              {field("earnings", "Rough current monthly earnings", { optional: true })}
+              <span className="text-sm leading-relaxed text-mrg-muted">
+                I agree to be contacted by Mandel Realty Group about my free revenue audit by
+                email or phone. <span className="text-mrg-text/80">(required)</span>
+              </span>
+            </label>
 
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-mrg-border/70 bg-mrg-bg/40 px-4 py-3">
-                <input
-                  type="checkbox"
-                  required
-                  checked={contactConsent}
-                  onChange={(e) => setContactConsent(e.target.checked)}
-                  className="mt-1 h-4 w-4 shrink-0 accent-mrg-gold"
-                />
-                <span className="text-sm leading-relaxed text-mrg-muted">
-                  I agree to be contacted by Mandel Realty Group about my free revenue audit by
-                  email or phone. <span className="text-mrg-text/80">(required)</span>
-                </span>
-              </label>
+            <label className="flex cursor-pointer items-start gap-3 px-1">
+              <input
+                type="checkbox"
+                checked={marketingOptIn}
+                onChange={(e) => setMarketingOptIn(e.target.checked)}
+                className="mt-1 h-4 w-4 shrink-0 accent-mrg-gold"
+              />
+              <span className="text-sm leading-relaxed text-mrg-muted">
+                Also send me occasional Toronto short-term rental tips from MRG.{" "}
+                <span className="text-mrg-muted/70">(optional)</span>
+              </span>
+            </label>
 
-              <label className="flex cursor-pointer items-start gap-3 px-1">
-                <input
-                  type="checkbox"
-                  checked={marketingOptIn}
-                  onChange={(e) => setMarketingOptIn(e.target.checked)}
-                  className="mt-1 h-4 w-4 shrink-0 accent-mrg-gold"
-                />
-                <span className="text-sm leading-relaxed text-mrg-muted">
-                  Also send me occasional Toronto short-term rental tips from MRG.{" "}
-                  <span className="text-mrg-muted/70">(optional)</span>
-                </span>
-              </label>
-
-              {error && (
-                <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {error}
-                </p>
-              )}
-              <button
-                type="submit"
-                disabled={submitting}
-                className="mt-2 w-full rounded-full bg-mrg-gold py-4 font-semibold text-mrg-bg transition-all hover:bg-mrg-gold-light disabled:opacity-60"
-              >
-                {submitting ? "Submitting…" : "Book My Free Audit"}
-              </button>
-              <p className="text-center text-xs text-mrg-muted">
-                No spam · We’ll reach out to book a 15-min slot.
+            {error && (
+              <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {error}
               </p>
-            </form>
-          )}
+            )}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="mt-2 w-full rounded-full bg-mrg-gold py-4 font-semibold text-mrg-bg transition-all hover:bg-mrg-gold-light disabled:opacity-60"
+            >
+              {submitting ? "Submitting…" : "Book My Free Audit"}
+            </button>
+            <p className="text-center text-xs text-mrg-muted">
+              No spam · We’ll reach out to book a 15-min slot.
+            </p>
+          </form>
         </SectionReveal>
 
         <SectionReveal delay={0.15} className="mt-8 text-center text-sm text-mrg-muted">

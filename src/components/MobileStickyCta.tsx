@@ -35,7 +35,7 @@ export function MobileStickyCta() {
           transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
         >
           <a
-            href="#audit"
+            href="/#audit"
             className="flex w-full max-w-[19rem] items-center gap-3 rounded-full border border-mrg-gold/35 bg-mrg-bg/95 px-4 py-3 text-sm font-semibold text-mrg-text shadow-[0_14px_40px_rgba(0,0,0,0.5)] backdrop-blur-md"
           >
             <span className="min-w-0 flex-1 truncate">Book free audit</span>

@@ -8,8 +8,9 @@ import { FaqSection } from "./components/FaqSection";
 import { AuditSection } from "./components/AuditSection";
 import { Footer } from "./components/Footer";
 import { MobileStickyCta } from "./components/MobileStickyCta";
+import { ThankYouPage } from "./pages/ThankYouPage";
 
-export default function App() {
+function HomePage() {
   return (
     <>
       <Header />
@@ -26,4 +27,14 @@ export default function App() {
       <Footer />
     </>
   );
+}
+
+export default function App() {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+
+  if (path === "/thank-you") {
+    return <ThankYouPage />;
+  }
+
+  return <HomePage />;
 }

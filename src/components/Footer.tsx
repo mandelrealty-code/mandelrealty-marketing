@@ -18,13 +18,13 @@ export function Footer() {
           </a>
         </div>
         <nav className="flex gap-6 text-sm text-mrg-muted">
-          <a href="#proof" className="hover:text-mrg-text">
+          <a href="/#proof" className="hover:text-mrg-text">
             Proof
           </a>
-          <a href="#pricing" className="hover:text-mrg-text">
+          <a href="/#pricing" className="hover:text-mrg-text">
             Pricing
           </a>
-          <a href="#audit" className="hover:text-mrg-text">
+          <a href="/#audit" className="hover:text-mrg-text">
             Book Audit
           </a>
         </nav>

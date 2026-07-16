@@ -17,7 +17,7 @@ export function AuditButton({
       : "px-5 py-2.5 text-xs sm:text-sm";
 
   return (
-    <a href="#audit" className={`${base} ${sizes} ${className}`}>
+    <a href="/#audit" className={`${base} ${sizes} ${className}`}>
       {label ?? "Book Your Free 15-Min Revenue Audit"}
     </a>
   );

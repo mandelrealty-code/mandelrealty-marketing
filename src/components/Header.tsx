@@ -1,16 +1,16 @@
 import { AuditButton } from "./ui";
 
 const NAV = [
-  { href: "#proof", label: "Proof" },
-  { href: "#pricing", label: "Pricing" },
-  { href: "#audit", label: "Book Audit" },
+  { href: "/#proof", label: "Proof" },
+  { href: "/#pricing", label: "Pricing" },
+  { href: "/#audit", label: "Book Audit" },
 ];
 
 export function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-mrg-border/60 bg-mrg-bg/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4">
-        <a href="#" className="flex items-center gap-2.5 sm:gap-3">
+        <a href="/" className="flex items-center gap-2.5 sm:gap-3">
           <img
             src="/mrg-logo-white.png"
             alt=""
