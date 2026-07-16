@@ -6,17 +6,19 @@ import { SectionReveal } from "./SectionReveal";
 const GROWTH_SCREENSHOTS = [
   {
     year: "2025",
-    period: "Before MRG",
-    amount: "$26,995",
+    period: "May–Aug · before MRG",
+    amount: "$12,985",
     src: "/proof/2025-comparison.png",
     alt: "Airbnb earnings comparison showing 2025 monthly earnings before MRG",
+    note: "Dashboard shows full year — we compare the same four months only.",
   },
   {
     year: "2026",
-    period: "With MRG",
+    period: "May–Aug · with MRG",
     amount: "$33,713",
     src: "/proof/2026-comparison.png",
     alt: "Airbnb earnings comparison showing 2026 monthly earnings with MRG",
+    note: "MRG took over in May 2026. Jan–Apr were not under MRG.",
   },
 ] as const;
 
@@ -28,6 +30,21 @@ function GrowthComparison() {
   return (
     <div ref={ref} className="relative mx-auto max-w-3xl">
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_70%_55%_at_50%_50%,rgba(201,168,76,0.1),transparent)]" />
+
+      <motion.div
+        className="mb-8 rounded-2xl border border-mrg-border/70 bg-mrg-surface/60 px-5 py-4 text-center sm:px-6"
+        initial={{ opacity: 0, y: 12 }}
+        animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 }}
+        transition={{ duration: 0.45 }}
+      >
+        <p className="text-sm font-medium text-mrg-text">
+          MRG took over this unit in <span className="text-mrg-gold">May 2026</span>.
+        </p>
+        <p className="mt-1.5 text-sm leading-relaxed text-mrg-muted">
+          The fair comparison is the same four months — May through August — not the full
+          calendar year side by side.
+        </p>
+      </motion.div>
 
       <div className="flex flex-col items-center gap-8 sm:flex-row sm:items-end sm:justify-center sm:gap-5 md:gap-8">
         <motion.div
@@ -44,6 +61,7 @@ function GrowthComparison() {
             <p className="mt-1 font-display text-2xl text-mrg-text sm:text-3xl">
               {GROWTH_SCREENSHOTS[0].amount}
             </p>
+            <p className="mt-1.5 text-xs leading-relaxed text-mrg-muted">{GROWTH_SCREENSHOTS[0].note}</p>
           </div>
           <motion.div
             className="w-full overflow-hidden rounded-[1.35rem] border border-mrg-border/50 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.45)] ring-1 ring-white/10"
@@ -88,6 +106,7 @@ function GrowthComparison() {
             <p className="mt-1 font-display text-2xl text-mrg-text sm:text-3xl">
               {GROWTH_SCREENSHOTS[1].amount}
             </p>
+            <p className="mt-1.5 text-xs leading-relaxed text-mrg-muted">{GROWTH_SCREENSHOTS[1].note}</p>
           </div>
           <motion.div
             className="w-full overflow-hidden rounded-[1.35rem] border border-mrg-gold/35 bg-white shadow-[0_18px_50px_rgba(0,0,0,0.45)] ring-1 ring-mrg-gold/25"
@@ -111,7 +130,7 @@ function GrowthComparison() {
         animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 }}
         transition={{ duration: 0.5, delay: 0.35 }}
       >
-        From the Airbnb host dashboard — May–Aug 2026 beat all of 2025
+        Same four months (May–Aug) from the Airbnb host dashboard — +159% under MRG
       </motion.p>
     </div>
   );
@@ -220,7 +239,7 @@ export function ProofSection() {
 
         <SectionReveal delay={0.15} className="mt-12">
           <p className="mb-6 text-sm font-semibold uppercase tracking-[0.16em] text-mrg-muted">
-            Month by month
+            May–Aug, month by month
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             {BAR_COMPARISONS.map((bar, i) => (
@@ -230,8 +249,9 @@ export function ProofSection() {
         </SectionReveal>
 
         <p className="mt-8 text-xs leading-relaxed text-mrg-muted">
-          All figures CAD, gross host earnings before management fee. July &amp; August are
-          full-season, apples-to-apples comparisons.
+          All figures CAD, gross host earnings before management fee. MRG began managing this
+          unit in May 2026; comparisons use May–Aug only. July &amp; August are full-season,
+          apples-to-apples.
         </p>
       </div>
     </section>
