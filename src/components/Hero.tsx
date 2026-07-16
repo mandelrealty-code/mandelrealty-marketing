@@ -25,7 +25,7 @@ export function Hero() {
               That is what this Toronto Airbnb made in all of 2025.
             </p>
             <p className="mt-3 font-display text-[clamp(1.5rem,3.8vw,2.5rem)] italic leading-[1.12] text-mrg-gold">
-              We matched it in two months.
+              We beat the year in four months.
             </p>
           </SectionReveal>
 
