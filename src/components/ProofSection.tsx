@@ -40,10 +40,6 @@ function GrowthComparison() {
         <p className="text-sm font-medium text-mrg-text">
           MRG took over this unit in <span className="text-mrg-gold">May 2026</span>.
         </p>
-        <p className="mt-1.5 text-sm leading-relaxed text-mrg-muted">
-          The fair comparison is the same four months — May through August — not the full
-          calendar year side by side.
-        </p>
       </motion.div>
 
       <div className="flex flex-col items-center gap-8 sm:flex-row sm:items-end sm:justify-center sm:gap-5 md:gap-8">
