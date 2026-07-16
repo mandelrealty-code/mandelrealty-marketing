@@ -63,7 +63,7 @@ export function AuditSection() {
   return (
     <section
       id="audit"
-      className="scroll-mt-20 bg-[radial-gradient(ellipse_80%_50%_at_50%_100%,rgba(201,168,76,0.15),transparent)] py-20 sm:py-28"
+      className="scroll-mt-24 bg-[radial-gradient(ellipse_80%_50%_at_50%_100%,rgba(201,168,76,0.15),transparent)] py-20 sm:py-28"
     >
       <div className="mx-auto max-w-2xl px-5">
         <SectionReveal className="text-center">

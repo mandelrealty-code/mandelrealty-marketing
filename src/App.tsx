@@ -9,8 +9,11 @@ import { AuditSection } from "./components/AuditSection";
 import { Footer } from "./components/Footer";
 import { MobileStickyCta } from "./components/MobileStickyCta";
 import { ThankYouPage } from "./pages/ThankYouPage";
+import { useScrollToHash } from "./hooks/useScrollToHash";
 
 function HomePage() {
+  useScrollToHash();
+
   return (
     <>
       <Header />
