@@ -7,6 +7,7 @@ import { MathSection } from "./components/MathSection";
 import { FaqSection } from "./components/FaqSection";
 import { AuditSection } from "./components/AuditSection";
 import { Footer } from "./components/Footer";
+import { MobileStickyCta } from "./components/MobileStickyCta";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
         <FaqSection />
         <AuditSection />
       </main>
+      <MobileStickyCta />
       <Footer />
     </>
   );
