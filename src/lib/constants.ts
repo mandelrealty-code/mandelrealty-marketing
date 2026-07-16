@@ -113,7 +113,7 @@ export const FULL_SERVICE_FEATURES = [
   "Maintenance request handling & coordination",
   "Proactive Superhost badge protection",
   "Guest Favourite pursuit system",
-  "Monthly performance review call with Ryan",
+  "Monthly performance review call with Team",
 ] as const;
 
 export const FAQ_ITEMS = [
