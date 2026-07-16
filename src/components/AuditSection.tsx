@@ -109,6 +109,9 @@ export function AuditSection() {
               >
                 {submitting ? "Submitting…" : "Book My Free Audit"}
               </button>
+              <p className="text-center text-xs text-mrg-muted">
+                No spam · We’ll reach out to book a 15-min slot.
+              </p>
             </form>
           )}
         </SectionReveal>
