@@ -19,7 +19,7 @@ export function PricingSection() {
   return (
     <section id="pricing" className="scroll-mt-20 border-b border-mrg-border/40 py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-5">
-        <SectionReveal>
+        <SectionReveal className="text-center">
           <h2 className="font-display text-4xl text-mrg-text sm:text-5xl">
             Two Plans. No Hidden Fees. No Lock-In.
           </h2>

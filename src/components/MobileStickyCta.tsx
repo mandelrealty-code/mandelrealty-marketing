@@ -36,10 +36,10 @@ export function MobileStickyCta() {
         >
           <a
             href="#audit"
-            className="flex w-full items-center justify-between rounded-full border border-mrg-gold/35 bg-mrg-bg/95 px-4 py-3 text-sm font-semibold text-mrg-text shadow-[0_14px_40px_rgba(0,0,0,0.5)] backdrop-blur-md"
+            className="flex w-full max-w-[19rem] items-center gap-3 rounded-full border border-mrg-gold/35 bg-mrg-bg/95 px-4 py-3 text-sm font-semibold text-mrg-text shadow-[0_14px_40px_rgba(0,0,0,0.5)] backdrop-blur-md"
           >
-            <span>Book free audit</span>
-            <span className="rounded-full bg-mrg-gold px-3 py-1 text-xs uppercase tracking-wide text-mrg-bg">
+            <span className="min-w-0 flex-1 truncate">Book free audit</span>
+            <span className="shrink-0 rounded-full bg-mrg-gold px-3 py-1 text-xs uppercase tracking-wide text-mrg-bg">
               15 min
             </span>
           </a>

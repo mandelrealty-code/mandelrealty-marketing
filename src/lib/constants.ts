@@ -52,11 +52,28 @@ export const PROOF_ROWS = [
 
 export const BAR_COMPARISONS = [
   {
+    month: "May 2026",
+    before: 1886,
+    withMrg: 3748,
+    beforeLabel: "$1,886",
+    withMrgLabel: "$3,748",
+    lift: "+99%",
+  },
+  {
+    month: "June 2026",
+    before: 0,
+    withMrg: 8755,
+    beforeLabel: "$0",
+    withMrgLabel: "$8,755",
+    lift: "Filled",
+  },
+  {
     month: "July 2026",
     before: 5370,
     withMrg: 10235,
     beforeLabel: "$5,370",
     withMrgLabel: "$10,235",
+    lift: "+90%",
   },
   {
     month: "August 2026",
@@ -64,6 +81,7 @@ export const BAR_COMPARISONS = [
     withMrg: 10975,
     beforeLabel: "$5,729",
     withMrgLabel: "$10,975",
+    lift: "+91%",
   },
 ] as const;
 

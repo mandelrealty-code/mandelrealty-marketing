@@ -123,23 +123,36 @@ function MonthBars({
   withMrg,
   beforeLabel,
   withMrgLabel,
-}: (typeof BAR_COMPARISONS)[number]) {
+  lift,
+  index = 0,
+}: (typeof BAR_COMPARISONS)[number] & { index?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: "-40px" });
-  const max = withMrg * 1.1;
+  const max = Math.max(withMrg, before, 1) * 1.08;
 
   return (
-    <div ref={ref} className="rounded-2xl border border-mrg-border bg-mrg-surface p-5 sm:p-6">
-      <p className="mb-5 text-sm font-semibold text-mrg-text">{month}</p>
+    <motion.div
+      ref={ref}
+      className="rounded-2xl border border-mrg-border/70 bg-mrg-surface/80 p-5 sm:p-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+      transition={{ duration: 0.5, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <p className="text-sm font-semibold text-mrg-text">{month}</p>
+        <span className="rounded-full bg-mrg-gold/15 px-2.5 py-0.5 text-xs font-semibold text-mrg-gold">
+          {lift}
+        </span>
+      </div>
       <div className="space-y-4">
         <div>
           <div className="mb-1.5 flex justify-between text-xs text-mrg-muted">
-            <span>Before MRG</span>
+            <span>Before</span>
             <span className="font-medium text-mrg-text">{beforeLabel}</span>
           </div>
-          <div className="h-3 overflow-hidden rounded-full bg-mrg-surface-elevated">
+          <div className="h-2.5 overflow-hidden rounded-full bg-mrg-surface-elevated">
             <motion.div
-              className="h-full rounded-full bg-mrg-muted/50"
+              className="h-full rounded-full bg-mrg-muted/45"
               initial={{ width: 0 }}
               animate={inView ? { width: `${(before / max) * 100}%` } : { width: 0 }}
               transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
@@ -151,17 +164,17 @@ function MonthBars({
             <span>With MRG</span>
             <span className="font-semibold text-mrg-gold">{withMrgLabel}</span>
           </div>
-          <div className="h-3 overflow-hidden rounded-full bg-mrg-surface-elevated">
+          <div className="h-2.5 overflow-hidden rounded-full bg-mrg-surface-elevated">
             <motion.div
               className="h-full rounded-full bg-mrg-gold"
               initial={{ width: 0 }}
               animate={inView ? { width: `${(withMrg / max) * 100}%` } : { width: 0 }}
-              transition={{ duration: 1.1, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 1.05, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
             />
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -180,54 +193,40 @@ export function ProofSection() {
           <GrowthComparison />
         </SectionReveal>
 
-        <SectionReveal delay={0.1} className="mt-16 overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-b border-mrg-border text-xs uppercase tracking-wider text-mrg-muted">
-                <th className="pb-4 pr-4 font-semibold">Period</th>
-                <th className="pb-4 pr-4 font-semibold">Before MRG (2025)</th>
-                <th className="pb-4 pr-4 font-semibold">With MRG (2026)</th>
-                <th className="pb-4 font-semibold">Lift</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                ["Full Year 2025", "$26,995", "—", "Entire year before MRG"],
-                ["May 2026", "$1,886", "$3,748", "+99%"],
-                ["June 2026", "$0 (empty)", "$8,755", "MRG filled it"],
-                ["July 2026", "$5,370", "$10,235", "+90%"],
-                ["August 2026", "$5,729", "$10,975", "+91%"],
-              ].map(([period, before, withMrg, lift]) => (
-                <tr key={period} className="border-b border-mrg-border/50">
-                  <td className="py-4 pr-4 text-mrg-text">{period}</td>
-                  <td className="py-4 pr-4 text-mrg-muted">{before}</td>
-                  <td className="py-4 pr-4 font-medium text-mrg-text">{withMrg}</td>
-                  <td className="py-4 text-mrg-gold">{lift}</td>
-                </tr>
-              ))}
-              <tr className="bg-mrg-gold/10">
-                <td className="py-4 pr-4 font-semibold text-mrg-text">May–Aug Total</td>
-                <td className="py-4 pr-4 font-semibold text-mrg-text">$12,985</td>
-                <td className="py-4 pr-4 font-display text-xl text-mrg-gold">$33,713</td>
-                <td className="py-4 font-semibold text-mrg-gold">+159%</td>
-              </tr>
-            </tbody>
-          </table>
-        </SectionReveal>
-
-        <SectionReveal delay={0.15} className="mt-8">
-          <div className="rounded-2xl border border-mrg-gold/30 bg-mrg-gold/10 px-6 py-5 sm:px-8 sm:py-6">
-            <p className="font-display text-xl text-mrg-text sm:text-2xl">
-              4 months under MRG beat the entire previous year.{" "}
-              <span className="text-mrg-gold">$33,713 vs $26,995.</span>
+        <SectionReveal delay={0.1} className="mt-14">
+          <div className="overflow-hidden rounded-3xl border border-mrg-gold/30 bg-gradient-to-br from-mrg-gold/15 via-mrg-gold/5 to-transparent px-6 py-8 sm:px-10 sm:py-10">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-mrg-gold">
+              Full year vs four months
+            </p>
+            <div className="mt-6 grid gap-8 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
+              <div>
+                <p className="text-sm text-mrg-muted">Full year 2025</p>
+                <p className="mt-1 font-display text-4xl text-mrg-text sm:text-5xl">$26,995</p>
+              </div>
+              <div className="hidden flex-col items-center gap-1 pb-2 sm:flex">
+                <span className="font-display text-3xl text-mrg-gold">→</span>
+                <span className="text-sm font-bold text-mrg-gold">+159%</span>
+              </div>
+              <div className="sm:text-right">
+                <p className="text-sm text-mrg-muted">May–Aug 2026</p>
+                <p className="mt-1 font-display text-4xl text-mrg-gold sm:text-5xl">$33,713</p>
+              </div>
+            </div>
+            <p className="mt-6 max-w-2xl text-base leading-relaxed text-mrg-muted sm:text-lg">
+              Four months under MRG beat the entire previous year — same unit, same platform.
             </p>
           </div>
         </SectionReveal>
 
-        <SectionReveal delay={0.2} className="mt-12 grid gap-6 sm:grid-cols-2">
-          {BAR_COMPARISONS.map((bar) => (
-            <MonthBars key={bar.month} {...bar} />
-          ))}
+        <SectionReveal delay={0.15} className="mt-12">
+          <p className="mb-6 text-sm font-semibold uppercase tracking-[0.16em] text-mrg-muted">
+            Month by month
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {BAR_COMPARISONS.map((bar, i) => (
+              <MonthBars key={bar.month} {...bar} index={i} />
+            ))}
+          </div>
         </SectionReveal>
 
         <p className="mt-8 text-xs leading-relaxed text-mrg-muted">
