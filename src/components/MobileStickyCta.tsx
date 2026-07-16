@@ -28,7 +28,7 @@ export function MobileStickyCta() {
     <AnimatePresence>
       {visible && (
         <motion.div
-          className="fixed inset-x-0 bottom-0 z-50 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:hidden"
+          className="fixed bottom-0 left-0 z-40 pr-[4.75rem] pl-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:hidden"
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 24 }}
@@ -36,7 +36,7 @@ export function MobileStickyCta() {
         >
           <a
             href="#audit"
-            className="mx-auto flex max-w-sm items-center justify-between rounded-full border border-mrg-gold/35 bg-mrg-bg/95 px-4 py-3 text-sm font-semibold text-mrg-text shadow-[0_14px_40px_rgba(0,0,0,0.5)] backdrop-blur-md"
+            className="flex w-full items-center justify-between rounded-full border border-mrg-gold/35 bg-mrg-bg/95 px-4 py-3 text-sm font-semibold text-mrg-text shadow-[0_14px_40px_rgba(0,0,0,0.5)] backdrop-blur-md"
           >
             <span>Book free audit</span>
             <span className="rounded-full bg-mrg-gold px-3 py-1 text-xs uppercase tracking-wide text-mrg-bg">
