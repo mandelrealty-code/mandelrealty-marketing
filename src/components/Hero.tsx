@@ -1,8 +1,8 @@
 import { CountUp } from "./CountUp";
 import { SectionReveal } from "./SectionReveal";
-import { AuditButton } from "./ui";
+import { AuditButton, CallButton } from "./ui";
 import { BeforeAfterSlider } from "./BeforeAfterSlider";
-import { HERO_AMOUNT } from "../lib/constants";
+import { HERO_AMOUNT, PHONE } from "../lib/constants";
 
 export function Hero() {
   return (
@@ -37,7 +37,13 @@ export function Hero() {
           </SectionReveal>
 
           <SectionReveal delay={0.2} className="mt-8">
-            <AuditButton size="large" label="Get My Free Revenue Audit" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <AuditButton size="large" label="Get My Free Revenue Audit" />
+              <CallButton size="large" label={`Call ${PHONE}`} />
+            </div>
+            <p className="mt-4 text-sm text-mrg-muted">
+              Free 15-min audit · No pitch · Toronto &amp; GTA
+            </p>
           </SectionReveal>
         </div>
 

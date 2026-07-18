@@ -1,3 +1,4 @@
+import { PHONE, PHONE_HREF } from "../lib/constants";
 import { AuditButton } from "./ui";
 
 const NAV = [
@@ -32,7 +33,24 @@ export function Header() {
             </a>
           ))}
         </nav>
-        <AuditButton className="shrink-0" label="Free Revenue Audit" />
+        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+          <a
+            href={PHONE_HREF}
+            className="hidden text-sm font-semibold text-mrg-gold transition-colors hover:text-mrg-gold-light lg:inline"
+          >
+            {PHONE}
+          </a>
+          <a
+            href={PHONE_HREF}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-mrg-gold/40 text-mrg-gold transition-colors hover:border-mrg-gold hover:bg-mrg-gold/10 lg:hidden"
+            aria-label={`Call ${PHONE}`}
+          >
+            <span aria-hidden className="text-lg leading-none">
+              ☎
+            </span>
+          </a>
+          <AuditButton className="shrink-0" label="Free Revenue Audit" />
+        </div>
       </div>
     </header>
   );
