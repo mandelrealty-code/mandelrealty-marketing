@@ -8,11 +8,16 @@ export function MobileStickyCta() {
   useEffect(() => {
     const updateVisibility = () => {
       const auditSection = document.getElementById("audit");
+      const midCta = document.getElementById("mid-audit");
       const auditTop = auditSection?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
+      const midTop = midCta?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
+      const midBottom = midCta?.getBoundingClientRect().bottom ?? Number.NEGATIVE_INFINITY;
       const hasScrolledPastHero = window.scrollY > 420;
       const isNearAuditForm = auditTop < window.innerHeight * 0.75;
+      const isNearMidForm =
+        midTop < window.innerHeight * 0.85 && midBottom > window.innerHeight * 0.15;
 
-      setVisible(hasScrolledPastHero && !isNearAuditForm);
+      setVisible(hasScrolledPastHero && !isNearAuditForm && !isNearMidForm);
     };
 
     updateVisibility();

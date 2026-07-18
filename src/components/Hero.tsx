@@ -41,9 +41,6 @@ export function Hero() {
               <AuditButton size="large" label="Get My Free Revenue Audit" />
               <CallButton size="large" label={`Call ${PHONE}`} />
             </div>
-            <p className="mt-4 text-sm text-mrg-muted">
-              Free 15-min audit · No pitch · Toronto &amp; GTA
-            </p>
           </SectionReveal>
         </div>
 

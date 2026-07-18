@@ -1,6 +1,7 @@
 import { Header } from "./components/Header";
 import { Hero } from "./components/Hero";
 import { ProofSection } from "./components/ProofSection";
+import { MidAuditCta } from "./components/MidAuditCta";
 import { HowSection } from "./components/HowSection";
 import { PricingSection } from "./components/PricingSection";
 import { MathSection } from "./components/MathSection";
@@ -20,6 +21,7 @@ function HomePage() {
       <main>
         <Hero />
         <ProofSection />
+        <MidAuditCta />
         <HowSection />
         <PricingSection />
         <MathSection />
