@@ -1,5 +1,5 @@
 import { CTA_HEADLINE, PHONE, PHONE_HREF } from "../lib/constants";
-import { CallButton } from "./ui";
+import { CallButton, EstimateButton } from "./ui";
 
 const NAV = [
   { href: "/#proof", label: "Proof" },
@@ -33,14 +33,19 @@ export function Header() {
             </a>
           ))}
         </nav>
-        <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <a
             href={PHONE_HREF}
-            className="hidden text-sm font-semibold text-mrg-gold transition-colors hover:text-mrg-gold-light lg:inline"
+            className="hidden text-sm font-semibold text-mrg-gold transition-colors hover:text-mrg-gold-light xl:inline"
           >
             {PHONE}
           </a>
-          <CallButton className="hidden shrink-0 sm:inline-flex" label="Call Our Experts" />
+          <CallButton
+            className="hidden shrink-0 sm:inline-flex"
+            label="Call"
+            variant="secondary"
+          />
+          <EstimateButton className="hidden shrink-0 sm:inline-flex" label="Get Estimate" />
           <a
             href={PHONE_HREF}
             className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-mrg-gold/40 text-mrg-gold transition-colors hover:border-mrg-gold hover:bg-mrg-gold/10 sm:hidden"
@@ -50,6 +55,7 @@ export function Header() {
               ☎
             </span>
           </a>
+          <EstimateButton className="shrink-0 sm:hidden" label="Estimate" />
         </div>
       </div>
     </header>

@@ -1,8 +1,8 @@
 import { CountUp } from "./CountUp";
 import { SectionReveal } from "./SectionReveal";
-import { CallButton, EmailCta } from "./ui";
+import { CallButton, EstimateButton } from "./ui";
 import { BeforeAfterSlider } from "./BeforeAfterSlider";
-import { CTA_HEADLINE, CTA_SUPPORT, HERO_AMOUNT } from "../lib/constants";
+import { HERO_AMOUNT, PHONE } from "../lib/constants";
 
 export function Hero() {
   return (
@@ -37,11 +37,10 @@ export function Hero() {
           </SectionReveal>
 
           <SectionReveal delay={0.2} className="mt-8">
-            <CallButton size="large" label={CTA_HEADLINE} />
-            <p className="mt-4 max-w-lg text-sm leading-relaxed text-mrg-muted sm:text-base">
-              {CTA_SUPPORT}
-            </p>
-            <EmailCta className="mt-3 max-w-lg" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <CallButton size="large" label={`Call ${PHONE}`} />
+              <EstimateButton size="large" variant="secondary" />
+            </div>
           </SectionReveal>
         </div>
 

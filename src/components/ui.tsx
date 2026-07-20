@@ -30,6 +30,60 @@ export function CallButton({
   );
 }
 
+export function EstimateButton({
+  className = "",
+  size = "default",
+  label = "Get Estimate",
+  variant = "primary",
+}: {
+  className?: string;
+  size?: "default" | "large";
+  label?: string;
+  variant?: "primary" | "secondary";
+}) {
+  const base =
+    variant === "primary"
+      ? "inline-flex items-center justify-center rounded-lg font-semibold uppercase tracking-wide transition-all bg-mrg-gold text-mrg-bg hover:bg-mrg-gold-light active:scale-[0.98]"
+      : "inline-flex items-center justify-center rounded-lg border border-mrg-gold/50 font-semibold uppercase tracking-wide text-mrg-gold transition-all hover:border-mrg-gold hover:bg-mrg-gold/10 active:scale-[0.98]";
+  const sizes =
+    size === "large"
+      ? "px-8 py-4 text-sm sm:text-base w-full sm:w-auto"
+      : "px-5 py-2.5 text-xs sm:text-sm";
+
+  return (
+    <a href="/#audit" className={`${base} ${sizes} ${className}`}>
+      {label}
+    </a>
+  );
+}
+
+export function EmailButton({
+  className = "",
+  size = "default",
+  label = "Email for Estimate",
+  variant = "secondary",
+}: {
+  className?: string;
+  size?: "default" | "large";
+  label?: string;
+  variant?: "primary" | "secondary";
+}) {
+  const base =
+    variant === "primary"
+      ? "inline-flex items-center justify-center rounded-lg font-semibold uppercase tracking-wide transition-all bg-mrg-gold text-mrg-bg hover:bg-mrg-gold-light active:scale-[0.98]"
+      : "inline-flex items-center justify-center rounded-lg border border-mrg-gold/50 font-semibold uppercase tracking-wide text-mrg-gold transition-all hover:border-mrg-gold hover:bg-mrg-gold/10 active:scale-[0.98]";
+  const sizes =
+    size === "large"
+      ? "px-8 py-4 text-sm sm:text-base w-full sm:w-auto"
+      : "px-5 py-2.5 text-xs sm:text-sm";
+
+  return (
+    <a href={EMAIL_HREF} className={`${base} ${sizes} ${className}`}>
+      {label}
+    </a>
+  );
+}
+
 export function EmailCta({ className = "" }: { className?: string }) {
   return (
     <p className={`text-sm leading-relaxed text-mrg-muted sm:text-base ${className}`}>
