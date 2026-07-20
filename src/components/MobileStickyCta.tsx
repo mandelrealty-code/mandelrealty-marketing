@@ -1,23 +1,23 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { PHONE, PHONE_HREF } from "../lib/constants";
+import { CTA_HEADLINE, EMAIL_HREF, PHONE_HREF } from "../lib/constants";
 
 export function MobileStickyCta() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     const updateVisibility = () => {
-      const auditSection = document.getElementById("audit");
-      const midCta = document.getElementById("mid-audit");
-      const auditTop = auditSection?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
+      const estimateSection = document.getElementById("audit");
+      const midCta = document.getElementById("mid-cta");
+      const estimateTop = estimateSection?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
       const midTop = midCta?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
       const midBottom = midCta?.getBoundingClientRect().bottom ?? Number.NEGATIVE_INFINITY;
       const hasScrolledPastHero = window.scrollY > 420;
-      const isNearAuditForm = auditTop < window.innerHeight * 0.75;
+      const isNearEstimateForm = estimateTop < window.innerHeight * 0.75;
       const isNearMidForm =
         midTop < window.innerHeight * 0.85 && midBottom > window.innerHeight * 0.15;
 
-      setVisible(hasScrolledPastHero && !isNearAuditForm && !isNearMidForm);
+      setVisible(hasScrolledPastHero && !isNearEstimateForm && !isNearMidForm);
     };
 
     updateVisibility();
@@ -43,19 +43,19 @@ export function MobileStickyCta() {
           <div className="flex max-w-[22rem] gap-2">
             <a
               href={PHONE_HREF}
-              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-mrg-gold px-3 py-3 text-sm font-semibold text-mrg-bg shadow-[0_14px_40px_rgba(0,0,0,0.5)]"
+              className="inline-flex flex-[1.6] items-center justify-center gap-1.5 rounded-full bg-mrg-gold px-3 py-3 text-sm font-semibold text-mrg-bg shadow-[0_14px_40px_rgba(0,0,0,0.5)]"
             >
               <span aria-hidden>☎</span>
-              Call
+              Call Experts
             </a>
             <a
-              href="/#audit"
-              className="inline-flex flex-[1.4] items-center justify-center rounded-full border border-mrg-gold/40 bg-mrg-bg/95 px-3 py-3 text-sm font-semibold text-mrg-text shadow-[0_14px_40px_rgba(0,0,0,0.5)] backdrop-blur-md"
+              href={EMAIL_HREF}
+              className="inline-flex flex-1 items-center justify-center rounded-full border border-mrg-gold/40 bg-mrg-bg/95 px-3 py-3 text-sm font-semibold text-mrg-text shadow-[0_14px_40px_rgba(0,0,0,0.5)] backdrop-blur-md"
             >
-              Free audit
+              Email
             </a>
           </div>
-          <p className="mt-1.5 pl-1 text-[11px] text-mrg-muted/80">{PHONE}</p>
+          <p className="mt-1.5 pl-1 text-[11px] text-mrg-muted/80">{CTA_HEADLINE}</p>
         </motion.div>
       )}
     </AnimatePresence>

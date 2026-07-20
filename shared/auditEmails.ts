@@ -24,7 +24,7 @@ export function buildLeadNotificationHtml(input: {
   marketingOptIn: boolean;
 }): string {
   return `
-    <h2>New Revenue Audit Request</h2>
+    <h2>New Earnings Estimate Request</h2>
     <p><strong>Name:</strong> ${escapeHtml(input.name)}</p>
     <p><strong>Email:</strong> ${escapeHtml(input.email)}</p>
     <p><strong>Phone:</strong> ${escapeHtml(input.phone)}</p>
@@ -32,7 +32,7 @@ export function buildLeadNotificationHtml(input: {
     <p><strong>Rough monthly earnings:</strong> ${escapeHtml(input.earnings || "Not provided")}</p>
     <p><strong>Marketing emails:</strong> ${input.marketingOptIn ? "Opted in" : "Not opted in"}</p>
     <hr />
-    <p style="color:#666;font-size:12px;">Submitted from mandelrealtygroup.com audit form</p>
+    <p style="color:#666;font-size:12px;">Submitted from mandelrealtygroup.com estimate form</p>
   `;
 }
 
@@ -58,13 +58,13 @@ export function buildCustomerConfirmationHtml(input: { name: string; address: st
             </tr>
             <tr>
               <td style="padding:16px 28px 0;color:#8b9bb4;font-size:16px;line-height:1.6;">
-                Thanks for booking a free revenue audit${property ? ` for <strong style="color:#f0f4fa;">${property}</strong>` : ""}.
-                We've received your details and our team will reach out shortly to schedule your 15-minute call.
+                Thanks for requesting a custom earnings estimate${property ? ` for <strong style="color:#f0f4fa;">${property}</strong>` : ""}.
+                We've received your details and our team will reach out shortly with a clear look at what your property could earn.
               </td>
             </tr>
             <tr>
               <td style="padding:20px 28px 0;color:#8b9bb4;font-size:16px;line-height:1.6;">
-                On the call, we'll walk through what your Toronto unit is earning now — and what it could earn with a tighter listing, pricing, and guest experience. No pitch. No obligation.
+                We'll walk through what your Toronto unit is earning now — and what it could earn with a tighter listing, pricing, and guest experience. No pitch. No obligation.
               </td>
             </tr>
             <tr>
@@ -74,8 +74,8 @@ export function buildCustomerConfirmationHtml(input: { name: string; address: st
                     <td style="padding:18px 20px;color:#f0f4fa;font-size:15px;line-height:1.55;">
                       <strong style="color:#c9a84c;">What happens next</strong><br />
                       1. We review your property details<br />
-                      2. We email or call to lock in a time<br />
-                      3. You get a clear, no-pressure audit
+                      2. We email or call with your estimate<br />
+                      3. You get straight answers — no pressure
                     </td>
                   </tr>
                 </table>
@@ -96,7 +96,7 @@ export function buildCustomerConfirmationHtml(input: { name: string; address: st
             </tr>
           </table>
           <p style="max-width:560px;margin:16px auto 0;color:#66748a;font-size:11px;line-height:1.5;text-align:center;">
-            You received this email because you requested a free revenue audit at mandelrealtygroup.com.
+            You received this email because you requested a custom earnings estimate at mandelrealtygroup.com.
             This is a transactional confirmation, not a marketing email.
           </p>
         </td>
@@ -138,7 +138,7 @@ export async function sendResendEmail(input: {
 
 /** Safe message shown on the website — never leak provider/DNS details. */
 export const AUDIT_UNAVAILABLE_MESSAGE =
-  "The free revenue audit is currently not available. Please call or email us directly.";
+  "Custom earnings estimates are currently unavailable online. Please call or email us directly.";
 
 export function toPublicAuditError(message?: string): string {
   if (!message) return AUDIT_UNAVAILABLE_MESSAGE;

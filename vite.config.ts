@@ -73,7 +73,7 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
 
           if (!contactConsent) {
             json(400, {
-              error: "Please confirm we can contact you about your free revenue audit.",
+              error: "Please confirm we can contact you about your custom earnings estimate.",
             });
             return;
           }
@@ -86,7 +86,7 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
             from,
             to: [LEAD_INBOX],
             replyTo: email,
-            subject: `Revenue Audit Request — ${name}`,
+            subject: `Earnings Estimate Request — ${name}`,
             html: buildLeadNotificationHtml({
               name,
               email,
@@ -108,7 +108,7 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
             from,
             to: [email],
             replyTo: LEAD_INBOX,
-            subject: "We've got your free revenue audit request",
+            subject: "We've got your earnings estimate request",
             html: buildCustomerConfirmationHtml({ name, address }),
           });
 

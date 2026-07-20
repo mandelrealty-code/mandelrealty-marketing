@@ -3,6 +3,13 @@ export const PHONE_HREF = "tel:+16473817325";
 export const EMAIL = "info@mandelrealtygroup.com";
 export const EMAIL_HREF = "mailto:info@mandelrealtygroup.com";
 
+export const CTA_HEADLINE = `Call Our Experts: ${PHONE}`;
+export const CTA_SUPPORT =
+  "Talk to a Toronto Airbnb specialist today — no obligation, just straight answers on what your property could earn.";
+export const EMAIL_CTA_LEAD = "Prefer email? Get your custom earnings estimate:";
+export const CONTACT_CONSENT_ERROR =
+  "Please confirm we can contact you about your custom earnings estimate.";
+
 export const HERO_AMOUNT = 26995;
 
 export const PROOF_ROWS = [
@@ -153,6 +160,6 @@ export const FAQ_ITEMS = [
   },
   {
     q: "How do I know these numbers are real?",
-    a: "Every figure is from the Airbnb dashboard. We'll show you the screenshots on your audit call.",
+    a: "Every figure is from the Airbnb dashboard. We'll show you the screenshots on your call.",
   },
 ] as const;

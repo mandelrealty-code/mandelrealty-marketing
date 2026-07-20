@@ -1,6 +1,6 @@
-import { ESSENTIAL_FEATURES, FULL_SERVICE_FEATURES } from "../lib/constants";
+import { CTA_HEADLINE, ESSENTIAL_FEATURES, FULL_SERVICE_FEATURES } from "../lib/constants";
 import { SectionReveal } from "./SectionReveal";
-import { AuditButton } from "./ui";
+import { CallButton, EmailCta } from "./ui";
 
 function FeatureList({ items }: { items: readonly string[] }) {
   return (
@@ -36,7 +36,7 @@ export function PricingSection() {
               </p>
               <FeatureList items={ESSENTIAL_FEATURES} />
               <div className="mt-8">
-                <AuditButton className="w-full" />
+                <CallButton className="w-full" label={CTA_HEADLINE} />
               </div>
             </div>
           </SectionReveal>
@@ -55,7 +55,7 @@ export function PricingSection() {
               <p className="mt-4 text-sm text-mrg-muted">Everything in Essential, plus:</p>
               <FeatureList items={FULL_SERVICE_FEATURES} />
               <div className="mt-8">
-                <AuditButton className="w-full" />
+                <CallButton className="w-full" label={CTA_HEADLINE} />
               </div>
             </div>
           </SectionReveal>
@@ -72,6 +72,7 @@ export function PricingSection() {
               </span>
             </p>
           </div>
+          <EmailCta className="mt-6 text-center" />
         </SectionReveal>
       </div>
     </section>

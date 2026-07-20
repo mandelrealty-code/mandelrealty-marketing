@@ -1,5 +1,13 @@
 import { useState, type FormEvent } from "react";
-import { EMAIL, EMAIL_HREF, PHONE, PHONE_HREF } from "../lib/constants";
+import {
+  CONTACT_CONSENT_ERROR,
+  CTA_HEADLINE,
+  CTA_SUPPORT,
+  EMAIL,
+  EMAIL_CTA_LEAD,
+  EMAIL_HREF,
+  PHONE_HREF,
+} from "../lib/constants";
 import { submitAuditLead } from "../lib/submitAuditLead";
 import { SectionReveal } from "./SectionReveal";
 
@@ -29,7 +37,7 @@ export function AuditSection() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!contactConsent) {
-      setError("Please confirm we can contact you about your free revenue audit.");
+      setError(CONTACT_CONSENT_ERROR);
       return;
     }
     setSubmitting(true);
@@ -70,10 +78,7 @@ export function AuditSection() {
           <h2 className="font-display text-4xl text-mrg-text sm:text-5xl">
             See What Your Toronto Unit Could Actually Earn
           </h2>
-          <p className="mx-auto mt-4 max-w-lg text-mrg-muted">
-            A free 15-minute revenue audit. We show you the gap between what you earn now and what
-            your property should earn. No pitch. No obligation.
-          </p>
+          <p className="mx-auto mt-4 max-w-lg text-mrg-muted">{CTA_SUPPORT}</p>
         </SectionReveal>
 
         <SectionReveal delay={0.1} className="mt-10">
@@ -101,7 +106,7 @@ export function AuditSection() {
                 className="mt-1 h-4 w-4 shrink-0 accent-mrg-gold"
               />
               <span className="text-sm leading-relaxed text-mrg-muted">
-                I agree to be contacted by Mandel Realty Group about my free revenue audit by
+                I agree to be contacted by Mandel Realty Group about my custom earnings estimate by
                 email or phone. <span className="text-mrg-text/80">(required)</span>
               </span>
             </label>
@@ -129,22 +134,24 @@ export function AuditSection() {
               disabled={submitting}
               className="mt-2 w-full rounded-full bg-mrg-gold py-4 font-semibold text-mrg-bg transition-all hover:bg-mrg-gold-light disabled:opacity-60"
             >
-              {submitting ? "Submitting…" : "Book My Free Audit"}
+              {submitting ? "Submitting…" : "Get My Custom Earnings Estimate"}
             </button>
             <p className="text-center text-xs text-mrg-muted">
-              No spam · We’ll reach out to book a 15-min slot.
+              No spam · We&apos;ll reply with a clear look at what your property could earn.
             </p>
           </form>
         </SectionReveal>
 
-        <SectionReveal delay={0.15} className="mt-8 text-center text-sm text-mrg-muted">
-          <a href={PHONE_HREF} className="font-semibold text-mrg-gold hover:text-mrg-gold-light">
-            {PHONE}
+        <SectionReveal delay={0.15} className="mt-8 space-y-2 text-center text-sm text-mrg-muted">
+          <a href={PHONE_HREF} className="block font-semibold text-mrg-gold hover:text-mrg-gold-light">
+            {CTA_HEADLINE}
           </a>
-          <span className="mx-2">·</span>
-          <a href={EMAIL_HREF} className="text-mrg-muted hover:text-mrg-text">
-            {EMAIL}
-          </a>
+          <p>
+            {EMAIL_CTA_LEAD}{" "}
+            <a href={EMAIL_HREF} className="font-semibold text-mrg-gold hover:text-mrg-gold-light">
+              {EMAIL}
+            </a>
+          </p>
         </SectionReveal>
       </div>
     </section>

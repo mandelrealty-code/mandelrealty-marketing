@@ -1,10 +1,10 @@
-import { PHONE, PHONE_HREF } from "../lib/constants";
-import { AuditButton } from "./ui";
+import { CTA_HEADLINE, PHONE, PHONE_HREF } from "../lib/constants";
+import { CallButton } from "./ui";
 
 const NAV = [
   { href: "/#proof", label: "Proof" },
   { href: "/#pricing", label: "Pricing" },
-  { href: "/#audit", label: "Book Audit" },
+  { href: "/#audit", label: "Get Estimate" },
 ];
 
 export function Header() {
@@ -40,16 +40,16 @@ export function Header() {
           >
             {PHONE}
           </a>
+          <CallButton className="hidden shrink-0 sm:inline-flex" label="Call Our Experts" />
           <a
             href={PHONE_HREF}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-mrg-gold/40 text-mrg-gold transition-colors hover:border-mrg-gold hover:bg-mrg-gold/10 lg:hidden"
-            aria-label={`Call ${PHONE}`}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-mrg-gold/40 text-mrg-gold transition-colors hover:border-mrg-gold hover:bg-mrg-gold/10 sm:hidden"
+            aria-label={CTA_HEADLINE}
           >
             <span aria-hidden className="text-lg leading-none">
               ☎
             </span>
           </a>
-          <AuditButton className="shrink-0" label="Free Revenue Audit" />
         </div>
       </div>
     </header>

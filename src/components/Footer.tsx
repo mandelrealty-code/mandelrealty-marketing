@@ -25,7 +25,7 @@ export function Footer() {
             Pricing
           </a>
           <a href="/#audit" className="hover:text-mrg-text">
-            Book Audit
+            Get Estimate
           </a>
         </nav>
       </div>

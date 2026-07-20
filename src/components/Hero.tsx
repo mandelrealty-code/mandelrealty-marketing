@@ -1,8 +1,8 @@
 import { CountUp } from "./CountUp";
 import { SectionReveal } from "./SectionReveal";
-import { AuditButton, CallButton } from "./ui";
+import { CallButton, EmailCta } from "./ui";
 import { BeforeAfterSlider } from "./BeforeAfterSlider";
-import { HERO_AMOUNT, PHONE } from "../lib/constants";
+import { CTA_HEADLINE, CTA_SUPPORT, HERO_AMOUNT } from "../lib/constants";
 
 export function Hero() {
   return (
@@ -37,10 +37,11 @@ export function Hero() {
           </SectionReveal>
 
           <SectionReveal delay={0.2} className="mt-8">
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <AuditButton size="large" label="Get My Free Revenue Audit" />
-              <CallButton size="large" label={`Call ${PHONE}`} />
-            </div>
+            <CallButton size="large" label={CTA_HEADLINE} />
+            <p className="mt-4 max-w-lg text-sm leading-relaxed text-mrg-muted sm:text-base">
+              {CTA_SUPPORT}
+            </p>
+            <EmailCta className="mt-3 max-w-lg" />
           </SectionReveal>
         </div>
 

@@ -11,7 +11,7 @@ export type AuditLeadPayload = {
 };
 
 const FALLBACK_ERROR =
-  "The free revenue audit is currently not available. Please call or email us directly.";
+  "Custom earnings estimates are currently unavailable online. Please call or email us directly.";
 
 function sanitizeError(message?: string): string {
   if (!message) return FALLBACK_ERROR;

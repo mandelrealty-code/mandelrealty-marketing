@@ -22,8 +22,8 @@ export function ThankYouPage() {
             You&apos;re in — check your inbox.
           </h1>
           <p className="mt-5 text-base leading-relaxed text-mrg-muted sm:text-lg">
-            We just sent a confirmation email and will reach out shortly to schedule your
-            15-minute revenue audit.
+            We just sent a confirmation email and will reach out shortly with your custom
+            earnings estimate.
           </p>
           <p className="mt-8 text-sm text-mrg-muted">Prefer to talk now?</p>
           <a

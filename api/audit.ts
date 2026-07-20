@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!consented) {
     return res.status(400).json({
-      error: "Please confirm we can contact you about your free revenue audit.",
+      error: "Please confirm we can contact you about your custom earnings estimate.",
     });
   }
 
@@ -53,7 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     from,
     to: [LEAD_INBOX],
     replyTo: emailStr,
-    subject: `Revenue Audit Request — ${nameStr}`,
+    subject: `Earnings Estimate Request — ${nameStr}`,
     html: buildLeadNotificationHtml({
       name: nameStr,
       email: emailStr,
@@ -74,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     from,
     to: [emailStr],
     replyTo: LEAD_INBOX,
-    subject: "We've got your free revenue audit request",
+    subject: "We've got your earnings estimate request",
     html: buildCustomerConfirmationHtml({ name: nameStr, address: addressStr }),
   });
 
