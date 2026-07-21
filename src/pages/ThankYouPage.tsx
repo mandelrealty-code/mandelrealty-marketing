@@ -2,12 +2,14 @@ import { useEffect } from "react";
 import { EMAIL, EMAIL_HREF, PHONE, PHONE_HREF } from "../lib/constants";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
+import { trackMetaLead } from "../lib/metaPixel";
 
 export function ThankYouPage() {
   useEffect(() => {
     document.title = "Thank You | Mandel Realty Group";
     const robots = document.querySelector('meta[name="robots"]');
     if (robots) robots.setAttribute("content", "noindex, nofollow");
+    trackMetaLead();
   }, []);
 
   return (
