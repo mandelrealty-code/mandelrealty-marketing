@@ -218,7 +218,7 @@ export function AdsLandingPage() {
             </div>
 
             {/* Dominant conversion card — first after mobile headline */}
-            <div className="lg:sticky lg:top-6">
+            <div id="book" className="scroll-mt-6 lg:sticky lg:top-6">
               <div className="rounded-[1.75rem] bg-mrg-surface-elevated p-6 shadow-[0_28px_70px_rgba(0,0,0,0.45)] ring-1 ring-white/12 sm:p-8">
                 <div className="mb-6 flex gap-2" aria-hidden>
                   {(["qualify", "details", "book"] as const).map((s, i) => (
@@ -496,30 +496,50 @@ export function AdsLandingPage() {
             <h2 className="text-center text-2xl font-bold tracking-tight sm:text-3xl">
               Same listing. <span className="text-mrg-gold">More money.</span>
             </h2>
-            <dl className="mt-8 space-y-3">
+            <ol className="mt-8 space-y-4">
               {[
                 {
-                  q: "Do I need a long-term contract?",
-                  a: "No. Month to month — stay because the numbers work, not because you're locked in.",
+                  step: "01",
+                  title: "Book your 15-minute call",
+                  detail: "Tell us about your property. Takes under a minute to get started.",
                 },
                 {
-                  q: "I'm outside Toronto. Can you still help?",
-                  a: "Yes. We manage listings across Canada and the U.S. — hands-on or fully virtual, depending on what the property needs.",
+                  step: "02",
+                  title: "We walk through real comps",
+                  detail:
+                    "Nearby properties, seasonality, and occupancy — a clear look at what's left on the table.",
                 },
                 {
-                  q: "How is the estimate calculated?",
-                  a: "From real comps in your area — comparable listings, seasonality, and occupancy — not a generic one-size formula.",
+                  step: "03",
+                  title: "You decide if it's a fit",
+                  detail: "No pressure. No obligation. Stay only if the numbers make sense.",
                 },
               ].map((item) => (
-                <div
-                  key={item.q}
-                  className="rounded-2xl bg-mrg-surface px-5 py-4 ring-1 ring-white/8 sm:px-6"
+                <li
+                  key={item.step}
+                  className="flex gap-4 rounded-2xl bg-mrg-surface px-5 py-4 ring-1 ring-white/8 sm:px-6"
                 >
-                  <dt className="font-semibold text-mrg-text">{item.q}</dt>
-                  <dd className="mt-1.5 text-sm leading-relaxed text-mrg-muted">{item.a}</dd>
-                </div>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums text-mrg-gold">
+                    {item.step}
+                  </span>
+                  <div>
+                    <p className="font-semibold text-mrg-text">{item.title}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-mrg-muted">{item.detail}</p>
+                  </div>
+                </li>
               ))}
-            </dl>
+            </ol>
+            <div className="mt-8 text-center">
+              <a
+                href="#book"
+                className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-mrg-gold px-8 text-base font-semibold text-mrg-bg transition-opacity hover:opacity-90"
+              >
+                Book my call →
+              </a>
+              <p className="mt-3 text-sm text-mrg-muted">
+                No hard sell. No obligation. Just a real look at your numbers.
+              </p>
+            </div>
           </div>
         </section>
       </main>
