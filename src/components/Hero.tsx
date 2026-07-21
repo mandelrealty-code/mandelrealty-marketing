@@ -17,7 +17,7 @@ export function Hero() {
         </SectionReveal>
 
         <SectionReveal delay={0.06}>
-          <h1 className="mt-8 text-[clamp(2.4rem,8vw,4.5rem)] font-bold leading-[1.05] tracking-tight text-mrg-text">
+          <h1 className="mt-8 text-[clamp(2.6rem,8.5vw,4.85rem)] font-extrabold leading-[1.05] tracking-tight text-mrg-text">
             Same property.
             <br />
             Same platform.
