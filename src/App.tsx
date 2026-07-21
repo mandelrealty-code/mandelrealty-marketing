@@ -12,6 +12,7 @@ import { FitCheckSection } from "./components/FitCheckSection";
 import { Footer } from "./components/Footer";
 import { FloatingCtas } from "./components/FloatingCtas";
 import { ThankYouPage } from "./pages/ThankYouPage";
+import { AdsLandingPage } from "./pages/AdsLandingPage";
 import { useScrollToHash } from "./hooks/useScrollToHash";
 
 function HomePage() {
@@ -43,6 +44,10 @@ export default function App() {
 
   if (path === "/thank-you") {
     return <ThankYouPage />;
+  }
+
+  if (path === "/book-a-call" || path === "/get-estimate") {
+    return <AdsLandingPage />;
   }
 
   return <HomePage />;

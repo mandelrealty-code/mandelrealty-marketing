@@ -4,6 +4,32 @@ export const WHATSAPP_HREF = "https://wa.me/16473817325";
 export const EMAIL = "info@mandelrealtygroup.com";
 export const EMAIL_HREF = "mailto:info@mandelrealtygroup.com";
 
+/** Paste your Calendly (or other) booking link to unlock live calendar on /book-a-call */
+export const CALENDLY_URL = "";
+
+/** Monthly host earnings (CAD) — same Toronto unit, from Airbnb dashboard */
+export const EARNINGS_BY_MONTH = [
+  { month: "Jan", y2025: 0, y2026: 1306 },
+  { month: "Feb", y2025: 0, y2026: 726 },
+  { month: "Mar", y2025: 1306, y2026: 4501 },
+  { month: "Apr", y2025: 1016, y2026: 2514 },
+  { month: "May", y2025: 1886, y2026: 3748 },
+  { month: "Jun", y2025: 0, y2026: 8755 },
+  { month: "Jul", y2025: 5370, y2026: 10235 },
+  { month: "Aug", y2025: 5730, y2026: 10976 },
+  { month: "Sep", y2025: 5083, y2026: 3478 },
+  { month: "Oct", y2025: 2225, y2026: 2584 },
+  { month: "Nov", y2025: 2147, y2026: 0 },
+  { month: "Dec", y2025: 2234, y2026: null as number | null },
+] as const;
+
+export const EARNINGS_SUMMARY = {
+  year2025: 26995,
+  mayAug2026: 33713,
+  note: "Real Toronto client · Airbnb host dashboard",
+  mrgStart: "May 2026",
+} as const;
+
 export const CTA_HEADLINE = `Call Our Experts: ${PHONE}`;
 export const CTA_SUPPORT =
   "Talk to a real Airbnb specialist — no obligation, just straight answers.";
