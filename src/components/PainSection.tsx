@@ -178,30 +178,67 @@ export function PainSection() {
   const cardEls = useRef<Partial<Record<PainId, HTMLButtonElement | null>>>({});
   const active = PAIN_CARDS.find((c) => c.id === activeId) ?? PAIN_CARDS[0];
   const activeIndex = PAIN_CARDS.findIndex((c) => c.id === activeId);
+  const hovering = useRef(false);
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
 
-  // Keep left panel in sync with whichever card is centered while scrolling
+  // Stable scroll sync: pick the card closest to viewport focus line,
+  // only switch when clearly ahead (hysteresis) and not while hovering.
   useEffect(() => {
-    const nodes = PAIN_CARDS.map((c) => cardEls.current[c.id]).filter(
-      (el): el is HTMLButtonElement => Boolean(el),
-    );
-    if (!nodes.length) return;
+    let frame = 0;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-        const top = visible[0];
-        if (!top) return;
-        const id = (top.target as HTMLElement).dataset.painId as PainId | undefined;
-        if (id) setActiveId(id);
-      },
-      { root: null, rootMargin: "-35% 0px -45% 0px", threshold: [0.2, 0.4, 0.6, 0.8] },
-    );
+    const update = () => {
+      frame = 0;
+      if (hovering.current) return;
 
-    nodes.forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
+      const targetY = window.innerHeight * 0.42;
+      let bestId: PainId | null = null;
+      let bestDist = Infinity;
+
+      for (const card of PAIN_CARDS) {
+        const el = cardEls.current[card.id];
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        const dist = Math.abs(mid - targetY);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestId = card.id;
+        }
+      }
+
+      const currentId = activeIdRef.current;
+      if (!bestId || bestId === currentId) return;
+
+      const currentEl = cardEls.current[currentId];
+      if (currentEl) {
+        const rect = currentEl.getBoundingClientRect();
+        const currentDist = Math.abs(rect.top + rect.height / 2 - targetY);
+        if (currentDist - bestDist < 56) return;
+      }
+
+      setActiveId(bestId);
+    };
+
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(update);
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    update();
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
   }, []);
+
+  const activate = (id: PainId) => {
+    setActiveId(id);
+  };
 
   return (
     <section className="relative border-t border-mrg-border/40 py-20 sm:py-28">
@@ -212,7 +249,6 @@ export function PainSection() {
 
       <div className="relative mx-auto max-w-6xl px-5">
         <div className="grid gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.15fr)] lg:items-start lg:gap-14 xl:gap-20">
-          {/* Sticky story column — stays pinned while cards scroll */}
           <aside className="lg:sticky lg:top-24 lg:z-10 lg:self-start">
             <SectionReveal>
               <h2 className="text-4xl font-bold tracking-tight text-mrg-text sm:text-5xl lg:text-[3.25rem] lg:leading-[1.05]">
@@ -228,24 +264,12 @@ export function PainSection() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-mrg-muted">
                   Now reading
                 </p>
-                <motion.p
-                  key={active.id}
-                  className="mt-3 text-2xl font-semibold tracking-tight text-mrg-text"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.35, ease }}
-                >
+                <p className="mt-3 text-2xl font-semibold tracking-tight text-mrg-text transition-opacity duration-200">
                   {active.title}
-                </motion.p>
-                <motion.p
-                  key={`${active.id}-detail`}
-                  className="mt-2 text-sm leading-relaxed text-mrg-muted"
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.35, delay: 0.05, ease }}
-                >
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-mrg-muted transition-opacity duration-200">
                   {active.detail}
-                </motion.p>
+                </p>
 
                 <div className="mt-6 flex gap-1.5">
                   {PAIN_CARDS.map((card, i) => (
@@ -254,11 +278,15 @@ export function PainSection() {
                       type="button"
                       aria-label={`Show ${card.eyebrow}`}
                       onClick={() => {
-                        setActiveId(card.id);
+                        hovering.current = true;
+                        activate(card.id);
                         cardEls.current[card.id]?.scrollIntoView({
                           behavior: "smooth",
                           block: "center",
                         });
+                        window.setTimeout(() => {
+                          hovering.current = false;
+                        }, 700);
                       }}
                       className={`h-1.5 flex-1 rounded-full transition-colors ${
                         i === activeIndex ? "bg-mrg-gold" : "bg-white/10 hover:bg-white/20"
@@ -270,14 +298,22 @@ export function PainSection() {
             </SectionReveal>
           </aside>
 
-          <div className="flex flex-col gap-3 sm:gap-4">
+          <div
+            className="flex flex-col gap-3 sm:gap-4"
+            onMouseLeave={() => {
+              hovering.current = false;
+            }}
+          >
             {PAIN_CARDS.map((card, i) => (
               <PainCard
                 key={card.id}
                 card={card}
                 index={i}
                 active={activeId === card.id}
-                onActivate={() => setActiveId(card.id)}
+                onActivate={() => {
+                  hovering.current = true;
+                  activate(card.id);
+                }}
                 cardRef={(el) => {
                   cardEls.current[card.id] = el;
                   if (el) el.dataset.painId = card.id;
@@ -290,3 +326,4 @@ export function PainSection() {
     </section>
   );
 }
+
