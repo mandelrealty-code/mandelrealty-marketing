@@ -1,79 +1,64 @@
-import { CTA_HEADLINE, ESSENTIAL_FEATURES, FULL_SERVICE_FEATURES } from "../lib/constants";
+import { PRICING_TIERS } from "../lib/constants";
 import { SectionReveal } from "./SectionReveal";
-import { CallButton, EmailCta } from "./ui";
-
-function FeatureList({ items }: { items: readonly string[] }) {
-  return (
-    <ul className="mt-6 space-y-3">
-      {items.map((item) => (
-        <li key={item} className="flex gap-2 text-sm text-mrg-muted">
-          <span className="mt-0.5 shrink-0 text-mrg-gold">✓</span>
-          <span>{item}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 export function PricingSection() {
   return (
-    <section id="pricing" className="scroll-mt-20 border-b border-mrg-border/40 py-20 sm:py-28">
-      <div className="mx-auto max-w-6xl px-5">
+    <section id="pricing" className="scroll-mt-24 border-t border-mrg-border/40 py-20 sm:py-28">
+      <div className="mx-auto max-w-5xl px-5">
         <SectionReveal className="text-center">
-          <h2 className="font-display text-4xl text-mrg-text sm:text-5xl">
-            Two Plans. No Hidden Fees. No Lock-In.
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-mrg-gold">
+            Simple, aligned pricing
+          </p>
+          <h2 className="mt-4 text-3xl font-bold tracking-tight text-mrg-text sm:text-4xl md:text-5xl">
+            We only win when you win.
           </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-mrg-muted">
+            No big upfront fees. We charge a share of the revenue we generate — so our incentives
+            are pointed at exactly one thing: growing your bottom line.
+          </p>
         </SectionReveal>
 
-        <div className="mt-12 grid gap-6 lg:grid-cols-2">
-          <SectionReveal delay={0.05}>
-            <div className="flex h-full flex-col rounded-2xl border border-mrg-border bg-mrg-surface p-8">
-              <p className="text-sm font-semibold uppercase tracking-wider text-mrg-muted">
-                Essential
-              </p>
-              <p className="mt-2 font-display text-4xl text-mrg-text">
-                20% <span className="text-lg text-mrg-muted">+ HST</span>
-              </p>
-              <FeatureList items={ESSENTIAL_FEATURES} />
-              <div className="mt-8">
-                <CallButton className="w-full" label={CTA_HEADLINE} />
-              </div>
-            </div>
-          </SectionReveal>
-
-          <SectionReveal delay={0.1}>
-            <div className="relative flex h-full flex-col rounded-2xl border-2 border-mrg-gold bg-mrg-surface-elevated p-8 shadow-[0_0_60px_rgba(201,168,76,0.08)]">
-              <span className="absolute -top-3 right-6 rounded-full bg-mrg-gold px-3 py-1 text-xs font-bold uppercase tracking-wide text-mrg-bg">
-                Recommended
-              </span>
-              <p className="text-sm font-semibold uppercase tracking-wider text-mrg-gold">
-                Full Service ★
-              </p>
-              <p className="mt-2 font-display text-4xl text-mrg-text">
-                25% <span className="text-lg text-mrg-muted">+ HST</span>
-              </p>
-              <p className="mt-4 text-sm text-mrg-muted">Everything in Essential, plus:</p>
-              <FeatureList items={FULL_SERVICE_FEATURES} />
-              <div className="mt-8">
-                <CallButton className="w-full" label={CTA_HEADLINE} />
-              </div>
-            </div>
-          </SectionReveal>
+        <div className="mt-12 grid gap-4 md:grid-cols-3">
+          {PRICING_TIERS.map((tier, i) => (
+            <SectionReveal key={tier.id} delay={i * 0.05}>
+              <article
+                className={`relative flex h-full flex-col rounded-2xl p-6 sm:p-7 ${
+                  tier.popular
+                    ? "bg-mrg-surface-elevated ring-1 ring-white/10"
+                    : "bg-mrg-surface"
+                }`}
+              >
+                {tier.popular && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-mrg-gold px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-black">
+                    Most popular
+                  </span>
+                )}
+                <h3 className="text-xl font-bold text-mrg-text">{tier.name}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-mrg-muted">{tier.description}</p>
+                <ul className="mt-6 flex-1 space-y-3">
+                  {tier.features.map((feature) => (
+                    <li key={feature} className="flex items-start gap-2.5 text-sm text-mrg-text">
+                      <span className="mt-0.5 text-mrg-green" aria-hidden>
+                        ✓
+                      </span>
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <a
+                  href="/#fit-check"
+                  className={`mt-8 inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition-all active:scale-[0.98] ${
+                    tier.popular
+                      ? "bg-mrg-gold text-black hover:bg-mrg-gold-light"
+                      : "border border-white/20 text-white hover:border-white/40 hover:bg-white/5"
+                  }`}
+                >
+                  Get a custom quote
+                </a>
+              </article>
+            </SectionReveal>
+          ))}
         </div>
-
-        <SectionReveal delay={0.15} className="mt-10">
-          <div className="rounded-2xl border border-mrg-border bg-mrg-surface px-6 py-6 sm:px-8">
-            <p className="leading-relaxed text-mrg-muted">
-              The difference on an $8,000/month property is $400 — that's one night. A guest who
-              finds a burnt-out bulb leaves a 4-star review instead of 5. That costs you more than
-              $400 in lost ranking and future bookings.{" "}
-              <span className="font-medium text-mrg-text">
-                Full Service gets that night back. And then some.
-              </span>
-            </p>
-          </div>
-          <EmailCta className="mt-6 text-center" />
-        </SectionReveal>
       </div>
     </section>
   );

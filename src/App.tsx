@@ -1,14 +1,16 @@
 import { Header } from "./components/Header";
 import { Hero } from "./components/Hero";
-import { ProofSection } from "./components/ProofSection";
-import { MidAuditCta } from "./components/MidAuditCta";
+import { PainSection } from "./components/PainSection";
 import { HowSection } from "./components/HowSection";
+import { ProofSection } from "./components/ProofSection";
+import { TestimonialsSection } from "./components/TestimonialsSection";
+import { FeaturesSection } from "./components/FeaturesSection";
 import { PricingSection } from "./components/PricingSection";
-import { MathSection } from "./components/MathSection";
 import { FaqSection } from "./components/FaqSection";
-import { AuditSection } from "./components/AuditSection";
+import { BoutiqueSection } from "./components/BoutiqueSection";
+import { FitCheckSection } from "./components/FitCheckSection";
 import { Footer } from "./components/Footer";
-import { MobileStickyCta } from "./components/MobileStickyCta";
+import { FloatingCtas } from "./components/FloatingCtas";
 import { ThankYouPage } from "./pages/ThankYouPage";
 import { useScrollToHash } from "./hooks/useScrollToHash";
 
@@ -20,15 +22,17 @@ function HomePage() {
       <Header />
       <main>
         <Hero />
-        <ProofSection />
-        <MidAuditCta />
+        <PainSection />
         <HowSection />
+        <ProofSection />
+        <TestimonialsSection />
+        <FeaturesSection />
         <PricingSection />
-        <MathSection />
         <FaqSection />
-        <AuditSection />
+        <BoutiqueSection />
+        <FitCheckSection />
       </main>
-      <MobileStickyCta />
+      <FloatingCtas />
       <Footer />
     </>
   );

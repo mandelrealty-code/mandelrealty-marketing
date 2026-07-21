@@ -2,22 +2,38 @@ import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 
 type Props = {
-  beforeSrc: string;
-  afterSrc: string;
+  beforeSrc?: string | null;
+  afterSrc?: string | null;
   beforeAlt?: string;
   afterAlt?: string;
 };
+
+function PlaceholderPanel({ label }: { label: string }) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-mrg-surface px-6 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-dashed border-white/20 text-mrg-muted">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+          <circle cx="8.5" cy="10" r="1.5" fill="currentColor" />
+          <path d="M3 16l5-4 4 3 3-2 6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      <p className="text-sm text-mrg-muted">{label}</p>
+    </div>
+  );
+}
 
 export function BeforeAfterSlider({
   beforeSrc,
   afterSrc,
   beforeAlt = "Before",
-  afterAlt = "After",
+  afterAlt = "After · Managed",
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(50);
   const [dragging, setDragging] = useState(false);
   const reducedMotion = useReducedMotion();
+  const hasImages = Boolean(beforeSrc && afterSrc);
 
   const updateFromClientX = (clientX: number) => {
     const el = containerRef.current;
@@ -49,14 +65,14 @@ export function BeforeAfterSlider({
 
   return (
     <motion.div
-      initial={reducedMotion ? false : { opacity: 0, x: 24 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+      initial={reducedMotion ? false : { opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.65, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
       className="w-full"
     >
       <div
         ref={containerRef}
-        className="relative aspect-[3/2] w-full cursor-ew-resize touch-none overflow-hidden rounded-2xl border border-mrg-border/60 bg-black shadow-[0_20px_50px_rgba(0,0,0,0.45)] ring-1 ring-mrg-gold/15 select-none"
+        className="relative aspect-[16/10] w-full cursor-ew-resize touch-none overflow-hidden rounded-3xl border border-dashed border-white/20 bg-mrg-surface select-none sm:aspect-[2/1]"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           setDragging(true);
@@ -73,28 +89,43 @@ export function BeforeAfterSlider({
           if (e.key === "ArrowRight") setPosition((p) => Math.min(98, p + 3));
         }}
       >
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${afterSrc})` }}
-          role="img"
-          aria-label={afterAlt}
-        />
+        {hasImages ? (
+          <>
+            <div
+              className="absolute inset-0 bg-cover bg-center"
+              style={{ backgroundImage: `url(${afterSrc})` }}
+              role="img"
+              aria-label={afterAlt}
+            />
+            <div
+              className="absolute inset-0 bg-cover bg-center"
+              style={{
+                backgroundImage: `url(${beforeSrc})`,
+                clipPath: `inset(0 ${100 - position}% 0 0)`,
+              }}
+              role="img"
+              aria-label={beforeAlt}
+            />
+          </>
+        ) : (
+          <>
+            <div className="absolute inset-0">
+              <PlaceholderPanel label="Add MANAGED listing photo" />
+            </div>
+            <div
+              className="absolute inset-0"
+              style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}
+            >
+              <PlaceholderPanel label="Add BEFORE photo" />
+            </div>
+          </>
+        )}
 
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{
-            backgroundImage: `url(${beforeSrc})`,
-            clipPath: `inset(0 ${100 - position}% 0 0)`,
-          }}
-          role="img"
-          aria-label={beforeAlt}
-        />
-
-        <span className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/55 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur-sm sm:text-xs">
+        <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur-sm sm:text-xs">
           Before
         </span>
-        <span className="pointer-events-none absolute right-3 top-3 rounded-md bg-black/55 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur-sm sm:text-xs">
-          After
+        <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-mrg-green px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white sm:text-xs">
+          After · Managed
         </span>
 
         <div

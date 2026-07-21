@@ -1,58 +1,61 @@
-import { CountUp } from "./CountUp";
 import { SectionReveal } from "./SectionReveal";
-import { CallButton, EstimateButton } from "./ui";
 import { BeforeAfterSlider } from "./BeforeAfterSlider";
-import { HERO_AMOUNT, PHONE } from "../lib/constants";
+import { CallButton, EstimateButton } from "./ui";
+import { CTA_SUPPORT } from "../lib/constants";
 
 export function Hero() {
   return (
-    <section className="relative overflow-hidden border-b border-mrg-border/40">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(201,168,76,0.12),transparent)]" />
-      <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-16 pt-14 sm:gap-12 sm:pb-24 sm:pt-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-12">
-        <div>
-          <SectionReveal>
-            <p className="mb-5 text-xs font-semibold uppercase tracking-[0.2em] text-mrg-gold">
-              Toronto Short-Term Rental Management
-            </p>
-            <h1 className="font-display text-[clamp(2.5rem,7vw,4.25rem)] leading-[1.05] tracking-tight text-mrg-text">
-              <CountUp value={HERO_AMOUNT} startOnMount />
-              <span className="text-mrg-gold">.</span>
-            </h1>
-          </SectionReveal>
+    <section className="relative overflow-hidden pb-16 pt-12 sm:pb-24 sm:pt-16">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_45%_at_50%_-5%,rgba(245,197,24,0.08),transparent)]" />
 
-          <SectionReveal delay={0.08}>
-            <p className="mt-4 max-w-xl font-display text-[clamp(1.5rem,3.8vw,2.5rem)] leading-[1.12] text-mrg-text">
-              That is what this Toronto Airbnb made in all of 2025.
-            </p>
-            <p className="mt-3 font-display text-[clamp(1.5rem,3.8vw,2.5rem)] italic leading-[1.12] text-mrg-gold">
-              We beat the year in four months.
-            </p>
-          </SectionReveal>
+      <div className="relative mx-auto max-w-4xl px-5 text-center">
+        <SectionReveal>
+          {/* Fill-only badge — no gold outline */}
+          <p className="mx-auto inline-flex max-w-full items-center rounded-full bg-mrg-surface-elevated px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-mrg-muted sm:text-xs">
+            Hands-on &amp; virtual Airbnb management · Canada &amp; U.S.
+          </p>
+        </SectionReveal>
 
-          <SectionReveal delay={0.14}>
-            <p className="mt-6 max-w-lg text-base leading-relaxed text-mrg-muted sm:text-lg">
-              Same unit. Same platform. We relisted it, earned Superhost, and nearly doubled peak
-              revenue. Real Airbnb earnings screenshots below — not numbers on a slide.
-            </p>
-          </SectionReveal>
+        <SectionReveal delay={0.06}>
+          <h1 className="mt-8 text-[clamp(2.4rem,8vw,4.5rem)] font-bold leading-[1.05] tracking-tight text-mrg-text">
+            Same property.
+            <br />
+            Same platform.
+            <br />
+            <span className="text-mrg-gold">Twice the profit.</span>
+          </h1>
+        </SectionReveal>
 
-          <SectionReveal delay={0.2} className="mt-8">
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <CallButton size="large" label={`Call ${PHONE}`} />
-              <EstimateButton size="large" variant="secondary" />
-            </div>
-          </SectionReveal>
-        </div>
+        <SectionReveal delay={0.1}>
+          <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-mrg-muted sm:text-lg">
+            Most hosts are earning 20–40% below what their listing is capable of — buried in guest
+            messages, stuck with a manager who&apos;s coasting, or running a listing they know is
+            underperforming. We run it professionally. You keep the profits.
+          </p>
+        </SectionReveal>
 
-        <SectionReveal delay={0.12} className="w-full lg:pt-2">
-          <BeforeAfterSlider
-            beforeSrc="/hero-before.png"
-            afterSrc="/hero-unit.png"
-            beforeAlt="Toronto Airbnb living room before Mandel Realty Group"
-            afterAlt="Toronto Airbnb living room after Mandel Realty Group"
-          />
+        <SectionReveal delay={0.14} className="mt-8">
+          <div className="flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+            <EstimateButton size="large" className="w-full sm:w-auto" />
+            <CallButton
+              size="large"
+              variant="secondary"
+              label="Call an expert now"
+              className="w-full sm:w-auto"
+            />
+          </div>
+          <p className="mt-4 text-sm text-mrg-muted">{CTA_SUPPORT}</p>
         </SectionReveal>
       </div>
+
+      <SectionReveal delay={0.16} className="mx-auto mt-12 max-w-5xl px-5 sm:mt-16">
+        <BeforeAfterSlider
+          beforeSrc="/hero-before.png"
+          afterSrc="/hero-unit.png"
+          beforeAlt="Toronto Airbnb living room before Mandel Realty Group"
+          afterAlt="Toronto Airbnb living room after Mandel Realty Group"
+        />
+      </SectionReveal>
     </section>
   );
 }
