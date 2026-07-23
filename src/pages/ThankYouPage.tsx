@@ -18,14 +18,15 @@ export function ThankYouPage() {
       <main className="flex min-h-[70vh] items-center justify-center px-5 py-20">
         <div className="mx-auto max-w-lg text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-mrg-gold">
-            Request received
+            Call booked
           </p>
           <h1 className="mt-4 font-display text-4xl text-mrg-text sm:text-5xl">
-            We&apos;ll be in touch.
+            You&apos;re on the calendar.
           </h1>
           <p className="mt-5 text-base leading-relaxed text-mrg-muted sm:text-lg">
-            We&apos;ll call you at the number you provided to talk through what your listing may be
-            leaving on the table — and how we can help you earn more.
+            Check your email for the Calendly confirmation and invite. We&apos;ll call you at the
+            number you provided — and if you have a live listing, reply to that email with your
+            Airbnb link so we can prepare.
           </p>
           <p className="mt-8 text-sm text-mrg-muted">Need to talk sooner?</p>
           <a

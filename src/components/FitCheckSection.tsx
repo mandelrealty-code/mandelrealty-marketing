@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CONTACT_CONSENT_ERROR,
   CTA_SUPPORT,
   EMAIL,
   EMAIL_CTA_LEAD,
   EMAIL_HREF,
+  FIT_CHECK_HANDOFF_KEY,
   PHONE_HREF,
   CTA_HEADLINE,
 } from "../lib/constants";
-import { submitAuditLead } from "../lib/submitAuditLead";
 import { SectionReveal } from "./SectionReveal";
 
 type FormState = {
@@ -136,36 +136,34 @@ export function FitCheckSection() {
   const [hasListing, setHasListing] = useState<"yes" | "no" | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [contactConsent, setContactConsent] = useState(false);
-  const [marketingOptIn, setMarketingOptIn] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const goBookCall = () => {
     if (!contactConsent) {
       setError(CONTACT_CONSENT_ERROR);
       return;
     }
-    setSubmitting(true);
+    if (!form.name.trim() || !form.email.trim() || !form.phone.trim()) {
+      setError("Add your name, phone, and email to continue.");
+      return;
+    }
     setError(null);
     try {
-      const listingNote =
-        hasListing === "yes"
-          ? "Has existing Airbnb listing"
-          : hasListing === "no"
-            ? "No listing yet — property location captured"
-            : "";
-      await submitAuditLead({
-        ...form,
-        earnings: [listingNote, form.earnings].filter(Boolean).join(" · "),
-        contactConsent,
-        marketingOptIn,
-      });
-      window.location.assign("/thank-you");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not submit. Please call us instead.");
-      setSubmitting(false);
+      sessionStorage.setItem(
+        FIT_CHECK_HANDOFF_KEY,
+        JSON.stringify({
+          hasListing,
+          address: form.address,
+          earnings: form.earnings,
+          name: form.name,
+          email: form.email,
+          phone: form.phone,
+        }),
+      );
+    } catch {
+      /* private mode */
     }
+    window.location.assign("/book-a-call");
   };
 
   const choiceClass =
@@ -293,22 +291,13 @@ export function FitCheckSection() {
             )}
 
             {step === 2 && (
-              <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="space-y-3">
                 <h3 className="text-center text-xl font-semibold tracking-tight text-mrg-text sm:text-2xl">
-                  Where should we send your estimate?
+                  Almost there — then pick a call time
                 </h3>
                 <p className="text-center text-sm text-mrg-muted">
-                  A specialist follows up — usually same day.
+                  15 minutes, no pressure. You’ll choose an exact slot next.
                 </p>
-
-                <input
-                  type="text"
-                  name="_gotcha"
-                  tabIndex={-1}
-                  autoComplete="off"
-                  className="hidden"
-                  aria-hidden
-                />
 
                 <div className="mt-6 space-y-3">
                   <input
@@ -354,19 +343,6 @@ export function FitCheckSection() {
                   </span>
                 </label>
 
-                <label className="flex cursor-pointer items-start gap-3 px-1">
-                  <input
-                    type="checkbox"
-                    checked={marketingOptIn}
-                    onChange={(e) => setMarketingOptIn(e.target.checked)}
-                    className="mt-1 h-4 w-4 shrink-0 accent-mrg-gold"
-                  />
-                  <span className="text-sm leading-relaxed text-mrg-muted">
-                    Occasional STR tips from MRG{" "}
-                    <span className="text-mrg-muted/60">(optional)</span>
-                  </span>
-                </label>
-
                 {error && (
                   <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                     {error}
@@ -382,14 +358,14 @@ export function FitCheckSection() {
                     Back
                   </button>
                   <button
-                    type="submit"
-                    disabled={submitting}
-                    className="flex-1 rounded-full bg-mrg-gold py-3.5 text-sm font-semibold text-black transition-all hover:bg-mrg-gold-light disabled:opacity-60"
+                    type="button"
+                    onClick={goBookCall}
+                    className="flex-1 rounded-full bg-mrg-gold py-3.5 text-sm font-semibold text-black transition-all hover:bg-mrg-gold-light"
                   >
-                    {submitting ? "Submitting…" : "Get my estimate →"}
+                    Pick a call time →
                   </button>
                 </div>
-              </form>
+              </div>
             )}
           </div>
         </SectionReveal>

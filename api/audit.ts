@@ -3,10 +3,13 @@ import {
   AUDIT_UNAVAILABLE_MESSAGE,
   LEAD_INBOX,
   buildCustomerConfirmationHtml,
+  buildCustomerSubject,
   buildLeadNotificationHtml,
+  buildLeadSubject,
   sendResendEmail,
   toPublicAuditError,
 } from "../shared/auditEmails.js";
+import { parseLeadRequestBody } from "../shared/parseLeadRequest.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -19,27 +22,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(503).json({ error: AUDIT_UNAVAILABLE_MESSAGE });
   }
 
-  const body = req.body ?? {};
-  const { name, email, phone, address, earnings, contactConsent, marketingOptIn, _gotcha } =
-    body as Record<string, string | boolean>;
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const { lead, contactConsent, isHoneypot, missingRequired } = parseLeadRequestBody(body);
 
-  if (_gotcha) {
+  if (isHoneypot) {
     return res.status(200).json({ ok: true });
   }
 
-  const nameStr = String(name ?? "").trim();
-  const emailStr = String(email ?? "").trim();
-  const phoneStr = String(phone ?? "").trim();
-  const addressStr = String(address ?? "").trim();
-  const earningsStr = String(earnings ?? "").trim();
-  const consented = contactConsent === true || contactConsent === "true";
-  const marketing = marketingOptIn === true || marketingOptIn === "true";
-
-  if (!nameStr || !emailStr || !phoneStr || !addressStr) {
+  if (missingRequired) {
     return res.status(400).json({ error: "Please fill in all required fields." });
   }
 
-  if (!consented) {
+  if (!contactConsent) {
     return res.status(400).json({
       error: "Please confirm we can contact you about your custom earnings estimate.",
     });
@@ -52,16 +46,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     apiKey,
     from,
     to: [LEAD_INBOX],
-    replyTo: emailStr,
-    subject: `Earnings Estimate Request — ${nameStr}`,
-    html: buildLeadNotificationHtml({
-      name: nameStr,
-      email: emailStr,
-      phone: phoneStr,
-      address: addressStr,
-      earnings: earningsStr,
-      marketingOptIn: marketing,
-    }),
+    replyTo: lead.email,
+    subject: buildLeadSubject(lead),
+    html: buildLeadNotificationHtml(lead),
   });
 
   if (!leadResult.ok) {
@@ -72,10 +59,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const customerResult = await sendResendEmail({
     apiKey,
     from,
-    to: [emailStr],
+    to: [lead.email],
     replyTo: LEAD_INBOX,
-    subject: "We've got your earnings estimate request",
-    html: buildCustomerConfirmationHtml({ name: nameStr, address: addressStr }),
+    subject: buildCustomerSubject(),
+    html: buildCustomerConfirmationHtml(lead),
   });
 
   if (!customerResult.ok) {

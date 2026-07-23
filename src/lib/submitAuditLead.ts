@@ -6,6 +6,10 @@ export type AuditLeadPayload = {
   phone: string;
   address: string;
   earnings: string;
+  hasListing: "yes" | "no" | "unknown";
+  /** Human-readable scheduling note for internal email */
+  callBooking: string;
+  source: string;
   contactConsent: boolean;
   marketingOptIn: boolean;
 };

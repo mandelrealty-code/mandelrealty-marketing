@@ -79,7 +79,7 @@ export function EstimateButton({
   size = "default",
   label = "See what your listing could earn →",
   variant = "primary",
-  href = "/#fit-check",
+  href = "/book-a-call",
 }: {
   className?: string;
   size?: Size;

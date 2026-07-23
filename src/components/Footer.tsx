@@ -3,7 +3,7 @@ import { PHONE, PHONE_HREF } from "../lib/constants";
 const FOOTER_LINKS = [
   { href: "/#how", label: "About Us" },
   { href: "/#faq", label: "FAQ" },
-  { href: "/#fit-check", label: "Get Estimate" },
+  { href: "/book-a-call", label: "Get Estimate" },
   { href: "/#pricing", label: "Pricing" },
 ] as const;
 

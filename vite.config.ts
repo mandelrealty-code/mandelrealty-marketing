@@ -7,10 +7,13 @@ import {
   AUDIT_UNAVAILABLE_MESSAGE,
   LEAD_INBOX,
   buildCustomerConfirmationHtml,
+  buildCustomerSubject,
   buildLeadNotificationHtml,
+  buildLeadSubject,
   sendResendEmail,
   toPublicAuditError,
 } from "./shared/auditEmails.js";
+import { parseLeadRequestBody } from "./shared/parseLeadRequest.js";
 
 function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
@@ -53,20 +56,15 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
 
         try {
           const body = await readJsonBody(req);
-          const name = String(body.name ?? "").trim();
-          const email = String(body.email ?? "").trim();
-          const phone = String(body.phone ?? "").trim();
-          const address = String(body.address ?? "").trim();
-          const earnings = String(body.earnings ?? "").trim();
-          const contactConsent = body.contactConsent === true || body.contactConsent === "true";
-          const marketingOptIn = body.marketingOptIn === true || body.marketingOptIn === "true";
+          const { lead, contactConsent, isHoneypot, missingRequired } =
+            parseLeadRequestBody(body);
 
-          if (body._gotcha) {
+          if (isHoneypot) {
             json(200, { ok: true });
             return;
           }
 
-          if (!name || !email || !phone || !address) {
+          if (missingRequired) {
             json(400, { error: "Please fill in all required fields." });
             return;
           }
@@ -85,16 +83,9 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
             apiKey,
             from,
             to: [LEAD_INBOX],
-            replyTo: email,
-            subject: `Earnings Estimate Request — ${name}`,
-            html: buildLeadNotificationHtml({
-              name,
-              email,
-              phone,
-              address,
-              earnings,
-              marketingOptIn,
-            }),
+            replyTo: lead.email,
+            subject: buildLeadSubject(lead),
+            html: buildLeadNotificationHtml(lead),
           });
 
           if (!leadResult.ok) {
@@ -106,10 +97,10 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
           const customerResult = await sendResendEmail({
             apiKey,
             from,
-            to: [email],
+            to: [lead.email],
             replyTo: LEAD_INBOX,
-            subject: "We've got your earnings estimate request",
-            html: buildCustomerConfirmationHtml({ name, address }),
+            subject: buildCustomerSubject(),
+            html: buildCustomerConfirmationHtml(lead),
           });
 
           if (!customerResult.ok) {

@@ -46,7 +46,7 @@ export function PricingSection() {
                   ))}
                 </ul>
                 <a
-                  href="/#fit-check"
+                  href="/book-a-call"
                   className={`mt-8 inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition-all active:scale-[0.98] ${
                     tier.popular
                       ? "bg-mrg-gold text-black hover:bg-mrg-gold-light"

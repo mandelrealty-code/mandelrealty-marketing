@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   CALENDLY_URL,
   CONTACT_CONSENT_ERROR,
+  FIT_CHECK_HANDOFF_KEY,
   PHONE,
   PHONE_HREF,
   TESTIMONIALS,
@@ -11,6 +12,7 @@ import { submitAuditLead } from "../lib/submitAuditLead";
 import { EarningsWheel } from "../components/FitCheckSection";
 import { EarningsComparisonChart } from "../components/EarningsComparisonChart";
 import { DashboardScreenshotThumbs } from "../components/DashboardScreenshotThumbs";
+import { CalendlyEmbed } from "../components/CalendlyEmbed";
 
 const DASHBOARD_SHOTS = [
   {
@@ -33,7 +35,6 @@ type FormState = {
   phone: string;
   address: string;
   earnings: string;
-  callSlot: string;
 };
 
 const EMPTY: FormState = {
@@ -42,17 +43,7 @@ const EMPTY: FormState = {
   phone: "",
   address: "",
   earnings: "",
-  callSlot: "",
 };
-
-const CALL_SLOTS = [
-  "Today · morning",
-  "Today · afternoon",
-  "Today · evening",
-  "Tomorrow · morning",
-  "Tomorrow · afternoon",
-  "This week · anytime",
-] as const;
 
 const trustQuote = TESTIMONIALS[0];
 
@@ -73,6 +64,38 @@ export function AdsLandingPage() {
     document.title = "Book a Call | Mandel Realty Group";
     const robots = document.querySelector('meta[name="robots"]');
     if (robots) robots.setAttribute("content", "noindex, nofollow");
+
+    try {
+      const raw = sessionStorage.getItem(FIT_CHECK_HANDOFF_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(FIT_CHECK_HANDOFF_KEY);
+      const data = JSON.parse(raw) as {
+        hasListing?: "yes" | "no";
+        address?: string;
+        earnings?: string;
+        name?: string;
+        email?: string;
+        phone?: string;
+      };
+      if (data.hasListing === "yes" || data.hasListing === "no") {
+        setHasListing(data.hasListing);
+      }
+      setForm((f) => ({
+        ...f,
+        address: data.address?.trim() || f.address,
+        earnings: data.earnings?.trim() || f.earnings,
+        name: data.name?.trim() || f.name,
+        email: data.email?.trim() || f.email,
+        phone: data.phone?.trim() || f.phone,
+      }));
+      if (data.address?.trim()) {
+        setStage("book");
+      } else if (data.hasListing) {
+        setStage("details");
+      }
+    } catch {
+      /* ignore bad handoff */
+    }
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -81,25 +104,26 @@ export function AdsLandingPage() {
       setError(CONTACT_CONSENT_ERROR);
       return;
     }
-    if (!useCalendly && !form.callSlot) {
-      setError("Pick a time that works for your call.");
+    if (!useCalendly) {
+      setError("Calendar isn’t ready yet — please call us to book, or try again shortly.");
+      return;
+    }
+    if (!form.name.trim() || !form.email.trim() || !form.phone.trim()) {
+      setError("Add your name, phone, and email so we can confirm the call.");
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
-      const listingNote =
-        hasListing === "yes"
-          ? "Call booking · Has existing Airbnb listing"
-          : "Call booking · No listing yet — property location captured";
       await submitAuditLead({
         name: form.name,
         email: form.email,
         phone: form.phone,
         address: form.address,
-        earnings: [listingNote, form.callSlot || "Calendly", form.earnings]
-          .filter(Boolean)
-          .join(" · "),
+        earnings: form.earnings,
+        hasListing: hasListing === "yes" ? "yes" : hasListing === "no" ? "no" : "unknown",
+        callBooking: "Booked via Calendly (see calendar)",
+        source: "/book-a-call",
         contactConsent,
         marketingOptIn: false,
       });
@@ -323,7 +347,7 @@ export function AdsLandingPage() {
                     Lock in your call
                   </h2>
                   <p className="text-center text-sm text-mrg-muted">
-                    15 minutes, no pressure — just your numbers.
+                    15 minutes, no pressure — pick an exact time below (24h+ notice).
                   </p>
 
                   <input
@@ -334,39 +358,6 @@ export function AdsLandingPage() {
                     className="hidden"
                     aria-hidden
                   />
-
-                  {useCalendly ? (
-                    <div className="mt-4 overflow-hidden rounded-2xl bg-white">
-                      <iframe
-                        title="Book a call"
-                        src={CALENDLY_URL}
-                        className="h-[520px] w-full border-0"
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      <p className="pt-2 text-sm font-medium text-mrg-text">Pick a time</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {CALL_SLOTS.map((slot) => {
-                          const active = form.callSlot === slot;
-                          return (
-                            <button
-                              key={slot}
-                              type="button"
-                              onClick={() => setForm((f) => ({ ...f, callSlot: slot }))}
-                              className={`rounded-xl px-3 py-3 text-left text-sm font-medium transition-all ${
-                                active
-                                  ? "bg-mrg-gold text-black"
-                                  : "bg-mrg-bg text-mrg-muted ring-1 ring-white/10 hover:text-mrg-text"
-                              }`}
-                            >
-                              {slot}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
 
                   <div className="space-y-3 pt-2">
                     <input
@@ -411,6 +402,31 @@ export function AdsLandingPage() {
                     </span>
                   </label>
 
+                  {useCalendly ? (
+                    <div className="mt-2 space-y-3">
+                      <p className="text-sm font-medium text-mrg-text">
+                        1. Pick your time
+                      </p>
+                      <CalendlyEmbed
+                        name={form.name}
+                        email={form.email}
+                        phone={form.phone}
+                      />
+                      <p className="text-sm font-medium text-mrg-text">
+                        2. Confirm so we get your property details
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl bg-mrg-bg px-4 py-5 text-sm text-mrg-muted ring-1 ring-white/10">
+                      Calendar booking isn’t configured yet. Call{" "}
+                      <a href={PHONE_HREF} className="font-semibold text-mrg-gold">
+                        {PHONE}
+                      </a>{" "}
+                      to lock in a time, or set{" "}
+                      <code className="text-mrg-text">VITE_CALENDLY_URL</code> and redeploy.
+                    </div>
+                  )}
+
                   {error && (
                     <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                       {error}
@@ -427,7 +443,7 @@ export function AdsLandingPage() {
                     </button>
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || !useCalendly}
                       className="flex-1 rounded-full bg-mrg-gold py-3.5 text-sm font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-60"
                     >
                       {submitting ? "Booking…" : "Confirm my call →"}
