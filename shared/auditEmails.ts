@@ -1,3 +1,5 @@
+import { formatCallSlotLabel } from "./callSlots.js";
+
 export const LEAD_INBOX = "info@mandelrealtygroup.com";
 export const PHONE_DISPLAY = "647-381-7325";
 export const PHONE_HREF = "tel:+16473817325";
@@ -25,8 +27,10 @@ export type LeadEmailInput = {
   address: string;
   earnings: string;
   hasListing: HasListing;
-  /** e.g. "Booked via Calendly (see calendar)" */
+  /** Display label e.g. "Thu Jul 24 · 2:00 PM ET" */
   callBooking: string;
+  /** ISO start — when set, ICS invite is attached */
+  callStartIso: string;
   source: string;
   marketingOptIn: boolean;
 };
@@ -47,10 +51,16 @@ export function listingLabel(hasListing: HasListing): string {
 }
 
 export function buildLeadSubject(input: LeadEmailInput): string {
-  return `New call booking — ${input.name} — ${listingLabel(input.hasListing)}`;
+  const when = input.callStartIso
+    ? formatCallSlotLabel(input.callStartIso)
+    : input.callBooking;
+  return `New call — ${input.name} — ${when}`;
 }
 
-export function buildCustomerSubject(): string {
+export function buildCustomerSubject(input: LeadEmailInput): string {
+  if (input.callStartIso) {
+    return `Your MRG call — ${formatCallSlotLabel(input.callStartIso)}`;
+  }
   return "Your MRG call is booked";
 }
 
@@ -59,6 +69,9 @@ export function buildLeadNotificationHtml(input: LeadEmailInput): string {
     input.hasListing === "yes"
       ? input.earnings || "Not provided"
       : input.earnings || "—";
+  const when =
+    input.callBooking ||
+    (input.callStartIso ? formatCallSlotLabel(input.callStartIso) : "—");
 
   const row = (label: string, value: string) =>
     `<tr>
@@ -78,8 +91,13 @@ export function buildLeadNotificationHtml(input: LeadEmailInput): string {
               </td>
             </tr>
             <tr>
-              <td style="padding:4px 28px 16px;color:#f0f4fa;font-size:22px;font-weight:600;">
+              <td style="padding:4px 28px 8px;color:#f0f4fa;font-size:22px;font-weight:600;">
                 ${escapeHtml(input.name)} · ${escapeHtml(listingLabel(input.hasListing))}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 28px 16px;color:#c9a84c;font-size:18px;font-weight:600;">
+                ${escapeHtml(when)}
               </td>
             </tr>
             <tr>
@@ -87,11 +105,11 @@ export function buildLeadNotificationHtml(input: LeadEmailInput): string {
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                   ${row("Name", input.name)}
                   ${row("Email", input.email)}
-                  ${row("Phone", input.phone)}
+                  ${row("Phone (call this)", input.phone)}
                   ${row("Has listing", listingLabel(input.hasListing))}
                   ${row("Property", input.address || "—")}
                   ${row("Stated earnings", earnings)}
-                  ${row("Call time", input.callBooking)}
+                  ${row("Call time", when)}
                   ${row("Marketing", input.marketingOptIn ? "Opted in" : "Not opted in")}
                   ${row("Source", input.source || "—")}
                 </table>
@@ -99,7 +117,7 @@ export function buildLeadNotificationHtml(input: LeadEmailInput): string {
             </tr>
             <tr>
               <td style="padding:0 28px 24px;color:#66748a;font-size:12px;">
-                Reply to this email to reach the lead. Call time lives on Calendly / your calendar.
+                Calendar invite attached (.ics) — open it to add to Google Calendar. Call the phone number above at the scheduled time.
               </td>
             </tr>
           </table>
@@ -113,7 +131,11 @@ export function buildLeadNotificationHtml(input: LeadEmailInput): string {
 export function buildCustomerConfirmationHtml(input: LeadEmailInput): string {
   const name = escapeHtml(firstName(input.name));
   const property = escapeHtml(input.address);
-  const bookedViaCalendly = /calendly/i.test(input.callBooking);
+  const when = escapeHtml(
+    input.callBooking ||
+      (input.callStartIso ? formatCallSlotLabel(input.callStartIso) : "the time you picked"),
+  );
+  const hasExactTime = Boolean(input.callStartIso || input.callBooking);
 
   const prepBlock =
     input.hasListing === "yes"
@@ -150,12 +172,13 @@ export function buildCustomerConfirmationHtml(input: LeadEmailInput): string {
               </td>
             </tr>`;
 
-  const scheduleBlock = bookedViaCalendly
+  const scheduleBlock = hasExactTime
     ? `
             <tr>
               <td style="padding:16px 28px 0;color:#8b9bb4;font-size:16px;line-height:1.6;">
-                You’re on the calendar. Check your email for the Calendly confirmation and calendar invite with the exact time.
-                Need to reschedule? Use the link in that invite, or reply here.
+                You’re booked for <strong style="color:#f0f4fa;">${when}</strong>.
+                We’ll call you at <strong style="color:#f0f4fa;">${escapeHtml(input.phone)}</strong>.
+                A calendar invite is attached — open it to add the call to Google Calendar.
               </td>
             </tr>`
     : `
@@ -185,7 +208,7 @@ export function buildCustomerConfirmationHtml(input: LeadEmailInput): string {
             </tr>
             <tr>
               <td style="padding:8px 28px 0;color:#f0f4fa;font-size:28px;line-height:1.2;font-weight:600;">
-                ${bookedViaCalendly ? `You’re booked, ${name}.` : `Thanks, ${name} — let’s lock in a time.`}
+                ${hasExactTime ? `You’re booked, ${name}.` : `Thanks, ${name} — let’s lock in a time.`}
               </td>
             </tr>
             <tr>
@@ -202,9 +225,9 @@ export function buildCustomerConfirmationHtml(input: LeadEmailInput): string {
             ${prepBlock}
             <tr>
               <td style="padding:24px 28px 0;color:#8b9bb4;font-size:15px;line-height:1.6;">
-                Prefer to talk sooner? Call or text
+                Need to reschedule? Reply to this email or call
                 <a href="${PHONE_HREF}" style="color:#c9a84c;text-decoration:none;font-weight:600;">${PHONE_DISPLAY}</a>
-                or reply to this email — we’ll keep everything in this thread.
+                — we’ll keep everything in this thread.
               </td>
             </tr>
             <tr>
@@ -225,6 +248,11 @@ export function buildCustomerConfirmationHtml(input: LeadEmailInput): string {
   `;
 }
 
+export type ResendAttachment = {
+  filename: string;
+  content: string; // base64
+};
+
 export async function sendResendEmail(input: {
   apiKey: string;
   from: string;
@@ -232,6 +260,7 @@ export async function sendResendEmail(input: {
   subject: string;
   html: string;
   replyTo?: string;
+  attachments?: ResendAttachment[];
 }): Promise<{ ok: boolean; message?: string }> {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -245,6 +274,7 @@ export async function sendResendEmail(input: {
       reply_to: input.replyTo,
       subject: input.subject,
       html: input.html,
+      attachments: input.attachments,
     }),
   });
 
@@ -276,8 +306,8 @@ export function toPublicAuditError(message?: string): string {
     lower.includes("required") ||
     lower.includes("confirm we can contact") ||
     lower.includes("fill in") ||
-    lower.includes("calendly") ||
-    lower.includes("pick a time")
+    lower.includes("pick a time") ||
+    lower.includes("call time")
   ) {
     return message;
   }

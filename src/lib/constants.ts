@@ -4,34 +4,6 @@ export const WHATSAPP_HREF = "https://wa.me/16473817325";
 export const EMAIL = "info@mandelrealtygroup.com";
 export const EMAIL_HREF = "mailto:info@mandelrealtygroup.com";
 
-/** Calendly event URL — set VITE_CALENDLY_URL (24h min notice in Calendly settings). */
-export const CALENDLY_URL = String(import.meta.env.VITE_CALENDLY_URL ?? "").trim();
-
-/** Prefill + brand Calendly embed so it matches the MRG dark/gold UI */
-export function buildCalendlyEmbedUrl(input: {
-  name?: string;
-  email?: string;
-  phone?: string;
-}): string {
-  const base = CALENDLY_URL.trim();
-  if (!base) return "";
-  const url = new URL(base);
-
-  // Contact prefill
-  if (input.name?.trim()) url.searchParams.set("name", input.name.trim());
-  if (input.email?.trim()) url.searchParams.set("email", input.email.trim());
-  if (input.phone?.trim()) url.searchParams.set("a1", input.phone.trim());
-
-  // Embed appearance (hex without #) — Calendly applies these inside the iframe
-  url.searchParams.set("background_color", "0a0a0a");
-  url.searchParams.set("text_color", "ffffff");
-  url.searchParams.set("primary_color", "f5c518");
-  url.searchParams.set("hide_gdpr_banner", "1");
-  url.searchParams.set("hide_landing_page_details", "1");
-
-  return url.toString();
-}
-
 /** sessionStorage key: Fit Check → /book-a-call handoff */
 export const FIT_CHECK_HANDOFF_KEY = "mrg_fit_check_handoff";
 

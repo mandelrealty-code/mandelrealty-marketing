@@ -9,6 +9,7 @@ import {
   sendResendEmail,
   toPublicAuditError,
 } from "../shared/auditEmails.js";
+import { buildCallInviteIcs, isValidCallStartIso } from "../shared/callSlots.js";
 import { parseLeadRequestBody } from "../shared/parseLeadRequest.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -39,8 +40,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
+  if (!lead.callStartIso || !isValidCallStartIso(lead.callStartIso)) {
+    return res.status(400).json({ error: "Pick a call time at least 24 hours from now." });
+  }
+
   const from =
     process.env.RESEND_FROM?.trim() || "Mandel Realty Group <onboarding@resend.dev>";
+
+  const ics = buildCallInviteIcs({
+    startIso: lead.callStartIso,
+    name: lead.name,
+    email: lead.email,
+    phone: lead.phone,
+    address: lead.address,
+    organizerEmail: LEAD_INBOX,
+  });
+  const icsAttachment = {
+    filename: "mrg-call.ics",
+    content: Buffer.from(ics, "utf8").toString("base64"),
+  };
 
   const leadResult = await sendResendEmail({
     apiKey,
@@ -49,6 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     replyTo: lead.email,
     subject: buildLeadSubject(lead),
     html: buildLeadNotificationHtml(lead),
+    attachments: [icsAttachment],
   });
 
   if (!leadResult.ok) {
@@ -61,8 +80,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     from,
     to: [lead.email],
     replyTo: LEAD_INBOX,
-    subject: buildCustomerSubject(),
+    subject: buildCustomerSubject(lead),
     html: buildCustomerConfirmationHtml(lead),
+    attachments: [icsAttachment],
   });
 
   if (!customerResult.ok) {

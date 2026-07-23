@@ -24,9 +24,9 @@ export function ThankYouPage() {
             You&apos;re on the calendar.
           </h1>
           <p className="mt-5 text-base leading-relaxed text-mrg-muted sm:text-lg">
-            Check your email for the Calendly confirmation and invite. We&apos;ll call you at the
-            number you provided — and if you have a live listing, reply to that email with your
-            Airbnb link so we can prepare.
+            Check your email for the exact time and calendar invite. We&apos;ll call the number you
+            provided — and if you have a live listing, reply to that email with your Airbnb link so
+            we can prepare.
           </p>
           <p className="mt-8 text-sm text-mrg-muted">Need to talk sooner?</p>
           <a

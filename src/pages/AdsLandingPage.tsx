@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
-  CALENDLY_URL,
   CONTACT_CONSENT_ERROR,
   FIT_CHECK_HANDOFF_KEY,
   PHONE,
@@ -9,10 +8,11 @@ import {
   WHATSAPP_HREF,
 } from "../lib/constants";
 import { submitAuditLead } from "../lib/submitAuditLead";
+import { formatCallSlotLabel } from "../../shared/callSlots";
 import { EarningsWheel } from "../components/FitCheckSection";
 import { EarningsComparisonChart } from "../components/EarningsComparisonChart";
 import { DashboardScreenshotThumbs } from "../components/DashboardScreenshotThumbs";
-import { CalendlyEmbed } from "../components/CalendlyEmbed";
+import { CallTimePicker } from "../components/CallTimePicker";
 
 const DASHBOARD_SHOTS = [
   {
@@ -56,9 +56,9 @@ export function AdsLandingPage() {
   const [hasListing, setHasListing] = useState<"yes" | "no" | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [contactConsent, setContactConsent] = useState(false);
+  const [callStartIso, setCallStartIso] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const useCalendly = Boolean(CALENDLY_URL.trim());
 
   useEffect(() => {
     document.title = "Book a Call | Mandel Realty Group";
@@ -104,12 +104,12 @@ export function AdsLandingPage() {
       setError(CONTACT_CONSENT_ERROR);
       return;
     }
-    if (!useCalendly) {
-      setError("Calendar isn’t ready yet — please call us to book, or try again shortly.");
-      return;
-    }
     if (!form.name.trim() || !form.email.trim() || !form.phone.trim()) {
       setError("Add your name, phone, and email so we can confirm the call.");
+      return;
+    }
+    if (!callStartIso) {
+      setError("Pick a call time — we’ll call the number you entered.");
       return;
     }
     setSubmitting(true);
@@ -122,7 +122,8 @@ export function AdsLandingPage() {
         address: form.address,
         earnings: form.earnings,
         hasListing: hasListing === "yes" ? "yes" : hasListing === "no" ? "no" : "unknown",
-        callBooking: "Booked via Calendly (see calendar)",
+        callStartIso,
+        callBooking: formatCallSlotLabel(callStartIso),
         source: "/book-a-call",
         contactConsent,
         marketingOptIn: false,
@@ -347,7 +348,7 @@ export function AdsLandingPage() {
                     Lock in your call
                   </h2>
                   <p className="text-center text-sm text-mrg-muted">
-                    15 minutes, no pressure — pick an exact time below (24h+ notice).
+                    15 minutes — we call your phone. Pick an exact time (24h+ notice).
                   </p>
 
                   <input
@@ -402,30 +403,15 @@ export function AdsLandingPage() {
                     </span>
                   </label>
 
-                  {useCalendly ? (
-                    <div className="mt-2 space-y-3">
-                      <p className="text-sm font-medium text-mrg-text">
-                        1. Pick your time
+                  <div className="mt-2 space-y-3">
+                    <p className="text-sm font-medium text-mrg-text">Pick when we should call you</p>
+                    <CallTimePicker value={callStartIso} onChange={setCallStartIso} />
+                    {callStartIso && (
+                      <p className="text-sm text-mrg-gold">
+                        Selected: {formatCallSlotLabel(callStartIso)}
                       </p>
-                      <CalendlyEmbed
-                        name={form.name}
-                        email={form.email}
-                        phone={form.phone}
-                      />
-                      <p className="text-sm font-medium text-mrg-text">
-                        2. Confirm so we get your property details
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl bg-mrg-bg px-4 py-5 text-sm text-mrg-muted ring-1 ring-white/10">
-                      Calendar booking isn’t configured yet. Call{" "}
-                      <a href={PHONE_HREF} className="font-semibold text-mrg-gold">
-                        {PHONE}
-                      </a>{" "}
-                      to lock in a time, or set{" "}
-                      <code className="text-mrg-text">VITE_CALENDLY_URL</code> and redeploy.
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   {error && (
                     <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -443,7 +429,7 @@ export function AdsLandingPage() {
                     </button>
                     <button
                       type="submit"
-                      disabled={submitting || !useCalendly}
+                      disabled={submitting || !callStartIso}
                       className="flex-1 rounded-full bg-mrg-gold py-3.5 text-sm font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-60"
                     >
                       {submitting ? "Booking…" : "Confirm my call →"}

@@ -1,5 +1,6 @@
 import type { HasListing, LeadEmailInput } from "./auditEmails.js";
 import { normalizeHasListing } from "./auditEmails.js";
+import { formatCallSlotLabel } from "./callSlots.js";
 
 /** Shared parse for Vercel API + Vite dev middleware */
 export function parseLeadRequestBody(body: Record<string, unknown>): {
@@ -15,9 +16,11 @@ export function parseLeadRequestBody(body: Record<string, unknown>): {
   const address = String(body.address ?? "").trim();
   const earnings = String(body.earnings ?? "").trim();
   const hasListing = normalizeHasListing(body.hasListing);
+  const callStartIso = String(body.callStartIso ?? "").trim();
+  const callBookingRaw = String(body.callBooking ?? body.callSlot ?? "").trim();
   const callBooking =
-    String(body.callBooking ?? body.callSlot ?? "").trim() ||
-    "Not scheduled — follow up to book";
+    callBookingRaw ||
+    (callStartIso ? formatCallSlotLabel(callStartIso) : "Not scheduled — follow up to book");
   const source = String(body.source ?? "").trim() || "website";
   const contactConsent = body.contactConsent === true || body.contactConsent === "true";
   const marketingOptIn = body.marketingOptIn === true || body.marketingOptIn === "true";
@@ -30,6 +33,7 @@ export function parseLeadRequestBody(body: Record<string, unknown>): {
     earnings,
     hasListing: hasListing as HasListing,
     callBooking,
+    callStartIso,
     source,
     marketingOptIn,
   };

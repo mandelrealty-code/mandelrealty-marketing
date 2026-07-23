@@ -13,6 +13,7 @@ import {
   sendResendEmail,
   toPublicAuditError,
 } from "./shared/auditEmails.js";
+import { buildCallInviteIcs, isValidCallStartIso } from "./shared/callSlots.js";
 import { parseLeadRequestBody } from "./shared/parseLeadRequest.js";
 
 function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -76,8 +77,26 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
             return;
           }
 
+          if (!lead.callStartIso || !isValidCallStartIso(lead.callStartIso)) {
+            json(400, { error: "Pick a call time at least 24 hours from now." });
+            return;
+          }
+
           const from =
             env.RESEND_FROM?.trim() || "Mandel Realty Group <onboarding@resend.dev>";
+
+          const ics = buildCallInviteIcs({
+            startIso: lead.callStartIso,
+            name: lead.name,
+            email: lead.email,
+            phone: lead.phone,
+            address: lead.address,
+            organizerEmail: LEAD_INBOX,
+          });
+          const icsAttachment = {
+            filename: "mrg-call.ics",
+            content: Buffer.from(ics, "utf8").toString("base64"),
+          };
 
           const leadResult = await sendResendEmail({
             apiKey,
@@ -86,6 +105,7 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
             replyTo: lead.email,
             subject: buildLeadSubject(lead),
             html: buildLeadNotificationHtml(lead),
+            attachments: [icsAttachment],
           });
 
           if (!leadResult.ok) {
@@ -99,8 +119,9 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
             from,
             to: [lead.email],
             replyTo: LEAD_INBOX,
-            subject: buildCustomerSubject(),
+            subject: buildCustomerSubject(lead),
             html: buildCustomerConfirmationHtml(lead),
+            attachments: [icsAttachment],
           });
 
           if (!customerResult.ok) {

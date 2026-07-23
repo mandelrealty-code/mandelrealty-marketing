@@ -7,8 +7,10 @@ export type AuditLeadPayload = {
   address: string;
   earnings: string;
   hasListing: "yes" | "no" | "unknown";
-  /** Human-readable scheduling note for internal email */
+  /** Display label e.g. "Thu Jul 24 · 2:00 PM ET" */
   callBooking: string;
+  /** ISO UTC start of the call */
+  callStartIso: string;
   source: string;
   contactConsent: boolean;
   marketingOptIn: boolean;
