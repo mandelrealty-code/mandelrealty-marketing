@@ -10,6 +10,7 @@ import {
   toPublicAuditError,
 } from "../shared/auditEmails.js";
 import { buildCallInviteIcs, isValidCallStartIso } from "../shared/callSlots.js";
+import { getBookedStartIsos, tryReserveCallSlot } from "../shared/bookingStore.js";
 import { parseLeadRequestBody } from "../shared/parseLeadRequest.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -40,8 +41,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  if (!lead.callStartIso || !isValidCallStartIso(lead.callStartIso)) {
+  if (!lead.callStartIso || !isValidCallStartIso(lead.callStartIso, new Date(), await getBookedStartIsos())) {
     return res.status(400).json({ error: "Pick a call time at least 24 hours from now." });
+  }
+
+  const reserved = await tryReserveCallSlot(lead.callStartIso, {
+    name: lead.name,
+    email: lead.email,
+    phone: lead.phone,
+  });
+  if (!reserved) {
+    return res.status(409).json({
+      error: "That time was just taken — please pick another slot.",
+    });
   }
 
   const from =

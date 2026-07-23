@@ -13,6 +13,7 @@ import {
   sendResendEmail,
   toPublicAuditError,
 } from "./shared/auditEmails.js";
+import { getBookedStartIsos, tryReserveCallSlot } from "./shared/bookingStore.js";
 import { buildCallInviteIcs, isValidCallStartIso } from "./shared/callSlots.js";
 import { parseLeadRequestBody } from "./shared/parseLeadRequest.js";
 
@@ -34,22 +35,35 @@ function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
 }
 
 function auditDevApiPlugin(env: Record<string, string>): Plugin {
+  // Make booking store see the same env as Vite (Supabase keys from .env.local)
+  for (const [k, v] of Object.entries(env)) {
+    if (v && !process.env[k]) process.env[k] = v;
+  }
+
   return {
     name: "audit-dev-api",
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        if (req.url !== "/api/audit" || req.method !== "POST") {
+        const url = req.url?.split("?")[0];
+        const json = (status: number, body: object) => {
+          res.statusCode = status;
+          res.setHeader("Content-Type", "application/json");
+          res.setHeader("Cache-Control", "no-store");
+          res.end(JSON.stringify(body));
+        };
+
+        if (url === "/api/booked-slots" && req.method === "GET") {
+          const booked = await getBookedStartIsos();
+          json(200, { booked });
+          return;
+        }
+
+        if (url !== "/api/audit" || req.method !== "POST") {
           next();
           return;
         }
 
         const apiKey = env.RESEND_API_KEY;
-        const json = (status: number, body: object) => {
-          res.statusCode = status;
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify(body));
-        };
-
         if (!apiKey) {
           json(503, { error: AUDIT_UNAVAILABLE_MESSAGE });
           return;
@@ -77,8 +91,19 @@ function auditDevApiPlugin(env: Record<string, string>): Plugin {
             return;
           }
 
-          if (!lead.callStartIso || !isValidCallStartIso(lead.callStartIso)) {
+          const booked = await getBookedStartIsos();
+          if (!lead.callStartIso || !isValidCallStartIso(lead.callStartIso, new Date(), booked)) {
             json(400, { error: "Pick a call time at least 24 hours from now." });
+            return;
+          }
+
+          const reserved = await tryReserveCallSlot(lead.callStartIso, {
+            name: lead.name,
+            email: lead.email,
+            phone: lead.phone,
+          });
+          if (!reserved) {
+            json(409, { error: "That time was just taken — please pick another slot." });
             return;
           }
 

@@ -1,18 +1,27 @@
 /** Call-slot helpers (America/Toronto) — shared by UI + API/ICS */
 
 export const CALL_TZ = "America/Toronto";
-export const CALL_DURATION_MIN = 15;
+/** Match half-hour grid so back-to-back bookings don't overlap */
+export const CALL_DURATION_MIN = 30;
 export const CALL_MIN_NOTICE_MS = 24 * 60 * 60 * 1000;
 
-/** Weekday slots in Toronto local hours (24h) */
-const SLOT_HOURS = [10, 11, 13, 14, 15, 16] as const;
+/** Weekday slots every 30 min, 10:00–16:30 Toronto */
+const SLOT_TIMES_UNIQUE: { hour: number; minute: number }[] = [];
+for (let hour = 10; hour <= 16; hour++) {
+  SLOT_TIMES_UNIQUE.push({ hour, minute: 0 });
+  SLOT_TIMES_UNIQUE.push({ hour, minute: 30 });
+}
 
 export type CallSlot = {
   /** ISO UTC start */
   startIso: string;
   /** e.g. Thu Jul 24 · 2:00 PM ET */
   label: string;
-  /** e.g. Thursday */
+  /** Unique day key YYYY-MM-DD (Toronto) */
+  dayKey: string;
+  /** e.g. Fri 24 */
+  dayShort: string;
+  /** e.g. Friday, Jul 24 */
   dayLabel: string;
   /** e.g. 2:00 PM */
   timeLabel: string;
@@ -22,7 +31,6 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-/** Offset of `timeZone` at instant `date` (ms to add to local→UTC... see zonedTimeToUtc) */
 function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -51,7 +59,6 @@ function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
   return asUTC - date.getTime();
 }
 
-/** Interpret wall-clock time in `timeZone` as a UTC Date */
 export function zonedTimeToUtc(
   year: number,
   month: number,
@@ -119,6 +126,14 @@ export function formatCallDayLabel(startIso: string): string {
   }).format(new Date(startIso));
 }
 
+export function formatCallDayShort(startIso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: CALL_TZ,
+    weekday: "short",
+    day: "numeric",
+  }).format(new Date(startIso));
+}
+
 export function formatCallTimeLabel(startIso: string): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: CALL_TZ,
@@ -128,41 +143,50 @@ export function formatCallTimeLabel(startIso: string): string {
   }).format(new Date(startIso));
 }
 
-/** Next available weekday slots, min 24h out, ~2 weeks ahead */
-export function generateCallSlots(now = new Date()): CallSlot[] {
-  const minStart = now.getTime() + CALL_MIN_NOTICE_MS;
-  const slots: CallSlot[] = [];
+export function torontoDayKey(startIso: string): string {
+  const { y, m, day } = torontoParts(new Date(startIso));
+  return `${y}-${pad(m)}-${pad(day)}`;
+}
 
-  for (let offset = 0; offset < 16 && slots.length < 36; offset++) {
+/**
+ * Next available weekday slots, min 24h out, ~3 weeks ahead.
+ * Pass `bookedIsos` to hide already-taken times.
+ */
+export function generateCallSlots(
+  now = new Date(),
+  bookedIsos: Iterable<string> = [],
+): CallSlot[] {
+  const minStart = now.getTime() + CALL_MIN_NOTICE_MS;
+  const booked = new Set(bookedIsos);
+  const slots: CallSlot[] = [];
+  const dayKeysSeen = new Set<string>();
+
+  for (let offset = 0; offset < 28 && dayKeysSeen.size < 15; offset++) {
     const probe = new Date(now.getTime() + offset * 24 * 60 * 60 * 1000);
     const { y, m, day, weekday } = torontoParts(probe);
-    if (weekday === 0 || weekday === 6) continue; // skip Sun/Sat
+    if (weekday === 0 || weekday === 6) continue;
 
-    // Avoid duplicating the same calendar day when probing from UTC drift
-    if (offset === 0) {
-      /* still generate today's remaining if 24h allows — usually none */
-    }
+    const dayKey = `${y}-${pad(m)}-${pad(day)}`;
+    if (dayKeysSeen.has(dayKey)) continue;
+    dayKeysSeen.add(dayKey);
 
-    for (const hour of SLOT_HOURS) {
-      const start = zonedTimeToUtc(y, m, day, hour, 0, CALL_TZ);
+    for (const { hour, minute } of SLOT_TIMES_UNIQUE) {
+      const start = zonedTimeToUtc(y, m, day, hour, minute, CALL_TZ);
       if (start.getTime() < minStart) continue;
       const startIso = start.toISOString();
+      if (booked.has(startIso)) continue;
       slots.push({
         startIso,
         label: formatCallSlotLabel(startIso),
+        dayKey,
+        dayShort: formatCallDayShort(startIso),
         dayLabel: formatCallDayLabel(startIso),
         timeLabel: formatCallTimeLabel(startIso),
       });
     }
   }
 
-  // Dedupe by startIso (probe can overlap)
-  const seen = new Set<string>();
-  return slots.filter((s) => {
-    if (seen.has(s.startIso)) return false;
-    seen.add(s.startIso);
-    return true;
-  });
+  return slots;
 }
 
 function icsEscape(text: string): string {
@@ -226,9 +250,15 @@ export function buildCallInviteIcs(input: {
   ].join("\r\n");
 }
 
-export function isValidCallStartIso(iso: string, now = new Date()): boolean {
+export function isValidCallStartIso(
+  iso: string,
+  now = new Date(),
+  bookedIsos: Iterable<string> = [],
+): boolean {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return false;
   if (t < now.getTime() + CALL_MIN_NOTICE_MS - 60_000) return false;
-  return generateCallSlots(now).some((s) => s.startIso === iso);
+  const booked = new Set(bookedIsos);
+  if (booked.has(iso)) return false;
+  return generateCallSlots(now, []).some((s) => s.startIso === iso);
 }

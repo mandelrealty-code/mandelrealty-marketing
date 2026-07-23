@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { generateCallSlots, type CallSlot } from "../../shared/callSlots";
 
 type Props = {
@@ -7,26 +7,52 @@ type Props = {
 };
 
 /**
- * Native MRG time picker — exact slots, 24h+ notice, Toronto time.
- * No third-party branding; we call the phone number already on the form.
+ * Native MRG time picker — exact half-hour slots, 24h+ notice, Toronto time.
+ * Fetches booked times so taken slots disappear.
  */
 export function CallTimePicker({ value, onChange }: Props) {
-  const slots = useMemo(() => generateCallSlots(), []);
+  const [booked, setBooked] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/booked-slots", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { booked?: string[] };
+        if (!cancelled) setBooked(data.booked ?? []);
+      } catch {
+        /* picker still works without conflict list */
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const slots = useMemo(() => generateCallSlots(new Date(), booked), [booked]);
   const days = useMemo(() => {
-    const map = new Map<string, CallSlot[]>();
+    const map = new Map<string, { short: string; label: string; slots: CallSlot[] }>();
     for (const s of slots) {
-      const list = map.get(s.dayLabel) ?? [];
-      list.push(s);
-      map.set(s.dayLabel, list);
+      const existing = map.get(s.dayKey);
+      if (existing) existing.slots.push(s);
+      else map.set(s.dayKey, { short: s.dayShort, label: s.dayLabel, slots: [s] });
     }
     return [...map.entries()];
   }, [slots]);
 
   const [dayIndex, setDayIndex] = useState(0);
   const activeDay = days[dayIndex] ?? days[0];
-  const daySlots = activeDay?.[1] ?? [];
+  const daySlots = activeDay?.[1].slots ?? [];
 
-  if (slots.length === 0) {
+  useEffect(() => {
+    if (dayIndex >= days.length) setDayIndex(0);
+  }, [days.length, dayIndex]);
+
+  if (!loading && slots.length === 0) {
     return (
       <p className="rounded-2xl bg-mrg-bg px-4 py-5 text-sm text-mrg-muted ring-1 ring-white/10">
         No call times available right now. Please try again tomorrow or call us.
@@ -46,25 +72,25 @@ export function CallTimePicker({ value, onChange }: Props) {
             <p className="truncate text-sm text-mrg-text">We&apos;ll call your phone</p>
           </div>
         </div>
-        <p className="shrink-0 text-[11px] text-mrg-muted">15 min · ET</p>
+        <p className="shrink-0 text-[11px] text-mrg-muted">30 min · ET</p>
       </div>
 
       <div className="flex gap-1.5 overflow-x-auto border-b border-white/8 px-3 py-3">
-        {days.map(([label], i) => {
+        {days.map(([dayKey, day], i) => {
           const active = i === dayIndex;
-          const short = label.replace(/,.*/, "");
           return (
             <button
-              key={label}
+              key={dayKey}
               type="button"
               onClick={() => setDayIndex(i)}
+              title={day.label}
               className={`shrink-0 rounded-xl px-3 py-2 text-left text-xs font-semibold transition-colors ${
                 active
                   ? "bg-mrg-gold text-black"
                   : "bg-white/5 text-mrg-muted hover:bg-white/10 hover:text-mrg-text"
               }`}
             >
-              {short}
+              {day.short}
             </button>
           );
         })}
@@ -91,7 +117,9 @@ export function CallTimePicker({ value, onChange }: Props) {
       </div>
 
       <div className="border-t border-white/8 bg-mrg-surface px-4 py-2.5 text-center text-[11px] text-mrg-muted">
-        Earliest bookings are 24 hours out · Eastern Time
+        {loading
+          ? "Loading open times…"
+          : "Every 30 min · earliest 24 hours out · Eastern Time"}
       </div>
     </div>
   );
