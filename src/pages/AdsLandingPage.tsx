@@ -175,9 +175,9 @@ export function AdsLandingPage() {
             </p>
           </div>
 
-          <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-start lg:gap-12">
+          <div className="grid min-w-0 gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-start lg:gap-12">
             {/* Desktop supporting column */}
-            <div className="hidden lg:block">
+            <div className="hidden min-w-0 lg:block">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-mrg-gold">
                 Toronto-based · Canada &amp; U.S.
               </p>
@@ -243,8 +243,8 @@ export function AdsLandingPage() {
             </div>
 
             {/* Dominant conversion card — first after mobile headline */}
-            <div id="book" className="scroll-mt-6 lg:sticky lg:top-6">
-              <div className="rounded-[1.75rem] bg-mrg-surface-elevated p-6 shadow-[0_28px_70px_rgba(0,0,0,0.45)] ring-1 ring-white/12 sm:p-8">
+            <div id="book" className="min-w-0 scroll-mt-6 lg:sticky lg:top-6">
+              <div className="w-full min-w-0 rounded-[1.75rem] bg-mrg-surface-elevated p-5 shadow-[0_28px_70px_rgba(0,0,0,0.45)] ring-1 ring-white/12 sm:p-8">
                 <div className="mb-6 flex gap-2" aria-hidden>
                   {(["qualify", "details", "book"] as const).map((s, i) => (
                     <div
@@ -403,11 +403,11 @@ export function AdsLandingPage() {
                     </span>
                   </label>
 
-                  <div className="mt-2 space-y-3">
+                  <div className="mt-2 min-w-0 space-y-3">
                     <p className="text-sm font-medium text-mrg-text">Pick when we should call you</p>
                     <CallTimePicker value={callStartIso} onChange={setCallStartIso} />
                     {callStartIso && (
-                      <p className="text-sm text-mrg-gold">
+                      <p className="break-words text-sm text-mrg-gold">
                         Selected: {formatCallSlotLabel(callStartIso)}
                       </p>
                     )}

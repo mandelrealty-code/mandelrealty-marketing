@@ -61,12 +61,17 @@ export function CallTimePicker({ value, onChange }: Props) {
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-mrg-bg ring-1 ring-white/10">
-      <div className="flex items-center justify-between gap-3 border-b border-white/8 bg-mrg-surface px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <img src="/mrg-logo-white.png" alt="" aria-hidden className="h-5 w-auto opacity-90" />
+    <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-mrg-bg ring-1 ring-white/10">
+      <div className="flex items-center gap-3 border-b border-white/8 bg-mrg-surface px-3 py-3 sm:px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <img
+            src="/mrg-logo-white.png"
+            alt=""
+            aria-hidden
+            className="h-5 w-auto shrink-0 opacity-90"
+          />
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold sm:text-xs">
               Mandel Realty Group
             </p>
             <p className="truncate text-sm text-mrg-text">We&apos;ll call your phone</p>
@@ -75,51 +80,55 @@ export function CallTimePicker({ value, onChange }: Props) {
         <p className="shrink-0 text-[11px] text-mrg-muted">30 min · ET</p>
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto border-b border-white/8 px-3 py-3">
-        {days.map(([dayKey, day], i) => {
-          const active = i === dayIndex;
-          return (
-            <button
-              key={dayKey}
-              type="button"
-              onClick={() => setDayIndex(i)}
-              title={day.label}
-              className={`shrink-0 rounded-xl px-3 py-2 text-left text-xs font-semibold transition-colors ${
-                active
-                  ? "bg-mrg-gold text-black"
-                  : "bg-white/5 text-mrg-muted hover:bg-white/10 hover:text-mrg-text"
-              }`}
-            >
-              {day.short}
-            </button>
-          );
-        })}
+      <div className="min-w-0 overflow-x-auto overscroll-x-contain border-b border-white/8 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex w-max gap-1.5 px-3 py-3">
+          {days.map(([dayKey, day], i) => {
+            const active = i === dayIndex;
+            return (
+              <button
+                key={dayKey}
+                type="button"
+                onClick={() => setDayIndex(i)}
+                title={day.label}
+                className={`shrink-0 rounded-xl px-3 py-2 text-left text-xs font-semibold transition-colors ${
+                  active
+                    ? "bg-mrg-gold text-black"
+                    : "bg-white/5 text-mrg-muted hover:bg-white/10 hover:text-mrg-text"
+                }`}
+              >
+                {day.short}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3">
-        {daySlots.map((slot) => {
-          const active = value === slot.startIso;
-          return (
-            <button
-              key={slot.startIso}
-              type="button"
-              onClick={() => onChange(slot.startIso)}
-              className={`rounded-xl px-3 py-3 text-sm font-semibold transition-all ${
-                active
-                  ? "bg-mrg-gold text-black ring-2 ring-mrg-gold"
-                  : "bg-mrg-surface text-mrg-text ring-1 ring-white/10 hover:ring-mrg-gold/40"
-              }`}
-            >
-              {slot.timeLabel}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="border-t border-white/8 bg-mrg-surface px-4 py-2.5 text-center text-[11px] text-mrg-muted">
-        {loading
-          ? "Loading open times…"
-          : "Every 30 min · earliest 24 hours out · Eastern Time"}
+      <div className="grid grid-cols-2 gap-2 p-3">
+        {loading && daySlots.length === 0
+          ? Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-11 animate-pulse rounded-xl bg-white/5"
+                aria-hidden
+              />
+            ))
+          : daySlots.map((slot) => {
+              const active = value === slot.startIso;
+              return (
+                <button
+                  key={slot.startIso}
+                  type="button"
+                  onClick={() => onChange(slot.startIso)}
+                  className={`min-w-0 rounded-xl px-2 py-2.5 text-sm font-semibold tabular-nums transition-all sm:px-3 sm:py-3 ${
+                    active
+                      ? "bg-mrg-gold text-black ring-2 ring-mrg-gold"
+                      : "bg-mrg-surface text-mrg-text ring-1 ring-white/10 hover:ring-mrg-gold/40"
+                  }`}
+                >
+                  {slot.timeLabel}
+                </button>
+              );
+            })}
       </div>
     </div>
   );
