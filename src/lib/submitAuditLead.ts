@@ -16,6 +16,13 @@ export type AuditLeadPayload = {
   marketingOptIn: boolean;
 };
 
+export type AuditLeadResult = {
+  leadId: string | null;
+  hasListing: "yes" | "no" | "unknown";
+};
+
+export const LEAD_HANDOFF_KEY = "mrg_lead_handoff";
+
 const FALLBACK_ERROR =
   "Custom earnings estimates are currently unavailable online. Please call or email us directly.";
 
@@ -33,16 +40,25 @@ function sanitizeError(message?: string): string {
   return message;
 }
 
-export async function submitAuditLead(payload: AuditLeadPayload): Promise<void> {
+export async function submitAuditLead(payload: AuditLeadPayload): Promise<AuditLeadResult> {
   const response = await fetch(getAuditSubmitUrl(), {
     method: "POST",
     headers: getAuditSubmitHeaders(),
     body: JSON.stringify({ ...payload, _gotcha: "" }),
   });
 
-  const data = (await response.json().catch(() => ({}))) as { error?: string };
+  const data = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    leadId?: string | null;
+    hasListing?: "yes" | "no" | "unknown";
+  };
 
   if (!response.ok) {
     throw new Error(sanitizeError(data.error));
   }
+
+  return {
+    leadId: data.leadId ?? null,
+    hasListing: data.hasListing ?? payload.hasListing,
+  };
 }

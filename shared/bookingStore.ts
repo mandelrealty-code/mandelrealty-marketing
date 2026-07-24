@@ -1,23 +1,16 @@
 /**
- * Persist booked call starts so slots can't double-book — no Supabase required.
- *
- * Strategy:
- * 1. In-memory Set (fast)
- * 2. JSON file in /tmp (survives warm serverless invocations on Vercel)
- *
- * Good enough for light lead volume. For multi-region hard locks later, add Supabase.
+ * Booked call slots — Supabase leads when configured, else /tmp + memory fallback.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { getBookedCallIsosFromLeads } from "./leadStore.js";
+import { isSupabaseConfigured } from "./supabase.js";
 
 type ReserveMeta = { name: string; email: string; phone: string };
 
-type StoreFile = {
-  booked: string[];
-  meta?: Record<string, { name: string; email: string; phone: string; at: string }>;
-};
+type StoreFile = { booked: string[] };
 
 const memoryBooked = new Set<string>();
 const STORE_PATH = join(tmpdir(), "mrg-call-bookings.json");
@@ -38,17 +31,18 @@ function loadFromDisk(): void {
 function saveToDisk(): void {
   try {
     mkdirSync(dirname(STORE_PATH), { recursive: true });
-    const data: StoreFile = { booked: [...memoryBooked].sort() };
-    writeFileSync(STORE_PATH, JSON.stringify(data, null, 2), "utf8");
+    writeFileSync(
+      STORE_PATH,
+      JSON.stringify({ booked: [...memoryBooked].sort() }, null, 2),
+      "utf8",
+    );
   } catch (err) {
     console.warn("[bookings] could not write store file", err);
   }
 }
 
-// Load once per cold start
 loadFromDisk();
 
-/** Optional manual blocks via env: comma-separated ISO starts */
 function envBlocked(): string[] {
   const raw = process.env.BOOKED_CALL_ISOS?.trim() ?? "";
   if (!raw) return [];
@@ -59,14 +53,14 @@ function envBlocked(): string[] {
 }
 
 export async function getBookedStartIsos(): Promise<string[]> {
+  const fromLeads = isSupabaseConfigured() ? await getBookedCallIsosFromLeads() : [];
   loadFromDisk();
   const now = Date.now();
-  // Drop past slots from memory (keep store tidy)
   for (const iso of [...memoryBooked]) {
     if (new Date(iso).getTime() < now - 60 * 60 * 1000) memoryBooked.delete(iso);
   }
   saveToDisk();
-  return [...new Set([...memoryBooked, ...envBlocked()])];
+  return [...new Set([...fromLeads, ...memoryBooked, ...envBlocked()])];
 }
 
 /** Returns true if reserved, false if already taken */
@@ -74,12 +68,10 @@ export async function tryReserveCallSlot(
   startIso: string,
   _meta: ReserveMeta,
 ): Promise<boolean> {
-  loadFromDisk();
+  const booked = await getBookedStartIsos();
+  if (booked.includes(startIso)) return false;
 
-  if (memoryBooked.has(startIso) || envBlocked().includes(startIso)) {
-    return false;
-  }
-
+  // Local lock for warm instances; durable lock is the leads row insert
   memoryBooked.add(startIso);
   saveToDisk();
   return true;

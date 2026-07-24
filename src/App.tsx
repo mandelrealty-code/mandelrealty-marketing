@@ -13,6 +13,7 @@ import { Footer } from "./components/Footer";
 import { FloatingCtas } from "./components/FloatingCtas";
 import { ThankYouPage } from "./pages/ThankYouPage";
 import { AdsLandingPage } from "./pages/AdsLandingPage";
+import { AdminPage } from "./pages/AdminPage";
 import { useScrollToHash } from "./hooks/useScrollToHash";
 
 function HomePage() {
@@ -44,6 +45,10 @@ export default function App() {
 
   if (path === "/thank-you") {
     return <ThankYouPage />;
+  }
+
+  if (path === "/admin") {
+    return <AdminPage />;
   }
 
   if (path === "/book-a-call" || path === "/get-estimate") {

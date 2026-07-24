@@ -289,6 +289,83 @@ export async function sendResendEmail(input: {
 export const AUDIT_UNAVAILABLE_MESSAGE =
   "Custom earnings estimates are currently unavailable online. Please call or email us directly.";
 
+const STAGE_LABELS: Record<string, string> = {
+  own_ready: "Owns property — ready to start",
+  buying: "Buying / renovating soon",
+  researching: "Just researching (no property yet)",
+};
+
+const PERMIT_LABELS: Record<string, string> = {
+  have: "Has STR permit",
+  applying: "Applying / will apply",
+  unknown: "Doesn’t know if needed",
+  not_planning: "Not planning to get one",
+};
+
+const TIMELINE_LABELS: Record<string, string> = {
+  asap: "ASAP",
+  "1_3_months": "1–3 months",
+  later: "3+ months / just curious",
+};
+
+export function buildQualifierUpdateHtml(input: {
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  callBooking: string;
+  propertyStage: string;
+  permitStatus: string;
+  launchTimeline: string;
+  status: string;
+}): string {
+  const row = (label: string, value: string) =>
+    `<tr>
+      <td style="padding:10px 0;border-bottom:1px solid #243044;color:#8b9bb4;font-size:13px;width:160px;vertical-align:top;">${escapeHtml(label)}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #243044;color:#f0f4fa;font-size:14px;font-weight:500;">${escapeHtml(value)}</td>
+    </tr>`;
+
+  return `
+  <div style="margin:0;padding:0;background:#080c14;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#080c14;padding:24px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#111827;border:1px solid #243044;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:24px 28px 8px;color:#c9a84c;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;font-weight:600;">
+                Lead qualifier update
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:4px 28px 8px;color:#f0f4fa;font-size:22px;font-weight:600;">
+                ${escapeHtml(input.name)} · ${escapeHtml(input.status)}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 28px 24px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                  ${row("Email", input.email)}
+                  ${row("Phone", input.phone)}
+                  ${row("Property", input.address || "—")}
+                  ${row("Call time", input.callBooking || "—")}
+                  ${row("Stage", STAGE_LABELS[input.propertyStage] || input.propertyStage)}
+                  ${row("STR permit", PERMIT_LABELS[input.permitStatus] || input.permitStatus)}
+                  ${row("Launch timeline", TIMELINE_LABELS[input.launchTimeline] || input.launchTimeline)}
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 28px 24px;color:#66748a;font-size:12px;">
+                Also saved in the admin inbox at /admin.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>`;
+}
+
 export function toPublicAuditError(message?: string): string {
   if (!message) return AUDIT_UNAVAILABLE_MESSAGE;
   const lower = message.toLowerCase();

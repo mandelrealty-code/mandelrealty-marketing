@@ -11,6 +11,7 @@ import {
 } from "../shared/auditEmails.js";
 import { buildCallInviteIcs, isValidCallStartIso } from "../shared/callSlots.js";
 import { getBookedStartIsos, tryReserveCallSlot } from "../shared/bookingStore.js";
+import { insertLead } from "../shared/leadStore.js";
 import { parseLeadRequestBody } from "../shared/parseLeadRequest.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -101,5 +102,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("[audit] Resend customer confirmation error", customerResult.message);
   }
 
-  return res.status(200).json({ ok: true });
+  const leadId = await insertLead({
+    name: lead.name,
+    email: lead.email,
+    phone: lead.phone,
+    address: lead.address,
+    earnings: lead.earnings,
+    hasListing: lead.hasListing,
+    callStartIso: lead.callStartIso,
+    callBooking: lead.callBooking,
+    source: lead.source,
+    marketingOptIn: lead.marketingOptIn,
+  });
+
+  return res.status(200).json({
+    ok: true,
+    leadId,
+    hasListing: lead.hasListing,
+  });
 }

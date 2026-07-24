@@ -7,7 +7,7 @@ import {
   TESTIMONIALS,
   WHATSAPP_HREF,
 } from "../lib/constants";
-import { submitAuditLead } from "../lib/submitAuditLead";
+import { submitAuditLead, LEAD_HANDOFF_KEY } from "../lib/submitAuditLead";
 import { formatCallSlotLabel } from "../../shared/callSlots";
 import { EarningsWheel } from "../components/FitCheckSection";
 import { EarningsComparisonChart } from "../components/EarningsComparisonChart";
@@ -115,7 +115,7 @@ export function AdsLandingPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await submitAuditLead({
+      const result = await submitAuditLead({
         name: form.name,
         email: form.email,
         phone: form.phone,
@@ -128,6 +128,18 @@ export function AdsLandingPage() {
         contactConsent,
         marketingOptIn: false,
       });
+      try {
+        sessionStorage.setItem(
+          LEAD_HANDOFF_KEY,
+          JSON.stringify({
+            leadId: result.leadId,
+            hasListing: result.hasListing,
+            name: form.name.trim(),
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
       window.location.assign("/thank-you");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not book. Please call us instead.");
