@@ -4,15 +4,28 @@ const COOKIE_NAME = "mrg_admin_session";
 const MAX_AGE_SEC = 60 * 60 * 24 * 7; // 7 days
 
 function sessionSecret(): string {
-  return (
+  let secret =
     process.env.ADMIN_SESSION_SECRET?.trim() ||
     process.env.ADMIN_PASSWORD?.trim() ||
-    ""
-  );
+    "";
+  if (
+    (secret.startsWith('"') && secret.endsWith('"')) ||
+    (secret.startsWith("'") && secret.endsWith("'"))
+  ) {
+    secret = secret.slice(1, -1).trim();
+  }
+  return secret;
 }
 
 export function getAdminPassword(): string | null {
-  const pw = process.env.ADMIN_PASSWORD?.trim();
+  let pw = process.env.ADMIN_PASSWORD?.trim() ?? "";
+  // Strip accidental wrapping quotes from dashboard paste
+  if (
+    (pw.startsWith('"') && pw.endsWith('"')) ||
+    (pw.startsWith("'") && pw.endsWith("'"))
+  ) {
+    pw = pw.slice(1, -1).trim();
+  }
   return pw || null;
 }
 
@@ -54,10 +67,10 @@ export function verifyAdminSessionToken(token: string | undefined | null): boole
 export function passwordMatches(input: string): boolean {
   const expected = getAdminPassword();
   if (!expected) return false;
-  const a = Buffer.from(input);
-  const b = Buffer.from(expected);
+  const got = input.trim();
+  const a = Buffer.from(got, "utf8");
+  const b = Buffer.from(expected, "utf8");
   if (a.length !== b.length) {
-    // still do a compare to reduce timing leak shape
     timingSafeEqual(Buffer.alloc(b.length), b);
     return false;
   }
