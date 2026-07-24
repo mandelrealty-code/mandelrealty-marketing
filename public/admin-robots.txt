@@ -1,0 +1,3 @@
+# Admin subdomain — keep out of search engines
+User-agent: *
+Disallow: /

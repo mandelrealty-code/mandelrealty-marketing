@@ -16,6 +16,16 @@ import { AdsLandingPage } from "./pages/AdsLandingPage";
 import { AdminPage } from "./pages/AdminPage";
 import { useScrollToHash } from "./hooks/useScrollToHash";
 
+function isAdminHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === "admin.mandelrealtygroup.com") return true;
+  // Local only: add `127.0.0.1 admin.localhost` to /etc/hosts if needed
+  if (import.meta.env.DEV && (host === "admin.localhost" || host.startsWith("admin."))) {
+    return true;
+  }
+  return false;
+}
+
 function HomePage() {
   useScrollToHash();
 
@@ -42,13 +52,21 @@ function HomePage() {
 
 export default function App() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  const adminHost = isAdminHostname(window.location.hostname);
+
+  // Admin subdomain only — never expose inbox on the marketing site
+  if (adminHost) {
+    return <AdminPage />;
+  }
+
+  // Block /admin on www (and any non-admin host)
+  if (path === "/admin") {
+    window.location.replace("/");
+    return null;
+  }
 
   if (path === "/thank-you") {
     return <ThankYouPage />;
-  }
-
-  if (path === "/admin") {
-    return <AdminPage />;
   }
 
   if (path === "/book-a-call" || path === "/get-estimate") {

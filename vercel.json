@@ -7,11 +7,49 @@
     {
       "source": "/sitemap.xml",
       "headers": [{ "key": "Content-Type", "value": "application/xml; charset=utf-8" }]
+    },
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "admin.mandelrealtygroup.com" }],
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }
+      ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/admin",
+      "has": [{ "type": "host", "value": "www.mandelrealtygroup.com" }],
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/admin",
+      "has": [{ "type": "host", "value": "mandelrealtygroup.com" }],
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/admin/",
+      "has": [{ "type": "host", "value": "www.mandelrealtygroup.com" }],
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/admin/",
+      "has": [{ "type": "host", "value": "mandelrealtygroup.com" }],
+      "destination": "/",
+      "permanent": true
     }
   ],
   "rewrites": [
     {
-      "source": "/((?!api/|robots\\.txt|sitemap\\.xml|.*\\..*).*)",
+      "source": "/robots.txt",
+      "has": [{ "type": "host", "value": "admin.mandelrealtygroup.com" }],
+      "destination": "/admin-robots.txt"
+    },
+    {
+      "source": "/((?!api/|robots\\.txt|admin-robots\\.txt|sitemap\\.xml|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]
