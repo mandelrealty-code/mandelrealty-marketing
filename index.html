@@ -117,12 +117,19 @@
       />
     </noscript>
     <script type="module" src="/src/main.tsx"></script>
-    <script
-      src="https://app.greetable.ca/widget.js"
-      data-business-id="mandelrealtyteam"
-      data-exclude-path-prefixes="/checkout,/cart"
-      async
-      defer
-    ></script>
+    <script>
+      // Greetable chat — marketing site only (skip admin subdomain)
+      (function () {
+        var host = location.hostname.toLowerCase();
+        if (host === "admin.mandelrealtygroup.com" || host.indexOf("admin.") === 0) return;
+        var s = document.createElement("script");
+        s.src = "https://app.greetable.ca/widget.js";
+        s.async = true;
+        s.defer = true;
+        s.setAttribute("data-business-id", "mandelrealtyteam");
+        s.setAttribute("data-exclude-path-prefixes", "/checkout,/cart");
+        document.body.appendChild(s);
+      })();
+    </script>
   </body>
 </html>

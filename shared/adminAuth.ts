@@ -94,8 +94,11 @@ export function getSessionFromRequest(cookieHeader: string | undefined): string 
   return parseCookies(cookieHeader)[COOKIE_NAME] ?? null;
 }
 
-export function adminSessionCookie(token: string): string {
-  const secure = process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+export function adminSessionCookie(
+  token: string,
+  opts?: { secure?: boolean },
+): string {
+  const secure = opts?.secure ?? true;
   return [
     `${COOKIE_NAME}=${encodeURIComponent(token)}`,
     "Path=/",
@@ -108,8 +111,8 @@ export function adminSessionCookie(token: string): string {
     .join("; ");
 }
 
-export function clearAdminSessionCookie(): string {
-  const secure = process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+export function clearAdminSessionCookie(opts?: { secure?: boolean }): string {
+  const secure = opts?.secure ?? true;
   return [
     `${COOKIE_NAME}=`,
     "Path=/",
@@ -120,6 +123,18 @@ export function clearAdminSessionCookie(): string {
   ]
     .filter(Boolean)
     .join("; ");
+}
+
+/** Prefer HTTPS cookies in production; allow non-Secure only on plain local HTTP. */
+export function cookieShouldBeSecure(req: {
+  headers?: { [key: string]: string | string[] | undefined };
+}): boolean {
+  const xf = req.headers?.["x-forwarded-proto"];
+  const proto = Array.isArray(xf) ? xf[0] : xf;
+  if (proto) return proto.split(",")[0]?.trim() === "https";
+  // Local vite http://admin.localhost
+  if (process.env.VERCEL === "1") return true;
+  return process.env.NODE_ENV === "production";
 }
 
 export { COOKIE_NAME };

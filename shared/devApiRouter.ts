@@ -17,6 +17,7 @@ import {
 import {
   adminSessionCookie,
   clearAdminSessionCookie,
+  cookieShouldBeSecure,
   createAdminSessionToken,
   getSessionFromRequest,
   isAdminConfigured,
@@ -261,12 +262,18 @@ export async function handleDevApi(
       json(res, 401, { error: "Wrong password." });
       return true;
     }
-    json(res, 200, { ok: true }, { "Set-Cookie": adminSessionCookie(createAdminSessionToken()) });
+    json(res, 200, { ok: true }, {
+      "Set-Cookie": adminSessionCookie(createAdminSessionToken(), {
+        secure: cookieShouldBeSecure(req),
+      }),
+    });
     return true;
   }
 
   if (url === "/api/admin/logout" && method === "POST") {
-    json(res, 200, { ok: true }, { "Set-Cookie": clearAdminSessionCookie() });
+    json(res, 200, { ok: true }, {
+      "Set-Cookie": clearAdminSessionCookie({ secure: cookieShouldBeSecure(req) }),
+    });
     return true;
   }
 

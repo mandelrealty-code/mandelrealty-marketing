@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   adminSessionCookie,
+  cookieShouldBeSecure,
   isAdminConfigured,
   passwordMatches,
   createAdminSessionToken,
@@ -49,6 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const token = createAdminSessionToken();
-  res.setHeader("Set-Cookie", adminSessionCookie(token));
+  const secure = cookieShouldBeSecure(req);
+  res.setHeader("Set-Cookie", adminSessionCookie(token, { secure }));
   return res.status(200).json({ ok: true });
 }
