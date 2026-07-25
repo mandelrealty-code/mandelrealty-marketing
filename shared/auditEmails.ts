@@ -356,7 +356,7 @@ export function buildQualifierUpdateHtml(input: {
             </tr>
             <tr>
               <td style="padding:0 28px 24px;color:#66748a;font-size:12px;">
-                Also saved in the admin inbox at /admin.
+                Also saved in the admin inbox at admin.mandelrealtygroup.com.
               </td>
             </tr>
           </table>

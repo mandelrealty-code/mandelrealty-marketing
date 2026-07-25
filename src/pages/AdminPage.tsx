@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
 type LeadStatus = "new" | "qualified" | "low_fit" | "contacted" | "done" | "skip";
 
@@ -30,22 +30,22 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
 };
 
 const STAGE_LABEL: Record<string, string> = {
-  own_ready: "Owns property",
-  buying: "Buying / renovating",
-  researching: "Just researching",
+  own_ready: "Owns property — ready to start",
+  buying: "Buying / renovating soon",
+  researching: "Just researching (no property yet)",
 };
 
 const PERMIT_LABEL: Record<string, string> = {
-  have: "Has permit",
-  applying: "Applying",
-  unknown: "Unsure",
-  not_planning: "Not planning",
+  have: "Has STR permit",
+  applying: "Applying / will apply",
+  unknown: "Doesn’t know if needed",
+  not_planning: "Not planning to get one",
 };
 
 const TIMELINE_LABEL: Record<string, string> = {
   asap: "ASAP",
-  "1_3_months": "1–3 mo",
-  later: "Later / curious",
+  "1_3_months": "1–3 months",
+  later: "3+ months / just curious",
 };
 
 const FILTERS: Array<LeadStatus | "all"> = [
@@ -89,6 +89,27 @@ function formatWhen(iso: string | null, label: string): string {
   } catch {
     return iso;
   }
+}
+
+function listingLabel(hasListing: Lead["has_listing"]): string {
+  if (hasListing === "yes") return "Has Airbnb listing";
+  if (hasListing === "no") return "No Airbnb listing yet";
+  return "Airbnb listing unknown";
+}
+
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[7.5rem_1fr] gap-3 border-b border-white/8 py-2.5 last:border-b-0 sm:grid-cols-[9rem_1fr]">
+      <dt className="text-sm text-mrg-muted">{label}</dt>
+      <dd className="min-w-0 text-sm font-medium text-mrg-text">{children}</dd>
+    </div>
+  );
 }
 
 export function AdminPage() {
@@ -307,26 +328,25 @@ export function AdminPage() {
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-lg font-semibold">{lead.name}</h2>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mrg-gold">
+                      {lead.has_listing === "no" &&
+                      (lead.property_stage || lead.permit_status || lead.launch_timeline)
+                        ? "Lead qualifier"
+                        : "New call booking"}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <h2 className="text-xl font-semibold text-mrg-text">{lead.name}</h2>
+                      <span className="text-mrg-muted">·</span>
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${statusTone(lead.status)}`}
                       >
                         {STATUS_LABEL[lead.status]}
                       </span>
-                      <span className="rounded-full bg-white/5 px-2.5 py-0.5 text-[11px] text-mrg-muted ring-1 ring-white/10">
-                        {lead.has_listing === "yes"
-                          ? "Has listing"
-                          : lead.has_listing === "no"
-                            ? "No listing"
-                            : "Listing unknown"}
-                      </span>
                     </div>
-                    <p className="mt-1 text-sm text-mrg-gold">
-                      Call: {formatWhen(lead.call_start_iso, lead.call_booking)}
-                    </p>
+                    <p className="mt-2 text-sm text-mrg-muted">{listingLabel(lead.has_listing)}</p>
                   </div>
                   <p className="text-xs text-mrg-muted">
+                    Submitted{" "}
                     {new Date(lead.created_at).toLocaleString("en-CA", {
                       timeZone: "America/Toronto",
                       month: "short",
@@ -337,55 +357,51 @@ export function AdminPage() {
                   </p>
                 </div>
 
-                <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-                  <div>
-                    <dt className="text-mrg-muted">Email</dt>
-                    <dd>
-                      <a className="text-mrg-text hover:text-mrg-gold" href={`mailto:${lead.email}`}>
-                        {lead.email}
-                      </a>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-mrg-muted">Phone</dt>
-                    <dd>
-                      <a className="text-mrg-text hover:text-mrg-gold" href={`tel:${lead.phone}`}>
-                        {lead.phone}
-                      </a>
-                    </dd>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <dt className="text-mrg-muted">Property</dt>
-                    <dd>{lead.address || "—"}</dd>
-                  </div>
-                  {lead.has_listing === "yes" && lead.earnings && (
-                    <div className="sm:col-span-2">
-                      <dt className="text-mrg-muted">Stated earnings</dt>
-                      <dd>{lead.earnings}</dd>
-                    </div>
-                  )}
-                  {(lead.property_stage || lead.permit_status || lead.launch_timeline) && (
-                    <div className="sm:col-span-2 rounded-xl bg-mrg-bg/80 px-4 py-3 ring-1 ring-white/5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                        Qualifier
-                      </p>
-                      <p className="mt-2 text-sm text-mrg-text">
-                        {[
-                          lead.property_stage
-                            ? STAGE_LABEL[lead.property_stage] || lead.property_stage
-                            : null,
-                          lead.permit_status
-                            ? PERMIT_LABEL[lead.permit_status] || lead.permit_status
-                            : null,
-                          lead.launch_timeline
-                            ? TIMELINE_LABEL[lead.launch_timeline] || lead.launch_timeline
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    </div>
-                  )}
+                <dl className="mt-5 rounded-xl bg-mrg-bg/70 px-4 py-1 ring-1 ring-white/5">
+                  <DetailRow label="Email">
+                    <a className="break-all hover:text-mrg-gold" href={`mailto:${lead.email}`}>
+                      {lead.email}
+                    </a>
+                  </DetailRow>
+                  <DetailRow label="Phone">
+                    <a className="hover:text-mrg-gold" href={`tel:${lead.phone}`}>
+                      {lead.phone}
+                    </a>
+                  </DetailRow>
+                  <DetailRow label="Property">{lead.address || "—"}</DetailRow>
+                  <DetailRow label="Call time">
+                    <span className="text-mrg-gold">
+                      {formatWhen(lead.call_start_iso, lead.call_booking)}
+                    </span>
+                  </DetailRow>
+                  {lead.has_listing === "yes" && lead.earnings ? (
+                    <DetailRow label="Stated earnings">{lead.earnings}</DetailRow>
+                  ) : null}
+                  {lead.property_stage ? (
+                    <DetailRow label="Stage">
+                      {STAGE_LABEL[lead.property_stage] || lead.property_stage}
+                    </DetailRow>
+                  ) : null}
+                  {lead.permit_status ? (
+                    <DetailRow label="STR permit">
+                      {PERMIT_LABEL[lead.permit_status] || lead.permit_status}
+                    </DetailRow>
+                  ) : null}
+                  {lead.launch_timeline ? (
+                    <DetailRow label="Launch timeline">
+                      {TIMELINE_LABEL[lead.launch_timeline] || lead.launch_timeline}
+                    </DetailRow>
+                  ) : null}
+                  {lead.has_listing === "no" &&
+                  !lead.property_stage &&
+                  !lead.permit_status &&
+                  !lead.launch_timeline ? (
+                    <DetailRow label="Qualifier">
+                      <span className="font-normal text-mrg-muted">
+                        Not answered yet — waiting on thank-you questions
+                      </span>
+                    </DetailRow>
+                  ) : null}
                 </dl>
 
                 <div className="mt-4 flex flex-wrap gap-2">
