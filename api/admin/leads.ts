@@ -7,15 +7,12 @@ import {
 import {
   LEAD_STATUSES,
   listLeads,
-  normalizeNextActions,
   updateLeadCrm,
   type LeadStatus,
-  type NeedsFrom,
 } from "../../shared/leadStore.js";
 import { isSupabaseConfigured } from "../../shared/supabase.js";
 
 const STATUS_SET = new Set<LeadStatus>(LEAD_STATUSES);
-const NEEDS_SET = new Set<NeedsFrom>(["none", "shane", "partner", "client"]);
 
 function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Unauthorized" });
@@ -62,12 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const id = String(body.id ?? "").trim();
     if (!id) return res.status(400).json({ error: "Missing lead id." });
 
-    const patch: {
-      status?: LeadStatus;
-      notes?: string;
-      nextActions?: ReturnType<typeof normalizeNextActions>;
-      needsFrom?: NeedsFrom;
-    } = {};
+    const patch: { status?: LeadStatus; notes?: string; whatsNext?: string } = {};
 
     if (body.status !== undefined) {
       const status = String(body.status).trim() as LeadStatus;
@@ -76,22 +68,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       patch.status = status;
     }
-
-    if (body.notes !== undefined) {
-      patch.notes = String(body.notes);
-    }
-
-    if (body.nextActions !== undefined) {
-      patch.nextActions = normalizeNextActions(body.nextActions);
-    }
-
-    if (body.needsFrom !== undefined) {
-      const needsFrom = String(body.needsFrom).trim() as NeedsFrom;
-      if (!NEEDS_SET.has(needsFrom)) {
-        return res.status(400).json({ error: "Invalid needsFrom." });
-      }
-      patch.needsFrom = needsFrom;
-    }
+    if (body.notes !== undefined) patch.notes = String(body.notes);
+    if (body.whatsNext !== undefined) patch.whatsNext = String(body.whatsNext);
 
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({ error: "Nothing to update." });

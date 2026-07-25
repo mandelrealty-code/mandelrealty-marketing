@@ -1,21 +1,9 @@
 import type { HasListing } from "./auditEmails.js";
-import {
-  normalizeNextActions,
-  type LeadStatus,
-  type NeedsFrom,
-  type NextAction,
-} from "./crmTypes.js";
+import { type LeadStatus } from "./crmTypes.js";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase.js";
 
-export type { LeadStatus, NeedsFrom, NextAction } from "./crmTypes.js";
-export {
-  LEAD_STATUSES,
-  STATUS_LABEL,
-  NEXT_ACTION_PRESETS,
-  NEEDS_FROM_LABEL,
-  normalizeNextActions,
-  openActionsForShane,
-} from "./crmTypes.js";
+export type { LeadStatus } from "./crmTypes.js";
+export { LEAD_STATUSES, STATUS_LABEL } from "./crmTypes.js";
 
 export type LeadRow = {
   id: string;
@@ -35,8 +23,7 @@ export type LeadRow = {
   launch_timeline: string | null;
   status: LeadStatus;
   notes: string;
-  next_actions: NextAction[];
-  needs_from: NeedsFrom;
+  whats_next: string;
   notes_updated_at: string | null;
   qualified_at: string | null;
 };
@@ -63,17 +50,10 @@ export type QualifierInput = {
 export type LeadCrmUpdate = {
   status?: LeadStatus;
   notes?: string;
-  nextActions?: NextAction[];
-  needsFrom?: NeedsFrom;
+  whatsNext?: string;
 };
 
 function mapLead(row: Record<string, unknown>): LeadRow {
-  const needs = String(row.needs_from ?? "none");
-  const needsFrom: NeedsFrom =
-    needs === "shane" || needs === "partner" || needs === "client" || needs === "none"
-      ? needs
-      : "none";
-
   return {
     id: String(row.id),
     created_at: String(row.created_at),
@@ -92,8 +72,7 @@ function mapLead(row: Record<string, unknown>): LeadRow {
     launch_timeline: (row.launch_timeline as string | null) ?? null,
     status: (row.status as LeadStatus) || "new",
     notes: String(row.notes ?? ""),
-    next_actions: normalizeNextActions(row.next_actions),
-    needs_from: needsFrom,
+    whats_next: String(row.whats_next ?? ""),
     notes_updated_at: (row.notes_updated_at as string | null) ?? null,
     qualified_at: (row.qualified_at as string | null) ?? null,
   };
@@ -128,8 +107,6 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
       source: input.source,
       marketing_opt_in: input.marketingOptIn,
       status: "new",
-      next_actions: [],
-      needs_from: "none",
     })
     .select("id")
     .single();
@@ -186,21 +163,6 @@ export async function listLeads(limit = 100): Promise<LeadRow[]> {
   return (data ?? []).map((row) => mapLead(row as Record<string, unknown>));
 }
 
-export async function updateLeadStatus(
-  leadId: string,
-  status: LeadStatus,
-): Promise<boolean> {
-  const sb = getSupabaseAdmin();
-  if (!sb) return false;
-
-  const { error } = await sb.from("leads").update({ status }).eq("id", leadId);
-  if (error) {
-    console.error("[leads] status update failed", error.message);
-    return false;
-  }
-  return true;
-}
-
 export async function updateLeadCrm(
   leadId: string,
   patch: LeadCrmUpdate,
@@ -214,8 +176,10 @@ export async function updateLeadCrm(
     update.notes = patch.notes;
     update.notes_updated_at = new Date().toISOString();
   }
-  if (patch.nextActions !== undefined) update.next_actions = patch.nextActions;
-  if (patch.needsFrom !== undefined) update.needs_from = patch.needsFrom;
+  if (patch.whatsNext !== undefined) {
+    update.whats_next = patch.whatsNext;
+    update.notes_updated_at = new Date().toISOString();
+  }
 
   if (Object.keys(update).length === 0) return null;
 

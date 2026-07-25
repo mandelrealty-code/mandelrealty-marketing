@@ -29,12 +29,10 @@ import { buildCallInviteIcs, isValidCallStartIso } from "./callSlots.js";
 import {
   insertLead,
   listLeads,
-  normalizeNextActions,
   updateLeadCrm,
   updateLeadQualifier,
   LEAD_STATUSES,
   type LeadStatus,
-  type NeedsFrom,
 } from "./leadStore.js";
 import { parseLeadRequestBody } from "./parseLeadRequest.js";
 import { isSupabaseConfigured } from "./supabase.js";
@@ -70,7 +68,6 @@ const STAGES = new Set(["own_ready", "buying", "researching"]);
 const PERMITS = new Set(["have", "applying", "unknown", "not_planning"]);
 const TIMELINES = new Set(["asap", "1_3_months", "later"]);
 const STATUS_SET = new Set<LeadStatus>(LEAD_STATUSES);
-const NEEDS_SET = new Set<NeedsFrom>(["none", "shane", "partner", "client"]);
 
 export async function handleDevApi(
   req: IncomingMessage,
@@ -303,12 +300,7 @@ export async function handleDevApi(
         json(res, 400, { error: "Missing lead id." });
         return true;
       }
-      const patch: {
-        status?: LeadStatus;
-        notes?: string;
-        nextActions?: ReturnType<typeof normalizeNextActions>;
-        needsFrom?: NeedsFrom;
-      } = {};
+      const patch: { status?: LeadStatus; notes?: string; whatsNext?: string } = {};
       if (body.status !== undefined) {
         const status = String(body.status).trim() as LeadStatus;
         if (!STATUS_SET.has(status)) {
@@ -318,17 +310,7 @@ export async function handleDevApi(
         patch.status = status;
       }
       if (body.notes !== undefined) patch.notes = String(body.notes);
-      if (body.nextActions !== undefined) {
-        patch.nextActions = normalizeNextActions(body.nextActions);
-      }
-      if (body.needsFrom !== undefined) {
-        const needsFrom = String(body.needsFrom).trim() as NeedsFrom;
-        if (!NEEDS_SET.has(needsFrom)) {
-          json(res, 400, { error: "Invalid needsFrom." });
-          return true;
-        }
-        patch.needsFrom = needsFrom;
-      }
+      if (body.whatsNext !== undefined) patch.whatsNext = String(body.whatsNext);
       if (Object.keys(patch).length === 0) {
         json(res, 400, { error: "Nothing to update." });
         return true;

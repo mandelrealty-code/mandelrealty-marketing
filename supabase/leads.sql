@@ -35,6 +35,7 @@ create table if not exists public.leads (
       'skip'
     )),
   notes text default '',
+  whats_next text not null default '',
   next_actions jsonb not null default '[]'::jsonb,
   needs_from text not null default 'none'
     check (needs_from in ('none', 'shane', 'partner', 'client')),
