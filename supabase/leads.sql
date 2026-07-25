@@ -1,5 +1,6 @@
 -- Run once in Supabase → SQL Editor
 -- Project: mandelrealty marketing leads inbox
+-- Then also run leads_crm_v2.sql if this file was applied before v2 fields existed.
 
 create extension if not exists "pgcrypto";
 
@@ -23,8 +24,21 @@ create table if not exists public.leads (
   launch_timeline text,
   -- Inbox workflow
   status text not null default 'new'
-    check (status in ('new', 'qualified', 'low_fit', 'contacted', 'done', 'skip')),
+    check (status in (
+      'new',
+      'qualified',
+      'low_fit',
+      'call_done',
+      'needs_shane',
+      'onboarding',
+      'won',
+      'skip'
+    )),
   notes text default '',
+  next_actions jsonb not null default '[]'::jsonb,
+  needs_from text not null default 'none'
+    check (needs_from in ('none', 'shane', 'partner', 'client')),
+  notes_updated_at timestamptz,
   qualified_at timestamptz
 );
 

@@ -4,20 +4,34 @@ import {
   isAdminConfigured,
   verifyAdminSessionToken,
 } from "../../shared/adminAuth.js";
-import { listLeads, updateLeadStatus, type LeadStatus } from "../../shared/leadStore.js";
+import {
+  LEAD_STATUSES,
+  listLeads,
+  normalizeNextActions,
+  updateLeadCrm,
+  type LeadStatus,
+  type NeedsFrom,
+} from "../../shared/leadStore.js";
 import { isSupabaseConfigured } from "../../shared/supabase.js";
 
-const STATUSES = new Set<LeadStatus>([
-  "new",
-  "qualified",
-  "low_fit",
-  "contacted",
-  "done",
-  "skip",
-]);
+const STATUS_SET = new Set<LeadStatus>(LEAD_STATUSES);
+const NEEDS_SET = new Set<NeedsFrom>(["none", "shane", "partner", "client"]);
 
 function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Unauthorized" });
+}
+
+function readBody(req: VercelRequest): Record<string, unknown> {
+  const raw = req.body;
+  if (raw == null) return {};
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  return raw as Record<string, unknown>;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -44,15 +58,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "PATCH") {
-    const body = (req.body ?? {}) as Record<string, unknown>;
+    const body = readBody(req);
     const id = String(body.id ?? "").trim();
-    const status = String(body.status ?? "").trim() as LeadStatus;
-    if (!id || !STATUSES.has(status)) {
-      return res.status(400).json({ error: "Invalid status update." });
+    if (!id) return res.status(400).json({ error: "Missing lead id." });
+
+    const patch: {
+      status?: LeadStatus;
+      notes?: string;
+      nextActions?: ReturnType<typeof normalizeNextActions>;
+      needsFrom?: NeedsFrom;
+    } = {};
+
+    if (body.status !== undefined) {
+      const status = String(body.status).trim() as LeadStatus;
+      if (!STATUS_SET.has(status)) {
+        return res.status(400).json({ error: "Invalid status." });
+      }
+      patch.status = status;
     }
-    const ok = await updateLeadStatus(id, status);
-    if (!ok) return res.status(500).json({ error: "Could not update lead." });
-    return res.status(200).json({ ok: true });
+
+    if (body.notes !== undefined) {
+      patch.notes = String(body.notes);
+    }
+
+    if (body.nextActions !== undefined) {
+      patch.nextActions = normalizeNextActions(body.nextActions);
+    }
+
+    if (body.needsFrom !== undefined) {
+      const needsFrom = String(body.needsFrom).trim() as NeedsFrom;
+      if (!NEEDS_SET.has(needsFrom)) {
+        return res.status(400).json({ error: "Invalid needsFrom." });
+      }
+      patch.needsFrom = needsFrom;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: "Nothing to update." });
+    }
+
+    const updated = await updateLeadCrm(id, patch);
+    if (!updated) return res.status(500).json({ error: "Could not update lead." });
+    return res.status(200).json({ ok: true, lead: updated });
   }
 
   return res.status(405).json({ error: "Method not allowed" });

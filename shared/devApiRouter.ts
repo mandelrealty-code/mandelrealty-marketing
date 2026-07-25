@@ -29,9 +29,12 @@ import { buildCallInviteIcs, isValidCallStartIso } from "./callSlots.js";
 import {
   insertLead,
   listLeads,
+  normalizeNextActions,
+  updateLeadCrm,
   updateLeadQualifier,
-  updateLeadStatus,
+  LEAD_STATUSES,
   type LeadStatus,
+  type NeedsFrom,
 } from "./leadStore.js";
 import { parseLeadRequestBody } from "./parseLeadRequest.js";
 import { isSupabaseConfigured } from "./supabase.js";
@@ -66,14 +69,8 @@ function json(res: ServerResponse, status: number, body: object, extraHeaders?: 
 const STAGES = new Set(["own_ready", "buying", "researching"]);
 const PERMITS = new Set(["have", "applying", "unknown", "not_planning"]);
 const TIMELINES = new Set(["asap", "1_3_months", "later"]);
-const STATUSES = new Set<LeadStatus>([
-  "new",
-  "qualified",
-  "low_fit",
-  "contacted",
-  "done",
-  "skip",
-]);
+const STATUS_SET = new Set<LeadStatus>(LEAD_STATUSES);
+const NEEDS_SET = new Set<NeedsFrom>(["none", "shane", "partner", "client"]);
 
 export async function handleDevApi(
   req: IncomingMessage,
@@ -302,13 +299,46 @@ export async function handleDevApi(
     if (method === "PATCH") {
       const body = await readJsonBody(req);
       const id = String(body.id ?? "").trim();
-      const status = String(body.status ?? "").trim() as LeadStatus;
-      if (!id || !STATUSES.has(status)) {
-        json(res, 400, { error: "Invalid status update." });
+      if (!id) {
+        json(res, 400, { error: "Missing lead id." });
         return true;
       }
-      const ok = await updateLeadStatus(id, status);
-      json(res, ok ? 200 : 500, ok ? { ok: true } : { error: "Could not update lead." });
+      const patch: {
+        status?: LeadStatus;
+        notes?: string;
+        nextActions?: ReturnType<typeof normalizeNextActions>;
+        needsFrom?: NeedsFrom;
+      } = {};
+      if (body.status !== undefined) {
+        const status = String(body.status).trim() as LeadStatus;
+        if (!STATUS_SET.has(status)) {
+          json(res, 400, { error: "Invalid status." });
+          return true;
+        }
+        patch.status = status;
+      }
+      if (body.notes !== undefined) patch.notes = String(body.notes);
+      if (body.nextActions !== undefined) {
+        patch.nextActions = normalizeNextActions(body.nextActions);
+      }
+      if (body.needsFrom !== undefined) {
+        const needsFrom = String(body.needsFrom).trim() as NeedsFrom;
+        if (!NEEDS_SET.has(needsFrom)) {
+          json(res, 400, { error: "Invalid needsFrom." });
+          return true;
+        }
+        patch.needsFrom = needsFrom;
+      }
+      if (Object.keys(patch).length === 0) {
+        json(res, 400, { error: "Nothing to update." });
+        return true;
+      }
+      const updated = await updateLeadCrm(id, patch);
+      json(
+        res,
+        updated ? 200 : 500,
+        updated ? { ok: true, lead: updated } : { error: "Could not update lead." },
+      );
       return true;
     }
     json(res, 405, { error: "Method not allowed" });

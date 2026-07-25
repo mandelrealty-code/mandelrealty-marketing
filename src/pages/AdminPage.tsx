@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-
-type LeadStatus = "new" | "qualified" | "low_fit" | "contacted" | "done" | "skip";
+import {
+  LEAD_STATUSES,
+  NEEDS_FROM_LABEL,
+  NEXT_ACTION_PRESETS,
+  STATUS_LABEL,
+  openActionsForShane,
+  type LeadStatus,
+  type NeedsFrom,
+  type NextAction,
+} from "../../shared/crmTypes";
 
 type Lead = {
   id: string;
@@ -18,15 +26,10 @@ type Lead = {
   permit_status: string | null;
   launch_timeline: string | null;
   status: LeadStatus;
-};
-
-const STATUS_LABEL: Record<LeadStatus, string> = {
-  new: "New",
-  qualified: "Qualified",
-  low_fit: "Low fit",
-  contacted: "Contacted",
-  done: "Done",
-  skip: "Skip",
+  notes: string;
+  next_actions: NextAction[];
+  needs_from: NeedsFrom;
+  notes_updated_at: string | null;
 };
 
 const STAGE_LABEL: Record<string, string> = {
@@ -48,26 +51,25 @@ const TIMELINE_LABEL: Record<string, string> = {
   later: "3+ months / just curious",
 };
 
-const FILTERS: Array<LeadStatus | "all"> = [
+const FILTERS: Array<LeadStatus | "all" | "shane_queue"> = [
   "all",
-  "new",
-  "qualified",
-  "low_fit",
-  "contacted",
-  "done",
-  "skip",
+  "shane_queue",
+  ...LEAD_STATUSES,
 ];
 
 function statusTone(status: LeadStatus): string {
   switch (status) {
     case "qualified":
+    case "onboarding":
       return "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30";
+    case "needs_shane":
+      return "bg-mrg-gold/20 text-mrg-gold ring-mrg-gold/40";
     case "low_fit":
     case "skip":
       return "bg-red-500/15 text-red-300 ring-red-500/30";
-    case "contacted":
+    case "call_done":
       return "bg-sky-500/15 text-sky-300 ring-sky-500/30";
-    case "done":
+    case "won":
       return "bg-white/10 text-mrg-muted ring-white/15";
     default:
       return "bg-mrg-gold/15 text-mrg-gold ring-mrg-gold/30";
@@ -97,18 +99,312 @@ function listingLabel(hasListing: Lead["has_listing"]): string {
   return "Airbnb listing unknown";
 }
 
-function DetailRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-[7.5rem_1fr] gap-3 border-b border-white/8 py-2.5 last:border-b-0 sm:grid-cols-[9rem_1fr]">
       <dt className="text-sm text-mrg-muted">{label}</dt>
       <dd className="min-w-0 text-sm font-medium text-mrg-text">{children}</dd>
     </div>
+  );
+}
+
+function LeadCard({
+  lead,
+  onUpdated,
+}: {
+  lead: Lead;
+  onUpdated: (lead: Lead) => void;
+}) {
+  const [notes, setNotes] = useState(lead.notes || "");
+  const [needsFrom, setNeedsFrom] = useState<NeedsFrom>(lead.needs_from || "none");
+  const [actions, setActions] = useState<NextAction[]>(lead.next_actions || []);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setNotes(lead.notes || "");
+    setNeedsFrom(lead.needs_from || "none");
+    setActions(lead.next_actions || []);
+  }, [lead.id, lead.notes, lead.needs_from, lead.next_actions]);
+
+  const activeIds = useMemo(() => new Set(actions.map((a) => a.id)), [actions]);
+  const shaneOpen = openActionsForShane(actions);
+
+  const patchLead = async (body: Record<string, unknown>) => {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const res = await fetch("/api/admin/leads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: lead.id, ...body }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        lead?: Lead;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      if (data.lead) onUpdated(data.lead);
+      setSaveMsg("Saved");
+      setTimeout(() => setSaveMsg(null), 1500);
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setStatus = (status: LeadStatus) => patchLead({ status });
+
+  const toggleNeeded = (preset: (typeof NEXT_ACTION_PRESETS)[number]) => {
+    const exists = actions.find((a) => a.id === preset.id);
+    let next: NextAction[];
+    if (exists) {
+      next = actions.filter((a) => a.id !== preset.id);
+    } else {
+      next = [...actions, { id: preset.id, label: preset.label, owner: preset.owner, done: false }];
+    }
+    setActions(next);
+    void patchLead({ nextActions: next });
+  };
+
+  const toggleDone = (id: string) => {
+    const next = actions.map((a) => (a.id === id ? { ...a, done: !a.done } : a));
+    setActions(next);
+    void patchLead({ nextActions: next });
+  };
+
+  const saveNotes = () =>
+    patchLead({
+      notes,
+      needsFrom,
+      nextActions: actions,
+    });
+
+  return (
+    <article className="rounded-2xl bg-mrg-surface p-5 ring-1 ring-white/8 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mrg-gold">
+            {lead.has_listing === "no" &&
+            (lead.property_stage || lead.permit_status || lead.launch_timeline)
+              ? "Lead qualifier"
+              : "New call booking"}
+          </p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <h2 className="text-xl font-semibold text-mrg-text">{lead.name}</h2>
+            <span className="text-mrg-muted">·</span>
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${statusTone(lead.status)}`}
+            >
+              {STATUS_LABEL[lead.status] ?? lead.status}
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-mrg-muted">{listingLabel(lead.has_listing)}</p>
+          {shaneOpen.length > 0 && (
+            <p className="mt-2 text-sm font-medium text-mrg-gold">
+              Shane to-do: {shaneOpen.map((a) => a.label).join(" · ")}
+            </p>
+          )}
+        </div>
+        <p className="text-xs text-mrg-muted">
+          Submitted{" "}
+          {new Date(lead.created_at).toLocaleString("en-CA", {
+            timeZone: "America/Toronto",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })}
+        </p>
+      </div>
+
+      <dl className="mt-5 rounded-xl bg-mrg-bg/70 px-4 py-1 ring-1 ring-white/5">
+        <DetailRow label="Email">
+          <a className="break-all hover:text-mrg-gold" href={`mailto:${lead.email}`}>
+            {lead.email}
+          </a>
+        </DetailRow>
+        <DetailRow label="Phone">
+          <a className="hover:text-mrg-gold" href={`tel:${lead.phone}`}>
+            {lead.phone}
+          </a>
+        </DetailRow>
+        <DetailRow label="Property">{lead.address || "—"}</DetailRow>
+        <DetailRow label="Call time">
+          <span className="text-mrg-gold">
+            {formatWhen(lead.call_start_iso, lead.call_booking)}
+          </span>
+        </DetailRow>
+        {lead.has_listing === "yes" && lead.earnings ? (
+          <DetailRow label="Stated earnings">{lead.earnings}</DetailRow>
+        ) : null}
+        {lead.property_stage ? (
+          <DetailRow label="Stage">
+            {STAGE_LABEL[lead.property_stage] || lead.property_stage}
+          </DetailRow>
+        ) : null}
+        {lead.permit_status ? (
+          <DetailRow label="STR permit">
+            {PERMIT_LABEL[lead.permit_status] || lead.permit_status}
+          </DetailRow>
+        ) : null}
+        {lead.launch_timeline ? (
+          <DetailRow label="Launch timeline">
+            {TIMELINE_LABEL[lead.launch_timeline] || lead.launch_timeline}
+          </DetailRow>
+        ) : null}
+      </dl>
+
+      {/* Pipeline */}
+      <div className="mt-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+          Pipeline stage
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {LEAD_STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              disabled={saving || lead.status === s}
+              onClick={() => setStatus(s)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-40 ${
+                lead.status === s
+                  ? "bg-mrg-gold text-black"
+                  : "bg-white/5 text-mrg-muted ring-1 ring-white/10 hover:text-mrg-text"
+              }`}
+            >
+              {STATUS_LABEL[s]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Who acts next */}
+      <div className="mt-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+          Needs action from
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(Object.keys(NEEDS_FROM_LABEL) as NeedsFrom[]).map((n) => (
+            <button
+              key={n}
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setNeedsFrom(n);
+                void patchLead({ needsFrom: n });
+              }}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                needsFrom === n
+                  ? "bg-mrg-gold text-black"
+                  : "bg-white/5 text-mrg-muted ring-1 ring-white/10 hover:text-mrg-text"
+              }`}
+            >
+              {NEEDS_FROM_LABEL[n]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Next steps checklist */}
+      <div className="mt-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+          Next steps after the call
+        </p>
+        <p className="mt-1 text-xs text-mrg-muted">
+          Tap to mark needed. Check off when done. Shane’s open items show at the top.
+        </p>
+        <ul className="mt-3 space-y-2">
+          {NEXT_ACTION_PRESETS.map((preset) => {
+            const active = activeIds.has(preset.id);
+            const row = actions.find((a) => a.id === preset.id);
+            const done = Boolean(row?.done);
+            return (
+              <li
+                key={preset.id}
+                className={`flex flex-wrap items-center gap-2 rounded-xl px-3 py-2.5 ring-1 ${
+                  active
+                    ? "bg-mrg-bg/80 ring-mrg-gold/25"
+                    : "bg-transparent ring-white/8 opacity-70"
+                }`}
+              >
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => toggleNeeded(preset)}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                    active ? "bg-mrg-gold text-black" : "bg-white/5 text-mrg-muted"
+                  }`}
+                >
+                  {active ? "Needed" : "Add"}
+                </button>
+                <span
+                  className={`flex-1 text-sm ${done ? "text-mrg-muted line-through" : "text-mrg-text"}`}
+                >
+                  {preset.label}
+                  <span className="ml-2 text-[11px] text-mrg-muted">
+                    → {preset.owner === "shane" ? "Shane" : preset.owner === "partner" ? "Partner" : "Client"}
+                  </span>
+                </span>
+                {active && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => toggleDone(preset.id)}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                      done
+                        ? "bg-emerald-500/20 text-emerald-300"
+                        : "bg-white/5 text-mrg-muted ring-1 ring-white/10"
+                    }`}
+                  >
+                    {done ? "Done" : "Mark done"}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      {/* Call notes */}
+      <div className="mt-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+          Call notes
+        </p>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={4}
+          placeholder="What happened on the call? What should Shane do next?"
+          className="mt-2 w-full resize-y rounded-2xl bg-mrg-bg px-4 py-3 text-sm text-mrg-text outline-none ring-1 ring-white/10 placeholder:text-mrg-muted/50 focus:ring-mrg-gold/40"
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={saveNotes}
+            className="rounded-full bg-mrg-gold px-5 py-2.5 text-sm font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-60"
+          >
+            {saving ? "Saving…" : "Save notes"}
+          </button>
+          {saveMsg && <span className="text-xs text-mrg-muted">{saveMsg}</span>}
+          {lead.notes_updated_at && (
+            <span className="text-xs text-mrg-muted">
+              Last notes{" "}
+              {new Date(lead.notes_updated_at).toLocaleString("en-CA", {
+                timeZone: "America/Toronto",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </span>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -119,8 +415,7 @@ export function AdminPage() {
   const [loggingIn, setLoggingIn] = useState(false);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<LeadStatus | "all">("all");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
 
   const loadLeads = useCallback(async () => {
     setLoadError(null);
@@ -135,7 +430,14 @@ export function AdminPage() {
       setAuthed(true);
       return;
     }
-    setLeads(data.leads ?? []);
+    setLeads(
+      (data.leads ?? []).map((l) => ({
+        ...l,
+        notes: l.notes ?? "",
+        next_actions: l.next_actions ?? [],
+        needs_from: l.needs_from ?? "none",
+      })),
+    );
     setAuthed(true);
   }, []);
 
@@ -154,6 +456,14 @@ export function AdminPage() {
 
   const filtered = useMemo(() => {
     if (filter === "all") return leads;
+    if (filter === "shane_queue") {
+      return leads.filter(
+        (l) =>
+          l.needs_from === "shane" ||
+          l.status === "needs_shane" ||
+          openActionsForShane(l.next_actions || []).length > 0,
+      );
+    }
     return leads.filter((l) => l.status === filter);
   }, [leads, filter]);
 
@@ -186,26 +496,6 @@ export function AdminPage() {
     await fetch("/api/admin/logout", { method: "POST", credentials: "include" });
     setAuthed(false);
     setLeads([]);
-  };
-
-  const setStatus = async (id: string, status: LeadStatus) => {
-    setBusyId(id);
-    try {
-      const res = await fetch("/api/admin/leads", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ id, status }),
-      });
-      if (res.status === 401) {
-        setAuthed(false);
-        return;
-      }
-      if (!res.ok) return;
-      setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status } : l)));
-    } finally {
-      setBusyId(null);
-    }
   };
 
   if (authed === null) {
@@ -293,18 +583,17 @@ export function AdminPage() {
               key={f}
               type="button"
               onClick={() => setFilter(f)}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold capitalize transition-colors ${
+              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
                 filter === f
                   ? "bg-mrg-gold text-black"
                   : "bg-white/5 text-mrg-muted hover:text-mrg-text"
               }`}
             >
-              {f === "all" ? "All" : STATUS_LABEL[f]}
-              {f !== "all" && (
-                <span className="ml-1.5 opacity-70">
-                  {leads.filter((l) => l.status === f).length}
-                </span>
-              )}
+              {f === "all"
+                ? "All"
+                : f === "shane_queue"
+                  ? "Shane’s queue"
+                  : STATUS_LABEL[f]}
             </button>
           ))}
         </div>
@@ -315,113 +604,20 @@ export function AdminPage() {
           </p>
         )}
 
-        <div className="mt-6 space-y-3">
+        <div className="mt-6 space-y-4">
           {filtered.length === 0 ? (
             <p className="rounded-2xl bg-mrg-surface px-5 py-10 text-center text-sm text-mrg-muted ring-1 ring-white/8">
               No leads in this view yet.
             </p>
           ) : (
             filtered.map((lead) => (
-              <article
+              <LeadCard
                 key={lead.id}
-                className="rounded-2xl bg-mrg-surface p-5 ring-1 ring-white/8 sm:p-6"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mrg-gold">
-                      {lead.has_listing === "no" &&
-                      (lead.property_stage || lead.permit_status || lead.launch_timeline)
-                        ? "Lead qualifier"
-                        : "New call booking"}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                      <h2 className="text-xl font-semibold text-mrg-text">{lead.name}</h2>
-                      <span className="text-mrg-muted">·</span>
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${statusTone(lead.status)}`}
-                      >
-                        {STATUS_LABEL[lead.status]}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm text-mrg-muted">{listingLabel(lead.has_listing)}</p>
-                  </div>
-                  <p className="text-xs text-mrg-muted">
-                    Submitted{" "}
-                    {new Date(lead.created_at).toLocaleString("en-CA", {
-                      timeZone: "America/Toronto",
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-
-                <dl className="mt-5 rounded-xl bg-mrg-bg/70 px-4 py-1 ring-1 ring-white/5">
-                  <DetailRow label="Email">
-                    <a className="break-all hover:text-mrg-gold" href={`mailto:${lead.email}`}>
-                      {lead.email}
-                    </a>
-                  </DetailRow>
-                  <DetailRow label="Phone">
-                    <a className="hover:text-mrg-gold" href={`tel:${lead.phone}`}>
-                      {lead.phone}
-                    </a>
-                  </DetailRow>
-                  <DetailRow label="Property">{lead.address || "—"}</DetailRow>
-                  <DetailRow label="Call time">
-                    <span className="text-mrg-gold">
-                      {formatWhen(lead.call_start_iso, lead.call_booking)}
-                    </span>
-                  </DetailRow>
-                  {lead.has_listing === "yes" && lead.earnings ? (
-                    <DetailRow label="Stated earnings">{lead.earnings}</DetailRow>
-                  ) : null}
-                  {lead.property_stage ? (
-                    <DetailRow label="Stage">
-                      {STAGE_LABEL[lead.property_stage] || lead.property_stage}
-                    </DetailRow>
-                  ) : null}
-                  {lead.permit_status ? (
-                    <DetailRow label="STR permit">
-                      {PERMIT_LABEL[lead.permit_status] || lead.permit_status}
-                    </DetailRow>
-                  ) : null}
-                  {lead.launch_timeline ? (
-                    <DetailRow label="Launch timeline">
-                      {TIMELINE_LABEL[lead.launch_timeline] || lead.launch_timeline}
-                    </DetailRow>
-                  ) : null}
-                  {lead.has_listing === "no" &&
-                  !lead.property_stage &&
-                  !lead.permit_status &&
-                  !lead.launch_timeline ? (
-                    <DetailRow label="Qualifier">
-                      <span className="font-normal text-mrg-muted">
-                        Not answered yet — waiting on thank-you questions
-                      </span>
-                    </DetailRow>
-                  ) : null}
-                </dl>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {(Object.keys(STATUS_LABEL) as LeadStatus[]).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      disabled={busyId === lead.id || lead.status === s}
-                      onClick={() => setStatus(lead.id, s)}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-40 ${
-                        lead.status === s
-                          ? "bg-mrg-gold text-black"
-                          : "bg-white/5 text-mrg-muted ring-1 ring-white/10 hover:text-mrg-text"
-                      }`}
-                    >
-                      {STATUS_LABEL[s]}
-                    </button>
-                  ))}
-                </div>
-              </article>
+                lead={lead}
+                onUpdated={(updated) =>
+                  setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
+                }
+              />
             ))
           )}
         </div>
