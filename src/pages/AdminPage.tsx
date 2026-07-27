@@ -26,7 +26,7 @@ type Lead = {
 };
 
 const STAGE_LABEL: Record<string, string> = {
-  own_ready: "Owns property — ready to start",
+  own_ready: "Owns property - ready to start",
   buying: "Buying / renovating soon",
   researching: "Just researching (no property yet)",
 };
@@ -34,13 +34,13 @@ const STAGE_LABEL: Record<string, string> = {
 const PERMIT_LABEL: Record<string, string> = {
   have: "Has STR permit",
   applying: "Applying / will apply",
-  unknown: "Doesn’t know if needed",
+  unknown: "Does not know if needed",
   not_planning: "Not planning to get one",
 };
 
 const TIMELINE_LABEL: Record<string, string> = {
   asap: "ASAP",
-  "1_3_months": "1–3 months",
+  "1_3_months": "1-3 months",
   later: "3+ months / just curious",
 };
 
@@ -65,7 +65,7 @@ function statusTone(status: LeadStatus): string {
 
 function formatWhen(iso: string | null, label: string): string {
   if (label) return label;
-  if (!iso) return "—";
+  if (!iso) return "-";
   try {
     return new Date(iso).toLocaleString("en-CA", {
       timeZone: "America/Toronto",
@@ -302,7 +302,6 @@ export function AdminPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-5 py-6">
-        {/* List view */}
         {!selected && (
           <>
             <div className="flex flex-wrap gap-2">
@@ -384,7 +383,6 @@ export function AdminPage() {
           </>
         )}
 
-        {/* Detail view */}
         {selected && (
           <div>
             <button
