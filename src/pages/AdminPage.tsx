@@ -13,11 +13,13 @@ type Lead = {
   phone: string;
   address: string;
   earnings: string;
+  listing_title: string;
   has_listing: "yes" | "no" | "unknown";
   call_start_iso: string | null;
   call_booking: string;
   property_stage: string | null;
   permit_status: string | null;
+  str_allowed: string | null;
   launch_timeline: string | null;
   status: LeadStatus;
   notes: string;
@@ -36,6 +38,12 @@ const PERMIT_LABEL: Record<string, string> = {
   applying: "Applying / will apply",
   unknown: "Does not know if needed",
   not_planning: "Not planning to get one",
+};
+
+const STR_ALLOWED_LABEL: Record<string, string> = {
+  yes: "STR allowed",
+  no: "STR not allowed",
+  unsure: "STR unsure",
 };
 
 const TIMELINE_LABEL: Record<string, string> = {
@@ -434,6 +442,9 @@ export function AdminPage() {
                     </span>
                   }
                 />
+                {selected.has_listing === "yes" && selected.listing_title ? (
+                  <Row label="Listing title" value={selected.listing_title} />
+                ) : null}
                 {selected.has_listing === "yes" && selected.earnings ? (
                   <Row label="Earnings" value={selected.earnings} />
                 ) : null}
@@ -441,6 +452,12 @@ export function AdminPage() {
                   <Row
                     label="Stage"
                     value={STAGE_LABEL[selected.property_stage] || selected.property_stage}
+                  />
+                ) : null}
+                {selected.str_allowed ? (
+                  <Row
+                    label="STR allowed"
+                    value={STR_ALLOWED_LABEL[selected.str_allowed] || selected.str_allowed}
                   />
                 ) : null}
                 {selected.permit_status ? (

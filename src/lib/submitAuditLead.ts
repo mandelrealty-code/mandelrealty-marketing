@@ -6,6 +6,7 @@ export type AuditLeadPayload = {
   phone: string;
   address: string;
   earnings: string;
+  listingTitle?: string;
   hasListing: "yes" | "no" | "unknown";
   /** Display label e.g. "Thu Jul 24 · 2:00 PM ET" */
   callBooking: string;
@@ -14,6 +15,10 @@ export type AuditLeadPayload = {
   source: string;
   contactConsent: boolean;
   marketingOptIn: boolean;
+  propertyStage?: string;
+  permitStatus?: string;
+  strAllowed?: string;
+  launchTimeline?: string;
 };
 
 export type AuditLeadResult = {

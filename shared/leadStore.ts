@@ -13,6 +13,7 @@ export type LeadRow = {
   phone: string;
   address: string;
   earnings: string;
+  listing_title: string;
   has_listing: HasListing;
   call_start_iso: string | null;
   call_booking: string;
@@ -20,6 +21,7 @@ export type LeadRow = {
   marketing_opt_in: boolean;
   property_stage: string | null;
   permit_status: string | null;
+  str_allowed: string | null;
   launch_timeline: string | null;
   status: LeadStatus;
   notes: string;
@@ -34,17 +36,23 @@ export type InsertLeadInput = {
   phone: string;
   address: string;
   earnings: string;
+  listingTitle?: string;
   hasListing: HasListing;
   callStartIso: string;
   callBooking: string;
   source: string;
   marketingOptIn: boolean;
+  propertyStage?: string | null;
+  permitStatus?: string | null;
+  strAllowed?: string | null;
+  launchTimeline?: string | null;
 };
 
 export type QualifierInput = {
   propertyStage: string;
   permitStatus: string;
-  launchTimeline: string;
+  launchTimeline?: string;
+  strAllowed?: string;
 };
 
 export type LeadCrmUpdate = {
@@ -62,6 +70,7 @@ function mapLead(row: Record<string, unknown>): LeadRow {
     phone: String(row.phone ?? ""),
     address: String(row.address ?? ""),
     earnings: String(row.earnings ?? ""),
+    listing_title: String(row.listing_title ?? ""),
     has_listing: (row.has_listing as LeadRow["has_listing"]) || "unknown",
     call_start_iso: (row.call_start_iso as string | null) ?? null,
     call_booking: String(row.call_booking ?? ""),
@@ -69,6 +78,7 @@ function mapLead(row: Record<string, unknown>): LeadRow {
     marketing_opt_in: Boolean(row.marketing_opt_in),
     property_stage: (row.property_stage as string | null) ?? null,
     permit_status: (row.permit_status as string | null) ?? null,
+    str_allowed: (row.str_allowed as string | null) ?? null,
     launch_timeline: (row.launch_timeline as string | null) ?? null,
     status: (row.status as LeadStatus) || "new",
     notes: String(row.notes ?? ""),
@@ -82,6 +92,7 @@ export function suggestStatusFromQualifier(q: QualifierInput): LeadStatus {
   if (
     q.propertyStage === "researching" ||
     q.permitStatus === "not_planning" ||
+    q.strAllowed === "no" ||
     q.launchTimeline === "later"
   ) {
     return "low_fit";
@@ -93,6 +104,19 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
   const sb = getSupabaseAdmin();
   if (!sb) return null;
 
+  const hasNoQualifier =
+    input.hasListing === "no" &&
+    Boolean(input.propertyStage && input.permitStatus && input.strAllowed);
+
+  const status = hasNoQualifier
+    ? suggestStatusFromQualifier({
+        propertyStage: input.propertyStage!,
+        permitStatus: input.permitStatus!,
+        strAllowed: input.strAllowed || undefined,
+        launchTimeline: input.launchTimeline || undefined,
+      })
+    : "new";
+
   const { data, error } = await sb
     .from("leads")
     .insert({
@@ -101,12 +125,18 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
       phone: input.phone,
       address: input.address,
       earnings: input.earnings,
+      listing_title: input.listingTitle ?? "",
       has_listing: input.hasListing,
       call_start_iso: input.callStartIso || null,
       call_booking: input.callBooking,
       source: input.source,
       marketing_opt_in: input.marketingOptIn,
-      status: "new",
+      property_stage: input.propertyStage ?? null,
+      permit_status: input.permitStatus ?? null,
+      str_allowed: input.strAllowed ?? null,
+      launch_timeline: input.launchTimeline ?? null,
+      status,
+      qualified_at: hasNoQualifier ? new Date().toISOString() : null,
     })
     .select("id")
     .single();
@@ -131,7 +161,8 @@ export async function updateLeadQualifier(
     .update({
       property_stage: q.propertyStage,
       permit_status: q.permitStatus,
-      launch_timeline: q.launchTimeline,
+      launch_timeline: q.launchTimeline ?? null,
+      str_allowed: q.strAllowed ?? null,
       status,
       qualified_at: new Date().toISOString(),
     })

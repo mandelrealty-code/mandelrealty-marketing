@@ -1,4 +1,9 @@
 import { formatCallSlotLabel } from "./callSlots.js";
+import {
+  PERMIT_LABEL,
+  STAGE_LABEL,
+  STR_ALLOWED_LABEL,
+} from "./qualifierOptions.js";
 
 export const LEAD_INBOX = "info@mandelrealtygroup.com";
 export const PHONE_DISPLAY = "647-381-7325";
@@ -26,6 +31,7 @@ export type LeadEmailInput = {
   phone: string;
   address: string;
   earnings: string;
+  listingTitle?: string;
   hasListing: HasListing;
   /** Display label e.g. "Thu Jul 24 · 2:00 PM ET" */
   callBooking: string;
@@ -33,6 +39,10 @@ export type LeadEmailInput = {
   callStartIso: string;
   source: string;
   marketingOptIn: boolean;
+  propertyStage?: string | null;
+  permitStatus?: string | null;
+  strAllowed?: string | null;
+  launchTimeline?: string | null;
 };
 
 export function normalizeHasListing(value: unknown): HasListing {
@@ -107,8 +117,37 @@ export function buildLeadNotificationHtml(input: LeadEmailInput): string {
                   ${row("Email", input.email)}
                   ${row("Phone (call this)", input.phone)}
                   ${row("Has listing", listingLabel(input.hasListing))}
-                  ${row("Property", input.address || "—")}
+                  ${
+                    input.hasListing === "yes"
+                      ? row("Listing title", input.listingTitle || "—")
+                      : ""
+                  }
+                  ${row("Property address", input.address || "—")}
                   ${row("Stated earnings", earnings)}
+                  ${
+                    input.hasListing === "no"
+                      ? [
+                          row(
+                            "Stage",
+                            (input.propertyStage && STAGE_LABEL[input.propertyStage]) ||
+                              input.propertyStage ||
+                              "—",
+                          ),
+                          row(
+                            "STR allowed",
+                            (input.strAllowed && STR_ALLOWED_LABEL[input.strAllowed]) ||
+                              input.strAllowed ||
+                              "—",
+                          ),
+                          row(
+                            "Permit",
+                            (input.permitStatus && PERMIT_LABEL[input.permitStatus]) ||
+                              input.permitStatus ||
+                              "—",
+                          ),
+                        ].join("")
+                      : ""
+                  }
                   ${row("Call time", when)}
                   ${row("Marketing", input.marketingOptIn ? "Opted in" : "Not opted in")}
                   ${row("Source", input.source || "—")}
@@ -146,13 +185,8 @@ export function buildCustomerConfirmationHtml(input: LeadEmailInput): string {
                   <tr>
                     <td style="padding:18px 20px;color:#f0f4fa;font-size:15px;line-height:1.55;">
                       <strong style="color:#c9a84c;">Prepare for your call</strong><br /><br />
-                      Reply to <strong>this email</strong> with your Airbnb listing link so we can pull real comps before we talk.
-                      <br /><br />
-                      <strong style="color:#f0f4fa;">How to grab the link</strong><br />
-                      1. Open your listing on Airbnb (app or browser)<br />
-                      2. Copy the URL from the address bar<br />
-                      &nbsp;&nbsp;&nbsp;(looks like airbnb.com/rooms/12345678)<br />
-                      3. Paste it in a reply to this email
+                      We’ll look up your listing from the title and area you shared before we call.
+                      If you want to send the Airbnb link anyway, just reply to this email.
                     </td>
                   </tr>
                 </table>

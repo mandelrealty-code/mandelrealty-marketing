@@ -18,10 +18,13 @@ create table if not exists public.leads (
   call_booking text default '',
   source text default '',
   marketing_opt_in boolean not null default false,
-  -- Post-book qualifier (mainly for no-listing leads)
+  -- Qualifiers (collected on Instant Form + website funnel)
   property_stage text,
   permit_status text,
   launch_timeline text,
+  listing_title text not null default '',
+  str_allowed text
+    check (str_allowed is null or str_allowed in ('yes', 'no', 'unsure')),
   -- Inbox workflow
   status text not null default 'new'
     check (status in (

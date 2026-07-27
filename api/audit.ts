@@ -108,11 +108,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     phone: lead.phone,
     address: lead.address,
     earnings: lead.earnings,
+    listingTitle: lead.listingTitle,
     hasListing: lead.hasListing,
     callStartIso: lead.callStartIso,
     callBooking: lead.callBooking,
     source: lead.source,
     marketingOptIn: lead.marketingOptIn,
+    propertyStage: lead.propertyStage,
+    permitStatus: lead.permitStatus,
+    strAllowed: lead.strAllowed,
+    launchTimeline: lead.launchTimeline,
   });
 
   return res.status(200).json({

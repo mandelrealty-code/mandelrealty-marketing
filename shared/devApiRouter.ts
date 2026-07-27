@@ -172,11 +172,16 @@ export async function handleDevApi(
         phone: lead.phone,
         address: lead.address,
         earnings: lead.earnings,
+        listingTitle: lead.listingTitle,
         hasListing: lead.hasListing,
         callStartIso: lead.callStartIso,
         callBooking: lead.callBooking,
         source: lead.source,
         marketingOptIn: lead.marketingOptIn,
+        propertyStage: lead.propertyStage,
+        permitStatus: lead.permitStatus,
+        strAllowed: lead.strAllowed,
+        launchTimeline: lead.launchTimeline,
       });
 
       json(res, 200, { ok: true, leadId, hasListing: lead.hasListing });

@@ -240,10 +240,10 @@ export function FitCheckSection() {
             {step === 1 && (
               <div>
                 <h3 className="text-center text-xl font-semibold tracking-tight text-mrg-text sm:text-2xl">
-                  {hasListing === "yes" ? "Where’s the property?" : "Where will it be?"}
+                  What&apos;s the property address?
                 </h3>
                 <p className="mt-2 text-center text-sm text-mrg-muted">
-                  City or neighbourhood is enough for now.
+                  Street address and city — so we can prepare for the call.
                 </p>
 
                 <div className="mt-8">
@@ -251,9 +251,9 @@ export function FitCheckSection() {
                     type="text"
                     value={form.address}
                     onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                    placeholder="e.g. Downtown Toronto"
+                    placeholder="e.g. 123 King St W, Toronto"
                     className={inputClass}
-                    autoComplete="address-level2"
+                    autoComplete="street-address"
                   />
                 </div>
 
@@ -266,7 +266,7 @@ export function FitCheckSection() {
 
                 {hasListing === "no" && (
                   <p className="mt-6 rounded-2xl bg-mrg-bg/80 px-4 py-3 text-center text-sm text-mrg-muted ring-1 ring-white/8">
-                    No listing yet is fine — tell us the location and we&apos;ll still take a look.
+                    No listing yet is fine — share the address and we&apos;ll still take a look.
                   </p>
                 )}
 
