@@ -69,13 +69,9 @@ export function stepsForSequence(sequence: FollowUpSequence): FollowUpStepDef[] 
   return sequence === "hot_sms" ? HOT_SMS_STEPS : NURTURE_SMS_STEPS;
 }
 
-export function bookUrlForLead(leadId?: string | null): string {
-  if (!leadId) return BOOK_A_CALL_URL;
-  const u = new URL(BOOK_A_CALL_URL);
-  u.searchParams.set("lead", leadId);
-  u.searchParams.set("utm_source", "sms");
-  u.searchParams.set("utm_medium", "followup");
-  return u.toString();
+export function bookUrlForLead(_leadId?: string | null): string {
+  // Google Calendar appointment links ignore our tracking params — keep SMS clean.
+  return BOOK_A_CALL_URL;
 }
 
 /** Normalize to E.164 for CA/US numbers. Returns null if unusable. */

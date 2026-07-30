@@ -8,7 +8,7 @@ import {
 export const LEAD_INBOX = "info@mandelrealtygroup.com";
 export const PHONE_DISPLAY = "647-381-7325";
 export const PHONE_HREF = "tel:+16473817325";
-export const BOOK_A_CALL_URL = "https://www.mandelrealtygroup.com/book-a-call";
+export const BOOK_A_CALL_URL = "https://calendar.app.google/mfkmSTStoD7AZyWe8";
 
 export function escapeHtml(value: string): string {
   return value
