@@ -8,7 +8,7 @@ import {
   type LeadEmailInput,
 } from "./auditEmails.js";
 import { isTwilioConfigured } from "./followUpSequences.js";
-import { processDueFollowups, scheduleSmsSequence } from "./followUpStore.js";
+import { sendFirstHotSms } from "./followUpStore.js";
 import { findLeadByEmailOrPhone, insertLead, type LeadRow } from "./leadStore.js";
 import {
   decideMetaImport,
@@ -137,7 +137,7 @@ export async function importMetaLeadPaste(
     "Imported from Meta Leads Center paste.",
     `Has Airbnb: ${parsed.hasListing}`,
     `Book-a-call email: ${decision.qualifiesForBookEmail ? "sent (qualified)" : "not sent (no live Airbnb)"}`,
-    `SMS sequence: ${decision.qualifiesForBookEmail ? "hot_sms (qualified)" : "none (not qualified)"}`,
+    `SMS: ${decision.qualifiesForBookEmail ? "first message only (manual bumps in CRM)" : "none (not qualified)"}`,
     ...Object.entries(parsed.rawAnswers).map(([k, v]) => `${k}: ${v}`),
   ];
 
@@ -202,19 +202,16 @@ export async function importMetaLeadPaste(
     }
   }
 
-  // SMS only for newly imported Meta leads who qualify (live Airbnb).
-  // Never backfills old CRM leads; no nurture SMS for non-qualified.
+  // Qualified Meta leads: first SMS only. Later bumps are manual in CRM.
   if (isTwilioConfigured(env) && decision.qualifiesForBookEmail) {
-    const scheduled = await scheduleSmsSequence({
+    const sent = await sendFirstHotSms({
       leadId,
       name: parsed.name,
-      sequence: "hot_sms",
+      phone: parsed.phone,
+      env,
     });
-    smsScheduled = scheduled.ok;
-    if (scheduled.ok) {
-      const due = await processDueFollowups(env);
-      smsSentNow = due.sent;
-    }
+    smsScheduled = sent.ok;
+    smsSentNow = sent.ok ? 1 : 0;
   }
 
   return {

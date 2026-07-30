@@ -120,15 +120,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     launchTimeline: lead.launchTimeline,
   });
 
-  // Stop SMS drips once they've booked a call.
-  try {
-    const { cancelLeadFollowups } = await import("../shared/followUpStore.js");
-    const { findLeadByEmailOrPhone } = await import("../shared/leadStore.js");
-    if (leadId) await cancelLeadFollowups(leadId);
-    const prior = await findLeadByEmailOrPhone(lead.email, lead.phone);
-    if (prior && prior.id !== leadId) await cancelLeadFollowups(prior.id);
-  } catch (err) {
-    console.warn("[audit] follow-up cancel skipped", err);
+  // Website + live Airbnb: first SMS only (same as Meta). No auto follow-ups.
+  // Call time on this form is stored; CRM "Mark booked" is for Google Calendar checks.
+  if (leadId && lead.hasListing === "yes") {
+    try {
+      const { isTwilioConfigured } = await import("../shared/followUpSequences.js");
+      const { sendFirstHotSms } = await import("../shared/followUpStore.js");
+      const twilioEnv = {
+        TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+        TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+        TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+      };
+      if (isTwilioConfigured(twilioEnv)) {
+        await sendFirstHotSms({
+          leadId,
+          name: lead.name,
+          phone: lead.phone,
+          env: twilioEnv,
+        });
+      }
+    } catch (err) {
+      console.warn("[audit] first SMS skipped", err);
+    }
   }
 
   return res.status(200).json({

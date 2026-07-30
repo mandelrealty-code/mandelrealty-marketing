@@ -5,7 +5,11 @@ import {
   verifyAdminSessionToken,
 } from "../../shared/adminAuth.js";
 import { importMetaLeadPaste, previewMetaLeadPaste } from "../../shared/importMetaLead.js";
-import { listFollowupsForLead } from "../../shared/followUpStore.js";
+import {
+  listFollowupsForLead,
+  markLeadBookedAndStopSms,
+  sendManualBumpForLead,
+} from "../../shared/followUpStore.js";
 import {
   LEAD_STATUSES,
   deleteLead,
@@ -89,6 +93,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body = readBody(req);
     const id = String(body.id ?? "").trim();
     if (!id) return res.status(400).json({ error: "Missing lead id." });
+
+    if (body.sendSmsBump === true) {
+      const step = Number(body.smsStep ?? 2) || 2;
+      const result = await sendManualBumpForLead(
+        id,
+        {
+          TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+          TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+          TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+        },
+        step,
+      );
+      if (!result.ok) return res.status(400).json({ error: result.error || "SMS failed" });
+      const followups = await listFollowupsForLead(id);
+      return res.status(200).json({ ok: true, smsSent: true, followups, lead: result.lead });
+    }
+
+    if (body.markBooked === true) {
+      const updated = await markLeadBookedAndStopSms(id);
+      if (!updated) return res.status(500).json({ error: "Could not mark booked." });
+      const followups = await listFollowupsForLead(id);
+      return res.status(200).json({ ok: true, lead: updated, followups });
+    }
 
     const patch: { status?: LeadStatus; notes?: string; whatsNext?: string } = {};
 

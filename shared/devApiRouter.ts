@@ -27,11 +27,13 @@ import {
 import { getBookedStartIsos, tryReserveCallSlot } from "./bookingStore.js";
 import { buildCallInviteIcs, isValidCallStartIso } from "./callSlots.js";
 import { importMetaLeadPaste, previewMetaLeadPaste } from "./importMetaLead.js";
-import { listFollowupsForLead } from "./followUpStore.js";
+import { cancelLeadFollowups, listFollowupsForLead, markLeadBookedAndStopSms, sendManualBumpForLead } from "./followUpStore.js";
 import {
   insertLead,
   listLeads,
   deleteLead,
+  findLeadsByEmailOrPhone,
+  markLeadBooked,
   updateLeadCrm,
   updateLeadQualifier,
   LEAD_STATUSES,
@@ -188,13 +190,25 @@ export async function handleDevApi(
       });
 
       try {
-        const { cancelLeadFollowups } = await import("./followUpStore.js");
-        const { findLeadByEmailOrPhone } = await import("./leadStore.js");
-        if (leadId) await cancelLeadFollowups(leadId);
-        const prior = await findLeadByEmailOrPhone(lead.email, lead.phone);
-        if (prior && prior.id !== leadId) await cancelLeadFollowups(prior.id);
+        if (leadId && lead.hasListing === "yes") {
+          const { isTwilioConfigured } = await import("./followUpSequences.js");
+          const { sendFirstHotSms } = await import("./followUpStore.js");
+          const twilioEnv = {
+            TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+            TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+            TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
+          };
+          if (isTwilioConfigured(twilioEnv)) {
+            await sendFirstHotSms({
+              leadId,
+              name: lead.name,
+              phone: lead.phone,
+              env: twilioEnv,
+            });
+          }
+        }
       } catch (err) {
-        console.warn("[audit-dev] follow-up cancel skipped", err);
+        console.warn("[audit-dev] first SMS skipped", err);
       }
 
       json(res, 200, { ok: true, leadId, hasListing: lead.hasListing });
@@ -346,6 +360,37 @@ export async function handleDevApi(
         json(res, 400, { error: "Missing lead id." });
         return true;
       }
+      if (body.markBooked === true) {
+        const updated = await markLeadBookedAndStopSms(id);
+        json(
+          res,
+          updated ? 200 : 500,
+          updated ? { ok: true, lead: updated } : { error: "Could not mark booked." },
+        );
+        return true;
+      }
+      if (body.sendSmsBump === true) {
+        const step = typeof body.smsStep === "number" ? body.smsStep : 2;
+        const result = await sendManualBumpForLead(
+          id,
+          {
+            TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+            TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+            TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
+          },
+          step,
+        );
+        if (!result.ok) {
+          json(res, 400, { error: result.error || "SMS failed" });
+          return true;
+        }
+        json(res, 200, {
+          ok: true,
+          lead: result.lead,
+          followups: await listFollowupsForLead(id),
+        });
+        return true;
+      }
       const patch: { status?: LeadStatus; notes?: string; whatsNext?: string } = {};
       if (body.status !== undefined) {
         const status = String(body.status).trim() as LeadStatus;
@@ -382,6 +427,61 @@ export async function handleDevApi(
       return true;
     }
     json(res, 405, { error: "Method not allowed" });
+    return true;
+  }
+
+  if (url === "/api/webhooks/booking" && method === "POST") {
+    const secret = env.BOOKING_WEBHOOK_SECRET?.trim() || env.CRON_SECRET?.trim();
+    const header = String(req.headers.authorization ?? "");
+    const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+    const okAuth =
+      Boolean(secret) &&
+      (header === `Bearer ${secret}` || qs.get("secret") === secret);
+    if (!okAuth) {
+      json(res, 401, { error: "Unauthorized" });
+      return true;
+    }
+    if (!isSupabaseConfigured()) {
+      json(res, 503, { error: "Supabase is not configured." });
+      return true;
+    }
+    const body = await readJsonBody(req);
+    const email = String(
+      body.email ?? body.guestEmail ?? body.attendeeEmail ?? "",
+    ).trim();
+    const phone = String(body.phone ?? body.guestPhone ?? "").trim();
+    const callStartIso = String(
+      body.callStartIso ?? body.start ?? body.startTime ?? "",
+    ).trim();
+    const title = String(body.callBooking ?? body.title ?? body.summary ?? "").trim();
+    if (!email && !phone) {
+      json(res, 400, { error: "Need email or phone to match a lead." });
+      return true;
+    }
+    const matches = await findLeadsByEmailOrPhone(email, phone);
+    if (matches.length === 0) {
+      json(res, 200, { ok: true, matched: false, smsCancelled: false });
+      return true;
+    }
+    for (const lead of matches) {
+      const updated = await markLeadBooked(lead.id, {
+        callStartIso: callStartIso || null,
+        callBooking: title || null,
+        note: `Booked via Google Calendar webhook (${new Date().toISOString()}).`,
+      });
+      if (!updated) {
+        json(res, 500, { error: "Could not update lead." });
+        return true;
+      }
+      await cancelLeadFollowups(lead.id);
+    }
+    json(res, 200, {
+      ok: true,
+      matched: true,
+      leadId: matches[0].id,
+      smsCancelled: true,
+      leadsUpdated: matches.length,
+    });
     return true;
   }
 

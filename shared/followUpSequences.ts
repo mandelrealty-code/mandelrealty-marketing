@@ -70,8 +70,13 @@ export function stepsForSequence(sequence: FollowUpSequence): FollowUpStepDef[] 
 }
 
 export function bookUrlForLead(_leadId?: string | null): string {
-  // Google Calendar appointment links ignore our tracking params — keep SMS clean.
   return BOOK_A_CALL_URL;
+}
+
+export function hotSmsBody(step: number, name: string, bookUrl = BOOK_A_CALL_URL): string | null {
+  const def = HOT_SMS_STEPS.find((s) => s.step === step);
+  if (!def) return null;
+  return def.body(name, bookUrl);
 }
 
 /** Normalize to E.164 for CA/US numbers. Returns null if unusable. */

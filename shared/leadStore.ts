@@ -247,6 +247,68 @@ export async function deleteLead(leadId: string): Promise<boolean> {
   return true;
 }
 
+/** Mark a lead as having booked a call (stops SMS when cron sees call_start_iso). */
+export async function markLeadBooked(
+  leadId: string,
+  input: {
+    callStartIso?: string | null;
+    callBooking?: string | null;
+    note?: string | null;
+  },
+): Promise<LeadRow | null> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return null;
+
+  const { data: existing, error: readErr } = await sb
+    .from("leads")
+    .select("*")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (readErr || !existing) {
+    console.error("[leads] mark booked read failed", readErr?.message);
+    return null;
+  }
+
+  const prevNotes = String(existing.notes ?? "").trim();
+  const noteLine = input.note?.trim();
+  const update: Record<string, unknown> = {
+    notes_updated_at: new Date().toISOString(),
+  };
+  if (input.callStartIso) update.call_start_iso = input.callStartIso;
+  if (input.callBooking !== undefined && input.callBooking !== null) {
+    update.call_booking = input.callBooking;
+  } else if (input.callStartIso && !existing.call_booking) {
+    try {
+      update.call_booking = new Date(input.callStartIso).toLocaleString("en-CA", {
+        timeZone: "America/Toronto",
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      update.call_booking = input.callStartIso;
+    }
+  }
+  if (noteLine) {
+    update.notes = prevNotes ? `${prevNotes}\n${noteLine}` : noteLine;
+  }
+
+  const { data, error } = await sb
+    .from("leads")
+    .update(update)
+    .eq("id", leadId)
+    .select("*")
+    .single();
+
+  if (error) {
+    console.error("[leads] mark booked failed", error.message);
+    return null;
+  }
+  return mapLead(data as Record<string, unknown>);
+}
+
 export async function getBookedCallIsosFromLeads(): Promise<string[]> {
   if (!isSupabaseConfigured()) return [];
   const sb = getSupabaseAdmin();
@@ -312,4 +374,56 @@ export async function findLeadByEmailOrPhone(
   }
 
   return null;
+}
+
+/** All CRM rows matching email and/or phone (newest first). */
+export async function findLeadsByEmailOrPhone(
+  email: string,
+  phone: string,
+): Promise<LeadRow[]> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return [];
+
+  const found = new Map<string, LeadRow>();
+  const emailNorm = email.trim().toLowerCase();
+
+  if (emailNorm) {
+    const { data, error } = await sb
+      .from("leads")
+      .select("*")
+      .ilike("email", emailNorm)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (!error && data) {
+      for (const row of data) {
+        const mapped = mapLead(row as Record<string, unknown>);
+        found.set(mapped.id, mapped);
+      }
+    }
+  }
+
+  const want = normalizePhoneDigits(phone);
+  if (want.length >= 7) {
+    const { data, error } = await sb
+      .from("leads")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (!error && data) {
+      for (const row of data) {
+        const existing = normalizePhoneDigits(String(row.phone ?? ""));
+        if (
+          existing &&
+          (existing === want || existing.endsWith(want) || want.endsWith(existing))
+        ) {
+          const mapped = mapLead(row as Record<string, unknown>);
+          found.set(mapped.id, mapped);
+        }
+      }
+    }
+  }
+
+  return [...found.values()].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
 }

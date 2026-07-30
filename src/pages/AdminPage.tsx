@@ -284,6 +284,69 @@ export function AdminPage() {
     }
   };
 
+  const sendSmsBump = async () => {
+    if (!selected) return;
+    if (!window.confirm(`Send follow-up SMS to ${selected.name}?`)) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const res = await fetch("/api/admin/leads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: selected.id, sendSmsBump: true, smsStep: 2 }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        followups?: typeof followups;
+        lead?: Lead;
+      };
+      if (!res.ok) throw new Error(data.error || "SMS failed");
+      if (data.followups) setFollowups(data.followups);
+      if (data.lead) {
+        setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
+      }
+      setSaveMsg("Follow-up SMS sent");
+      setTimeout(() => setSaveMsg(null), 2000);
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : "SMS failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const markBooked = async () => {
+    if (!selected) return;
+    if (!window.confirm(`Mark ${selected.name} as booked? This stops further SMS.`)) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const res = await fetch("/api/admin/leads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: selected.id, markBooked: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        lead?: Lead;
+        followups?: typeof followups;
+      };
+      if (!res.ok) throw new Error(data.error || "Could not mark booked");
+      if (data.lead) {
+        setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
+      }
+      if (data.followups) setFollowups(data.followups);
+      else await loadFollowups(selected.id);
+      setSaveMsg("Marked booked");
+      setTimeout(() => setSaveMsg(null), 2000);
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : "Could not mark booked");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const login = async (e: FormEvent) => {
     e.preventDefault();
     setLoggingIn(true);
@@ -567,7 +630,7 @@ export function AdminPage() {
                     label="Email?"
                     value={
                       pastePreview.decision.qualifiesForBookEmail
-                        ? "Yes - book-a-call email + hot SMS"
+                        ? "Yes - book-a-call email + first SMS only"
                         : "No book email / no SMS (not qualified)"
                     }
                   />
@@ -772,7 +835,7 @@ export function AdminPage() {
               {followups.length > 0 && (
                 <div className="mt-5">
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                    SMS follow-ups
+                    SMS history
                   </p>
                   <ul className="mt-2 space-y-2">
                     {followups.map((f) => (
@@ -798,6 +861,25 @@ export function AdminPage() {
                   </ul>
                 </div>
               )}
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={saving || selected.call_booking.toLowerCase().includes("booked (manual)")}
+                  onClick={() => sendSmsBump()}
+                  className="rounded-full bg-white/5 px-4 py-2 text-xs font-semibold text-mrg-text ring-1 ring-white/15 hover:bg-white/10 disabled:opacity-40"
+                >
+                  Send follow-up SMS
+                </button>
+                <button
+                  type="button"
+                  disabled={saving || selected.call_booking.toLowerCase().includes("booked (manual)")}
+                  onClick={() => markBooked()}
+                  className="rounded-full bg-emerald-500/15 px-4 py-2 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-40"
+                >
+                  Mark booked
+                </button>
+              </div>
 
               <div className="mt-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
