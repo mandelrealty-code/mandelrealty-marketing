@@ -10,6 +10,7 @@ import {
   markLeadBookedAndStopSms,
   sendManualBumpForLead,
 } from "../../shared/followUpStore.js";
+import { listSmsForLead } from "../../shared/smsStore.js";
 import {
   LEAD_STATUSES,
   deleteLead,
@@ -57,8 +58,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const followupsFor =
         typeof req.query.followups === "string" ? req.query.followups.trim() : "";
       if (followupsFor) {
-        const followups = await listFollowupsForLead(followupsFor);
-        return res.status(200).json({ followups });
+        const [followups, messages] = await Promise.all([
+          listFollowupsForLead(followupsFor),
+          listSmsForLead(followupsFor),
+        ]);
+        return res.status(200).json({ followups, messages });
       }
       const leads = await listLeads(200);
       return res.status(200).json({ leads });
@@ -95,26 +99,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!id) return res.status(400).json({ error: "Missing lead id." });
 
     if (body.sendSmsBump === true) {
-      const step = Number(body.smsStep ?? 2) || 2;
-      const result = await sendManualBumpForLead(
-        id,
-        {
-          TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
-          TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-          TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
-        },
-        step,
-      );
+      const result = await sendManualBumpForLead(id, {
+        TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+        TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+        TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+      });
       if (!result.ok) return res.status(400).json({ error: result.error || "SMS failed" });
-      const followups = await listFollowupsForLead(id);
-      return res.status(200).json({ ok: true, smsSent: true, followups, lead: result.lead });
+      const [followups, messages] = await Promise.all([
+        listFollowupsForLead(id),
+        listSmsForLead(id),
+      ]);
+      return res.status(200).json({
+        ok: true,
+        smsSent: true,
+        step: result.step,
+        followups,
+        messages,
+        lead: result.lead,
+      });
     }
 
     if (body.markBooked === true) {
       const updated = await markLeadBookedAndStopSms(id);
       if (!updated) return res.status(500).json({ error: "Could not mark booked." });
-      const followups = await listFollowupsForLead(id);
-      return res.status(200).json({ ok: true, lead: updated, followups });
+      const [followups, messages] = await Promise.all([
+        listFollowupsForLead(id),
+        listSmsForLead(id),
+      ]);
+      return res.status(200).json({ ok: true, lead: updated, followups, messages });
     }
 
     const patch: { status?: LeadStatus; notes?: string; whatsNext?: string } = {};

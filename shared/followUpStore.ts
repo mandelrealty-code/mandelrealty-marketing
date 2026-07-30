@@ -126,6 +126,8 @@ export async function sendHotSmsNow(input: {
     TWILIO_AUTH_TOKEN?: string;
     TWILIO_PHONE_NUMBER?: string;
   };
+  /** Allow re-sending an already-sent step (default false). */
+  allowResend?: boolean;
 }): Promise<{ ok: boolean; error?: string; sid?: string }> {
   if (!isTwilioConfigured(input.env)) {
     return { ok: false, error: "Twilio is not configured" };
@@ -139,6 +141,19 @@ export async function sendHotSmsNow(input: {
   const sb = getSupabaseAdmin();
   if (!sb) return { ok: false, error: "Supabase not configured" };
 
+  if (!input.allowResend) {
+    const { data: existing } = await sb
+      .from("lead_followups")
+      .select("status")
+      .eq("lead_id", input.leadId)
+      .eq("sequence", "hot_sms")
+      .eq("step", input.step)
+      .maybeSingle();
+    if (existing && String(existing.status) === "sent") {
+      return { ok: false, error: `Follow-up step ${input.step} was already sent.` };
+    }
+  }
+
   const send = await sendTwilioSms({
     accountSid: input.env.TWILIO_ACCOUNT_SID!,
     authToken: input.env.TWILIO_AUTH_TOKEN!,
@@ -146,6 +161,18 @@ export async function sendHotSmsNow(input: {
     to,
     body,
   });
+
+  if (send.ok) {
+    const { logSmsMessage } = await import("./smsStore.js");
+    await logSmsMessage({
+      leadId: input.leadId,
+      direction: "outbound",
+      fromPhone: input.env.TWILIO_PHONE_NUMBER!,
+      toPhone: to,
+      body,
+      providerSid: send.sid ?? null,
+    });
+  }
 
   const now = new Date().toISOString();
   const row = {
@@ -302,6 +329,15 @@ export async function processDueFollowups(env: {
           error: null,
         })
         .eq("id", followup.id);
+      const { logSmsMessage } = await import("./smsStore.js");
+      await logSmsMessage({
+        leadId: lead.id,
+        direction: "outbound",
+        fromPhone: env.TWILIO_PHONE_NUMBER!,
+        toPhone: to,
+        body: followup.body,
+        providerSid: send.sid ?? null,
+      });
       result.sent += 1;
     } else {
       await sb
@@ -331,8 +367,7 @@ export async function sendManualBumpForLead(
     TWILIO_AUTH_TOKEN?: string;
     TWILIO_PHONE_NUMBER?: string;
   },
-  step = 2,
-): Promise<{ ok: boolean; error?: string; lead?: LeadRow }> {
+): Promise<{ ok: boolean; error?: string; lead?: LeadRow; step?: number }> {
   const sb = getSupabaseAdmin();
   if (!sb) return { ok: false, error: "Supabase not configured" };
 
@@ -344,13 +379,30 @@ export async function sendManualBumpForLead(
     return { ok: false, error: "Lead is already marked booked — SMS not sent." };
   }
 
+  const { data: rows } = await sb
+    .from("lead_followups")
+    .select("step, status")
+    .eq("lead_id", leadId)
+    .eq("sequence", "hot_sms");
+
+  const sentSteps = new Set(
+    (rows ?? [])
+      .filter((r) => String(r.status) === "sent")
+      .map((r) => Number(r.step)),
+  );
+
+  const nextStep = [2, 3, 4].find((s) => !sentSteps.has(s));
+  if (!nextStep) {
+    return { ok: false, error: "All follow-up texts already sent for this lead." };
+  }
+
   const sent = await sendHotSmsNow({
     leadId,
     name: lead.name,
     phone: lead.phone,
-    step,
+    step: nextStep,
     env,
   });
   if (!sent.ok) return { ok: false, error: sent.error };
-  return { ok: true, lead };
+  return { ok: true, lead, step: nextStep };
 }
