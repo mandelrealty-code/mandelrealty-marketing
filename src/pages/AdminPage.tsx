@@ -168,6 +168,7 @@ export function AdminPage() {
     }[]
   >([]);
   const [smsSending, setSmsSending] = useState(false);
+  const [smsDraft, setSmsDraft] = useState("");
   const smsSendLock = useRef(false);
 
   const loadFollowups = useCallback(async (leadId: string) => {
@@ -247,7 +248,11 @@ export function AdminPage() {
     setNotes(selected.notes || "");
     setWhatsNext(selected.whats_next || "");
     setSaveMsg(null);
-    loadFollowups(selected.id).catch(() => setFollowups([]));
+    setSmsDraft("");
+    loadFollowups(selected.id).catch(() => {
+      setFollowups([]);
+      setSmsMessages([]);
+    });
   }, [selected?.id, selected?.notes, selected?.whats_next, loadFollowups]);
 
   const openLead = (id: string) => setSelectedId(id);
@@ -310,6 +315,44 @@ export function AdminPage() {
     );
     return [2, 3, 4].find((s) => !sent.has(s)) ?? null;
   }, [followups]);
+
+  const sendSmsReply = async () => {
+    if (!selected || smsSendLock.current || smsSending || saving) return;
+    const text = smsDraft.trim();
+    if (!text) {
+      setSaveMsg("Type a reply first");
+      return;
+    }
+    smsSendLock.current = true;
+    setSmsSending(true);
+    setSaveMsg("Sending…");
+    try {
+      const res = await fetch("/api/admin/leads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: selected.id, smsReply: text }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        followups?: typeof followups;
+        messages?: typeof smsMessages;
+        lead?: Lead;
+      };
+      if (!res.ok) throw new Error(data.error || "SMS failed");
+      if (data.followups) setFollowups(data.followups);
+      if (data.messages) setSmsMessages(data.messages);
+      else await loadFollowups(selected.id);
+      setSmsDraft("");
+      setSaveMsg("Reply sent");
+      setTimeout(() => setSaveMsg(null), 2000);
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : "SMS failed");
+    } finally {
+      smsSendLock.current = false;
+      setSmsSending(false);
+    }
+  };
 
   const sendSmsBump = async () => {
     if (!selected || smsSendLock.current || smsSending || saving) return;
@@ -866,92 +909,111 @@ export function AdminPage() {
                 ) : null}
               </dl>
 
-              {(smsMessages.length > 0 || followups.length > 0) && (
-                <div className="mt-5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                      SMS conversation
-                    </p>
-                    {smsMessages.some((m) => m.direction === "inbound") ? (
-                      <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-semibold text-sky-300 ring-1 ring-sky-500/30">
-                        They replied
-                      </span>
-                    ) : null}
-                  </div>
-                  {smsMessages.length > 0 ? (
-                    <ul className="mt-3 space-y-2">
-                      {smsMessages.map((m) => (
-                        <li
-                          key={m.id}
-                          className={`rounded-xl px-3 py-2.5 text-sm ring-1 ${
-                            m.direction === "inbound"
-                              ? "bg-sky-500/10 ring-sky-500/25"
-                              : "bg-mrg-bg/70 ring-white/5"
-                          }`}
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-mrg-muted">
-                              {m.direction === "inbound" ? "Them" : "You"}
-                            </span>
-                            <span className="text-xs text-mrg-muted">
-                              {new Date(m.created_at).toLocaleString("en-CA", {
-                                timeZone: "America/Toronto",
-                              })}
-                            </span>
-                          </div>
-                          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-mrg-text">
-                            {m.body}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <ul className="mt-2 space-y-2">
-                      {followups.map((f) => (
-                        <li
-                          key={f.id}
-                          className="rounded-xl bg-mrg-bg/70 px-3 py-2.5 text-sm ring-1 ring-white/5"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-mrg-text">
-                              step {f.step}
-                            </span>
-                            <span className="text-xs text-mrg-muted">{f.status}</span>
-                          </div>
-                          <p className="mt-1 text-xs leading-relaxed text-mrg-muted">{f.body}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+              <div className="mt-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+                    SMS conversation
+                  </p>
+                  {smsMessages.some((m) => m.direction === "inbound") ? (
+                    <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-semibold text-sky-300 ring-1 ring-sky-500/30">
+                      They replied
+                    </span>
+                  ) : null}
                 </div>
-              )}
+                {smsMessages.length > 0 ? (
+                  <ul className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+                    {smsMessages.map((m) => (
+                      <li
+                        key={m.id}
+                        className={`rounded-xl px-3 py-2.5 text-sm ring-1 ${
+                          m.direction === "inbound"
+                            ? "bg-sky-500/10 ring-sky-500/25"
+                            : "bg-mrg-bg/70 ring-white/5"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-mrg-muted">
+                            {m.direction === "inbound" ? "Them" : "You"}
+                          </span>
+                          <span className="text-xs text-mrg-muted">
+                            {new Date(m.created_at).toLocaleString("en-CA", {
+                              timeZone: "America/Toronto",
+                            })}
+                          </span>
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-mrg-text">
+                          {m.body}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : followups.length > 0 ? (
+                  <ul className="mt-2 space-y-2">
+                    {followups.map((f) => (
+                      <li
+                        key={f.id}
+                        className="rounded-xl bg-mrg-bg/70 px-3 py-2.5 text-sm ring-1 ring-white/5"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-mrg-text">step {f.step}</span>
+                          <span className="text-xs text-mrg-muted">{f.status}</span>
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-mrg-muted">{f.body}</p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-mrg-muted">No texts yet.</p>
+                )}
 
-              <div className="mt-5 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={
-                    saving ||
-                    smsSending ||
-                    !nextBumpStep ||
-                    selected.call_booking.toLowerCase().includes("booked (manual)")
-                  }
-                  onClick={() => sendSmsBump()}
-                  className="rounded-full bg-white/5 px-4 py-2 text-xs font-semibold text-mrg-text ring-1 ring-white/15 hover:bg-white/10 disabled:opacity-40"
-                >
-                  {smsSending
-                    ? "Sending…"
-                    : nextBumpStep
-                      ? `Send follow-up #${nextBumpStep - 1}`
-                      : "All follow-ups sent"}
-                </button>
-                <button
-                  type="button"
-                  disabled={saving || smsSending || selected.call_booking.toLowerCase().includes("booked (manual)")}
-                  onClick={() => markBooked()}
-                  className="rounded-full bg-emerald-500/15 px-4 py-2 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-40"
-                >
-                  Mark booked
-                </button>
+                <div className="mt-3">
+                  <textarea
+                    value={smsDraft}
+                    onChange={(e) => setSmsDraft(e.target.value)}
+                    rows={3}
+                    placeholder="Type a reply…"
+                    className="w-full resize-y rounded-2xl bg-mrg-bg px-4 py-3 text-sm text-mrg-text outline-none ring-1 ring-white/10 placeholder:text-mrg-muted/50 focus:ring-mrg-gold/40"
+                  />
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={saving || smsSending || !smsDraft.trim()}
+                      onClick={() => sendSmsReply()}
+                      className="rounded-full bg-mrg-gold px-5 py-2 text-xs font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-40"
+                    >
+                      {smsSending ? "Sending…" : "Send reply"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        saving ||
+                        smsSending ||
+                        !nextBumpStep ||
+                        selected.call_booking.toLowerCase().includes("booked (manual)")
+                      }
+                      onClick={() => sendSmsBump()}
+                      className="rounded-full bg-white/5 px-4 py-2 text-xs font-semibold text-mrg-text ring-1 ring-white/15 hover:bg-white/10 disabled:opacity-40"
+                    >
+                      {smsSending
+                        ? "Sending…"
+                        : nextBumpStep
+                          ? `Send follow-up #${nextBumpStep - 1}`
+                          : "All follow-ups sent"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        saving ||
+                        smsSending ||
+                        selected.call_booking.toLowerCase().includes("booked (manual)")
+                      }
+                      onClick={() => markBooked()}
+                      className="rounded-full bg-emerald-500/15 px-4 py-2 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-40"
+                    >
+                      Mark booked
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-5">

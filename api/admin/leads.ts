@@ -8,6 +8,7 @@ import { importMetaLeadPaste, previewMetaLeadPaste } from "../../shared/importMe
 import {
   listFollowupsForLead,
   markLeadBookedAndStopSms,
+  sendCustomSmsToLead,
   sendManualBumpForLead,
 } from "../../shared/followUpStore.js";
 import { listSmsForLead } from "../../shared/smsStore.js";
@@ -113,6 +114,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ok: true,
         smsSent: true,
         step: result.step,
+        followups,
+        messages,
+        lead: result.lead,
+      });
+    }
+
+    if (typeof body.smsReply === "string") {
+      const result = await sendCustomSmsToLead(id, body.smsReply, {
+        TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+        TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+        TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+      });
+      if (!result.ok) return res.status(400).json({ error: result.error || "SMS failed" });
+      const [followups, messages] = await Promise.all([
+        listFollowupsForLead(id),
+        listSmsForLead(id),
+      ]);
+      return res.status(200).json({
+        ok: true,
+        smsSent: true,
         followups,
         messages,
         lead: result.lead,

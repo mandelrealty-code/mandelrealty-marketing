@@ -27,7 +27,7 @@ import {
 import { getBookedStartIsos, tryReserveCallSlot } from "./bookingStore.js";
 import { buildCallInviteIcs, isValidCallStartIso } from "./callSlots.js";
 import { importMetaLeadPaste, previewMetaLeadPaste } from "./importMetaLead.js";
-import { cancelLeadFollowups, listFollowupsForLead, markLeadBookedAndStopSms, sendManualBumpForLead } from "./followUpStore.js";
+import { cancelLeadFollowups, listFollowupsForLead, markLeadBookedAndStopSms, sendCustomSmsToLead, sendManualBumpForLead } from "./followUpStore.js";
 import { listSmsForLead } from "./smsStore.js";
 import {
   insertLead,
@@ -386,6 +386,24 @@ export async function handleDevApi(
         json(res, 200, {
           ok: true,
           step: result.step,
+          lead: result.lead,
+          followups: await listFollowupsForLead(id),
+          messages: await listSmsForLead(id),
+        });
+        return true;
+      }
+      if (typeof body.smsReply === "string") {
+        const result = await sendCustomSmsToLead(id, body.smsReply, {
+          TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+          TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+          TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
+        });
+        if (!result.ok) {
+          json(res, 400, { error: result.error || "SMS failed" });
+          return true;
+        }
+        json(res, 200, {
+          ok: true,
           lead: result.lead,
           followups: await listFollowupsForLead(id),
           messages: await listSmsForLead(id),

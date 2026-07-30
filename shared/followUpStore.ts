@@ -360,6 +360,52 @@ export async function markLeadBookedAndStopSms(leadId: string): Promise<LeadRow 
   return updated;
 }
 
+export async function sendCustomSmsToLead(
+  leadId: string,
+  bodyText: string,
+  env: {
+    TWILIO_ACCOUNT_SID?: string;
+    TWILIO_AUTH_TOKEN?: string;
+    TWILIO_PHONE_NUMBER?: string;
+  },
+): Promise<{ ok: boolean; error?: string; lead?: LeadRow }> {
+  const text = bodyText.trim();
+  if (!text) return { ok: false, error: "Message is empty." };
+  if (text.length > 1500) return { ok: false, error: "Message is too long." };
+  if (!isTwilioConfigured(env)) return { ok: false, error: "Twilio is not configured" };
+
+  const sb = getSupabaseAdmin();
+  if (!sb) return { ok: false, error: "Supabase not configured" };
+
+  const { data, error } = await sb.from("leads").select("*").eq("id", leadId).maybeSingle();
+  if (error || !data) return { ok: false, error: "Lead not found" };
+  const lead = mapLeadRow(data as Record<string, unknown>);
+
+  const to = toE164(lead.phone);
+  if (!to) return { ok: false, error: "Invalid phone for SMS" };
+
+  const send = await sendTwilioSms({
+    accountSid: env.TWILIO_ACCOUNT_SID!,
+    authToken: env.TWILIO_AUTH_TOKEN!,
+    from: env.TWILIO_PHONE_NUMBER!,
+    to,
+    body: text,
+  });
+  if (!send.ok) return { ok: false, error: send.error ?? "Send failed" };
+
+  const { logSmsMessage } = await import("./smsStore.js");
+  await logSmsMessage({
+    leadId,
+    direction: "outbound",
+    fromPhone: env.TWILIO_PHONE_NUMBER!,
+    toPhone: to,
+    body: text,
+    providerSid: send.sid ?? null,
+  });
+
+  return { ok: true, lead };
+}
+
 export async function sendManualBumpForLead(
   leadId: string,
   env: {
