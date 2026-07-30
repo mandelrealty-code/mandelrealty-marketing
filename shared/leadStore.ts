@@ -46,6 +46,9 @@ export type InsertLeadInput = {
   permitStatus?: string | null;
   strAllowed?: string | null;
   launchTimeline?: string | null;
+  /** When set, skips auto status from qualifiers */
+  status?: LeadStatus;
+  notes?: string;
 };
 
 export type QualifierInput = {
@@ -108,14 +111,16 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
     input.hasListing === "no" &&
     Boolean(input.propertyStage && input.permitStatus && input.strAllowed);
 
-  const status = hasNoQualifier
-    ? suggestStatusFromQualifier({
-        propertyStage: input.propertyStage!,
-        permitStatus: input.permitStatus!,
-        strAllowed: input.strAllowed || undefined,
-        launchTimeline: input.launchTimeline || undefined,
-      })
-    : "new";
+  const status =
+    input.status ??
+    (hasNoQualifier
+      ? suggestStatusFromQualifier({
+          propertyStage: input.propertyStage!,
+          permitStatus: input.permitStatus!,
+          strAllowed: input.strAllowed || undefined,
+          launchTimeline: input.launchTimeline || undefined,
+        })
+      : "new");
 
   const { data, error } = await sb
     .from("leads")
@@ -136,7 +141,9 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
       str_allowed: input.strAllowed ?? null,
       launch_timeline: input.launchTimeline ?? null,
       status,
-      qualified_at: hasNoQualifier ? new Date().toISOString() : null,
+      notes: input.notes ?? "",
+      qualified_at:
+        status === "qualified" || hasNoQualifier ? new Date().toISOString() : null,
     })
     .select("id")
     .single();
@@ -248,4 +255,49 @@ export async function getBookedCallIsosFromLeads(): Promise<string[]> {
   return (data ?? [])
     .map((r) => r.call_start_iso as string | null)
     .filter((iso): iso is string => Boolean(iso));
+}
+
+/** Digits only for loose phone matching (+1 optional). */
+export function normalizePhoneDigits(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) return digits.slice(1);
+  return digits;
+}
+
+export async function findLeadByEmailOrPhone(
+  email: string,
+  phone: string,
+): Promise<LeadRow | null> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return null;
+
+  const emailNorm = email.trim().toLowerCase();
+  if (emailNorm) {
+    const { data, error } = await sb
+      .from("leads")
+      .select("*")
+      .ilike("email", emailNorm)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!error && data) return mapLead(data as Record<string, unknown>);
+  }
+
+  const want = normalizePhoneDigits(phone);
+  if (want.length >= 7) {
+    const { data, error } = await sb
+      .from("leads")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error || !data) return null;
+    for (const row of data) {
+      const existing = normalizePhoneDigits(String(row.phone ?? ""));
+      if (existing && (existing === want || existing.endsWith(want) || want.endsWith(existing))) {
+        return mapLead(row as Record<string, unknown>);
+      }
+    }
+  }
+
+  return null;
 }

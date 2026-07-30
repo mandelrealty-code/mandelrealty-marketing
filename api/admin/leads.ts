@@ -4,6 +4,8 @@ import {
   isAdminConfigured,
   verifyAdminSessionToken,
 } from "../../shared/adminAuth.js";
+import { importMetaLeadPaste, previewMetaLeadPaste } from "../../shared/importMetaLead.js";
+import { listFollowupsForLead } from "../../shared/followUpStore.js";
 import {
   LEAD_STATUSES,
   listLeads,
@@ -47,11 +49,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     try {
+      const followupsFor =
+        typeof req.query.followups === "string" ? req.query.followups.trim() : "";
+      if (followupsFor) {
+        const followups = await listFollowupsForLead(followupsFor);
+        return res.status(200).json({ followups });
+      }
       const leads = await listLeads(200);
       return res.status(200).json({ leads });
     } catch {
       return res.status(500).json({ error: "Could not load leads." });
     }
+  }
+
+  if (req.method === "POST") {
+    const body = readBody(req);
+    const paste = String(body.paste ?? "");
+    const parseOnly = Boolean(body.parseOnly);
+
+    if (parseOnly) {
+      const preview = await previewMetaLeadPaste(paste);
+      if ("error" in preview) return res.status(400).json(preview);
+      return res.status(200).json({ ok: true, ...preview });
+    }
+
+    const result = await importMetaLeadPaste(paste, {
+      RESEND_API_KEY: process.env.RESEND_API_KEY,
+      RESEND_FROM: process.env.RESEND_FROM,
+      TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+      TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+      TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+    });
+    if (result.error) return res.status(400).json(result);
+    return res.status(200).json({ ok: true, ...result });
   }
 
   if (req.method === "PATCH") {

@@ -120,6 +120,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     launchTimeline: lead.launchTimeline,
   });
 
+  // Stop SMS drips once they've booked a call.
+  try {
+    const { cancelLeadFollowups } = await import("../shared/followUpStore.js");
+    const { findLeadByEmailOrPhone } = await import("../shared/leadStore.js");
+    if (leadId) await cancelLeadFollowups(leadId);
+    const prior = await findLeadByEmailOrPhone(lead.email, lead.phone);
+    if (prior && prior.id !== leadId) await cancelLeadFollowups(prior.id);
+  } catch (err) {
+    console.warn("[audit] follow-up cancel skipped", err);
+  }
+
   return res.status(200).json({
     ok: true,
     leadId,

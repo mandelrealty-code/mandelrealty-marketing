@@ -26,6 +26,8 @@ import {
 } from "./adminAuth.js";
 import { getBookedStartIsos, tryReserveCallSlot } from "./bookingStore.js";
 import { buildCallInviteIcs, isValidCallStartIso } from "./callSlots.js";
+import { importMetaLeadPaste, previewMetaLeadPaste } from "./importMetaLead.js";
+import { listFollowupsForLead } from "./followUpStore.js";
 import {
   insertLead,
   listLeads,
@@ -184,6 +186,16 @@ export async function handleDevApi(
         launchTimeline: lead.launchTimeline,
       });
 
+      try {
+        const { cancelLeadFollowups } = await import("./followUpStore.js");
+        const { findLeadByEmailOrPhone } = await import("./leadStore.js");
+        if (leadId) await cancelLeadFollowups(leadId);
+        const prior = await findLeadByEmailOrPhone(lead.email, lead.phone);
+        if (prior && prior.id !== leadId) await cancelLeadFollowups(prior.id);
+      } catch (err) {
+        console.warn("[audit-dev] follow-up cancel skipped", err);
+      }
+
       json(res, 200, { ok: true, leadId, hasListing: lead.hasListing });
     } catch (err) {
       console.error("[audit-dev]", err);
@@ -292,10 +304,38 @@ export async function handleDevApi(
     }
     if (method === "GET") {
       try {
+        const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+        const followupsFor = qs.get("followups")?.trim() || "";
+        if (followupsFor) {
+          json(res, 200, { followups: await listFollowupsForLead(followupsFor) });
+          return true;
+        }
         json(res, 200, { leads: await listLeads(200) });
       } catch {
         json(res, 500, { error: "Could not load leads." });
       }
+      return true;
+    }
+    if (method === "POST") {
+      const body = await readJsonBody(req);
+      const paste = String(body.paste ?? "");
+      if (body.parseOnly) {
+        const preview = await previewMetaLeadPaste(paste);
+        if ("error" in preview) {
+          json(res, 400, preview);
+          return true;
+        }
+        json(res, 200, { ok: true, ...preview });
+        return true;
+      }
+      const result = await importMetaLeadPaste(paste, {
+        RESEND_API_KEY: env.RESEND_API_KEY,
+        RESEND_FROM: env.RESEND_FROM,
+        TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+        TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+        TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
+      });
+      json(res, result.error ? 400 : 200, result.error ? result : { ok: true, ...result });
       return true;
     }
     if (method === "PATCH") {

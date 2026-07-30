@@ -61,17 +61,20 @@ export function listingLabel(hasListing: HasListing): string {
 }
 
 export function buildLeadSubject(input: LeadEmailInput): string {
-  const when = input.callStartIso
-    ? formatCallSlotLabel(input.callStartIso)
-    : input.callBooking;
-  return `New call — ${input.name} — ${when}`;
+  if (input.callStartIso || input.callBooking) {
+    const when = input.callStartIso
+      ? formatCallSlotLabel(input.callStartIso)
+      : input.callBooking;
+    return `New call — ${input.name} — ${when}`;
+  }
+  return `New Meta lead — ${input.name} — ${listingLabel(input.hasListing)}`;
 }
 
 export function buildCustomerSubject(input: LeadEmailInput): string {
   if (input.callStartIso) {
     return `Your MRG call — ${formatCallSlotLabel(input.callStartIso)}`;
   }
-  return "Your MRG call is booked";
+  return "Pick a time for your free MRG call";
 }
 
 export function buildLeadNotificationHtml(input: LeadEmailInput): string {

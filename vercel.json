@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/cron/follow-ups",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/robots.txt",

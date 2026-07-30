@@ -113,10 +113,60 @@ export function AdminPage() {
   const [filter, setFilter] = useState<LeadStatus | "all">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const [notes, setNotes] = useState("");
-  const [whatsNext, setWhatsNext] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [paste, setPaste] = useState("");
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteBusy, setPasteBusy] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pastePreview, setPastePreview] = useState<{
+    parsed: {
+      name: string;
+      email: string;
+      phone: string;
+      address: string;
+      hasListing: "yes" | "no" | "unknown";
+      propertyStage: string | null;
+      strAllowed: string | null;
+      earnings: string;
+      warnings: string[];
+    };
+    decision: { status: LeadStatus; qualifiesForBookEmail: boolean; reason: string };
+    duplicate: {
+      id: string;
+      name: string;
+      email: string;
+      phone: string;
+      status: string;
+      created_at: string;
+      has_listing: string;
+    } | null;
+  } | null>(null);
+  const [followups, setFollowups] = useState<
+    {
+      id: string;
+      step: number;
+      sequence: string;
+      body: string;
+      send_at: string;
+      status: string;
+      sent_at: string | null;
+      error: string | null;
+    }[]
+  >([]);
+
+  const loadFollowups = useCallback(async (leadId: string) => {
+    try {
+      const res = await fetch(`/api/admin/leads?followups=${encodeURIComponent(leadId)}`, {
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        followups?: typeof followups;
+      };
+      if (res.ok) setFollowups(data.followups ?? []);
+      else setFollowups([]);
+    } catch {
+      setFollowups([]);
+    }
+  }, []);
 
   const loadLeads = useCallback(async () => {
     setLoadError(null);
@@ -165,11 +215,15 @@ export function AdminPage() {
   );
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {
+      setFollowups([]);
+      return;
+    }
     setNotes(selected.notes || "");
     setWhatsNext(selected.whats_next || "");
     setSaveMsg(null);
-  }, [selected?.id, selected?.notes, selected?.whats_next]);
+    loadFollowups(selected.id).catch(() => setFollowups([]));
+  }, [selected?.id, selected?.notes, selected?.whats_next, loadFollowups]);
 
   const openLead = (id: string) => setSelectedId(id);
   const closeLead = () => setSelectedId(null);
@@ -229,6 +283,85 @@ export function AdminPage() {
     setAuthed(false);
     setLeads([]);
     setSelectedId(null);
+  };
+
+  const previewPaste = async () => {
+    setPasteBusy(true);
+    setPasteError(null);
+    setPastePreview(null);
+    setPasteResult(null);
+    try {
+      const res = await fetch("/api/admin/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ paste, parseOnly: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        parsed?: NonNullable<typeof pastePreview>["parsed"];
+        decision?: NonNullable<typeof pastePreview>["decision"];
+        duplicate?: NonNullable<typeof pastePreview>["duplicate"];
+      };
+      if (!res.ok || !data.parsed || !data.decision) {
+        throw new Error(data.error || "Could not parse paste.");
+      }
+      setPastePreview({
+        parsed: data.parsed,
+        decision: data.decision,
+        duplicate: data.duplicate ?? null,
+      });
+    } catch (err) {
+      setPasteError(err instanceof Error ? err.message : "Parse failed");
+    } finally {
+      setPasteBusy(false);
+    }
+  };
+
+  const importPaste = async () => {
+    setPasteBusy(true);
+    setPasteError(null);
+    setPasteResult(null);
+    try {
+      const res = await fetch("/api/admin/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ paste }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        leadId?: string;
+        emailSent?: boolean;
+        decision?: { qualifiesForBookEmail: boolean; status: LeadStatus; reason: string };
+        parsed?: { name: string };
+      };
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      const emailNote = data.decision?.qualifiesForBookEmail
+        ? data.emailSent
+          ? "Book-a-call email sent."
+          : "Lead saved, but book-a-call email failed (check Resend)."
+        : "No schedule email (not qualified).";
+      setPasteResult(
+        `Saved ${data.parsed?.name || "lead"} as ${data.decision?.status || "lead"}. ${emailNote}${
+          typeof (data as { smsSentNow?: number }).smsSentNow === "number"
+            ? ` SMS sent now: ${(data as { smsSentNow?: number }).smsSentNow}.`
+            : ""
+        }${
+          (data as { smsScheduled?: boolean }).smsScheduled === false
+            ? " (Twilio not configured or SMS schedule failed)"
+            : ""
+        }`,
+      );
+      setPaste("");
+      setPastePreview(null);
+      await loadLeads();
+      if (data.leadId) setSelectedId(data.leadId);
+    } catch (err) {
+      setPasteError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setPasteBusy(false);
+    }
   };
 
   if (authed === null) {
@@ -293,6 +426,17 @@ export function AdminPage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
+              onClick={() => {
+                setPasteOpen((o) => !o);
+                setPasteError(null);
+                setPasteResult(null);
+              }}
+              className="rounded-full bg-mrg-gold px-4 py-2 text-sm font-semibold text-black hover:bg-mrg-gold-light"
+            >
+              {pasteOpen ? "Close paste" : "Paste Meta lead"}
+            </button>
+            <button
+              type="button"
               onClick={() => loadLeads()}
               className="rounded-full px-4 py-2 text-sm text-mrg-muted hover:text-mrg-text"
             >
@@ -310,6 +454,126 @@ export function AdminPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-5 py-6">
+        {pasteOpen && !selected && (
+          <div className="mb-6 rounded-2xl bg-mrg-surface-elevated p-5 ring-1 ring-white/10">
+            <h2 className="text-base font-semibold text-mrg-text">Paste from Meta Leads Center</h2>
+            <p className="mt-1 text-sm text-mrg-muted">
+              Copy the whole lead from Meta, paste here, preview, then import. Everyone is saved to
+              CRM with full details. Only leads with a live Airbnb get the book-a-call email.
+            </p>
+            <textarea
+              value={paste}
+              onChange={(e) => {
+                setPaste(e.target.value);
+                setPastePreview(null);
+                setPasteResult(null);
+              }}
+              rows={10}
+              placeholder="Paste Meta lead text here…"
+              className="mt-4 w-full rounded-2xl bg-mrg-bg px-4 py-3 font-mono text-xs leading-relaxed text-mrg-text outline-none ring-1 ring-white/10 focus:ring-mrg-gold/50"
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={pasteBusy || !paste.trim()}
+                onClick={previewPaste}
+                className="rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-mrg-text ring-1 ring-white/10 hover:bg-white/10 disabled:opacity-50"
+              >
+                {pasteBusy ? "Working…" : "Preview"}
+              </button>
+                <button
+                type="button"
+                disabled={pasteBusy || !paste.trim() || Boolean(pastePreview?.duplicate)}
+                onClick={importPaste}
+                className="rounded-full bg-mrg-gold px-4 py-2 text-sm font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-50"
+              >
+                Import to CRM
+              </button>
+            </div>
+            {pasteError && (
+              <p className="mt-3 text-sm text-red-300">{pasteError}</p>
+            )}
+            {pasteResult && (
+              <p className="mt-3 text-sm text-emerald-300">{pasteResult}</p>
+            )}
+            {pastePreview && (
+              <div className="mt-4 rounded-xl bg-mrg-bg p-4 ring-1 ring-white/8">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+                  Preview
+                </p>
+                <dl className="mt-2 space-y-1 text-sm">
+                  <Row label="Name" value={pastePreview.parsed.name || "—"} />
+                  <Row label="Email" value={pastePreview.parsed.email || "—"} />
+                  <Row label="Phone" value={pastePreview.parsed.phone || "—"} />
+                  <Row label="City / area" value={pastePreview.parsed.address || "—"} />
+                  <Row
+                    label="Airbnb"
+                    value={listingShort(pastePreview.parsed.hasListing)}
+                  />
+                  <Row
+                    label="Stage"
+                    value={
+                      pastePreview.parsed.propertyStage
+                        ? STAGE_LABEL[pastePreview.parsed.propertyStage] ||
+                          pastePreview.parsed.propertyStage
+                        : "—"
+                    }
+                  />
+                  <Row
+                    label="STR"
+                    value={
+                      pastePreview.parsed.strAllowed
+                        ? STR_ALLOWED_LABEL[pastePreview.parsed.strAllowed] ||
+                          pastePreview.parsed.strAllowed
+                        : "—"
+                    }
+                  />
+                  <Row
+                    label="CRM status"
+                    value={STATUS_LABEL[pastePreview.decision.status]}
+                  />
+                  <Row
+                    label="Email?"
+                    value={
+                      pastePreview.decision.qualifiesForBookEmail
+                        ? "Yes - book-a-call email + hot SMS"
+                        : "No book email - nurture SMS only"
+                    }
+                  />
+                </dl>
+                <p className="mt-3 text-sm text-mrg-muted">{pastePreview.decision.reason}</p>
+                {pastePreview.duplicate && (
+                  <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                    <p className="font-semibold">Already in CRM (duplicate)</p>
+                    <p className="mt-1">
+                      {pastePreview.duplicate.name} · {pastePreview.duplicate.email || pastePreview.duplicate.phone}{" "}
+                      · status: {pastePreview.duplicate.status}
+                    </p>
+                    <p className="mt-1 text-amber-100/80">Import is blocked so you do not create a second record.</p>
+                    <button
+                      type="button"
+                      className="mt-2 text-sm font-semibold text-mrg-gold hover:underline"
+                      onClick={() => {
+                        setSelectedId(pastePreview.duplicate!.id);
+                        setPasteOpen(false);
+                      }}
+                    >
+                      Open existing lead
+                    </button>
+                  </div>
+                )}
+                {pastePreview.parsed.warnings.length > 0 && (
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-200/90">
+                    {pastePreview.parsed.warnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {!selected && (
           <>
             <div className="flex flex-wrap gap-2">
@@ -473,6 +737,36 @@ export function AdminPage() {
                   />
                 ) : null}
               </dl>
+
+              {followups.length > 0 && (
+                <div className="mt-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+                    SMS follow-ups
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {followups.map((f) => (
+                      <li
+                        key={f.id}
+                        className="rounded-xl bg-mrg-bg/70 px-3 py-2.5 text-sm ring-1 ring-white/5"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-mrg-text">
+                            {f.sequence} · step {f.step}
+                          </span>
+                          <span className="text-xs text-mrg-muted">{f.status}</span>
+                          <span className="text-xs text-mrg-muted">
+                            {f.status === "sent" && f.sent_at
+                              ? `sent ${new Date(f.sent_at).toLocaleString("en-CA", { timeZone: "America/Toronto" })}`
+                              : `due ${new Date(f.send_at).toLocaleString("en-CA", { timeZone: "America/Toronto" })}`}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-mrg-muted">{f.body}</p>
+                        {f.error ? <p className="mt-1 text-xs text-red-300">{f.error}</p> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div className="mt-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
