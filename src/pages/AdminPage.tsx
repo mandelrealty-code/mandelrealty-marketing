@@ -112,11 +112,16 @@ export function AdminPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<LeadStatus | "all">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [notes, setNotes] = useState("");
+  const [whatsNext, setWhatsNext] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   const [paste, setPaste] = useState("");
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteBusy, setPasteBusy] = useState(false);
   const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pasteResult, setPasteResult] = useState<string | null>(null);
   const [pastePreview, setPastePreview] = useState<{
     parsed: {
       name: string;
