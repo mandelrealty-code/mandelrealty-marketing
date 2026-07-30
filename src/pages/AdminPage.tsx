@@ -258,6 +258,32 @@ export function AdminPage() {
     }
   };
 
+  const deleteSelectedLead = async () => {
+    if (!selected) return;
+    const name = selected.name || "this lead";
+    if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const res = await fetch("/api/admin/leads", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: selected.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      const deletedId = selected.id;
+      setLeads((prev) => prev.filter((l) => l.id !== deletedId));
+      setFollowups([]);
+      setSelectedId(null);
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const login = async (e: FormEvent) => {
     e.preventDefault();
     setLoggingIn(true);
@@ -830,6 +856,14 @@ export function AdminPage() {
                   className="rounded-full bg-mrg-gold px-6 py-2.5 text-sm font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-60"
                 >
                   {saving ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => deleteSelectedLead()}
+                  className="rounded-full px-5 py-2.5 text-sm font-semibold text-red-300 ring-1 ring-red-500/40 hover:bg-red-500/10 disabled:opacity-60"
+                >
+                  Delete lead
                 </button>
                 {saveMsg && <span className="text-xs text-mrg-muted">{saveMsg}</span>}
               </div>

@@ -235,6 +235,18 @@ export async function updateLeadCrm(
   return mapLead(data as Record<string, unknown>);
 }
 
+export async function deleteLead(leadId: string): Promise<boolean> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return false;
+
+  const { error } = await sb.from("leads").delete().eq("id", leadId);
+  if (error) {
+    console.error("[leads] delete failed", error.message);
+    return false;
+  }
+  return true;
+}
+
 export async function getBookedCallIsosFromLeads(): Promise<string[]> {
   if (!isSupabaseConfigured()) return [];
   const sb = getSupabaseAdmin();

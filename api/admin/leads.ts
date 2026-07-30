@@ -8,6 +8,7 @@ import { importMetaLeadPaste, previewMetaLeadPaste } from "../../shared/importMe
 import { listFollowupsForLead } from "../../shared/followUpStore.js";
 import {
   LEAD_STATUSES,
+  deleteLead,
   listLeads,
   updateLeadCrm,
   type LeadStatus,
@@ -108,6 +109,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const updated = await updateLeadCrm(id, patch);
     if (!updated) return res.status(500).json({ error: "Could not update lead." });
     return res.status(200).json({ ok: true, lead: updated });
+  }
+
+  if (req.method === "DELETE") {
+    const body = readBody(req);
+    const id =
+      String(body.id ?? "").trim() ||
+      (typeof req.query.id === "string" ? req.query.id.trim() : "");
+    if (!id) return res.status(400).json({ error: "Missing lead id." });
+
+    const ok = await deleteLead(id);
+    if (!ok) return res.status(500).json({ error: "Could not delete lead." });
+    return res.status(200).json({ ok: true, id });
   }
 
   return res.status(405).json({ error: "Method not allowed" });

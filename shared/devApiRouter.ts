@@ -31,6 +31,7 @@ import { listFollowupsForLead } from "./followUpStore.js";
 import {
   insertLead,
   listLeads,
+  deleteLead,
   updateLeadCrm,
   updateLeadQualifier,
   LEAD_STATUSES,
@@ -366,6 +367,18 @@ export async function handleDevApi(
         updated ? 200 : 500,
         updated ? { ok: true, lead: updated } : { error: "Could not update lead." },
       );
+      return true;
+    }
+    if (method === "DELETE") {
+      const body = await readJsonBody(req);
+      const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+      const id = String(body.id ?? "").trim() || qs.get("id")?.trim() || "";
+      if (!id) {
+        json(res, 400, { error: "Missing lead id." });
+        return true;
+      }
+      const ok = await deleteLead(id);
+      json(res, ok ? 200 : 500, ok ? { ok: true, id } : { error: "Could not delete lead." });
       return true;
     }
     json(res, 405, { error: "Method not allowed" });
