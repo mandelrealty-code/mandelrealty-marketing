@@ -542,7 +542,7 @@ export function AdminPage() {
                     value={
                       pastePreview.decision.qualifiesForBookEmail
                         ? "Yes - book-a-call email + hot SMS"
-                        : "No book email - nurture SMS only"
+                        : "No book email / no SMS (not qualified)"
                     }
                   />
                 </dl>

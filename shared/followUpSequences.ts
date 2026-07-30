@@ -16,25 +16,25 @@ export const HOT_SMS_STEPS: FollowUpStepDef[] = [
     step: 1,
     delayMinutes: 0,
     body: (name, bookUrl) =>
-      `Hey ${first(name)}, it's Mandel Realty Group. Got your free Airbnb makeover application. Grab a free 15-min call here: ${bookUrl}`,
+      `Hey ${first(name)}, it's Mandel Realty Group! We help Airbnb hosts fill more nights and earn more — and your free makeover application is in. Book a free 30-min call so we can get to know you and walk you through exactly how it works: ${bookUrl}\nReply STOP to opt out.`,
   },
   {
     step: 2,
     delayMinutes: 120,
     body: (name, bookUrl) =>
-      `${first(name)}, quick bump from MRG. Spots are limited this quarter. Book your call: ${bookUrl}`,
+      `${first(name)}, quick bump from MRG — spots are limited this quarter, so we'd love to grab 30 minutes with you soon. Book here: ${bookUrl}`,
   },
   {
     step: 3,
     delayMinutes: 60 * 24,
     body: (name, bookUrl) =>
-      `Still interested in a free furnish + management makeover, ${first(name)}? Pick a time: ${bookUrl} Reply STOP to opt out.`,
+      `Still around, ${first(name)}? We'd genuinely love to talk through how to grow your Airbnb's revenue. Pick a time for a 30-min call: ${bookUrl}\nReply STOP to opt out.`,
   },
   {
     step: 4,
     delayMinutes: 60 * 72,
     body: (name, bookUrl) =>
-      `Last note from MRG, ${first(name)}. Closing your file for now. Reply anytime or book here: ${bookUrl}`,
+      `Last note from MRG, ${first(name)}. We're closing your file for now, but the door's always open if you'd like to chat. Book a 30-min call anytime here: ${bookUrl}`,
   },
 ];
 

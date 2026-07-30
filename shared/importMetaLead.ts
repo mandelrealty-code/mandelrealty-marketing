@@ -137,7 +137,7 @@ export async function importMetaLeadPaste(
     "Imported from Meta Leads Center paste.",
     `Has Airbnb: ${parsed.hasListing}`,
     `Book-a-call email: ${decision.qualifiesForBookEmail ? "sent (qualified)" : "not sent (no live Airbnb)"}`,
-    `SMS sequence: ${decision.qualifiesForBookEmail ? "hot_sms" : "nurture_sms"}`,
+    `SMS sequence: ${decision.qualifiesForBookEmail ? "hot_sms (qualified)" : "none (not qualified)"}`,
     ...Object.entries(parsed.rawAnswers).map(([k, v]) => `${k}: ${v}`),
   ];
 
@@ -202,12 +202,13 @@ export async function importMetaLeadPaste(
     }
   }
 
-  if (isTwilioConfigured(env)) {
-    const sequence = decision.qualifiesForBookEmail ? "hot_sms" : "nurture_sms";
+  // SMS only for newly imported Meta leads who qualify (live Airbnb).
+  // Never backfills old CRM leads; no nurture SMS for non-qualified.
+  if (isTwilioConfigured(env) && decision.qualifiesForBookEmail) {
     const scheduled = await scheduleSmsSequence({
       leadId,
       name: parsed.name,
-      sequence,
+      sequence: "hot_sms",
     });
     smsScheduled = scheduled.ok;
     if (scheduled.ok) {
