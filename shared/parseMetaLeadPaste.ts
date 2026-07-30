@@ -233,7 +233,7 @@ export function decideMetaImport(parsed: ParsedMetaLead): MetaImportDecision {
     return {
       status: "qualified",
       qualifiesForBookEmail: true,
-      reason: "Has a live Airbnb listing. Will get the book-a-call email.",
+      reason: "Has a live Airbnb listing. Will get the first SMS (no customer email).",
     };
   }
   if (parsed.hasListing === "no") {
@@ -241,13 +241,13 @@ export function decideMetaImport(parsed: ParsedMetaLead): MetaImportDecision {
       status: "low_fit",
       qualifiesForBookEmail: false,
       reason:
-        "No Airbnb listing yet. Still saved to CRM with full details as low fit for future follow-up. No book-a-call email.",
+        "No Airbnb listing yet. Still saved to CRM with full details as low fit. No SMS.",
     };
   }
   return {
     status: "new",
     qualifiesForBookEmail: false,
     reason:
-      "Listing status unclear. Still saved to CRM with full details as new for manual review. No book-a-call email.",
+      "Listing status unclear. Still saved to CRM with full details as new for manual review. No SMS.",
   };
 }

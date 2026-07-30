@@ -1,7 +1,5 @@
 import {
   LEAD_INBOX,
-  buildCustomerConfirmationHtml,
-  buildCustomerSubject,
   buildLeadNotificationHtml,
   buildLeadSubject,
   sendResendEmail,
@@ -136,7 +134,7 @@ export async function importMetaLeadPaste(
   const notesLines = [
     "Imported from Meta Leads Center paste.",
     `Has Airbnb: ${parsed.hasListing}`,
-    `Book-a-call email: ${decision.qualifiesForBookEmail ? "sent (qualified)" : "not sent (no live Airbnb)"}`,
+    `Book-a-call email: not sent (SMS only)`,
     `SMS: ${decision.qualifiesForBookEmail ? "first message only (manual bumps in CRM)" : "none (not qualified)"}`,
     ...Object.entries(parsed.rawAnswers).map(([k, v]) => `${k}: ${v}`),
   ];
@@ -188,18 +186,7 @@ export async function importMetaLeadPaste(
       replyTo: parsed.email,
     });
     inboxNotified = inbox.ok;
-
-    if (decision.qualifiesForBookEmail) {
-      const customer = await sendResendEmail({
-        apiKey,
-        from,
-        to: [parsed.email],
-        subject: buildCustomerSubject(emailInput),
-        html: buildCustomerConfirmationHtml(emailInput),
-        replyTo: LEAD_INBOX,
-      });
-      emailSent = customer.ok;
-    }
+    // Customer book-a-call email disabled — SMS carries the Google Calendar link.
   }
 
   // Qualified Meta leads: first SMS only. Later bumps are manual in CRM.

@@ -469,19 +469,16 @@ export function AdminPage() {
       };
       if (!res.ok) throw new Error(data.error || "Import failed");
       const emailNote = data.decision?.qualifiesForBookEmail
-        ? data.emailSent
-          ? "Book-a-call email sent."
-          : "Lead saved, but book-a-call email failed (check Resend)."
-        : "No schedule email (not qualified).";
+        ? "No customer email (SMS only)."
+        : "No SMS (not qualified).";
       setPasteResult(
         `Saved ${data.parsed?.name || "lead"} as ${data.decision?.status || "lead"}. ${emailNote}${
-          typeof (data as { smsSentNow?: number }).smsSentNow === "number"
-            ? ` SMS sent now: ${(data as { smsSentNow?: number }).smsSentNow}.`
-            : ""
-        }${
-          (data as { smsScheduled?: boolean }).smsScheduled === false
-            ? " (Twilio not configured or SMS schedule failed)"
-            : ""
+          typeof (data as { smsSentNow?: number }).smsSentNow === "number" &&
+          (data as { smsSentNow?: number }).smsSentNow! > 0
+            ? " First SMS sent."
+            : data.decision?.qualifiesForBookEmail
+              ? " (Twilio not configured or SMS failed)"
+              : ""
         }`,
       );
       setPaste("");
@@ -590,7 +587,7 @@ export function AdminPage() {
             <h2 className="text-base font-semibold text-mrg-text">Paste from Meta Leads Center</h2>
             <p className="mt-1 text-sm text-mrg-muted">
               Copy the whole lead from Meta, paste here, preview, then import. Everyone is saved to
-              CRM with full details. Only leads with a live Airbnb get the book-a-call email.
+              CRM with full details. Qualified leads (live Airbnb) get the first SMS only — no customer email.
             </p>
             <textarea
               value={paste}
@@ -664,11 +661,11 @@ export function AdminPage() {
                     value={STATUS_LABEL[pastePreview.decision.status]}
                   />
                   <Row
-                    label="Email?"
+                    label="SMS?"
                     value={
                       pastePreview.decision.qualifiesForBookEmail
-                        ? "Yes - book-a-call email + first SMS only"
-                        : "No book email / no SMS (not qualified)"
+                        ? "Yes - first SMS only (no email)"
+                        : "No SMS (not qualified)"
                     }
                   />
                 </dl>
