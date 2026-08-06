@@ -1,0 +1,33 @@
+Ad — "Free Furnish + Guaranteed Revenue"
+Creative: v1-free-furnish.png (1080x1350, 4:5)
+
+PRIMARY TEXT
+------------
+We'll furnish your Airbnb. 100% free.
+
+Then we'll help you make 2-3X the revenue.
+
+No catch. No upfront cost. Just a better-performing property.
+
+Free Airbnb Makeover — spots limited →
+
+HEADLINE (on-image)
+-------------------
+WE'LL FURNISH YOUR AIRBNB. FREE.
+
+SUB-HEADLINE (on-image)
+-----------------------
+Help you earn 2-3X more. No cost to you.
+
+QUALIFIER (on-image)
+--------------------
+For hosts who already have an Airbnb
+
+CTA BUTTON
+----------
+Claim My Free Makeover
+
+DESTINATION
+-----------
+https://www.mandelrealtygroup.com/book-a-call
+utm_source=meta&utm_medium=paid_social&utm_campaign=airbnb_free_furnish_toronto

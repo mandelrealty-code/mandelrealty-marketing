@@ -1,0 +1,49 @@
+Ad — "Making You More" (Variant B: revenue / money left on the table)
+Creatives: meta-upload/v3-making-you-more/
+  4x5_1080x1350.png   Feed (primary — upload first)
+  1x1_1080x1080.png   Feed square / right column
+  9x16_1080x1920.png  Stories & Reels
+
+HEADLINE (on-image)
+-------------------
+Your Airbnb Should Be Making You More.
+("More." is set as an outlined word for emphasis)
+
+SUB-HEADLINE (on-image)
+-----------------------
+Does this sound like you?
+
+CHECKLIST (on-image)
+--------------------
+Underpriced nights, every week
+Empty gaps in your calendar
+No time to optimize your listing
+Guessing instead of using real data
+
+BOTTOM LINE (on-image)
+----------------------
+We Turn Hosts Into Hands-Off Earners.
+By Mandel Realty Group
+
+PRIMARY TEXT (suggested — not yet approved)
+-------------------------------------------
+Most hosts with great properties earn about half of what they should.
+
+Underpriced weeknights. Gaps nobody filled. A listing that hasn't been
+touched in a year. None of it is your fault — it's a full-time job.
+
+We price it with real data, fill the calendar, and run the day-to-day.
+You just get paid.
+
+See what your place should be earning →
+
+DESTINATION
+-----------
+https://www.mandelrealtygroup.com/book-a-call
+utm_source=meta&utm_medium=paid_social&utm_campaign=making_you_more_toronto
+
+NOTE
+----
+The reference creative used a "BOOK MY FREE REVENUE AUDIT" button in the
+position now occupied by the bottom line. Swap it back in if this variant
+needs a hard CTA on the image.

@@ -1,0 +1,50 @@
+Ad — "On-Call 24/7" (Variant C: identity / time angle)
+Creatives: meta-upload/v4-on-call/
+  4x5_1080x1350.png   Feed (primary — upload first)
+  1x1_1080x1080.png   Feed square / right column
+  9x16_1080x1920.png  Stories & Reels
+
+HEADLINE (on-image)
+-------------------
+You Didn't Sign Up To Be On-Call 24/7.
+
+SUB-HEADLINE (on-image)
+-----------------------
+Does this sound like you?
+
+CHECKLIST (on-image)
+--------------------
+Answering guest texts during dinner
+Losing sleep over bad reviews
+No real time off, ever
+Wondering if it's even worth it anymore
+
+BOTTOM LINE (on-image)
+----------------------
+Turn Your Airbnb Into Passive Income!
+By Mandel Realty Group
+
+NOTIFICATION STACK (on-image, top of creative)
+----------------------------------------------
+Guest    11:47 PM   The wifi password isn't working
+Guest     2:14 AM   How do I turn on the heat?
+Cleaner   6:03 AM   Can't make today's turnover, sorry
+
+The 1:1 version shows the first two notifications only (vertical space).
+
+PRIMARY TEXT (suggested — not yet approved)
+-------------------------------------------
+You didn't buy an investment property to get a second job.
+
+Guest texts during dinner. "How does the heat work?" at 2am. A cleaner
+cancelling on a Saturday morning. It never actually stops.
+
+We take the whole thing over — messaging, cleaning, pricing, maintenance —
+so the place runs without you in it.
+
+Get your evenings back →
+
+DESTINATION
+-----------
+https://www.mandelrealtygroup.com/book-a-call
+utm_source=meta&utm_medium=paid_social&utm_campaign=on_call_247_toronto
