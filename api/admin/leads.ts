@@ -18,6 +18,7 @@ import {
   listLeads,
   updateLeadCrm,
   type LeadStatus,
+  type OfferPath,
 } from "../../shared/leadStore.js";
 import { isSupabaseConfigured } from "../../shared/supabase.js";
 
@@ -157,6 +158,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       notes?: string;
       whatsNext?: string;
       aiPaused?: boolean;
+      offerPath?: OfferPath;
     } = {};
 
     if (body.status !== undefined) {
@@ -170,6 +172,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body.whatsNext !== undefined) patch.whatsNext = String(body.whatsNext);
     if (typeof body.aiPaused === "boolean") patch.aiPaused = body.aiPaused;
     if (typeof body.ai_paused === "boolean") patch.aiPaused = body.ai_paused;
+    if (typeof body.offerPath === "string") {
+      patch.offerPath = body.offerPath as OfferPath;
+    }
+    if (typeof body.offer_path === "string") {
+      patch.offerPath = body.offer_path as OfferPath;
+    }
 
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({ error: "Nothing to update." });

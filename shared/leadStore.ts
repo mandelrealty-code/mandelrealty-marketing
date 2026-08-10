@@ -1,13 +1,23 @@
 import type { HasListing } from "./auditEmails.js";
-import { normalizeLeadStatus, type LeadStatus } from "./crmTypes.js";
+import {
+  normalizeLeadStatus,
+  normalizeOfferPath,
+  type LeadStatus,
+  type OfferPath,
+} from "./crmTypes.js";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase.js";
 
-export type { LeadStatus } from "./crmTypes.js";
+export type { LeadStatus, OfferPath } from "./crmTypes.js";
 export {
   LEAD_STATUSES,
   PIPELINE_STATUSES,
   STATUS_LABEL,
+  STATUS_JOURNEY,
+  OFFER_PATHS,
+  OFFER_PATH_LABEL,
   normalizeLeadStatus,
+  normalizeOfferPath,
+  inferOfferPath,
 } from "./crmTypes.js";
 
 export type LeadRow = {
@@ -34,6 +44,7 @@ export type LeadRow = {
   notes_updated_at: string | null;
   qualified_at: string | null;
   ai_paused: boolean;
+  offer_path: OfferPath;
 };
 
 export type InsertLeadInput = {
@@ -56,6 +67,7 @@ export type InsertLeadInput = {
   status?: LeadStatus;
   notes?: string;
   aiPaused?: boolean;
+  offerPath?: OfferPath;
 };
 
 export type QualifierInput = {
@@ -70,6 +82,7 @@ export type LeadCrmUpdate = {
   notes?: string;
   whatsNext?: string;
   aiPaused?: boolean;
+  offerPath?: OfferPath;
 };
 
 function mapLead(row: Record<string, unknown>): LeadRow {
@@ -97,17 +110,16 @@ function mapLead(row: Record<string, unknown>): LeadRow {
     notes_updated_at: (row.notes_updated_at as string | null) ?? null,
     qualified_at: (row.qualified_at as string | null) ?? null,
     ai_paused: Boolean(row.ai_paused),
+    offer_path: normalizeOfferPath(row.offer_path as string),
   };
 }
 
 export function suggestStatusFromQualifier(q: QualifierInput): LeadStatus {
-  if (
-    q.propertyStage === "researching" ||
-    q.permitStatus === "not_planning" ||
-    q.strAllowed === "no" ||
-    q.launchTimeline === "later"
-  ) {
+  if (q.permitStatus === "not_planning" || q.strAllowed === "no") {
     return "low_fit";
+  }
+  if (q.propertyStage === "researching" || q.launchTimeline === "later") {
+    return "nurturing";
   }
   return "engaging";
 }
@@ -152,8 +164,12 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
       status,
       notes: input.notes ?? "",
       ai_paused: input.aiPaused ?? false,
+      offer_path: input.offerPath ?? "unknown",
       qualified_at:
-        status === "engaging" || status === "interested" || hasNoQualifier
+        status === "engaging" ||
+        status === "interested" ||
+        status === "nurturing" ||
+        hasNoQualifier
           ? new Date().toISOString()
           : null,
     })
@@ -161,6 +177,45 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
     .single();
 
   if (error) {
+    // Retry without offer_path if migration crm_ai_v2 not applied yet
+    if (/offer_path/i.test(error.message)) {
+      const retry = await sb
+        .from("leads")
+        .insert({
+          name: input.name,
+          email: input.email,
+          phone: input.phone,
+          address: input.address,
+          earnings: input.earnings,
+          listing_title: input.listingTitle ?? "",
+          has_listing: input.hasListing,
+          call_start_iso: input.callStartIso || null,
+          call_booking: input.callBooking,
+          source: input.source,
+          marketing_opt_in: input.marketingOptIn,
+          property_stage: input.propertyStage ?? null,
+          permit_status: input.permitStatus ?? null,
+          str_allowed: input.strAllowed ?? null,
+          launch_timeline: input.launchTimeline ?? null,
+          status,
+          notes: input.notes ?? "",
+          ai_paused: input.aiPaused ?? false,
+          qualified_at:
+            status === "engaging" ||
+            status === "interested" ||
+            status === "nurturing" ||
+            hasNoQualifier
+              ? new Date().toISOString()
+              : null,
+        })
+        .select("id")
+        .single();
+      if (retry.error) {
+        console.error("[leads] insert failed", retry.error.message);
+        return null;
+      }
+      return retry.data?.id ?? null;
+    }
     console.error("[leads] insert failed", error.message);
     return null;
   }
@@ -256,6 +311,9 @@ export async function updateLeadCrm(
   }
   if (patch.aiPaused !== undefined) {
     update.ai_paused = patch.aiPaused;
+  }
+  if (patch.offerPath !== undefined) {
+    update.offer_path = patch.offerPath;
   }
 
   if (Object.keys(update).length === 0) return null;

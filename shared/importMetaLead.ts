@@ -137,6 +137,7 @@ export async function importMetaLeadPaste(
     `Has Airbnb: ${parsed.hasListing}`,
     `Book-a-call email: not sent (SMS only)`,
     `SMS: ${decision.qualifiesForBookEmail ? "AI first message when AI is on" : "none"}`,
+    `Offer path: ${decision.offerPath}`,
     ...Object.entries(parsed.rawAnswers).map(([k, v]) => `${k}: ${v}`),
   ];
 
@@ -157,6 +158,7 @@ export async function importMetaLeadPaste(
     strAllowed: parsed.strAllowed,
     status: decision.status,
     notes: notesLines.join("\n"),
+    offerPath: decision.offerPath,
   });
 
   if (!leadId) {

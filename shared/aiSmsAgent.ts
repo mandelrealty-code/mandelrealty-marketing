@@ -6,7 +6,9 @@ import {
   updateLeadCrm,
   type LeadRow,
   type LeadStatus,
+  type OfferPath,
 } from "./leadStore.js";
+import { OFFER_PATH_LABEL, normalizeOfferPath } from "./crmTypes.js";
 import { listSmsForLead, logSmsMessage } from "./smsStore.js";
 import { isTwilioConfigured, toE164 } from "./followUpSequences.js";
 import { sendTwilioSms } from "./twilioSms.js";
@@ -32,9 +34,26 @@ type ClaudeDecision = {
   suggested_stage: LeadStatus | null;
   include_book_link: boolean;
   whats_next?: string;
+  stop_ai: boolean;
+  stop_reason?: string;
+  offer_path?: OfferPath | null;
 };
 
-const SAFE_AUTO_STAGES = new Set<LeadStatus>(["engaging", "interested", "low_fit"]);
+const SAFE_AUTO_STAGES = new Set<LeadStatus>([
+  "engaging",
+  "nurturing",
+  "interested",
+  "low_fit",
+  "skip",
+]);
+
+const AI_STOP_STATUSES = new Set<LeadStatus>([
+  "booked",
+  "call_done",
+  "won",
+  "skip",
+  "low_fit",
+]);
 
 function firstName(full: string): string {
   const part = full.trim().split(/\s+/)[0];
@@ -52,37 +71,65 @@ function leadContextBlock(lead: LeadRow): string {
     `Property stage: ${lead.property_stage || "n/a"}`,
     `STR allowed: ${lead.str_allowed || "n/a"}`,
     `Permit: ${lead.permit_status || "n/a"}`,
+    `Offer path (what to sell): ${lead.offer_path} (${OFFER_PATH_LABEL[lead.offer_path]})`,
     `Current CRM stage: ${lead.status}`,
+    `AI paused: ${lead.ai_paused ? "yes" : "no"}`,
     `Notes: ${lead.notes || "none"}`,
     `What's next: ${lead.whats_next || "none"}`,
   ].join("\n");
 }
 
 function systemPrompt(): string {
-  return `You are the SMS pre-closer for Mandel Realty Group (MRG), an Airbnb co-hosting / property management company in the GTA (Toronto area).
+  return `You are Mandel Realty Group's professional SMS closer / pre-closer (GTA / Toronto area). You route leads down the right sales path and know when to stop.
 
-Goals:
-- Qualify the lead briefly and naturally over SMS.
-- Answer questions using ONLY the knowledge base excerpts provided. If the answer is not in the knowledge base, say you'll confirm on a call — never invent contract terms, pricing guarantees, or legal claims.
-- Move ready leads toward booking a free intro call: ${BOOK_A_CALL_URL}
-- Keep texts short (1–3 short paragraphs / under ~320 chars when possible). Friendly, professional, Canadian English. No emojis spam. No hype.
-- Always respect STOP / opt-out (handled separately).
+OFFER PATHS (follow the lead's offer_path unless the conversation clearly changes it):
+1) management — Full-service Airbnb / co-hosting management. Personalize to their listing, city, permit uncertainty. Sell a free intro call. Example tone: "Hey {name}, thanks for your interest in our management services. I see you have a place in {city} but aren't sure about the permit — that's something we specialize in. Can we hop on a quick call?"
+2) makeover — Free Airbnb makeover (furnish / photos / ops) ads. Sell the makeover + call to qualify.
+3) education — No property / just curious / researching. Do NOT hard-sell management. Offer the free Intro to Airbnb guide from the knowledge base (include the exact URL from KB only). Move stage to nurturing, stop_ai=true after delivering the guide + setting a follow-up note (e.g. check in ~30 days). Later nurture can offer a paid guide from KB when they progress.
+4) unknown — Clarify lightly, then pick management vs education from answers.
+
+KNOWLEDGE BASE RULES:
+- Answer ONLY from provided KB excerpts for permits by city, contracts, guide links, pricing claims.
+- If Brampton (or another city) permit facts are in the KB, use them. If not, say you'll confirm on a call — never invent municipal law.
+- Never invent URLs; only use links present in the KB or the book-a-call URL: ${BOOK_A_CALL_URL}
+
+WHEN TO STOP REPLYING (set stop_ai=true and a short stop_reason):
+- They booked a call / confirmed a time / you successfully pushed them to book and they said yes
+- You delivered the free education guide and set nurturing follow-up
+- They say not interested, wrong number, angry, or ask you to stop
+- Clearly not a fit (STR banned, no plans ever) → low_fit + stop
+- Conversation is looping with no progress after several replies → stop and leave what's_next for a human
+- NEVER keep chatting just to chat. Every message should advance the path or stop cleanly.
+
+WHEN TO KEEP GOING (stop_ai=false):
+- They asked a real question you can answer from KB
+- They're warm but haven't booked / haven't taken the guide yet
+- Clarifying one missing qualifier (listing, city, timeline)
+
+STYLE:
+- Short SMS (usually under ~320 chars). Friendly, professional Canadian English. No emoji spam. No hype.
+- Use their first name. Reference THEIR form facts (listing yes/no, city, permit confusion, readiness).
+- STOP / opt-out is handled outside you.
 
 Return STRICT JSON only:
 {
-  "reply_text": "string — the SMS body to send (no JSON inside)",
-  "suggested_stage": "engaging" | "interested" | "low_fit" | null,
+  "reply_text": "SMS body to send (empty string ONLY if stop_ai and no farewell needed)",
+  "suggested_stage": "engaging" | "nurturing" | "interested" | "low_fit" | "skip" | null,
   "include_book_link": boolean,
-  "whats_next": "optional short internal note"
+  "whats_next": "internal CRM note — where you routed them + next human/AI step",
+  "stop_ai": boolean,
+  "stop_reason": "short internal reason when stop_ai is true",
+  "offer_path": "management" | "makeover" | "education" | "unknown" | null
 }
 
 Stage guidance:
-- engaging: conversation continuing
-- interested: they want a call / asked how to book / asked for times
-- low_fit: clearly not a fit (no property plans, STR banned, not interested)
+- engaging: active sales conversation
+- nurturing: education path waiting on follow-up (usually with stop_ai true after guide)
+- interested: wants a call / asked to book
+- low_fit / skip: end of road
 - null: leave stage unchanged
 
-If include_book_link is true, include the book URL in reply_text exactly once.`;
+If include_book_link is true, include ${BOOK_A_CALL_URL} in reply_text exactly once (management/makeover paths).`;
 }
 
 /**
@@ -196,11 +243,12 @@ async function callClaude(input: {
 
   try {
     const parsed = JSON.parse(jsonMatch[0]) as ClaudeDecision;
+    const stopAi = Boolean(parsed.stop_ai);
     const reply = String(parsed.reply_text ?? "").trim().slice(0, 1500);
-    if (!reply) {
+    if (!reply && !stopAi) {
       return { ok: false, error: adminFacingAiError("AI returned empty reply_text") };
     }
-    if (isUnsafeCustomerSms(reply)) {
+    if (reply && isUnsafeCustomerSms(reply)) {
       console.error("[aiSms] blocked unsafe AI reply (not sent to customer)", reply.slice(0, 120));
       return {
         ok: false,
@@ -214,6 +262,13 @@ async function callClaude(input: {
         suggested_stage: (parsed.suggested_stage as LeadStatus | null) ?? null,
         include_book_link: Boolean(parsed.include_book_link),
         whats_next: parsed.whats_next ? String(parsed.whats_next).slice(0, 500) : undefined,
+        stop_ai: stopAi,
+        stop_reason: parsed.stop_reason
+          ? String(parsed.stop_reason).slice(0, 300)
+          : undefined,
+        offer_path: parsed.offer_path
+          ? normalizeOfferPath(String(parsed.offer_path))
+          : null,
       },
     };
   } catch {
@@ -223,20 +278,23 @@ async function callClaude(input: {
 
 async function buildUserPrompt(lead: LeadRow, mode: "first" | "reply", inbound?: string) {
   const retrievalQuery = [
+    lead.offer_path,
+    OFFER_PATH_LABEL[lead.offer_path],
     lead.name,
     lead.address,
     lead.has_listing,
     lead.property_stage,
-    inbound || "intro outreach Airbnb co-hosting Mandel Realty",
+    lead.permit_status,
+    inbound || "intro outreach Airbnb Mandel Realty",
   ]
     .filter(Boolean)
     .join(" ");
 
-  const chunks = await matchKnowledgeChunks(retrievalQuery, 6);
+  const chunks = await matchKnowledgeChunks(retrievalQuery, 8);
   const kb =
     chunks.length > 0
       ? chunks.map((c, i) => `[${i + 1}] (${c.doc_title})\n${c.content}`).join("\n\n")
-      : "(No knowledge base documents retrieved yet. Keep answers high-level and push to a call.)";
+      : "(No knowledge base documents retrieved yet. Keep answers high-level; do not invent guide URLs or permit law.)";
 
   const thread = await listSmsForLead(lead.id);
   const recent = thread
@@ -253,7 +311,11 @@ ${leadContextBlock(lead)}
 KNOWLEDGE BASE:
 ${kb}
 
-Write the first SMS. Personalize with first name "${firstName(lead.name)}". Mention you're from Mandel Realty Group. Reference something specific from their form (city, listing status, readiness). Soft CTA toward a free intro call when appropriate.`;
+Write the opening SMS for offer_path="${lead.offer_path}".
+Personalize with first name "${firstName(lead.name)}". Reference their form facts (city, listing, permit confusion, readiness).
+If education path: offer free guide from KB and set nurturing + stop_ai when done.
+If management/makeover: soft CTA to book a call when appropriate.
+Set whats_next to where you routed them.`;
   }
 
   return `MODE: reply to inbound SMS.
@@ -270,22 +332,46 @@ ${inbound || ""}
 KNOWLEDGE BASE:
 ${kb}
 
-Reply helpfully and move toward booking when ready.`;
+Reply for offer_path="${lead.offer_path}". Advance the path or stop_ai cleanly when done. Update whats_next with routing status.`;
 }
 
 async function applyDecision(lead: LeadRow, decision: ClaudeDecision): Promise<void> {
-  const patch: { status?: LeadStatus; whatsNext?: string } = {};
+  const patch: {
+    status?: LeadStatus;
+    whatsNext?: string;
+    aiPaused?: boolean;
+    offerPath?: OfferPath;
+  } = {};
+
   if (
     decision.suggested_stage &&
     SAFE_AUTO_STAGES.has(decision.suggested_stage) &&
     decision.suggested_stage !== lead.status
   ) {
-    // Don't auto-downgrade booked/won/call_done
-    if (!["booked", "won", "call_done", "skip"].includes(lead.status)) {
+    if (!["booked", "won", "call_done"].includes(lead.status)) {
       patch.status = decision.suggested_stage;
     }
   }
-  if (decision.whats_next) patch.whatsNext = decision.whats_next;
+
+  if (decision.offer_path && decision.offer_path !== lead.offer_path) {
+    patch.offerPath = decision.offer_path;
+  }
+
+  const notes: string[] = [];
+  if (decision.whats_next) notes.push(decision.whats_next);
+  if (decision.stop_ai && decision.stop_reason) {
+    notes.push(`AI stopped: ${decision.stop_reason}`);
+  }
+  if (notes.length) patch.whatsNext = notes.join(" · ").slice(0, 900);
+
+  if (decision.stop_ai) {
+    patch.aiPaused = true;
+    if (decision.suggested_stage === "nurturing") patch.status = "nurturing";
+    if (decision.suggested_stage === "interested" && !patch.status) {
+      patch.status = "interested";
+    }
+  }
+
   if (Object.keys(patch).length) {
     await updateLeadCrm(lead.id, patch);
   }
@@ -337,10 +423,13 @@ export async function canAiTextLead(lead: LeadRow): Promise<{ ok: boolean; reaso
     return { ok: false, reason: "AI responses are turned off globally" };
   }
   if (lead.ai_paused) return { ok: false, reason: "AI paused for this lead" };
-  if (lead.status === "skip" || lead.status === "won") {
-    return { ok: false, reason: `Lead status is ${lead.status}` };
+  if (AI_STOP_STATUSES.has(lead.status)) {
+    return { ok: false, reason: `Lead status is ${lead.status} — AI does not reply` };
   }
-  if (lead.status === "booked" || lead.call_start_iso) {
+  if (lead.status === "nurturing") {
+    return { ok: false, reason: "Nurturing — AI waiting for scheduled follow-up" };
+  }
+  if (lead.call_start_iso) {
     return { ok: false, reason: "Lead already booked" };
   }
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
@@ -350,7 +439,15 @@ export async function canAiTextLead(lead: LeadRow): Promise<{ ok: boolean; reaso
 }
 
 function safeFirstSmsFallback(lead: LeadRow): string {
-  return `Hey ${firstName(lead.name)}, it's Mandel Realty Group — thanks for applying. We help hosts launch and grow Airbnb stays across the GTA. Got 2 mins for a quick question about ${lead.address || "your property"}? Or book a free intro call here: ${BOOK_A_CALL_URL}\nReply STOP to opt out.`;
+  const name = firstName(lead.name);
+  const city = lead.address || "your area";
+  if (lead.offer_path === "education") {
+    return `Hey ${name}, thanks for reaching out to Mandel Realty Group — we'd love to help you learn more about Airbnb. Reply YES and we'll send our free intro guide, or book a quick chat here: ${BOOK_A_CALL_URL}\nReply STOP to opt out.`;
+  }
+  if (lead.offer_path === "makeover") {
+    return `Hey ${name}, it's Mandel Realty Group — thanks for applying for the free Airbnb makeover. Spots are limited; grab a free intro call so we can see if your place in ${city} is a fit: ${BOOK_A_CALL_URL}\nReply STOP to opt out.`;
+  }
+  return `Hey ${name}, it's Mandel Realty Group — thanks for your interest in our management services. I saw your note about ${city}${lead.has_listing === "yes" ? " and your listing" : ""}. Happy to walk you through how we help — book a free intro call: ${BOOK_A_CALL_URL}\nReply STOP to opt out.`;
 }
 
 /** First outbound after import. Uses a safe MRG template if Claude fails — never API/billing text. */
@@ -375,21 +472,35 @@ export async function sendAiFirstSms(input: {
   if (claude.ok) {
     decision = claude.decision;
     body = decision.reply_text;
-    if (decision.include_book_link && !body.includes("http")) {
+    if (body && decision.include_book_link && !body.includes("http")) {
       body = `${body}\n${BOOK_A_CALL_URL}`;
     }
-    if (!/stop/i.test(body)) {
+    if (body && !/stop/i.test(body)) {
       body = `${body.trim()}\nReply STOP to opt out.`;
     }
-    if (isUnsafeCustomerSms(body)) {
+    if (body && isUnsafeCustomerSms(body)) {
       await noteAiFailure(lead.id, "AI draft blocked; sent safe template instead.");
       body = safeFirstSmsFallback(lead);
       decision = null;
     }
   } else {
     await noteAiFailure(lead.id, claude.error);
-    // Still send a normal MRG intro — never Claude's error string
     body = safeFirstSmsFallback(lead);
+  }
+
+  // stop_ai with no farewell — apply CRM routing only
+  if (decision?.stop_ai && !body.trim()) {
+    await applyDecision(lead, decision);
+    return {
+      ok: true,
+      skipped: true,
+      reason: decision.stop_reason || "AI stopped without SMS",
+      suggestedStage: decision.suggested_stage,
+    };
+  }
+
+  if (!body.trim()) {
+    return { ok: false, skipped: true, reason: "Empty AI SMS" };
   }
 
   if (isUnsafeCustomerSms(body)) {
@@ -409,8 +520,18 @@ export async function sendAiFirstSms(input: {
   }
 
   if (decision) await applyDecision(lead, decision);
-  if (lead.status === "new" || lead.status === "low_fit") {
-    await updateLeadCrm(lead.id, { status: "engaging" });
+  else if (lead.status === "new") {
+    await updateLeadCrm(lead.id, {
+      status: lead.offer_path === "education" ? "nurturing" : "engaging",
+    });
+  }
+
+  // Ensure opening message moves them out of new if Claude didn't set a stage
+  const after = await getLeadById(lead.id);
+  if (after?.status === "new") {
+    await updateLeadCrm(lead.id, {
+      status: after.offer_path === "education" ? "nurturing" : "engaging",
+    });
   }
 
   return {
@@ -444,9 +565,25 @@ export async function sendAiReplyToInbound(input: {
     return { ok: false, skipped: true, reason: claude.error, error: claude.error };
   }
 
-  let body = claude.decision.reply_text;
-  if (claude.decision.include_book_link && !body.includes("http")) {
+  const decision = claude.decision;
+  let body = decision.reply_text;
+  if (body && decision.include_book_link && !body.includes("http")) {
     body = `${body}\n${BOOK_A_CALL_URL}`;
+  }
+
+  if (decision.stop_ai && !body.trim()) {
+    await applyDecision(lead, decision);
+    return {
+      ok: true,
+      skipped: true,
+      reason: decision.stop_reason || "AI stopped without SMS",
+      suggestedStage: decision.suggested_stage,
+    };
+  }
+
+  if (!body.trim()) {
+    await applyDecision(lead, { ...decision, stop_ai: true });
+    return { ok: false, skipped: true, reason: "Empty AI reply — stopped" };
   }
 
   if (isUnsafeCustomerSms(body)) {
@@ -461,7 +598,7 @@ export async function sendAiReplyToInbound(input: {
     return { ok: false, error: sent.error };
   }
 
-  await applyDecision(lead, claude.decision);
+  await applyDecision(lead, decision);
   if (lead.status === "new") {
     await updateLeadCrm(lead.id, { status: "engaging" });
   }
@@ -469,7 +606,7 @@ export async function sendAiReplyToInbound(input: {
   return {
     ok: true,
     reply: body,
-    suggestedStage: claude.decision.suggested_stage,
+    suggestedStage: decision.suggested_stage,
     sid: sent.sid,
   };
 }

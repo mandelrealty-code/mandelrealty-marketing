@@ -1,5 +1,9 @@
 import type { HasListing } from "./auditEmails.js";
-import type { LeadStatus } from "./crmTypes.js";
+import {
+  inferOfferPath,
+  type LeadStatus,
+  type OfferPath,
+} from "./crmTypes.js";
 import {
   PERMIT_OPTIONS,
   PROPERTY_STAGES,
@@ -19,12 +23,14 @@ export type ParsedMetaLead = {
   listingTitle: string;
   rawAnswers: Record<string, string>;
   warnings: string[];
+  offerPath: OfferPath;
 };
 
 export type MetaImportDecision = {
   status: LeadStatus;
   qualifiesForBookEmail: boolean;
   reason: string;
+  offerPath: OfferPath;
 };
 
 function norm(s: string): string {
@@ -211,6 +217,13 @@ export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
   if (!phone) warnings.push("Could not find phone.");
   if (hasListing === "unknown") warnings.push("Could not tell if they have an Airbnb listing.");
 
+  const offerPath = inferOfferPath({
+    hasListing,
+    propertyStage,
+    source: "meta_instant_form",
+    rawAnswers,
+  });
+
   return {
     name,
     email,
@@ -224,25 +237,34 @@ export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
     listingTitle: listingTitleRaw?.trim() || "",
     rawAnswers,
     warnings,
+    offerPath,
   };
 }
 
 /**
  * Decide CRM stage + whether AI/first SMS should fire.
- * Cold leads with a property path (own_ready / buying) get AI outreach even without a live listing.
+ * Education/curious leads still get AI (free guide path) — only hard no's are low_fit without SMS.
  */
 export function decideMetaImport(parsed: ParsedMetaLead): MetaImportDecision {
-  const lowFit =
-    parsed.propertyStage === "researching" ||
-    parsed.strAllowed === "no" ||
-    parsed.permitStatus === "not_planning";
+  const offerPath = parsed.offerPath;
 
-  if (lowFit) {
+  if (parsed.strAllowed === "no" || parsed.permitStatus === "not_planning") {
     return {
       status: "low_fit",
       qualifiesForBookEmail: false,
+      offerPath,
       reason:
-        "Marked low fit (researching / STR not allowed / not planning a permit). Saved to CRM; no auto SMS.",
+        "Hard no (STR not allowed / not planning a permit). Saved as low fit; no auto SMS.",
+    };
+  }
+
+  if (offerPath === "education" || parsed.propertyStage === "researching") {
+    return {
+      status: "new",
+      qualifiesForBookEmail: true,
+      offerPath: "education",
+      reason:
+        "Curious / learning path. AI will send education outreach (free guide from knowledge base) when AI is on.",
     };
   }
 
@@ -250,23 +272,15 @@ export function decideMetaImport(parsed: ParsedMetaLead): MetaImportDecision {
     return {
       status: "new",
       qualifiesForBookEmail: true,
-      reason: "Live Airbnb listing. AI pre-closer will send the first SMS (if AI is on).",
-    };
-  }
-
-  if (parsed.hasListing === "no") {
-    return {
-      status: "new",
-      qualifiesForBookEmail: true,
-      reason:
-        "No listing yet but looks workable — AI pre-closer will text to qualify and book a call (if AI is on).",
+      offerPath,
+      reason: `Live listing → ${offerPath} path. AI pre-closer will open with a personalized SMS.`,
     };
   }
 
   return {
     status: "new",
     qualifiesForBookEmail: true,
-    reason:
-      "Listing status unclear. Saved as new; AI will still attempt a first SMS when enabled.",
+    offerPath,
+    reason: `Routed to ${offerPath}. AI will personalize from form answers + knowledge base.`,
   };
 }

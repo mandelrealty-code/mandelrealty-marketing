@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   LEAD_STATUSES,
+  OFFER_PATH_LABEL,
   PIPELINE_STATUSES,
+  STATUS_JOURNEY,
   STATUS_LABEL,
   type LeadStatus,
+  type OfferPath,
 } from "../../shared/crmTypes";
 
 type Lead = {
@@ -27,6 +31,7 @@ type Lead = {
   whats_next: string;
   notes_updated_at: string | null;
   ai_paused: boolean;
+  offer_path: OfferPath;
 };
 
 type KnowledgeDoc = {
@@ -61,16 +66,66 @@ const STR_ALLOWED_LABEL: Record<string, string> = {
   unsure: "STR unsure",
 };
 
+const easeOut = [0.22, 1, 0.36, 1] as const;
+
+function MotionToggle({
+  on,
+  disabled,
+  onToggle,
+  label,
+  size = "md",
+}: {
+  on: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+  label: string;
+  size?: "sm" | "md";
+}) {
+  const reduce = useReducedMotion();
+  const trackW = size === "sm" ? 44 : 52;
+  const trackH = size === "sm" ? 26 : 32;
+  const knob = size === "sm" ? 20 : 26;
+  const pad = 3;
+  const travel = trackW - knob - pad * 2;
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onToggle}
+      className={`relative shrink-0 rounded-full p-[3px] transition-opacity disabled:opacity-50 ${
+        on ? "bg-emerald-500/80" : "bg-white/15"
+      }`}
+      style={{ width: trackW, height: trackH }}
+    >
+      <motion.span
+        layout
+        className="block rounded-full bg-white shadow-sm"
+        style={{ width: knob, height: knob }}
+        animate={{ x: on ? travel : 0 }}
+        transition={
+          reduce
+            ? { duration: 0 }
+            : { type: "spring", stiffness: 500, damping: 32 }
+        }
+      />
+    </button>
+  );
+}
+
 function statusTone(status: LeadStatus): string {
   switch (status) {
     case "engaging":
     case "interested":
       return "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30";
+    case "nurturing":
+      return "bg-amber-500/15 text-amber-200 ring-amber-500/30";
     case "booked":
     case "call_done":
       return "bg-sky-500/15 text-sky-300 ring-sky-500/30";
-    case "needs_shane":
-      return "bg-mrg-gold/20 text-mrg-gold ring-mrg-gold/40";
     case "low_fit":
     case "skip":
       return "bg-red-500/15 text-red-300 ring-red-500/30";
@@ -79,6 +134,89 @@ function statusTone(status: LeadStatus): string {
     default:
       return "bg-mrg-gold/15 text-mrg-gold ring-mrg-gold/30";
   }
+}
+
+/** Visual journey marker — shows where the AI closer routed them */
+function JourneyMark({
+  status,
+  aiPaused,
+  aiEffective,
+}: {
+  status: LeadStatus;
+  aiPaused: boolean;
+  aiEffective: boolean;
+}) {
+  const live = aiEffective && !aiPaused && (status === "new" || status === "engaging" || status === "interested");
+  if (status === "booked") {
+    return (
+      <span
+        title="Booked — AI stopped"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500/20 text-sm text-sky-200 ring-1 ring-sky-500/35"
+      >
+        ✓
+      </span>
+    );
+  }
+  if (status === "nurturing") {
+    return (
+      <span
+        title="Nurturing — education follow-up later"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-sm text-amber-100 ring-1 ring-amber-500/35"
+      >
+        ◌
+      </span>
+    );
+  }
+  if (status === "won" || status === "call_done") {
+    return (
+      <span
+        title={STATUS_JOURNEY[status]}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm text-mrg-text ring-1 ring-white/20"
+      >
+        ★
+      </span>
+    );
+  }
+  if (status === "low_fit" || status === "skip") {
+    return (
+      <span
+        title={STATUS_JOURNEY[status]}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-sm text-red-300 ring-1 ring-red-500/30"
+      >
+        –
+      </span>
+    );
+  }
+  if (aiPaused || !aiEffective) {
+    return (
+      <span
+        title="AI paused / off"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-[10px] font-semibold text-mrg-muted ring-1 ring-white/15"
+      >
+        ‖
+      </span>
+    );
+  }
+  if (live) {
+    return (
+      <motion.span
+        title={STATUS_JOURNEY[status]}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40"
+        animate={{ scale: [1, 1.08, 1] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+      >
+        ●
+      </motion.span>
+    );
+  }
+  return (
+    <span
+      title={STATUS_JOURNEY[status]}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-mrg-gold/15 text-xs text-mrg-gold ring-1 ring-mrg-gold/30"
+    >
+      ○
+    </span>
+  );
 }
 
 function listingShort(hasListing: Lead["has_listing"]): string {
@@ -256,6 +394,7 @@ export function AdminPage() {
         notes: l.notes ?? "",
         whats_next: l.whats_next ?? "",
         ai_paused: Boolean(l.ai_paused),
+        offer_path: (l.offer_path as OfferPath) || "unknown",
       })),
     );
     setAuthed(true);
@@ -559,7 +698,13 @@ export function AdminPage() {
   if (authed === null) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mrg-bg text-mrg-muted">
-        Loading…
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4 }}
+        >
+          Loading…
+        </motion.p>
       </div>
     );
   }
@@ -567,8 +712,11 @@ export function AdminPage() {
   if (!authed) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mrg-bg px-5">
-        <form
+        <motion.form
           onSubmit={login}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, ease: easeOut }}
           className="w-full max-w-sm rounded-[1.75rem] bg-mrg-surface-elevated p-8 ring-1 ring-white/10"
         >
           <div className="flex items-center gap-3">
@@ -597,7 +745,7 @@ export function AdminPage() {
           >
             {loggingIn ? "Signing in…" : "Sign in"}
           </button>
-        </form>
+        </motion.form>
       </div>
     );
   }
@@ -605,7 +753,14 @@ export function AdminPage() {
   /* -------- Contact detail (full screen) -------- */
   if (selected) {
     return (
-      <div className="flex min-h-dvh flex-col bg-mrg-bg text-mrg-text">
+      <motion.div
+        key="contact-detail"
+        initial={{ opacity: 0, x: 28 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 28 }}
+        transition={{ duration: 0.28, ease: easeOut }}
+        className="flex min-h-dvh flex-col bg-mrg-bg text-mrg-text"
+      >
         <header className="sticky top-0 z-20 border-b border-white/8 bg-mrg-bg/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
           <div className="mx-auto flex max-w-3xl items-start gap-3">
             <button
@@ -619,22 +774,36 @@ export function AdminPage() {
             <div className="min-w-0 flex-1">
               <h1 className="truncate text-lg font-semibold">{selected.name || "Contact"}</h1>
               <p className="truncate text-sm text-mrg-muted">
+                {OFFER_PATH_LABEL[selected.offer_path]} · {STATUS_JOURNEY[selected.status]}
+              </p>
+              <p className="truncate text-xs text-mrg-muted">
                 {selected.phone || selected.email}
                 {selected.address ? ` · ${selected.address}` : ""}
               </p>
             </div>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => patchLead({ aiPaused: !selected.ai_paused })}
-              className={`mt-1 shrink-0 rounded-full px-3 py-2 text-xs font-semibold ring-1 ${
-                selected.ai_paused
-                  ? "bg-white/5 text-mrg-muted ring-white/15"
-                  : "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
-              }`}
-            >
-              {selected.ai_paused ? "AI off" : "AI on"}
-            </button>
+            <div className="mt-1 flex shrink-0 flex-col items-end gap-2">
+              <JourneyMark
+                status={selected.status}
+                aiPaused={selected.ai_paused}
+                aiEffective={aiEffective}
+              />
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-[11px] font-semibold ${
+                    selected.ai_paused ? "text-mrg-muted" : "text-emerald-300"
+                  }`}
+                >
+                  AI
+                </span>
+                <MotionToggle
+                  on={!selected.ai_paused}
+                  disabled={saving}
+                  label={selected.ai_paused ? "Turn AI on for this lead" : "Turn AI off for this lead"}
+                  size="sm"
+                  onToggle={() => patchLead({ aiPaused: !selected.ai_paused })}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="mx-auto mt-3 flex max-w-3xl gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -685,6 +854,8 @@ export function AdminPage() {
                 }
               />
               <Row label="Email" value={selected.email || "—"} />
+              <Row label="Offer path" value={OFFER_PATH_LABEL[selected.offer_path]} />
+              <Row label="Journey" value={STATUS_JOURNEY[selected.status]} />
               <Row label="Call" value={selected.call_booking || "—"} />
             </dl>
           </div>
@@ -697,27 +868,32 @@ export function AdminPage() {
               {smsMessages.length === 0 && (
                 <p className="py-6 text-center text-sm text-mrg-muted">No messages yet.</p>
               )}
-              {smsMessages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                    m.direction === "outbound"
-                      ? "ml-auto bg-mrg-gold/20 text-mrg-text"
-                      : "mr-auto bg-white/8 text-mrg-text"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{m.body}</p>
-                  <p className="mt-1 text-[10px] text-mrg-muted">
-                    {m.direction === "outbound" && m.meta?.ai_generated ? "AI · " : ""}
-                    {new Date(m.created_at).toLocaleString("en-CA", {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-              ))}
+              <AnimatePresence initial={false}>
+                {smsMessages.map((m) => (
+                  <motion.div
+                    key={m.id}
+                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.22, ease: easeOut }}
+                    className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                      m.direction === "outbound"
+                        ? "ml-auto bg-mrg-gold/20 text-mrg-text"
+                        : "mr-auto bg-white/8 text-mrg-text"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{m.body}</p>
+                    <p className="mt-1 text-[10px] text-mrg-muted">
+                      {m.direction === "outbound" && m.meta?.ai_generated ? "AI · " : ""}
+                      {new Date(m.created_at).toLocaleString("en-CA", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
               <div ref={threadEndRef} />
             </div>
           </div>
@@ -808,13 +984,19 @@ export function AdminPage() {
             </button>
           </div>
         </div>
-      </div>
+      </motion.div>
     );
   }
 
   /* -------- Main shell with tabs -------- */
   return (
-    <div className="flex min-h-dvh flex-col bg-mrg-bg text-mrg-text">
+    <motion.div
+      key="crm-shell"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="flex min-h-dvh flex-col bg-mrg-bg text-mrg-text"
+    >
       <header className="border-b border-white/8 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -826,15 +1008,22 @@ export function AdminPage() {
               <h1 className="text-base font-semibold">CRM</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
             <span
-              className={`hidden rounded-full px-3 py-1.5 text-[11px] font-semibold ring-1 sm:inline ${
+              className={`hidden items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold ring-1 sm:inline-flex ${
                 aiEffective
                   ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
                   : "bg-white/5 text-mrg-muted ring-white/15"
               }`}
             >
-              AI {aiEffective ? "on" : "off"}
+              AI
+              <MotionToggle
+                on={aiEffective}
+                disabled={aiBusy || aiEnvKill}
+                label="Toggle AI responses"
+                size="sm"
+                onToggle={() => toggleGlobalAi().catch(() => undefined)}
+              />
             </span>
             <button
               type="button"
@@ -857,8 +1046,15 @@ export function AdminPage() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4">
         {loadError && <p className="mb-3 text-sm text-red-300">{loadError}</p>}
 
-        {tab === "contacts" && (
-          <div>
+        <AnimatePresence mode="wait">
+          {tab === "contacts" && (
+            <motion.div
+              key="contacts"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25, ease: easeOut }}
+            >
             <div className="flex gap-2">
               <input
                 value={search}
@@ -880,21 +1076,31 @@ export function AdminPage() {
                   No contacts yet. Paste a Meta lead in Settings.
                 </li>
               )}
-              {leads.map((lead) => (
-                <li key={lead.id}>
+              {leads.map((lead, i) => (
+                <motion.li
+                  key={lead.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.22, delay: Math.min(i * 0.03, 0.24), ease: easeOut }}
+                >
                   <button
                     type="button"
                     onClick={() => openLead(lead.id)}
                     className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-white/5"
                   >
+                    <JourneyMark
+                      status={lead.status}
+                      aiPaused={lead.ai_paused}
+                      aiEffective={aiEffective}
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="truncate font-semibold">{lead.name || "Unnamed"}</p>
-                        {!lead.ai_paused && aiEffective && (
-                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
-                        )}
                       </div>
                       <p className="truncate text-sm text-mrg-muted">
+                        {OFFER_PATH_LABEL[lead.offer_path]} · {STATUS_JOURNEY[lead.status]}
+                      </p>
+                      <p className="truncate text-xs text-mrg-muted">
                         {lead.address || lead.phone || lead.email}
                         {" · "}
                         {listingShort(lead.has_listing)}
@@ -906,19 +1112,27 @@ export function AdminPage() {
                       {STATUS_LABEL[lead.status] || lead.status}
                     </span>
                   </button>
-                </li>
+                </motion.li>
               ))}
             </ul>
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {tab === "pipeline" && (
-          <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {tab === "pipeline" && (
+            <motion.div
+              key="pipeline"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25, ease: easeOut }}
+              className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
             {PIPELINE_STATUSES.map((status) => {
               const column = leads.filter((l) => l.status === status);
               return (
-                <div
+                <motion.div
                   key={status}
+                  layout
                   className="w-[78vw] max-w-xs shrink-0 rounded-2xl bg-mrg-surface-elevated p-3 ring-1 ring-white/10 sm:w-72"
                 >
                   <div className="mb-3 flex items-center justify-between gap-2">
@@ -929,7 +1143,7 @@ export function AdminPage() {
                   </div>
                   <ul className="space-y-2">
                     {column.map((lead) => (
-                      <li key={lead.id}>
+                      <motion.li key={lead.id} layout>
                         <button
                           type="button"
                           onClick={() => openLead(lead.id)}
@@ -937,23 +1151,33 @@ export function AdminPage() {
                         >
                           <p className="font-medium">{lead.name || "Unnamed"}</p>
                           <p className="mt-0.5 truncate text-xs text-mrg-muted">
+                            {OFFER_PATH_LABEL[lead.offer_path]}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-mrg-muted">
                             {lead.address || lead.phone}
                           </p>
                         </button>
-                      </li>
+                      </motion.li>
                     ))}
                     {column.length === 0 && (
                       <li className="py-6 text-center text-xs text-mrg-muted">Empty</li>
                     )}
                   </ul>
-                </div>
+                </motion.div>
               );
             })}
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {tab === "knowledge" && (
-          <div className="space-y-4">
+          {tab === "knowledge" && (
+            <motion.div
+              key="knowledge"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25, ease: easeOut }}
+              className="space-y-4"
+            >
             <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
               <h2 className="text-base font-semibold">Knowledge base</h2>
               <p className="mt-1 text-sm text-mrg-muted">
@@ -985,8 +1209,11 @@ export function AdminPage() {
 
             <ul className="space-y-2">
               {docs.map((doc) => (
-                <li
+                <motion.li
                   key={doc.id}
+                  layout
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
                   className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -997,20 +1224,11 @@ export function AdminPage() {
                         {doc.error ? ` — ${doc.error}` : ""}
                       </p>
                     </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${
-                        doc.active
-                          ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
-                          : "bg-white/5 text-mrg-muted ring-white/15"
-                      }`}
-                    >
-                      {doc.active ? "Active" : "Off"}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
+                    <MotionToggle
+                      on={doc.active}
+                      label={doc.active ? "Deactivate document" : "Activate document"}
+                      size="sm"
+                      onToggle={async () => {
                         await fetch("/api/admin/knowledge", {
                           method: "PATCH",
                           headers: { "Content-Type": "application/json" },
@@ -1019,10 +1237,9 @@ export function AdminPage() {
                         });
                         await loadDocs();
                       }}
-                      className="min-h-10 rounded-full bg-white/5 px-3 text-sm ring-1 ring-white/10"
-                    >
-                      {doc.active ? "Deactivate" : "Activate"}
-                    </button>
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={async () => {
@@ -1040,17 +1257,24 @@ export function AdminPage() {
                       Delete
                     </button>
                   </div>
-                </li>
+                </motion.li>
               ))}
               {docs.length === 0 && !docsError && (
                 <li className="py-8 text-center text-sm text-mrg-muted">No documents yet.</li>
               )}
             </ul>
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {tab === "settings" && (
-          <div className="space-y-4">
+          {tab === "settings" && (
+            <motion.div
+              key="settings"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25, ease: easeOut }}
+              className="space-y-4"
+            >
             <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1060,18 +1284,21 @@ export function AdminPage() {
                     {aiEnvKill ? " Env kill switch is forcing AI off." : ""}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={aiBusy || aiEnvKill}
-                  onClick={() => toggleGlobalAi().catch(() => undefined)}
-                  className={`min-h-11 shrink-0 rounded-full px-4 text-sm font-semibold ring-1 ${
-                    aiEnabled && !aiEnvKill
-                      ? "bg-emerald-500/20 text-emerald-200 ring-emerald-500/40"
-                      : "bg-white/5 text-mrg-muted ring-white/15"
-                  }`}
-                >
-                  {aiEnabled && !aiEnvKill ? "On" : "Off"}
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span
+                    className={`text-xs font-semibold ${
+                      aiEnabled && !aiEnvKill ? "text-emerald-300" : "text-mrg-muted"
+                    }`}
+                  >
+                    {aiEnabled && !aiEnvKill ? "On" : "Off"}
+                  </span>
+                  <MotionToggle
+                    on={aiEnabled && !aiEnvKill}
+                    disabled={aiBusy || aiEnvKill}
+                    label="Toggle AI responses"
+                    onToggle={() => toggleGlobalAi().catch(() => undefined)}
+                  />
+                </div>
               </div>
             </div>
 
@@ -1130,8 +1357,9 @@ export function AdminPage() {
                 </div>
               )}
             </div>
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-mrg-bg/95 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur">
@@ -1148,15 +1376,22 @@ export function AdminPage() {
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              className={`min-h-14 text-xs font-semibold ${
+              className={`relative min-h-14 text-xs font-semibold ${
                 tab === id ? "text-mrg-gold" : "text-mrg-muted"
               }`}
             >
               {label}
+              {tab === id && (
+                <motion.span
+                  layoutId="crm-tab-indicator"
+                  className="absolute inset-x-6 bottom-1 h-0.5 rounded-full bg-mrg-gold"
+                  transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                />
+              )}
             </button>
           ))}
         </div>
       </nav>
-    </div>
+    </motion.div>
   );
 }

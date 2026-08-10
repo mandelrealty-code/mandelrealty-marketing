@@ -18,10 +18,10 @@ alter table public.leads
   check (status in (
     'new',
     'engaging',
+    'nurturing',
     'interested',
     'booked',
     'call_done',
-    'needs_shane',
     'won',
     'low_fit',
     'skip'
@@ -29,6 +29,9 @@ alter table public.leads
 
 alter table public.leads
   add column if not exists ai_paused boolean not null default false;
+
+alter table public.leads
+  add column if not exists offer_path text not null default 'unknown';
 
 -- ---------------------------------------------------------------------------
 -- SMS meta (AI-generated flag, etc.)
