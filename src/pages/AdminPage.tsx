@@ -781,28 +781,12 @@ export function AdminPage() {
                 {selected.address ? ` · ${selected.address}` : ""}
               </p>
             </div>
-            <div className="mt-1 flex shrink-0 flex-col items-end gap-2">
+            <div className="mt-1 flex shrink-0 items-start">
               <JourneyMark
                 status={selected.status}
                 aiPaused={selected.ai_paused}
                 aiEffective={aiEffective}
               />
-              <div className="flex items-center gap-2">
-                <span
-                  className={`text-[11px] font-semibold ${
-                    selected.ai_paused ? "text-mrg-muted" : "text-emerald-300"
-                  }`}
-                >
-                  AI
-                </span>
-                <MotionToggle
-                  on={!selected.ai_paused}
-                  disabled={saving}
-                  label={selected.ai_paused ? "Turn AI on for this lead" : "Turn AI off for this lead"}
-                  size="sm"
-                  onToggle={() => patchLead({ aiPaused: !selected.ai_paused })}
-                />
-              </div>
             </div>
           </div>
 
@@ -823,6 +807,60 @@ export function AdminPage() {
               </button>
             ))}
           </div>
+
+          <motion.div
+            layout
+            className={`mx-auto mt-3 flex max-w-3xl items-center justify-between gap-3 rounded-2xl px-3.5 py-3 ring-1 ${
+              !aiEffective
+                ? "bg-white/5 ring-white/10"
+                : selected.ai_paused
+                  ? "bg-amber-500/10 ring-amber-500/25"
+                  : "bg-emerald-500/10 ring-emerald-500/25"
+            }`}
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-mrg-text">
+                {!aiEffective
+                  ? "CRM AI is off (all chats)"
+                  : selected.ai_paused
+                    ? "AI paused on this chat"
+                    : "AI live on this chat"}
+              </p>
+              <p className="mt-0.5 text-xs text-mrg-muted">
+                {!aiEffective
+                  ? "Turn on AI Responses in Settings to resume automation."
+                  : selected.ai_paused
+                    ? "You're in control — AI won't reply here until you resume."
+                    : "Toggle off to jump in. Only affects this lead, not the whole CRM."}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <MotionToggle
+                on={aiEffective && !selected.ai_paused}
+                disabled={saving || !aiEffective}
+                label={
+                  selected.ai_paused
+                    ? "Resume AI on this chat"
+                    : "Pause AI on this chat"
+                }
+                onToggle={() => patchLead({ aiPaused: !selected.ai_paused })}
+              />
+              <button
+                type="button"
+                disabled={saving || !aiEffective}
+                onClick={() =>
+                  patchLead({ aiPaused: !selected.ai_paused }).catch(() => undefined)
+                }
+                className={`min-h-10 rounded-full px-3 text-xs font-semibold ring-1 disabled:opacity-40 ${
+                  selected.ai_paused
+                    ? "bg-emerald-500/20 text-emerald-200 ring-emerald-500/35"
+                    : "bg-amber-500/20 text-amber-100 ring-amber-500/35"
+                }`}
+              >
+                {selected.ai_paused ? "Resume AI" : "Take over"}
+              </button>
+            </div>
+          </motion.div>
         </header>
 
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] pt-4">
