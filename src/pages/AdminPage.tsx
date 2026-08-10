@@ -999,27 +999,43 @@ export function AdminPage() {
         </div>
 
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-mrg-bg/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
-          <div className="mx-auto flex max-w-3xl gap-2">
-            <input
-              value={smsDraft}
-              onChange={(e) => setSmsDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendSmsReply().catch(() => undefined);
+          <div className="mx-auto max-w-3xl">
+            {aiEffective && !selected.ai_paused && (
+              <p className="mb-2 text-center text-[11px] text-mrg-muted">
+                Sending a reply takes over this chat and pauses AI here only.
+              </p>
+            )}
+            {selected.ai_paused && aiEffective && (
+              <p className="mb-2 text-center text-[11px] text-amber-200/90">
+                AI paused on this chat — tap Resume AI above when you want it back.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={smsDraft}
+                onChange={(e) => setSmsDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendSmsReply().catch(() => undefined);
+                  }
+                }}
+                placeholder={
+                  selected.ai_paused
+                    ? "Your reply…"
+                    : "Reply as you (pauses AI on this chat)…"
                 }
-              }}
-              placeholder="Reply as you (pauses AI)…"
-              className="min-h-12 flex-1 rounded-full bg-mrg-surface-elevated px-4 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
-            />
-            <button
-              type="button"
-              disabled={smsSending || !smsDraft.trim()}
-              onClick={() => sendSmsReply().catch(() => undefined)}
-              className="min-h-12 shrink-0 rounded-full bg-mrg-gold px-5 text-sm font-semibold text-black disabled:opacity-50"
-            >
-              Send
-            </button>
+                className="min-h-12 flex-1 rounded-full bg-mrg-surface-elevated px-4 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
+              />
+              <button
+                type="button"
+                disabled={smsSending || !smsDraft.trim()}
+                onClick={() => sendSmsReply().catch(() => undefined)}
+                className="min-h-12 shrink-0 rounded-full bg-mrg-gold px-5 text-sm font-semibold text-black disabled:opacity-50"
+              >
+                Send
+              </button>
+            </div>
           </div>
         </div>
       </motion.div>
@@ -1316,9 +1332,10 @@ export function AdminPage() {
             <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-semibold">AI Responses</h2>
+                  <h2 className="text-base font-semibold">AI Responses (all chats)</h2>
                   <p className="mt-1 text-sm text-mrg-muted">
-                    Master switch for first texts and inbound replies.
+                    Master switch for every lead. To pause one conversation only, open that
+                    contact and tap Take over.
                     {aiEnvKill ? " Env kill switch is forcing AI off." : ""}
                   </p>
                 </div>
