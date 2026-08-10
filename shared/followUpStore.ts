@@ -64,6 +64,7 @@ function mapLeadRow(row: Record<string, unknown>): LeadRow {
     whats_next: String(row.whats_next ?? ""),
     notes_updated_at: (row.notes_updated_at as string | null) ?? null,
     qualified_at: (row.qualified_at as string | null) ?? null,
+    ai_paused: Boolean(row.ai_paused),
   };
 }
 
@@ -401,9 +402,14 @@ export async function sendCustomSmsToLead(
     toPhone: to,
     body: text,
     providerSid: send.sid ?? null,
+    meta: { human: true },
   });
 
-  return { ok: true, lead };
+  // Human takeover — pause AI for this lead
+  const { updateLeadCrm } = await import("./leadStore.js");
+  const updated = await updateLeadCrm(leadId, { aiPaused: true });
+
+  return { ok: true, lead: updated ?? lead };
 }
 
 export async function sendManualBumpForLead(

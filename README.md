@@ -71,6 +71,15 @@ npm run dev
 
 The dev server now handles `POST /api/audit` so the form works on localhost without Vercel.
 
+## Admin CRM (AI pre-closer)
+
+Hosted on `admin.mandelrealtygroup.com`. Mobile-first Contacts / Pipeline / Knowledge / Settings.
+
+1. Run SQL in Supabase (in order): `leads.sql` (or existing), `lead_followups.sql`, `lead_sms_messages.sql`, then **`crm_ai_v1.sql`**.
+2. Vercel env: existing Twilio/Supabase/admin vars plus `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (embeddings for RAG).
+3. Optional safety kill switch: `AI_SMS_ENABLED=false` forces AI SMS off.
+4. In Settings: toggle **AI Responses**, paste Meta leads. In Knowledge: upload contracts/PDFs the AI can read.
+
 ### Alternative: Supabase edge function
 
 A `send-audit-lead` function lives in `property-cleaner-hub/supabase/functions/` and reuses `RESEND_API_KEY` from Supabase secrets. Deploy with:

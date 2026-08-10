@@ -40,6 +40,17 @@ import {
   LEAD_STATUSES,
   type LeadStatus,
 } from "./leadStore.js";
+import {
+  getCrmSettings,
+  isAiEnvKillSwitchOff,
+  setAiResponsesEnabled,
+} from "./crmSettings.js";
+import {
+  deleteKnowledgeDoc,
+  listKnowledgeDocs,
+  updateKnowledgeDoc,
+  uploadAndIndexKnowledgeFile,
+} from "./knowledgeStore.js";
 import { parseLeadRequestBody } from "./parseLeadRequest.js";
 import { isSupabaseConfigured } from "./supabase.js";
 
@@ -191,25 +202,20 @@ export async function handleDevApi(
       });
 
       try {
-        if (leadId && lead.hasListing === "yes") {
+        if (leadId && lead.phone) {
           const { isTwilioConfigured } = await import("./followUpSequences.js");
-          const { sendFirstHotSms } = await import("./followUpStore.js");
+          const { sendAiFirstSms } = await import("./aiSmsAgent.js");
           const twilioEnv = {
             TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
             TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
             TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
           };
           if (isTwilioConfigured(twilioEnv)) {
-            await sendFirstHotSms({
-              leadId,
-              name: lead.name,
-              phone: lead.phone,
-              env: twilioEnv,
-            });
+            await sendAiFirstSms({ leadId, env: twilioEnv });
           }
         }
       } catch (err) {
-        console.warn("[audit-dev] first SMS skipped", err);
+        console.warn("[audit-dev] AI first SMS skipped", err);
       }
 
       json(res, 200, { ok: true, leadId, hasListing: lead.hasListing });
@@ -329,7 +335,8 @@ export async function handleDevApi(
           });
           return true;
         }
-        json(res, 200, { leads: await listLeads(200) });
+        const q = qs.get("q") || "";
+        json(res, 200, { leads: await listLeads(200, q) });
       } catch {
         json(res, 500, { error: "Could not load leads." });
       }
@@ -369,7 +376,14 @@ export async function handleDevApi(
         json(
           res,
           updated ? 200 : 500,
-          updated ? { ok: true, lead: updated } : { error: "Could not mark booked." },
+          updated
+            ? {
+                ok: true,
+                lead: updated,
+                followups: await listFollowupsForLead(id),
+                messages: await listSmsForLead(id),
+              }
+            : { error: "Could not mark booked." },
         );
         return true;
       }
@@ -407,10 +421,16 @@ export async function handleDevApi(
           lead: result.lead,
           followups: await listFollowupsForLead(id),
           messages: await listSmsForLead(id),
+          aiPaused: true,
         });
         return true;
       }
-      const patch: { status?: LeadStatus; notes?: string; whatsNext?: string } = {};
+      const patch: {
+        status?: LeadStatus;
+        notes?: string;
+        whatsNext?: string;
+        aiPaused?: boolean;
+      } = {};
       if (body.status !== undefined) {
         const status = String(body.status).trim() as LeadStatus;
         if (!STATUS_SET.has(status)) {
@@ -421,6 +441,8 @@ export async function handleDevApi(
       }
       if (body.notes !== undefined) patch.notes = String(body.notes);
       if (body.whatsNext !== undefined) patch.whatsNext = String(body.whatsNext);
+      if (typeof body.aiPaused === "boolean") patch.aiPaused = body.aiPaused;
+      if (typeof body.ai_paused === "boolean") patch.aiPaused = body.ai_paused;
       if (Object.keys(patch).length === 0) {
         json(res, 400, { error: "Nothing to update." });
         return true;
@@ -443,6 +465,129 @@ export async function handleDevApi(
       }
       const ok = await deleteLead(id);
       json(res, ok ? 200 : 500, ok ? { ok: true, id } : { error: "Could not delete lead." });
+      return true;
+    }
+    json(res, 405, { error: "Method not allowed" });
+    return true;
+  }
+
+  if (url === "/api/admin/settings") {
+    if (!isAdminConfigured()) {
+      json(res, 503, { error: "Admin is not configured." });
+      return true;
+    }
+    const token = getSessionFromRequest(req.headers.cookie);
+    if (!verifyAdminSessionToken(token)) {
+      json(res, 401, { error: "Unauthorized" });
+      return true;
+    }
+    if (!isSupabaseConfigured()) {
+      json(res, 503, { error: "Supabase is not configured." });
+      return true;
+    }
+    if (method === "GET") {
+      const settings = await getCrmSettings();
+      json(res, 200, {
+        ...settings,
+        env_kill_switch: isAiEnvKillSwitchOff(),
+        effective_ai_enabled: settings.ai_responses_enabled && !isAiEnvKillSwitchOff(),
+      });
+      return true;
+    }
+    if (method === "PATCH") {
+      const body = await readJsonBody(req);
+      if (typeof body.ai_responses_enabled !== "boolean") {
+        json(res, 400, { error: "ai_responses_enabled boolean required." });
+        return true;
+      }
+      const settings = await setAiResponsesEnabled(body.ai_responses_enabled);
+      json(res, 200, {
+        ok: true,
+        ...settings,
+        env_kill_switch: isAiEnvKillSwitchOff(),
+        effective_ai_enabled: settings.ai_responses_enabled && !isAiEnvKillSwitchOff(),
+      });
+      return true;
+    }
+    json(res, 405, { error: "Method not allowed" });
+    return true;
+  }
+
+  if (url === "/api/admin/knowledge") {
+    if (!isAdminConfigured()) {
+      json(res, 503, { error: "Admin is not configured." });
+      return true;
+    }
+    const token = getSessionFromRequest(req.headers.cookie);
+    if (!verifyAdminSessionToken(token)) {
+      json(res, 401, { error: "Unauthorized" });
+      return true;
+    }
+    if (!isSupabaseConfigured()) {
+      json(res, 503, { error: "Supabase is not configured." });
+      return true;
+    }
+    if (method === "GET") {
+      json(res, 200, { docs: await listKnowledgeDocs() });
+      return true;
+    }
+    if (method === "POST") {
+      const body = await readJsonBody(req);
+      const filename = String(body.filename ?? "").trim();
+      const title = String(body.title ?? filename).trim() || filename;
+      const mime = String(body.mime ?? "application/octet-stream");
+      const base64 = String(body.contentBase64 ?? "").trim();
+      if (!filename || !base64) {
+        json(res, 400, { error: "filename and contentBase64 required." });
+        return true;
+      }
+      try {
+        const buffer = Buffer.from(base64, "base64");
+        const doc = await uploadAndIndexKnowledgeFile({ title, filename, mime, buffer });
+        json(
+          res,
+          doc ? 200 : 500,
+          doc ? { ok: true, doc } : { error: "Could not save knowledge doc." },
+        );
+      } catch (err) {
+        json(res, 500, {
+          error: err instanceof Error ? err.message : "Upload failed",
+        });
+      }
+      return true;
+    }
+    if (method === "PATCH") {
+      const body = await readJsonBody(req);
+      const id = String(body.id ?? "").trim();
+      if (!id) {
+        json(res, 400, { error: "Missing doc id." });
+        return true;
+      }
+      const patch: { title?: string; active?: boolean } = {};
+      if (typeof body.title === "string") patch.title = body.title.trim();
+      if (typeof body.active === "boolean") patch.active = body.active;
+      if (Object.keys(patch).length === 0) {
+        json(res, 400, { error: "Nothing to update." });
+        return true;
+      }
+      const doc = await updateKnowledgeDoc(id, patch);
+      json(
+        res,
+        doc ? 200 : 500,
+        doc ? { ok: true, doc } : { error: "Could not update doc." },
+      );
+      return true;
+    }
+    if (method === "DELETE") {
+      const body = await readJsonBody(req);
+      const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+      const id = String(body.id ?? "").trim() || qs.get("id")?.trim() || "";
+      if (!id) {
+        json(res, 400, { error: "Missing doc id." });
+        return true;
+      }
+      const ok = await deleteKnowledgeDoc(id);
+      json(res, ok ? 200 : 500, ok ? { ok: true, id } : { error: "Could not delete doc." });
       return true;
     }
     json(res, 405, { error: "Method not allowed" });

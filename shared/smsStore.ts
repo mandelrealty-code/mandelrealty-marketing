@@ -10,6 +10,7 @@ export type SmsMessageRow = {
   to_phone: string;
   body: string;
   provider_sid: string | null;
+  meta: Record<string, unknown>;
 };
 
 function mapRow(row: Record<string, unknown>): SmsMessageRow {
@@ -22,6 +23,7 @@ function mapRow(row: Record<string, unknown>): SmsMessageRow {
     to_phone: String(row.to_phone ?? ""),
     body: String(row.body ?? ""),
     provider_sid: (row.provider_sid as string | null) ?? null,
+    meta: (row.meta as Record<string, unknown>) ?? {},
   };
 }
 
@@ -32,11 +34,12 @@ export async function logSmsMessage(input: {
   toPhone: string;
   body: string;
   providerSid?: string | null;
+  meta?: Record<string, unknown>;
 }): Promise<SmsMessageRow | null> {
   const sb = getSupabaseAdmin();
   if (!sb) return null;
 
-  const row = {
+  const row: Record<string, unknown> = {
     lead_id: input.leadId ?? null,
     direction: input.direction,
     from_phone: input.fromPhone,
@@ -44,18 +47,28 @@ export async function logSmsMessage(input: {
     body: input.body,
     provider_sid: input.providerSid?.trim() || null,
   };
+  if (input.meta && Object.keys(input.meta).length > 0) {
+    row.meta = input.meta;
+  }
 
   // Avoid duplicate Twilio SIDs when webhook retries
   if (row.provider_sid) {
     const { data: existing } = await sb
       .from("lead_sms_messages")
       .select("*")
-      .eq("provider_sid", row.provider_sid)
+      .eq("provider_sid", row.provider_sid as string)
       .maybeSingle();
     if (existing) return mapRow(existing as Record<string, unknown>);
   }
 
-  const { data, error } = await sb.from("lead_sms_messages").insert(row).select("*").maybeSingle();
+  let { data, error } = await sb.from("lead_sms_messages").insert(row).select("*").maybeSingle();
+  // If meta column not migrated yet, retry without it
+  if (error && row.meta) {
+    delete row.meta;
+    const retry = await sb.from("lead_sms_messages").insert(row).select("*").maybeSingle();
+    data = retry.data;
+    error = retry.error;
+  }
   if (error) {
     console.error("[sms] log failed", error.message);
     return null;

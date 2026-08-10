@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   LEAD_STATUSES,
+  PIPELINE_STATUSES,
   STATUS_LABEL,
   type LeadStatus,
 } from "../../shared/crmTypes";
@@ -25,19 +26,33 @@ type Lead = {
   notes: string;
   whats_next: string;
   notes_updated_at: string | null;
+  ai_paused: boolean;
 };
 
+type KnowledgeDoc = {
+  id: string;
+  title: string;
+  filename: string;
+  active: boolean;
+  status: "processing" | "ready" | "failed";
+  error: string | null;
+  chunk_count: number;
+  created_at: string;
+};
+
+type Tab = "contacts" | "pipeline" | "knowledge" | "settings";
+
 const STAGE_LABEL: Record<string, string> = {
-  own_ready: "Owns property - ready to start",
-  buying: "Buying / renovating soon",
-  researching: "Just researching (no property yet)",
+  own_ready: "Owns property — ready",
+  buying: "Buying / renovating",
+  researching: "Just researching",
 };
 
 const PERMIT_LABEL: Record<string, string> = {
   have: "Has STR permit",
-  applying: "Applying / will apply",
-  unknown: "Does not know if needed",
-  not_planning: "Not planning to get one",
+  applying: "Applying",
+  unknown: "Doesn't know if needed",
+  not_planning: "Not planning one",
 };
 
 const STR_ALLOWED_LABEL: Record<string, string> = {
@@ -46,45 +61,23 @@ const STR_ALLOWED_LABEL: Record<string, string> = {
   unsure: "STR unsure",
 };
 
-const TIMELINE_LABEL: Record<string, string> = {
-  asap: "ASAP",
-  "1_3_months": "1-3 months",
-  later: "3+ months / just curious",
-};
-
 function statusTone(status: LeadStatus): string {
   switch (status) {
-    case "qualified":
-    case "onboarding":
+    case "engaging":
+    case "interested":
       return "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30";
+    case "booked":
+    case "call_done":
+      return "bg-sky-500/15 text-sky-300 ring-sky-500/30";
     case "needs_shane":
       return "bg-mrg-gold/20 text-mrg-gold ring-mrg-gold/40";
     case "low_fit":
     case "skip":
       return "bg-red-500/15 text-red-300 ring-red-500/30";
-    case "call_done":
-      return "bg-sky-500/15 text-sky-300 ring-sky-500/30";
     case "won":
       return "bg-white/10 text-mrg-muted ring-white/15";
     default:
       return "bg-mrg-gold/15 text-mrg-gold ring-mrg-gold/30";
-  }
-}
-
-function formatWhen(iso: string | null, label: string): string {
-  if (label) return label;
-  if (!iso) return "-";
-  try {
-    return new Date(iso).toLocaleString("en-CA", {
-      timeZone: "America/Toronto",
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
   }
 }
 
@@ -96,11 +89,24 @@ function listingShort(hasListing: Lead["has_listing"]): string {
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="grid grid-cols-[8rem_1fr] gap-3 border-b border-white/8 py-2.5 last:border-0">
+    <div className="grid grid-cols-[7.5rem_1fr] gap-3 border-b border-white/8 py-2.5 last:border-0">
       <dt className="text-sm text-mrg-muted">{label}</dt>
       <dd className="min-w-0 text-sm font-medium text-mrg-text">{value}</dd>
     </div>
   );
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      const base64 = result.includes(",") ? result.split(",")[1] : result;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("Could not read file"));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function AdminPage() {
@@ -108,17 +114,20 @@ export function AdminPage() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
+
+  const [tab, setTab] = useState<Tab>("contacts");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<LeadStatus | "all">("all");
+  const [search, setSearch] = useState("");
+  const [searchDebounced, setSearchDebounced] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
   const [notes, setNotes] = useState("");
   const [whatsNext, setWhatsNext] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   const [paste, setPaste] = useState("");
-  const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteBusy, setPasteBusy] = useState(false);
   const [pasteError, setPasteError] = useState<string | null>(null);
   const [pasteResult, setPasteResult] = useState<string | null>(null);
@@ -135,27 +144,11 @@ export function AdminPage() {
       warnings: string[];
     };
     decision: { status: LeadStatus; qualifiesForBookEmail: boolean; reason: string };
-    duplicate: {
-      id: string;
-      name: string;
-      email: string;
-      phone: string;
-      status: string;
-      created_at: string;
-      has_listing: string;
-    } | null;
+    duplicate: { id: string; name: string; status: string } | null;
   } | null>(null);
+
   const [followups, setFollowups] = useState<
-    {
-      id: string;
-      step: number;
-      sequence: string;
-      body: string;
-      send_at: string;
-      status: string;
-      sent_at: string | null;
-      error: string | null;
-    }[]
+    { id: string; step: number; status: string; body: string }[]
   >([]);
   const [smsMessages, setSmsMessages] = useState<
     {
@@ -163,13 +156,28 @@ export function AdminPage() {
       created_at: string;
       direction: "inbound" | "outbound";
       body: string;
-      from_phone: string;
-      to_phone: string;
+      meta?: Record<string, unknown>;
     }[]
   >([]);
-  const [smsSending, setSmsSending] = useState(false);
   const [smsDraft, setSmsDraft] = useState("");
+  const [smsSending, setSmsSending] = useState(false);
   const smsSendLock = useRef(false);
+  const threadEndRef = useRef<HTMLDivElement | null>(null);
+
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiEffective, setAiEffective] = useState(true);
+  const [aiEnvKill, setAiEnvKill] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+
+  const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadTitle, setUploadTitle] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearchDebounced(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const loadFollowups = useCallback(async (leadId: string) => {
     try {
@@ -193,16 +201,52 @@ export function AdminPage() {
     }
   }, []);
 
-  const loadLeads = useCallback(async () => {
+  const loadSettings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/settings", { credentials: "include" });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        ai_responses_enabled?: boolean;
+        effective_ai_enabled?: boolean;
+        env_kill_switch?: boolean;
+      };
+      setAiEnabled(Boolean(data.ai_responses_enabled));
+      setAiEffective(Boolean(data.effective_ai_enabled));
+      setAiEnvKill(Boolean(data.env_kill_switch));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const loadDocs = useCallback(async () => {
+    setDocsError(null);
+    try {
+      const res = await fetch("/api/admin/knowledge", { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as {
+        docs?: KnowledgeDoc[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setDocsError(data.error || "Could not load knowledge base.");
+        return;
+      }
+      setDocs(data.docs ?? []);
+    } catch {
+      setDocsError("Could not load knowledge base.");
+    }
+  }, []);
+
+  const loadLeads = useCallback(async (q = "") => {
     setLoadError(null);
-    const res = await fetch("/api/admin/leads", { credentials: "include" });
+    const qs = q ? `?q=${encodeURIComponent(q)}` : "";
+    const res = await fetch(`/api/admin/leads${qs}`, { credentials: "include" });
     if (res.status === 401) {
       setAuthed(false);
       return;
     }
     const data = (await res.json().catch(() => ({}))) as { leads?: Lead[]; error?: string };
     if (!res.ok) {
-      setLoadError(data.error || "Could not load leads.");
+      setLoadError(data.error || "Could not load contacts.");
       setAuthed(true);
       return;
     }
@@ -211,13 +255,14 @@ export function AdminPage() {
         ...l,
         notes: l.notes ?? "",
         whats_next: l.whats_next ?? "",
+        ai_paused: Boolean(l.ai_paused),
       })),
     );
     setAuthed(true);
   }, []);
 
   useEffect(() => {
-    document.title = "Lead Inbox | Mandel Realty Group";
+    document.title = "CRM | Mandel Realty Group";
     const robots = document.querySelector('meta[name="robots"]');
     if (robots) robots.setAttribute("content", "noindex, nofollow");
     else {
@@ -226,13 +271,16 @@ export function AdminPage() {
       meta.content = "noindex, nofollow";
       document.head.appendChild(meta);
     }
-    loadLeads().catch(() => setAuthed(false));
-  }, [loadLeads]);
+    Promise.all([loadLeads(), loadSettings()]).catch(() => setAuthed(false));
+  }, [loadLeads, loadSettings]);
 
-  const filtered = useMemo(() => {
-    if (filter === "all") return leads;
-    return leads.filter((l) => l.status === filter);
-  }, [leads, filter]);
+  useEffect(() => {
+    if (authed) loadLeads(searchDebounced).catch(() => undefined);
+  }, [searchDebounced, authed, loadLeads]);
+
+  useEffect(() => {
+    if (authed && tab === "knowledge") loadDocs().catch(() => undefined);
+  }, [authed, tab, loadDocs]);
 
   const selected = useMemo(
     () => leads.find((l) => l.id === selectedId) ?? null,
@@ -255,6 +303,10 @@ export function AdminPage() {
     });
   }, [selected?.id, selected?.notes, selected?.whats_next, loadFollowups]);
 
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [smsMessages.length, selectedId]);
+
   const openLead = (id: string) => setSelectedId(id);
   const closeLead = () => setSelectedId(null);
 
@@ -269,11 +321,18 @@ export function AdminPage() {
         credentials: "include",
         body: JSON.stringify({ id: selected.id, ...body }),
       });
-      const data = (await res.json().catch(() => ({}))) as { lead?: Lead; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        lead?: Lead;
+        error?: string;
+        messages?: typeof smsMessages;
+        followups?: typeof followups;
+      };
       if (!res.ok) throw new Error(data.error || "Save failed");
       if (data.lead) {
         setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
       }
+      if (data.messages) setSmsMessages(data.messages);
+      if (data.followups) setFollowups(data.followups);
       setSaveMsg("Saved");
       setTimeout(() => setSaveMsg(null), 1500);
     } catch (err) {
@@ -285,10 +344,8 @@ export function AdminPage() {
 
   const deleteSelectedLead = async () => {
     if (!selected) return;
-    const name = selected.name || "this lead";
-    if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete ${selected.name || "this lead"}? This cannot be undone.`)) return;
     setSaving(true);
-    setSaveMsg(null);
     try {
       const res = await fetch("/api/admin/leads", {
         method: "DELETE",
@@ -298,9 +355,7 @@ export function AdminPage() {
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error || "Delete failed");
-      const deletedId = selected.id;
-      setLeads((prev) => prev.filter((l) => l.id !== deletedId));
-      setFollowups([]);
+      setLeads((prev) => prev.filter((l) => l.id !== selected.id));
       setSelectedId(null);
     } catch (err) {
       setSaveMsg(err instanceof Error ? err.message : "Delete failed");
@@ -309,23 +364,12 @@ export function AdminPage() {
     }
   };
 
-  const nextBumpStep = useMemo(() => {
-    const sent = new Set(
-      followups.filter((f) => f.status === "sent").map((f) => f.step),
-    );
-    return [2, 3, 4].find((s) => !sent.has(s)) ?? null;
-  }, [followups]);
-
   const sendSmsReply = async () => {
-    if (!selected || smsSendLock.current || smsSending || saving) return;
+    if (!selected || smsSendLock.current) return;
     const text = smsDraft.trim();
-    if (!text) {
-      setSaveMsg("Type a reply first");
-      return;
-    }
+    if (!text) return;
     smsSendLock.current = true;
     setSmsSending(true);
-    setSaveMsg("Sending…");
     try {
       const res = await fetch("/api/admin/leads", {
         method: "PATCH",
@@ -335,98 +379,27 @@ export function AdminPage() {
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
-        followups?: typeof followups;
-        messages?: typeof smsMessages;
         lead?: Lead;
+        messages?: typeof smsMessages;
+        followups?: typeof followups;
       };
       if (!res.ok) throw new Error(data.error || "SMS failed");
-      if (data.followups) setFollowups(data.followups);
-      if (data.messages) setSmsMessages(data.messages);
-      else await loadFollowups(selected.id);
       setSmsDraft("");
-      setSaveMsg("Reply sent");
+      if (data.lead) {
+        setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
+      }
+      if (data.messages) setSmsMessages(data.messages);
+      if (data.followups) setFollowups(data.followups);
+      setSaveMsg("Sent — AI paused for this lead");
       setTimeout(() => setSaveMsg(null), 2000);
     } catch (err) {
       setSaveMsg(err instanceof Error ? err.message : "SMS failed");
     } finally {
-      smsSendLock.current = false;
       setSmsSending(false);
+      smsSendLock.current = false;
     }
   };
 
-  const sendSmsBump = async () => {
-    if (!selected || smsSendLock.current || smsSending || saving) return;
-    if (!nextBumpStep) {
-      setSaveMsg("All follow-up texts already sent");
-      return;
-    }
-    smsSendLock.current = true;
-    setSmsSending(true);
-    setSaveMsg("Sending…");
-    try {
-      const res = await fetch("/api/admin/leads", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ id: selected.id, sendSmsBump: true }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        followups?: typeof followups;
-        messages?: typeof smsMessages;
-        lead?: Lead;
-        step?: number;
-      };
-      if (!res.ok) throw new Error(data.error || "SMS failed");
-      if (data.followups) setFollowups(data.followups);
-      if (data.messages) setSmsMessages(data.messages);
-      else await loadFollowups(selected.id);
-      if (data.lead) {
-        setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
-      }
-      setSaveMsg(`Follow-up #${data.step ?? nextBumpStep} sent`);
-      setTimeout(() => setSaveMsg(null), 2000);
-    } catch (err) {
-      setSaveMsg(err instanceof Error ? err.message : "SMS failed");
-    } finally {
-      smsSendLock.current = false;
-      setSmsSending(false);
-    }
-  };
-
-  const markBooked = async () => {
-    if (!selected) return;
-    if (!window.confirm(`Mark ${selected.name} as booked? This stops further SMS.`)) return;
-    setSaving(true);
-    setSaveMsg(null);
-    try {
-      const res = await fetch("/api/admin/leads", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ id: selected.id, markBooked: true }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        lead?: Lead;
-        followups?: typeof followups;
-        messages?: typeof smsMessages;
-      };
-      if (!res.ok) throw new Error(data.error || "Could not mark booked");
-      if (data.lead) {
-        setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
-      }
-      if (data.followups) setFollowups(data.followups);
-      if (data.messages) setSmsMessages(data.messages);
-      else await loadFollowups(selected.id);
-      setSaveMsg("Marked booked");
-      setTimeout(() => setSaveMsg(null), 2000);
-    } catch (err) {
-      setSaveMsg(err instanceof Error ? err.message : "Could not mark booked");
-    } finally {
-      setSaving(false);
-    }
-  };
   const login = async (e: FormEvent) => {
     e.preventDefault();
     setLoggingIn(true);
@@ -438,15 +411,16 @@ export function AdminPage() {
         credentials: "include",
         body: JSON.stringify({ password }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        setLoginError(data.error || "Wrong password.");
-        return;
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "Login failed");
       }
       setPassword("");
       await loadLeads();
-    } catch {
-      setLoginError("Could not sign in.");
+      await loadSettings();
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : "Login failed");
+      setAuthed(false);
     } finally {
       setLoggingIn(false);
     }
@@ -462,7 +436,6 @@ export function AdminPage() {
   const previewPaste = async () => {
     setPasteBusy(true);
     setPasteError(null);
-    setPastePreview(null);
     setPasteResult(null);
     try {
       const res = await fetch("/api/admin/leads", {
@@ -471,22 +444,11 @@ export function AdminPage() {
         credentials: "include",
         body: JSON.stringify({ paste, parseOnly: true }),
       });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        parsed?: NonNullable<typeof pastePreview>["parsed"];
-        decision?: NonNullable<typeof pastePreview>["decision"];
-        duplicate?: NonNullable<typeof pastePreview>["duplicate"];
-      };
-      if (!res.ok || !data.parsed || !data.decision) {
-        throw new Error(data.error || "Could not parse paste.");
-      }
-      setPastePreview({
-        parsed: data.parsed,
-        decision: data.decision,
-        duplicate: data.duplicate ?? null,
-      });
+      const data = (await res.json().catch(() => ({}))) as typeof pastePreview & { error?: string };
+      if (!res.ok) throw new Error(data?.error || "Preview failed");
+      setPastePreview(data as NonNullable<typeof pastePreview>);
     } catch (err) {
-      setPasteError(err instanceof Error ? err.message : "Parse failed");
+      setPasteError(err instanceof Error ? err.message : "Preview failed");
     } finally {
       setPasteBusy(false);
     }
@@ -506,28 +468,26 @@ export function AdminPage() {
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         leadId?: string;
-        emailSent?: boolean;
-        decision?: { qualifiesForBookEmail: boolean; status: LeadStatus; reason: string };
+        decision?: { qualifiesForBookEmail: boolean; status: LeadStatus };
         parsed?: { name: string };
+        smsSentNow?: number;
+        aiSkipped?: string;
       };
       if (!res.ok) throw new Error(data.error || "Import failed");
-      const emailNote = data.decision?.qualifiesForBookEmail
-        ? "No customer email (SMS only)."
-        : "No SMS (not qualified).";
-      setPasteResult(
-        `Saved ${data.parsed?.name || "lead"} as ${data.decision?.status || "lead"}. ${emailNote}${
-          typeof (data as { smsSentNow?: number }).smsSentNow === "number" &&
-          (data as { smsSentNow?: number }).smsSentNow! > 0
-            ? " First SMS sent."
-            : data.decision?.qualifiesForBookEmail
-              ? " (Twilio not configured or SMS failed)"
-              : ""
-        }`,
-      );
+      const smsNote =
+        (data.smsSentNow ?? 0) > 0
+          ? " AI first SMS sent."
+          : data.decision?.qualifiesForBookEmail
+            ? ` No AI SMS (${data.aiSkipped || "AI off or Twilio missing"}).`
+            : " No SMS.";
+      setPasteResult(`Saved ${data.parsed?.name || "lead"} as ${data.decision?.status}.${smsNote}`);
       setPaste("");
       setPastePreview(null);
-      await loadLeads();
-      if (data.leadId) setSelectedId(data.leadId);
+      await loadLeads(searchDebounced);
+      if (data.leadId) {
+        setSelectedId(data.leadId);
+        setTab("contacts");
+      }
     } catch (err) {
       setPasteError(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -535,9 +495,68 @@ export function AdminPage() {
     }
   };
 
+  const toggleGlobalAi = async () => {
+    setAiBusy(true);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ai_responses_enabled: !aiEnabled }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ai_responses_enabled?: boolean;
+        effective_ai_enabled?: boolean;
+        env_kill_switch?: boolean;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Could not update AI setting");
+      setAiEnabled(Boolean(data.ai_responses_enabled));
+      setAiEffective(Boolean(data.effective_ai_enabled));
+      setAiEnvKill(Boolean(data.env_kill_switch));
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : "AI toggle failed");
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const uploadKnowledge = async (file: File | null) => {
+    if (!file) return;
+    setUploadBusy(true);
+    setDocsError(null);
+    try {
+      const contentBase64 = await fileToBase64(file);
+      const res = await fetch("/api/admin/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          filename: file.name,
+          title: uploadTitle.trim() || file.name,
+          mime: file.type || "application/octet-stream",
+          contentBase64,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; doc?: KnowledgeDoc };
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setUploadTitle("");
+      await loadDocs();
+    } catch (err) {
+      setDocsError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadBusy(false);
+    }
+  };
+
+  const nextBumpStep = useMemo(() => {
+    const sent = new Set(followups.filter((f) => f.status === "sent").map((f) => f.step));
+    return [2, 3, 4].find((s) => !sent.has(s)) ?? null;
+  }, [followups]);
+
   if (authed === null) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-mrg-bg text-mrg-muted">
+      <div className="flex min-h-dvh items-center justify-center bg-mrg-bg text-mrg-muted">
         Loading…
       </div>
     );
@@ -545,7 +564,7 @@ export function AdminPage() {
 
   if (!authed) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-mrg-bg px-5">
+      <div className="flex min-h-dvh items-center justify-center bg-mrg-bg px-5">
         <form
           onSubmit={login}
           className="w-full max-w-sm rounded-[1.75rem] bg-mrg-surface-elevated p-8 ring-1 ring-white/10"
@@ -556,7 +575,7 @@ export function AdminPage() {
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mrg-gold">
                 Mandel Realty Group
               </p>
-              <h1 className="text-lg font-semibold text-mrg-text">Lead inbox</h1>
+              <h1 className="text-lg font-semibold text-mrg-text">CRM</h1>
             </div>
           </div>
           <p className="mt-4 text-sm text-mrg-muted">Enter the admin password to continue.</p>
@@ -572,7 +591,7 @@ export function AdminPage() {
           <button
             type="submit"
             disabled={loggingIn || !password}
-            className="mt-5 w-full rounded-full bg-mrg-gold py-3.5 text-sm font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-60"
+            className="mt-5 min-h-12 w-full rounded-full bg-mrg-gold text-sm font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-60"
           >
             {loggingIn ? "Signing in…" : "Sign in"}
           </button>
@@ -581,42 +600,251 @@ export function AdminPage() {
     );
   }
 
+  /* -------- Contact detail (full screen) -------- */
+  if (selected) {
+    return (
+      <div className="flex min-h-dvh flex-col bg-mrg-bg text-mrg-text">
+        <header className="sticky top-0 z-20 border-b border-white/8 bg-mrg-bg/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
+          <div className="mx-auto flex max-w-3xl items-start gap-3">
+            <button
+              type="button"
+              onClick={closeLead}
+              className="mt-1 min-h-11 min-w-11 rounded-full bg-white/5 text-lg text-mrg-muted ring-1 ring-white/10"
+              aria-label="Back"
+            >
+              ←
+            </button>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-lg font-semibold">{selected.name || "Contact"}</h1>
+              <p className="truncate text-sm text-mrg-muted">
+                {selected.phone || selected.email}
+                {selected.address ? ` · ${selected.address}` : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => patchLead({ aiPaused: !selected.ai_paused })}
+              className={`mt-1 shrink-0 rounded-full px-3 py-2 text-xs font-semibold ring-1 ${
+                selected.ai_paused
+                  ? "bg-white/5 text-mrg-muted ring-white/15"
+                  : "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+              }`}
+            >
+              {selected.ai_paused ? "AI off" : "AI on"}
+            </button>
+          </div>
+
+          <div className="mx-auto mt-3 flex max-w-3xl gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {LEAD_STATUSES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                disabled={saving || selected.status === s}
+                onClick={() => patchLead({ status: s })}
+                className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold ring-1 ${
+                  selected.status === s
+                    ? statusTone(s)
+                    : "bg-white/5 text-mrg-muted ring-white/10"
+                }`}
+              >
+                {STATUS_LABEL[s]}
+              </button>
+            ))}
+          </div>
+        </header>
+
+        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] pt-4">
+          <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
+            <dl>
+              <Row label="Airbnb" value={listingShort(selected.has_listing)} />
+              <Row
+                label="Process"
+                value={
+                  selected.property_stage
+                    ? STAGE_LABEL[selected.property_stage] || selected.property_stage
+                    : "—"
+                }
+              />
+              <Row
+                label="STR"
+                value={
+                  selected.str_allowed
+                    ? STR_ALLOWED_LABEL[selected.str_allowed] || selected.str_allowed
+                    : "—"
+                }
+              />
+              <Row
+                label="Permit"
+                value={
+                  selected.permit_status
+                    ? PERMIT_LABEL[selected.permit_status] || selected.permit_status
+                    : "—"
+                }
+              />
+              <Row label="Email" value={selected.email || "—"} />
+              <Row label="Call" value={selected.call_booking || "—"} />
+            </dl>
+          </div>
+
+          <div className="mt-4 flex flex-1 flex-col gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+              SMS inbox
+            </p>
+            <div className="flex max-h-[42vh] flex-col gap-2 overflow-y-auto rounded-2xl bg-mrg-surface p-3 ring-1 ring-white/8 sm:max-h-none sm:min-h-[240px]">
+              {smsMessages.length === 0 && (
+                <p className="py-6 text-center text-sm text-mrg-muted">No messages yet.</p>
+              )}
+              {smsMessages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                    m.direction === "outbound"
+                      ? "ml-auto bg-mrg-gold/20 text-mrg-text"
+                      : "mr-auto bg-white/8 text-mrg-text"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{m.body}</p>
+                  <p className="mt-1 text-[10px] text-mrg-muted">
+                    {m.direction === "outbound" && m.meta?.ai_generated ? "AI · " : ""}
+                    {new Date(m.created_at).toLocaleString("en-CA", {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+              ))}
+              <div ref={threadEndRef} />
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            <label className="block">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+                What’s next
+              </span>
+              <input
+                value={whatsNext}
+                onChange={(e) => setWhatsNext(e.target.value)}
+                onBlur={() => {
+                  if (whatsNext !== (selected.whats_next || "")) patchLead({ whatsNext });
+                }}
+                className="mt-1.5 w-full rounded-2xl bg-mrg-surface-elevated px-4 py-3 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
+                placeholder="Next action…"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+                Notes
+              </span>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                onBlur={() => {
+                  if (notes !== (selected.notes || "")) patchLead({ notes });
+                }}
+                rows={3}
+                className="mt-1.5 w-full rounded-2xl bg-mrg-surface-elevated px-4 py-3 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => patchLead({ markBooked: true })}
+              className="min-h-11 rounded-full bg-sky-500/20 px-4 text-sm font-semibold text-sky-200 ring-1 ring-sky-500/30"
+            >
+              Mark booked
+            </button>
+            {nextBumpStep && (
+              <button
+                type="button"
+                disabled={saving || smsSending}
+                onClick={() => patchLead({ sendSmsBump: true })}
+                className="min-h-11 rounded-full bg-white/5 px-4 text-sm font-semibold text-mrg-text ring-1 ring-white/10"
+              >
+                Send bump #{nextBumpStep}
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={saving}
+              onClick={deleteSelectedLead}
+              className="min-h-11 rounded-full bg-red-500/10 px-4 text-sm font-semibold text-red-300 ring-1 ring-red-500/20"
+            >
+              Delete
+            </button>
+            {saveMsg && <span className="self-center text-sm text-mrg-muted">{saveMsg}</span>}
+          </div>
+        </div>
+
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-mrg-bg/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
+          <div className="mx-auto flex max-w-3xl gap-2">
+            <input
+              value={smsDraft}
+              onChange={(e) => setSmsDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendSmsReply().catch(() => undefined);
+                }
+              }}
+              placeholder="Reply as you (pauses AI)…"
+              className="min-h-12 flex-1 rounded-full bg-mrg-surface-elevated px-4 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
+            />
+            <button
+              type="button"
+              disabled={smsSending || !smsDraft.trim()}
+              onClick={() => sendSmsReply().catch(() => undefined)}
+              className="min-h-12 shrink-0 rounded-full bg-mrg-gold px-5 text-sm font-semibold text-black disabled:opacity-50"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* -------- Main shell with tabs -------- */
   return (
-    <div className="min-h-screen bg-mrg-bg text-mrg-text">
-      <header className="border-b border-white/8">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-4">
-          <div className="flex items-center gap-3">
+    <div className="flex min-h-dvh flex-col bg-mrg-bg text-mrg-text">
+      <header className="border-b border-white/8 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <img src="/mrg-logo-white.png" alt="" className="h-7 w-auto" />
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mrg-gold">
                 Mandel Realty Group
               </p>
-              <h1 className="text-base font-semibold">Lead inbox</h1>
+              <h1 className="text-base font-semibold">CRM</h1>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setPasteOpen((o) => !o);
-                setPasteError(null);
-                setPasteResult(null);
-              }}
-              className="rounded-full bg-mrg-gold px-4 py-2 text-sm font-semibold text-black hover:bg-mrg-gold-light"
+          <div className="flex items-center gap-2">
+            <span
+              className={`hidden rounded-full px-3 py-1.5 text-[11px] font-semibold ring-1 sm:inline ${
+                aiEffective
+                  ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+                  : "bg-white/5 text-mrg-muted ring-white/15"
+              }`}
             >
-              {pasteOpen ? "Close paste" : "Paste Meta lead"}
-            </button>
+              AI {aiEffective ? "on" : "off"}
+            </span>
             <button
               type="button"
-              onClick={() => loadLeads()}
-              className="rounded-full px-4 py-2 text-sm text-mrg-muted hover:text-mrg-text"
+              onClick={() => loadLeads(searchDebounced)}
+              className="min-h-10 rounded-full px-3 text-sm text-mrg-muted"
             >
               Refresh
             </button>
             <button
               type="button"
               onClick={logout}
-              className="rounded-full bg-white/5 px-4 py-2 text-sm text-mrg-muted ring-1 ring-white/10 hover:text-mrg-text"
+              className="min-h-10 rounded-full bg-white/5 px-3 text-sm text-mrg-muted ring-1 ring-white/10"
             >
               Log out
             </button>
@@ -624,470 +852,309 @@ export function AdminPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-5 py-6">
-        {pasteOpen && !selected && (
-          <div className="mb-6 rounded-2xl bg-mrg-surface-elevated p-5 ring-1 ring-white/10">
-            <h2 className="text-base font-semibold text-mrg-text">Paste from Meta Leads Center</h2>
-            <p className="mt-1 text-sm text-mrg-muted">
-              Copy the whole lead from Meta, paste here, preview, then import. Everyone is saved to
-              CRM with full details. Qualified leads (live Airbnb) get the first SMS only — no customer email.
-            </p>
-            <textarea
-              value={paste}
-              onChange={(e) => {
-                setPaste(e.target.value);
-                setPastePreview(null);
-                setPasteResult(null);
-              }}
-              rows={10}
-              placeholder="Paste Meta lead text here…"
-              className="mt-4 w-full rounded-2xl bg-mrg-bg px-4 py-3 font-mono text-xs leading-relaxed text-mrg-text outline-none ring-1 ring-white/10 focus:ring-mrg-gold/50"
-            />
-            <div className="mt-3 flex flex-wrap gap-2">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4">
+        {loadError && <p className="mb-3 text-sm text-red-300">{loadError}</p>}
+
+        {tab === "contacts" && (
+          <div>
+            <div className="flex gap-2">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name, phone, email, city…"
+                className="min-h-12 flex-1 rounded-full bg-mrg-surface-elevated px-4 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
+              />
               <button
                 type="button"
-                disabled={pasteBusy || !paste.trim()}
-                onClick={previewPaste}
-                className="rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-mrg-text ring-1 ring-white/10 hover:bg-white/10 disabled:opacity-50"
+                onClick={() => setTab("settings")}
+                className="min-h-12 shrink-0 rounded-full bg-mrg-gold px-4 text-sm font-semibold text-black"
               >
-                {pasteBusy ? "Working…" : "Preview"}
-              </button>
-                <button
-                type="button"
-                disabled={pasteBusy || !paste.trim() || Boolean(pastePreview?.duplicate)}
-                onClick={importPaste}
-                className="rounded-full bg-mrg-gold px-4 py-2 text-sm font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-50"
-              >
-                Import to CRM
+                + Lead
               </button>
             </div>
-            {pasteError && (
-              <p className="mt-3 text-sm text-red-300">{pasteError}</p>
-            )}
-            {pasteResult && (
-              <p className="mt-3 text-sm text-emerald-300">{pasteResult}</p>
-            )}
-            {pastePreview && (
-              <div className="mt-4 rounded-xl bg-mrg-bg p-4 ring-1 ring-white/8">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                  Preview
-                </p>
-                <dl className="mt-2 space-y-1 text-sm">
-                  <Row label="Name" value={pastePreview.parsed.name || "—"} />
-                  <Row label="Email" value={pastePreview.parsed.email || "—"} />
-                  <Row label="Phone" value={pastePreview.parsed.phone || "—"} />
-                  <Row label="City / area" value={pastePreview.parsed.address || "—"} />
-                  <Row
-                    label="Airbnb"
-                    value={listingShort(pastePreview.parsed.hasListing)}
-                  />
-                  <Row
-                    label="Stage"
-                    value={
-                      pastePreview.parsed.propertyStage
-                        ? STAGE_LABEL[pastePreview.parsed.propertyStage] ||
-                          pastePreview.parsed.propertyStage
-                        : "—"
-                    }
-                  />
-                  <Row
-                    label="STR"
-                    value={
-                      pastePreview.parsed.strAllowed
-                        ? STR_ALLOWED_LABEL[pastePreview.parsed.strAllowed] ||
-                          pastePreview.parsed.strAllowed
-                        : "—"
-                    }
-                  />
-                  <Row
-                    label="CRM status"
-                    value={STATUS_LABEL[pastePreview.decision.status]}
-                  />
-                  <Row
-                    label="SMS?"
-                    value={
-                      pastePreview.decision.qualifiesForBookEmail
-                        ? "Yes - first SMS only (no email)"
-                        : "No SMS (not qualified)"
-                    }
-                  />
-                </dl>
-                <p className="mt-3 text-sm text-mrg-muted">{pastePreview.decision.reason}</p>
-                {pastePreview.duplicate && (
-                  <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                    <p className="font-semibold">Already in CRM (duplicate)</p>
-                    <p className="mt-1">
-                      {pastePreview.duplicate.name} · {pastePreview.duplicate.email || pastePreview.duplicate.phone}{" "}
-                      · status: {pastePreview.duplicate.status}
-                    </p>
-                    <p className="mt-1 text-amber-100/80">Import is blocked so you do not create a second record.</p>
-                    <button
-                      type="button"
-                      className="mt-2 text-sm font-semibold text-mrg-gold hover:underline"
-                      onClick={() => {
-                        setSelectedId(pastePreview.duplicate!.id);
-                        setPasteOpen(false);
-                      }}
+            <ul className="mt-4 divide-y divide-white/8 overflow-hidden rounded-2xl bg-mrg-surface-elevated ring-1 ring-white/10">
+              {leads.length === 0 && (
+                <li className="px-4 py-10 text-center text-sm text-mrg-muted">
+                  No contacts yet. Paste a Meta lead in Settings.
+                </li>
+              )}
+              {leads.map((lead) => (
+                <li key={lead.id}>
+                  <button
+                    type="button"
+                    onClick={() => openLead(lead.id)}
+                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-white/5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-semibold">{lead.name || "Unnamed"}</p>
+                        {!lead.ai_paused && aiEffective && (
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                        )}
+                      </div>
+                      <p className="truncate text-sm text-mrg-muted">
+                        {lead.address || lead.phone || lead.email}
+                        {" · "}
+                        {listingShort(lead.has_listing)}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${statusTone(lead.status)}`}
                     >
-                      Open existing lead
-                    </button>
-                  </div>
-                )}
-                {pastePreview.parsed.warnings.length > 0 && (
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-200/90">
-                    {pastePreview.parsed.warnings.map((w) => (
-                      <li key={w}>{w}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
+                      {STATUS_LABEL[lead.status] || lead.status}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
-        {!selected && (
-          <>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setFilter("all")}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${
-                  filter === "all" ? "bg-mrg-gold text-black" : "bg-white/5 text-mrg-muted"
-                }`}
-              >
-                All
-              </button>
-              {LEAD_STATUSES.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setFilter(s)}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${
-                    filter === s ? "bg-mrg-gold text-black" : "bg-white/5 text-mrg-muted"
-                  }`}
+        {tab === "pipeline" && (
+          <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {PIPELINE_STATUSES.map((status) => {
+              const column = leads.filter((l) => l.status === status);
+              return (
+                <div
+                  key={status}
+                  className="w-[78vw] max-w-xs shrink-0 rounded-2xl bg-mrg-surface-elevated p-3 ring-1 ring-white/10 sm:w-72"
                 >
-                  {STATUS_LABEL[s]}
-                </button>
-              ))}
-            </div>
-
-            {loadError && (
-              <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                {loadError}
-              </p>
-            )}
-
-            <div className="mt-4 overflow-hidden rounded-2xl ring-1 ring-white/8">
-              {filtered.length === 0 ? (
-                <p className="bg-mrg-surface px-5 py-10 text-center text-sm text-mrg-muted">
-                  No leads in this view yet.
-                </p>
-              ) : (
-                <ul className="divide-y divide-white/8 bg-mrg-surface">
-                  {filtered.map((lead) => (
-                    <li key={lead.id}>
-                      <button
-                        type="button"
-                        onClick={() => openLead(lead.id)}
-                        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.04] sm:gap-4 sm:px-5"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="truncate font-semibold text-mrg-text">
-                              {lead.name}
-                            </span>
-                            <span
-                              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${statusTone(lead.status)}`}
-                            >
-                              {STATUS_LABEL[lead.status]}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 truncate text-sm text-mrg-muted">
-                            {formatWhen(lead.call_start_iso, lead.call_booking)}
-                            {" · "}
-                            {listingShort(lead.has_listing)}
-                            {lead.address ? ` · ${lead.address}` : ""}
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">{STATUS_LABEL[status]}</p>
+                    <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-mrg-muted">
+                      {column.length}
+                    </span>
+                  </div>
+                  <ul className="space-y-2">
+                    {column.map((lead) => (
+                      <li key={lead.id}>
+                        <button
+                          type="button"
+                          onClick={() => openLead(lead.id)}
+                          className="w-full rounded-xl bg-mrg-bg p-3 text-left ring-1 ring-white/8 active:ring-mrg-gold/40"
+                        >
+                          <p className="font-medium">{lead.name || "Unnamed"}</p>
+                          <p className="mt-0.5 truncate text-xs text-mrg-muted">
+                            {lead.address || lead.phone}
                           </p>
-                          {lead.whats_next ? (
-                            <p className="mt-1 truncate text-xs text-mrg-gold">
-                              Next: {lead.whats_next}
-                            </p>
-                          ) : null}
-                        </div>
-                        <span className="shrink-0 text-mrg-muted" aria-hidden>
-                          →
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </>
+                        </button>
+                      </li>
+                    ))}
+                    {column.length === 0 && (
+                      <li className="py-6 text-center text-xs text-mrg-muted">Empty</li>
+                    )}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
         )}
 
-        {selected && (
-          <div>
-            <button
-              type="button"
-              onClick={closeLead}
-              className="mb-4 text-sm text-mrg-muted hover:text-mrg-text"
-            >
-              ← Back to leads
-            </button>
+        {tab === "knowledge" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
+              <h2 className="text-base font-semibold">Knowledge base</h2>
+              <p className="mt-1 text-sm text-mrg-muted">
+                Upload contracts, FAQs, offer sheets (PDF, DOCX, TXT, MD). The AI only answers from
+                these docs.
+              </p>
+              <input
+                value={uploadTitle}
+                onChange={(e) => setUploadTitle(e.target.value)}
+                placeholder="Title (optional)"
+                className="mt-4 w-full rounded-2xl bg-mrg-bg px-4 py-3 text-sm outline-none ring-1 ring-white/10"
+              />
+              <label className="mt-3 flex min-h-12 cursor-pointer items-center justify-center rounded-full bg-mrg-gold text-sm font-semibold text-black disabled:opacity-50">
+                {uploadBusy ? "Uploading & indexing…" : "Add PDF / DOCX / TXT"}
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  disabled={uploadBusy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    e.target.value = "";
+                    uploadKnowledge(file).catch(() => undefined);
+                  }}
+                />
+              </label>
+              {docsError && <p className="mt-3 text-sm text-red-300">{docsError}</p>}
+            </div>
 
-            <div className="rounded-2xl bg-mrg-surface p-5 ring-1 ring-white/8 sm:p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-2xl font-semibold">{selected.name}</h2>
-                  <p className="mt-1 text-sm text-mrg-muted">
-                    {listingShort(selected.has_listing)}
-                  </p>
-                </div>
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${statusTone(selected.status)}`}
+            <ul className="space-y-2">
+              {docs.map((doc) => (
+                <li
+                  key={doc.id}
+                  className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10"
                 >
-                  {STATUS_LABEL[selected.status]}
-                </span>
-              </div>
-
-              <dl className="mt-5 rounded-xl bg-mrg-bg/70 px-4 py-1 ring-1 ring-white/5">
-                <Row
-                  label="Email"
-                  value={
-                    <a className="break-all hover:text-mrg-gold" href={`mailto:${selected.email}`}>
-                      {selected.email}
-                    </a>
-                  }
-                />
-                <Row
-                  label="Phone"
-                  value={
-                    <a className="hover:text-mrg-gold" href={`tel:${selected.phone}`}>
-                      {selected.phone}
-                    </a>
-                  }
-                />
-                <Row label="Property" value={selected.address || "—"} />
-                <Row
-                  label="Call time"
-                  value={
-                    <span className="text-mrg-gold">
-                      {formatWhen(selected.call_start_iso, selected.call_booking)}
-                    </span>
-                  }
-                />
-                {selected.has_listing === "yes" && selected.listing_title ? (
-                  <Row label="Listing title" value={selected.listing_title} />
-                ) : null}
-                {selected.has_listing === "yes" && selected.earnings ? (
-                  <Row label="Earnings" value={selected.earnings} />
-                ) : null}
-                {selected.property_stage ? (
-                  <Row
-                    label="Stage"
-                    value={STAGE_LABEL[selected.property_stage] || selected.property_stage}
-                  />
-                ) : null}
-                {selected.str_allowed ? (
-                  <Row
-                    label="STR allowed"
-                    value={STR_ALLOWED_LABEL[selected.str_allowed] || selected.str_allowed}
-                  />
-                ) : null}
-                {selected.permit_status ? (
-                  <Row
-                    label="STR permit"
-                    value={PERMIT_LABEL[selected.permit_status] || selected.permit_status}
-                  />
-                ) : null}
-                {selected.launch_timeline ? (
-                  <Row
-                    label="Launch"
-                    value={TIMELINE_LABEL[selected.launch_timeline] || selected.launch_timeline}
-                  />
-                ) : null}
-              </dl>
-
-              <div className="mt-5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                    SMS conversation
-                  </p>
-                  {smsMessages.some((m) => m.direction === "inbound") ? (
-                    <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-semibold text-sky-300 ring-1 ring-sky-500/30">
-                      They replied
-                    </span>
-                  ) : null}
-                </div>
-                {smsMessages.length > 0 ? (
-                  <ul className="mt-3 max-h-80 space-y-2 overflow-y-auto">
-                    {smsMessages.map((m) => (
-                      <li
-                        key={m.id}
-                        className={`rounded-xl px-3 py-2.5 text-sm ring-1 ${
-                          m.direction === "inbound"
-                            ? "bg-sky-500/10 ring-sky-500/25"
-                            : "bg-mrg-bg/70 ring-white/5"
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-mrg-muted">
-                            {m.direction === "inbound" ? "Them" : "You"}
-                          </span>
-                          <span className="text-xs text-mrg-muted">
-                            {new Date(m.created_at).toLocaleString("en-CA", {
-                              timeZone: "America/Toronto",
-                            })}
-                          </span>
-                        </div>
-                        <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-mrg-text">
-                          {m.body}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : followups.length > 0 ? (
-                  <ul className="mt-2 space-y-2">
-                    {followups.map((f) => (
-                      <li
-                        key={f.id}
-                        className="rounded-xl bg-mrg-bg/70 px-3 py-2.5 text-sm ring-1 ring-white/5"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-mrg-text">step {f.step}</span>
-                          <span className="text-xs text-mrg-muted">{f.status}</span>
-                        </div>
-                        <p className="mt-1 text-xs leading-relaxed text-mrg-muted">{f.body}</p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-sm text-mrg-muted">No texts yet.</p>
-                )}
-
-                <div className="mt-3">
-                  <textarea
-                    value={smsDraft}
-                    onChange={(e) => setSmsDraft(e.target.value)}
-                    rows={3}
-                    placeholder="Type a reply…"
-                    className="w-full resize-y rounded-2xl bg-mrg-bg px-4 py-3 text-sm text-mrg-text outline-none ring-1 ring-white/10 placeholder:text-mrg-muted/50 focus:ring-mrg-gold/40"
-                  />
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={saving || smsSending || !smsDraft.trim()}
-                      onClick={() => sendSmsReply()}
-                      className="rounded-full bg-mrg-gold px-5 py-2 text-xs font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-40"
-                    >
-                      {smsSending ? "Sending…" : "Send reply"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={
-                        saving ||
-                        smsSending ||
-                        !nextBumpStep ||
-                        selected.call_booking.toLowerCase().includes("booked (manual)")
-                      }
-                      onClick={() => sendSmsBump()}
-                      className="rounded-full bg-white/5 px-4 py-2 text-xs font-semibold text-mrg-text ring-1 ring-white/15 hover:bg-white/10 disabled:opacity-40"
-                    >
-                      {smsSending
-                        ? "Sending…"
-                        : nextBumpStep
-                          ? `Send follow-up #${nextBumpStep - 1}`
-                          : "All follow-ups sent"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={
-                        saving ||
-                        smsSending ||
-                        selected.call_booking.toLowerCase().includes("booked (manual)")
-                      }
-                      onClick={() => markBooked()}
-                      className="rounded-full bg-emerald-500/15 px-4 py-2 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-40"
-                    >
-                      Mark booked
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                  Status
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {LEAD_STATUSES.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      disabled={saving || selected.status === s}
-                      onClick={() => patchLead({ status: s })}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-40 ${
-                        selected.status === s
-                          ? "bg-mrg-gold text-black"
-                          : "bg-white/5 text-mrg-muted ring-1 ring-white/10 hover:text-mrg-text"
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{doc.title}</p>
+                      <p className="mt-0.5 truncate text-xs text-mrg-muted">
+                        {doc.filename} · {doc.chunk_count} chunks · {doc.status}
+                        {doc.error ? ` — ${doc.error}` : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${
+                        doc.active
+                          ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+                          : "bg-white/5 text-mrg-muted ring-white/15"
                       }`}
                     >
-                      {STATUS_LABEL[s]}
+                      {doc.active ? "Active" : "Off"}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await fetch("/api/admin/knowledge", {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          credentials: "include",
+                          body: JSON.stringify({ id: doc.id, active: !doc.active }),
+                        });
+                        await loadDocs();
+                      }}
+                      className="min-h-10 rounded-full bg-white/5 px-3 text-sm ring-1 ring-white/10"
+                    >
+                      {doc.active ? "Deactivate" : "Activate"}
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!window.confirm(`Delete ${doc.title}?`)) return;
+                        await fetch("/api/admin/knowledge", {
+                          method: "DELETE",
+                          headers: { "Content-Type": "application/json" },
+                          credentials: "include",
+                          body: JSON.stringify({ id: doc.id }),
+                        });
+                        await loadDocs();
+                      }}
+                      className="min-h-10 rounded-full bg-red-500/10 px-3 text-sm text-red-300 ring-1 ring-red-500/20"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))}
+              {docs.length === 0 && !docsError && (
+                <li className="py-8 text-center text-sm text-mrg-muted">No documents yet.</li>
+              )}
+            </ul>
+          </div>
+        )}
+
+        {tab === "settings" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold">AI Responses</h2>
+                  <p className="mt-1 text-sm text-mrg-muted">
+                    Master switch for first texts and inbound replies.
+                    {aiEnvKill ? " Env kill switch is forcing AI off." : ""}
+                  </p>
                 </div>
-              </div>
-
-              <div className="mt-6">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                  What&apos;s next
-                </label>
-                <textarea
-                  value={whatsNext}
-                  onChange={(e) => setWhatsNext(e.target.value)}
-                  rows={2}
-                  placeholder="e.g. Setup cohost access, send contract…"
-                  className="mt-2 w-full resize-y rounded-2xl bg-mrg-bg px-4 py-3 text-sm text-mrg-text outline-none ring-1 ring-white/10 placeholder:text-mrg-muted/50 focus:ring-mrg-gold/40"
-                />
-              </div>
-
-              <div className="mt-4">
-                <label className="text-xs font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                  Call notes
-                </label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={4}
-                  placeholder="What happened on the call…"
-                  className="mt-2 w-full resize-y rounded-2xl bg-mrg-bg px-4 py-3 text-sm text-mrg-text outline-none ring-1 ring-white/10 placeholder:text-mrg-muted/50 focus:ring-mrg-gold/40"
-                />
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  disabled={saving}
-                  onClick={() => patchLead({ notes, whatsNext })}
-                  className="rounded-full bg-mrg-gold px-6 py-2.5 text-sm font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-60"
+                  disabled={aiBusy || aiEnvKill}
+                  onClick={() => toggleGlobalAi().catch(() => undefined)}
+                  className={`min-h-11 shrink-0 rounded-full px-4 text-sm font-semibold ring-1 ${
+                    aiEnabled && !aiEnvKill
+                      ? "bg-emerald-500/20 text-emerald-200 ring-emerald-500/40"
+                      : "bg-white/5 text-mrg-muted ring-white/15"
+                  }`}
                 >
-                  {saving ? "Saving…" : "Save"}
+                  {aiEnabled && !aiEnvKill ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
+              <h2 className="text-base font-semibold">Paste Meta lead</h2>
+              <p className="mt-1 text-sm text-mrg-muted">
+                Copy the whole lead from Meta Leads Center, preview, then import. AI texts them when
+                AI is on.
+              </p>
+              <textarea
+                value={paste}
+                onChange={(e) => {
+                  setPaste(e.target.value);
+                  setPastePreview(null);
+                  setPasteResult(null);
+                }}
+                rows={8}
+                placeholder="Paste Meta lead text here…"
+                className="mt-4 w-full rounded-2xl bg-mrg-bg px-4 py-3 font-mono text-xs leading-relaxed outline-none ring-1 ring-white/10 focus:ring-mrg-gold/50"
+              />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={pasteBusy || !paste.trim()}
+                  onClick={() => previewPaste().catch(() => undefined)}
+                  className="min-h-11 rounded-full bg-white/5 px-4 text-sm font-semibold ring-1 ring-white/10 disabled:opacity-50"
+                >
+                  Preview
                 </button>
                 <button
                   type="button"
-                  disabled={saving}
-                  onClick={() => deleteSelectedLead()}
-                  className="rounded-full px-5 py-2.5 text-sm font-semibold text-red-300 ring-1 ring-red-500/40 hover:bg-red-500/10 disabled:opacity-60"
+                  disabled={pasteBusy || !paste.trim() || Boolean(pastePreview?.duplicate)}
+                  onClick={() => importPaste().catch(() => undefined)}
+                  className="min-h-11 rounded-full bg-mrg-gold px-4 text-sm font-semibold text-black disabled:opacity-50"
                 >
-                  Delete lead
+                  Import to CRM
                 </button>
-                {saveMsg && <span className="text-xs text-mrg-muted">{saveMsg}</span>}
               </div>
+              {pasteError && <p className="mt-3 text-sm text-red-300">{pasteError}</p>}
+              {pasteResult && <p className="mt-3 text-sm text-emerald-300">{pasteResult}</p>}
+              {pastePreview && (
+                <div className="mt-4 rounded-xl bg-mrg-bg p-4 ring-1 ring-white/8">
+                  <dl>
+                    <Row label="Name" value={pastePreview.parsed.name || "—"} />
+                    <Row label="Phone" value={pastePreview.parsed.phone || "—"} />
+                    <Row label="City" value={pastePreview.parsed.address || "—"} />
+                    <Row label="Airbnb" value={listingShort(pastePreview.parsed.hasListing)} />
+                    <Row label="Stage" value={STATUS_LABEL[pastePreview.decision.status]} />
+                    <Row label="Decision" value={pastePreview.decision.reason} />
+                  </dl>
+                  {pastePreview.duplicate && (
+                    <p className="mt-3 text-sm text-amber-300">
+                      Duplicate of {pastePreview.duplicate.name} ({pastePreview.duplicate.status}).
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
       </main>
+
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-mrg-bg/95 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur">
+        <div className="mx-auto grid max-w-5xl grid-cols-4">
+          {(
+            [
+              ["contacts", "Contacts"],
+              ["pipeline", "Pipeline"],
+              ["knowledge", "Knowledge"],
+              ["settings", "Settings"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={`min-h-14 text-xs font-semibold ${
+                tab === id ? "text-mrg-gold" : "text-mrg-muted"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
     </div>
   );
 }

@@ -29,12 +29,13 @@ create table if not exists public.leads (
   status text not null default 'new'
     check (status in (
       'new',
-      'qualified',
-      'low_fit',
+      'engaging',
+      'interested',
+      'booked',
       'call_done',
       'needs_shane',
-      'onboarding',
       'won',
+      'low_fit',
       'skip'
     )),
   notes text default '',
@@ -43,7 +44,8 @@ create table if not exists public.leads (
   needs_from text not null default 'none'
     check (needs_from in ('none', 'shane', 'partner', 'client')),
   notes_updated_at timestamptz,
-  qualified_at timestamptz
+  qualified_at timestamptz,
+  ai_paused boolean not null default false
 );
 
 create index if not exists leads_created_at_idx on public.leads (created_at desc);

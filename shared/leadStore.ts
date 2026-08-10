@@ -1,9 +1,14 @@
 import type { HasListing } from "./auditEmails.js";
-import { type LeadStatus } from "./crmTypes.js";
+import { normalizeLeadStatus, type LeadStatus } from "./crmTypes.js";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase.js";
 
 export type { LeadStatus } from "./crmTypes.js";
-export { LEAD_STATUSES, STATUS_LABEL } from "./crmTypes.js";
+export {
+  LEAD_STATUSES,
+  PIPELINE_STATUSES,
+  STATUS_LABEL,
+  normalizeLeadStatus,
+} from "./crmTypes.js";
 
 export type LeadRow = {
   id: string;
@@ -28,6 +33,7 @@ export type LeadRow = {
   whats_next: string;
   notes_updated_at: string | null;
   qualified_at: string | null;
+  ai_paused: boolean;
 };
 
 export type InsertLeadInput = {
@@ -49,6 +55,7 @@ export type InsertLeadInput = {
   /** When set, skips auto status from qualifiers */
   status?: LeadStatus;
   notes?: string;
+  aiPaused?: boolean;
 };
 
 export type QualifierInput = {
@@ -62,6 +69,7 @@ export type LeadCrmUpdate = {
   status?: LeadStatus;
   notes?: string;
   whatsNext?: string;
+  aiPaused?: boolean;
 };
 
 function mapLead(row: Record<string, unknown>): LeadRow {
@@ -83,11 +91,12 @@ function mapLead(row: Record<string, unknown>): LeadRow {
     permit_status: (row.permit_status as string | null) ?? null,
     str_allowed: (row.str_allowed as string | null) ?? null,
     launch_timeline: (row.launch_timeline as string | null) ?? null,
-    status: (row.status as LeadStatus) || "new",
+    status: normalizeLeadStatus(row.status as string),
     notes: String(row.notes ?? ""),
     whats_next: String(row.whats_next ?? ""),
     notes_updated_at: (row.notes_updated_at as string | null) ?? null,
     qualified_at: (row.qualified_at as string | null) ?? null,
+    ai_paused: Boolean(row.ai_paused),
   };
 }
 
@@ -100,7 +109,7 @@ export function suggestStatusFromQualifier(q: QualifierInput): LeadStatus {
   ) {
     return "low_fit";
   }
-  return "qualified";
+  return "engaging";
 }
 
 export async function insertLead(input: InsertLeadInput): Promise<string | null> {
@@ -142,8 +151,11 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
       launch_timeline: input.launchTimeline ?? null,
       status,
       notes: input.notes ?? "",
+      ai_paused: input.aiPaused ?? false,
       qualified_at:
-        status === "qualified" || hasNoQualifier ? new Date().toISOString() : null,
+        status === "engaging" || status === "interested" || hasNoQualifier
+          ? new Date().toISOString()
+          : null,
     })
     .select("id")
     .single();
@@ -153,6 +165,17 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
     return null;
   }
   return data?.id ?? null;
+}
+
+export async function getLeadById(leadId: string): Promise<LeadRow | null> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return null;
+  const { data, error } = await sb.from("leads").select("*").eq("id", leadId).maybeSingle();
+  if (error || !data) {
+    if (error) console.error("[leads] get failed", error.message);
+    return null;
+  }
+  return mapLead(data as Record<string, unknown>);
 }
 
 export async function updateLeadQualifier(
@@ -184,15 +207,28 @@ export async function updateLeadQualifier(
   return mapLead(data as Record<string, unknown>);
 }
 
-export async function listLeads(limit = 100): Promise<LeadRow[]> {
+export async function listLeads(limit = 100, q?: string): Promise<LeadRow[]> {
   const sb = getSupabaseAdmin();
   if (!sb) return [];
 
-  const { data, error } = await sb
+  let query = sb
     .from("leads")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  const term = q?.trim();
+  if (term) {
+    const safe = term.replace(/[%",]/g, " ").trim();
+    if (safe) {
+      const pattern = `%${safe}%`;
+      query = query.or(
+        `name.ilike."${pattern}",email.ilike."${pattern}",phone.ilike."${pattern}",address.ilike."${pattern}",listing_title.ilike."${pattern}"`,
+      );
+    }
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("[leads] list failed", error.message);
@@ -218,6 +254,9 @@ export async function updateLeadCrm(
     update.whats_next = patch.whatsNext;
     update.notes_updated_at = new Date().toISOString();
   }
+  if (patch.aiPaused !== undefined) {
+    update.ai_paused = patch.aiPaused;
+  }
 
   if (Object.keys(update).length === 0) return null;
 
@@ -233,6 +272,13 @@ export async function updateLeadCrm(
     return null;
   }
   return mapLead(data as Record<string, unknown>);
+}
+
+export async function setLeadAiPaused(
+  leadId: string,
+  paused: boolean,
+): Promise<LeadRow | null> {
+  return updateLeadCrm(leadId, { aiPaused: paused });
 }
 
 export async function deleteLead(leadId: string): Promise<boolean> {
@@ -272,6 +318,8 @@ export async function markLeadBooked(
   const prevNotes = String(existing.notes ?? "").trim();
   const noteLine = input.note?.trim();
   const update: Record<string, unknown> = {
+    status: "booked",
+    ai_paused: true,
     notes_updated_at: new Date().toISOString(),
   };
   if (input.callStartIso) update.call_start_iso = input.callStartIso;
@@ -342,38 +390,8 @@ export async function findLeadByEmailOrPhone(
   email: string,
   phone: string,
 ): Promise<LeadRow | null> {
-  const sb = getSupabaseAdmin();
-  if (!sb) return null;
-
-  const emailNorm = email.trim().toLowerCase();
-  if (emailNorm) {
-    const { data, error } = await sb
-      .from("leads")
-      .select("*")
-      .ilike("email", emailNorm)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!error && data) return mapLead(data as Record<string, unknown>);
-  }
-
-  const want = normalizePhoneDigits(phone);
-  if (want.length >= 7) {
-    const { data, error } = await sb
-      .from("leads")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (error || !data) return null;
-    for (const row of data) {
-      const existing = normalizePhoneDigits(String(row.phone ?? ""));
-      if (existing && (existing === want || existing.endsWith(want) || want.endsWith(existing))) {
-        return mapLead(row as Record<string, unknown>);
-      }
-    }
-  }
-
-  return null;
+  const rows = await findLeadsByEmailOrPhone(email, phone);
+  return rows[0] ?? null;
 }
 
 /** All CRM rows matching email and/or phone (newest first). */

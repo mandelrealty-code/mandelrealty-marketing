@@ -1,10 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { cancelLeadFollowups } from "../../shared/followUpStore.js";
 import { recordInboundSms } from "../../shared/smsStore.js";
+import { sendAiReplyToInbound } from "../../shared/aiSmsAgent.js";
 
 /**
  * Twilio inbound SMS webhook (form-urlencoded).
- * Saves replies to CRM SMS thread; STOP cancels pending follow-ups.
+ * Saves replies to CRM SMS thread; STOP cancels pending follow-ups;
+ * otherwise AI pre-closer may reply when enabled.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -53,6 +55,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (isStop && leadId) {
     await cancelLeadFollowups(leadId);
+    try {
+      const { setLeadAiPaused } = await import("../../shared/leadStore.js");
+      await setLeadAiPaused(leadId, true);
+    } catch {
+      /* ignore */
+    }
+  } else if (leadId && text.trim()) {
+    try {
+      await sendAiReplyToInbound({
+        leadId,
+        inboundText: text,
+        env: {
+          TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+          TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+          TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+        },
+      });
+    } catch (err) {
+      console.error("[twilio-inbound] AI reply failed", err);
+    }
   }
 
   res.setHeader("Content-Type", "text/xml");

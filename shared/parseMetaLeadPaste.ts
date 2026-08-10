@@ -227,27 +227,46 @@ export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
   };
 }
 
-/** Qualify for book-a-call email only when they have a live Airbnb. */
+/**
+ * Decide CRM stage + whether AI/first SMS should fire.
+ * Cold leads with a property path (own_ready / buying) get AI outreach even without a live listing.
+ */
 export function decideMetaImport(parsed: ParsedMetaLead): MetaImportDecision {
-  if (parsed.hasListing === "yes") {
-    return {
-      status: "qualified",
-      qualifiesForBookEmail: true,
-      reason: "Has a live Airbnb listing. Will get the first SMS (no customer email).",
-    };
-  }
-  if (parsed.hasListing === "no") {
+  const lowFit =
+    parsed.propertyStage === "researching" ||
+    parsed.strAllowed === "no" ||
+    parsed.permitStatus === "not_planning";
+
+  if (lowFit) {
     return {
       status: "low_fit",
       qualifiesForBookEmail: false,
       reason:
-        "No Airbnb listing yet. Still saved to CRM with full details as low fit. No SMS.",
+        "Marked low fit (researching / STR not allowed / not planning a permit). Saved to CRM; no auto SMS.",
     };
   }
+
+  if (parsed.hasListing === "yes") {
+    return {
+      status: "new",
+      qualifiesForBookEmail: true,
+      reason: "Live Airbnb listing. AI pre-closer will send the first SMS (if AI is on).",
+    };
+  }
+
+  if (parsed.hasListing === "no") {
+    return {
+      status: "new",
+      qualifiesForBookEmail: true,
+      reason:
+        "No listing yet but looks workable — AI pre-closer will text to qualify and book a call (if AI is on).",
+    };
+  }
+
   return {
     status: "new",
-    qualifiesForBookEmail: false,
+    qualifiesForBookEmail: true,
     reason:
-      "Listing status unclear. Still saved to CRM with full details as new for manual review. No SMS.",
+      "Listing status unclear. Saved as new; AI will still attempt a first SMS when enabled.",
   };
 }

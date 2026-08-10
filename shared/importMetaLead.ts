@@ -5,8 +5,8 @@ import {
   sendResendEmail,
   type LeadEmailInput,
 } from "./auditEmails.js";
+import { sendAiFirstSms } from "./aiSmsAgent.js";
 import { isTwilioConfigured } from "./followUpSequences.js";
-import { sendFirstHotSms } from "./followUpStore.js";
 import { findLeadByEmailOrPhone, insertLead, type LeadRow } from "./leadStore.js";
 import {
   decideMetaImport,
@@ -36,6 +36,7 @@ export type MetaImportResult = MetaImportPreview & {
   inboxNotified: boolean;
   smsScheduled?: boolean;
   smsSentNow?: number;
+  aiSkipped?: string;
   error?: string;
 };
 
@@ -135,7 +136,7 @@ export async function importMetaLeadPaste(
     "Imported from Meta Leads Center paste.",
     `Has Airbnb: ${parsed.hasListing}`,
     `Book-a-call email: not sent (SMS only)`,
-    `SMS: ${decision.qualifiesForBookEmail ? "first message only (manual bumps in CRM)" : "none (not qualified)"}`,
+    `SMS: ${decision.qualifiesForBookEmail ? "AI first message when AI is on" : "none"}`,
     ...Object.entries(parsed.rawAnswers).map(([k, v]) => `${k}: ${v}`),
   ];
 
@@ -175,6 +176,7 @@ export async function importMetaLeadPaste(
   let emailSent = false;
   let smsScheduled = false;
   let smsSentNow = 0;
+  let aiSkipped: string | undefined;
 
   if (apiKey) {
     const inbox = await sendResendEmail({
@@ -186,19 +188,18 @@ export async function importMetaLeadPaste(
       replyTo: parsed.email,
     });
     inboxNotified = inbox.ok;
-    // Customer book-a-call email disabled — SMS carries the Google Calendar link.
   }
 
-  // Qualified Meta leads: first SMS only. Later bumps are manual in CRM.
   if (isTwilioConfigured(env) && decision.qualifiesForBookEmail) {
-    const sent = await sendFirstHotSms({
-      leadId,
-      name: parsed.name,
-      phone: parsed.phone,
-      env,
-    });
-    smsScheduled = sent.ok;
-    smsSentNow = sent.ok ? 1 : 0;
+    const sent = await sendAiFirstSms({ leadId, env });
+    if (sent.ok) {
+      smsScheduled = true;
+      smsSentNow = 1;
+    } else if (sent.skipped) {
+      aiSkipped = sent.reason;
+    } else {
+      aiSkipped = sent.error || "AI SMS failed";
+    }
   }
 
   return {
@@ -208,5 +209,6 @@ export async function importMetaLeadPaste(
     inboxNotified,
     smsScheduled,
     smsSentNow,
+    aiSkipped,
   };
 }

@@ -120,27 +120,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     launchTimeline: lead.launchTimeline,
   });
 
-  // Website + live Airbnb: first SMS only (same as Meta). No auto follow-ups.
-  // Call time on this form is stored; CRM "Mark booked" is for Google Calendar checks.
-  if (leadId && lead.hasListing === "yes") {
+  // Website leads with phone: AI first SMS when enabled (same as Meta paste).
+  if (leadId && lead.phone) {
     try {
       const { isTwilioConfigured } = await import("../shared/followUpSequences.js");
-      const { sendFirstHotSms } = await import("../shared/followUpStore.js");
+      const { sendAiFirstSms } = await import("../shared/aiSmsAgent.js");
       const twilioEnv = {
         TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
         TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
         TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
       };
       if (isTwilioConfigured(twilioEnv)) {
-        await sendFirstHotSms({
-          leadId,
-          name: lead.name,
-          phone: lead.phone,
-          env: twilioEnv,
-        });
+        await sendAiFirstSms({ leadId, env: twilioEnv });
       }
     } catch (err) {
-      console.warn("[audit] first SMS skipped", err);
+      console.warn("[audit] AI first SMS skipped", err);
     }
   }
 

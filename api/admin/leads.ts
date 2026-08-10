@@ -65,7 +65,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ]);
         return res.status(200).json({ followups, messages });
       }
-      const leads = await listLeads(200);
+      const q = typeof req.query.q === "string" ? req.query.q : "";
+      const leads = await listLeads(200, q);
       return res.status(200).json({ leads });
     } catch {
       return res.status(500).json({ error: "Could not load leads." });
@@ -137,6 +138,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         followups,
         messages,
         lead: result.lead,
+        aiPaused: true,
       });
     }
 
@@ -150,7 +152,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, lead: updated, followups, messages });
     }
 
-    const patch: { status?: LeadStatus; notes?: string; whatsNext?: string } = {};
+    const patch: {
+      status?: LeadStatus;
+      notes?: string;
+      whatsNext?: string;
+      aiPaused?: boolean;
+    } = {};
 
     if (body.status !== undefined) {
       const status = String(body.status).trim() as LeadStatus;
@@ -161,6 +168,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (body.notes !== undefined) patch.notes = String(body.notes);
     if (body.whatsNext !== undefined) patch.whatsNext = String(body.whatsNext);
+    if (typeof body.aiPaused === "boolean") patch.aiPaused = body.aiPaused;
+    if (typeof body.ai_paused === "boolean") patch.aiPaused = body.ai_paused;
 
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({ error: "Nothing to update." });
