@@ -15,6 +15,8 @@ function norm(s: string): string {
     .toLowerCase()
     .replace(/[‘’ʻʼ']/g, "'")
     .replace(/[—–−]/g, "-")
+    // Make/Meta often sends slug values: no_—_not_yet, i_own_a_property_...
+    .replace(/_/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -37,12 +39,23 @@ function asString(v: unknown): string {
 function mapHasListing(raw: string | null): HasListing {
   if (!raw) return "unknown";
   const n = norm(raw);
-  if (/^yes\b/.test(n) || n.includes("live right now") || n === "yes") return "yes";
   if (
+    n === "yes" ||
+    /^yes\b/.test(n) ||
+    n.includes("live right now") ||
+    n.includes("listing live") ||
+    n === "has listing"
+  ) {
+    return "yes";
+  }
+  if (
+    n === "no" ||
     /^no\b/.test(n) ||
     n.includes("not yet") ||
     n.includes("don't have") ||
-    n.includes("do not have")
+    n.includes("do not have") ||
+    n.includes("no listing") ||
+    n.includes("not live")
   ) {
     return "no";
   }
@@ -55,21 +68,30 @@ function mapByLabel(
 ): string | null {
   if (!raw) return null;
   const n = norm(raw);
+  const compact = n.replace(/[^a-z0-9]+/g, "");
+
   for (const opt of options) {
-    if (n === norm(opt.label) || n.includes(norm(opt.label))) return opt.value;
+    const labelN = norm(opt.label);
+    if (n === labelN || n.includes(labelN) || labelN.includes(n)) return opt.value;
+    if (compact === labelN.replace(/[^a-z0-9]+/g, "")) return opt.value;
+    if (compact === opt.value.replace(/[^a-z0-9]+/g, "")) return opt.value;
   }
-  if (/own a property|ready to start|own_ready/.test(n)) return "own_ready";
+
+  if (/own.?a.?property|ready.?to.?start|ownready/.test(n) || compact.includes("ownaproperty")) {
+    return "own_ready";
+  }
   if (/buying|renovat/.test(n)) return "buying";
-  if (/research|no property|curious/.test(n)) return "researching";
-  if (/^yes\b|is allowed|str_allowed.?yes/.test(n)) return "yes";
-  if (/^no\b|not allowed/.test(n)) return "no";
-  if (/unsure|not sure/.test(n)) return "unsure";
-  if (/already have|have a permit|\bhave\b/.test(n)) return "have";
-  if (/applying|will apply/.test(n)) return "applying";
-  if (/don'?t know|do not know|unknown/.test(n)) return "unknown";
-  if (/not planning/.test(n)) return "not_planning";
+  if (/research|no.?property|curious|just.?looking/.test(n)) return "researching";
+  if (/^yes\b|is.?allowed|str.?allowed.?yes/.test(n) || compact === "yes") return "yes";
+  if (/^no\b|not.?allowed/.test(n) || compact === "no") return "no";
+  if (/unsure|not.?sure/.test(n)) return "unsure";
+  if (/already.?have|have.?a.?permit|have.?permit/.test(n) || compact === "have") return "have";
+  if (/applying|will.?apply/.test(n)) return "applying";
+  if (/don'?t.?know|do.?not.?know|if.?i.?need|unknown/.test(n)) return "unknown";
+  if (/not.?planning/.test(n)) return "not_planning";
+
   for (const opt of options) {
-    if (n === opt.value) return opt.value;
+    if (n === opt.value || compact === opt.value.replace(/_/g, "")) return opt.value;
   }
   return null;
 }
