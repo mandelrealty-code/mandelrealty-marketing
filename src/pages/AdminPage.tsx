@@ -690,11 +690,6 @@ export function AdminPage() {
     }
   };
 
-  const nextBumpStep = useMemo(() => {
-    const sent = new Set(followups.filter((f) => f.status === "sent").map((f) => f.step));
-    return [2, 3, 4].find((s) => !sent.has(s)) ?? null;
-  }, [followups]);
-
   if (authed === null) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mrg-bg text-mrg-muted">
@@ -976,16 +971,6 @@ export function AdminPage() {
             >
               Mark booked
             </button>
-            {nextBumpStep && (
-              <button
-                type="button"
-                disabled={saving || smsSending}
-                onClick={() => patchLead({ sendSmsBump: true })}
-                className="min-h-11 rounded-full bg-white/5 px-4 text-sm font-semibold text-mrg-text ring-1 ring-white/10"
-              >
-                Send bump #{nextBumpStep}
-              </button>
-            )}
             <button
               type="button"
               disabled={saving}
