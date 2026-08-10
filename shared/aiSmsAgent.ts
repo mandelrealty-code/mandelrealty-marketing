@@ -85,39 +85,102 @@ Stage guidance:
 If include_book_link is true, include the book URL in reply_text exactly once.`;
 }
 
+/**
+ * Never send API/billing/system text to a customer phone.
+ * Errors stay in CRM notes / what's next / server logs only.
+ */
+export function isUnsafeCustomerSms(body: string): boolean {
+  const t = body.toLowerCase();
+  return (
+    /anthropic|openai|api[_ ]?key|x-api-key|claude\s+api|billing|insufficient[_\s-]?credits?|credit\s+balance|rate[_\s-]?limit|quota|payment\s+required|overloaded|server\s+error|internal\s+error|stack\s+trace|exception:|error\s*code|http\s*[45]\d\d|sk-ant-|sk-[a-z0-9]{10,}/i.test(
+      t,
+    ) ||
+    /i('m| am) (unable|not able) to (process|respond|help).*(api|system|billing|credit)/i.test(t)
+  );
+}
+
+function adminFacingAiError(raw: string | undefined, status?: number): string {
+  const msg = (raw || "").trim();
+  const lower = msg.toLowerCase();
+  if (
+    status === 402 ||
+    status === 429 ||
+    /credit|billing|balance|quota|payment|rate.?limit|too many requests/i.test(lower)
+  ) {
+    return "AI unavailable (billing/credits or rate limit). Reply manually from CRM — customer was not texted an error.";
+  }
+  if (status === 401 || /invalid.?api.?key|authentication|unauthorized/i.test(lower)) {
+    return "AI unavailable (API key). Reply manually from CRM — customer was not texted an error.";
+  }
+  if (msg) return `AI unavailable: ${msg.slice(0, 180)}. Reply manually — customer was not texted an error.`;
+  if (status) return `AI unavailable (HTTP ${status}). Reply manually — customer was not texted an error.`;
+  return "AI unavailable. Reply manually from CRM — customer was not texted an error.";
+}
+
+async function noteAiFailure(leadId: string, reason: string): Promise<void> {
+  try {
+    const lead = await getLeadById(leadId);
+    if (!lead) return;
+    const stamp = new Date().toLocaleString("en-CA", { timeZone: "America/Toronto" });
+    const line = `[AI ${stamp}] ${reason}`;
+    const prev = (lead.whats_next || "").trim();
+    // Keep latest AI failure visible without burying it
+    const whatsNext = prev.startsWith("[AI ")
+      ? line
+      : prev
+        ? `${line}\n${prev}`.slice(0, 900)
+        : line;
+    await updateLeadCrm(leadId, { whatsNext });
+  } catch (err) {
+    console.error("[aiSms] could not record AI failure on lead", err);
+  }
+}
+
+type ClaudeCallResult =
+  | { ok: true; decision: ClaudeDecision }
+  | { ok: false; error: string };
+
 async function callClaude(input: {
   system: string;
   user: string;
-}): Promise<ClaudeDecision | null> {
+}): Promise<ClaudeCallResult> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) {
     console.warn("[aiSms] ANTHROPIC_API_KEY missing");
-    return null;
+    return { ok: false, error: adminFacingAiError("ANTHROPIC_API_KEY not configured") };
   }
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-20250514",
-      max_tokens: 700,
-      system: input.system,
-      messages: [{ role: "user", content: input.user }],
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-20250514",
+        max_tokens: 700,
+        system: input.system,
+        messages: [{ role: "user", content: input.user }],
+      }),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Network error";
+    console.error("[aiSms] Claude network error", message);
+    return { ok: false, error: adminFacingAiError(message) };
+  }
 
   const data = (await res.json().catch(() => ({}))) as {
     content?: { type: string; text?: string }[];
-    error?: { message?: string };
+    error?: { message?: string; type?: string };
   };
 
   if (!res.ok) {
-    console.error("[aiSms] Claude error", data.error?.message || res.status);
-    return null;
+    const apiMsg = data.error?.message || data.error?.type || "";
+    console.error("[aiSms] Claude error (not sent to customer)", res.status, apiMsg);
+    return { ok: false, error: adminFacingAiError(apiMsg, res.status) };
   }
 
   const text = (data.content ?? [])
@@ -127,19 +190,34 @@ async function callClaude(input: {
     .trim();
 
   const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
+  if (!jsonMatch) {
+    return { ok: false, error: adminFacingAiError("AI returned no usable SMS JSON") };
+  }
 
   try {
     const parsed = JSON.parse(jsonMatch[0]) as ClaudeDecision;
-    if (!parsed.reply_text?.trim()) return null;
+    const reply = String(parsed.reply_text ?? "").trim().slice(0, 1500);
+    if (!reply) {
+      return { ok: false, error: adminFacingAiError("AI returned empty reply_text") };
+    }
+    if (isUnsafeCustomerSms(reply)) {
+      console.error("[aiSms] blocked unsafe AI reply (not sent to customer)", reply.slice(0, 120));
+      return {
+        ok: false,
+        error: adminFacingAiError("AI draft looked like a system/billing error — blocked"),
+      };
+    }
     return {
-      reply_text: String(parsed.reply_text).trim().slice(0, 1500),
-      suggested_stage: (parsed.suggested_stage as LeadStatus | null) ?? null,
-      include_book_link: Boolean(parsed.include_book_link),
-      whats_next: parsed.whats_next ? String(parsed.whats_next).slice(0, 500) : undefined,
+      ok: true,
+      decision: {
+        reply_text: reply,
+        suggested_stage: (parsed.suggested_stage as LeadStatus | null) ?? null,
+        include_book_link: Boolean(parsed.include_book_link),
+        whats_next: parsed.whats_next ? String(parsed.whats_next).slice(0, 500) : undefined,
+      },
     };
   } catch {
-    return null;
+    return { ok: false, error: adminFacingAiError("AI returned invalid JSON") };
   }
 }
 
@@ -222,12 +300,22 @@ async function sendAiSms(
   const to = toE164(lead.phone);
   if (!to) return { ok: false, error: "Invalid phone for SMS" };
 
+  const text = body.trim();
+  if (!text) return { ok: false, error: "Empty SMS body" };
+  if (isUnsafeCustomerSms(text)) {
+    console.error("[aiSms] blocked outbound SMS with internal/billing content");
+    return {
+      ok: false,
+      error: adminFacingAiError("Blocked unsafe SMS body before Twilio send"),
+    };
+  }
+
   const send = await sendTwilioSms({
     accountSid: env.TWILIO_ACCOUNT_SID!,
     authToken: env.TWILIO_AUTH_TOKEN!,
     from: env.TWILIO_PHONE_NUMBER!,
     to,
-    body,
+    body: text,
   });
   if (!send.ok) return { ok: false, error: send.error ?? "Send failed" };
 
@@ -236,7 +324,7 @@ async function sendAiSms(
     direction: "outbound",
     fromPhone: env.TWILIO_PHONE_NUMBER!,
     toPhone: to,
-    body,
+    body: text,
     providerSid: send.sid ?? null,
     meta: { ai_generated: true },
   });
@@ -261,7 +349,11 @@ export async function canAiTextLead(lead: LeadRow): Promise<{ ok: boolean; reaso
   return { ok: true };
 }
 
-/** First outbound after import. Falls back to a simple template if Claude fails. */
+function safeFirstSmsFallback(lead: LeadRow): string {
+  return `Hey ${firstName(lead.name)}, it's Mandel Realty Group — thanks for applying. We help hosts launch and grow Airbnb stays across the GTA. Got 2 mins for a quick question about ${lead.address || "your property"}? Or book a free intro call here: ${BOOK_A_CALL_URL}\nReply STOP to opt out.`;
+}
+
+/** First outbound after import. Uses a safe MRG template if Claude fails — never API/billing text. */
 export async function sendAiFirstSms(input: {
   leadId: string;
   env: TwilioEnv;
@@ -272,24 +364,49 @@ export async function sendAiFirstSms(input: {
   const gate = await canAiTextLead(lead);
   if (!gate.ok) return { ok: false, skipped: true, reason: gate.reason };
 
-  const decision = await callClaude({
+  const claude = await callClaude({
     system: systemPrompt(),
     user: await buildUserPrompt(lead, "first"),
   });
 
-  let body =
-    decision?.reply_text ||
-    `Hey ${firstName(lead.name)}, it's Mandel Realty Group — thanks for applying. We help hosts launch and grow Airbnb stays across the GTA. Got 2 mins for a quick question about ${lead.address || "your property"}? Or book a free intro call here: ${BOOK_A_CALL_URL}\nReply STOP to opt out.`;
+  let body: string;
+  let decision: ClaudeDecision | null = null;
 
-  if (decision?.include_book_link && !body.includes("http")) {
-    body = `${body}\n${BOOK_A_CALL_URL}`;
+  if (claude.ok) {
+    decision = claude.decision;
+    body = decision.reply_text;
+    if (decision.include_book_link && !body.includes("http")) {
+      body = `${body}\n${BOOK_A_CALL_URL}`;
+    }
+    if (!/stop/i.test(body)) {
+      body = `${body.trim()}\nReply STOP to opt out.`;
+    }
+    if (isUnsafeCustomerSms(body)) {
+      await noteAiFailure(lead.id, "AI draft blocked; sent safe template instead.");
+      body = safeFirstSmsFallback(lead);
+      decision = null;
+    }
+  } else {
+    await noteAiFailure(lead.id, claude.error);
+    // Still send a normal MRG intro — never Claude's error string
+    body = safeFirstSmsFallback(lead);
   }
-  if (!/stop/i.test(body)) {
-    body = `${body.trim()}\nReply STOP to opt out.`;
+
+  if (isUnsafeCustomerSms(body)) {
+    await noteAiFailure(lead.id, "Refused to send — body failed safety check.");
+    return {
+      ok: false,
+      skipped: true,
+      reason: "Blocked unsafe SMS body",
+      error: claude.ok ? "Blocked unsafe SMS body" : claude.error,
+    };
   }
 
   const sent = await sendAiSms(lead, body, input.env);
-  if (!sent.ok) return { ok: false, error: sent.error };
+  if (!sent.ok) {
+    if (sent.error) await noteAiFailure(lead.id, sent.error);
+    return { ok: false, error: sent.error };
+  }
 
   if (decision) await applyDecision(lead, decision);
   if (lead.status === "new" || lead.status === "low_fit") {
@@ -301,10 +418,11 @@ export async function sendAiFirstSms(input: {
     reply: body,
     suggestedStage: decision?.suggested_stage ?? "engaging",
     sid: sent.sid,
+    error: claude.ok ? undefined : claude.error,
   };
 }
 
-/** Reply to an inbound SMS when AI is enabled. */
+/** Reply to an inbound SMS when AI is enabled. On AI failure: no customer SMS — CRM note only. */
 export async function sendAiReplyToInbound(input: {
   leadId: string;
   inboundText: string;
@@ -316,24 +434,34 @@ export async function sendAiReplyToInbound(input: {
   const gate = await canAiTextLead(lead);
   if (!gate.ok) return { ok: false, skipped: true, reason: gate.reason };
 
-  const decision = await callClaude({
+  const claude = await callClaude({
     system: systemPrompt(),
     user: await buildUserPrompt(lead, "reply", input.inboundText),
   });
 
-  if (!decision) {
-    return { ok: false, skipped: true, reason: "Claude returned no reply" };
+  if (!claude.ok) {
+    await noteAiFailure(lead.id, claude.error);
+    return { ok: false, skipped: true, reason: claude.error, error: claude.error };
   }
 
-  let body = decision.reply_text;
-  if (decision.include_book_link && !body.includes("http")) {
+  let body = claude.decision.reply_text;
+  if (claude.decision.include_book_link && !body.includes("http")) {
     body = `${body}\n${BOOK_A_CALL_URL}`;
   }
 
-  const sent = await sendAiSms(lead, body, input.env);
-  if (!sent.ok) return { ok: false, error: sent.error };
+  if (isUnsafeCustomerSms(body)) {
+    const blocked = adminFacingAiError("AI draft looked like a system/billing error — blocked");
+    await noteAiFailure(lead.id, blocked);
+    return { ok: false, skipped: true, reason: blocked, error: blocked };
+  }
 
-  await applyDecision(lead, decision);
+  const sent = await sendAiSms(lead, body, input.env);
+  if (!sent.ok) {
+    if (sent.error) await noteAiFailure(lead.id, sent.error);
+    return { ok: false, error: sent.error };
+  }
+
+  await applyDecision(lead, claude.decision);
   if (lead.status === "new") {
     await updateLeadCrm(lead.id, { status: "engaging" });
   }
@@ -341,7 +469,7 @@ export async function sendAiReplyToInbound(input: {
   return {
     ok: true,
     reply: body,
-    suggestedStage: decision.suggested_stage,
+    suggestedStage: claude.decision.suggested_stage,
     sid: sent.sid,
   };
 }

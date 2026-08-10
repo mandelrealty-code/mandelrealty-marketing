@@ -476,9 +476,11 @@ export function AdminPage() {
       if (!res.ok) throw new Error(data.error || "Import failed");
       const smsNote =
         (data.smsSentNow ?? 0) > 0
-          ? " AI first SMS sent."
+          ? data.aiSkipped
+            ? ` Safe intro SMS sent (AI issue logged on lead: ${data.aiSkipped}).`
+            : " AI first SMS sent."
           : data.decision?.qualifiesForBookEmail
-            ? ` No AI SMS (${data.aiSkipped || "AI off or Twilio missing"}).`
+            ? ` No customer SMS (${data.aiSkipped || "AI off or Twilio missing"}).`
             : " No SMS.";
       setPasteResult(`Saved ${data.parsed?.name || "lead"} as ${data.decision?.status}.${smsNote}`);
       setPaste("");

@@ -195,8 +195,9 @@ export async function importMetaLeadPaste(
     if (sent.ok) {
       smsScheduled = true;
       smsSentNow = 1;
+      if (sent.error) aiSkipped = sent.error; // Claude failed but safe template was sent
     } else if (sent.skipped) {
-      aiSkipped = sent.reason;
+      aiSkipped = sent.reason || sent.error;
     } else {
       aiSkipped = sent.error || "AI SMS failed";
     }
