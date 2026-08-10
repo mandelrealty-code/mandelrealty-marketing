@@ -88,8 +88,8 @@ export async function previewMetaLeadPaste(
   };
 }
 
-export async function importMetaLeadPaste(
-  paste: string,
+export async function importParsedMetaLead(
+  parsed: ParsedMetaLead,
   env: {
     RESEND_API_KEY?: string;
     RESEND_FROM?: string;
@@ -97,28 +97,27 @@ export async function importMetaLeadPaste(
     TWILIO_AUTH_TOKEN?: string;
     TWILIO_PHONE_NUMBER?: string;
   },
+  options?: {
+    sourceLabel?: string;
+    source?: string;
+  },
 ): Promise<MetaImportResult> {
-  const preview = await previewMetaLeadPaste(paste);
-  if ("error" in preview) {
-    return {
-      parsed: parseMetaLeadPaste(""),
-      decision: decideMetaImport(parseMetaLeadPaste("")),
-      duplicate: null,
-      leadId: null,
-      emailSent: false,
-      inboxNotified: false,
-      error: preview.error,
-    };
-  }
+  const decision = decideMetaImport(parsed);
+  const preview: MetaImportPreview = {
+    parsed,
+    decision,
+    duplicate: null,
+  };
 
-  const { parsed, decision, duplicate } = preview;
-  if (duplicate) {
+  const existing = await findLeadByEmailOrPhone(parsed.email, parsed.phone);
+  if (existing) {
     return {
       ...preview,
-      leadId: duplicate.id,
+      duplicate: toDuplicateInfo(existing),
+      leadId: existing.id,
       emailSent: false,
       inboxNotified: false,
-      error: `Duplicate lead: ${duplicate.name} (${duplicate.email || duplicate.phone}) is already in the CRM as "${duplicate.status}". Import skipped.`,
+      error: `Duplicate lead: ${existing.name} (${existing.email || existing.phone}) is already in the CRM as "${existing.status}". Import skipped.`,
     };
   }
 
@@ -132,8 +131,11 @@ export async function importMetaLeadPaste(
     };
   }
 
+  const sourceLabel = options?.sourceLabel || "Meta Leads Center paste";
+  const source = options?.source || "meta_instant_form";
+
   const notesLines = [
-    "Imported from Meta Leads Center paste.",
+    `Imported from ${sourceLabel}.`,
     `Has Airbnb: ${parsed.hasListing}`,
     `Book-a-call email: not sent (SMS only)`,
     `SMS: ${decision.qualifiesForBookEmail ? "AI first message when AI is on" : "none"}`,
@@ -151,7 +153,7 @@ export async function importMetaLeadPaste(
     hasListing: parsed.hasListing,
     callStartIso: "",
     callBooking: "",
-    source: "meta_instant_form",
+    source,
     marketingOptIn: true,
     propertyStage: parsed.propertyStage,
     permitStatus: parsed.permitStatus,
@@ -175,7 +177,7 @@ export async function importMetaLeadPaste(
   const apiKey = env.RESEND_API_KEY;
   const from = env.RESEND_FROM?.trim() || "Mandel Realty Group <onboarding@resend.dev>";
   let inboxNotified = false;
-  let emailSent = false;
+  const emailSent = false;
   let smsScheduled = false;
   let smsSentNow = 0;
   let aiSkipped: string | undefined;
@@ -187,7 +189,7 @@ export async function importMetaLeadPaste(
       to: [LEAD_INBOX],
       subject: buildLeadSubject(emailInput),
       html: buildLeadNotificationHtml(emailInput),
-      replyTo: parsed.email,
+      replyTo: parsed.email.includes("@meta-lead.local") ? undefined : parsed.email,
     });
     inboxNotified = inbox.ok;
   }
@@ -197,7 +199,7 @@ export async function importMetaLeadPaste(
     if (sent.ok) {
       smsScheduled = true;
       smsSentNow = 1;
-      if (sent.error) aiSkipped = sent.error; // Claude failed but safe template was sent
+      if (sent.error) aiSkipped = sent.error;
     } else if (sent.skipped) {
       aiSkipped = sent.reason || sent.error;
     } else {
@@ -214,4 +216,71 @@ export async function importMetaLeadPaste(
     smsSentNow,
     aiSkipped,
   };
+}
+
+export async function importMetaLeadPaste(
+  paste: string,
+  env: {
+    RESEND_API_KEY?: string;
+    RESEND_FROM?: string;
+    TWILIO_ACCOUNT_SID?: string;
+    TWILIO_AUTH_TOKEN?: string;
+    TWILIO_PHONE_NUMBER?: string;
+  },
+): Promise<MetaImportResult> {
+  const preview = await previewMetaLeadPaste(paste);
+  if ("error" in preview) {
+    return {
+      parsed: parseMetaLeadPaste(""),
+      decision: decideMetaImport(parseMetaLeadPaste("")),
+      duplicate: null,
+      leadId: null,
+      emailSent: false,
+      inboxNotified: false,
+      error: preview.error,
+    };
+  }
+
+  return importParsedMetaLead(preview.parsed, env, {
+    sourceLabel: "Meta Leads Center paste",
+    source: "meta_instant_form",
+  });
+}
+
+export async function importMetaLeadWebhook(
+  body: Record<string, unknown>,
+  env: {
+    RESEND_API_KEY?: string;
+    RESEND_FROM?: string;
+    TWILIO_ACCOUNT_SID?: string;
+    TWILIO_AUTH_TOKEN?: string;
+    TWILIO_PHONE_NUMBER?: string;
+  },
+): Promise<MetaImportResult> {
+  const { parseMetaLeadWebhook } = await import("./parseMetaLeadWebhook.js");
+  const parsed = parseMetaLeadWebhook(body);
+  if ("error" in parsed) {
+    return {
+      parsed: parseMetaLeadPaste(""),
+      decision: decideMetaImport(parseMetaLeadPaste("")),
+      duplicate: null,
+      leadId: null,
+      emailSent: false,
+      inboxNotified: false,
+      error: parsed.error,
+    };
+  }
+
+  const campaign =
+    parsed.rawAnswers.campaign_or_ad ||
+    parsed.rawAnswers.campaign_name ||
+    parsed.rawAnswers.ad_name ||
+    "";
+
+  return importParsedMetaLead(parsed, env, {
+    sourceLabel: campaign
+      ? `Make.com Meta Lead Ads (${campaign})`
+      : "Make.com Meta Lead Ads",
+    source: campaign ? `meta_make:${campaign}` : "meta_make",
+  });
 }

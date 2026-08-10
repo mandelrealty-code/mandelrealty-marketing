@@ -26,7 +26,7 @@ import {
 } from "./adminAuth.js";
 import { getBookedStartIsos, tryReserveCallSlot } from "./bookingStore.js";
 import { buildCallInviteIcs, isValidCallStartIso } from "./callSlots.js";
-import { importMetaLeadPaste, previewMetaLeadPaste } from "./importMetaLead.js";
+import { importMetaLeadPaste, importMetaLeadWebhook, previewMetaLeadPaste } from "./importMetaLead.js";
 import { cancelLeadFollowups, listFollowupsForLead, markLeadBookedAndStopSms, sendCustomSmsToLead, sendManualBumpForLead } from "./followUpStore.js";
 import { listSmsForLead } from "./smsStore.js";
 import {
@@ -645,6 +645,61 @@ export async function handleDevApi(
       leadId: matches[0].id,
       smsCancelled: true,
       leadsUpdated: matches.length,
+    });
+    return true;
+  }
+
+  if (url === "/api/webhooks/meta-lead" && method === "POST") {
+    const secret =
+      env.META_LEAD_WEBHOOK_SECRET?.trim() ||
+      env.BOOKING_WEBHOOK_SECRET?.trim() ||
+      env.CRON_SECRET?.trim();
+    const header = String(req.headers.authorization ?? "");
+    const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+    const okAuth =
+      Boolean(secret) &&
+      (header === `Bearer ${secret}` || qs.get("secret") === secret);
+    if (!okAuth) {
+      json(res, 401, { error: "Unauthorized" });
+      return true;
+    }
+    if (!isSupabaseConfigured()) {
+      json(res, 503, { error: "Supabase is not configured." });
+      return true;
+    }
+    const body = await readJsonBody(req);
+    const result = await importMetaLeadWebhook(body, {
+      RESEND_API_KEY: env.RESEND_API_KEY,
+      RESEND_FROM: env.RESEND_FROM,
+      TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+      TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+      TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
+    });
+    if (result.error && result.duplicate) {
+      json(res, 200, {
+        ok: true,
+        duplicate: true,
+        leadId: result.leadId,
+        message: result.error,
+      });
+      return true;
+    }
+    if (result.error) {
+      json(res, 400, {
+        ok: false,
+        error: result.error,
+        warnings: result.parsed?.warnings,
+      });
+      return true;
+    }
+    json(res, 200, {
+      ok: true,
+      leadId: result.leadId,
+      status: result.decision.status,
+      offerPath: result.decision.offerPath,
+      smsSentNow: result.smsSentNow ?? 0,
+      aiSkipped: result.aiSkipped,
+      inboxNotified: result.inboxNotified,
     });
     return true;
   }

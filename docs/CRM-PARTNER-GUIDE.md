@@ -198,3 +198,8 @@ Upload things like:
 ## One-sentence summary for anyone new
 
 **Paste Meta leads → AI texts the right pitch from our knowledge base → we see path + stage at a glance → AI stops when they book or go cold → either of us can Take over any single chat without killing AI for everyone.**
+
+### Auto-import (no manual paste)
+
+Use **Make.com** so Meta Instant Form leads land in the CRM automatically — no Meta App Review.  
+Setup: [MAKE-META-LEADS.md](./MAKE-META-LEADS.md)
