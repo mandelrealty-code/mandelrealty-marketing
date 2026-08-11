@@ -40,6 +40,8 @@ export type LeadRow = {
   launch_timeline: string | null;
   status: LeadStatus;
   notes: string;
+  /** Claude/human summaries of CRM phone calls */
+  call_notes: string;
   whats_next: string;
   notes_updated_at: string | null;
   qualified_at: string | null;
@@ -83,6 +85,7 @@ export type QualifierInput = {
 export type LeadCrmUpdate = {
   status?: LeadStatus;
   notes?: string;
+  callNotes?: string;
   whatsNext?: string;
   aiPaused?: boolean;
   aiForceOn?: boolean;
@@ -110,6 +113,7 @@ function mapLead(row: Record<string, unknown>): LeadRow {
     launch_timeline: (row.launch_timeline as string | null) ?? null,
     status: normalizeLeadStatus(row.status as string),
     notes: String(row.notes ?? ""),
+    call_notes: String(row.call_notes ?? ""),
     whats_next: String(row.whats_next ?? ""),
     notes_updated_at: (row.notes_updated_at as string | null) ?? null,
     qualified_at: (row.qualified_at as string | null) ?? null,
@@ -311,6 +315,10 @@ export async function updateLeadCrm(
     update.notes = patch.notes;
     update.notes_updated_at = new Date().toISOString();
   }
+  if (patch.callNotes !== undefined) {
+    update.call_notes = patch.callNotes;
+    update.notes_updated_at = new Date().toISOString();
+  }
   if (patch.whatsNext !== undefined) {
     update.whats_next = patch.whatsNext;
     update.notes_updated_at = new Date().toISOString();
@@ -335,6 +343,22 @@ export async function updateLeadCrm(
     .single();
 
   if (error) {
+    // call_notes column missing until crm_call_notes_v1.sql is run
+    if (update.call_notes !== undefined && /call_notes/i.test(error.message)) {
+      delete update.call_notes;
+      if (Object.keys(update).length === 0) return null;
+      const retry = await sb
+        .from("leads")
+        .update(update)
+        .eq("id", leadId)
+        .select("*")
+        .single();
+      if (retry.error || !retry.data) {
+        console.error("[leads] crm update failed", retry.error?.message || error.message);
+        return null;
+      }
+      return mapLead(retry.data as Record<string, unknown>);
+    }
     console.error("[leads] crm update failed", error.message);
     return null;
   }

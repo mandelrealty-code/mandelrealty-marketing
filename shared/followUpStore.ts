@@ -61,6 +61,7 @@ function mapLeadRow(row: Record<string, unknown>): LeadRow {
     launch_timeline: (row.launch_timeline as string | null) ?? null,
     status: row.status as LeadRow["status"],
     notes: String(row.notes ?? ""),
+    call_notes: String(row.call_notes ?? ""),
     whats_next: String(row.whats_next ?? ""),
     notes_updated_at: (row.notes_updated_at as string | null) ?? null,
     qualified_at: (row.qualified_at as string | null) ?? null,

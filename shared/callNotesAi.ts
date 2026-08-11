@@ -1,13 +1,18 @@
 /**
- * Claude summary of a call transcript → CRM notes.
+ * Claude summary of a call transcript → call notes + team next steps.
  * Transcription: download Twilio recording + OpenAI Whisper (OPENAI_API_KEY).
  */
 const DEFAULT_MODEL = "claude-haiku-4-5";
 
+export type CallSummaryResult = {
+  callNotes: string;
+  nextSteps: string;
+};
+
 export async function summarizeCallTranscript(input: {
   leadName: string;
   transcript: string;
-}): Promise<string | null> {
+}): Promise<CallSummaryResult | null> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   const transcript = input.transcript.trim();
   if (!key || !transcript) return null;
@@ -24,12 +29,19 @@ export async function summarizeCallTranscript(input: {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 500,
-        system: `You write concise CRM call notes for Mandel Realty Group (Airbnb / STR management, GTA).
-Return plain text only (no markdown headings). Include:
-1) 2–4 sentence summary
-2) Bullet-like lines for: interest level, property/city, objections, next step, whether a follow-up call or contract is needed
-Keep under 400 words. No invented facts.`,
+        max_tokens: 700,
+        system: `You write CRM fields after a phone call for Mandel Realty Group (Airbnb / STR management, GTA).
+
+Return ONLY valid JSON (no markdown) with exactly these keys:
+{
+  "call_notes": "What was discussed — 2–5 sentences plus short bullets for interest, property/city, objections, and outcome. Facts only.",
+  "next_steps": "Internal team to-dos to move them toward becoming a client — short imperative lines (e.g. check Brampton bylaws, text Tuesday slot, send comparison vs other co-host). No fluff."
+}
+
+Rules:
+- call_notes = record of the conversation (for anyone reading the file later)
+- next_steps = what Ryan/Shane should DO next as the team (actionable)
+- No invented facts. Keep each field under 350 words.`,
         messages: [
           {
             role: "user",
@@ -52,10 +64,45 @@ Keep under 400 words. No invented facts.`,
       .map((c) => c.text ?? "")
       .join("\n")
       .trim();
-    return text || null;
+    if (!text) return null;
+
+    const parsed = parseCallSummaryJson(text);
+    if (parsed) return parsed;
+
+    // Fallback: treat whole reply as call notes
+    return {
+      callNotes: text.slice(0, 3500),
+      nextSteps: "Review call recording and set the next team action.",
+    };
   } catch (err) {
     console.error("[callNotesAi] failed", err);
     return null;
+  }
+}
+
+function parseCallSummaryJson(raw: string): CallSummaryResult | null {
+  const cleaned = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  try {
+    const obj = JSON.parse(cleaned) as Record<string, unknown>;
+    const callNotes = String(obj.call_notes ?? obj.callNotes ?? "").trim();
+    const nextSteps = String(obj.next_steps ?? obj.nextSteps ?? obj.whats_next ?? "").trim();
+    if (!callNotes && !nextSteps) return null;
+    return {
+      callNotes: callNotes || "Call completed — see transcript in call log.",
+      nextSteps: nextSteps || "Review call and set next team action.",
+    };
+  } catch {
+    const notesMatch = cleaned.match(/"call_notes"\s*:\s*"((?:\\.|[^"\\])*)"/i);
+    const stepsMatch = cleaned.match(/"next_steps"\s*:\s*"((?:\\.|[^"\\])*)"/i);
+    if (!notesMatch && !stepsMatch) return null;
+    const unesc = (s: string) => s.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+    return {
+      callNotes: notesMatch ? unesc(notesMatch[1]) : "Call completed.",
+      nextSteps: stepsMatch ? unesc(stepsMatch[1]) : "Review call and set next team action.",
+    };
   }
 }
 

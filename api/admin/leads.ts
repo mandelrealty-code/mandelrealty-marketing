@@ -187,6 +187,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status?: LeadStatus;
       notes?: string;
       whatsNext?: string;
+      callNotes?: string;
       aiPaused?: boolean;
       aiForceOn?: boolean;
       offerPath?: OfferPath;
@@ -200,6 +201,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       patch.status = status;
     }
     if (body.notes !== undefined) patch.notes = String(body.notes);
+    if (body.callNotes !== undefined) patch.callNotes = String(body.callNotes);
     if (body.whatsNext !== undefined) patch.whatsNext = String(body.whatsNext);
     if (typeof body.aiPaused === "boolean") patch.aiPaused = body.aiPaused;
     if (typeof body.ai_paused === "boolean") patch.aiPaused = body.ai_paused;

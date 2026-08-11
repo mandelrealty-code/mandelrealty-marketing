@@ -76,7 +76,8 @@ function leadContextBlock(lead: LeadRow): string {
     `AI paused: ${lead.ai_paused ? "yes" : "no"}`,
     `AI force on (test override): ${lead.ai_force_on ? "yes" : "no"}`,
     `Notes: ${lead.notes || "none"}`,
-    `What's next: ${lead.whats_next || "none"}`,
+    `Call notes: ${lead.call_notes || "none"}`,
+    `What's next (team): ${lead.whats_next || "none"}`,
   ].join("\n");
 }
 

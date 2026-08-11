@@ -290,7 +290,8 @@ export async function handleRecordingReady(input: {
 
   if (!isTwilioConfigured(input.env)) {
     await appendCallNoteToLead(row.lead_id, {
-      summary: null,
+      callNotes: null,
+      nextSteps: null,
       transcript: null,
       recordingUrl: mp3Url,
       error: "Twilio not configured — recording saved without transcript.",
@@ -316,7 +317,8 @@ export async function handleRecordingReady(input: {
       error: tx.error,
     });
     await appendCallNoteToLead(row.lead_id, {
-      summary: null,
+      callNotes: null,
+      nextSteps: null,
       transcript: null,
       recordingUrl: mp3Url,
       error: tx.error,
@@ -336,14 +338,19 @@ export async function handleRecordingReady(input: {
     transcript,
   });
 
+  const summaryText = summary
+    ? `${summary.callNotes}\n\nNext steps:\n${summary.nextSteps}`
+    : null;
+
   await updateLeadCall(input.callId, {
-    summary: summary || null,
+    summary: summaryText,
     status: summary ? "summarized" : "transcript_ready",
     error: summary ? null : "Summary failed — transcript saved",
   });
 
   await appendCallNoteToLead(row.lead_id, {
-    summary,
+    callNotes: summary?.callNotes ?? null,
+    nextSteps: summary?.nextSteps ?? null,
     transcript,
     recordingUrl: mp3Url,
     error: summary ? null : "Summary failed — transcript saved",
@@ -384,14 +391,19 @@ export async function handleTranscriptionReady(input: {
     transcript,
   });
 
+  const summaryText = summary
+    ? `${summary.callNotes}\n\nNext steps:\n${summary.nextSteps}`
+    : null;
+
   await updateLeadCall(input.callId, {
-    summary: summary || null,
+    summary: summaryText,
     status: summary ? "summarized" : "transcript_ready",
     error: summary ? null : "Summary failed — transcript saved",
   });
 
   await appendCallNoteToLead(row.lead_id, {
-    summary,
+    callNotes: summary?.callNotes ?? null,
+    nextSteps: summary?.nextSteps ?? null,
     transcript,
     recordingUrl: row.recording_url,
     error: null,
@@ -401,7 +413,8 @@ export async function handleTranscriptionReady(input: {
 async function appendCallNoteToLead(
   leadId: string,
   input: {
-    summary: string | null;
+    callNotes: string | null;
+    nextSteps: string | null;
     transcript: string | null;
     recordingUrl: string | null;
     error: string | null;
@@ -411,8 +424,8 @@ async function appendCallNoteToLead(
   if (!lead) return;
 
   const stamp = new Date().toLocaleString("en-CA", { timeZone: "America/Toronto" });
-  const parts: string[] = [`[Call notes ${stamp}]`];
-  if (input.summary) parts.push(input.summary);
+  const parts: string[] = [`[Call ${stamp}]`];
+  if (input.callNotes) parts.push(input.callNotes);
   else if (input.transcript) {
     parts.push(`Transcript:\n${input.transcript.slice(0, 2500)}`);
   } else if (input.recordingUrl) {
@@ -421,16 +434,16 @@ async function appendCallNoteToLead(
   if (input.error) parts.push(`Note: ${input.error}`);
 
   const block = parts.join("\n").slice(0, 3500);
-  const prevNotes = (lead.notes || "").trim();
-  const prevNext = (lead.whats_next || "").trim();
+  const prevCallNotes = (lead.call_notes || "").trim();
+  const nextSteps =
+    (input.nextSteps || "").trim() ||
+    (input.error
+      ? `Review call recording / fix: ${input.error.slice(0, 200)}`
+      : "Review call and set next team action.");
 
   await updateLeadCrm(leadId, {
-    notes: prevNotes ? `${block}\n\n${prevNotes}`.slice(0, 8000) : block,
-    whatsNext: input.summary
-      ? `Call done — ${input.summary.slice(0, 280)}`
-      : prevNext.startsWith("[Call ")
-        ? `Call recorded ${stamp}`
-        : prevNext || `Call recorded ${stamp}`,
+    callNotes: prevCallNotes ? `${block}\n\n${prevCallNotes}`.slice(0, 8000) : block,
+    whatsNext: nextSteps.slice(0, 900),
     ...(lead.status === "booked" || lead.status === "won" || lead.status === "call_done"
       ? {}
       : { status: "call_done" as const }),

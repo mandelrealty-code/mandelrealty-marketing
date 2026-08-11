@@ -34,6 +34,7 @@ type Lead = {
   launch_timeline: string | null;
   status: LeadStatus;
   notes: string;
+  call_notes: string;
   whats_next: string;
   notes_updated_at: string | null;
   ai_paused: boolean;
@@ -253,6 +254,7 @@ export function AdminPage() {
   const sheetHandleRef = useRef<HTMLDivElement | null>(null);
 
   const [notes, setNotes] = useState("");
+  const [callNotes, setCallNotes] = useState("");
   const [whatsNext, setWhatsNext] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -440,6 +442,7 @@ export function AdminPage() {
       (data.leads ?? []).map((l) => ({
         ...l,
         notes: l.notes ?? "",
+        call_notes: l.call_notes ?? "",
         whats_next: l.whats_next ?? "",
         ai_paused: Boolean(l.ai_paused),
         ai_force_on: Boolean(l.ai_force_on),
@@ -576,6 +579,7 @@ export function AdminPage() {
     const lead = leads.find((l) => l.id === selectedId);
     if (!lead) return;
     setNotes(lead.notes || "");
+    setCallNotes(lead.call_notes || "");
     setWhatsNext(lead.whats_next || "");
     setSaveMsg(null);
     setSmsDraft("");
@@ -1797,9 +1801,9 @@ export function AdminPage() {
                 </div>
 
                 <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
-                  What&apos;s next
+                  Next steps
                 </p>
-                <input
+                <textarea
                   value={whatsNext}
                   onChange={(e) => setWhatsNext(e.target.value)}
                   onBlur={() => {
@@ -1807,9 +1811,28 @@ export function AdminPage() {
                       patchLead({ whatsNext });
                     }
                   }}
-                  placeholder="Next action…"
+                  rows={2}
+                  placeholder="What the team should do next to move them toward a client…"
                   className="mb-3 w-full rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
                 />
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+                  Call notes
+                </p>
+                <textarea
+                  value={callNotes}
+                  onChange={(e) => setCallNotes(e.target.value)}
+                  onBlur={() => {
+                    if (callNotes !== (selected.call_notes || "")) {
+                      patchLead({ callNotes });
+                    }
+                  }}
+                  rows={4}
+                  placeholder="Claude fills this after a CRM call — conversation summary…"
+                  className="mb-3 w-full rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+                />
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+                  Other notes
+                </p>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -1817,7 +1840,7 @@ export function AdminPage() {
                     if (notes !== (selected.notes || "")) patchLead({ notes });
                   }}
                   rows={3}
-                  placeholder="Notes…"
+                  placeholder="General notes (imports, manual)…"
                   className="mb-5 w-full rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-sm leading-relaxed text-[#9a9590] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
                 />
                 {saveMsg && (
