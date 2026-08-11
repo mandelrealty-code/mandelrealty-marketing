@@ -76,6 +76,19 @@ function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   });
 }
 
+function readFormBody(req: IncomingMessage): Promise<URLSearchParams> {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk;
+    });
+    req.on("end", () => {
+      resolve(new URLSearchParams(raw));
+    });
+    req.on("error", reject);
+  });
+}
+
 function json(res: ServerResponse, status: number, body: object, extraHeaders?: Record<string, string>) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
@@ -592,6 +605,7 @@ export async function handleDevApi(
         ai_responses_enabled?: boolean;
         lead_notify_sms_enabled?: boolean;
         lead_notify_phone?: string;
+        operator_callback_phone?: string;
       } = {};
       if (typeof body.ai_responses_enabled === "boolean") {
         patch.ai_responses_enabled = body.ai_responses_enabled;
@@ -602,10 +616,13 @@ export async function handleDevApi(
       if (typeof body.lead_notify_phone === "string") {
         patch.lead_notify_phone = body.lead_notify_phone;
       }
+      if (typeof body.operator_callback_phone === "string") {
+        patch.operator_callback_phone = body.operator_callback_phone;
+      }
       if (Object.keys(patch).length === 0) {
         json(res, 400, {
           error:
-            "Provide ai_responses_enabled, lead_notify_sms_enabled, add_notify_recipient, or remove_notify_recipient.",
+            "Provide ai_responses_enabled, lead_notify_sms_enabled, operator_callback_phone, add_notify_recipient, or remove_notify_recipient.",
         });
         return true;
       }
@@ -622,6 +639,49 @@ export async function handleDevApi(
       return true;
     }
     json(res, 405, { error: "Method not allowed" });
+    return true;
+  }
+
+  if (url === "/api/admin/calls") {
+    if (!isAdminConfigured()) {
+      json(res, 503, { error: "Admin is not configured." });
+      return true;
+    }
+    const token = getSessionFromRequest(req.headers.cookie);
+    if (!verifyAdminSessionToken(token)) {
+      json(res, 401, { error: "Unauthorized" });
+      return true;
+    }
+    if (!isSupabaseConfigured()) {
+      json(res, 503, { error: "Supabase is not configured." });
+      return true;
+    }
+    if (method !== "POST") {
+      json(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    const body = await readJsonBody(req);
+    const leadId = String(body.leadId ?? body.id ?? "").trim();
+    if (!leadId) {
+      json(res, 400, { error: "Missing lead id." });
+      return true;
+    }
+    const { startClickToCall } = await import("./clickToCall.js");
+    const result = await startClickToCall({
+      leadId,
+      operatorPhone:
+        typeof body.operatorPhone === "string" ? body.operatorPhone.trim() : undefined,
+      env: {
+        TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+        TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+        TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+      },
+    });
+    if (!result.ok) {
+      json(res, 400, { error: result.error || "Could not start call." });
+      return true;
+    }
+    json(res, 200, { ok: true, callId: result.callId, callSid: result.callSid });
     return true;
   }
 
@@ -895,6 +955,72 @@ export async function handleDevApi(
       inboxNotified: result.inboxNotified,
     });
     return true;
+  }
+
+  if (url.startsWith("/api/twilio/voice-") && method === "POST") {
+    const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+    const body = await readFormBody(req);
+    const callId = qs.get("callId") || body.get("callId") || "";
+
+    if (url.startsWith("/api/twilio/voice-bridge")) {
+      const { buildOperatorBridgeTwiml } = await import("./clickToCall.js");
+      const twiml = await buildOperatorBridgeTwiml(callId);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/xml");
+      res.end(twiml);
+      return true;
+    }
+
+    if (url.startsWith("/api/twilio/voice-status")) {
+      const { handleVoiceStatus } = await import("./clickToCall.js");
+      await handleVoiceStatus({
+        callId,
+        callStatus: body.get("CallStatus") || body.get("DialCallStatus") || "",
+        callSid: body.get("CallSid") || undefined,
+        leg: qs.get("leg") || body.get("leg") || undefined,
+      }).catch(() => undefined);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/xml");
+      res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+      return true;
+    }
+
+    if (url.startsWith("/api/twilio/voice-recording")) {
+      const { handleRecordingReady } = await import("./clickToCall.js");
+      const recordingStatus = (body.get("RecordingStatus") || "").toLowerCase();
+      const recordingSid = body.get("RecordingSid") || "";
+      const recordingUrl = body.get("RecordingUrl") || "";
+      if (callId && recordingStatus === "completed" && recordingSid && recordingUrl) {
+        await handleRecordingReady({
+          callId,
+          recordingSid,
+          recordingUrl,
+          env: {
+            TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+            TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+            TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+          },
+        }).catch(() => undefined);
+      }
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/xml");
+      res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+      return true;
+    }
+
+    if (url.startsWith("/api/twilio/voice-transcription")) {
+      const { handleTranscriptionReady } = await import("./clickToCall.js");
+      await handleTranscriptionReady({
+        callId,
+        transcriptionSid: body.get("TranscriptionSid") || "",
+        transcriptionStatus: body.get("TranscriptionStatus") || "",
+        transcriptionText: body.get("TranscriptionText") || "",
+      }).catch(() => undefined);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/xml");
+      res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+      return true;
+    }
   }
 
   return false;

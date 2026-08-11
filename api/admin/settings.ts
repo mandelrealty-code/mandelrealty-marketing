@@ -114,6 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ai_responses_enabled?: boolean;
       lead_notify_sms_enabled?: boolean;
       lead_notify_phone?: string;
+      operator_callback_phone?: string;
     } = {};
 
     if (typeof body.ai_responses_enabled === "boolean") {
@@ -125,11 +126,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (typeof body.lead_notify_phone === "string") {
       patch.lead_notify_phone = body.lead_notify_phone;
     }
+    if (typeof body.operator_callback_phone === "string") {
+      patch.operator_callback_phone = body.operator_callback_phone;
+    }
 
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({
         error:
-          "Provide ai_responses_enabled, lead_notify_sms_enabled, add_notify_recipient, or remove_notify_recipient.",
+          "Provide ai_responses_enabled, lead_notify_sms_enabled, operator_callback_phone, add_notify_recipient, or remove_notify_recipient.",
       });
     }
 

@@ -13,6 +13,8 @@ export type CrmSettings = {
   lead_notify_sms_enabled: boolean;
   lead_notify_phone: string;
   lead_notify_recipients: LeadNotifyRecipient[];
+  /** Partner cell for CRM click-to-call (Twilio dials this first). */
+  operator_callback_phone: string;
   updated_at: string | null;
 };
 
@@ -21,11 +23,12 @@ const DEFAULT: CrmSettings = {
   lead_notify_sms_enabled: false,
   lead_notify_phone: "",
   lead_notify_recipients: [],
+  operator_callback_phone: "",
   updated_at: null,
 };
 
 const SETTINGS_SELECT =
-  "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, updated_at";
+  "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, operator_callback_phone, updated_at";
 
 /** Env kill switch always wins when set to "false" / "0" / "off". */
 export function isAiEnvKillSwitchOff(): boolean {
@@ -100,6 +103,10 @@ function mapSettings(data: Record<string, unknown> | null): CrmSettings {
     lead_notify_sms_enabled: Boolean(data.lead_notify_sms_enabled),
     lead_notify_phone: recipientsToLegacyPhone(recipients) || legacyPhone,
     lead_notify_recipients: recipients,
+    operator_callback_phone: (() => {
+      const raw = String(data.operator_callback_phone ?? "").trim();
+      return toE164(raw) || raw;
+    })(),
     updated_at: (data.updated_at as string | null) ?? null,
   };
 }
@@ -117,6 +124,16 @@ export async function getCrmSettings(): Promise<CrmSettings> {
   if (error || !data) {
     // Migration not applied yet — fall back without notify columns
     if (error) {
+      if (/operator_callback_phone/i.test(error.message)) {
+        const { data: midOps } = await sb
+          .from("crm_settings")
+          .select(
+            "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, updated_at",
+          )
+          .eq("id", 1)
+          .maybeSingle();
+        if (midOps) return mapSettings(midOps as Record<string, unknown>);
+      }
       const { data: mid } = await sb
         .from("crm_settings")
         .select(
@@ -145,6 +162,7 @@ export type CrmSettingsPatch = {
   lead_notify_sms_enabled?: boolean;
   lead_notify_phone?: string;
   lead_notify_recipients?: LeadNotifyRecipient[];
+  operator_callback_phone?: string;
 };
 
 export async function updateCrmSettings(
@@ -189,6 +207,13 @@ export async function updateCrmSettings(
       patch.lead_notify_phone !== undefined
         ? patch.lead_notify_phone.trim()
         : recipientsToLegacyPhone(recipients),
+    operator_callback_phone: (() => {
+      const raw =
+        patch.operator_callback_phone !== undefined
+          ? patch.operator_callback_phone.trim()
+          : current.operator_callback_phone;
+      return toE164(raw) || raw;
+    })(),
   };
 
   const { data, error } = await sb
@@ -199,6 +224,23 @@ export async function updateCrmSettings(
 
   if (error || !data) {
     console.error("[crm_settings] write failed", error?.message);
+    if (error && /operator_callback_phone/i.test(error.message)) {
+      const { operator_callback_phone: _drop, ...withoutOps } = row;
+      void _drop;
+      const { data: midOps, error: midOpsErr } = await sb
+        .from("crm_settings")
+        .upsert(withoutOps, { onConflict: "id" })
+        .select(
+          "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, updated_at",
+        )
+        .single();
+      if (!midOpsErr && midOps) {
+        return {
+          ...mapSettings(midOps as Record<string, unknown>),
+          operator_callback_phone: String(row.operator_callback_phone ?? ""),
+        };
+      }
+    }
     // Retry without recipients column if migration missing
     if (error && /lead_notify_recipients/i.test(error.message)) {
       const { data: mid, error: midErr } = await sb

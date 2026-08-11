@@ -295,6 +295,12 @@ export function AdminPage() {
   const [notifyDraftPhone, setNotifyDraftPhone] = useState("");
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
+  const [operatorCallbackPhone, setOperatorCallbackPhone] = useState("");
+  const [operatorPhoneDraft, setOperatorPhoneDraft] = useState("");
+  const [operatorBusy, setOperatorBusy] = useState(false);
+  const [operatorMsg, setOperatorMsg] = useState<string | null>(null);
+  const [callBusy, setCallBusy] = useState(false);
+  const [callMsg, setCallMsg] = useState<string | null>(null);
   const deepLinkConsumed = useRef(false);
 
   const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
@@ -351,11 +357,15 @@ export function AdminPage() {
           welcome_sent_at: string | null;
         }[];
         lead_notify_phone?: string;
+        operator_callback_phone?: string;
       };
       setAiEnabled(Boolean(data.ai_responses_enabled));
       setAiEffective(Boolean(data.effective_ai_enabled));
       setAiEnvKill(Boolean(data.env_kill_switch));
       setNotifySmsEnabled(Boolean(data.lead_notify_sms_enabled));
+      const opPhone = String(data.operator_callback_phone ?? "").trim();
+      setOperatorCallbackPhone(opPhone);
+      setOperatorPhoneDraft(opPhone);
       if (Array.isArray(data.lead_notify_recipients) && data.lead_notify_recipients.length > 0) {
         setNotifyRecipients(data.lead_notify_recipients);
       } else if (data.lead_notify_phone?.trim()) {
@@ -677,6 +687,58 @@ export function AdminPage() {
     const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
     window.history.replaceState({}, "", next);
   }, [authed, leads]);
+
+  const saveOperatorCallbackPhone = async () => {
+    setOperatorBusy(true);
+    setOperatorMsg(null);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ operator_callback_phone: operatorPhoneDraft.trim() }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        operator_callback_phone?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Could not save phone");
+      const saved = String(data.operator_callback_phone ?? operatorPhoneDraft).trim();
+      setOperatorCallbackPhone(saved);
+      setOperatorPhoneDraft(saved);
+      setOperatorMsg("Saved");
+      window.setTimeout(() => setOperatorMsg(null), 1600);
+    } catch (err) {
+      setOperatorMsg(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setOperatorBusy(false);
+    }
+  };
+
+  const startCrmCall = async (leadId: string) => {
+    setCallBusy(true);
+    setCallMsg(null);
+    try {
+      const res = await fetch("/api/admin/calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ leadId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
+      if (!res.ok) throw new Error(data.error || "Could not start call");
+      setCallMsg("Calling your phone now — answer to connect the lead.");
+      window.setTimeout(() => setCallMsg(null), 5000);
+      if (selectedId === leadId) {
+        await loadFollowups(leadId).catch(() => undefined);
+      }
+      await loadLeads(searchDebounced).catch(() => undefined);
+    } catch (err) {
+      setCallMsg(err instanceof Error ? err.message : "Call failed");
+    } finally {
+      setCallBusy(false);
+    }
+  };
 
   const applyNotifySettings = (data: {
     lead_notify_sms_enabled?: boolean;
@@ -1633,15 +1695,40 @@ export function AdminPage() {
 
                 <div className="mb-5 flex flex-col gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
                   {selected.phone && (
-                    <a
-                      href={telHref(selected.phone) || undefined}
-                      className="flex items-center justify-between gap-3 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121]"
-                    >
-                      <span className="text-sm text-[#9a9590]">Phone</span>
-                      <span className="text-sm font-semibold text-[#dcc084]">
-                        {selected.phone}
-                      </span>
-                    </a>
+                    <>
+                      <button
+                        type="button"
+                        disabled={callBusy || !operatorCallbackPhone}
+                        onClick={() => startCrmCall(selected.id).catch(() => undefined)}
+                        className="flex items-center justify-between gap-3 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121] disabled:opacity-50"
+                      >
+                        <span className="text-sm text-[#9a9590]">
+                          {callBusy ? "Starting call…" : "Call via CRM"}
+                        </span>
+                        <span className="text-sm font-semibold text-[#dcc084]">
+                          {selected.phone}
+                        </span>
+                      </button>
+                      <a
+                        href={telHref(selected.phone) || undefined}
+                        className="flex items-center justify-between gap-3 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121]"
+                      >
+                        <span className="text-sm text-[#9a9590]">Phone (device)</span>
+                        <span className="text-sm font-medium text-[#f0eeea]">
+                          {selected.phone}
+                        </span>
+                      </a>
+                    </>
+                  )}
+                  {callMsg && selected.phone && (
+                    <p className="bg-[#1a1a1a] px-3.5 py-2.5 text-[12.5px] text-[#9a9590]">
+                      {callMsg}
+                    </p>
+                  )}
+                  {selected.phone && !operatorCallbackPhone && (
+                    <p className="bg-[#1a1a1a] px-3.5 py-2.5 text-[12.5px] text-[#d9ac63]">
+                      Set your callback phone in Settings → CRM calls first.
+                    </p>
                   )}
                   {selected.email && (
                     <button
@@ -2394,6 +2481,49 @@ export function AdminPage() {
 
               <section className="space-y-2.5">
                 <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                  CRM calls
+                </h2>
+                <div className="rounded-2xl border border-white/8 bg-[#1a1a1a] p-3.5 lg:rounded-[18px] lg:p-5">
+                  <p className="text-[14.5px] font-semibold text-[#f0eeea]">
+                    Your phone for click-to-call
+                  </p>
+                  <p className="mt-1 text-[12.5px] leading-snug text-[#9a9590]">
+                    When you tap Call on a contact, we text the lead first, then ring this
+                    number. Answer and we connect them. Calls are recorded for notes.
+                  </p>
+                  <label className="mt-3 block">
+                    <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
+                      Callback phone
+                    </span>
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      value={operatorPhoneDraft}
+                      onChange={(e) => setOperatorPhoneDraft(e.target.value)}
+                      placeholder="e.g. 4165550199"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-[#0c0c0c] px-3.5 text-base outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={
+                      operatorBusy ||
+                      operatorPhoneDraft.trim() === operatorCallbackPhone.trim()
+                    }
+                    onClick={() => saveOperatorCallbackPhone().catch(() => undefined)}
+                    className="mt-3 h-11 w-full rounded-xl bg-[#c4a35a] text-sm font-bold text-[#14100a] hover:bg-[#dcc084] disabled:cursor-not-allowed disabled:bg-[#c4a35a]/25 disabled:text-[#8a7c5f]"
+                  >
+                    {operatorBusy ? "Saving…" : "Save callback phone"}
+                  </button>
+                  {operatorMsg && (
+                    <p className="mt-2 text-sm text-[#9a9590]">{operatorMsg}</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="space-y-2.5">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
                   New lead text alerts
                 </h2>
                 <div className="rounded-2xl border border-white/8 bg-[#1a1a1a] p-3.5 lg:rounded-[18px] lg:p-5">
@@ -2780,13 +2910,30 @@ export function AdminPage() {
                   <span>Mark booked</span>
                   <span className="text-[13px] font-normal text-[#6f6a65]" />
                 </button>
+                {actionLead.phone && (
+                  <button
+                    type="button"
+                    disabled={callBusy || !operatorCallbackPhone}
+                    onClick={() => {
+                      startCrmCall(actionLead.id)
+                        .then(() => setActionLeadId(null))
+                        .catch(() => undefined);
+                    }}
+                    className="flex w-full items-center justify-between border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-left text-[14.5px] font-medium text-[#e8e4de] hover:bg-[#212121] disabled:opacity-40"
+                  >
+                    <span>{callBusy ? "Starting call…" : "Call via CRM"}</span>
+                    <span className="text-[13px] font-normal text-[#6f6a65]">
+                      {operatorCallbackPhone ? actionLead.phone : "Set phone in Settings"}
+                    </span>
+                  </button>
+                )}
                 {telHref(actionLead.phone) && (
                   <a
                     href={telHref(actionLead.phone)!}
                     className="flex w-full items-center justify-between border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-[14.5px] font-medium text-[#e8e4de] hover:bg-[#212121]"
                     onClick={() => setActionLeadId(null)}
                   >
-                    <span>Call</span>
+                    <span>Call on this device</span>
                     <span className="text-[13px] font-normal text-[#6f6a65]">
                       {actionLead.phone}
                     </span>
