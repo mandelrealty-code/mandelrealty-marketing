@@ -287,7 +287,11 @@ export function AdminPage() {
   const [aiEnvKill, setAiEnvKill] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [notifySmsEnabled, setNotifySmsEnabled] = useState(false);
-  const [notifyPhone, setNotifyPhone] = useState("");
+  const [notifyRecipients, setNotifyRecipients] = useState<
+    { id: string; name: string; phone: string; welcome_sent_at: string | null }[]
+  >([]);
+  const [notifyDraftName, setNotifyDraftName] = useState("");
+  const [notifyDraftPhone, setNotifyDraftPhone] = useState("");
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
   const deepLinkConsumed = useRef(false);
@@ -333,13 +337,36 @@ export function AdminPage() {
         effective_ai_enabled?: boolean;
         env_kill_switch?: boolean;
         lead_notify_sms_enabled?: boolean;
+        lead_notify_recipients?: {
+          id: string;
+          name: string;
+          phone: string;
+          welcome_sent_at: string | null;
+        }[];
         lead_notify_phone?: string;
       };
       setAiEnabled(Boolean(data.ai_responses_enabled));
       setAiEffective(Boolean(data.effective_ai_enabled));
       setAiEnvKill(Boolean(data.env_kill_switch));
       setNotifySmsEnabled(Boolean(data.lead_notify_sms_enabled));
-      setNotifyPhone(String(data.lead_notify_phone ?? ""));
+      if (Array.isArray(data.lead_notify_recipients) && data.lead_notify_recipients.length > 0) {
+        setNotifyRecipients(data.lead_notify_recipients);
+      } else if (data.lead_notify_phone?.trim()) {
+        setNotifyRecipients(
+          data.lead_notify_phone
+            .split(/[,;\s]+/)
+            .map((p) => p.trim())
+            .filter(Boolean)
+            .map((phone, i) => ({
+              id: `legacy_${i}_${phone}`,
+              name: "",
+              phone,
+              welcome_sent_at: null,
+            })),
+        );
+      } else {
+        setNotifyRecipients([]);
+      }
     } catch {
       /* ignore */
     }
@@ -641,10 +668,24 @@ export function AdminPage() {
     window.history.replaceState({}, "", next);
   }, [authed, leads]);
 
-  const saveNotifySettings = async (patch: {
+  const applyNotifySettings = (data: {
     lead_notify_sms_enabled?: boolean;
-    lead_notify_phone?: string;
+    lead_notify_recipients?: {
+      id: string;
+      name: string;
+      phone: string;
+      welcome_sent_at: string | null;
+    }[];
   }) => {
+    if (typeof data.lead_notify_sms_enabled === "boolean") {
+      setNotifySmsEnabled(data.lead_notify_sms_enabled);
+    }
+    if (Array.isArray(data.lead_notify_recipients)) {
+      setNotifyRecipients(data.lead_notify_recipients);
+    }
+  };
+
+  const saveNotifySettings = async (patch: { lead_notify_sms_enabled?: boolean }) => {
     setNotifyBusy(true);
     setNotifyMsg(null);
     try {
@@ -657,15 +698,95 @@ export function AdminPage() {
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         lead_notify_sms_enabled?: boolean;
-        lead_notify_phone?: string;
+        lead_notify_recipients?: {
+          id: string;
+          name: string;
+          phone: string;
+          welcome_sent_at: string | null;
+        }[];
       };
       if (!res.ok) throw new Error(data.error || "Could not save notify settings");
-      setNotifySmsEnabled(Boolean(data.lead_notify_sms_enabled));
-      setNotifyPhone(String(data.lead_notify_phone ?? ""));
+      applyNotifySettings(data);
       setNotifyMsg("Saved");
       window.setTimeout(() => setNotifyMsg(null), 1600);
     } catch (err) {
       setNotifyMsg(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setNotifyBusy(false);
+    }
+  };
+
+  const saveNotifyPerson = async () => {
+    setNotifyBusy(true);
+    setNotifyMsg(null);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "add_notify_recipient",
+          name: notifyDraftName,
+          phone: notifyDraftPhone,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        welcome_sent?: boolean;
+        lead_notify_sms_enabled?: boolean;
+        lead_notify_recipients?: {
+          id: string;
+          name: string;
+          phone: string;
+          welcome_sent_at: string | null;
+        }[];
+      };
+      if (!res.ok) throw new Error(data.error || "Could not save person");
+      applyNotifySettings(data);
+      setNotifyDraftName("");
+      setNotifyDraftPhone("");
+      setNotifyMsg(
+        data.welcome_sent
+          ? "Saved — welcome text sent"
+          : "Saved",
+      );
+      window.setTimeout(() => setNotifyMsg(null), 2800);
+    } catch (err) {
+      setNotifyMsg(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setNotifyBusy(false);
+    }
+  };
+
+  const removeNotifyPerson = async (id: string) => {
+    setNotifyBusy(true);
+    setNotifyMsg(null);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "remove_notify_recipient",
+          id,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        lead_notify_sms_enabled?: boolean;
+        lead_notify_recipients?: {
+          id: string;
+          name: string;
+          phone: string;
+          welcome_sent_at: string | null;
+        }[];
+      };
+      if (!res.ok) throw new Error(data.error || "Could not remove person");
+      applyNotifySettings(data);
+      setNotifyMsg("Removed");
+      window.setTimeout(() => setNotifyMsg(null), 1600);
+    } catch (err) {
+      setNotifyMsg(err instanceof Error ? err.message : "Remove failed");
     } finally {
       setNotifyBusy(false);
     }
@@ -2085,18 +2206,83 @@ export function AdminPage() {
                       }
                     />
                   </div>
-                  <input
-                    value={notifyPhone}
-                    onChange={(e) => setNotifyPhone(e.target.value)}
-                    onBlur={() => {
-                      saveNotifySettings({ lead_notify_phone: notifyPhone }).catch(() => undefined);
-                    }}
-                    placeholder="+1…"
-                    inputMode="tel"
-                    className="mt-3.5 h-11 w-full rounded-xl border border-white/10 bg-[#0c0c0c] px-3.5 text-sm outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
-                  />
-                  <p className="mt-2 text-[12.5px] text-[#6f6a65]">
-                    CA/US number. Comma-separate for you + your partner.
+
+                  {notifyRecipients.length > 0 && (
+                    <div className="mt-3.5 overflow-hidden rounded-[14px] border border-white/8 bg-[#111]">
+                      {notifyRecipients.map((person) => (
+                        <div
+                          key={person.id}
+                          className="flex items-center gap-3 border-b border-white/[0.06] px-3.5 py-3 last:border-b-0"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[14.5px] font-semibold text-[#f0eeea]">
+                              {person.name || "Unnamed"}
+                            </p>
+                            <p className="truncate text-[12.5px] text-[#9a9590]">{person.phone}</p>
+                            {person.welcome_sent_at ? (
+                              <p className="mt-0.5 text-[11px] font-semibold text-[#8fcbb0]">
+                                Verified
+                              </p>
+                            ) : (
+                              <p className="mt-0.5 text-[11px] text-[#d9ac63]">
+                                Re-save with a name to verify
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={notifyBusy}
+                            onClick={() => removeNotifyPerson(person.id).catch(() => undefined)}
+                            className="shrink-0 text-[12.5px] font-semibold text-[#cf7f7b] disabled:opacity-40"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-3.5 space-y-2.5">
+                    <label className="block">
+                      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                        Name
+                      </span>
+                      <input
+                        value={notifyDraftName}
+                        onChange={(e) => setNotifyDraftName(e.target.value)}
+                        placeholder="First name"
+                        autoComplete="name"
+                        className="h-11 w-full rounded-xl border border-white/10 bg-[#0c0c0c] px-3.5 text-sm outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                        Number
+                      </span>
+                      <input
+                        value={notifyDraftPhone}
+                        onChange={(e) => setNotifyDraftPhone(e.target.value)}
+                        placeholder="+1…"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        className="h-11 w-full rounded-xl border border-white/10 bg-[#0c0c0c] px-3.5 text-sm outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={
+                        notifyBusy || !notifyDraftName.trim() || !notifyDraftPhone.trim()
+                      }
+                      onClick={() => saveNotifyPerson().catch(() => undefined)}
+                      className="h-11 w-full rounded-xl bg-[#c4a35a] text-sm font-bold text-[#14100a] hover:bg-[#dcc084] disabled:cursor-not-allowed disabled:bg-[#c4a35a]/25 disabled:text-[#8a7c5f]"
+                    >
+                      {notifyBusy ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+
+                  <p className="mt-2.5 text-[12.5px] leading-relaxed text-[#6f6a65]">
+                    Saving verifies the number with a one-time welcome text. Add each person
+                    separately.
                   </p>
                   {notifyMsg && <p className="mt-2 text-sm text-[#9a9590]">{notifyMsg}</p>}
                 </div>

@@ -502,6 +502,64 @@ export async function handleDevApi(
     }
     if (method === "PATCH") {
       const body = await readJsonBody(req);
+
+      if (body.action === "add_notify_recipient") {
+        const { saveLeadNotifyRecipient } = await import("./leadNotifySms.js");
+        const result = await saveLeadNotifyRecipient(
+          {
+            name: String(body.name ?? ""),
+            phone: String(body.phone ?? ""),
+          },
+          {
+            TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+            TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+            TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+          },
+        );
+        if (!result.ok) {
+          json(res, 400, {
+            error: result.error || "Could not save person",
+            ...result.settings,
+            env_kill_switch: isAiEnvKillSwitchOff(),
+            effective_ai_enabled:
+              result.settings.ai_responses_enabled && !isAiEnvKillSwitchOff(),
+          });
+          return true;
+        }
+        json(res, 200, {
+          ok: true,
+          welcome_sent: result.welcomeSent,
+          ...result.settings,
+          env_kill_switch: isAiEnvKillSwitchOff(),
+          effective_ai_enabled:
+            result.settings.ai_responses_enabled && !isAiEnvKillSwitchOff(),
+        });
+        return true;
+      }
+
+      if (body.action === "remove_notify_recipient") {
+        const { removeLeadNotifyRecipient } = await import("./leadNotifySms.js");
+        const result = await removeLeadNotifyRecipient(String(body.id ?? ""));
+        if (!result.ok) {
+          json(res, 400, {
+            error: result.error || "Could not remove person",
+            ...result.settings,
+            env_kill_switch: isAiEnvKillSwitchOff(),
+            effective_ai_enabled:
+              result.settings.ai_responses_enabled && !isAiEnvKillSwitchOff(),
+          });
+          return true;
+        }
+        json(res, 200, {
+          ok: true,
+          ...result.settings,
+          env_kill_switch: isAiEnvKillSwitchOff(),
+          effective_ai_enabled:
+            result.settings.ai_responses_enabled && !isAiEnvKillSwitchOff(),
+        });
+        return true;
+      }
+
       const patch: {
         ai_responses_enabled?: boolean;
         lead_notify_sms_enabled?: boolean;
@@ -519,7 +577,7 @@ export async function handleDevApi(
       if (Object.keys(patch).length === 0) {
         json(res, 400, {
           error:
-            "Provide ai_responses_enabled, lead_notify_sms_enabled, and/or lead_notify_phone.",
+            "Provide ai_responses_enabled, lead_notify_sms_enabled, add_notify_recipient, or remove_notify_recipient.",
         });
         return true;
       }
