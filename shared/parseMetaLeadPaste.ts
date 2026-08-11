@@ -344,7 +344,7 @@ function parseDelimitedLine(line: string, delim: "," | "\t"): string[] {
 
 /**
  * Decide CRM stage + whether AI/first SMS should fire.
- * Education/curious leads still get AI (free guide path) — only hard no's are low_fit without SMS.
+ * Curious leads still get AI — always toward a call (guide landing not ready).
  */
 export function decideMetaImport(parsed: ParsedMetaLead): MetaImportDecision {
   const offerPath = parsed.offerPath;
@@ -365,7 +365,7 @@ export function decideMetaImport(parsed: ParsedMetaLead): MetaImportDecision {
       qualifiesForBookEmail: true,
       offerPath: "education",
       reason:
-        "Curious / learning path. AI will send education outreach (free guide from knowledge base) when AI is on.",
+        "Curious / learning path. AI will invite a free intro call (no guide link until landing is ready).",
     };
   }
 

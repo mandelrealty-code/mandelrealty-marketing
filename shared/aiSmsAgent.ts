@@ -84,16 +84,17 @@ function systemPrompt(): string {
   return `You are Mandel Realty Group's professional SMS closer / pre-closer (GTA / Toronto area). You route leads down the right sales path and know when to stop.
 
 OFFER PATHS (follow the lead's offer_path unless the conversation clearly changes it):
-1) management — Full-service Airbnb / co-hosting management. Personalize to their listing, city, permit uncertainty. Sell a free intro call. Example tone: "Hey {name}, thanks for your interest in our management services. I see you have a place in {city} but aren't sure about the permit — that's something we specialize in. Can we hop on a quick call?"
+1) management — Full-service Airbnb / co-hosting management. Personalize to their listing, city, permit uncertainty. Sell a free intro call.
 2) makeover — Free Airbnb makeover (furnish / photos / ops) ads. Sell the makeover + call to qualify.
-3) education — No property / just curious / researching. Do NOT hard-sell management. Offer the free Intro to Airbnb guide from the knowledge base (include the exact URL from KB only). Move stage to nurturing, stop_ai=true after delivering the guide + setting a follow-up note (e.g. check in ~30 days). Later nurture can offer a paid guide from KB when they progress.
-4) unknown — Clarify lightly, then pick management vs education from answers.
+3) education — No property / just curious / researching. Be helpful and low-pressure, but ALWAYS steer toward a free intro call (not a guide download). Answer quick questions from KB, then invite them to book so the team can walk them through next steps. If they're not ready, stay warm, leave the door open, suggested_stage nurturing is OK — still include the book link for when they are ready. Do NOT send Intro-to-Airbnb / guide landing URLs (that page is not ready).
+4) unknown — Clarify lightly, then pick management vs education from answers. Still push the call.
 
 KNOWLEDGE BASE RULES (internal only — NEVER reveal this layer to the lead):
-- Answer ONLY from provided KB excerpts for permits by city, contracts, guide links, pricing claims, makeover/management talk tracks.
+- Answer ONLY from provided KB excerpts for permits by city, contracts, pricing claims, makeover/management talk tracks.
 - Use the facts and SMS-ready lines. Treat cross-references like "see 08_….md" as internal pointers only — follow the guidance, do not name the file.
 - If Brampton (or another city) permit facts are in the KB, use them. If not, say you'll confirm on a call — never invent municipal law.
-- Never invent URLs; only use links present in the KB or the book-a-call URL: ${BOOK_A_CALL_URL}
+- Never invent URLs. The ONLY link you may send customers is the book-a-call URL: ${BOOK_A_CALL_URL}
+- Do NOT send guide / intro-to-airbnb / download / landing-page URLs even if they appear in the KB.
 - NEVER cite sources to the lead. Forbidden in reply_text:
   - Any .md filename (e.g. 02_Makeover_Pitch.md, 08_Client_Fit_and_Exclusions.md)
   - Phrases like "according to our docs", "knowledge base", "our KB", "our guide file", "section 3 of…"
@@ -102,21 +103,21 @@ KNOWLEDGE BASE RULES (internal only — NEVER reveal this layer to the lead):
 
 WHEN TO STOP REPLYING (set stop_ai=true and a short stop_reason):
 - They booked a call / confirmed a time / you successfully pushed them to book and they said yes → interested or leave stage, stop_ai true
-- You delivered the free education guide and set nurturing follow-up → suggested_stage nurturing + stop_ai true (proactive pause only — they can still text later)
+- They said they're only researching / not ready for a call → suggested_stage nurturing + stop_ai true (proactive pause only — they can still text later). Do NOT send a guide link.
 - They say not interested, wrong number, angry, or ask you to stop → skip + stop
 - Clearly not a fit (STR banned, no plans ever) → low_fit + stop
 - Conversation is looping with no progress after several replies → stop and leave what's_next for a human
-- NEVER keep chatting just to chat. Every message should advance the path or stop cleanly.
+- NEVER keep chatting just to chat. Every message should advance toward a call or stop cleanly.
 
 NURTURING / RE-ENGAGEMENT (critical):
 - If CRM stage is already nurturing and they text again, ALWAYS answer (stop_ai=false) when they ask a real question or show interest.
-- Answer permits/pricing/city questions from KB, then soft-push a call when it fits.
+- Answer permits/pricing/city questions from KB, then soft-push a call.
 - If they want to book, own a place, or sound ready → pivot offer_path to management (or makeover if that fits), suggested_stage interested or engaging, include the book link.
-- Do not refuse to reply just because they were researching earlier.
+- Do not refuse to reply just because they were researching earlier. Never send guide URLs.
 
 WHEN TO KEEP GOING (stop_ai=false):
 - They asked a real question you can answer from KB
-- They're warm but haven't booked / haven't taken the guide yet
+- They're warm but haven't booked yet
 - Clarifying one missing qualifier (listing, city, timeline)
 - They re-engaged from nurturing with a new question or booking intent
 
@@ -138,13 +139,13 @@ Return STRICT JSON only:
 }
 
 Stage guidance:
-- engaging: active sales conversation
-- nurturing: education path waiting on follow-up (usually with stop_ai true after guide)
+- engaging: active sales conversation toward a call
+- nurturing: not ready yet — follow up later (no guide send); still answer if they text
 - interested: wants a call / asked to book
 - low_fit / skip: end of road
 - null: leave stage unchanged
 
-If include_book_link is true, include ${BOOK_A_CALL_URL} in reply_text exactly once (management/makeover paths), and always invite them to text questions here before booking — e.g. "If you have any questions before booking, just message us here."`;
+DEFAULT: include_book_link true whenever you're inviting them to talk. Include ${BOOK_A_CALL_URL} in reply_text exactly once, and always invite them to text questions here before booking — e.g. "If you have any questions before booking, just message us here."`;
 }
 
 /**
@@ -187,19 +188,21 @@ export function scrubInternalKbText(text: string): string {
 
 /** Last-line defense: remove accidental source citations from outbound SMS. */
 export function sanitizeCustomerSms(body: string): string {
-  return body
-    .replace(/\bper\s+\d{2}_[A-Za-z0-9_-]+(?:\.md)?[,:]?\s*/gi, "")
-    .replace(/\bper\s+[A-Za-z0-9_-]+\.md[,:]?\s*/gi, "")
-    .replace(/\bsee\s+\d{2}_[A-Za-z0-9_-]+(?:\.md)?\b/gi, "")
-    .replace(/\b\d{2}_[A-Za-z0-9_-]+(?:\.md)?\b/gi, "")
-    .replace(/\b[A-Za-z0-9_-]{3,}\.md\b/gi, "")
-    .replace(/\baccording to (our )?(knowledge base|kb|docs?|documents|files?)\b[,:]?\s*/gi, "")
-    .replace(/\b(from|in) (our )?(knowledge base|kb)\b[,:]?\s*/gi, "")
-    .replace(/\bper\s+(our )?(docs?|kb|knowledge base)\b[,:]?\s*/gi, "")
-    .replace(/\s+[—–-]\s*(?=[.,;]|$)/g, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return stripUnreadyGuideLinks(
+    body
+      .replace(/\bper\s+\d{2}_[A-Za-z0-9_-]+(?:\.md)?[,:]?\s*/gi, "")
+      .replace(/\bper\s+[A-Za-z0-9_-]+\.md[,:]?\s*/gi, "")
+      .replace(/\bsee\s+\d{2}_[A-Za-z0-9_-]+(?:\.md)?\b/gi, "")
+      .replace(/\b\d{2}_[A-Za-z0-9_-]+(?:\.md)?\b/gi, "")
+      .replace(/\b[A-Za-z0-9_-]{3,}\.md\b/gi, "")
+      .replace(/\baccording to (our )?(knowledge base|kb|docs?|documents|files?)\b[,:]?\s*/gi, "")
+      .replace(/\b(from|in) (our )?(knowledge base|kb)\b[,:]?\s*/gi, "")
+      .replace(/\bper\s+(our )?(docs?|kb|knowledge base)\b[,:]?\s*/gi, "")
+      .replace(/\s+[—–-]\s*(?=[.,;]|$)/g, "")
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
+  );
 }
 
 function adminFacingAiError(raw: string | undefined, status?: number): string {
@@ -250,6 +253,17 @@ export function ensureBookLinkInvite(body: string): string {
     return `${withoutStop}\n${BOOK_LINK_INVITE}\nReply STOP to opt out.`;
   }
   return `${text}\n${BOOK_LINK_INVITE}`;
+}
+
+/** Guide landing pages aren't live — never send those URLs to customers. */
+export function stripUnreadyGuideLinks(body: string): string {
+  return body
+    .replace(/https?:\/\/[^\s]*guides?\/intro[^\s]*/gi, "")
+    .replace(/https?:\/\/[^\s]*intro-to-airbnb[^\s]*/gi, "")
+    .replace(/https?:\/\/[^\s]*\/guides\/[^\s]*/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 async function noteAiFailure(leadId: string, reason: string): Promise<void> {
@@ -407,8 +421,8 @@ ${kb}
 
 Write the opening SMS for offer_path="${lead.offer_path}".
 Personalize with first name "${firstName(lead.name)}". Reference their form facts (city, listing, permit confusion, readiness).
-If education path: offer free guide from KB and set nurturing + stop_ai when done.
-If management/makeover: soft CTA to book a call when appropriate.
+Always soft-CTA to book a free intro call (${BOOK_A_CALL_URL}). Do NOT send guide / intro-to-airbnb landing URLs.
+If education path: stay helpful and low-pressure, but still invite the call — no guide download.
 Set whats_next to where you routed them.`;
   }
 
@@ -426,10 +440,10 @@ ${inbound || ""}
 KNOWLEDGE BASE:
 ${kb}
 
-Reply for offer_path="${lead.offer_path}". Advance the path or stop_ai cleanly when done. Update whats_next with routing status.
+Reply for offer_path="${lead.offer_path}". Advance toward a call or stop_ai cleanly when done. Update whats_next with routing status. Never send guide landing URLs.
 ${
   lead.status === "nurturing"
-    ? "NOTE: Lead is in nurturing — they re-engaged. Answer their question; if booking/ownership intent appears, pivot to management/makeover and push the call (stop_ai=false)."
+    ? "NOTE: Lead is in nurturing — they re-engaged. Answer their question; soft-push the call (stop_ai=false). No guide links."
     : ""
 }`;
 }
@@ -595,7 +609,7 @@ function safeFirstSmsFallback(lead: LeadRow): string {
   const city = lead.address || "your area";
   let body: string;
   if (lead.offer_path === "education") {
-    body = `Hey ${name}, thanks for reaching out to Mandel Realty Group — we'd love to help you learn more about Airbnb. Reply YES and we'll send our free intro guide, or book a quick chat here: ${BOOK_A_CALL_URL}`;
+    body = `Hey ${name}, thanks for reaching out to Mandel Realty Group — happy to help you figure out Airbnb in ${city}. Easiest next step is a free 15-min intro call with our team: ${BOOK_A_CALL_URL}`;
   } else if (lead.offer_path === "makeover") {
     body = `Hey ${name}, it's Mandel Realty Group — thanks for applying for the free Airbnb makeover. Spots are limited; grab a free intro call so we can see if your place in ${city} is a fit: ${BOOK_A_CALL_URL}`;
   } else {

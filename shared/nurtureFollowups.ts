@@ -1,14 +1,15 @@
 /**
  * Stage-aware nurture SMS — no free-form AI at send time.
- * Bodies are fixed templates; links come only from the Knowledge Base.
+ * Bodies are fixed templates; for now always push a call (guide landing not ready).
  */
+import { BOOK_A_CALL_URL } from "./auditEmails.js";
 import { matchKnowledgeChunks } from "./knowledgeStore.js";
 import type { LeadRow } from "./leadStore.js";
 import { updateLeadCrm } from "./leadStore.js";
 import { getSupabaseAdmin } from "./supabase.js";
 
 const URL_RE = /https?:\/\/[^\s<>"'\)\]]+/gi;
-/** ~30 days — education check-in after free guide */
+/** ~30 days — soft check-in after they said not ready */
 export const EDUCATION_NURTURE_DELAY_MINUTES = 60 * 24 * 30;
 export const EDUCATION_NURTURE_STEP = 2;
 
@@ -52,23 +53,18 @@ export async function findPaidGuideUrlFromKb(): Promise<string | null> {
 }
 
 /**
- * Pre-approved copy only. If KB has no paid-guide URL, soft check-in — no invented link.
+ * Pre-approved copy only. Always push a call — guide landing pages are not ready.
  */
 export function buildEducationNurtureSms(input: {
   name: string;
   paidGuideUrl: string | null;
 }): string {
   const name = firstName(input.name);
-  if (input.paidGuideUrl) {
-    return (
-      `Hey ${name}, checking in from Mandel Realty Group — hope the free Airbnb intro guide was useful. ` +
-      `When you're ready to go deeper, our advanced guide is here: ${input.paidGuideUrl} ` +
-      `Or just reply here with where you're at.\nReply STOP to opt out.`
-    );
-  }
+  void input.paidGuideUrl; // reserved for when guide landing is live
   return (
-    `Hey ${name}, checking in from Mandel Realty Group — hope the Airbnb intro was helpful. ` +
-    `When you have a place in mind (or questions), reply here and we'll help with the next step.\n` +
+    `Hey ${name}, checking in from Mandel Realty Group — still happy to help when you're ready. ` +
+    `Easiest next step is a free 15-min intro call with our team: ${BOOK_A_CALL_URL} ` +
+    `If you have any questions before booking, just message us here.\n` +
     `Reply STOP to opt out.`
   );
 }
