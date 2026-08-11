@@ -126,10 +126,15 @@ export function EarningsPanel({
 
   return (
     <div className="border-t border-white/8 px-4 py-5 lg:px-1">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65]">
-          Earnings
-        </p>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65]">
+            Earnings
+          </p>
+          <p className="mt-1 text-[13px] text-[#9a9590]">
+            Sync Hospitable stays for this month, then review your split.
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <input
             type="month"
@@ -137,14 +142,14 @@ export function EarningsPanel({
             onChange={(e) => setMonth(e.target.value)}
             className="rounded-lg border border-white/10 bg-[#1c1c1c] px-2 py-1.5 text-[13px] text-[#f5f5f5] outline-none"
           />
-          <button
+          <GoldButton
             type="button"
             disabled={busy || !linked}
             onClick={() => sync()}
-            className="text-[13px] font-semibold text-[#c4a35a] disabled:text-[#6f6a65]"
+            className="shrink-0 rounded-lg px-3 py-2 text-[13px]"
           >
-            {busy ? "…" : "Sync"}
-          </button>
+            {busy ? "Syncing…" : "Sync revenue"}
+          </GoldButton>
         </div>
       </div>
 

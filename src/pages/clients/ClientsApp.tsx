@@ -644,6 +644,13 @@ export default function ClientsApp({ onModeChange }: Props) {
             </GoldButton>
           </div>
         </div>
+
+        <EarningsPanel
+          propertyId={propertyDetail.id}
+          linked={Boolean(propertyDetail.hospitable_property_id)}
+          onError={setLoadError}
+        />
+
         {propertyDetail.terms.length > 0 ? (
           <>
             <p className="border-t border-white/8 px-4 pb-2 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65] lg:px-1">
@@ -667,11 +674,6 @@ export default function ClientsApp({ onModeChange }: Props) {
           </>
         ) : null}
 
-        <EarningsPanel
-          propertyId={propertyDetail.id}
-          linked={Boolean(propertyDetail.hospitable_property_id)}
-          onError={setLoadError}
-        />
         <ContractsPanel
           propertyId={propertyDetail.id}
           clientId={propertyDetail.client_id}
