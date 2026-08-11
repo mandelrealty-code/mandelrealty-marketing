@@ -320,17 +320,18 @@ export async function handleRecordingReady(input: {
     authToken: input.env.TWILIO_AUTH_TOKEN!.trim(),
   });
 
-  if (!tx.ok) {
+  if (tx.ok === false) {
+    const txError = tx.error;
     await updateLeadCall(input.callId, {
       status: "recording_ready",
-      error: tx.error,
+      error: txError,
     });
     await appendCallNoteToLead(row.lead_id, {
       callNotes: null,
       nextSteps: null,
       transcript: null,
       recordingUrl: mp3Url,
-      error: tx.error,
+      error: txError,
     });
     return;
   }
