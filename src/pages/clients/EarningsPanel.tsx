@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { pmGet, pmPost } from "./api";
 import { todayInputValue } from "./format";
-import { FieldLabel, GoldButton, TextInput } from "./ui";
+import { FieldLabel, GoldButton, MonthPicker, TextInput } from "./ui";
 
 export type MonthStatement = {
   year_month: string;
@@ -48,6 +48,7 @@ export function EarningsPanel({
   const [month, setMonth] = useState(defaultMonth);
   const [statement, setStatement] = useState<MonthStatement | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [localError, setLocalError] = useState("");
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
@@ -67,30 +68,41 @@ export function EarningsPanel({
   );
 
   const load = useCallback(async () => {
-    const data = await pmGet<{ statement: MonthStatement }>("earnings", {
-      property_id: propertyId,
-      month,
-    });
-    setStatement(data.statement);
-    setLocalError("");
+    setLoading(true);
+    try {
+      const data = await pmGet<{ statement: MonthStatement; auto_synced?: boolean }>(
+        "earnings",
+        {
+          property_id: propertyId,
+          month,
+        },
+      );
+      setStatement(data.statement);
+      setLocalError("");
+    } finally {
+      setLoading(false);
+    }
   }, [propertyId, month]);
 
   useEffect(() => {
-    load().catch((e) => fail(e, "Could not load earnings."));
+    load().catch((e) => {
+      setLoading(false);
+      fail(e, "Could not load earnings.");
+    });
   }, [load, fail]);
 
-  const sync = async () => {
+  const refresh = async () => {
     setBusy(true);
     setLocalError("");
     try {
       const data = await pmPost<{ statement: MonthStatement | null; synced: number }>(
         "earnings",
-        { op: "sync", property_id: propertyId, month },
+        { op: "sync", property_id: propertyId, month, lookback: true },
       );
       if (data.statement) setStatement(data.statement);
       else await load();
     } catch (e) {
-      fail(e, "Sync failed.");
+      fail(e, "Refresh failed.");
     } finally {
       setBusy(false);
     }
@@ -135,6 +147,7 @@ export function EarningsPanel({
   };
 
   const cur = statement?.currency || "CAD";
+  const blocked = busy || loading;
 
   return (
     <div className="border-t border-white/8 px-4 py-5 lg:px-1">
@@ -144,24 +157,21 @@ export function EarningsPanel({
             Earnings
           </p>
           <p className="mt-1 text-[13px] text-[#9a9590]">
-            Sync Hospitable stays for this month, then review your split.
+            Browse months anytime — Hospitable updates automatically about every 2 days.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="rounded-lg border border-white/10 bg-[#1c1c1c] px-2 py-1.5 text-[13px] text-[#f5f5f5] outline-none"
-          />
-          <GoldButton
-            type="button"
-            disabled={busy || !linked}
-            onClick={() => sync()}
-            className="shrink-0 rounded-lg px-3 py-2 text-[13px]"
-          >
-            {busy ? "Syncing…" : "Sync revenue"}
-          </GoldButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthPicker value={month} onChange={setMonth} disabled={blocked} />
+          {linked ? (
+            <button
+              type="button"
+              disabled={blocked}
+              onClick={() => refresh()}
+              className="text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084] disabled:text-[#6f6a65]"
+            >
+              {busy || loading ? "Updating…" : "Refresh"}
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -201,79 +211,88 @@ export function EarningsPanel({
               </p>
             </div>
           </div>
-          <p className="mt-2 text-[13px] text-[#6f6a65]">
+
+          <p className="mt-3 text-[13px] text-[#6f6a65]">
             {statement.reservation_count} stay
             {statement.reservation_count === 1 ? "" : "s"}
             {statement.rate_bps_used != null
-              ? ` · commission ~${statement.rate_bps_used / 100}%`
+              ? ` · commission ~${(statement.rate_bps_used / 100).toFixed(
+                  statement.rate_bps_used % 100 === 0 ? 0 : 2,
+                )}%`
               : ""}
           </p>
 
-          <div className="mt-4 space-y-2">
-            {statement.lines.map((line, i) => (
-              <div
-                key={`${line.kind}-${i}`}
-                className="flex items-start justify-between gap-3 text-sm"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-[#f5f5f5]">{line.label}</p>
-                  {line.meta ? (
-                    <p className="truncate text-[12px] text-[#6f6a65]">{line.meta}</p>
-                  ) : null}
+          <div className="mt-2 space-y-2">
+            {statement.lines
+              .filter((l) => l.kind === "reservation")
+              .map((l, i) => (
+                <div key={`${l.label}-${i}`} className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-[#f5f5f5]">{l.label}</p>
+                    {l.meta ? (
+                      <p className="text-[12px] text-[#6f6a65]">{l.meta}</p>
+                    ) : null}
+                  </div>
+                  <span className="shrink-0 text-sm tabular-nums text-[#f5f5f5]">
+                    {money(l.amount_cents, cur)}
+                  </span>
                 </div>
-                <p
-                  className={`shrink-0 font-semibold ${
-                    line.amount_cents < 0 ? "text-[#9a9590]" : "text-[#f5f5f5]"
-                  }`}
-                >
-                  {money(line.amount_cents, cur)}
-                </p>
-              </div>
-            ))}
-            {statement.lines.length === 0 ? (
-              <p className="text-[13px] text-[#6f6a65]">
-                No stays or expenses this month. Tap Sync after linking.
-              </p>
-            ) : null}
+              ))}
           </div>
 
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-4">
             <button
               type="button"
-              onClick={() => setExpenseOpen((v) => !v)}
+              onClick={() => setExpenseOpen((o) => !o)}
               className="text-[13px] font-semibold text-[#c4a35a]"
             >
-              {expenseOpen ? "Cancel" : "Add expense"}
+              {expenseOpen ? "Cancel" : "+ Add expense"}
             </button>
           </div>
 
           {expenseOpen ? (
-            <div className="mt-3 flex flex-col gap-2 rounded-[9px] border border-white/10 bg-[#141414] p-3">
-              <FieldLabel>Label</FieldLabel>
-              <TextInput
-                value={expenseForm.label}
-                onChange={(e) => setExpenseForm((f) => ({ ...f, label: e.target.value }))}
-                placeholder="Turnover clean"
-              />
-              <FieldLabel>Amount</FieldLabel>
-              <TextInput
-                value={expenseForm.amount}
-                onChange={(e) => setExpenseForm((f) => ({ ...f, amount: e.target.value }))}
-                placeholder="150"
-                inputMode="decimal"
-              />
-              <FieldLabel>Date</FieldLabel>
-              <TextInput
-                type="date"
-                value={expenseForm.expense_date}
-                onChange={(e) =>
-                  setExpenseForm((f) => ({ ...f, expense_date: e.target.value }))
-                }
-              />
+            <div className="mt-3 flex flex-col gap-2 rounded-lg border border-white/8 bg-[#141414] p-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="col-span-2 flex flex-col gap-1">
+                  <FieldLabel>Label</FieldLabel>
+                  <TextInput
+                    value={expenseForm.label}
+                    onChange={(e) =>
+                      setExpenseForm((f) => ({ ...f, label: e.target.value }))
+                    }
+                    placeholder="Turnover clean"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Amount</FieldLabel>
+                  <TextInput
+                    inputMode="decimal"
+                    value={expenseForm.amount}
+                    onChange={(e) =>
+                      setExpenseForm((f) => ({ ...f, amount: e.target.value }))
+                    }
+                    placeholder="120"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Date</FieldLabel>
+                  <TextInput
+                    type="date"
+                    value={expenseForm.expense_date}
+                    onChange={(e) =>
+                      setExpenseForm((f) => ({
+                        ...f,
+                        expense_date: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
               <GoldButton
                 type="button"
+                size="sm"
                 disabled={busy || !expenseForm.label.trim() || !expenseForm.amount}
-                onClick={addExpense}
+                onClick={() => addExpense()}
               >
                 Save expense
               </GoldButton>
@@ -281,27 +300,33 @@ export function EarningsPanel({
           ) : null}
 
           {statement.expenses.length > 0 ? (
-            <div className="mt-3 space-y-1">
+            <div className="mt-3 space-y-1.5">
               {statement.expenses.map((e) => (
-                <div key={e.id} className="flex items-center justify-between text-[13px]">
-                  <span className="text-[#9a9590]">
-                    {e.label} · {e.expense_date}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeExpense(e.id)}
-                    className="text-[#cf7f7b]"
-                  >
-                    Remove
-                  </button>
+                <div key={e.id} className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-[#9a9590]">{e.label}</p>
+                    <p className="text-[12px] text-[#6f6a65]">{e.expense_date}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm tabular-nums text-[#9a9590]">
+                      −{money(e.amount_cents, cur)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeExpense(e.id)}
+                      className="text-[12px] text-[#6f6a65] hover:text-[#cf7f7b]"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           ) : null}
         </>
-      ) : (
-        <p className="text-[13px] text-[#6f6a65]">Loading…</p>
-      )}
+      ) : loading ? (
+        <p className="text-[13px] text-[#6f6a65]">Loading earnings…</p>
+      ) : null}
     </div>
   );
 }

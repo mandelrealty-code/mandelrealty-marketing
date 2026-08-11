@@ -635,11 +635,7 @@ export default function ClientsApp({ onModeChange }: Props) {
                   : "No rate set"}
               </p>
             </div>
-            <GoldButton
-              type="button"
-              onClick={openChangeRate}
-              className="shrink-0 rounded-lg px-4 py-2.5 text-sm"
-            >
+            <GoldButton type="button" size="sm" onClick={openChangeRate} className="shrink-0">
               Change rate
             </GoldButton>
           </div>

@@ -1,8 +1,12 @@
-import type {
-  ButtonHTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  TextareaHTMLAttributes,
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type TextareaHTMLAttributes,
 } from "react";
 
 export function MrgMark({ size = 22 }: { size?: number }) {
@@ -152,16 +156,183 @@ export function Sheet({
 
 export function GoldButton({
   children,
+  size = "default",
+  className = "",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { size?: "default" | "sm" }) {
+  const sizing =
+    size === "sm"
+      ? "rounded-md px-3 py-1.5 text-[13px] font-semibold"
+      : "rounded-[9px] px-4 py-3.5 text-[15px] font-bold";
   return (
     <button
       {...props}
-      className={`rounded-[9px] bg-[#c4a35a] px-4 py-3.5 text-center text-[15px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] disabled:opacity-60 ${
-        props.className ?? ""
-      }`}
+      className={`bg-[#c4a35a] text-center text-[#0a0a0a] hover:bg-[#dcc084] disabled:opacity-60 ${sizing} ${className}`}
     >
       {children}
     </button>
+  );
+}
+
+const MONTH_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+function shiftYearMonth(yearMonth: string, delta: number): string {
+  const [ys, ms] = yearMonth.split("-");
+  const y = Number(ys);
+  const m = Number(ms);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return yearMonth;
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function labelYearMonth(yearMonth: string): string {
+  const [ys, ms] = yearMonth.split("-");
+  const y = Number(ys);
+  const m = Number(ms);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return yearMonth;
+  return `${MONTH_SHORT[m - 1]} ${y}`;
+}
+
+/** Branded YYYY-MM picker (prev / label / next + month grid). */
+export function MonthPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (yearMonth: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  const [ys, ms] = value.split("-");
+  const year = Number(ys) || new Date().getUTCFullYear();
+  const month = Number(ms) || 1;
+  const [panelYear, setPanelYear] = useState(year);
+
+  useEffect(() => {
+    if (open) setPanelYear(year);
+  }, [open, year]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const pick = (m: number) => {
+    onChange(`${panelYear}-${String(m).padStart(2, "0")}`);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className="relative">
+      <div className="flex items-center overflow-hidden rounded-md border border-white/10 bg-[#1c1c1c]">
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label="Previous month"
+          onClick={() => onChange(shiftYearMonth(value, -1))}
+          className="px-2 py-1.5 text-[13px] text-[#9a9590] hover:bg-white/5 hover:text-[#f5f5f5] disabled:opacity-50"
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={listId}
+          onClick={() => setOpen((o) => !o)}
+          className="min-w-[5.75rem] px-1.5 py-1.5 text-center text-[13px] font-semibold tabular-nums text-[#f5f5f5] hover:bg-white/5 disabled:opacity-50"
+        >
+          {labelYearMonth(value)}
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label="Next month"
+          onClick={() => onChange(shiftYearMonth(value, 1))}
+          className="px-2 py-1.5 text-[13px] text-[#9a9590] hover:bg-white/5 hover:text-[#f5f5f5] disabled:opacity-50"
+        >
+          ›
+        </button>
+      </div>
+
+      {open ? (
+        <div
+          id={listId}
+          role="dialog"
+          aria-label="Choose month"
+          className="absolute right-0 z-30 mt-1.5 w-[220px] rounded-lg border border-white/10 bg-[#141414] p-3 shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
+        >
+          <div className="mb-2.5 flex items-center justify-between">
+            <button
+              type="button"
+              aria-label="Previous year"
+              onClick={() => setPanelYear((y) => y - 1)}
+              className="rounded px-2 py-1 text-[13px] text-[#9a9590] hover:bg-white/5 hover:text-[#f5f5f5]"
+            >
+              ‹
+            </button>
+            <span className="text-[13px] font-semibold tabular-nums text-[#f5f5f5]">
+              {panelYear}
+            </span>
+            <button
+              type="button"
+              aria-label="Next year"
+              onClick={() => setPanelYear((y) => y + 1)}
+              className="rounded px-2 py-1 text-[13px] text-[#9a9590] hover:bg-white/5 hover:text-[#f5f5f5]"
+            >
+              ›
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {MONTH_SHORT.map((label, i) => {
+              const m = i + 1;
+              const selected = panelYear === year && m === month;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => pick(m)}
+                  className={`rounded-md py-1.5 text-[12px] font-semibold ${
+                    selected
+                      ? "bg-[#c4a35a] text-[#0a0a0a]"
+                      : "text-[#9a9590] hover:bg-white/5 hover:text-[#f5f5f5]"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

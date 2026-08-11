@@ -29,6 +29,11 @@ export type PmReservationRow = {
   synced_at: string;
 };
 
+/** Auto-refresh Hospitable cache when older than this. */
+export const SYNC_STALE_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+/** How many months back (including current) to pull on auto-sync. */
+export const AUTO_SYNC_LOOKBACK_MONTHS = 12;
+
 export function monthBounds(yearMonth: string): { start: string; end: string } {
   const [y, m] = yearMonth.split("-").map(Number);
   const start = `${y}-${String(m).padStart(2, "0")}-01`;
@@ -40,6 +45,19 @@ export function monthBounds(yearMonth: string): { start: string; end: string } {
 export function previousYearMonth(now = new Date()): string {
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function lookbackRange(
+  lookbackMonths: number,
+  now = new Date(),
+): { start: string; end: string } {
+  const endMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+  const startMonth = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (lookbackMonths - 1), 1),
+  );
+  const start = `${startMonth.getUTCFullYear()}-${String(startMonth.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const end = `${endMonth.getUTCFullYear()}-${String(endMonth.getUTCMonth() + 1).padStart(2, "0")}-${String(endMonth.getUTCDate()).padStart(2, "0")}`;
+  return { start, end };
 }
 
 async function upsertReservation(
@@ -68,11 +86,53 @@ async function upsertReservation(
   if (error) throw error;
 }
 
-/** Sync reservations for one property or all linked properties for a month. */
+export async function latestReservationSyncAt(
+  propertyId: string,
+): Promise<string | null> {
+  const { data, error } = await db()
+    .from("pm_reservations")
+    .select("synced_at")
+    .eq("property_id", propertyId)
+    .order("synced_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return typeof data?.synced_at === "string" ? data.synced_at : null;
+}
+
+/** True when cache is empty, older than 2 days, or stays exist with $0 financials (bad parse). */
+export async function propertyNeedsAutoSync(
+  propertyId: string,
+  yearMonth: string,
+): Promise<{ needed: boolean; reason: string }> {
+  const rows = await listReservationsForPropertyMonth(propertyId, yearMonth);
+  if (
+    rows.length > 0 &&
+    rows.every((r) => !r.host_payout_cents && !r.gross_cents)
+  ) {
+    return { needed: true, reason: "zero_financials" };
+  }
+
+  const latest = await latestReservationSyncAt(propertyId);
+  if (!latest) return { needed: true, reason: "never_synced" };
+
+  const age = Date.now() - new Date(latest).getTime();
+  if (!Number.isFinite(age) || age > SYNC_STALE_MS) {
+    return { needed: true, reason: "stale" };
+  }
+
+  return { needed: false, reason: "fresh" };
+}
+
+/**
+ * Sync reservations for one property or all linked properties.
+ * Pass yearMonth for a single month, or lookbackMonths for a rolling window.
+ */
 export async function syncHospitableReservations(input: {
-  yearMonth: string;
+  yearMonth?: string;
+  lookbackMonths?: number;
   propertyId?: string;
-}): Promise<{ synced: number; properties: number }> {
+}): Promise<{ synced: number; properties: number; start: string; end: string }> {
   const pat = await getHospitablePat();
   if (!pat) throw new Error("Hospitable is not connected.");
 
@@ -90,14 +150,18 @@ export async function syncHospitableReservations(input: {
     );
   }
 
-  const { start, end } = monthBounds(input.yearMonth);
+  const range =
+    input.lookbackMonths && input.lookbackMonths > 0
+      ? lookbackRange(input.lookbackMonths)
+      : monthBounds(input.yearMonth || previousYearMonth());
+  const { start, end } = range;
+
   const byHospitable = new Map(
     targets.map((t) => [t.hospitable_property_id, t.id] as const),
   );
 
   let synced = 0;
 
-  // Sync per property so assignment is unambiguous
   for (const target of targets) {
     const rows = await listHospitableReservations({
       pat,
@@ -107,7 +171,6 @@ export async function syncHospitableReservations(input: {
     });
     for (const r of rows) {
       if (r.check_out && (r.check_out < start || r.check_out > end)) continue;
-      // Prefer map when API returns property id; else this target
       const mapped =
         (r.property_id && byHospitable.get(r.property_id)) || target.id;
       await upsertReservation(mapped, r);
@@ -130,7 +193,7 @@ export async function syncHospitableReservations(input: {
     /* optional until migration */
   }
 
-  return { synced, properties: targets.length };
+  return { synced, properties: targets.length, start, end };
 }
 
 export async function listReservationsForPropertyMonth(

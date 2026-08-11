@@ -184,24 +184,91 @@ export type HospitableReservationNormalized = {
   raw: Record<string, unknown>;
 };
 
-function moneyToCents(v: unknown): number {
+function moneyToCents(v: unknown, alreadyMinor = false): number {
   if (typeof v === "number" && Number.isFinite(v)) {
-    // Hospitable usually returns major units (dollars)
-    return Math.round(v * 100);
+    return alreadyMinor ? Math.round(v) : Math.round(v * 100);
   }
   if (typeof v === "string" && v.trim()) {
     const n = Number(v.replace(/[^0-9.-]/g, ""));
-    if (Number.isFinite(n)) return Math.round(n * 100);
+    if (!Number.isFinite(n)) return 0;
+    // Strings like "$1,483.35" are major units; bare ints may be minor — prefer formatted path
+    if (v.includes(".") || v.includes("$") || v.includes(",")) {
+      return Math.round(n * 100);
+    }
+    return alreadyMinor ? Math.round(n) : Math.round(n * 100);
   }
   return 0;
+}
+
+/** Hospitable include=financials line item: { amount (minor units), formatted, label }. */
+function lineItemCents(item: unknown): number {
+  const o = asRecord(item);
+  if (typeof o.amount === "number" && Number.isFinite(o.amount)) {
+    return Math.round(o.amount);
+  }
+  if (typeof o.formatted === "string" && o.formatted.trim()) {
+    return moneyToCents(o.formatted, false);
+  }
+  return moneyToCents(item, false);
 }
 
 function pickFinancials(raw: Record<string, unknown>): Record<string, unknown> {
   const fin = asRecord(raw.financials);
   if (Object.keys(fin).length) return fin;
-  const fin2 = asRecord(raw.financialsV2);
+  const fin2 = asRecord(raw.financials_v2);
   if (Object.keys(fin2).length) return fin2;
+  const fin2c = asRecord(raw.financialsV2);
+  if (Object.keys(fin2c).length) return fin2c;
   return {};
+}
+
+function extractMoneyFromFinancials(financials: Record<string, unknown>): {
+  currency: string;
+  gross_cents: number;
+  host_payout_cents: number;
+} {
+  const currency = str(financials.currency) || "CAD";
+  const host = asRecord(financials.host);
+  const guest = asRecord(financials.guest);
+
+  // Current Hospitable read shape (nested line items, amounts in cents)
+  const hostRevenue =
+    lineItemCents(host.revenue) ||
+    lineItemCents(host.host_revenue) ||
+    lineItemCents(host.payout) ||
+    lineItemCents(host.total);
+  const guestTotal =
+    lineItemCents(guest.totalPrice) ||
+    lineItemCents(guest.total_price) ||
+    lineItemCents(guest.total);
+
+  if (hostRevenue || guestTotal) {
+    return {
+      currency,
+      gross_cents: guestTotal || hostRevenue,
+      host_payout_cents: hostRevenue || guestTotal,
+    };
+  }
+
+  // Legacy / flat shapes (major units)
+  const gross =
+    moneyToCents(financials.total) ||
+    moneyToCents(financials.guest_total) ||
+    moneyToCents(financials.accommodation) +
+      moneyToCents(financials.cleaning_fee);
+  const hostPayout =
+    moneyToCents(financials.host_payout) ||
+    moneyToCents(financials.host_total) ||
+    moneyToCents(financials.payout) ||
+    moneyToCents(host.payout) ||
+    moneyToCents(host.total) ||
+    gross;
+
+  return {
+    currency,
+    gross_cents: gross,
+    host_payout_cents: hostPayout,
+  };
 }
 
 function normalizeReservation(raw: unknown): HospitableReservationNormalized | null {
@@ -242,22 +309,8 @@ function normalizeReservation(raw: unknown): HospitableReservationNormalized | n
         : 0;
 
   const financials = pickFinancials(r);
-  const currency =
-    str(financials.currency) || str(r.currency) || "CAD";
-
-  const gross =
-    moneyToCents(financials.total) ||
-    moneyToCents(financials.guest_total) ||
-    moneyToCents(financials.accommodation) +
-      moneyToCents(financials.cleaning_fee);
-
-  const hostPayout =
-    moneyToCents(financials.host_payout) ||
-    moneyToCents(financials.host_total) ||
-    moneyToCents(financials.payout) ||
-    moneyToCents(asRecord(financials.host).payout) ||
-    moneyToCents(asRecord(financials.host).total) ||
-    gross;
+  const money = extractMoneyFromFinancials(financials);
+  const currency = money.currency || str(r.currency) || "CAD";
 
   return {
     id,
@@ -269,8 +322,8 @@ function normalizeReservation(raw: unknown): HospitableReservationNormalized | n
     check_out: checkOut,
     nights,
     currency,
-    gross_cents: gross,
-    host_payout_cents: hostPayout,
+    gross_cents: money.gross_cents,
+    host_payout_cents: money.host_payout_cents,
     financials,
     raw: r,
   };

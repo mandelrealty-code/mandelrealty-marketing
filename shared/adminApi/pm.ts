@@ -24,7 +24,9 @@ import {
   verifyHospitablePat,
 } from "../pm/hospitableClient.js";
 import {
+  AUTO_SYNC_LOOKBACK_MONTHS,
   previousYearMonth,
+  propertyNeedsAutoSync,
   syncHospitableReservations,
 } from "../pm/reservationStore.js";
 import {
@@ -174,8 +176,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             ? req.query.month
             : previousYearMonth();
         if (!propertyId) return res.status(400).json({ error: "property_id required." });
-        const statement = await buildMonthStatement(propertyId, yearMonth);
-        return res.status(200).json({ statement });
+
+        const detail = await getPmPropertyDetail(propertyId);
+        if (!detail) return res.status(400).json({ error: "Property not found." });
+
+        let statement = await buildMonthStatement(propertyId, yearMonth);
+        let autoSynced = false;
+        let syncReason = "";
+
+        const wantAuto =
+          req.query.auto_sync !== "0" &&
+          Boolean(detail.hospitable_property_id);
+
+        if (wantAuto) {
+          const need = await propertyNeedsAutoSync(propertyId, yearMonth);
+          if (need.needed) {
+            if (need.reason === "zero_financials") {
+              // Re-pull the viewed month so payouts re-parse correctly.
+              await syncHospitableReservations({ propertyId, yearMonth });
+            } else {
+              await syncHospitableReservations({
+                propertyId,
+                lookbackMonths: AUTO_SYNC_LOOKBACK_MONTHS,
+              });
+            }
+            statement = await buildMonthStatement(propertyId, yearMonth);
+            autoSynced = true;
+            syncReason = need.reason;
+          }
+        }
+
+        return res.status(200).json({
+          statement,
+          auto_synced: autoSynced,
+          sync_reason: syncReason || undefined,
+        });
       }
       if (resource === "contracts") {
         const clientId =
@@ -308,10 +343,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               ? str(body.month)
               : previousYearMonth();
           const propertyId = str(body.property_id) || undefined;
-          const result = await syncHospitableReservations({
-            yearMonth,
-            propertyId,
-          });
+          const lookback =
+            body.lookback === true || body.lookback === 1 || body.lookback === "1";
+          const result = await syncHospitableReservations(
+            lookback
+              ? { propertyId, lookbackMonths: AUTO_SYNC_LOOKBACK_MONTHS }
+              : { yearMonth, propertyId },
+          );
           const statement = propertyId
             ? await buildMonthStatement(propertyId, yearMonth)
             : null;
