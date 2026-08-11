@@ -974,6 +974,14 @@ export async function handleDevApi(
       return true;
     }
 
+    if (op === "notice") {
+      const { buildLeadRecordingNoticeTwiml } = await import("./clickToCall.js");
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/xml");
+      res.end(buildLeadRecordingNoticeTwiml());
+      return true;
+    }
+
     if (method !== "POST") {
       res.statusCode = 405;
       res.end("Method not allowed");

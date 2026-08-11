@@ -27,7 +27,7 @@ function firstName(full: string): string {
 
 export function buildPreCallSms(leadName: string): string {
   const name = firstName(leadName);
-  return `Hey ${name}, it's Mandel Realty Group, calling you in a minute from this number. Feel free to pick up.`;
+  return `Hey ${name}, it's Mandel Realty Group, calling you in a minute from this number. Feel free to pick up. This call may be recorded for quality assurance.`;
 }
 
 export function isPreCallSmsBody(body: string): boolean {
@@ -228,14 +228,23 @@ export async function buildOperatorBridgeTwiml(callId: string): Promise<string> 
   const base = twilioWebhookBaseUrl();
   const recordingCb = `${base}/api/twilio/voice?op=recording&callId=${encodeURIComponent(callId)}`;
   const leadStatus = `${base}/api/twilio/voice?op=status&callId=${encodeURIComponent(callId)}&leg=lead`;
+  // Whisper to the lead when they answer — recording disclosure before bridge
+  const leadNotice = `${base}/api/twilio/voice?op=notice`;
 
   return twimlResponse(
     [
-      `<Say voice="Polly.Joanna">Connecting you to the lead. This call may be recorded.</Say>`,
+      `<Say voice="Polly.Joanna">Connecting you to the lead. This call is being recorded for quality assurance.</Say>`,
       `<Dial callerId="${xmlEscape(from)}" record="record-from-answer-dual" recordingStatusCallback="${xmlEscape(recordingCb)}" recordingStatusCallbackEvent="completed" timeout="45">`,
-      `<Number statusCallback="${xmlEscape(leadStatus)}" statusCallbackEvent="initiated ringing answered completed">${xmlEscape(row.lead_phone)}</Number>`,
+      `<Number url="${xmlEscape(leadNotice)}" method="POST" statusCallback="${xmlEscape(leadStatus)}" statusCallbackEvent="initiated ringing answered completed">${xmlEscape(row.lead_phone)}</Number>`,
       `</Dial>`,
     ].join(""),
+  );
+}
+
+/** Played to the lead when they answer, before they are connected to the operator. */
+export function buildLeadRecordingNoticeTwiml(): string {
+  return twimlResponse(
+    `<Say voice="Polly.Joanna">This call is being recorded for quality assurance. Connecting you now.</Say>`,
   );
 }
 
