@@ -63,17 +63,54 @@ function normalizeProperty(raw: unknown): HospitablePropertySummary | null {
   return { id, name, address, listed };
 }
 
+type HospitableQuery = Record<string, string | string[] | undefined>;
+
+function hospitableErrorMessage(json: unknown, status: number): string {
+  const errBody = asRecord(json);
+  const direct =
+    str(errBody.message) ||
+    str(errBody.error) ||
+    str(asRecord(errBody.error).message);
+  if (direct) return direct;
+
+  // Laravel-style validation: { errors: { properties: ["..."], ... } }
+  const errors = asRecord(errBody.errors);
+  const parts: string[] = [];
+  for (const [key, val] of Object.entries(errors)) {
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        const s = str(item);
+        if (s) parts.push(`${key}: ${s}`);
+      }
+    } else {
+      const s = str(val);
+      if (s) parts.push(`${key}: ${s}`);
+    }
+  }
+  if (parts.length) return parts.join("; ");
+
+  return `Hospitable API error (${status})`;
+}
+
 export async function hospitableFetch(
   pat: string,
   path: string,
-  query: Record<string, string> = {},
+  query: HospitableQuery = {},
 ): Promise<unknown> {
   const token = pat.trim();
   if (!token) throw new Error("Hospitable PAT is not configured.");
 
   const url = new URL(`${HOSPITABLE_BASE}${path.startsWith("/") ? path : `/${path}`}`);
   for (const [k, v] of Object.entries(query)) {
-    if (v) url.searchParams.set(k, v);
+    if (v == null || v === "") continue;
+    if (Array.isArray(v)) {
+      // Hospitable expects PHP-style arrays: properties[]=uuid
+      for (const item of v) {
+        if (item) url.searchParams.append(`${k}[]`, item);
+      }
+    } else {
+      url.searchParams.set(k, v);
+    }
   }
 
   const res = await fetch(url.toString(), {
@@ -93,12 +130,7 @@ export async function hospitableFetch(
   }
 
   if (!res.ok) {
-    const errBody = asRecord(json);
-    const msg =
-      str(errBody.message) ||
-      str(errBody.error) ||
-      `Hospitable API error (${res.status})`;
-    throw new Error(msg);
+    throw new Error(hospitableErrorMessage(json, res.status));
   }
   return json;
 }
@@ -256,8 +288,6 @@ export async function listHospitableReservations(input: {
   let page = 1;
   let lastPage = 1;
 
-  // Hospitable accepts properties as repeated query or comma-separated depending on version;
-  // send comma-separated first.
   do {
     const json = (await hospitableFetch(input.pat, "/reservations", {
       page: String(page),
@@ -266,7 +296,8 @@ export async function listHospitableReservations(input: {
       start_date: input.startDate,
       end_date: input.endDate,
       date_query: "checkout",
-      properties: input.propertyIds.join(","),
+      // Must be properties[]=uuid — comma-separated properties= returns 400
+      properties: input.propertyIds,
     })) as HospitableListResponse;
 
     const rows = Array.isArray(json?.data) ? json.data : [];
