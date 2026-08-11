@@ -1107,7 +1107,7 @@ export function AdminPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
-              className="h-[50px] w-full rounded-[14px] border border-white/10 bg-[#1a1a1a] px-4 text-[15px] tracking-[0.14em] text-[#f5f5f5] outline-none placeholder:tracking-normal placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+              className="h-[50px] w-full rounded-[14px] border border-white/10 bg-[#1a1a1a] px-4 text-base tracking-[0.14em] text-[#f5f5f5] outline-none placeholder:tracking-normal placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
             />
             {loginError && <p className="text-sm text-[#cf7f7b]">{loginError}</p>}
             <button
@@ -1343,7 +1343,7 @@ export function AdminPage() {
                 }
               }}
               placeholder={`Message ${firstName}…`}
-              className="h-11 min-w-0 flex-1 rounded-[22px] border border-white/10 bg-[#1a1a1a] px-4 text-[15px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+              className="h-11 min-w-0 flex-1 rounded-[22px] border border-white/10 bg-[#1a1a1a] px-4 text-base text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
             />
             <button
               type="button"
@@ -1873,7 +1873,7 @@ export function AdminPage() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search leads"
-                    className="h-[42px] min-w-0 flex-1 rounded-xl border border-white/10 bg-[#1a1a1a] px-3.5 text-[14.5px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55 lg:h-11 lg:rounded-xl lg:px-4 lg:text-[15px]"
+                    className="h-[42px] min-w-0 flex-1 rounded-xl border border-white/10 bg-[#1a1a1a] px-3.5 text-base text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55 lg:h-11 lg:rounded-xl lg:px-4"
                   />
                   <button
                     type="button"
