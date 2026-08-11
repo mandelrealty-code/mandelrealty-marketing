@@ -289,6 +289,10 @@ type ClaudeCallResult =
   | { ok: true; decision: ClaudeDecision }
   | { ok: false; error: string };
 
+function claudeErrorMessage(result: ClaudeCallResult): string | undefined {
+  return result.ok === false ? result.error : undefined;
+}
+
 async function callClaude(input: {
   system: string;
   user: string;
@@ -655,9 +659,11 @@ export async function sendAiFirstSms(input: {
       decision = null;
     }
   } else {
-    await noteAiFailure(lead.id, claude.error);
+    await noteAiFailure(lead.id, claudeErrorMessage(claude) || "AI call failed");
     body = safeFirstSmsFallback(lead);
   }
+
+  const claudeError = claudeErrorMessage(claude);
 
   // stop_ai with no farewell — apply CRM routing only
   if (decision?.stop_ai && !body.trim()) {
@@ -680,7 +686,7 @@ export async function sendAiFirstSms(input: {
       ok: false,
       skipped: true,
       reason: "Blocked unsafe SMS body",
-      error: claude.ok ? "Blocked unsafe SMS body" : claude.error,
+      error: claudeError ?? "Blocked unsafe SMS body",
     };
   }
 
@@ -718,7 +724,7 @@ export async function sendAiFirstSms(input: {
     reply: body,
     suggestedStage: decision?.suggested_stage ?? "engaging",
     sid: sent.sid,
-    error: claude.ok ? undefined : claude.error,
+    error: claudeError,
   };
 }
 
@@ -746,9 +752,10 @@ export async function sendAiReplyToInbound(input: {
     user: await buildUserPrompt(lead, "reply", input.inboundText),
   });
 
-  if (!claude.ok) {
-    await noteAiFailure(lead.id, claude.error);
-    return { ok: false, skipped: true, reason: claude.error, error: claude.error };
+  if (claude.ok === false) {
+    const err = claudeErrorMessage(claude) || "AI call failed";
+    await noteAiFailure(lead.id, err);
+    return { ok: false, skipped: true, reason: err, error: err };
   }
 
   const decision = claude.decision;
