@@ -962,8 +962,20 @@ export function AdminPage() {
     );
   }
 
-  /* -------- Contact detail (inbox layout) -------- */
+  /* -------- Contact detail (Claude Design inbox) -------- */
   if (selected) {
+    const firstName =
+      (selected.name || "there").trim().split(/\s+/)[0] || "there";
+    const aiLiveHere = aiEffective && !selected.ai_paused;
+    const aiPausedHere = aiEffective && selected.ai_paused;
+    const headerMeta = [
+      OFFER_PATH_LABEL[selected.offer_path],
+      STATUS_LABEL[selected.status],
+      selected.address || null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
     return (
       <motion.div
         key="contact-detail"
@@ -971,289 +983,382 @@ export function AdminPage() {
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: 28 }}
         transition={{ duration: 0.28, ease: easeOut }}
-        className="flex h-dvh flex-col overflow-hidden bg-mrg-bg text-mrg-text"
+        className="relative flex h-dvh flex-col overflow-hidden bg-[#0c0c0c] text-[#f5f5f5]"
       >
-        {/* Top: everything about the client */}
-        <header className="shrink-0 border-b border-white/8 bg-mrg-bg px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <div className="mx-auto flex max-w-3xl items-start gap-3">
+        {/* Compact header */}
+        <header className="shrink-0 border-b border-white/8 bg-[#0c0c0c] px-4 pb-3 pt-[max(0.65rem,env(safe-area-inset-top))]">
+          <div className="mx-auto grid max-w-3xl grid-cols-[32px_1fr_32px] items-center gap-2">
             <button
               type="button"
               onClick={closeLead}
-              className="mt-0.5 min-h-11 min-w-11 rounded-full bg-white/5 text-lg text-mrg-muted ring-1 ring-white/10"
+              className="grid h-8 w-8 place-items-center rounded-lg text-[19px] text-[#f5f5f5] hover:bg-white/[0.06]"
               aria-label="Back"
             >
               ←
             </button>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start gap-2">
-                <h1 className="min-w-0 flex-1 truncate text-lg font-semibold">
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="truncate text-[17.5px] font-semibold leading-tight">
                   {selected.name || "Contact"}
                 </h1>
-                <JourneyMark
-                  status={selected.status}
-                  aiPaused={selected.ai_paused}
-                  aiEffective={aiEffective}
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    aiLiveHere
+                      ? "bg-[#4ea882]"
+                      : aiPausedHere
+                        ? "bg-[#c99a4b]"
+                        : "bg-[#c4a35a]"
+                  }`}
                 />
               </div>
-              <p className="truncate text-sm text-mrg-muted">
-                {OFFER_PATH_LABEL[selected.offer_path]} · {STATUS_LABEL[selected.status]}
-              </p>
-              <p className="truncate text-xs text-mrg-muted">
-                {selected.phone || "No phone"}
-                {selected.email ? ` · ${selected.email}` : ""}
-                {selected.address ? ` · ${selected.address}` : ""}
+              <p className="truncate text-[13px] leading-snug text-[#9a9590]">
+                {headerMeta}
               </p>
             </div>
-          </div>
-
-          <div className="mx-auto mt-2 grid max-w-3xl grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-mrg-muted sm:grid-cols-4">
-            <p>
-              <span className="text-white/40">Airbnb</span>{" "}
-              {listingShort(selected.has_listing)}
-            </p>
-            <p>
-              <span className="text-white/40">Process</span>{" "}
-              {selected.property_stage
-                ? STAGE_LABEL[selected.property_stage] || selected.property_stage
-                : "—"}
-            </p>
-            <p>
-              <span className="text-white/40">STR</span>{" "}
-              {selected.str_allowed
-                ? STR_ALLOWED_LABEL[selected.str_allowed] || selected.str_allowed
-                : "—"}
-            </p>
-            <p>
-              <span className="text-white/40">Permit</span>{" "}
-              {selected.permit_status
-                ? PERMIT_LABEL[selected.permit_status] || selected.permit_status
-                : "—"}
-            </p>
-          </div>
-
-          <div className="mx-auto mt-3 flex max-w-3xl gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {LEAD_STATUSES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                disabled={saving || selected.status === s}
-                onClick={() => patchLead({ status: s })}
-                className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold ring-1 ${
-                  selected.status === s
-                    ? statusTone(s)
-                    : "bg-white/5 text-mrg-muted ring-white/10"
-                }`}
-              >
-                {STATUS_LABEL[s]}
-              </button>
-            ))}
-          </div>
-
-          <div
-            className={`mx-auto mt-3 flex max-w-3xl items-center justify-between gap-3 rounded-2xl px-3.5 py-2.5 ring-1 ${
-              !aiEffective
-                ? "bg-white/5 ring-white/10"
-                : selected.ai_paused
-                  ? "bg-amber-500/10 ring-amber-500/25"
-                  : "bg-emerald-500/10 ring-emerald-500/25"
-            }`}
-          >
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-mrg-text">
-                {!aiEffective
-                  ? "CRM AI off"
-                  : selected.ai_paused
-                    ? "AI paused here"
-                    : "AI live"}
-              </p>
-              <p className="truncate text-[11px] text-mrg-muted">
-                {whatsNext || STATUS_JOURNEY[selected.status]}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <MotionToggle
-                on={aiEffective && !selected.ai_paused}
-                disabled={saving || !aiEffective}
-                label={
-                  selected.ai_paused
-                    ? "Resume AI on this chat"
-                    : "Pause AI on this chat"
-                }
-                onToggle={() => patchLead({ aiPaused: !selected.ai_paused })}
-              />
-              <button
-                type="button"
-                disabled={saving || !aiEffective}
-                onClick={() =>
-                  patchLead({ aiPaused: !selected.ai_paused }).catch(() => undefined)
-                }
-                className={`min-h-9 rounded-full px-3 text-xs font-semibold ring-1 disabled:opacity-40 ${
-                  selected.ai_paused
-                    ? "bg-emerald-500/20 text-emerald-200 ring-emerald-500/35"
-                    : "bg-amber-500/20 text-amber-100 ring-amber-500/35"
-                }`}
-              >
-                {selected.ai_paused ? "Resume" : "Take over"}
-              </button>
-            </div>
-          </div>
-
-          <div className="mx-auto mt-2 flex max-w-3xl items-center justify-between gap-2">
             <button
               type="button"
-              onClick={() => setDetailsOpen((v) => !v)}
-              className="text-xs font-semibold text-mrg-gold"
+              onClick={() => setDetailsOpen(true)}
+              className="grid h-8 w-8 place-items-center rounded-lg text-[17px] font-bold tracking-wider text-[#9a9590] hover:bg-white/[0.06] hover:text-[#f5f5f5]"
+              aria-label="Details"
             >
-              {detailsOpen ? "Hide notes" : "Notes & actions"}
+              ···
             </button>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => patchLead({ markBooked: true })}
-                className="min-h-8 rounded-full bg-sky-500/20 px-3 text-xs font-semibold text-sky-200 ring-1 ring-sky-500/30"
-              >
-                Mark booked
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={deleteSelectedLead}
-                className="min-h-8 rounded-full bg-red-500/10 px-3 text-xs font-semibold text-red-300 ring-1 ring-red-500/20"
-              >
-                Delete
-              </button>
-            </div>
           </div>
 
-          <AnimatePresence initial={false}>
-            {detailsOpen && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="mx-auto max-w-3xl overflow-hidden"
+          {/* Slim AI strip */}
+          {aiEffective && (
+            <div className="mx-auto mt-2.5 flex h-[34px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] py-0 pl-3 pr-1.5">
+              {aiLiveHere ? (
+                <>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#4ea882]" />
+                    <span className="text-[12.5px] font-semibold text-[#8fcbb0]">AI live</span>
+                    <span className="truncate text-[12.5px] text-[#6f6a65]">
+                      replying for you
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() =>
+                      patchLead({ aiPaused: true }).catch(() => undefined)
+                    }
+                    className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#e4dcd0] hover:border-[#c4a35a]/55 hover:text-[#dcc084]"
+                  >
+                    Take over
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#c99a4b]" />
+                    <span className="text-[12.5px] font-semibold text-[#d9ac63]">Paused</span>
+                    <span className="truncate text-[12.5px] text-[#6f6a65]">
+                      you&apos;re replying
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() =>
+                      patchLead({ aiPaused: false }).catch(() => undefined)
+                    }
+                    className="shrink-0 rounded-lg border border-[#c4a35a]/35 bg-[#c4a35a]/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#dcc084] hover:bg-[#c4a35a]/18"
+                  >
+                    Resume
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {!aiEffective && (
+            <div className="mx-auto mt-2.5 flex h-[34px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] px-3">
+              <span className="text-[12.5px] font-semibold text-[#9a9590]">CRM AI off</span>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(true)}
+                className="text-[12.5px] font-semibold text-[#dcc084]"
               >
-                <div className="mt-2 grid gap-2">
-                  <label className="block">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                      What’s next
-                    </span>
-                    <input
-                      value={whatsNext}
-                      onChange={(e) => setWhatsNext(e.target.value)}
-                      onBlur={() => {
-                        if (whatsNext !== (selected.whats_next || "")) {
-                          patchLead({ whatsNext });
-                        }
-                      }}
-                      className="mt-1 w-full rounded-xl bg-mrg-surface-elevated px-3 py-2 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
-                      placeholder="Next action…"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                      Notes
-                    </span>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      onBlur={() => {
-                        if (notes !== (selected.notes || "")) patchLead({ notes });
-                      }}
-                      rows={2}
-                      className="mt-1 w-full rounded-xl bg-mrg-surface-elevated px-3 py-2 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
-                    />
-                  </label>
-                  {saveMsg && <p className="text-xs text-mrg-muted">{saveMsg}</p>}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                Details
+              </button>
+            </div>
+          )}
         </header>
 
-        {/* Middle: chat stays in frame — only this scrolls */}
-        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-4 pt-3">
-          <p className="mb-2 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-            SMS
-          </p>
-          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain rounded-2xl bg-mrg-surface p-3 ring-1 ring-white/8">
-            {smsMessages.length === 0 && (
-              <p className="py-8 text-center text-sm text-mrg-muted">No messages yet.</p>
-            )}
-            <AnimatePresence initial={false}>
-              {smsMessages.map((m) => (
+        {/* Thread — only this scrolls */}
+        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-2.5 overflow-y-auto overscroll-contain bg-[#0e0e0e] px-4 pb-2 pt-4">
+          {smsMessages.length === 0 && (
+            <p className="py-10 text-center text-sm text-[#5e5a56]">No messages yet.</p>
+          )}
+          <AnimatePresence initial={false}>
+            {smsMessages.map((m) => {
+              const outbound = m.direction === "outbound";
+              const by =
+                outbound && m.meta?.ai_generated
+                  ? "AI"
+                  : outbound && m.meta?.nurture
+                    ? "Nurture"
+                    : outbound && m.meta?.human
+                      ? "You"
+                      : outbound
+                        ? "You"
+                        : null;
+              const time = new Date(m.created_at).toLocaleTimeString("en-CA", {
+                hour: "numeric",
+                minute: "2-digit",
+              });
+              return (
                 <motion.div
                   key={m.id}
-                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.22, ease: easeOut }}
-                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                    m.direction === "outbound"
-                      ? "ml-auto bg-mrg-gold/20 text-mrg-text"
-                      : "mr-auto bg-white/8 text-mrg-text"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.28, ease: easeOut }}
+                  className={`flex max-w-[78%] flex-col gap-1 ${
+                    outbound ? "ml-auto items-end" : "mr-auto items-start"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{m.body}</p>
-                  <p className="mt-1 text-[10px] text-mrg-muted">
-                    {m.direction === "outbound" && m.meta?.ai_generated ? "AI · " : ""}
-                    {m.direction === "outbound" && m.meta?.nurture ? "Nurture · " : ""}
-                    {new Date(m.created_at).toLocaleString("en-CA", {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
+                  <div
+                    className={`px-3.5 py-2.5 text-[15px] leading-relaxed ${
+                      outbound
+                        ? "rounded-[16px_16px_5px_16px] border border-[#c4a35a]/28 bg-[#c4a35a]/16 text-[#f6efe2]"
+                        : "rounded-[16px_16px_16px_5px] border border-white/[0.06] bg-white/[0.07] text-[#f0eeea]"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{m.body}</p>
+                  </div>
+                  <p
+                    className={`flex gap-1.5 px-1 text-[10.5px] text-[#5e5a56] ${
+                      outbound ? "justify-end" : ""
+                    }`}
+                  >
+                    <span>{time}</span>
+                    {by && <span className="text-[#8a7c5f]">{by}</span>}
                   </p>
                 </motion.div>
-              ))}
-            </AnimatePresence>
-            <div ref={threadEndRef} />
+              );
+            })}
+          </AnimatePresence>
+          <div ref={threadEndRef} className="h-1" />
+        </div>
+
+        {/* Composer */}
+        <div className="shrink-0 border-t border-white/8 bg-[#0c0c0c] px-3.5 pb-[max(0.85rem,env(safe-area-inset-bottom))] pt-2.5">
+          <div className="mx-auto flex max-w-3xl items-end gap-2.5">
+            <input
+              value={smsDraft}
+              onChange={(e) => setSmsDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendSmsReply().catch(() => undefined);
+                }
+              }}
+              placeholder={`Message ${firstName}…`}
+              className="h-11 min-w-0 flex-1 rounded-[22px] border border-white/10 bg-[#1a1a1a] px-4 text-[15px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+            />
+            <button
+              type="button"
+              disabled={smsSending || !smsDraft.trim()}
+              onClick={() => sendSmsReply().catch(() => undefined)}
+              className="h-11 shrink-0 rounded-[22px] bg-[#c4a35a] px-5 text-sm font-bold text-[#14100a] hover:bg-[#dcc084] disabled:opacity-40"
+            >
+              Send
+            </button>
           </div>
         </div>
 
-        {/* Bottom: composer always visible */}
-        <div className="shrink-0 border-t border-white/10 bg-mrg-bg px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-          <div className="mx-auto max-w-3xl">
-            {aiEffective && !selected.ai_paused && (
-              <p className="mb-2 text-center text-[11px] text-mrg-muted">
-                Sending a reply takes over this chat and pauses AI here only.
-              </p>
-            )}
-            {selected.ai_paused && aiEffective && (
-              <p className="mb-2 text-center text-[11px] text-amber-200/90">
-                AI paused — Resume above when you want it back.
-              </p>
-            )}
-            <div className="flex gap-2">
-              <input
-                value={smsDraft}
-                onChange={(e) => setSmsDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendSmsReply().catch(() => undefined);
-                  }
-                }}
-                placeholder={
-                  selected.ai_paused
-                    ? "Your reply…"
-                    : "Reply as you (pauses AI on this chat)…"
-                }
-                className="min-h-12 flex-1 rounded-full bg-mrg-surface-elevated px-4 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
-              />
-              <button
+        {/* Details bottom sheet */}
+        <AnimatePresence>
+          {detailsOpen && (
+            <>
+              <motion.button
                 type="button"
-                disabled={smsSending || !smsDraft.trim()}
-                onClick={() => sendSmsReply().catch(() => undefined)}
-                className="min-h-12 shrink-0 rounded-full bg-mrg-gold px-5 text-sm font-semibold text-black disabled:opacity-50"
+                aria-label="Close details"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="absolute inset-0 z-40 bg-black/60"
+                onClick={() => setDetailsOpen(false)}
+              />
+              <motion.div
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "40%" }}
+                transition={{ duration: 0.35, ease: easeOut }}
+                className="absolute inset-x-0 bottom-0 z-50 max-h-[86%] overflow-y-auto rounded-t-[26px] border-t border-white/10 bg-[#151515] px-[18px] pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2.5"
               >
-                Send
-              </button>
-            </div>
-          </div>
-        </div>
+                <div className="mx-auto mb-4 h-1 w-[38px] rounded-full bg-white/18" />
+                <div className="mb-4 flex items-baseline justify-between">
+                  <h2 className="text-[17px] font-semibold">Details</h2>
+                  <button
+                    type="button"
+                    onClick={() => setDetailsOpen(false)}
+                    className="text-[13px] font-medium text-[#9a9590]"
+                  >
+                    Done
+                  </button>
+                </div>
+
+                <div className="mb-3.5 grid grid-cols-2 gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
+                  {(
+                    [
+                      ["Airbnb", listingShort(selected.has_listing)],
+                      [
+                        "Process",
+                        selected.property_stage
+                          ? STAGE_LABEL[selected.property_stage] ||
+                            selected.property_stage
+                          : "—",
+                      ],
+                      [
+                        "STR",
+                        selected.str_allowed
+                          ? STR_ALLOWED_LABEL[selected.str_allowed] ||
+                            selected.str_allowed
+                          : "—",
+                      ],
+                      [
+                        "Permit",
+                        selected.permit_status
+                          ? PERMIT_LABEL[selected.permit_status] ||
+                            selected.permit_status
+                          : "—",
+                      ],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <div key={label} className="bg-[#1a1a1a] px-3.5 py-3">
+                      <p className="mb-1.5 text-[10.5px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
+                        {label}
+                      </p>
+                      <p className="text-sm font-semibold leading-snug text-[#f0eeea]">
+                        {value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mb-5 flex flex-col gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
+                  {selected.phone && (
+                    <a
+                      href={telHref(selected.phone) || undefined}
+                      className="flex items-center justify-between gap-3 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121]"
+                    >
+                      <span className="text-sm text-[#9a9590]">Phone</span>
+                      <span className="text-sm font-semibold text-[#dcc084]">
+                        {selected.phone}
+                      </span>
+                    </a>
+                  )}
+                  {selected.email && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        copyPhone(selected.email).catch(() => undefined)
+                      }
+                      className="flex items-center justify-between gap-3 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121]"
+                    >
+                      <span className="text-sm text-[#9a9590]">Email</span>
+                      <span className="truncate text-sm font-medium text-[#f0eeea]">
+                        {selected.email}
+                      </span>
+                    </button>
+                  )}
+                </div>
+
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+                  Stage
+                </p>
+                <div className="mb-5 flex flex-col gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
+                  {LEAD_STATUSES.map((s) => {
+                    const active = selected.status === s;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        disabled={saving || active}
+                        onClick={() =>
+                          patchLead({ status: s })
+                            .then(() => setDetailsOpen(false))
+                            .catch(() => undefined)
+                        }
+                        className={`flex items-center justify-between px-3.5 py-3.5 text-left disabled:opacity-100 ${
+                          active
+                            ? "bg-[#211d15]"
+                            : "bg-[#1a1a1a] hover:bg-[#212121]"
+                        }`}
+                      >
+                        <span
+                          className={`text-sm ${
+                            active
+                              ? "font-semibold text-[#dcc084]"
+                              : "font-normal text-[#cfcac4]"
+                          }`}
+                        >
+                          {STATUS_LABEL[s]}
+                        </span>
+                        {active && (
+                          <span className="text-[13px] font-semibold text-[#c4a35a]">✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+                  What&apos;s next
+                </p>
+                <input
+                  value={whatsNext}
+                  onChange={(e) => setWhatsNext(e.target.value)}
+                  onBlur={() => {
+                    if (whatsNext !== (selected.whats_next || "")) {
+                      patchLead({ whatsNext });
+                    }
+                  }}
+                  placeholder="Next action…"
+                  className="mb-3 w-full rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+                />
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  onBlur={() => {
+                    if (notes !== (selected.notes || "")) patchLead({ notes });
+                  }}
+                  rows={3}
+                  placeholder="Notes…"
+                  className="mb-5 w-full rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-sm leading-relaxed text-[#9a9590] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+                />
+                {saveMsg && (
+                  <p className="mb-3 text-xs text-[#9a9590]">{saveMsg}</p>
+                )}
+
+                <div className="flex flex-col gap-2.5">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() =>
+                      patchLead({ markBooked: true })
+                        .then(() => setDetailsOpen(false))
+                        .catch(() => undefined)
+                    }
+                    className="h-[46px] rounded-xl border border-[rgba(122,167,201,0.35)] bg-[rgba(122,167,201,0.12)] text-sm font-semibold text-[#a9cfe8] hover:bg-[rgba(122,167,201,0.2)]"
+                  >
+                    Mark booked
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => deleteSelectedLead().catch(() => undefined)}
+                    className="h-[46px] rounded-xl border border-[rgba(200,90,86,0.28)] bg-transparent text-sm font-semibold text-[#cf7f7b] hover:bg-[rgba(200,90,86,0.12)]"
+                  >
+                    Delete contact
+                  </button>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </motion.div>
     );
   }
