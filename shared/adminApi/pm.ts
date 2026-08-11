@@ -3,7 +3,7 @@ import {
   getSessionFromRequest,
   isAdminConfigured,
   verifyAdminSessionToken,
-} from "../../shared/adminAuth.js";
+} from "../adminAuth.js";
 import {
   createPmClient,
   getHospitablePat,
@@ -12,11 +12,11 @@ import {
   listPmClients,
   updatePmClient,
   updatePmSettings,
-} from "../../shared/pm/clientStore.js";
+} from "../pm/clientStore.js";
 import {
   listAllHospitableProperties,
   verifyHospitablePat,
-} from "../../shared/pm/hospitableClient.js";
+} from "../pm/hospitableClient.js";
 import {
   changePmCommission,
   createPmProperty,
@@ -25,9 +25,9 @@ import {
   listLinkedHospitableIds,
   listPmProperties,
   updatePmProperty,
-} from "../../shared/pm/propertyStore.js";
-import { percentToRateBps } from "../../shared/pm/types.js";
-import { isSupabaseConfigured } from "../../shared/supabase.js";
+} from "../pm/propertyStore.js";
+import { percentToRateBps } from "../pm/types.js";
+import { isSupabaseConfigured } from "../supabase.js";
 
 function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Unauthorized" });

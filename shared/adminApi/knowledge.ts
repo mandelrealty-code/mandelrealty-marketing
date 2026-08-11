@@ -3,7 +3,7 @@ import {
   getSessionFromRequest,
   isAdminConfigured,
   verifyAdminSessionToken,
-} from "../../shared/adminAuth.js";
+} from "../adminAuth.js";
 import {
   deleteKnowledgeDoc,
   getKnowledgeDocContent,
@@ -13,8 +13,8 @@ import {
   updateKnowledgeDocContent,
   uploadAndIndexKnowledgeFile,
   uploadAndIndexKnowledgeText,
-} from "../../shared/knowledgeStore.js";
-import { isSupabaseConfigured } from "../../shared/supabase.js";
+} from "../knowledgeStore.js";
+import { isSupabaseConfigured } from "../supabase.js";
 
 function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Unauthorized" });

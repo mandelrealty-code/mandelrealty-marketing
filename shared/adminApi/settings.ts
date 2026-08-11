@@ -3,17 +3,17 @@ import {
   getSessionFromRequest,
   isAdminConfigured,
   verifyAdminSessionToken,
-} from "../../shared/adminAuth.js";
+} from "../adminAuth.js";
 import {
   getCrmSettings,
   isAiEnvKillSwitchOff,
   updateCrmSettings,
-} from "../../shared/crmSettings.js";
+} from "../crmSettings.js";
 import {
   removeLeadNotifyRecipient,
   saveLeadNotifyRecipient,
-} from "../../shared/leadNotifySms.js";
-import { isSupabaseConfigured } from "../../shared/supabase.js";
+} from "../leadNotifySms.js";
+import { isSupabaseConfigured } from "../supabase.js";
 
 function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Unauthorized" });

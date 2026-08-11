@@ -3,6 +3,8 @@
  * Production uses the matching files under /api.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import handlePm from "./adminApi/pm.js";
 import {
   AUDIT_UNAVAILABLE_MESSAGE,
   LEAD_INBOX,
@@ -99,6 +101,51 @@ function json(res: ServerResponse, status: number, body: object, extraHeaders?: 
   res.end(JSON.stringify(body));
 }
 
+/** Adapt Node req/res so we can reuse Vercel admin handlers in Vite dev. */
+async function runVercelAdminHandler(
+  req: IncomingMessage,
+  res: ServerResponse,
+  section: string,
+  handler: (req: VercelRequest, res: VercelResponse) => unknown,
+): Promise<boolean> {
+  const u = new URL(req.url ?? "/", "http://localhost");
+  const query: Record<string, string> = { section };
+  u.searchParams.forEach((v, k) => {
+    query[k] = v;
+  });
+  const body =
+    req.method === "GET" || req.method === "HEAD" ? {} : await readJsonBody(req);
+  const vReq = Object.assign(req, { query, body }) as unknown as VercelRequest;
+  const vRes = {
+    status(code: number) {
+      res.statusCode = code;
+      return vRes;
+    },
+    json(payload: unknown) {
+      if (!res.headersSent) {
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-store");
+      }
+      res.end(JSON.stringify(payload));
+      return vRes;
+    },
+    setHeader(name: string, value: string | number | readonly string[]) {
+      res.setHeader(name, value);
+      return vRes;
+    },
+    getHeader(name: string) {
+      return res.getHeader(name);
+    },
+    end(chunk?: unknown) {
+      res.end(chunk as string | undefined);
+      return vRes;
+    },
+    statusCode: res.statusCode,
+  } as unknown as VercelResponse;
+  await handler(vReq, vRes);
+  return true;
+}
+
 const STAGES = new Set(["own_ready", "buying", "researching"]);
 const PERMITS = new Set(["have", "applying", "unknown", "not_planning"]);
 const TIMELINES = new Set(["asap", "1_3_months", "later"]);
@@ -115,6 +162,17 @@ export async function handleDevApi(
   // Make shared modules see Vite env
   for (const [k, v] of Object.entries(env)) {
     if (v && !process.env[k]) process.env[k] = v;
+  }
+
+  // Clients PM API (also /api/admin?section=pm via rewrite shape)
+  {
+    const full = req.url ?? "";
+    const sectionPm =
+      url === "/api/admin/pm" ||
+      (url === "/api/admin" && new URL(full, "http://localhost").searchParams.get("section") === "pm");
+    if (sectionPm) {
+      return runVercelAdminHandler(req, res, "pm", handlePm);
+    }
   }
 
   if (url === "/api/booked-slots" && method === "GET") {

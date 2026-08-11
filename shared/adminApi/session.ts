@@ -7,7 +7,7 @@ import {
   getAdminPassword,
   isAdminConfigured,
   passwordMatches,
-} from "../../shared/adminAuth.js";
+} from "../adminAuth.js";
 
 function readBody(req: VercelRequest): Record<string, unknown> {
   const raw = req.body;

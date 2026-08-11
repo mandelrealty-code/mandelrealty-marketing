@@ -3,26 +3,26 @@ import {
   getSessionFromRequest,
   isAdminConfigured,
   verifyAdminSessionToken,
-} from "../../shared/adminAuth.js";
-import { importMetaLeadPaste, previewMetaLeadPaste } from "../../shared/importMetaLead.js";
+} from "../adminAuth.js";
+import { importMetaLeadPaste, previewMetaLeadPaste } from "../importMetaLead.js";
 import {
   listFollowupsForLead,
   cancelLeadFollowups,
   markLeadBookedAndStopSms,
   sendCustomSmsToLead,
   sendManualBumpForLead,
-} from "../../shared/followUpStore.js";
-import { listSmsForLead } from "../../shared/smsStore.js";
-import { listLeadsInbox, markLeadSmsRead } from "../../shared/crmInbox.js";
-import { startClickToCall } from "../../shared/clickToCall.js";
+} from "../followUpStore.js";
+import { listSmsForLead } from "../smsStore.js";
+import { listLeadsInbox, markLeadSmsRead } from "../crmInbox.js";
+import { startClickToCall } from "../clickToCall.js";
 import {
   LEAD_STATUSES,
   deleteLead,
   updateLeadCrm,
   type LeadStatus,
   type OfferPath,
-} from "../../shared/leadStore.js";
-import { isSupabaseConfigured } from "../../shared/supabase.js";
+} from "../leadStore.js";
+import { isSupabaseConfigured } from "../supabase.js";
 
 const STATUS_SET = new Set<LeadStatus>(LEAD_STATUSES);
 

@@ -51,11 +51,31 @@
   "rewrites": [
     {
       "source": "/api/admin/login",
-      "destination": "/api/admin/session?op=login"
+      "destination": "/api/admin?section=session&op=login"
     },
     {
       "source": "/api/admin/logout",
-      "destination": "/api/admin/session?op=logout"
+      "destination": "/api/admin?section=session&op=logout"
+    },
+    {
+      "source": "/api/admin/session",
+      "destination": "/api/admin?section=session"
+    },
+    {
+      "source": "/api/admin/leads",
+      "destination": "/api/admin?section=leads"
+    },
+    {
+      "source": "/api/admin/settings",
+      "destination": "/api/admin?section=settings"
+    },
+    {
+      "source": "/api/admin/knowledge",
+      "destination": "/api/admin?section=knowledge"
+    },
+    {
+      "source": "/api/admin/pm",
+      "destination": "/api/admin?section=pm"
     },
     {
       "source": "/robots.txt",
