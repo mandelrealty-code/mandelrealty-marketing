@@ -9,6 +9,7 @@ import {
   PROPERTY_STAGES,
   STR_ALLOWED_OPTIONS,
 } from "./qualifierOptions.js";
+import { parseMetaLeadWebhook } from "./parseMetaLeadWebhook.js";
 
 export type ParsedMetaLead = {
   name: string;
@@ -125,30 +126,48 @@ function extractPhone(text: string): string {
 }
 
 function extractName(text: string, email: string): string {
-  const labeled = text.match(/^\s*Full name\s*\n\s*([^\n]+)/im);
+  const labeled = text.match(/^\s*(?:Full name|full_name)\s*\n\s*([^\n]+)/im);
   if (labeled) {
     const n = labeled[1].trim();
-    if (n && !/@/.test(n) && !/^\+?\d/.test(n)) return n;
+    if (n && isPlausiblePersonName(n)) return n;
+  }
+  const inline = text.match(/^\s*(?:Full name|full_name)\s*[:=]\s*([^\n]+)/im);
+  if (inline) {
+    const n = inline[1].trim();
+    if (n && isPlausiblePersonName(n)) return n;
   }
   const first = text.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "";
-  if (
-    first &&
-    !/@/.test(first) &&
-    !/^\+?\d/.test(first) &&
-    !/^lead added/i.test(first) &&
-    first.length < 80
-  ) {
+  if (first && isPlausiblePersonName(first) && first.length < 80) {
     return first;
   }
   if (email.includes("@")) return email.split("@")[0] || "";
   return "";
 }
 
+function isPlausiblePersonName(n: string): boolean {
+  if (!n || /@/.test(n)) return false;
+  if (/^l:\d+/i.test(n)) return false; // Meta lead id
+  if (/^\+?\d[\d\s().-]{6,}$/.test(n)) return false;
+  if (
+    /^(id|created_time|ad_id|ad_name|full_name|email|phone|lead_status|campaign_name|form_name)$/i.test(
+      n,
+    )
+  ) {
+    return false;
+  }
+  if (/^lead added/i.test(n)) return false;
+  return true;
+}
+
 /**
- * Parse a raw Meta Leads Center paste into CRM fields.
+ * Parse a raw Meta Leads Center paste OR a Meta CSV/TSV export row into CRM fields.
+ * Never invents answers — only maps what is in the paste/CSV.
  */
 export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
   const text = raw.replace(/\u00a0/g, " ").trim();
+  const fromCsv = tryParseMetaExportTable(text);
+  if (fromCsv) return fromCsv;
+
   const warnings: string[] = [];
   const rawAnswers: Record<string, string> = {};
 
@@ -193,6 +212,7 @@ export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
   const listingTitleRaw = answerAfter(text, [
     /listing (title|name|link|url)/,
     /airbnb (link|url|title)/,
+    /paste your airbnb listing/,
   ]);
   if (listingTitleRaw) rawAnswers.listingTitle = listingTitleRaw;
 
@@ -207,15 +227,17 @@ export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
     else if (/^yes\b|is allowed|allowed/.test(n)) strAllowed = "yes";
   }
 
-  const permitStatus = mapByLabel(
-    answerAfter(text, [/permit/, /do you have an str/]),
-    PERMIT_OPTIONS,
-  );
+  const permitRaw = answerAfter(text, [/str permit status/, /permit status/, /do you have an str/]);
+  const permitStatus = mapByLabel(permitRaw, PERMIT_OPTIONS);
+  if (permitRaw) rawAnswers.permit = permitRaw;
 
   if (!name) warnings.push("Could not find full name.");
   if (!email) warnings.push("Could not find email.");
   if (!phone) warnings.push("Could not find phone.");
   if (hasListing === "unknown") warnings.push("Could not tell if they have an Airbnb listing.");
+  if (!propertyStage && stageRaw) {
+    warnings.push(`Could not map process answer: "${stageRaw.slice(0, 80)}"`);
+  }
 
   const offerPath = inferOfferPath({
     hasListing,
@@ -239,6 +261,85 @@ export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
     warnings,
     offerPath,
   };
+}
+
+/** Meta Ads Manager CSV/TSV export: header row + one or more data rows. */
+function tryParseMetaExportTable(text: string): ParsedMetaLead | null {
+  const lines = text.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.trim());
+  if (lines.length < 1) return null;
+
+  const delim = detectDelim(lines[0]);
+  const headerCells = parseDelimitedLine(lines[0], delim).map((h) => h.trim());
+  if (!looksLikeMetaExportHeader(headerCells)) return null;
+
+  const dataLines = lines.slice(1).filter((l) => l.trim());
+  if (dataLines.length === 0) return null;
+
+  const row = parseDelimitedLine(dataLines[0], delim);
+  const map: Record<string, string> = {};
+  headerCells.forEach((h, i) => {
+    if (!h) return;
+    const v = (row[i] ?? "").trim();
+    if (v) map[h] = v;
+  });
+
+  if (!map.full_name && !map.email && !map.phone && !map.phone_number) {
+    return null;
+  }
+
+  const parsed = parseMetaLeadWebhook(map);
+  if ("error" in parsed) return null;
+
+  if (dataLines.length > 1) {
+    parsed.warnings.push(
+      `Paste includes ${dataLines.length} CSV rows — only the first lead was read. Paste one data row (with headers) at a time.`,
+    );
+  }
+  return parsed;
+}
+
+function detectDelim(headerLine: string): "," | "\t" {
+  const tabs = (headerLine.match(/\t/g) || []).length;
+  const commas = (headerLine.match(/,/g) || []).length;
+  return tabs >= 2 && tabs >= commas / 3 ? "\t" : ",";
+}
+
+function looksLikeMetaExportHeader(cells: string[]): boolean {
+  const joined = cells.map((c) => c.toLowerCase()).join("|");
+  const hasName = cells.some((c) => /^full_name$/i.test(c) || /^full name$/i.test(c));
+  const hasContact = cells.some((c) => /^(email|phone|phone_number)$/i.test(c));
+  const hasMeta =
+    /created_time|campaign_name|form_name|ad_name|do_you_have_an_airbnb|where_are_you_in_the_process/.test(
+      joined,
+    );
+  return (hasName || hasContact) && hasMeta;
+}
+
+function parseDelimitedLine(line: string, delim: "," | "\t"): string[] {
+  if (delim === "\t") return line.split("\t");
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (ch === "," && !inQuotes) {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
 }
 
 /**

@@ -191,36 +191,24 @@ export function parseMetaLeadWebhook(
     "phoneNumber",
   ]);
 
-  const city = pick(map, [
-    "city",
-    "What city / area is the property in?",
-    "city_area",
-    "area",
-    "address",
-    "property_city",
-  ]);
-
-  const hasListingRaw = pick(map, [
-    "has_listing",
-    "Do you have an Airbnb listing live right now?",
-    "airbnb_listing",
-    "listing",
-  ]);
   const propertyStageRaw = pick(map, [
     "property_stage",
     "Where are you in the process?",
+    "where_are_you_in_the_process?",
+    "where_are_you_in_the_process",
     "process",
-    "stage",
   ]);
   const strRaw = pick(map, [
     "str_allowed",
     "Does your building or area allow Airbnb",
     "Does your building or area allow Airbnb / short-term rentals?",
+    "does_your_building_or_area_allow_airbnb_/_short-term_rentals?",
     "str",
   ]);
   const permitRaw = pick(map, [
     "permit_status",
     "STR permit status",
+    "str_permit_status",
     "permit",
   ]);
   const earnings = pick(map, ["earnings", "monthly_earnings", "revenue"]);
@@ -229,6 +217,26 @@ export function parseMetaLeadWebhook(
     "listing_url",
     "airbnb_url",
     "Listing title",
+    "paste_your_airbnb_listing_link_(airbnb.com/...)",
+    "paste_your_airbnb_listing_link_(if_relevant)",
+    "paste_your_airbnb_listing_link",
+  ]);
+
+  const hasListingRaw = pick(map, [
+    "has_listing",
+    "Do you have an Airbnb listing live right now?",
+    "do_you_have_an_airbnb_listing_live_right_now?",
+    "airbnb_listing_live",
+  ]);
+
+  const city = pick(map, [
+    "city",
+    "What city / area is the property in?",
+    "what_city_/_area_is_the_property_in?",
+    "city_area",
+    "area",
+    "address",
+    "property_city",
   ]);
 
   const campaign = pick(map, [

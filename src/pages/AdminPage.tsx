@@ -1771,8 +1771,8 @@ export function AdminPage() {
             <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
               <h2 className="text-base font-semibold">Paste Meta lead</h2>
               <p className="mt-1 text-sm text-mrg-muted">
-                Copy the whole lead from Meta Leads Center, preview, then import. AI texts them when
-                AI is on.
+                Paste from Meta Leads Center, or paste the CSV header + one lead row from a Meta
+                export. We read full_name and form answers from the columns — nothing invented.
               </p>
               <textarea
                 value={paste}
@@ -1782,7 +1782,7 @@ export function AdminPage() {
                   setPasteResult(null);
                 }}
                 rows={8}
-                placeholder="Paste Meta lead text here…"
+                placeholder="Paste Meta lead text, or CSV header + one row…"
                 className="mt-4 w-full rounded-2xl bg-mrg-bg px-4 py-3 font-mono text-xs leading-relaxed outline-none ring-1 ring-white/10 focus:ring-mrg-gold/50"
               />
               <div className="mt-3 flex flex-wrap gap-2">
@@ -1812,9 +1812,25 @@ export function AdminPage() {
                     <Row label="Phone" value={pastePreview.parsed.phone || "—"} />
                     <Row label="City" value={pastePreview.parsed.address || "—"} />
                     <Row label="Airbnb" value={listingShort(pastePreview.parsed.hasListing)} />
-                    <Row label="Stage" value={STATUS_LABEL[pastePreview.decision.status]} />
+                    <Row
+                      label="Process"
+                      value={
+                        pastePreview.parsed.propertyStage
+                          ? STAGE_LABEL[pastePreview.parsed.propertyStage] ||
+                            pastePreview.parsed.propertyStage
+                          : "—"
+                      }
+                    />
+                    <Row label="Pipeline" value={STATUS_LABEL[pastePreview.decision.status]} />
                     <Row label="Decision" value={pastePreview.decision.reason} />
                   </dl>
+                  {pastePreview.parsed.warnings?.length > 0 && (
+                    <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-amber-200/90">
+                      {pastePreview.parsed.warnings.map((w) => (
+                        <li key={w}>{w}</li>
+                      ))}
+                    </ul>
+                  )}
                   {pastePreview.duplicate && (
                     <p className="mt-3 text-sm text-amber-300">
                       Duplicate of {pastePreview.duplicate.name} ({pastePreview.duplicate.status}).
