@@ -90,6 +90,30 @@ async function settingsPayload(extra: Record<string, unknown> = {}) {
   };
 }
 
+function apiErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) {
+    const m = err.message;
+    if (/pm_reservations|pm_manual_expenses|pm_contracts/i.test(m) && /does not exist|schema cache/i.test(m)) {
+      return "Earnings tables missing. Run supabase/pm_earnings_contracts_v1.sql in Supabase, then retry.";
+    }
+    return m;
+  }
+  if (err && typeof err === "object") {
+    const o = err as { message?: unknown; error?: unknown; details?: unknown; hint?: unknown };
+    const parts = [o.message, o.error, o.details, o.hint]
+      .map((v) => (typeof v === "string" ? v.trim() : ""))
+      .filter(Boolean);
+    if (parts.length) {
+      const m = parts.join(" — ");
+      if (/pm_reservations|pm_manual_expenses|pm_contracts/i.test(m) && /does not exist|schema cache/i.test(m)) {
+        return "Earnings tables missing. Run supabase/pm_earnings_contracts_v1.sql in Supabase, then retry.";
+      }
+      return m;
+    }
+  }
+  return "Request failed.";
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!isAdminConfigured()) {
     return res.status(503).json({ error: "Admin is not configured." });
@@ -404,7 +428,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(405).json({ error: "Method not allowed." });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Request failed.";
-    return res.status(400).json({ error: message });
+    return res.status(400).json({ error: apiErrorMessage(err) });
   }
 }

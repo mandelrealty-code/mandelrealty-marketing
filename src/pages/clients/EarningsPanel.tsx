@@ -48,6 +48,7 @@ export function EarningsPanel({
   const [month, setMonth] = useState(defaultMonth);
   const [statement, setStatement] = useState<MonthStatement | null>(null);
   const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState("");
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
     label: "",
@@ -56,20 +57,31 @@ export function EarningsPanel({
     category: "cleaning",
   });
 
+  const fail = useCallback(
+    (e: unknown, fallback: string) => {
+      const msg = e instanceof Error ? e.message : fallback;
+      setLocalError(msg);
+      onError(msg);
+    },
+    [onError],
+  );
+
   const load = useCallback(async () => {
     const data = await pmGet<{ statement: MonthStatement }>("earnings", {
       property_id: propertyId,
       month,
     });
     setStatement(data.statement);
+    setLocalError("");
   }, [propertyId, month]);
 
   useEffect(() => {
-    load().catch((e) => onError(e instanceof Error ? e.message : "Could not load earnings."));
-  }, [load, onError]);
+    load().catch((e) => fail(e, "Could not load earnings."));
+  }, [load, fail]);
 
   const sync = async () => {
     setBusy(true);
+    setLocalError("");
     try {
       const data = await pmPost<{ statement: MonthStatement | null; synced: number }>(
         "earnings",
@@ -78,7 +90,7 @@ export function EarningsPanel({
       if (data.statement) setStatement(data.statement);
       else await load();
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Sync failed.");
+      fail(e, "Sync failed.");
     } finally {
       setBusy(false);
     }
@@ -104,7 +116,7 @@ export function EarningsPanel({
       });
       await load();
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Could not add expense.");
+      fail(e, "Could not add expense.");
     } finally {
       setBusy(false);
     }
@@ -116,7 +128,7 @@ export function EarningsPanel({
       await pmPost("earnings", { op: "delete_expense", id });
       await load();
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Could not delete expense.");
+      fail(e, "Could not delete expense.");
     } finally {
       setBusy(false);
     }
@@ -152,6 +164,10 @@ export function EarningsPanel({
           </GoldButton>
         </div>
       </div>
+
+      {localError ? (
+        <p className="mb-3 text-sm text-[#cf7f7b]">{localError}</p>
+      ) : null}
 
       {!linked ? (
         <p className="text-[13px] text-[#6f6a65]">Link Hospitable to sync bookings.</p>
