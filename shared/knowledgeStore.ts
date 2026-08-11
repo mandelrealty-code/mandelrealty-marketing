@@ -96,6 +96,8 @@ export async function updateKnowledgeDoc(
     error: string | null;
     chunk_count: number;
     storage_path: string;
+    filename: string;
+    mime: string;
   }>,
 ): Promise<KnowledgeDoc | null> {
   const sb = getSupabaseAdmin();
@@ -630,4 +632,110 @@ export async function reindexKnowledgeDoc(id: string): Promise<KnowledgeDoc | nu
   }
 
   return indexKnowledgeDocFromText(id, text);
+}
+
+/** Load editable text for a doc (storage file, else stitch chunks). */
+export async function getKnowledgeDocContent(
+  id: string,
+): Promise<{ doc: KnowledgeDoc; text: string; source: "storage" | "chunks" } | null> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return null;
+  const doc = await getKnowledgeDoc(id);
+  if (!doc) return null;
+
+  if (doc.storage_path) {
+    const { data, error } = await sb.storage.from("knowledge").download(doc.storage_path);
+    if (!error && data) {
+      try {
+        const buffer = Buffer.from(await data.arrayBuffer());
+        const text = await extractTextFromUpload(buffer, doc.mime, doc.filename);
+        return { doc, text, source: "storage" };
+      } catch (err) {
+        console.warn(
+          "[knowledge] storage extract failed",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
+
+  const { data: chunks, error: chunkErr } = await sb
+    .from("knowledge_chunks")
+    .select("content, metadata")
+    .eq("doc_id", id)
+    .order("created_at", { ascending: true });
+
+  if (chunkErr) {
+    console.warn("[knowledge] chunk read failed", chunkErr.message);
+  }
+
+  const ordered = [...(chunks ?? [])].sort((a, b) => {
+    const ai = Number((a.metadata as { index?: number } | null)?.index ?? 0);
+    const bi = Number((b.metadata as { index?: number } | null)?.index ?? 0);
+    return ai - bi;
+  });
+
+  const text = ordered
+    .map((c) => String(c.content ?? "").trim())
+    .filter(Boolean)
+    .join("\n\n");
+
+  return { doc, text, source: "chunks" };
+}
+
+/** Save title + body, rewrite storage, and reindex for Claude retrieval. */
+export async function updateKnowledgeDocContent(input: {
+  id: string;
+  title?: string;
+  text: string;
+}): Promise<KnowledgeDoc | null> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return null;
+  const doc = await getKnowledgeDoc(input.id);
+  if (!doc) return null;
+
+  const text = input.text.replace(/\u0000/g, "").trim();
+  if (!text) {
+    return updateKnowledgeDoc(doc.id, {
+      status: "failed",
+      error: "Text cannot be empty.",
+    });
+  }
+
+  const title = (input.title ?? doc.title).trim() || doc.title || "Knowledge doc";
+  await updateKnowledgeDoc(doc.id, {
+    title,
+    status: "processing",
+    error: null,
+  });
+
+  const filename = doc.filename || `${title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48) || "knowledge"}.md`;
+  const storagePath = doc.storage_path || `${doc.id}/${filename.replace(/[^\w.-]+/g, "_")}`;
+  const buffer = Buffer.from(text, "utf8");
+  const mime =
+    doc.mime?.startsWith("text/") || doc.mime === "text/markdown"
+      ? doc.mime || "text/markdown"
+      : "text/markdown";
+
+  const { error: upErr } = await sb.storage.from("knowledge").upload(storagePath, buffer, {
+    contentType: mime,
+    upsert: true,
+  });
+
+  if (upErr) {
+    console.warn("[knowledge] storage overwrite failed", upErr.message);
+  } else {
+    await updateKnowledgeDoc(doc.id, {
+      title,
+      storage_path: storagePath,
+      filename,
+      mime,
+    });
+  }
+
+  return indexKnowledgeDocFromText(doc.id, text);
 }

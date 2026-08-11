@@ -301,6 +301,11 @@ export function AdminPage() {
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadText, setUploadText] = useState("");
+  const [editDocId, setEditDocId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editText, setEditText] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim()), 250);
@@ -1095,6 +1100,68 @@ export function AdminPage() {
       setDocsError(err instanceof Error ? err.message : "Could not save text");
     } finally {
       setUploadBusy(false);
+    }
+  };
+
+  const openKnowledgeEditor = async (id: string) => {
+    setEditDocId(id);
+    setEditTitle("");
+    setEditText("");
+    setEditError(null);
+    setEditBusy(true);
+    try {
+      const res = await fetch(`/api/admin/knowledge?id=${encodeURIComponent(id)}`, {
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        doc?: KnowledgeDoc;
+        text?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Could not open document");
+      setEditTitle(data.doc?.title ?? "");
+      setEditText(data.text ?? "");
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Could not open document");
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const closeKnowledgeEditor = () => {
+    if (editBusy) return;
+    setEditDocId(null);
+    setEditTitle("");
+    setEditText("");
+    setEditError(null);
+  };
+
+  const saveKnowledgeEditor = async () => {
+    if (!editDocId || !editText.trim()) return;
+    setEditBusy(true);
+    setEditError(null);
+    try {
+      const res = await fetch("/api/admin/knowledge", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: editDocId,
+          action: "save_content",
+          title: editTitle,
+          text: editText,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Could not save document");
+      setEditDocId(null);
+      setEditTitle("");
+      setEditText("");
+      await loadDocs();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Could not save document");
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -2139,13 +2206,19 @@ export function AdminPage() {
                       key={doc.id}
                       className="flex items-center gap-3 border-b border-white/[0.06] px-3.5 py-3.5 last:border-b-0"
                     >
-                      <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => openKnowledgeEditor(doc.id).catch(() => undefined)}
+                        className="min-w-0 flex-1 text-left hover:opacity-90"
+                      >
                         <p className="truncate text-[14.5px] font-semibold text-[#f0eeea]">
                           {doc.title}
                         </p>
                         <p className="truncate text-xs text-[#6f6a65]">{doc.filename}</p>
                         {doc.status === "ready" && (
-                          <p className="mt-1 text-[11.5px] font-semibold text-[#8fcbb0]">Ready</p>
+                          <p className="mt-1 text-[11.5px] font-semibold text-[#8fcbb0]">
+                            Ready · tap to edit
+                          </p>
                         )}
                         {doc.status === "processing" && (
                           <p className="mt-1 text-[11.5px] font-semibold text-[#d9ac63]">
@@ -2157,7 +2230,7 @@ export function AdminPage() {
                             Failed{doc.error ? ` — ${doc.error}` : ""}
                           </p>
                         )}
-                      </div>
+                      </button>
                       {doc.status === "failed" && (
                         <button
                           type="button"
@@ -2479,6 +2552,84 @@ export function AdminPage() {
           )}
         </AnimatePresence>
       </main>
+
+      {editDocId && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/62 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-10 sm:items-center"
+          onClick={closeKnowledgeEditor}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 28 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, ease: easeOut }}
+            className="flex max-h-[88dvh] w-full max-w-2xl flex-col overflow-hidden rounded-[26px] border border-white/10 bg-[#151515]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mt-2.5 h-1 w-[38px] shrink-0 rounded-full bg-white/18 sm:hidden" />
+            <div className="flex items-center justify-between gap-3 border-b border-white/8 px-4 py-3.5">
+              <h2 className="text-[17px] font-semibold text-[#f5f5f5]">Edit knowledge</h2>
+              <button
+                type="button"
+                onClick={closeKnowledgeEditor}
+                disabled={editBusy}
+                className="text-[13px] font-medium text-[#9a9590] hover:text-[#f5f5f5] disabled:opacity-40"
+              >
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3.5">
+              {editBusy && !editText && !editError ? (
+                <p className="py-10 text-center text-sm text-[#9a9590]">Loading…</p>
+              ) : (
+                <>
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                      Title
+                    </span>
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      disabled={editBusy}
+                      className="h-11 w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-3.5 text-base outline-none focus:border-[#c4a35a]/55 disabled:opacity-50"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                      Content
+                    </span>
+                    <textarea
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      disabled={editBusy}
+                      rows={16}
+                      className="min-h-[240px] w-full resize-y rounded-[14px] border border-white/10 bg-[#1a1a1a] px-3.5 py-3 font-mono text-base leading-relaxed outline-none focus:border-[#c4a35a]/55 disabled:opacity-50"
+                    />
+                  </label>
+                  {editError && <p className="text-sm text-[#cf7f7b]">{editError}</p>}
+                </>
+              )}
+            </div>
+            <div className="flex shrink-0 gap-2.5 border-t border-white/8 px-4 py-3.5">
+              <button
+                type="button"
+                onClick={closeKnowledgeEditor}
+                disabled={editBusy}
+                className="h-11 flex-1 rounded-xl border border-white/10 text-sm font-semibold text-[#9a9590] hover:text-[#f5f5f5] disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={editBusy || !editText.trim()}
+                onClick={() => saveKnowledgeEditor().catch(() => undefined)}
+                className="h-11 flex-1 rounded-xl bg-[#c4a35a] text-sm font-bold text-[#14100a] hover:bg-[#dcc084] disabled:cursor-not-allowed disabled:bg-[#c4a35a]/25 disabled:text-[#8a7c5f]"
+              >
+                {editBusy ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {copyFlash && (
         <div className="pointer-events-none fixed inset-x-0 bottom-24 z-40 flex justify-center px-4">

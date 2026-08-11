@@ -6,9 +6,11 @@ import {
 } from "../../shared/adminAuth.js";
 import {
   deleteKnowledgeDoc,
+  getKnowledgeDocContent,
   listKnowledgeDocs,
   reindexKnowledgeDoc,
   updateKnowledgeDoc,
+  updateKnowledgeDocContent,
   uploadAndIndexKnowledgeFile,
   uploadAndIndexKnowledgeText,
 } from "../../shared/knowledgeStore.js";
@@ -46,6 +48,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "GET") {
+    const id =
+      typeof req.query.id === "string"
+        ? req.query.id.trim()
+        : Array.isArray(req.query.id)
+          ? String(req.query.id[0] ?? "").trim()
+          : "";
+    if (id) {
+      const payload = await getKnowledgeDocContent(id);
+      if (!payload) return res.status(404).json({ error: "Document not found." });
+      return res.status(200).json({
+        ok: true,
+        doc: payload.doc,
+        text: payload.text,
+        source: payload.source,
+      });
+    }
     const docs = await listKnowledgeDocs();
     return res.status(200).json({ docs });
   }
@@ -107,6 +125,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!doc) return res.status(500).json({ error: "Could not reindex doc." });
       if (doc.status === "failed") {
         return res.status(400).json({ error: doc.error || "Reindex failed", doc });
+      }
+      return res.status(200).json({ ok: true, doc });
+    }
+
+    if (body.action === "save_content") {
+      const text = typeof body.text === "string" ? body.text : "";
+      if (!text.trim()) {
+        return res.status(400).json({ error: "Text is required." });
+      }
+      if (text.length > 400_000) {
+        return res.status(400).json({ error: "Text too long (max ~400k characters)." });
+      }
+      const doc = await updateKnowledgeDocContent({
+        id,
+        title: typeof body.title === "string" ? body.title : undefined,
+        text,
+      });
+      if (!doc) return res.status(500).json({ error: "Could not save document." });
+      if (doc.status === "failed") {
+        return res.status(400).json({ error: doc.error || "Save failed", doc });
       }
       return res.status(200).json({ ok: true, doc });
     }

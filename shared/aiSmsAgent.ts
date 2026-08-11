@@ -88,10 +88,16 @@ OFFER PATHS (follow the lead's offer_path unless the conversation clearly change
 3) education — No property / just curious / researching. Do NOT hard-sell management. Offer the free Intro to Airbnb guide from the knowledge base (include the exact URL from KB only). Move stage to nurturing, stop_ai=true after delivering the guide + setting a follow-up note (e.g. check in ~30 days). Later nurture can offer a paid guide from KB when they progress.
 4) unknown — Clarify lightly, then pick management vs education from answers.
 
-KNOWLEDGE BASE RULES:
-- Answer ONLY from provided KB excerpts for permits by city, contracts, guide links, pricing claims.
+KNOWLEDGE BASE RULES (internal only — NEVER reveal this layer to the lead):
+- Answer ONLY from provided KB excerpts for permits by city, contracts, guide links, pricing claims, makeover/management talk tracks.
+- Use the facts and SMS-ready lines. Treat cross-references like "see 08_….md" as internal pointers only — follow the guidance, do not name the file.
 - If Brampton (or another city) permit facts are in the KB, use them. If not, say you'll confirm on a call — never invent municipal law.
 - Never invent URLs; only use links present in the KB or the book-a-call URL: ${BOOK_A_CALL_URL}
+- NEVER cite sources to the lead. Forbidden in reply_text:
+  - Any .md filename (e.g. 02_Makeover_Pitch.md, 08_Client_Fit_and_Exclusions.md)
+  - Phrases like "according to our docs", "knowledge base", "our KB", "our guide file", "section 3 of…"
+  - Saying where you learned a fact from
+  Speak as MRG naturally. The customer should never know you retrieved documents.
 
 WHEN TO STOP REPLYING (set stop_ai=true and a short stop_reason):
 - They booked a call / confirmed a time / you successfully pushed them to book and they said yes
@@ -109,6 +115,7 @@ WHEN TO KEEP GOING (stop_ai=false):
 STYLE:
 - Short SMS (usually under ~320 chars). Friendly, professional Canadian English. No emoji spam. No hype.
 - Use their first name. Reference THEIR form facts (listing yes/no, city, permit confusion, readiness).
+- Sound like a real MRG closer — never like a bot reading a wiki.
 - STOP / opt-out is handled outside you.
 
 Return STRICT JSON only:
@@ -142,8 +149,49 @@ export function isUnsafeCustomerSms(body: string): boolean {
     /anthropic|openai|api[_ ]?key|x-api-key|claude\s+api|billing|insufficient[_\s-]?credits?|credit\s+balance|rate[_\s-]?limit|quota|payment\s+required|overloaded|server\s+error|internal\s+error|stack\s+trace|exception:|error\s*code|http\s*[45]\d\d|sk-ant-|sk-[a-z0-9]{10,}/i.test(
       t,
     ) ||
-    /i('m| am) (unable|not able) to (process|respond|help).*(api|system|billing|credit)/i.test(t)
+    /i('m| am) (unable|not able) to (process|respond|help).*(api|system|billing|credit)/i.test(t) ||
+    /\b\d{2}_[a-z0-9_-]+\.md\b/i.test(body) ||
+    /\b[a-z0-9_-]+\.md\b/i.test(body) ||
+    /\b(knowledge base|our kb|according to (our )?(docs?|documents|kb|files?))\b/i.test(t)
   );
+}
+
+/** Strip internal doc filenames / "see XX_.md" pointers from KB text before Claude sees them as speakable. */
+export function scrubInternalKbText(text: string): string {
+  return text
+    .replace(/\b(see|check|use|from|see also)\s+\d{2}_[A-Za-z0-9_-]+(?:\.md)?\b/gi, "")
+    .replace(/\b\d{2}_[A-Za-z0-9_-]+(?:\.md)?\b/g, "")
+    .replace(/\b[A-Za-z0-9_-]{3,}\.md\b/g, "")
+    .replace(/\(\s*(?:see|check|use|from|full terms)[^)]{0,100}\)/gi, "")
+    .replace(/\b(full terms|see also|refer to)\s*:?\s*/gi, "")
+    .replace(/\s*[—–-]\s*\)/g, ")")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s*→\s*([.,;])/g, "$1")
+    .replace(/\s*→\s*$/gm, "")
+    .replace(/\s+[—–-]\s*(?=[.,;]|$)/g, "")
+    .replace(/\.\s*\./g, ".")
+    .replace(/\s+,/g, ",")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Last-line defense: remove accidental source citations from outbound SMS. */
+export function sanitizeCustomerSms(body: string): string {
+  return body
+    .replace(/\bper\s+\d{2}_[A-Za-z0-9_-]+(?:\.md)?[,:]?\s*/gi, "")
+    .replace(/\bper\s+[A-Za-z0-9_-]+\.md[,:]?\s*/gi, "")
+    .replace(/\bsee\s+\d{2}_[A-Za-z0-9_-]+(?:\.md)?\b/gi, "")
+    .replace(/\b\d{2}_[A-Za-z0-9_-]+(?:\.md)?\b/gi, "")
+    .replace(/\b[A-Za-z0-9_-]{3,}\.md\b/gi, "")
+    .replace(/\baccording to (our )?(knowledge base|kb|docs?|documents|files?)\b[,:]?\s*/gi, "")
+    .replace(/\b(from|in) (our )?(knowledge base|kb)\b[,:]?\s*/gi, "")
+    .replace(/\bper\s+(our )?(docs?|kb|knowledge base)\b[,:]?\s*/gi, "")
+    .replace(/\s+[—–-]\s*(?=[.,;]|$)/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function adminFacingAiError(raw: string | undefined, status?: number): string {
@@ -293,8 +341,14 @@ async function buildUserPrompt(lead: LeadRow, mode: "first" | "reply", inbound?:
   const chunks = await matchKnowledgeChunks(retrievalQuery, 12);
   const kb =
     chunks.length > 0
-      ? chunks.map((c, i) => `[${i + 1}] (${c.doc_title})\n${c.content}`).join("\n\n")
-      : "(No knowledge base documents retrieved yet. Keep answers high-level; do not invent guide URLs, fees, permit rules, or program terms.)";
+      ? chunks
+          .map((c, i) => {
+            const title = scrubInternalKbText(c.doc_title || `Note ${i + 1}`);
+            const body = scrubInternalKbText(c.content);
+            return `[${i + 1}] (${title || `Note ${i + 1}`})\n${body}`;
+          })
+          .join("\n\n")
+      : "(No knowledge base documents retrieved yet. Keep answers high-level; do not invent guide URLs, fees, permit rules, or program terms. Never mention documents or sources.)";
 
   const thread = await listSmsForLead(lead.id);
   const recent = thread
@@ -482,7 +536,7 @@ export async function sendAiFirstSms(input: {
 
   if (claude.ok) {
     decision = claude.decision;
-    body = decision.reply_text;
+    body = sanitizeCustomerSms(decision.reply_text);
     if (body && decision.include_book_link && !body.includes("http")) {
       body = `${body}\n${BOOK_A_CALL_URL}`;
     }
@@ -585,7 +639,7 @@ export async function sendAiReplyToInbound(input: {
   }
 
   const decision = claude.decision;
-  let body = decision.reply_text;
+  let body = sanitizeCustomerSms(decision.reply_text);
   if (body && decision.include_book_link && !body.includes("http")) {
     body = `${body}\n${BOOK_A_CALL_URL}`;
   }

@@ -48,9 +48,11 @@ import {
 } from "./crmSettings.js";
 import {
   deleteKnowledgeDoc,
+  getKnowledgeDocContent,
   listKnowledgeDocs,
   reindexKnowledgeDoc,
   updateKnowledgeDoc,
+  updateKnowledgeDocContent,
   uploadAndIndexKnowledgeFile,
   uploadAndIndexKnowledgeText,
 } from "./knowledgeStore.js";
@@ -614,6 +616,22 @@ export async function handleDevApi(
       return true;
     }
     if (method === "GET") {
+      const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+      const id = qs.get("id")?.trim() || "";
+      if (id) {
+        const payload = await getKnowledgeDocContent(id);
+        if (!payload) {
+          json(res, 404, { error: "Document not found." });
+          return true;
+        }
+        json(res, 200, {
+          ok: true,
+          doc: payload.doc,
+          text: payload.text,
+          source: payload.source,
+        });
+        return true;
+      }
       json(res, 200, { docs: await listKnowledgeDocs() });
       return true;
     }
@@ -683,6 +701,32 @@ export async function handleDevApi(
         }
         if (doc.status === "failed") {
           json(res, 400, { error: doc.error || "Reindex failed", doc });
+          return true;
+        }
+        json(res, 200, { ok: true, doc });
+        return true;
+      }
+      if (body.action === "save_content") {
+        const text = typeof body.text === "string" ? body.text : "";
+        if (!text.trim()) {
+          json(res, 400, { error: "Text is required." });
+          return true;
+        }
+        if (text.length > 400_000) {
+          json(res, 400, { error: "Text too long (max ~400k characters)." });
+          return true;
+        }
+        const doc = await updateKnowledgeDocContent({
+          id,
+          title: typeof body.title === "string" ? body.title : undefined,
+          text,
+        });
+        if (!doc) {
+          json(res, 500, { error: "Could not save document." });
+          return true;
+        }
+        if (doc.status === "failed") {
+          json(res, 400, { error: doc.error || "Save failed", doc });
           return true;
         }
         json(res, 200, { ok: true, doc });
