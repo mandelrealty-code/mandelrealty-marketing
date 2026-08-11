@@ -255,6 +255,7 @@ export function AdminPage() {
 
   const [tab, setTab] = useState<Tab>("contacts");
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [leadStats, setLeadStats] = useState({ total: 0, booked: 0, closed: 0 });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
@@ -416,6 +417,15 @@ export function AdminPage() {
   useEffect(() => {
     if (authed) loadLeads(searchDebounced).catch(() => undefined);
   }, [searchDebounced, authed, loadLeads]);
+
+  useEffect(() => {
+    if (searchDebounced) return;
+    setLeadStats({
+      total: leads.length,
+      booked: leads.filter((l) => l.status === "booked").length,
+      closed: leads.filter((l) => l.status === "won").length,
+    });
+  }, [leads, searchDebounced]);
 
   useEffect(() => {
     if (authed && tab === "knowledge") loadDocs().catch(() => undefined);
@@ -1094,6 +1104,23 @@ export function AdminPage() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25, ease: easeOut }}
             >
+            <div className="mb-4 grid grid-cols-3 gap-2">
+              {(
+                [
+                  { label: "Total leads", value: leadStats.total },
+                  { label: "Total booked", value: leadStats.booked },
+                  { label: "Total closed", value: leadStats.closed },
+                ] as const
+              ).map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-2xl bg-mrg-surface-elevated px-3 py-3 text-center ring-1 ring-white/10"
+                >
+                  <p className="text-2xl font-semibold tabular-nums text-mrg-gold">{stat.value}</p>
+                  <p className="mt-0.5 text-[11px] leading-tight text-mrg-muted">{stat.label}</p>
+                </div>
+              ))}
+            </div>
             <div className="flex gap-2">
               <input
                 value={search}
