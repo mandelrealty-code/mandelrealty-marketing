@@ -331,6 +331,11 @@ export function AdminPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [copyFlash, setCopyFlash] = useState<string | null>(null);
   const pullStartY = useRef<number | null>(null);
+  const sheetTouchStartY = useRef<number | null>(null);
+  const sheetDragYRef = useRef(0);
+  const [sheetDragY, setSheetDragY] = useState(0);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const sheetHandleRef = useRef<HTMLDivElement | null>(null);
 
   const [notes, setNotes] = useState("");
   const [whatsNext, setWhatsNext] = useState("");
@@ -619,6 +624,86 @@ export function AdminPage() {
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [smsMessages.length, selectedId]);
+
+  // Stop mobile browser pull-to-refresh while in a contact / details sheet
+  useEffect(() => {
+    if (!selectedId) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overscrollBehaviorY;
+    const prevBody = body.style.overscrollBehaviorY;
+    html.style.overscrollBehaviorY = "none";
+    body.style.overscrollBehaviorY = "none";
+    return () => {
+      html.style.overscrollBehaviorY = prevHtml;
+      body.style.overscrollBehaviorY = prevBody;
+    };
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!detailsOpen) {
+      sheetDragYRef.current = 0;
+      setSheetDragY(0);
+      sheetTouchStartY.current = null;
+      return;
+    }
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    let handle: HTMLDivElement | null = null;
+    let remove: (() => void) | undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      handle = sheetHandleRef.current;
+      if (!handle) return;
+
+      const onStart = (e: globalThis.TouchEvent) => {
+        sheetTouchStartY.current = e.touches[0]?.clientY ?? null;
+      };
+      const onMove = (e: globalThis.TouchEvent) => {
+        const start = sheetTouchStartY.current;
+        if (start == null) return;
+        const y = e.touches[0]?.clientY ?? start;
+        const dy = Math.max(0, y - start);
+        if (dy > 6) {
+          sheetDragYRef.current = dy;
+          setSheetDragY(dy);
+          e.preventDefault();
+        }
+      };
+      const onEnd = () => {
+        const dy = sheetDragYRef.current;
+        sheetTouchStartY.current = null;
+        sheetDragYRef.current = 0;
+        setSheetDragY(0);
+        if (dy > 90) setDetailsOpen(false);
+      };
+
+      handle.addEventListener("touchstart", onStart, { passive: true });
+      handle.addEventListener("touchmove", onMove, { passive: false });
+      handle.addEventListener("touchend", onEnd, { passive: true });
+      handle.addEventListener("touchcancel", onEnd, { passive: true });
+      remove = () => {
+        handle?.removeEventListener("touchstart", onStart);
+        handle?.removeEventListener("touchmove", onMove);
+        handle?.removeEventListener("touchend", onEnd);
+        handle?.removeEventListener("touchcancel", onEnd);
+      };
+    });
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.cancelAnimationFrame(frame);
+      remove?.();
+    };
+  }, [detailsOpen]);
+
+  const closeDetailsSheet = () => {
+    setDetailsOpen(false);
+    sheetDragYRef.current = 0;
+    setSheetDragY(0);
+    sheetTouchStartY.current = null;
+  };
 
   const openLead = (id: string) => {
     setDetailsOpen(false);
@@ -983,7 +1068,8 @@ export function AdminPage() {
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: 28 }}
         transition={{ duration: 0.28, ease: easeOut }}
-        className="relative flex h-dvh flex-col overflow-hidden bg-[#0c0c0c] text-[#f5f5f5]"
+        className="relative flex h-dvh flex-col overflow-hidden overscroll-none bg-[#0c0c0c] text-[#f5f5f5]"
+        style={{ overscrollBehaviorY: "none", touchAction: "pan-y" }}
       >
         {/* Compact header */}
         <header className="shrink-0 border-b border-white/8 bg-[#0c0c0c] px-4 pb-3 pt-[max(0.65rem,env(safe-area-inset-top))]">
@@ -1025,62 +1111,88 @@ export function AdminPage() {
             </button>
           </div>
 
-          {/* Slim AI strip */}
-          {aiEffective && (
-            <div className="mx-auto mt-2.5 flex h-[34px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] py-0 pl-3 pr-1.5">
+          {/* Slim AI strip — always shows control (global or per-chat) */}
+          {aiEffective ? (
+            <div className="mx-auto mt-2.5 flex h-[40px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] py-0 pl-3 pr-1.5">
               {aiLiveHere ? (
                 <>
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#4ea882]" />
                     <span className="text-[12.5px] font-semibold text-[#8fcbb0]">AI live</span>
-                    <span className="truncate text-[12.5px] text-[#6f6a65]">
-                      replying for you
+                    <span className="hidden truncate text-[12.5px] text-[#6f6a65] sm:inline">
+                      this chat
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() =>
-                      patchLead({ aiPaused: true }).catch(() => undefined)
-                    }
-                    className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#e4dcd0] hover:border-[#c4a35a]/55 hover:text-[#dcc084]"
-                  >
-                    Take over
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <MotionToggle
+                      on
+                      disabled={saving}
+                      size="sm"
+                      label="Pause AI on this chat"
+                      onToggle={() =>
+                        patchLead({ aiPaused: true }).catch(() => undefined)
+                      }
+                    />
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() =>
+                        patchLead({ aiPaused: true }).catch(() => undefined)
+                      }
+                      className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#e4dcd0] hover:border-[#c4a35a]/55 hover:text-[#dcc084]"
+                    >
+                      Take over
+                    </button>
+                  </div>
                 </>
               ) : (
                 <>
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#c99a4b]" />
                     <span className="text-[12.5px] font-semibold text-[#d9ac63]">Paused</span>
-                    <span className="truncate text-[12.5px] text-[#6f6a65]">
-                      you&apos;re replying
+                    <span className="hidden truncate text-[12.5px] text-[#6f6a65] sm:inline">
+                      this chat
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() =>
-                      patchLead({ aiPaused: false }).catch(() => undefined)
-                    }
-                    className="shrink-0 rounded-lg border border-[#c4a35a]/35 bg-[#c4a35a]/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#dcc084] hover:bg-[#c4a35a]/18"
-                  >
-                    Resume
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <MotionToggle
+                      on={false}
+                      disabled={saving}
+                      size="sm"
+                      label="Resume AI on this chat"
+                      onToggle={() =>
+                        patchLead({ aiPaused: false }).catch(() => undefined)
+                      }
+                    />
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() =>
+                        patchLead({ aiPaused: false }).catch(() => undefined)
+                      }
+                      className="shrink-0 rounded-lg border border-[#c4a35a]/35 bg-[#c4a35a]/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#dcc084] hover:bg-[#c4a35a]/18"
+                    >
+                      Resume
+                    </button>
+                  </div>
                 </>
               )}
             </div>
-          )}
-          {!aiEffective && (
-            <div className="mx-auto mt-2.5 flex h-[34px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] px-3">
-              <span className="text-[12.5px] font-semibold text-[#9a9590]">CRM AI off</span>
-              <button
-                type="button"
-                onClick={() => setDetailsOpen(true)}
-                className="text-[12.5px] font-semibold text-[#dcc084]"
-              >
-                Details
-              </button>
+          ) : (
+            <div className="mx-auto mt-2.5 flex h-[40px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] px-3">
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-semibold text-[#9a9590]">CRM AI off</p>
+                <p className="truncate text-[11px] text-[#6f6a65]">
+                  {aiEnvKill ? "Disabled by env kill switch" : "Toggle to enable all chats"}
+                </p>
+              </div>
+              <MotionToggle
+                on={false}
+                disabled={aiBusy || aiEnvKill}
+                size="sm"
+                label="Turn on AI responses for all chats"
+                onToggle={() => toggleGlobalAi().catch(() => undefined)}
+              />
             </div>
           )}
         </header>
@@ -1179,26 +1291,83 @@ export function AdminPage() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
                 className="absolute inset-0 z-40 bg-black/60"
-                onClick={() => setDetailsOpen(false)}
+                onClick={closeDetailsSheet}
               />
               <motion.div
+                ref={sheetRef}
                 initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "40%" }}
-                transition={{ duration: 0.35, ease: easeOut }}
-                className="absolute inset-x-0 bottom-0 z-50 max-h-[86%] overflow-y-auto rounded-t-[26px] border-t border-white/10 bg-[#151515] px-[18px] pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2.5"
+                animate={{ y: sheetDragY }}
+                exit={{ y: "100%" }}
+                transition={
+                  sheetDragY > 0
+                    ? { duration: 0 }
+                    : { duration: 0.35, ease: easeOut }
+                }
+                className="absolute inset-x-0 bottom-0 z-50 flex max-h-[86%] flex-col overflow-hidden rounded-t-[26px] border-t border-white/10 bg-[#151515] overscroll-none"
+                style={{ overscrollBehaviorY: "none", touchAction: "pan-y" }}
               >
-                <div className="mx-auto mb-4 h-1 w-[38px] rounded-full bg-white/18" />
-                <div className="mb-4 flex items-baseline justify-between">
-                  <h2 className="text-[17px] font-semibold">Details</h2>
+                <div
+                  ref={sheetHandleRef}
+                  className="shrink-0 cursor-grab active:cursor-grabbing touch-none px-[18px] pb-1 pt-2.5"
+                  style={{ touchAction: "none" }}
+                >
+                  <div className="mx-auto mb-3 h-1 w-[38px] rounded-full bg-white/18" />
+                  <div className="mb-2 flex items-baseline justify-between">
+                    <h2 className="text-[17px] font-semibold">Details</h2>
+                    <button
+                      type="button"
+                      onClick={closeDetailsSheet}
+                      className="text-[13px] font-medium text-[#9a9590]"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[18px] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+                <div className="mb-3.5 flex items-center justify-between gap-3 rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3">
+                  <div className="min-w-0">
+                    <p className="text-[10.5px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
+                      AI responses
+                    </p>
+                    <p className="mt-1 truncate text-sm font-semibold text-[#f0eeea]">
+                      {!aiEffective
+                        ? "Off for all chats"
+                        : selected.ai_paused
+                          ? "Paused on this chat"
+                          : "Live on this chat"}
+                    </p>
+                  </div>
+                  <MotionToggle
+                    on={Boolean(aiEffective && !selected.ai_paused)}
+                    disabled={saving || aiBusy || aiEnvKill}
+                    size="sm"
+                    label={
+                      !aiEffective
+                        ? "Turn on AI responses for all chats"
+                        : selected.ai_paused
+                          ? "Resume AI on this chat"
+                          : "Pause AI on this chat"
+                    }
+                    onToggle={() => {
+                      if (!aiEffective) {
+                        toggleGlobalAi().catch(() => undefined);
+                        return;
+                      }
+                      patchLead({ aiPaused: !selected.ai_paused }).catch(() => undefined);
+                    }}
+                  />
+                </div>
+                {!aiEffective && !aiEnvKill && (
                   <button
                     type="button"
-                    onClick={() => setDetailsOpen(false)}
-                    className="text-[13px] font-medium text-[#9a9590]"
+                    disabled={aiBusy}
+                    onClick={() => toggleGlobalAi().catch(() => undefined)}
+                    className="mb-3.5 flex h-11 w-full items-center justify-center rounded-xl border border-[#c4a35a]/35 bg-[#c4a35a]/10 text-sm font-semibold text-[#dcc084]"
                   >
-                    Done
+                    Turn on CRM AI (all chats)
                   </button>
-                </div>
+                )}
 
                 <div className="mb-3.5 grid grid-cols-2 gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
                   {(
@@ -1279,7 +1448,7 @@ export function AdminPage() {
                         disabled={saving || active}
                         onClick={() =>
                           patchLead({ status: s })
-                            .then(() => setDetailsOpen(false))
+                            .then(() => closeDetailsSheet())
                             .catch(() => undefined)
                         }
                         className={`flex items-center justify-between px-3.5 py-3.5 text-left disabled:opacity-100 ${
@@ -1339,7 +1508,7 @@ export function AdminPage() {
                     disabled={saving}
                     onClick={() =>
                       patchLead({ markBooked: true })
-                        .then(() => setDetailsOpen(false))
+                        .then(() => closeDetailsSheet())
                         .catch(() => undefined)
                     }
                     className="h-[46px] rounded-xl border border-[rgba(122,167,201,0.35)] bg-[rgba(122,167,201,0.12)] text-sm font-semibold text-[#a9cfe8] hover:bg-[rgba(122,167,201,0.2)]"
@@ -1354,6 +1523,7 @@ export function AdminPage() {
                   >
                     Delete contact
                   </button>
+                </div>
                 </div>
               </motion.div>
             </>
