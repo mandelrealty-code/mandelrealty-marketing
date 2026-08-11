@@ -3,6 +3,7 @@
 @theme {
   --font-display: "DM Sans", system-ui, sans-serif;
   --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-crm: "Manrope", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --color-mrg-bg: #0a0a0a;
   --color-mrg-surface: #141414;
   --color-mrg-surface-elevated: #1c1c1c;
@@ -12,6 +13,25 @@
   --color-mrg-green: #25d366;
   --color-mrg-muted: #9a9a9a;
   --color-mrg-text: #ffffff;
+  /* CRM shell (Claude Design) — distinct from marketing gold */
+  --color-crm-bg: #0c0c0c;
+  --color-crm-bg-deep: #0a0a0a;
+  --color-crm-well: #111111;
+  --color-crm-elevated: #1a1a1a;
+  --color-crm-sheet: #151515;
+  --color-crm-gold: #c4a35a;
+  --color-crm-gold-light: #dcc084;
+  --color-crm-muted: #9a9590;
+  --color-crm-quiet: #6f6a65;
+  --color-crm-quiet-2: #5e5a56;
+  --color-crm-text: #f5f5f5;
+  --color-crm-text-soft: #f0eeea;
+  --color-crm-ai: #4ea882;
+  --color-crm-ai-text: #8fcbb0;
+  --color-crm-paused: #c99a4b;
+  --color-crm-paused-text: #d9ac63;
+  --color-crm-danger: #cf7f7b;
+  --color-crm-booked: #a9cfe8;
 }
 
 html {
@@ -28,4 +48,30 @@ body {
 
 .font-display {
   font-family: var(--font-display);
+}
+
+.crm-shell {
+  font-family: var(--font-crm);
+  background-color: var(--color-crm-bg);
+  color: var(--color-crm-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.crm-shell ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+@keyframes crm-live-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.crm-live-dot {
+  animation: crm-live-pulse 2.4s ease-in-out infinite;
 }

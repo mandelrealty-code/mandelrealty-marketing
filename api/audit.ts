@@ -138,6 +138,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  if (leadId) {
+    try {
+      const { notifyOperatorsNewLead } = await import("../shared/leadNotifySms.js");
+      await notifyOperatorsNewLead(
+        {
+          leadId,
+          name: lead.name,
+          phone: lead.phone,
+          email: lead.email,
+          city: lead.address,
+          hasListing: lead.hasListing,
+          propertyStage: lead.propertyStage ?? null,
+          offerPath: "unknown",
+          source: lead.source,
+        },
+        {
+          TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+          TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+          TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+        },
+      );
+    } catch (err) {
+      console.warn("[audit] operator notify skipped", err);
+    }
+  }
+
   return res.status(200).json({
     ok: true,
     leadId,

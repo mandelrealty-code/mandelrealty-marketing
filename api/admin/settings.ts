@@ -7,7 +7,7 @@ import {
 import {
   getCrmSettings,
   isAiEnvKillSwitchOff,
-  setAiResponsesEnabled,
+  updateCrmSettings,
 } from "../../shared/crmSettings.js";
 import { isSupabaseConfigured } from "../../shared/supabase.js";
 
@@ -53,10 +53,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     const body = readBody(req);
-    if (typeof body.ai_responses_enabled !== "boolean") {
-      return res.status(400).json({ error: "ai_responses_enabled boolean required." });
+    const patch: {
+      ai_responses_enabled?: boolean;
+      lead_notify_sms_enabled?: boolean;
+      lead_notify_phone?: string;
+    } = {};
+
+    if (typeof body.ai_responses_enabled === "boolean") {
+      patch.ai_responses_enabled = body.ai_responses_enabled;
     }
-    const settings = await setAiResponsesEnabled(body.ai_responses_enabled);
+    if (typeof body.lead_notify_sms_enabled === "boolean") {
+      patch.lead_notify_sms_enabled = body.lead_notify_sms_enabled;
+    }
+    if (typeof body.lead_notify_phone === "string") {
+      patch.lead_notify_phone = body.lead_notify_phone;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({
+        error:
+          "Provide ai_responses_enabled, lead_notify_sms_enabled, and/or lead_notify_phone.",
+      });
+    }
+
+    const settings = await updateCrmSettings(patch);
     return res.status(200).json({
       ok: true,
       ...settings,

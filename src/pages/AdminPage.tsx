@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   LEAD_STATUSES,
@@ -83,31 +83,6 @@ const STR_ALLOWED_LABEL: Record<string, string> = {
 
 const easeOut = [0.22, 1, 0.36, 1] as const;
 
-function formatSmsTime(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (sameDay) {
-    return d.toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" });
-  }
-  return d.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
-}
-
-/** When the lead was uploaded into the CRM (created_at). */
-function formatUploadedAt(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-CA", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function previewSms(body: string, max = 72): string {
   const t = body.replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
@@ -127,6 +102,46 @@ function telHref(phone: string): string | null {
           : null;
   return e164 ? `tel:${e164}` : null;
 }
+
+function leadActivityTime(lead: Lead): string {
+  const iso = lead.last_sms?.created_at || lead.last_activity_at || lead.created_at;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const diff = Date.now() - d.getTime();
+  if (diff < 60_000) return "now";
+  if (diff < 3_600_000) return `${Math.max(1, Math.floor(diff / 60_000))}m`;
+  if (diff < 86_400_000) return `${Math.max(1, Math.floor(diff / 3_600_000))}h`;
+  if (diff < 7 * 86_400_000) return `${Math.max(1, Math.floor(diff / 86_400_000))}d`;
+  return d.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+}
+
+function CrmMark({ size = 24 }: { size?: number }) {
+  const radius = size >= 56 ? 14 : size >= 40 ? 12 : 7;
+  return (
+    <div
+      className="grid shrink-0 place-items-center border border-white/14 font-bold tracking-wide text-[#f5f5f5]"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.46),
+        borderRadius: radius,
+      }}
+      aria-hidden
+    >
+      M
+    </div>
+  );
+}
+
+const TAB_TITLE: Record<Tab, string> = {
+  contacts: "Contacts",
+  pipeline: "Pipeline",
+  knowledge: "Knowledge",
+  settings: "Settings",
+};
+
+const filterSelectClass =
+  "h-8 shrink-0 rounded-[9px] border border-white/10 bg-[#141414] px-2.5 text-[12.5px] font-medium text-[#cfcac4] outline-none hover:border-[#c4a35a]/40 focus:border-[#c4a35a]/40";
 
 function MotionToggle({
   on,
@@ -157,13 +172,13 @@ function MotionToggle({
       disabled={disabled}
       onClick={onToggle}
       className={`relative shrink-0 rounded-full p-[3px] transition-opacity disabled:opacity-50 ${
-        on ? "bg-emerald-500/80" : "bg-white/15"
+        on ? "bg-[#c4a35a]/90" : "bg-white/10"
       }`}
       style={{ width: trackW, height: trackH }}
     >
       <motion.span
         layout
-        className="block rounded-full bg-white shadow-sm"
+        className={`block rounded-full shadow-sm ${on ? "bg-[#14100a]" : "bg-[#5e5a56]"}`}
         style={{ width: knob, height: knob }}
         animate={{ x: on ? travel : 0 }}
         transition={
@@ -176,122 +191,10 @@ function MotionToggle({
   );
 }
 
-function statusTone(status: LeadStatus): string {
-  switch (status) {
-    case "engaging":
-    case "interested":
-      return "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30";
-    case "nurturing":
-      return "bg-amber-500/15 text-amber-200 ring-amber-500/30";
-    case "booked":
-    case "call_done":
-      return "bg-sky-500/15 text-sky-300 ring-sky-500/30";
-    case "low_fit":
-    case "skip":
-      return "bg-red-500/15 text-red-300 ring-red-500/30";
-    case "won":
-      return "bg-white/10 text-mrg-muted ring-white/15";
-    default:
-      return "bg-mrg-gold/15 text-mrg-gold ring-mrg-gold/30";
-  }
-}
-
-/** Visual journey marker — shows where the AI closer routed them */
-function JourneyMark({
-  status,
-  aiPaused,
-  aiEffective,
-}: {
-  status: LeadStatus;
-  aiPaused: boolean;
-  aiEffective: boolean;
-}) {
-  const live = aiEffective && !aiPaused && (status === "new" || status === "engaging" || status === "interested");
-  if (status === "booked") {
-    return (
-      <span
-        title="Booked — AI stopped"
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500/20 text-sm text-sky-200 ring-1 ring-sky-500/35"
-      >
-        ✓
-      </span>
-    );
-  }
-  if (status === "nurturing") {
-    return (
-      <span
-        title="Nurturing — education follow-up later"
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-sm text-amber-100 ring-1 ring-amber-500/35"
-      >
-        ◌
-      </span>
-    );
-  }
-  if (status === "won" || status === "call_done") {
-    return (
-      <span
-        title={STATUS_JOURNEY[status]}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm text-mrg-text ring-1 ring-white/20"
-      >
-        ★
-      </span>
-    );
-  }
-  if (status === "low_fit" || status === "skip") {
-    return (
-      <span
-        title={STATUS_JOURNEY[status]}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-sm text-red-300 ring-1 ring-red-500/30"
-      >
-        –
-      </span>
-    );
-  }
-  if (aiPaused || !aiEffective) {
-    return (
-      <span
-        title="AI paused / off"
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-[10px] font-semibold text-mrg-muted ring-1 ring-white/15"
-      >
-        ‖
-      </span>
-    );
-  }
-  if (live) {
-    return (
-      <motion.span
-        title={STATUS_JOURNEY[status]}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40"
-        animate={{ scale: [1, 1.08, 1] }}
-        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-      >
-        ●
-      </motion.span>
-    );
-  }
-  return (
-    <span
-      title={STATUS_JOURNEY[status]}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-mrg-gold/15 text-xs text-mrg-gold ring-1 ring-mrg-gold/30"
-    >
-      ○
-    </span>
-  );
-}
-
 function listingShort(hasListing: Lead["has_listing"]): string {
   if (hasListing === "yes") return "Has listing";
   if (hasListing === "no") return "No Airbnb yet";
   return "Listing ?";
-}
-
-function Row({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="grid grid-cols-[7.5rem_1fr] gap-3 border-b border-white/8 py-2.5 last:border-0">
-      <dt className="text-sm text-mrg-muted">{label}</dt>
-      <dd className="min-w-0 text-sm font-medium text-mrg-text">{value}</dd>
-    </div>
-  );
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -383,6 +286,11 @@ export function AdminPage() {
   const [aiEffective, setAiEffective] = useState(true);
   const [aiEnvKill, setAiEnvKill] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [notifySmsEnabled, setNotifySmsEnabled] = useState(false);
+  const [notifyPhone, setNotifyPhone] = useState("");
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
+  const deepLinkConsumed = useRef(false);
 
   const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
   const [docsError, setDocsError] = useState<string | null>(null);
@@ -424,10 +332,14 @@ export function AdminPage() {
         ai_responses_enabled?: boolean;
         effective_ai_enabled?: boolean;
         env_kill_switch?: boolean;
+        lead_notify_sms_enabled?: boolean;
+        lead_notify_phone?: string;
       };
       setAiEnabled(Boolean(data.ai_responses_enabled));
       setAiEffective(Boolean(data.effective_ai_enabled));
       setAiEnvKill(Boolean(data.env_kill_switch));
+      setNotifySmsEnabled(Boolean(data.lead_notify_sms_enabled));
+      setNotifyPhone(String(data.lead_notify_phone ?? ""));
     } catch {
       /* ignore */
     }
@@ -713,6 +625,50 @@ export function AdminPage() {
   const closeLead = () => {
     setDetailsOpen(false);
     setSelectedId(null);
+  };
+
+  // Deep link: https://admin…/?lead=<uuid>
+  useEffect(() => {
+    if (!authed || deepLinkConsumed.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const leadParam = params.get("lead")?.trim();
+    if (!leadParam) return;
+    if (!leads.some((l) => l.id === leadParam)) return;
+    deepLinkConsumed.current = true;
+    openLead(leadParam);
+    params.delete("lead");
+    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [authed, leads]);
+
+  const saveNotifySettings = async (patch: {
+    lead_notify_sms_enabled?: boolean;
+    lead_notify_phone?: string;
+  }) => {
+    setNotifyBusy(true);
+    setNotifyMsg(null);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(patch),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        lead_notify_sms_enabled?: boolean;
+        lead_notify_phone?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Could not save notify settings");
+      setNotifySmsEnabled(Boolean(data.lead_notify_sms_enabled));
+      setNotifyPhone(String(data.lead_notify_phone ?? ""));
+      setNotifyMsg("Saved");
+      window.setTimeout(() => setNotifyMsg(null), 1600);
+    } catch (err) {
+      setNotifyMsg(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setNotifyBusy(false);
+    }
   };
 
   const patchLeadById = async (id: string, body: Record<string, unknown>) => {
@@ -1008,40 +964,40 @@ export function AdminPage() {
 
   if (!authed) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-mrg-bg px-5">
+      <div className="crm-shell flex min-h-dvh items-center justify-center bg-[#0a0a0a] px-6">
         <motion.form
           onSubmit={login}
-          initial={{ opacity: 0, y: 16 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: easeOut }}
-          className="w-full max-w-sm rounded-[1.75rem] bg-mrg-surface-elevated p-8 ring-1 ring-white/10"
+          transition={{ duration: 0.4, ease: easeOut }}
+          className="flex w-full max-w-[380px] flex-col items-center gap-6"
         >
-          <div className="flex items-center gap-3">
-            <img src="/mrg-logo-white.png" alt="" className="h-7 w-auto opacity-90" />
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mrg-gold">
-                Mandel Realty Group
-              </p>
-              <h1 className="text-lg font-semibold text-mrg-text">CRM</h1>
-            </div>
+          <CrmMark size={56} />
+          <div className="flex flex-col gap-2 text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#c4a35a]">
+              Mandel Realty Group
+            </p>
+            <h1 className="text-[27px] font-semibold leading-tight text-[#f5f5f5]">CRM</h1>
           </div>
-          <p className="mt-4 text-sm text-mrg-muted">Enter the admin password to continue.</p>
-          <input
-            type="password"
-            autoFocus
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            className="mt-5 w-full rounded-2xl bg-mrg-bg px-4 py-3.5 text-mrg-text outline-none ring-1 ring-white/10 focus:ring-mrg-gold/50"
-          />
-          {loginError && <p className="mt-3 text-sm text-red-300">{loginError}</p>}
-          <button
-            type="submit"
-            disabled={loggingIn || !password}
-            className="mt-5 min-h-12 w-full rounded-full bg-mrg-gold text-sm font-semibold text-black hover:bg-mrg-gold-light disabled:opacity-60"
-          >
-            {loggingIn ? "Signing in…" : "Sign in"}
-          </button>
+          <div className="flex w-full flex-col gap-3">
+            <input
+              type="password"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className="h-[50px] w-full rounded-[14px] border border-white/10 bg-[#1a1a1a] px-4 text-[15px] tracking-[0.14em] text-[#f5f5f5] outline-none placeholder:tracking-normal placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+            />
+            {loginError && <p className="text-sm text-[#cf7f7b]">{loginError}</p>}
+            <button
+              type="submit"
+              disabled={loggingIn || !password}
+              className="h-[50px] w-full rounded-[14px] bg-[#c4a35a] text-[15px] font-bold text-[#14100a] hover:bg-[#dcc084] disabled:opacity-60"
+            >
+              {loggingIn ? "Signing in…" : "Sign in"}
+            </button>
+          </div>
+          <p className="text-[12.5px] text-[#5e5a56]">Two-operator access · session held 30 days</p>
         </motion.form>
       </div>
     );
@@ -1068,7 +1024,7 @@ export function AdminPage() {
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: 28 }}
         transition={{ duration: 0.28, ease: easeOut }}
-        className="relative flex h-dvh flex-col overflow-hidden overscroll-none bg-[#0c0c0c] text-[#f5f5f5]"
+        className="crm-shell relative flex h-dvh flex-col overflow-hidden overscroll-none bg-[#0c0c0c] text-[#f5f5f5]"
         style={{ overscrollBehaviorY: "none", touchAction: "pan-y" }}
       >
         {/* Compact header */}
@@ -1447,9 +1403,7 @@ export function AdminPage() {
                         type="button"
                         disabled={saving || active}
                         onClick={() =>
-                          patchLead({ status: s })
-                            .then(() => closeDetailsSheet())
-                            .catch(() => undefined)
+                          patchLead({ status: s }).catch(() => undefined)
                         }
                         className={`flex items-center justify-between px-3.5 py-3.5 text-left disabled:opacity-100 ${
                           active
@@ -1533,71 +1487,247 @@ export function AdminPage() {
     );
   }
 
-  /* -------- Main shell with tabs -------- */
+  /* -------- Main shell with tabs (Claude Design Admin Shell) -------- */
+  const hasActiveFilters =
+    filterPath !== "all" ||
+    filterStage !== "all" ||
+    filterAi !== "all" ||
+    filterBookedWeek ||
+    Boolean(search.trim());
+
+  const clearFilters = () => {
+    setFilterPath("all");
+    setFilterStage("all");
+    setFilterAi("all");
+    setFilterBookedWeek(false);
+    setSearch("");
+    setSortBy("inbox");
+  };
+
+  const contactsList = (
+    <>
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+        All leads · {filteredLeads.length}
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#111]">
+        {filteredLeads.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3.5 px-6 py-16 text-center">
+            <p className="max-w-[250px] text-[15px] font-medium leading-relaxed text-[#9a9590]">
+              {leads.length === 0
+                ? "No contacts yet. Paste a Meta lead in Settings."
+                : "No leads match this filter."}
+            </p>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="h-[42px] rounded-xl border border-white/10 px-[18px] text-[13.5px] font-semibold text-[#e8e4de] hover:border-[#c4a35a]/50 hover:text-[#dcc084]"
+              >
+                Clear filters
+              </button>
+            )}
+            {leads.length === 0 && (
+              <button
+                type="button"
+                onClick={() => setTab("settings")}
+                className="h-[42px] rounded-xl bg-[#c4a35a] px-[18px] text-[13.5px] font-bold text-[#14100a] hover:bg-[#dcc084]"
+              >
+                Paste a lead
+              </button>
+            )}
+          </div>
+        ) : (
+          filteredLeads.map((lead, i) => {
+            const subtitle =
+              lead.whats_next?.trim() ||
+              (lead.last_sms
+                ? `${lead.last_sms.direction === "inbound" ? "" : ""}${previewSms(lead.last_sms.body, 64)}`
+                : STATUS_JOURNEY[lead.status]);
+            const meta = [
+              OFFER_PATH_LABEL[lead.offer_path],
+              STATUS_LABEL[lead.status],
+              lead.address || null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <motion.div
+                key={lead.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.22, delay: Math.min(i * 0.03, 0.24), ease: easeOut }}
+                className="flex items-center gap-2.5 border-b border-white/[0.06] px-3 py-3 last:border-b-0 hover:bg-[#161616]"
+              >
+                <button
+                  type="button"
+                  onClick={() => openLead(lead.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setActionLeadId(lead.id);
+                  }}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                >
+                  {lead.unread ? (
+                    <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-[#c4a35a]" />
+                  ) : (
+                    <span className="h-[7px] w-[7px] shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p
+                        className={`truncate text-[15px] leading-snug ${
+                          lead.unread
+                            ? "font-bold text-white"
+                            : "font-medium text-[#e8e4de]"
+                        }`}
+                      >
+                        {lead.name || "Unnamed"}
+                      </p>
+                      <span className="shrink-0 text-[11.5px] text-[#5e5a56]">
+                        {leadActivityTime(lead)}
+                      </span>
+                    </div>
+                    <p className="truncate text-[13.5px] leading-snug text-[#9a9590]">{subtitle}</p>
+                    <p className="truncate text-[11.5px] text-[#6f6a65]">{meta}</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Quick actions"
+                  onClick={() => setActionLeadId(lead.id)}
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[15px] font-bold tracking-wider text-[#5e5a56] hover:bg-white/[0.06] hover:text-[#f5f5f5]"
+                >
+                  ···
+                </button>
+              </motion.div>
+            );
+          })
+        )}
+      </div>
+      {refreshing && (
+        <p className="mt-2 text-center text-xs text-[#6f6a65]">Refreshing…</p>
+      )}
+    </>
+  );
+
+  const needsYouBlock = needsYouLeads.length > 0 && (
+    <div className="overflow-hidden rounded-2xl border border-[rgba(201,154,75,0.26)] bg-[rgba(201,154,75,0.07)]">
+      <div className="flex items-center justify-between px-3.5 pb-2 pt-2.5">
+        <p className="text-[12.5px] font-semibold text-[#d9ac63]">
+          Needs you · {needsYouLeads.length}
+        </p>
+        <span className="text-xs text-[#7d7873]">See all</span>
+      </div>
+      {needsYouLeads.slice(0, 6).map((lead) => (
+        <button
+          key={`need-${lead.id}`}
+          type="button"
+          onClick={() => openLead(lead.id)}
+          className="flex w-full flex-col items-start gap-1.5 border-t border-[rgba(201,154,75,0.16)] px-3.5 py-2.5 text-left hover:bg-[rgba(201,154,75,0.07)]"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[14.5px] font-semibold text-[#f5f5f5]">
+              {lead.name || "Unnamed"}
+            </span>
+            {(lead.needs_you ?? []).slice(0, 2).map((r) => (
+              <span
+                key={r}
+                className="rounded-[5px] border border-[rgba(201,154,75,0.3)] px-1.5 py-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[#d9ac63]"
+              >
+                {NEEDS_YOU_LABEL[r]}
+              </span>
+            ))}
+          </div>
+          <span className="text-[13px] leading-snug text-[#9a9590]">
+            {lead.whats_next ||
+              (lead.last_sms ? previewSms(lead.last_sms.body) : STATUS_JOURNEY[lead.status])}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+
+  const statsStrip = (
+    <div className="grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
+      {(
+        [
+          { label: "Total", value: leadStats.total },
+          { label: "Booked", value: leadStats.booked },
+          { label: "Closed", value: leadStats.closed },
+        ] as const
+      ).map((stat) => (
+        <div key={stat.label} className="bg-[#111] px-2 py-3 text-center">
+          <p className="text-xl font-bold tabular-nums text-[#c4a35a]">{stat.value}</p>
+          <p className="mt-1.5 text-[10.5px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
+            {stat.label}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <motion.div
       key="crm-shell"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className="flex min-h-dvh flex-col bg-mrg-bg text-mrg-text"
+      className="crm-shell flex min-h-dvh flex-col bg-[#0c0c0c] text-[#f5f5f5]"
     >
-      <header className="border-b border-white/8 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <img src="/mrg-logo-white.png" alt="" className="h-7 w-auto" />
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mrg-gold">
-                Mandel Realty Group
-              </p>
-              <h1 className="text-base font-semibold">CRM</h1>
-            </div>
+      <header className="shrink-0 border-b border-white/8 px-4 pb-3 pt-[max(0.65rem,env(safe-area-inset-top))] lg:px-8">
+        <div className="mx-auto flex max-w-[1000px] items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <CrmMark size={24} />
+            <h1 className="truncate text-base font-semibold text-[#f5f5f5]">{TAB_TITLE[tab]}</h1>
           </div>
-            <div className="flex items-center gap-2">
-            <span
-              className={`hidden items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold ring-1 sm:inline-flex ${
-                aiEffective
-                  ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
-                  : "bg-white/5 text-mrg-muted ring-white/15"
-              }`}
-            >
-              AI
-              <MotionToggle
-                on={aiEffective}
-                disabled={aiBusy || aiEnvKill}
-                label="Toggle AI responses"
-                size="sm"
-                onToggle={() => toggleGlobalAi().catch(() => undefined)}
-              />
-            </span>
+          <div className="flex items-center gap-2">
+            {tab === "contacts" && (
+              <div
+                className={`flex h-[26px] items-center gap-1.5 rounded-lg border px-2.5 ${
+                  aiEffective
+                    ? "border-[rgba(78,168,130,0.28)] bg-[rgba(78,168,130,0.10)]"
+                    : "border-[rgba(201,154,75,0.28)] bg-[rgba(201,154,75,0.10)]"
+                }`}
+              >
+                <span
+                  className={`h-[5px] w-[5px] rounded-full ${
+                    aiEffective ? "crm-live-dot bg-[#4ea882]" : "bg-[#c99a4b]"
+                  }`}
+                />
+                <span
+                  className={`text-[11.5px] font-semibold ${
+                    aiEffective ? "text-[#8fcbb0]" : "text-[#d9ac63]"
+                  }`}
+                >
+                  {aiEffective ? "AI live" : "AI paused"}
+                </span>
+              </div>
+            )}
+            {tab === "pipeline" && (
+              <span className="text-[12.5px] text-[#6f6a65]">Sorted by activity</span>
+            )}
             <button
               type="button"
               onClick={() => softRefresh().catch(() => undefined)}
-              className="min-h-10 rounded-full px-3 text-sm text-mrg-muted"
+              className="grid h-7 w-7 place-items-center rounded-lg text-[15px] text-[#9a9590] hover:bg-white/[0.06] hover:text-[#f5f5f5]"
+              aria-label="Refresh"
             >
-              {refreshing ? "…" : "Refresh"}
-            </button>
-            <button
-              type="button"
-              onClick={logout}
-              className="min-h-10 rounded-full bg-white/5 px-3 text-sm text-mrg-muted ring-1 ring-white/10"
-            >
-              Log out
+              {refreshing ? "…" : "↻"}
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4">
-        {loadError && <p className="mb-3 text-sm text-red-300">{loadError}</p>}
+      <main className="mx-auto w-full max-w-[1000px] flex-1 px-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-3.5 lg:px-0 lg:pt-7">
+        {loadError && <p className="mb-3 text-sm text-[#cf7f7b]">{loadError}</p>}
 
         <AnimatePresence mode="wait">
           {tab === "contacts" && (
             <motion.div
               key="contacts"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
+              exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25, ease: easeOut }}
               onTouchStart={(e) => {
                 pullStartY.current = e.touches[0]?.clientY ?? null;
@@ -1609,430 +1739,318 @@ export function AdminPage() {
                 const dy = (e.changedTouches[0]?.clientY ?? 0) - start;
                 if (dy > 90 && window.scrollY < 8) softRefresh().catch(() => undefined);
               }}
+              className="lg:flex lg:items-start lg:gap-7"
             >
-            <div className="mb-4 grid grid-cols-3 gap-2">
-              {(
-                [
-                  { label: "Total leads", value: leadStats.total },
-                  { label: "Total booked", value: leadStats.booked },
-                  { label: "Total closed", value: leadStats.closed },
-                ] as const
-              ).map((stat) => (
-                <div
-                  key={stat.label}
-                  className="rounded-2xl bg-mrg-surface-elevated px-3 py-3 text-center ring-1 ring-white/10"
-                >
-                  <p className="text-2xl font-semibold tabular-nums text-mrg-gold">{stat.value}</p>
-                  <p className="mt-0.5 text-[11px] leading-tight text-mrg-muted">{stat.label}</p>
+              <div className="min-w-0 flex-1 space-y-4">
+                <div className="lg:hidden space-y-4">
+                  {statsStrip}
+                  {needsYouBlock}
                 </div>
-              ))}
-            </div>
 
-            {needsYouLeads.length > 0 && (
-              <div className="mb-4 overflow-hidden rounded-2xl bg-amber-500/10 ring-1 ring-amber-500/25">
-                <div className="flex items-center justify-between px-4 py-2.5">
-                  <p className="text-sm font-semibold text-amber-100">
-                    Needs you · {needsYouLeads.length}
-                  </p>
-                  <p className="text-[11px] text-amber-200/80">Action list</p>
-                </div>
-                <ul className="divide-y divide-amber-500/15">
-                  {needsYouLeads.slice(0, 8).map((lead) => (
-                    <li key={`need-${lead.id}`}>
-                      <button
-                        type="button"
-                        onClick={() => openLead(lead.id)}
-                        className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-white/5"
-                      >
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold">{lead.name || "Unnamed"}</p>
-                          <p className="truncate text-xs text-amber-100/80">
-                            {(lead.needs_you ?? [])
-                              .map((r) => NEEDS_YOU_LABEL[r])
-                              .join(" · ")}
-                          </p>
-                          <p className="truncate text-xs text-mrg-muted">
-                            {lead.whats_next ||
-                              (lead.last_sms
-                                ? previewSms(lead.last_sms.body)
-                                : STATUS_JOURNEY[lead.status])}
-                          </p>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search name, phone, email, city…"
-                className="min-h-12 flex-1 rounded-full bg-mrg-surface-elevated px-4 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
-              />
-              <button
-                type="button"
-                onClick={() => setTab("settings")}
-                className="min-h-12 shrink-0 rounded-full bg-mrg-gold px-4 text-sm font-semibold text-black"
-              >
-                + Lead
-              </button>
-            </div>
-
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <select
-                value={filterPath}
-                onChange={(e) => setFilterPath(e.target.value as OfferPath | "all")}
-                className="min-h-9 shrink-0 rounded-full bg-mrg-surface-elevated px-3 text-xs text-mrg-text outline-none ring-1 ring-white/10"
-              >
-                <option value="all">All paths</option>
-                {OFFER_PATHS.map((p) => (
-                  <option key={p} value={p}>
-                    {OFFER_PATH_LABEL[p]}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={filterStage}
-                onChange={(e) => setFilterStage(e.target.value as LeadStatus | "all")}
-                className="min-h-9 shrink-0 rounded-full bg-mrg-surface-elevated px-3 text-xs text-mrg-text outline-none ring-1 ring-white/10"
-              >
-                <option value="all">All stages</option>
-                {LEAD_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABEL[s]}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={filterAi}
-                onChange={(e) => setFilterAi(e.target.value as "all" | "live" | "paused")}
-                className="min-h-9 shrink-0 rounded-full bg-mrg-surface-elevated px-3 text-xs text-mrg-text outline-none ring-1 ring-white/10"
-              >
-                <option value="all">AI: all</option>
-                <option value="live">AI live</option>
-                <option value="paused">AI paused</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => setFilterBookedWeek((v) => !v)}
-                className={`min-h-9 shrink-0 rounded-full px-3 text-xs font-semibold ring-1 ${
-                  filterBookedWeek
-                    ? "bg-sky-500/20 text-sky-200 ring-sky-500/35"
-                    : "bg-mrg-surface-elevated text-mrg-muted ring-white/10"
-                }`}
-              >
-                Booked this week
-              </button>
-              <select
-                value={sortBy}
-                onChange={(e) =>
-                  setSortBy(e.target.value as "inbox" | "newest" | "oldest")
-                }
-                className="min-h-9 shrink-0 rounded-full bg-mrg-surface-elevated px-3 text-xs text-mrg-text outline-none ring-1 ring-white/10"
-                aria-label="Sort contacts"
-              >
-                <option value="inbox">Sort: Needs you</option>
-                <option value="newest">Sort: Newest uploaded</option>
-                <option value="oldest">Sort: Oldest uploaded</option>
-              </select>
-            </div>
-
-            <ul className="mt-4 divide-y divide-white/8 overflow-hidden rounded-2xl bg-mrg-surface-elevated ring-1 ring-white/10">
-              {filteredLeads.length === 0 && (
-                <li className="px-4 py-10 text-center text-sm text-mrg-muted">
-                  {leads.length === 0
-                    ? "No contacts yet. Paste a Meta lead in Settings."
-                    : "No contacts match these filters."}
-                </li>
-              )}
-              {filteredLeads.map((lead, i) => {
-                const subtitle =
-                  lead.whats_next?.trim() ||
-                  (lead.last_sms
-                    ? `${lead.last_sms.direction === "inbound" ? "Them: " : "You: "}${previewSms(lead.last_sms.body, 64)}`
-                    : STATUS_JOURNEY[lead.status]);
-                return (
-                  <motion.li
-                    key={lead.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.22, delay: Math.min(i * 0.03, 0.24), ease: easeOut }}
+                <div className="flex gap-2.5">
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search leads"
+                    className="h-[42px] min-w-0 flex-1 rounded-xl border border-white/10 bg-[#1a1a1a] px-3.5 text-[14.5px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55 lg:h-11 lg:rounded-xl lg:px-4 lg:text-[15px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setTab("settings")}
+                    className="h-[42px] shrink-0 rounded-xl bg-[#c4a35a] px-4 text-sm font-bold text-[#14100a] hover:bg-[#dcc084] lg:h-11 lg:px-5"
                   >
-                    <div className="flex items-stretch">
-                      <button
-                        type="button"
-                        onClick={() => openLead(lead.id)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          setActionLeadId(lead.id);
-                        }}
-                        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3.5 text-left active:bg-white/5"
-                      >
-                        {lead.unread ? (
-                          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-mrg-gold" />
-                        ) : (
-                          <JourneyMark
-                            status={lead.status}
-                            aiPaused={lead.ai_paused}
-                            aiEffective={aiEffective}
-                          />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p
-                              className={`truncate ${lead.unread ? "font-bold" : "font-semibold"}`}
-                            >
-                              {lead.name || "Unnamed"}
-                            </p>
-                            {(lead.needs_you?.length ?? 0) > 0 && (
-                              <span className="shrink-0 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-100">
-                                Needs you
-                              </span>
-                            )}
-                          </div>
-                          <p
-                            className={`truncate text-sm ${lead.unread ? "text-mrg-text" : "text-mrg-muted"}`}
-                          >
-                            {subtitle}
-                          </p>
-                          <p className="truncate text-[11px] text-mrg-muted">
-                            {OFFER_PATH_LABEL[lead.offer_path]} · {STATUS_LABEL[lead.status]}
-                            {" · "}
-                            Added {formatUploadedAt(lead.created_at)}
-                            {sortBy === "inbox" && lead.last_sms
-                              ? ` · SMS ${formatSmsTime(lead.last_sms.created_at)}`
-                              : ""}
-                          </p>
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Quick actions"
-                        onClick={() => setActionLeadId(lead.id)}
-                        className="shrink-0 px-3 text-lg text-mrg-muted active:text-mrg-text"
-                      >
-                        ···
-                      </button>
-                    </div>
-                  </motion.li>
-                );
-              })}
-            </ul>
-            {refreshing && (
-              <p className="mt-2 text-center text-xs text-mrg-muted">Refreshing…</p>
-            )}
+                    + Lead
+                  </button>
+                </div>
+
+                <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-wrap">
+                  <select
+                    value={filterPath}
+                    onChange={(e) => setFilterPath(e.target.value as OfferPath | "all")}
+                    className={filterSelectClass}
+                    aria-label="Filter by path"
+                  >
+                    <option value="all">Path</option>
+                    {OFFER_PATHS.map((p) => (
+                      <option key={p} value={p}>
+                        {OFFER_PATH_LABEL[p]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={filterStage}
+                    onChange={(e) => setFilterStage(e.target.value as LeadStatus | "all")}
+                    className={filterSelectClass}
+                    aria-label="Filter by stage"
+                  >
+                    <option value="all">Stage</option>
+                    {LEAD_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {STATUS_LABEL[s]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={filterAi}
+                    onChange={(e) => setFilterAi(e.target.value as "all" | "live" | "paused")}
+                    className={filterSelectClass}
+                    aria-label="Filter by AI"
+                  >
+                    <option value="all">AI</option>
+                    <option value="live">AI live</option>
+                    <option value="paused">AI paused</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setFilterBookedWeek((v) => !v)}
+                    className={`flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] border px-2.5 text-[12.5px] font-medium ${
+                      filterBookedWeek
+                        ? "border-[#c4a35a]/40 bg-[#c4a35a]/10 text-[#dcc084]"
+                        : "border-white/10 bg-[#141414] text-[#cfcac4] hover:border-[#c4a35a]/40"
+                    }`}
+                  >
+                    Booked this week
+                    {filterBookedWeek && <span className="text-[#8a7c5f]">✕</span>}
+                  </button>
+                  <select
+                    value={sortBy}
+                    onChange={(e) =>
+                      setSortBy(e.target.value as "inbox" | "newest" | "oldest")
+                    }
+                    className={filterSelectClass}
+                    aria-label="Sort contacts"
+                  >
+                    <option value="inbox">Needs you</option>
+                    <option value="newest">Newest</option>
+                    <option value="oldest">Oldest</option>
+                  </select>
+                </div>
+
+                {contactsList}
+              </div>
+
+              <aside className="mt-6 hidden w-[300px] shrink-0 flex-col gap-[18px] lg:mt-0 lg:flex">
+                {statsStrip}
+                {needsYouBlock}
+                <div className="rounded-[18px] border border-dashed border-white/10 px-[18px] py-[26px] text-center text-[13px] leading-relaxed text-[#5e5a56]">
+                  Select a contact to open the chat
+                </div>
+              </aside>
             </motion.div>
           )}
 
           {tab === "pipeline" && (
             <motion.div
               key="pipeline"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
+              exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25, ease: easeOut }}
+              className="space-y-4"
             >
-            <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <button
-                type="button"
-                onClick={() => setPipelineStage("all")}
-                className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold ring-1 ${
-                  pipelineStage === "all"
-                    ? "bg-mrg-gold/20 text-mrg-gold ring-mrg-gold/35"
-                    : "bg-white/5 text-mrg-muted ring-white/10"
-                }`}
-              >
-                All · {leads.length}
-              </button>
-              {PIPELINE_STATUSES.map((status) => {
-                const count = leads.filter((l) => l.status === status).length;
-                return (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => setPipelineStage(status)}
-                    className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold ring-1 ${
-                      pipelineStage === status
-                        ? statusTone(status)
-                        : "bg-white/5 text-mrg-muted ring-white/10"
-                    }`}
-                  >
-                    {STATUS_LABEL[status]} · {count}
-                  </button>
-                );
-              })}
-            </div>
-            <ul className="mt-2 divide-y divide-white/8 overflow-hidden rounded-2xl bg-mrg-surface-elevated ring-1 ring-white/10">
-              {pipelineLeads.length === 0 && (
-                <li className="px-4 py-10 text-center text-sm text-mrg-muted">
-                  No leads in this stage.
-                </li>
-              )}
-              {pipelineLeads.map((lead) => (
-                <li key={lead.id}>
-                  <button
-                    type="button"
-                    onClick={() => openLead(lead.id)}
-                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-white/5"
-                  >
-                    <JourneyMark
-                      status={lead.status}
-                      aiPaused={lead.ai_paused}
-                      aiEffective={aiEffective}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{lead.name || "Unnamed"}</p>
-                      <p className="truncate text-sm text-mrg-muted">
-                        {lead.whats_next?.trim() ||
-                          OFFER_PATH_LABEL[lead.offer_path]}
-                      </p>
-                      <p className="truncate text-[11px] text-mrg-muted">
-                        {STATUS_LABEL[lead.status]}
-                        {lead.last_sms
-                          ? ` · ${formatSmsTime(lead.last_sms.created_at)}`
-                          : ""}
-                      </p>
-                    </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${statusTone(lead.status)}`}
+              <div className="-mx-4 flex gap-2 overflow-x-auto border-b border-white/[0.06] px-4 pb-2.5 lg:mx-0 lg:flex-wrap lg:border-0 lg:px-0 lg:pb-0">
+                <button
+                  type="button"
+                  onClick={() => setPipelineStage("all")}
+                  className={`flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] border px-3 text-[12.5px] lg:h-9 lg:rounded-[10px] lg:px-3.5 lg:text-[13px] ${
+                    pipelineStage === "all"
+                      ? "border-[#c4a35a]/45 bg-[#c4a35a]/12 font-semibold text-[#dcc084]"
+                      : "border-white/10 bg-[#141414] font-medium text-[#cfcac4] hover:border-[#c4a35a]/40"
+                  }`}
+                >
+                  All
+                  <span className={pipelineStage === "all" ? "text-[#8a7c5f]" : "text-[#5e5a56]"}>
+                    {leads.length}
+                  </span>
+                </button>
+                {PIPELINE_STATUSES.map((status) => {
+                  const count = leads.filter((l) => l.status === status).length;
+                  const active = pipelineStage === status;
+                  return (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setPipelineStage(status)}
+                      className={`flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] border px-3 text-[12.5px] lg:h-9 lg:rounded-[10px] lg:px-3.5 lg:text-[13px] ${
+                        active
+                          ? "border-[#c4a35a]/45 bg-[#c4a35a]/12 font-semibold text-[#dcc084]"
+                          : "border-white/10 bg-[#141414] font-medium text-[#cfcac4] hover:border-[#c4a35a]/40"
+                      }`}
                     >
-                      {STATUS_LABEL[lead.status]}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                      {STATUS_LABEL[status]}
+                      <span className={active ? "text-[#8a7c5f]" : "text-[#5e5a56]"}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="overflow-hidden rounded-none lg:rounded-[18px] lg:border lg:border-white/8 lg:bg-[#111]">
+                {pipelineLeads.length === 0 ? (
+                  <p className="px-4 py-12 text-center text-sm text-[#9a9590]">
+                    No leads in this stage.
+                  </p>
+                ) : (
+                  pipelineLeads.map((lead, i) => (
+                    <motion.button
+                      key={lead.id}
+                      type="button"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.22, delay: Math.min(i * 0.02, 0.2), ease: easeOut }}
+                      onClick={() => openLead(lead.id)}
+                      className="flex w-full items-center gap-3 border-b border-white/[0.06] px-1 py-3.5 text-left last:border-b-0 hover:bg-[#161616] lg:grid lg:grid-cols-[1fr_260px_150px_90px] lg:gap-4 lg:px-5 lg:py-4"
+                    >
+                      <div className="min-w-0 flex-1 lg:contents">
+                        <p className="truncate text-[15px] font-semibold leading-snug text-[#f0eeea]">
+                          {lead.name || "Unnamed"}
+                        </p>
+                        <p className="truncate text-[13.5px] leading-snug text-[#9a9590] lg:block">
+                          {lead.whats_next?.trim() || STATUS_JOURNEY[lead.status]}
+                        </p>
+                        <p className="truncate text-[11.5px] text-[#6f6a65] lg:text-[12.5px]">
+                          {[OFFER_PATH_LABEL[lead.offer_path], lead.address || null]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[11.5px] text-[#5e5a56] lg:text-right lg:text-[12.5px]">
+                        {leadActivityTime(lead)}
+                      </span>
+                    </motion.button>
+                  ))
+                )}
+              </div>
             </motion.div>
           )}
 
           {tab === "knowledge" && (
             <motion.div
               key="knowledge"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
+              exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25, ease: easeOut }}
-              className="space-y-4"
+              className="mx-auto max-w-[820px] space-y-4"
             >
-            <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
-              <h2 className="text-base font-semibold">Knowledge base</h2>
-              <p className="mt-1 text-sm text-mrg-muted">
-                Upload contracts, FAQs, offer sheets (PDF, DOCX, TXT, MD). The AI only answers from
-                these docs.
+              <p className="text-sm leading-relaxed text-[#9a9590]">
+                The AI only answers from these docs. Turn one off and it stops citing it.
               </p>
-              <input
-                value={uploadTitle}
-                onChange={(e) => setUploadTitle(e.target.value)}
-                placeholder="Title (optional)"
-                className="mt-4 w-full rounded-2xl bg-mrg-bg px-4 py-3 text-sm outline-none ring-1 ring-white/10"
-              />
-              <label className="mt-3 flex min-h-12 cursor-pointer items-center justify-center rounded-full bg-mrg-gold text-sm font-semibold text-black disabled:opacity-50">
-                {uploadBusy ? "Uploading & indexing…" : "Add PDF / DOCX / TXT"}
+              <div className="flex flex-col gap-2.5">
                 <input
-                  type="file"
-                  accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  className="hidden"
-                  disabled={uploadBusy}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    e.target.value = "";
-                    uploadKnowledge(file).catch(() => undefined);
-                  }}
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  placeholder="Title (optional)"
+                  className="h-11 w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-3.5 text-[14.5px] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
                 />
-              </label>
-              {docsError && <p className="mt-3 text-sm text-red-300">{docsError}</p>}
-            </div>
+                <label className="flex h-[46px] cursor-pointer items-center justify-center rounded-xl bg-[#c4a35a] text-[14.5px] font-bold text-[#14100a] hover:bg-[#dcc084]">
+                  {uploadBusy ? "Uploading & indexing…" : "Add PDF / DOCX / TXT"}
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    className="hidden"
+                    disabled={uploadBusy}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      e.target.value = "";
+                      uploadKnowledge(file).catch(() => undefined);
+                    }}
+                  />
+                </label>
+                {docsError && <p className="text-sm text-[#cf7f7b]">{docsError}</p>}
+              </div>
 
-            <ul className="space-y-2">
-              {docs.map((doc) => (
-                <motion.li
-                  key={doc.id}
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold">{doc.title}</p>
-                      <p className="mt-0.5 truncate text-xs text-mrg-muted">
-                        {doc.filename} · {doc.chunk_count} chunks · {doc.status}
-                        {doc.error ? ` — ${doc.error}` : ""}
-                      </p>
-                    </div>
-                    <MotionToggle
-                      on={doc.active}
-                      label={doc.active ? "Deactivate document" : "Activate document"}
-                      size="sm"
-                      onToggle={async () => {
-                        await fetch("/api/admin/knowledge", {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          credentials: "include",
-                          body: JSON.stringify({ id: doc.id, active: !doc.active }),
-                        });
-                        await loadDocs();
-                      }}
-                    />
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!window.confirm(`Delete ${doc.title}?`)) return;
-                        await fetch("/api/admin/knowledge", {
-                          method: "DELETE",
-                          headers: { "Content-Type": "application/json" },
-                          credentials: "include",
-                          body: JSON.stringify({ id: doc.id }),
-                        });
-                        await loadDocs();
-                      }}
-                      className="min-h-10 rounded-full bg-red-500/10 px-3 text-sm text-red-300 ring-1 ring-red-500/20"
+              <div>
+                <div className="mb-2.5 px-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                  Active docs · {docs.length}
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#111]">
+                  {docs.length === 0 && !docsError && (
+                    <p className="px-4 py-10 text-center text-sm text-[#9a9590]">No documents yet.</p>
+                  )}
+                  {docs.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center gap-3 border-b border-white/[0.06] px-3.5 py-3.5 last:border-b-0"
                     >
-                      Delete
-                    </button>
-                  </div>
-                </motion.li>
-              ))}
-              {docs.length === 0 && !docsError && (
-                <li className="py-8 text-center text-sm text-mrg-muted">No documents yet.</li>
-              )}
-            </ul>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[14.5px] font-semibold text-[#f0eeea]">
+                          {doc.title}
+                        </p>
+                        <p className="truncate text-xs text-[#6f6a65]">{doc.filename}</p>
+                        {doc.status === "ready" && (
+                          <p className="mt-1 text-[11.5px] font-semibold text-[#8fcbb0]">Ready</p>
+                        )}
+                        {doc.status === "processing" && (
+                          <p className="mt-1 text-[11.5px] font-semibold text-[#d9ac63]">
+                            Processing…
+                          </p>
+                        )}
+                        {doc.status === "failed" && (
+                          <p className="mt-1 text-[11.5px] font-medium leading-snug text-[#cf7f7b]">
+                            Failed{doc.error ? ` — ${doc.error}` : ""}
+                          </p>
+                        )}
+                      </div>
+                      <MotionToggle
+                        on={doc.active}
+                        label={doc.active ? "Deactivate document" : "Activate document"}
+                        size="sm"
+                        onToggle={async () => {
+                          await fetch("/api/admin/knowledge", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({ id: doc.id, active: !doc.active }),
+                          });
+                          await loadDocs();
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(`Delete ${doc.title}?`)) return;
+                          await fetch("/api/admin/knowledge", {
+                            method: "DELETE",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({ id: doc.id }),
+                          });
+                          await loadDocs();
+                        }}
+                        className="text-[12.5px] font-semibold text-[#cf7f7b]"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </motion.div>
           )}
 
           {tab === "settings" && (
             <motion.div
               key="settings"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
+              exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25, ease: easeOut }}
-              className="space-y-4"
+              className="mx-auto max-w-[820px] space-y-[22px] lg:space-y-[30px]"
             >
-            <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold">AI Responses (all chats)</h2>
-                  <p className="mt-1 text-sm text-mrg-muted">
-                    Master switch for every lead. To pause one conversation only, open that
-                    contact and tap Take over.
-                    {aiEnvKill ? " Env kill switch is forcing AI off." : ""}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span
-                    className={`text-xs font-semibold ${
-                      aiEnabled && !aiEnvKill ? "text-emerald-300" : "text-mrg-muted"
-                    }`}
-                  >
-                    {aiEnabled && !aiEnvKill ? "On" : "Off"}
-                  </span>
+              <section className="space-y-2.5">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                  AI responses
+                </h2>
+                <div className="flex items-center gap-3.5 rounded-2xl border border-white/8 bg-[#1a1a1a] p-3.5 lg:gap-5 lg:rounded-[18px] lg:px-5 lg:py-[18px]">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14.5px] font-semibold text-[#f0eeea] lg:text-[15px]">
+                      Auto-reply to new SMS
+                    </p>
+                    <p className="mt-1 text-[12.5px] leading-snug text-[#9a9590] lg:text-[13px]">
+                      Off means every lead waits for you.
+                      {aiEnvKill ? " Env kill-switch overrides this." : ""}
+                    </p>
+                  </div>
                   <MotionToggle
                     on={aiEnabled && !aiEnvKill}
                     disabled={aiBusy || aiEnvKill}
@@ -2040,80 +2058,159 @@ export function AdminPage() {
                     onToggle={() => toggleGlobalAi().catch(() => undefined)}
                   />
                 </div>
-              </div>
-            </div>
+              </section>
 
-            <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
-              <h2 className="text-base font-semibold">Paste Meta lead</h2>
-              <p className="mt-1 text-sm text-mrg-muted">
-                Paste from Meta Leads Center, or paste the CSV header + one lead row from a Meta
-                export. We read full_name and form answers from the columns — nothing invented.
-              </p>
-              <textarea
-                value={paste}
-                onChange={(e) => {
-                  setPaste(e.target.value);
-                  setPastePreview(null);
-                  setPasteResult(null);
-                }}
-                rows={8}
-                placeholder="Paste Meta lead text, or CSV header + one row…"
-                className="mt-4 w-full rounded-2xl bg-mrg-bg px-4 py-3 font-mono text-xs leading-relaxed outline-none ring-1 ring-white/10 focus:ring-mrg-gold/50"
-              />
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={pasteBusy || !paste.trim()}
-                  onClick={() => previewPaste().catch(() => undefined)}
-                  className="min-h-11 rounded-full bg-white/5 px-4 text-sm font-semibold ring-1 ring-white/10 disabled:opacity-50"
-                >
-                  Preview
-                </button>
-                <button
-                  type="button"
-                  disabled={pasteBusy || !paste.trim() || Boolean(pastePreview?.duplicate)}
-                  onClick={() => importPaste().catch(() => undefined)}
-                  className="min-h-11 rounded-full bg-mrg-gold px-4 text-sm font-semibold text-black disabled:opacity-50"
-                >
-                  Import to CRM
-                </button>
-              </div>
-              {pasteError && <p className="mt-3 text-sm text-red-300">{pasteError}</p>}
-              {pasteResult && <p className="mt-3 text-sm text-emerald-300">{pasteResult}</p>}
-              {pastePreview && (
-                <div className="mt-4 rounded-xl bg-mrg-bg p-4 ring-1 ring-white/8">
-                  <dl>
-                    <Row label="Name" value={pastePreview.parsed.name || "—"} />
-                    <Row label="Phone" value={pastePreview.parsed.phone || "—"} />
-                    <Row label="City" value={pastePreview.parsed.address || "—"} />
-                    <Row label="Airbnb" value={listingShort(pastePreview.parsed.hasListing)} />
-                    <Row
-                      label="Process"
-                      value={
-                        pastePreview.parsed.propertyStage
-                          ? STAGE_LABEL[pastePreview.parsed.propertyStage] ||
-                            pastePreview.parsed.propertyStage
-                          : "—"
+              <section className="space-y-2.5">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                  New lead text alerts
+                </h2>
+                <div className="rounded-2xl border border-white/8 bg-[#1a1a1a] p-3.5 lg:rounded-[18px] lg:p-5">
+                  <div className="flex items-center gap-3.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[14.5px] font-semibold text-[#f0eeea]">
+                        SMS when a lead comes in
+                      </p>
+                      <p className="mt-1 text-[12.5px] leading-snug text-[#9a9590]">
+                        “New MRG Lead” + details + link to that contact.
+                      </p>
+                    </div>
+                    <MotionToggle
+                      on={notifySmsEnabled}
+                      disabled={notifyBusy}
+                      label="Toggle new lead SMS alerts"
+                      onToggle={() =>
+                        saveNotifySettings({
+                          lead_notify_sms_enabled: !notifySmsEnabled,
+                        }).catch(() => undefined)
                       }
                     />
-                    <Row label="Pipeline" value={STATUS_LABEL[pastePreview.decision.status]} />
-                    <Row label="Decision" value={pastePreview.decision.reason} />
-                  </dl>
-                  {pastePreview.parsed.warnings?.length > 0 && (
-                    <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-amber-200/90">
-                      {pastePreview.parsed.warnings.map((w) => (
-                        <li key={w}>{w}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {pastePreview.duplicate && (
-                    <p className="mt-3 text-sm text-amber-300">
-                      Duplicate of {pastePreview.duplicate.name} ({pastePreview.duplicate.status}).
+                  </div>
+                  <input
+                    value={notifyPhone}
+                    onChange={(e) => setNotifyPhone(e.target.value)}
+                    onBlur={() => {
+                      saveNotifySettings({ lead_notify_phone: notifyPhone }).catch(() => undefined);
+                    }}
+                    placeholder="+1…"
+                    inputMode="tel"
+                    className="mt-3.5 h-11 w-full rounded-xl border border-white/10 bg-[#0c0c0c] px-3.5 text-sm outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+                  />
+                  <p className="mt-2 text-[12.5px] text-[#6f6a65]">
+                    CA/US number. Comma-separate for you + your partner.
+                  </p>
+                  {notifyMsg && <p className="mt-2 text-sm text-[#9a9590]">{notifyMsg}</p>}
+                </div>
+              </section>
+
+              <section className="space-y-2.5">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                  Paste Meta lead
+                </h2>
+                <div className="lg:grid lg:grid-cols-[1fr_320px] lg:items-start lg:gap-5">
+                  <div className="space-y-3">
+                    <textarea
+                      value={paste}
+                      onChange={(e) => {
+                        setPaste(e.target.value);
+                        setPastePreview(null);
+                        setPasteResult(null);
+                      }}
+                      rows={7}
+                      placeholder="Paste the CSV header + one row"
+                      className="h-[150px] w-full resize-none rounded-[14px] border border-white/10 bg-[#1a1a1a] px-3.5 py-3 font-mono text-[12.5px] leading-relaxed outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55 lg:min-h-[180px] lg:rounded-2xl"
+                    />
+                    <div className="flex gap-2.5 lg:gap-3">
+                      <button
+                        type="button"
+                        disabled={pasteBusy || !paste.trim()}
+                        onClick={() => previewPaste().catch(() => undefined)}
+                        className="h-11 flex-1 rounded-xl border border-white/10 bg-transparent text-sm font-semibold text-[#e8e4de] hover:border-[#c4a35a]/50 hover:text-[#dcc084] disabled:opacity-50 lg:flex-none lg:px-[22px]"
+                      >
+                        Preview
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pasteBusy || !paste.trim() || Boolean(pastePreview?.duplicate)}
+                        onClick={() => importPaste().catch(() => undefined)}
+                        className={`h-11 flex-1 rounded-xl text-sm font-bold disabled:cursor-not-allowed lg:flex-none lg:px-[22px] ${
+                          paste.trim() && !pastePreview?.duplicate
+                            ? "bg-[#c4a35a] text-[#14100a] hover:bg-[#dcc084]"
+                            : "bg-[#c4a35a]/25 text-[#8a7c5f]"
+                        }`}
+                      >
+                        Import lead
+                      </button>
+                    </div>
+                    <p className="text-[12.5px] leading-relaxed text-[#6f6a65]">
+                      New Meta leads auto-import via Make.com. Paste is for one-offs. CSV = header +
+                      one row.
                     </p>
+                    {pasteError && <p className="text-sm text-[#cf7f7b]">{pasteError}</p>}
+                    {pasteResult && <p className="text-sm text-[#8fcbb0]">{pasteResult}</p>}
+                  </div>
+
+                  {pastePreview && (
+                    <div className="mt-3 space-y-3 lg:mt-0">
+                      <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#111] lg:rounded-[18px]">
+                        <div className="border-b border-white/[0.06] px-3.5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                          Preview
+                        </div>
+                        {(
+                          [
+                            ["Name", pastePreview.parsed.name || "—"],
+                            ["Phone", pastePreview.parsed.phone || "—"],
+                            ["City", pastePreview.parsed.address || "—"],
+                            ["Airbnb", listingShort(pastePreview.parsed.hasListing)],
+                            [
+                              "Process",
+                              pastePreview.parsed.propertyStage
+                                ? STAGE_LABEL[pastePreview.parsed.propertyStage] ||
+                                  pastePreview.parsed.propertyStage
+                                : "—",
+                            ],
+                            ["Pipeline", STATUS_LABEL[pastePreview.decision.status]],
+                            ["Decision", pastePreview.decision.reason],
+                          ] as const
+                        ).map(([k, v]) => (
+                          <div
+                            key={k}
+                            className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-3.5 py-2.5 last:border-b-0"
+                          >
+                            <span className="text-[13.5px] text-[#9a9590]">{k}</span>
+                            <span className="text-right text-[13.5px] font-semibold text-[#f0eeea]">
+                              {v}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {pastePreview.parsed.warnings?.length > 0 && (
+                        <div className="flex gap-2.5 rounded-[14px] border border-[rgba(201,154,75,0.26)] bg-[rgba(201,154,75,0.07)] px-3.5 py-3">
+                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#c99a4b]" />
+                          <ul className="space-y-1 text-[13px] leading-relaxed text-[#d9ac63]">
+                            {pastePreview.parsed.warnings.map((w) => (
+                              <li key={w}>{w}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {pastePreview.duplicate && (
+                        <p className="text-sm text-[#d9ac63]">
+                          Duplicate of {pastePreview.duplicate.name} (
+                          {pastePreview.duplicate.status}).
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
+              </section>
+
+              <button
+                type="button"
+                onClick={logout}
+                className="h-11 w-full rounded-xl border border-white/10 text-sm font-semibold text-[#9a9590] hover:text-[#f5f5f5]"
+              >
+                Log out
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -2121,7 +2218,7 @@ export function AdminPage() {
 
       {copyFlash && (
         <div className="pointer-events-none fixed inset-x-0 bottom-24 z-40 flex justify-center px-4">
-          <p className="rounded-full bg-mrg-surface-elevated px-4 py-2 text-sm text-mrg-text ring-1 ring-white/15">
+          <p className="rounded-xl border border-white/10 bg-[#151515] px-4 py-2 text-sm text-[#f5f5f5]">
             {copyFlash}
           </p>
         </div>
@@ -2134,24 +2231,27 @@ export function AdminPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 flex items-end justify-center bg-black/55 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-8"
+            className="fixed inset-0 z-40 bg-black/62"
             onClick={() => setActionLeadId(null)}
           >
             <motion.div
-              initial={{ y: 40 }}
+              initial={{ y: "100%" }}
               animate={{ y: 0 }}
-              exit={{ y: 24 }}
-              transition={{ duration: 0.22, ease: easeOut }}
-              className="w-full max-w-md overflow-hidden rounded-3xl bg-mrg-surface-elevated ring-1 ring-white/10"
+              exit={{ y: "40%" }}
+              transition={{ duration: 0.38, ease: [0.22, 0.9, 0.28, 1] }}
+              className="absolute inset-x-0 bottom-0 rounded-t-[26px] border-t border-white/10 bg-[#151515] px-[18px] pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-2.5"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="border-b border-white/8 px-4 py-3">
-                <p className="font-semibold">{actionLead.name || "Contact"}</p>
-                <p className="truncate text-xs text-mrg-muted">
-                  {actionLead.phone || actionLead.email || "No phone"}
+              <div className="mx-auto mb-3.5 h-1 w-[38px] rounded-full bg-white/18" />
+              <div className="mb-4">
+                <p className="text-base font-semibold leading-snug text-[#f5f5f5]">
+                  {actionLead.name || "Contact"}
+                </p>
+                <p className="mt-0.5 truncate text-[13px] text-[#9a9590]">
+                  {OFFER_PATH_LABEL[actionLead.offer_path]} · {STATUS_LABEL[actionLead.status]}
                 </p>
               </div>
-              <div className="grid gap-1 p-2">
+              <div className="mb-3 overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
                 <button
                   type="button"
                   disabled={saving || !aiEffective}
@@ -2162,9 +2262,12 @@ export function AdminPage() {
                       .then(() => setActionLeadId(null))
                       .catch(() => undefined);
                   }}
-                  className="min-h-12 rounded-2xl px-4 text-left text-sm font-semibold active:bg-white/5 disabled:opacity-40"
+                  className="flex w-full items-center justify-between bg-[#1a1a1a] px-3.5 py-3.5 text-left text-[14.5px] font-medium text-[#e8e4de] hover:bg-[#212121] disabled:opacity-40"
                 >
-                  {actionLead.ai_paused ? "Resume AI" : "Take over (pause AI)"}
+                  <span>{actionLead.ai_paused ? "Resume AI" : "Take over"}</span>
+                  <span className="text-[13px] font-normal text-[#6f6a65]">
+                    {actionLead.ai_paused ? "AI on" : "Pause AI"}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -2174,17 +2277,21 @@ export function AdminPage() {
                       .then(() => setActionLeadId(null))
                       .catch(() => undefined);
                   }}
-                  className="min-h-12 rounded-2xl px-4 text-left text-sm font-semibold text-sky-200 active:bg-white/5"
+                  className="flex w-full items-center justify-between border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-left text-[14.5px] font-medium text-[#e8e4de] hover:bg-[#212121]"
                 >
-                  Mark booked
+                  <span>Mark booked</span>
+                  <span className="text-[13px] font-normal text-[#6f6a65]" />
                 </button>
                 {telHref(actionLead.phone) && (
                   <a
                     href={telHref(actionLead.phone)!}
-                    className="flex min-h-12 items-center rounded-2xl px-4 text-sm font-semibold active:bg-white/5"
+                    className="flex w-full items-center justify-between border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-[14.5px] font-medium text-[#e8e4de] hover:bg-[#212121]"
                     onClick={() => setActionLeadId(null)}
                   >
-                    Call
+                    <span>Call</span>
+                    <span className="text-[13px] font-normal text-[#6f6a65]">
+                      {actionLead.phone}
+                    </span>
                   </a>
                 )}
                 {actionLead.phone && (
@@ -2194,33 +2301,35 @@ export function AdminPage() {
                       copyPhone(actionLead.phone).catch(() => undefined);
                       setActionLeadId(null);
                     }}
-                    className="min-h-12 rounded-2xl px-4 text-left text-sm font-semibold active:bg-white/5"
+                    className="flex w-full items-center justify-between border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-left text-[14.5px] font-medium text-[#e8e4de] hover:bg-[#212121]"
                   >
-                    Copy phone
+                    <span>Copy phone</span>
+                    <span className="text-[13px] font-normal text-[#6f6a65]" />
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => openLead(actionLead.id)}
-                  className="min-h-12 rounded-2xl px-4 text-left text-sm font-semibold text-mrg-gold active:bg-white/5"
+                  className="flex w-full items-center justify-between border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-left text-[14.5px] font-medium text-[#e8e4de] hover:bg-[#212121]"
                 >
-                  Open chat
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActionLeadId(null)}
-                  className="min-h-12 rounded-2xl px-4 text-left text-sm text-mrg-muted active:bg-white/5"
-                >
-                  Cancel
+                  <span>Open chat</span>
+                  <span className="text-[13px] font-normal text-[#6f6a65]" />
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={() => setActionLeadId(null)}
+                className="h-[46px] w-full rounded-xl border border-white/10 bg-transparent text-sm font-semibold text-[#9a9590] hover:text-[#f5f5f5]"
+              >
+                Cancel
+              </button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-mrg-bg/95 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur">
-        <div className="mx-auto grid max-w-5xl grid-cols-4">
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-white/8 bg-[rgba(12,12,12,0.94)] pb-[max(1.1rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-[12px]">
+        <div className="mx-auto grid max-w-[1000px] grid-cols-4 lg:flex lg:justify-center">
           {(
             [
               ["contacts", "Contacts"],
@@ -2228,25 +2337,32 @@ export function AdminPage() {
               ["knowledge", "Knowledge"],
               ["settings", "Settings"],
             ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              className={`relative min-h-14 text-xs font-semibold ${
-                tab === id ? "text-mrg-gold" : "text-mrg-muted"
-              }`}
-            >
-              {label}
-              {tab === id && (
-                <motion.span
-                  layoutId="crm-tab-indicator"
-                  className="absolute inset-x-6 bottom-1 h-0.5 rounded-full bg-mrg-gold"
-                  transition={{ type: "spring", stiffness: 420, damping: 34 }}
+          ).map(([id, label]) => {
+            const active = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className="flex flex-col items-center gap-1.5 px-0 py-1.5 lg:w-[120px]"
+              >
+                <span
+                  className={`text-xs lg:text-[13px] ${
+                    active
+                      ? "font-semibold text-[#c4a35a]"
+                      : "font-medium text-[#6f6a65]"
+                  }`}
+                >
+                  {label}
+                </span>
+                <span
+                  className={`h-[5px] w-[5px] rounded-full ${
+                    active ? "bg-[#c4a35a]" : "bg-transparent"
+                  }`}
                 />
-              )}
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </nav>
     </motion.div>

@@ -44,6 +44,7 @@ import {
   getCrmSettings,
   isAiEnvKillSwitchOff,
   setAiResponsesEnabled,
+  updateCrmSettings,
 } from "./crmSettings.js";
 import {
   deleteKnowledgeDoc,
@@ -501,11 +502,31 @@ export async function handleDevApi(
     }
     if (method === "PATCH") {
       const body = await readJsonBody(req);
-      if (typeof body.ai_responses_enabled !== "boolean") {
-        json(res, 400, { error: "ai_responses_enabled boolean required." });
+      const patch: {
+        ai_responses_enabled?: boolean;
+        lead_notify_sms_enabled?: boolean;
+        lead_notify_phone?: string;
+      } = {};
+      if (typeof body.ai_responses_enabled === "boolean") {
+        patch.ai_responses_enabled = body.ai_responses_enabled;
+      }
+      if (typeof body.lead_notify_sms_enabled === "boolean") {
+        patch.lead_notify_sms_enabled = body.lead_notify_sms_enabled;
+      }
+      if (typeof body.lead_notify_phone === "string") {
+        patch.lead_notify_phone = body.lead_notify_phone;
+      }
+      if (Object.keys(patch).length === 0) {
+        json(res, 400, {
+          error:
+            "Provide ai_responses_enabled, lead_notify_sms_enabled, and/or lead_notify_phone.",
+        });
         return true;
       }
-      const settings = await setAiResponsesEnabled(body.ai_responses_enabled);
+      const settings =
+        Object.keys(patch).length === 1 && patch.ai_responses_enabled !== undefined
+          ? await setAiResponsesEnabled(patch.ai_responses_enabled)
+          : await updateCrmSettings(patch);
       json(res, 200, {
         ok: true,
         ...settings,

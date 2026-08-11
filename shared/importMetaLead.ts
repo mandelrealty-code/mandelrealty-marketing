@@ -207,6 +207,22 @@ export async function importParsedMetaLead(
     }
   }
 
+  const { notifyOperatorsNewLead } = await import("./leadNotifySms.js");
+  await notifyOperatorsNewLead(
+    {
+      leadId,
+      name: parsed.name,
+      phone: parsed.phone,
+      email: parsed.email,
+      city: parsed.address,
+      hasListing: parsed.hasListing,
+      propertyStage: parsed.propertyStage,
+      offerPath: decision.offerPath,
+      source,
+    },
+    env,
+  ).catch(() => undefined);
+
   return {
     ...preview,
     leadId,
