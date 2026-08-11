@@ -1713,28 +1713,35 @@ export function AdminPage() {
                         <span className="flex w-full items-center justify-between gap-3">
                           <span className="text-sm font-medium text-[#f0eeea]">
                             {callBusy
-                              ? "Starting call…"
+                              ? "Starting…"
                               : selectedPreCallDone
-                                ? "Call again via CRM"
-                                : "Call via CRM"}
+                                ? "CRM call again"
+                                : "CRM call (recorded)"}
                           </span>
                           <span className="text-sm font-semibold text-[#dcc084]">
-                            {selected.phone}
+                            You {operatorCallbackPhone || "—"}
                           </span>
                         </span>
                         <span className="text-[12.5px] leading-snug text-[#7d7873]">
                           {selectedPreCallDone
-                            ? "Rings your phone only — no new text to the lead"
-                            : "Texts the lead once, then rings your phone"}
+                            ? `Rings you (${operatorCallbackPhone || "Settings phone"}), then connects ${selected.phone}. No new text.`
+                            : `Texts lead once, rings you (${operatorCallbackPhone || "set in Settings"}), then connects them. Recorded.`}
                         </span>
                       </button>
                       <a
                         href={telHref(selected.phone) || undefined}
-                        className="flex items-center justify-between gap-3 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121]"
+                        className="flex flex-col gap-1 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121]"
                       >
-                        <span className="text-sm text-[#9a9590]">Phone (device)</span>
-                        <span className="text-sm font-medium text-[#f0eeea]">
-                          {selected.phone}
+                        <span className="flex w-full items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-[#f0eeea]">
+                            Dial from this phone
+                          </span>
+                          <span className="text-sm font-medium text-[#9a9590]">
+                            {selected.phone}
+                          </span>
+                        </span>
+                        <span className="text-[12.5px] leading-snug text-[#7d7873]">
+                          Opens your phone app — normal cell call, no recording or CRM notes
                         </span>
                       </a>
                     </>
@@ -2523,11 +2530,13 @@ export function AdminPage() {
                 </h2>
                 <div className="rounded-2xl border border-white/8 bg-[#1a1a1a] p-3.5 lg:rounded-[18px] lg:p-5">
                   <p className="text-[14.5px] font-semibold text-[#f0eeea]">
-                    Your phone for click-to-call
+                    Whose phone rings first (operator)
                   </p>
                   <p className="mt-1 text-[12.5px] leading-snug text-[#9a9590]">
-                    When you tap Call on a contact, we text the lead first, then ring this
-                    number. Answer and we connect them. Calls are recorded for notes.
+                    CRM call rings this number first. Whoever answers is connected to the
+                    lead. Use Ryan&apos;s cell when Ryan is dialing, or yours when you are.
+                    Recorded for call notes. &quot;Dial from this phone&quot; is different —
+                    it just opens the normal phone app with no recording.
                   </p>
                   <label className="mt-3 block">
                     <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
@@ -2962,31 +2971,40 @@ export function AdminPage() {
                     <span className="flex w-full items-center justify-between gap-3">
                       <span className="text-[14.5px] font-medium text-[#e8e4de]">
                         {callBusy
-                          ? "Starting call…"
+                          ? "Starting…"
                           : actionLeadPreCallDone
-                            ? "Call again via CRM"
-                            : "Call via CRM"}
+                            ? "CRM call again"
+                            : "CRM call (recorded)"}
                       </span>
                       <span className="text-[13px] font-normal text-[#6f6a65]">
-                        {operatorCallbackPhone ? actionLead.phone : "Set phone in Settings"}
+                        {operatorCallbackPhone
+                          ? `You ${operatorCallbackPhone}`
+                          : "Set phone in Settings"}
                       </span>
                     </span>
                     <span className="text-[12.5px] leading-snug text-[#7d7873]">
                       {actionLeadPreCallDone
-                        ? "Rings your phone only — no new text"
-                        : "Texts the lead once, then rings you"}
+                        ? `Rings you first, then connects ${actionLead.phone}. No new text. Recorded.`
+                        : `Texts lead once, rings you first, then connects them. Recorded for notes.`}
                     </span>
                   </button>
                 )}
                 {telHref(actionLead.phone) && (
                   <a
                     href={telHref(actionLead.phone)!}
-                    className="flex w-full items-center justify-between border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-[14.5px] font-medium text-[#e8e4de] hover:bg-[#212121]"
+                    className="flex w-full flex-col gap-1 border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121]"
                     onClick={() => setActionLeadId(null)}
                   >
-                    <span>Call on this device</span>
-                    <span className="text-[13px] font-normal text-[#6f6a65]">
-                      {actionLead.phone}
+                    <span className="flex w-full items-center justify-between gap-3">
+                      <span className="text-[14.5px] font-medium text-[#e8e4de]">
+                        Dial from this phone
+                      </span>
+                      <span className="text-[13px] font-normal text-[#6f6a65]">
+                        {actionLead.phone}
+                      </span>
+                    </span>
+                    <span className="text-[12.5px] leading-snug text-[#7d7873]">
+                      Opens your phone app — no recording or CRM notes
                     </span>
                   </a>
                 )}
