@@ -44,6 +44,8 @@ export type LeadRow = {
   notes_updated_at: string | null;
   qualified_at: string | null;
   ai_paused: boolean;
+  /** When true, AI runs for this lead even if global AI is off (test override). */
+  ai_force_on: boolean;
   offer_path: OfferPath;
   sms_last_read_at: string | null;
 };
@@ -83,6 +85,7 @@ export type LeadCrmUpdate = {
   notes?: string;
   whatsNext?: string;
   aiPaused?: boolean;
+  aiForceOn?: boolean;
   offerPath?: OfferPath;
 };
 
@@ -111,6 +114,7 @@ function mapLead(row: Record<string, unknown>): LeadRow {
     notes_updated_at: (row.notes_updated_at as string | null) ?? null,
     qualified_at: (row.qualified_at as string | null) ?? null,
     ai_paused: Boolean(row.ai_paused),
+    ai_force_on: Boolean(row.ai_force_on),
     offer_path: normalizeOfferPath(row.offer_path as string),
     sms_last_read_at: (row.sms_last_read_at as string | null) ?? null,
   };
@@ -313,6 +317,9 @@ export async function updateLeadCrm(
   }
   if (patch.aiPaused !== undefined) {
     update.ai_paused = patch.aiPaused;
+  }
+  if (patch.aiForceOn !== undefined) {
+    update.ai_force_on = patch.aiForceOn;
   }
   if (patch.offerPath !== undefined) {
     update.offer_path = patch.offerPath;

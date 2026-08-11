@@ -74,6 +74,7 @@ function leadContextBlock(lead: LeadRow): string {
     `Offer path (what to sell): ${lead.offer_path} (${OFFER_PATH_LABEL[lead.offer_path]})`,
     `Current CRM stage: ${lead.status}`,
     `AI paused: ${lead.ai_paused ? "yes" : "no"}`,
+    `AI force on (test override): ${lead.ai_force_on ? "yes" : "no"}`,
     `Notes: ${lead.notes || "none"}`,
     `What's next: ${lead.whats_next || "none"}`,
   ].join("\n");
@@ -484,10 +485,17 @@ async function sendAiSms(
 }
 
 export async function canAiTextLead(lead: LeadRow): Promise<{ ok: boolean; reason?: string }> {
-  if (!(await isGlobalAiEnabled())) {
+  const globalOn = await isGlobalAiEnabled();
+  const forceOn = Boolean(lead.ai_force_on);
+
+  // Per-lead pause always wins
+  if (lead.ai_paused) return { ok: false, reason: "AI paused for this lead" };
+
+  // Global off → only leads with explicit force-on (test one chat)
+  if (!globalOn && !forceOn) {
     return { ok: false, reason: "AI responses are turned off globally" };
   }
-  if (lead.ai_paused) return { ok: false, reason: "AI paused for this lead" };
+
   if (AI_STOP_STATUSES.has(lead.status)) {
     return { ok: false, reason: `Lead status is ${lead.status} — AI does not reply` };
   }
@@ -500,6 +508,24 @@ export async function canAiTextLead(lead: LeadRow): Promise<{ ok: boolean; reaso
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
     return { ok: false, reason: "ANTHROPIC_API_KEY not configured" };
   }
+
+  // Optional env allowlist — ONLY these phones get AI when set
+  const allowRaw =
+    process.env.AI_SMS_ALLOWLIST?.trim() || process.env.AI_TEST_PHONES?.trim() || "";
+  if (allowRaw) {
+    const allowed = allowRaw
+      .split(/[,;\s]+/)
+      .map((p) => toE164(p.trim()))
+      .filter((p): p is string => Boolean(p));
+    const mine = toE164(lead.phone || "");
+    if (!mine || !allowed.includes(mine)) {
+      return {
+        ok: false,
+        reason: "AI allowlist active — this phone is not on AI_SMS_ALLOWLIST",
+      };
+    }
+  }
+
   return { ok: true };
 }
 

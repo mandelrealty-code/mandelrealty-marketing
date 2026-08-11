@@ -440,6 +440,7 @@ export async function handleDevApi(
         notes?: string;
         whatsNext?: string;
         aiPaused?: boolean;
+        aiForceOn?: boolean;
       } = {};
       if (body.status !== undefined) {
         const status = String(body.status).trim() as LeadStatus;
@@ -453,11 +454,34 @@ export async function handleDevApi(
       if (body.whatsNext !== undefined) patch.whatsNext = String(body.whatsNext);
       if (typeof body.aiPaused === "boolean") patch.aiPaused = body.aiPaused;
       if (typeof body.ai_paused === "boolean") patch.aiPaused = body.ai_paused;
+      if (typeof body.aiForceOn === "boolean") {
+        patch.aiForceOn = body.aiForceOn;
+        if (body.aiForceOn) patch.aiPaused = false;
+      }
+      if (typeof body.ai_force_on === "boolean") {
+        patch.aiForceOn = body.ai_force_on;
+        if (body.ai_force_on) patch.aiPaused = false;
+      }
       if (Object.keys(patch).length === 0) {
         json(res, 400, { error: "Nothing to update." });
         return true;
       }
       const updated = await updateLeadCrm(id, patch);
+      if (updated && patch.aiForceOn === true) {
+        const messages = await listSmsForLead(id);
+        const hasOutbound = messages.some((m) => m.direction === "outbound");
+        if (!hasOutbound) {
+          const { sendAiFirstSms } = await import("./aiSmsAgent.js");
+          await sendAiFirstSms({
+            leadId: id,
+            env: {
+              TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+              TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+              TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
+            },
+          }).catch((err) => console.warn("[devApi] force-on first SMS", err));
+        }
+      }
       json(
         res,
         updated ? 200 : 500,

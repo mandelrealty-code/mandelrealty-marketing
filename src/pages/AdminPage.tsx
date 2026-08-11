@@ -37,6 +37,7 @@ type Lead = {
   whats_next: string;
   notes_updated_at: string | null;
   ai_paused: boolean;
+  ai_force_on: boolean;
   offer_path: OfferPath;
   sms_last_read_at?: string | null;
   last_sms?: {
@@ -416,6 +417,7 @@ export function AdminPage() {
         notes: l.notes ?? "",
         whats_next: l.whats_next ?? "",
         ai_paused: Boolean(l.ai_paused),
+        ai_force_on: Boolean(l.ai_force_on),
         offer_path: (l.offer_path as OfferPath) || "unknown",
         unread: Boolean(l.unread),
         needs_you: Array.isArray(l.needs_you) ? l.needs_you : [],
@@ -481,8 +483,10 @@ export function AdminPage() {
     const list = leads.filter((l) => {
       if (filterPath !== "all" && l.offer_path !== filterPath) return false;
       if (filterStage !== "all" && l.status !== filterStage) return false;
-      if (filterAi === "live" && (l.ai_paused || !aiEffective)) return false;
-      if (filterAi === "paused" && !(l.ai_paused || !aiEffective)) return false;
+      const aiLive =
+        !l.ai_paused && (aiEffective || Boolean(l.ai_force_on));
+      if (filterAi === "live" && !aiLive) return false;
+      if (filterAi === "paused" && aiLive) return false;
       if (filterBookedWeek && !isBookedThisWeek(l)) return false;
       return true;
     });
@@ -1224,8 +1228,10 @@ export function AdminPage() {
   if (selected) {
     const firstName =
       (selected.name || "there").trim().split(/\s+/)[0] || "there";
-    const aiLiveHere = aiEffective && !selected.ai_paused;
-    const aiPausedHere = aiEffective && selected.ai_paused;
+    const aiLiveHere =
+      !selected.ai_paused && (aiEffective || Boolean(selected.ai_force_on));
+    const aiPausedHere =
+      selected.ai_paused && (aiEffective || Boolean(selected.ai_force_on));
     const headerMeta = [
       OFFER_PATH_LABEL[selected.offer_path],
       STATUS_LABEL[selected.status],
@@ -1284,14 +1290,16 @@ export function AdminPage() {
             </button>
           </div>
 
-          {/* Slim AI strip — always shows control (global or per-chat) */}
-          {aiEffective ? (
+          {/* Slim AI strip — global on, per-lead test override, or enable this lead */}
+          {aiLiveHere || aiPausedHere ? (
             <div className="mx-auto mt-2.5 flex h-[40px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] py-0 pl-3 pr-1.5">
               {aiLiveHere ? (
                 <>
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#4ea882]" />
-                    <span className="text-[12.5px] font-semibold text-[#8fcbb0]">AI live</span>
+                    <span className="text-[12.5px] font-semibold text-[#8fcbb0]">
+                      {aiEffective ? "AI live" : "AI live · this lead"}
+                    </span>
                     <span className="hidden truncate text-[12.5px] text-[#6f6a65] sm:inline">
                       this chat
                     </span>
@@ -1352,20 +1360,29 @@ export function AdminPage() {
               )}
             </div>
           ) : (
-            <div className="mx-auto mt-2.5 flex h-[40px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] px-3">
+            <div className="mx-auto mt-2.5 flex h-[40px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] py-0 pl-3 pr-1.5">
               <div className="min-w-0">
-                <p className="text-[12.5px] font-semibold text-[#9a9590]">CRM AI off</p>
+                <p className="text-[12.5px] font-semibold text-[#9a9590]">
+                  {aiEnvKill ? "CRM AI off" : "AI off"}
+                </p>
                 <p className="truncate text-[11px] text-[#6f6a65]">
-                  {aiEnvKill ? "Disabled by env kill switch" : "Toggle to enable all chats"}
+                  {aiEnvKill
+                    ? "Disabled by env kill switch"
+                    : "Enable just this lead to test"}
                 </p>
               </div>
-              <MotionToggle
-                on={false}
-                disabled={aiBusy || aiEnvKill}
-                size="sm"
-                label="Turn on AI responses for all chats"
-                onToggle={() => toggleGlobalAi().catch(() => undefined)}
-              />
+              {!aiEnvKill && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() =>
+                    patchLead({ aiForceOn: true }).catch(() => undefined)
+                  }
+                  className="shrink-0 rounded-lg border border-[#c4a35a]/35 bg-[#c4a35a]/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#dcc084] hover:bg-[#c4a35a]/18"
+                >
+                  Enable AI
+                </button>
+              )}
             </div>
           )}
         </header>
@@ -1504,42 +1521,76 @@ export function AdminPage() {
                       AI responses
                     </p>
                     <p className="mt-1 truncate text-sm font-semibold text-[#f0eeea]">
-                      {!aiEffective
-                        ? "Off for all chats"
-                        : selected.ai_paused
+                      {aiLiveHere
+                        ? aiEffective
+                          ? "Live on this chat"
+                          : "Live on this lead only"
+                        : aiPausedHere
                           ? "Paused on this chat"
-                          : "Live on this chat"}
+                          : "Off"}
                     </p>
                   </div>
                   <MotionToggle
-                    on={Boolean(aiEffective && !selected.ai_paused)}
+                    on={aiLiveHere}
                     disabled={saving || aiBusy || aiEnvKill}
                     size="sm"
                     label={
-                      !aiEffective
-                        ? "Turn on AI responses for all chats"
-                        : selected.ai_paused
+                      aiLiveHere
+                        ? "Pause AI on this chat"
+                        : aiPausedHere
                           ? "Resume AI on this chat"
-                          : "Pause AI on this chat"
+                          : "Enable AI for this lead only"
                     }
                     onToggle={() => {
-                      if (!aiEffective) {
-                        toggleGlobalAi().catch(() => undefined);
+                      if (aiLiveHere) {
+                        patchLead({ aiPaused: true }).catch(() => undefined);
                         return;
                       }
-                      patchLead({ aiPaused: !selected.ai_paused }).catch(() => undefined);
+                      if (aiPausedHere) {
+                        patchLead({ aiPaused: false }).catch(() => undefined);
+                        return;
+                      }
+                      patchLead({ aiForceOn: true }).catch(() => undefined);
                     }}
                   />
                 </div>
                 {!aiEffective && !aiEnvKill && (
-                  <button
-                    type="button"
-                    disabled={aiBusy}
-                    onClick={() => toggleGlobalAi().catch(() => undefined)}
-                    className="mb-3.5 flex h-11 w-full items-center justify-center rounded-xl border border-[#c4a35a]/35 bg-[#c4a35a]/10 text-sm font-semibold text-[#dcc084]"
-                  >
-                    Turn on CRM AI (all chats)
-                  </button>
+                  <div className="mb-3.5 space-y-2">
+                    {!selected.ai_force_on && (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() =>
+                          patchLead({ aiForceOn: true }).catch(() => undefined)
+                        }
+                        className="flex h-11 w-full items-center justify-center rounded-xl border border-[#c4a35a]/35 bg-[#c4a35a]/10 text-sm font-semibold text-[#dcc084]"
+                      >
+                        Enable AI for this lead only
+                      </button>
+                    )}
+                    {selected.ai_force_on && (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() =>
+                          patchLead({ aiForceOn: false, aiPaused: false }).catch(
+                            () => undefined,
+                          )
+                        }
+                        className="flex h-11 w-full items-center justify-center rounded-xl border border-white/10 text-sm font-semibold text-[#9a9590]"
+                      >
+                        Turn off AI for this lead
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={aiBusy}
+                      onClick={() => toggleGlobalAi().catch(() => undefined)}
+                      className="flex h-11 w-full items-center justify-center rounded-xl border border-white/10 text-sm font-semibold text-[#9a9590]"
+                    >
+                      Turn on CRM AI (all chats)
+                    </button>
+                  </div>
                 )}
 
                 <div className="mb-3.5 grid grid-cols-2 gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
@@ -2319,7 +2370,8 @@ export function AdminPage() {
                       Auto-reply to new SMS
                     </p>
                     <p className="mt-1 text-[12.5px] leading-snug text-[#9a9590] lg:text-[13px]">
-                      Off means every lead waits for you.
+                      Off means leads wait for you — unless you enable AI on a
+                      specific contact to test.
                       {aiEnvKill ? " Env kill-switch overrides this." : ""}
                     </p>
                   </div>
@@ -2669,19 +2721,42 @@ export function AdminPage() {
               <div className="mb-3 overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
                 <button
                   type="button"
-                  disabled={saving || !aiEffective}
+                  disabled={saving || aiEnvKill}
                   onClick={() => {
-                    patchLeadById(actionLead.id, {
-                      aiPaused: !actionLead.ai_paused,
-                    })
+                    const live =
+                      !actionLead.ai_paused &&
+                      (aiEffective || Boolean(actionLead.ai_force_on));
+                    const canResume =
+                      actionLead.ai_paused &&
+                      (aiEffective || Boolean(actionLead.ai_force_on));
+                    const body = live
+                      ? { aiPaused: true }
+                      : canResume
+                        ? { aiPaused: false }
+                        : { aiForceOn: true };
+                    patchLeadById(actionLead.id, body)
                       .then(() => setActionLeadId(null))
                       .catch(() => undefined);
                   }}
                   className="flex w-full items-center justify-between bg-[#1a1a1a] px-3.5 py-3.5 text-left text-[14.5px] font-medium text-[#e8e4de] hover:bg-[#212121] disabled:opacity-40"
                 >
-                  <span>{actionLead.ai_paused ? "Resume AI" : "Take over"}</span>
+                  <span>
+                    {!actionLead.ai_paused &&
+                    (aiEffective || actionLead.ai_force_on)
+                      ? "Take over"
+                      : actionLead.ai_paused &&
+                          (aiEffective || actionLead.ai_force_on)
+                        ? "Resume AI"
+                        : "Enable AI for this lead"}
+                  </span>
                   <span className="text-[13px] font-normal text-[#6f6a65]">
-                    {actionLead.ai_paused ? "AI on" : "Pause AI"}
+                    {!actionLead.ai_paused &&
+                    (aiEffective || actionLead.ai_force_on)
+                      ? "Pause AI"
+                      : actionLead.ai_paused &&
+                          (aiEffective || actionLead.ai_force_on)
+                        ? "AI on"
+                        : "Test only"}
                   </span>
                 </button>
                 <button

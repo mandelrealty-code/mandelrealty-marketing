@@ -164,6 +164,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       notes?: string;
       whatsNext?: string;
       aiPaused?: boolean;
+      aiForceOn?: boolean;
       offerPath?: OfferPath;
     } = {};
 
@@ -178,6 +179,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body.whatsNext !== undefined) patch.whatsNext = String(body.whatsNext);
     if (typeof body.aiPaused === "boolean") patch.aiPaused = body.aiPaused;
     if (typeof body.ai_paused === "boolean") patch.aiPaused = body.ai_paused;
+    if (typeof body.aiForceOn === "boolean") {
+      patch.aiForceOn = body.aiForceOn;
+      // Enabling test override always unpauses; disabling clears override
+      if (body.aiForceOn) patch.aiPaused = false;
+    }
+    if (typeof body.ai_force_on === "boolean") {
+      patch.aiForceOn = body.ai_force_on;
+      if (body.ai_force_on) patch.aiPaused = false;
+    }
     if (typeof body.offerPath === "string") {
       patch.offerPath = body.offerPath as OfferPath;
     }
@@ -192,6 +202,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const updated = await updateLeadCrm(id, patch);
     if (!updated) return res.status(500).json({ error: "Could not update lead." });
 
+    // Turning on per-lead AI while global is off → send first SMS if none yet
+    let messagesOut: Awaited<ReturnType<typeof listSmsForLead>> | undefined;
+    if (patch.aiForceOn === true) {
+      const messages = await listSmsForLead(id);
+      const hasOutbound = messages.some((m) => m.direction === "outbound");
+      if (!hasOutbound) {
+        const { sendAiFirstSms } = await import("../../shared/aiSmsAgent.js");
+        await sendAiFirstSms({
+          leadId: id,
+          env: {
+            TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+            TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+            TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+          },
+        }).catch((err) => console.warn("[admin/leads] force-on first SMS", err));
+        messagesOut = await listSmsForLead(id);
+      }
+    }
+
     if (updated.status === "nurturing") {
       const { scheduleEducationNurtureFollowup } = await import(
         "../../shared/nurtureFollowups.js"
@@ -202,7 +231,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await cancelLeadFollowups(id);
     }
 
-    return res.status(200).json({ ok: true, lead: updated });
+    return res.status(200).json({
+      ok: true,
+      lead: updated,
+      ...(messagesOut ? { messages: messagesOut } : {}),
+    });
   }
 
   if (req.method === "DELETE") {

@@ -33,7 +33,7 @@ const AI_STUCK_RE =
   /^\[AI |AI unavailable|AI draft blocked|billing\/credits|ANTHROPIC|Refused to send/i;
 
 export function detectNeedsYou(input: {
-  lead: Pick<LeadRow, "whats_next" | "ai_paused" | "status">;
+  lead: Pick<LeadRow, "whats_next" | "ai_paused" | "ai_force_on" | "status">;
   lastSms: SmsPreview | null;
   unread: boolean;
   aiGlobalOn: boolean;
@@ -47,7 +47,10 @@ export function detectNeedsYou(input: {
   if (input.lastSms?.direction === "inbound") {
     if (HIGH_INTENT_RE.test(input.lastSms.body)) reasons.push("high_intent");
 
-    const pausedOrOff = input.lead.ai_paused || !input.aiGlobalOn;
+    const aiActiveHere =
+      !input.lead.ai_paused &&
+      (input.aiGlobalOn || Boolean(input.lead.ai_force_on));
+    const pausedOrOff = !aiActiveHere;
     const aiStoppedStage = [
       "nurturing",
       "booked",
