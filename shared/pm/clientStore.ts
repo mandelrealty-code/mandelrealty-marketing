@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
-import type { PmClient, PmClientStatus, PmSettings } from "./types.js";
+import type { PmClient, PmClientListItem, PmClientStatus, PmSettings } from "./types.js";
 
 function db() {
   const sb = getSupabaseAdmin();
@@ -7,13 +7,20 @@ function db() {
   return sb;
 }
 
-export async function listPmClients(): Promise<PmClient[]> {
+export async function listPmClients(): Promise<PmClientListItem[]> {
   const { data, error } = await db()
     .from("pm_clients")
-    .select("*")
+    .select("*, pm_properties(id)")
     .order("name", { ascending: true });
   if (error) throw error;
-  return (data ?? []) as PmClient[];
+  return (data ?? []).map((row) => {
+    const r = row as PmClient & { pm_properties: { id: string }[] | null };
+    const { pm_properties, ...client } = r;
+    return {
+      ...(client as PmClient),
+      property_count: pm_properties?.length ?? 0,
+    };
+  });
 }
 
 export async function getPmClient(id: string): Promise<PmClient | null> {
@@ -85,14 +92,23 @@ export async function updatePmClient(
 export async function getPmSettings(): Promise<PmSettings> {
   const { data, error } = await db()
     .from("pm_settings")
-    .select("default_commission_bps, updated_at")
+    .select("default_commission_bps, default_hst_bps, updated_at")
     .eq("id", 1)
     .maybeSingle();
   if (error) throw error;
   if (!data) {
-    return { default_commission_bps: 1500, updated_at: new Date().toISOString() };
+    return {
+      default_commission_bps: 1500,
+      default_hst_bps: 300,
+      updated_at: new Date().toISOString(),
+    };
   }
-  return data as PmSettings;
+  const row = data as Partial<PmSettings>;
+  return {
+    default_commission_bps: row.default_commission_bps ?? 1500,
+    default_hst_bps: row.default_hst_bps ?? 300,
+    updated_at: row.updated_at ?? new Date().toISOString(),
+  };
 }
 
 /** Resolve PAT: DB first, then env fallback. Never send to the browser. */
@@ -115,6 +131,7 @@ export async function isHospitableConfigured(): Promise<boolean> {
 
 export async function updatePmSettings(patch: {
   default_commission_bps?: number;
+  default_hst_bps?: number;
   hospitable_pat?: string | null;
 }): Promise<PmSettings> {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -125,14 +142,26 @@ export async function updatePmSettings(patch: {
     }
     updates.default_commission_bps = bps;
   }
+  if (patch.default_hst_bps != null) {
+    const bps = Math.round(patch.default_hst_bps);
+    if (!Number.isFinite(bps) || bps < 0 || bps > 1000) {
+      throw new Error("Default HST must be between 0% and 10%.");
+    }
+    updates.default_hst_bps = bps;
+  }
   if (patch.hospitable_pat !== undefined) {
     updates.hospitable_pat = (patch.hospitable_pat ?? "").trim();
   }
   const { data, error } = await db()
     .from("pm_settings")
     .upsert({ id: 1, ...updates }, { onConflict: "id" })
-    .select("default_commission_bps, updated_at")
+    .select("default_commission_bps, default_hst_bps, updated_at")
     .single();
   if (error) throw error;
-  return data as PmSettings;
+  const row = data as Partial<PmSettings>;
+  return {
+    default_commission_bps: row.default_commission_bps ?? 1500,
+    default_hst_bps: row.default_hst_bps ?? 300,
+    updated_at: row.updated_at ?? new Date().toISOString(),
+  };
 }

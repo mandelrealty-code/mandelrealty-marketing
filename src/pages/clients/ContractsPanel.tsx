@@ -153,27 +153,33 @@ export function ContractsPanel({
           {contracts.map((c) => (
             <div
               key={c.id}
-              className="flex items-center gap-3 border-t border-white/8 py-3 first:border-t-0"
+              className="flex items-center justify-between gap-3 border-t border-white/8 py-3 first:border-t-0"
             >
-              <button
-                type="button"
-                onClick={() => openFile(c.id)}
-                className="min-w-0 flex-1 text-left"
-              >
-                <p className="truncate text-[15px] font-semibold text-[#f5f5f5]">{c.title}</p>
-                <p className="truncate text-[13px] text-[#9a9590]">
-                  {c.status}
-                  {c.signed_on ? ` · signed ${formatDisplayDate(c.signed_on)}` : ""}
+              <div className="min-w-0">
+                <p className="truncate text-sm text-[#f5f5f5]">{c.title}</p>
+                <p className="text-xs text-[#6f6a65]">
+                  {c.signed_on
+                    ? `Signed ${formatDisplayDate(c.signed_on)}`
+                    : c.status}
                 </p>
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => remove(c.id)}
-                className="text-[13px] text-[#cf7f7b]"
-              >
-                Delete
-              </button>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => openFile(c.id)}
+                  className="text-[13px] font-semibold text-[#c4a35a]"
+                >
+                  Open
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => remove(c.id)}
+                  className="text-[12px] text-[#6f6a65] hover:text-[#cf7f7b]"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </div>

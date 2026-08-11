@@ -95,8 +95,8 @@ async function settingsPayload(extra: Record<string, unknown> = {}) {
 function apiErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) {
     const m = err.message;
-    if (/pm_reservations|pm_manual_expenses|pm_contracts/i.test(m) && /does not exist|schema cache/i.test(m)) {
-      return "Earnings tables missing. Run supabase/pm_earnings_contracts_v1.sql in Supabase, then retry.";
+    if (/pm_reservations|pm_manual_expenses|pm_contracts|cleaning_fee_keeper|hst_bps|default_hst_bps/i.test(m) && /does not exist|schema cache|column/i.test(m)) {
+      return "Database columns missing. Run supabase/pm_earnings_contracts_v1.sql and supabase/pm_property_payout_v1.sql in Supabase, then retry.";
     }
     return m;
   }
@@ -284,6 +284,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (op === "update") {
           const id = str(body.id);
           if (!id) return res.status(400).json({ error: "id required." });
+          let hstBps: number | undefined;
+          if (typeof body.hst_bps === "number") hstBps = body.hst_bps;
+          else if (typeof body.hst_percent === "number" || typeof body.hst_percent === "string") {
+            hstBps = percentToRateBps(Number(body.hst_percent));
+          }
+          const keeper =
+            body.cleaning_fee_keeper === "host" || body.cleaning_fee_keeper === "mrg"
+              ? body.cleaning_fee_keeper
+              : undefined;
           const property = await updatePmProperty(id, {
             name: body.name != null ? str(body.name) : undefined,
             address: body.address != null ? str(body.address) : undefined,
@@ -293,6 +302,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 ? str(body.hospitable_property_id)
                 : undefined,
             active: typeof body.active === "boolean" ? body.active : undefined,
+            cleaning_fee_keeper: keeper,
+            hst_bps: hstBps,
           });
           return res.status(200).json({ property });
         }
@@ -434,8 +445,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ) {
             bps = percentToRateBps(Number(body.default_commission_percent));
           }
+          let hstBps: number | undefined;
+          if (typeof body.default_hst_bps === "number") {
+            hstBps = body.default_hst_bps;
+          } else if (
+            typeof body.default_hst_percent === "number" ||
+            typeof body.default_hst_percent === "string"
+          ) {
+            hstBps = percentToRateBps(Number(body.default_hst_percent));
+          }
           const settings = await updatePmSettings({
             default_commission_bps: bps,
+            default_hst_bps: hstBps,
           });
           return res.status(200).json({
             settings,

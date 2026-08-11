@@ -23,6 +23,8 @@ export type PmProperty = {
   hub_property_id: string;
   currency: string;
   active: boolean;
+  cleaning_fee_keeper: "mrg" | "host";
+  hst_bps: number;
 };
 
 export type PmCommissionTerm = {
@@ -37,6 +39,7 @@ export type PmCommissionTerm = {
 
 export type PmSettings = {
   default_commission_bps: number;
+  default_hst_bps: number;
   updated_at: string;
 };
 
@@ -49,6 +52,10 @@ export type PmPropertyDetail = PmProperty & {
   client_name: string;
   current_term: PmCommissionTerm | null;
   terms: PmCommissionTerm[];
+};
+
+export type PmClientListItem = PmClient & {
+  property_count: number;
 };
 
 export function rateBpsToPercent(bps: number): number {

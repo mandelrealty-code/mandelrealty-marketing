@@ -48,8 +48,11 @@ export async function listPmProperties(clientId?: string): Promise<PmPropertyLis
     const terms = r.pm_commission_terms ?? [];
     const current = pickCurrentTerm(terms);
     const { pm_clients, pm_commission_terms: _t, ...prop } = r;
+    const p = prop as PmProperty;
     return {
-      ...(prop as PmProperty),
+      ...p,
+      cleaning_fee_keeper: p.cleaning_fee_keeper === "host" ? "host" : "mrg",
+      hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
       client_name: pm_clients?.name ?? "—",
       current_rate_bps: current?.rate_bps ?? null,
     };
@@ -73,8 +76,11 @@ export async function getPmPropertyDetail(id: string): Promise<PmPropertyDetail 
     b.effective_from.localeCompare(a.effective_from),
   );
   const { pm_clients, pm_commission_terms: _t, ...prop } = r;
+  const p = prop as PmProperty;
   return {
-    ...(prop as PmProperty),
+    ...p,
+    cleaning_fee_keeper: p.cleaning_fee_keeper === "host" ? "host" : "mrg",
+    hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
     client_name: pm_clients?.name ?? "—",
     current_term: pickCurrentTerm(terms),
     terms,
@@ -101,6 +107,8 @@ export async function createPmProperty(input: {
       name,
       address: (input.address ?? "").trim(),
       hospitable_property_id: hospitable,
+      cleaning_fee_keeper: "mrg",
+      hst_bps: settings.default_hst_bps ?? 300,
     })
     .select("*")
     .single();
@@ -127,6 +135,8 @@ export async function updatePmProperty(
     client_id?: string;
     hospitable_property_id?: string;
     active?: boolean;
+    cleaning_fee_keeper?: "mrg" | "host";
+    hst_bps?: number;
   },
 ): Promise<PmPropertyDetail> {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -144,6 +154,19 @@ export async function updatePmProperty(
     updates.hospitable_property_id = patch.hospitable_property_id.trim();
   }
   if (patch.active != null) updates.active = patch.active;
+  if (patch.cleaning_fee_keeper != null) {
+    if (patch.cleaning_fee_keeper !== "mrg" && patch.cleaning_fee_keeper !== "host") {
+      throw new Error("cleaning_fee_keeper must be mrg or host.");
+    }
+    updates.cleaning_fee_keeper = patch.cleaning_fee_keeper;
+  }
+  if (patch.hst_bps != null) {
+    const bps = Math.round(patch.hst_bps);
+    if (!Number.isFinite(bps) || bps < 0 || bps > 1000) {
+      throw new Error("HST must be between 0% and 10%.");
+    }
+    updates.hst_bps = bps;
+  }
 
   const { error } = await db().from("pm_properties").update(updates).eq("id", id);
   if (error) throw error;

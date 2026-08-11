@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
+import { breakdownFromFinancials } from "./financialBreakdown.js";
 import { getPmPropertyDetail } from "./propertyStore.js";
 import {
   listReservationsForPropertyMonth,
@@ -24,26 +25,50 @@ export type ManualExpense = {
   created_at: string;
 };
 
-export type StatementLine = {
-  kind: "reservation" | "expense" | "commission";
+export type StayStatementLine = {
+  kind: "stay";
   label: string;
-  amount_cents: number;
-  meta?: string;
+  check_in: string | null;
+  check_out: string | null;
+  nights: number;
+  base_cents: number;
+  mrg_cents: number;
+  hst_cents: number;
+  cleaning_cents: number;
+  /** Net to host for this stay before monthly expenses */
+  net_cents: number;
+  meta: string;
 };
+
+export type StatementLine =
+  | StayStatementLine
+  | { kind: "expense"; label: string; amount_cents: number; meta?: string }
+  | { kind: "commission"; label: string; amount_cents: number; meta?: string };
 
 export type MonthStatement = {
   year_month: string;
   property_id: string;
   currency: string;
   reservation_count: number;
+  nights_total: number;
+  commission_base_cents: number;
   gross_cents: number;
   host_payout_cents: number;
   expense_cents: number;
+  expense_count: number;
   mrg_commission_cents: number;
+  hst_cents: number;
+  cleaning_fee_cents: number;
+  cleaning_fee_keeper: "mrg" | "host";
+  mrg_cleaning_cents: number;
+  cleaning_turnovers: number;
   net_to_host_cents: number;
   rate_bps_used: number | null;
+  hst_bps_used: number;
+  last_synced_at: string | null;
   reservations: PmReservationRow[];
   expenses: ManualExpense[];
+  stays: StayStatementLine[];
   lines: StatementLine[];
 };
 
@@ -55,6 +80,20 @@ function rateOnDate(terms: PmCommissionTerm[], onDate: string): number | null {
   });
   open.sort((a, b) => b.effective_from.localeCompare(a.effective_from));
   return open[0]?.rate_bps ?? null;
+}
+
+function moneyLabel(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function shortStayRange(checkIn: string | null, checkOut: string | null): string {
+  const fmt = (iso: string | null) => {
+    if (!iso) return "?";
+    const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return iso.slice(5);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+  return `${fmt(checkIn)} – ${fmt(checkOut)}`;
 }
 
 export async function listManualExpenses(
@@ -115,34 +154,80 @@ export async function buildMonthStatement(
   const detail = await getPmPropertyDetail(propertyId);
   if (!detail) throw new Error("Property not found.");
 
+  const keeper = detail.cleaning_fee_keeper === "host" ? "host" : "mrg";
+  const hstBps = Number.isFinite(detail.hst_bps) ? detail.hst_bps : 300;
+
   const [reservations, expenses] = await Promise.all([
     listReservationsForPropertyMonth(propertyId, yearMonth),
     listManualExpenses(propertyId, yearMonth),
   ]);
 
+  const stays: StayStatementLine[] = [];
   const lines: StatementLine[] = [];
-  let hostPayout = 0;
+  let baseTotal = 0;
+  let mrgTotal = 0;
+  let hstTotal = 0;
+  let cleaningTotal = 0;
+  let cleaningTurnovers = 0;
+  let nightsTotal = 0;
   let gross = 0;
-  let mrgCommission = 0;
+  let hostPayoutLegacy = 0;
   let lastRate: number | null = detail.current_term?.rate_bps ?? null;
+  let lastSynced: string | null = null;
 
   for (const r of reservations) {
-    const payout = Number(r.host_payout_cents) || Number(r.gross_cents) || 0;
-    const g = Number(r.gross_cents) || payout;
-    hostPayout += payout;
-    gross += g;
+    const fin =
+      r.financials_json && typeof r.financials_json === "object"
+        ? (r.financials_json as Record<string, unknown>)
+        : {};
+    const bd = breakdownFromFinancials(fin, {
+      host_payout_cents: Number(r.host_payout_cents) || 0,
+      gross_cents: Number(r.gross_cents) || 0,
+      currency: r.currency,
+    });
+
     const on = r.check_out || r.check_in || `${yearMonth}-01`;
     const rate = rateOnDate(detail.terms, on) ?? lastRate ?? 0;
     lastRate = rate;
-    const commission = Math.round((payout * rate) / 10000);
-    mrgCommission += commission;
+
+    const base = bd.commission_base_cents;
+    const mrg = Math.round((base * rate) / 10000);
+    const hst = Math.round((base * hstBps) / 10000);
+    const cleaning = bd.cleaning_fee_cents;
+    if (cleaning > 0) cleaningTurnovers += 1;
+
+    const hostCleaning = keeper === "host" ? cleaning : 0;
+    const net = base - mrg - hst + hostCleaning;
+
+    baseTotal += base;
+    mrgTotal += mrg;
+    hstTotal += hst;
+    cleaningTotal += cleaning;
+    nightsTotal += Number(r.nights) || 0;
+    gross += bd.guest_total_cents || Number(r.gross_cents) || base + cleaning;
+    hostPayoutLegacy += Number(r.host_payout_cents) || 0;
+    if (r.synced_at && (!lastSynced || r.synced_at > lastSynced)) {
+      lastSynced = r.synced_at;
+    }
+
     const guest = r.platform_id || r.platform || "Stay";
-    lines.push({
-      kind: "reservation",
-      label: `${guest} · ${r.check_in ?? "?"} → ${r.check_out ?? "?"}`,
-      amount_cents: payout,
-      meta: `${(rate / 100).toFixed(rate % 100 === 0 ? 0 : 2)}% MRG = $${(commission / 100).toFixed(2)}`,
-    });
+    const label = `${shortStayRange(r.check_in, r.check_out)} · ${guest}`;
+    const meta = `Base ${moneyLabel(base)} · MRG ${moneyLabel(mrg)} · HST ${moneyLabel(hst)}`;
+    const stay: StayStatementLine = {
+      kind: "stay",
+      label,
+      check_in: r.check_in,
+      check_out: r.check_out,
+      nights: Number(r.nights) || 0,
+      base_cents: base,
+      mrg_cents: mrg,
+      hst_cents: hst,
+      cleaning_cents: cleaning,
+      net_cents: net,
+      meta,
+    };
+    stays.push(stay);
+    lines.push(stay);
   }
 
   let expenseTotal = 0;
@@ -156,30 +241,38 @@ export async function buildMonthStatement(
     });
   }
 
-  if (mrgCommission > 0) {
-    lines.push({
-      kind: "commission",
-      label: "MRG management fee",
-      amount_cents: -mrgCommission,
-      meta: lastRate != null ? `${lastRate / 100}% of host payout` : undefined,
-    });
-  }
+  const mrgCleaning = keeper === "mrg" ? cleaningTotal : 0;
+  const hostCleaningTotal = keeper === "host" ? cleaningTotal : 0;
+  const netToHost =
+    baseTotal - mrgTotal - hstTotal + hostCleaningTotal - expenseTotal;
 
-  const currency = reservations[0]?.currency || detail.currency || "CAD";
+  const currency =
+    reservations[0]?.currency || detail.currency || "CAD";
 
   return {
     year_month: yearMonth,
     property_id: propertyId,
     currency,
     reservation_count: reservations.length,
+    nights_total: nightsTotal,
+    commission_base_cents: baseTotal,
     gross_cents: gross,
-    host_payout_cents: hostPayout,
+    host_payout_cents: hostPayoutLegacy || baseTotal + hostCleaningTotal,
     expense_cents: expenseTotal,
-    mrg_commission_cents: mrgCommission,
-    net_to_host_cents: hostPayout - expenseTotal - mrgCommission,
+    expense_count: expenses.length,
+    mrg_commission_cents: mrgTotal,
+    hst_cents: hstTotal,
+    cleaning_fee_cents: cleaningTotal,
+    cleaning_fee_keeper: keeper,
+    mrg_cleaning_cents: mrgCleaning,
+    cleaning_turnovers: cleaningTurnovers,
+    net_to_host_cents: netToHost,
     rate_bps_used: lastRate,
+    hst_bps_used: hstBps,
+    last_synced_at: lastSynced,
     reservations,
     expenses,
+    stays,
     lines,
   };
 }

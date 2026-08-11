@@ -10,7 +10,6 @@ import {
 import { ContractsPanel } from "./ContractsPanel";
 import { EarningsPanel } from "./EarningsPanel";
 import {
-  clientSubtitle,
   formatDisplayDate,
   formatRateHistoryRange,
   todayInputValue,
@@ -24,6 +23,7 @@ import {
   GoldButton,
   ModeSwitcher,
   MrgMark,
+  SegmentedControl,
   Sheet,
   StatusDot,
   TextArea,
@@ -57,6 +57,7 @@ export default function ClientsApp({ onModeChange }: Props) {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [propertyDetail, setPropertyDetail] = useState<PropertyDetail | null>(null);
   const [defaultRatePercent, setDefaultRatePercent] = useState(15);
+  const [defaultHstPercent, setDefaultHstPercent] = useState(3);
   const [hospitableConnected, setHospitableConnected] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -102,13 +103,14 @@ export default function ClientsApp({ onModeChange }: Props) {
       pmGet<{ clients: ClientRow[] }>("clients"),
       pmGet<{ properties: PropertyRow[] }>("properties"),
       pmGet<{
-        settings: { default_commission_bps: number };
+        settings: { default_commission_bps: number; default_hst_bps?: number };
         hospitable_connected: boolean;
       }>("settings"),
     ]);
     setClients(c.clients ?? []);
     setProperties(p.properties ?? []);
     setDefaultRatePercent((s.settings?.default_commission_bps ?? 1500) / 100);
+    setDefaultHstPercent((s.settings?.default_hst_bps ?? 300) / 100);
     setHospitableConnected(Boolean(s.hospitable_connected));
   }, []);
 
@@ -361,14 +363,60 @@ export default function ClientsApp({ onModeChange }: Props) {
     setBusy(true);
     try {
       const data = await pmPost<{
-        settings: { default_commission_bps: number };
+        settings: { default_commission_bps: number; default_hst_bps?: number };
         hospitable_connected: boolean;
       }>("settings", {
         op: "update",
         default_commission_percent: percent,
       });
       setDefaultRatePercent((data.settings?.default_commission_bps ?? 1500) / 100);
+      if (data.settings?.default_hst_bps != null) {
+        setDefaultHstPercent(data.settings.default_hst_bps / 100);
+      }
       setHospitableConnected(Boolean(data.hospitable_connected));
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveDefaultHst = async (percent: number) => {
+    setBusy(true);
+    try {
+      const data = await pmPost<{
+        settings: { default_commission_bps: number; default_hst_bps?: number };
+        hospitable_connected: boolean;
+      }>("settings", {
+        op: "update",
+        default_hst_percent: percent,
+      });
+      if (data.settings?.default_hst_bps != null) {
+        setDefaultHstPercent(data.settings.default_hst_bps / 100);
+      }
+      setHospitableConnected(Boolean(data.hospitable_connected));
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const savePropertyTerms = async (patch: {
+    cleaning_fee_keeper?: "mrg" | "host";
+    hst_percent?: number;
+  }) => {
+    if (!propertyDetail) return;
+    setBusy(true);
+    setLoadError("");
+    try {
+      const data = await pmPost<{ property: PropertyDetail }>("properties", {
+        op: "update",
+        id: propertyDetail.id,
+        ...patch,
+      });
+      setPropertyDetail(data.property);
+      await loadLists();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Save failed.");
     } finally {
@@ -483,7 +531,11 @@ export default function ClientsApp({ onModeChange }: Props) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-semibold text-[#f5f5f5]">{c.name}</p>
                 <p className="truncate text-[13px] text-[#9a9590]">
-                  {clientSubtitle(c.email, c.phone)}
+                  {(() => {
+                    const n = c.property_count ?? 0;
+                    const units = `${n} unit${n === 1 ? "" : "s"}`;
+                    return c.email.trim() ? `${units} · ${c.email.trim()}` : units;
+                  })()}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
@@ -505,31 +557,35 @@ export default function ClientsApp({ onModeChange }: Props) {
 
   const propertiesList = (
     <div className="mx-auto w-full max-w-[760px]">
-      <div className="flex items-baseline justify-between gap-3 px-4 pb-3.5 pt-[22px] lg:px-0 lg:pb-[18px] lg:pt-9">
+      <div className="flex items-baseline justify-between gap-3 px-4 pb-1.5 pt-[22px] lg:px-0 lg:pb-2 lg:pt-9">
         <h1 className="text-2xl font-bold tracking-tight text-[#f5f5f5] lg:text-[28px]">
           Properties
         </h1>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => openAddProperty()}
-            className="text-[13px] font-semibold text-[#9a9590] hover:text-[#c4a35a]"
-          >
-            Manual
-          </button>
-          <button
-            type="button"
-            onClick={() => openImport()}
-            className="text-[13px] font-semibold text-[#c4a35a] lg:rounded-lg lg:bg-[#c4a35a] lg:px-4 lg:py-2 lg:text-[#0a0a0a]"
-          >
-            Import
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => openAddProperty()}
+          className="text-[13px] font-semibold text-[#c4a35a]"
+        >
+          Add
+        </button>
+      </div>
+      <div className="flex items-center justify-between px-4 pb-3.5 lg:px-0">
+        <p className="text-[13px] text-[#6f6a65]">
+          {properties.length} unit{properties.length === 1 ? "" : "s"} ·{" "}
+          {properties.filter((p) => p.hospitable_property_id).length} linked
+        </p>
+        <button
+          type="button"
+          onClick={() => openImport()}
+          className="text-[13px] font-semibold text-[#c4a35a]"
+        >
+          Import from Hospitable
+        </button>
       </div>
       {properties.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-5 px-10 py-24">
           <p className="text-sm text-[#6f6a65]">No properties yet.</p>
-          <GoldButton type="button" onClick={() => openImport()} className="px-5 py-2.5 text-sm">
+          <GoldButton type="button" size="sm" onClick={() => openImport()}>
             Import from Hospitable
           </GoldButton>
           <button
@@ -551,7 +607,10 @@ export default function ClientsApp({ onModeChange }: Props) {
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-semibold text-[#f5f5f5]">{p.name}</p>
-                <p className="truncate text-[13px] text-[#9a9590]">{p.client_name}</p>
+                <p className="truncate text-[13px] text-[#9a9590]">
+                  {p.client_name}
+                  {!p.hospitable_property_id ? " · not linked" : ""}
+                </p>
               </div>
               <span className="shrink-0 text-[15px] font-semibold text-[#f5f5f5]">
                 {rateLabel(p.current_rate_bps)}
@@ -566,117 +625,165 @@ export default function ClientsApp({ onModeChange }: Props) {
   const propertyDetailView = !propertyDetail ? (
     <div />
   ) : (
-      <div className="mx-auto w-full max-w-[760px]">
-        {toast ? (
-          <div className="flex items-center gap-2 border-b border-white/8 bg-[#141414] px-4 py-2.5">
-            <StatusDot active />
-            <p className="text-[13px] text-[#f5f5f5]">{toast}</p>
-          </div>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => {
-            setSelectedPropertyId(null);
-            setPropertyDetail(null);
-          }}
-          className="flex items-center gap-1.5 px-4 pt-4 text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084] lg:px-0 lg:pt-8"
-        >
-          <span aria-hidden className="text-base leading-none">
-            ←
-          </span>
-          Back to properties
-        </button>
-        <div className="px-4 pb-[18px] pt-3.5 lg:px-0">
-          <h1 className="text-2xl font-bold tracking-tight text-[#f5f5f5] lg:text-[28px]">
-            {propertyDetail.name}
-          </h1>
-          <p className="pt-1 text-sm text-[#9a9590]">
-            {propertyDetail.address || "No address"}
-          </p>
+    <div className="mx-auto w-full max-w-[1100px] pb-8">
+      {toast ? (
+        <div className="flex items-center gap-2 border-b border-white/8 bg-[#141414] px-4 py-2.5">
+          <StatusDot active />
+          <p className="text-[13px] text-[#f5f5f5]">{toast}</p>
         </div>
-        <div className="flex items-center justify-between border-t border-white/8 px-4 py-3.5 lg:px-1">
-          <span className="text-sm text-[#9a9590]">Client</span>
-          <span className="text-sm font-semibold text-[#f5f5f5]">
-            {propertyDetail.client_name}
-          </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => {
+          setSelectedPropertyId(null);
+          setPropertyDetail(null);
+        }}
+        className="px-4 pt-4 text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084] lg:px-0 lg:pt-8"
+      >
+        Properties
+      </button>
+      <div className="flex flex-col gap-1.5 px-4 pb-4 pt-3 lg:px-0">
+        <h1 className="text-[23px] font-bold tracking-tight text-[#f5f5f5] lg:text-[28px]">
+          {propertyDetail.name}
+        </h1>
+        <p className="text-sm text-[#9a9590]">{propertyDetail.address || "No address"}</p>
+        <div className="flex flex-wrap items-center gap-2.5 pt-1">
+          <span className="text-[13px] text-[#9a9590]">{propertyDetail.client_name}</span>
+          <span className="h-0.5 w-0.5 rounded-full bg-[#3a3a3a]" />
+          <button
+            type="button"
+            onClick={openLinkHospitable}
+            className="flex items-center gap-1.5 text-[13px] text-[#9a9590]"
+          >
+            <StatusDot active={Boolean(propertyDetail.hospitable_property_id)} />
+            {propertyDetail.hospitable_property_id ? "Hospitable linked" : "Link Hospitable"}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={openLinkHospitable}
-          className="flex w-full items-center justify-between border-t border-white/8 px-4 py-3.5 text-left lg:px-1"
-        >
-          <div>
-            <p className="text-sm text-[#9a9590]">Hospitable ID</p>
-            <p className="text-[13px] text-[#6f6a65]">
-              {propertyDetail.hospitable_property_id || "Not linked"}
-            </p>
-          </div>
-          {propertyDetail.hospitable_property_id ? (
-            <div className="flex items-center gap-1.5">
-              <StatusDot active />
-              <span className="text-[13px] text-[#9a9590]">Linked</span>
-            </div>
-          ) : (
-            <span className="text-[13px] font-semibold text-[#c4a35a]">Link</span>
-          )}
-        </button>
-        <div className="border-t border-white/8 px-4 py-6 lg:px-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65]">
-            Current commission
+      </div>
+
+      <div className="lg:grid lg:grid-cols-2 lg:gap-10 lg:px-0">
+        <div>
+          <p className="border-t border-white/8 px-4 pb-2 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65] lg:px-0">
+            Terms
           </p>
-          <div className="mt-2 flex items-end justify-between gap-4">
+          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3.5 lg:px-0">
             <div>
-              <p className="text-[52px] font-bold leading-none tracking-tight text-[#f5f5f5] lg:text-[64px]">
-                {rateLabel(currentRateBps)}
-              </p>
-              <p className="mt-2 text-[13px] text-[#6f6a65]">
+              <p className="text-[15px] font-semibold text-[#f5f5f5]">Commission</p>
+              <p className="text-[13px] text-[#6f6a65]">
                 {propertyDetail.current_term
-                  ? `Effective since ${formatDisplayDate(propertyDetail.current_term.effective_from)}`
+                  ? `Since ${formatDisplayDate(propertyDetail.current_term.effective_from)}`
                   : "No rate set"}
               </p>
             </div>
-            <GoldButton type="button" size="sm" onClick={openChangeRate} className="shrink-0">
-              Change rate
-            </GoldButton>
+            <div className="flex items-center gap-3">
+              <span className="text-[17px] font-bold tabular-nums">{rateLabel(currentRateBps)}</span>
+              <button
+                type="button"
+                onClick={openChangeRate}
+                className="text-[13px] font-semibold text-[#c4a35a]"
+              >
+                Change
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2.5 border-t border-white/8 px-4 py-3.5 lg:px-0">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-[15px] font-semibold text-[#f5f5f5]">Cleaning fee</p>
+            </div>
+            <SegmentedControl
+              value={propertyDetail.cleaning_fee_keeper === "host" ? "host" : "mrg"}
+              disabled={busy}
+              onChange={(v) => savePropertyTerms({ cleaning_fee_keeper: v })}
+              options={[
+                { value: "mrg", label: "MRG keeps" },
+                { value: "host", label: "Host keeps" },
+              ]}
+            />
+            <p className="text-[13px] text-[#6f6a65] text-pretty">
+              {propertyDetail.cleaning_fee_keeper === "host"
+                ? "Host pays their cleaners; cleaning stays with the host."
+                : "MRG pays the cleaners; cleaning stays with MRG."}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-b border-white/8 px-4 py-3.5 lg:px-0">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[15px] font-semibold text-[#f5f5f5]">HST / cohost</p>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={0}
+                  max={10}
+                  step={0.5}
+                  disabled={busy}
+                  defaultValue={(propertyDetail.hst_bps ?? 300) / 100}
+                  key={`hst-${propertyDetail.id}-${propertyDetail.hst_bps}`}
+                  onBlur={(e) => {
+                    const n = Number(e.target.value);
+                    if (!Number.isFinite(n)) return;
+                    if (Math.round(n * 100) === (propertyDetail.hst_bps ?? 300)) return;
+                    void savePropertyTerms({ hst_percent: n });
+                  }}
+                  className="w-14 rounded-lg border border-white/10 bg-[#1c1c1c] px-2 py-1.5 text-center text-[15px] font-semibold text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
+                />
+                <span className="text-[15px] font-semibold text-[#9a9590]">%</span>
+              </div>
+            </div>
+            <p className="text-[13px] text-[#6f6a65] text-pretty">
+              Added on top of management fee on nightly base.
+            </p>
+          </div>
+
+          {propertyDetail.terms.length > 1 ? (
+            <>
+              <p className="px-4 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65] lg:px-0">
+                Rate history
+              </p>
+              {propertyDetail.terms.map((t, i) => (
+                <div
+                  key={t.id}
+                  className="flex items-center justify-between px-4 py-2.5 lg:px-0"
+                >
+                  <span className={`text-sm ${i === 0 ? "text-[#f5f5f5]" : "text-[#9a9590]"}`}>
+                    {rateLabel(t.rate_bps)}
+                  </span>
+                  <span className="text-[13px] text-[#6f6a65]">
+                    {formatRateHistoryRange(t.effective_from, t.effective_to)}
+                  </span>
+                </div>
+              ))}
+            </>
+          ) : null}
+
+          <div className="mt-2 hidden lg:block">
+            <ContractsPanel
+              propertyId={propertyDetail.id}
+              clientId={propertyDetail.client_id}
+              onError={setLoadError}
+            />
           </div>
         </div>
 
-        <EarningsPanel
-          propertyId={propertyDetail.id}
-          linked={Boolean(propertyDetail.hospitable_property_id)}
-          onError={setLoadError}
-        />
-
-        {propertyDetail.terms.length > 0 ? (
-          <>
-            <p className="border-t border-white/8 px-4 pb-2 pt-3.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65] lg:px-1">
-              Rate history
-            </p>
-            {propertyDetail.terms.map((t, i) => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between px-4 py-2.5 lg:px-1"
-              >
-                <span
-                  className={`text-sm ${i === 0 ? "text-[#f5f5f5]" : "text-[#9a9590]"}`}
-                >
-                  {rateLabel(t.rate_bps)}
-                </span>
-                <span className="text-[13px] text-[#6f6a65]">
-                  {formatRateHistoryRange(t.effective_from, t.effective_to)}
-                </span>
-              </div>
-            ))}
-          </>
-        ) : null}
-
-        <ContractsPanel
-          propertyId={propertyDetail.id}
-          clientId={propertyDetail.client_id}
-          onError={setLoadError}
-        />
+        <div className="min-w-0">
+          <EarningsPanel
+            propertyId={propertyDetail.id}
+            linked={Boolean(propertyDetail.hospitable_property_id)}
+            rateBps={currentRateBps}
+            hstBps={propertyDetail.hst_bps ?? 300}
+            onError={setLoadError}
+          />
+          <div className="lg:hidden">
+            <ContractsPanel
+              propertyId={propertyDetail.id}
+              clientId={propertyDetail.client_id}
+              onError={setLoadError}
+            />
+          </div>
+        </div>
       </div>
-    );
+    </div>
+  );
 
   const settingsView = (
     <div className="mx-auto w-full max-w-[680px]">
@@ -697,13 +804,30 @@ export default function ClientsApp({ onModeChange }: Props) {
           disabled={busy}
           onChange={(e) => setDefaultRatePercent(Number(e.target.value))}
           onBlur={() => saveDefaultRate(defaultRatePercent)}
-          className="w-20 rounded-lg border border-white/10 bg-[#1c1c1c] px-3 py-2 text-center text-[15px] font-semibold text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
+          className="w-16 rounded-lg border border-white/10 bg-[#1c1c1c] px-2 py-2 text-center text-[15px] font-semibold text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4 border-t border-white/8 px-4 py-4 lg:px-1">
+        <div>
+          <p className="text-[15px] font-semibold text-[#f5f5f5]">Default HST / cohost</p>
+          <p className="text-[13px] text-[#9a9590]">Applied to new properties</p>
+        </div>
+        <input
+          type="number"
+          min={0}
+          max={10}
+          step={0.5}
+          value={defaultHstPercent}
+          disabled={busy}
+          onChange={(e) => setDefaultHstPercent(Number(e.target.value))}
+          onBlur={() => saveDefaultHst(defaultHstPercent)}
+          className="w-16 rounded-lg border border-white/10 bg-[#1c1c1c] px-2 py-2 text-center text-[15px] font-semibold text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
         />
       </div>
       <div className="flex items-center justify-between gap-4 border-t border-white/8 px-4 py-4 lg:px-1">
         <div>
           <p className="text-[15px] font-semibold text-[#f5f5f5]">Hospitable</p>
-          <p className="text-[13px] text-[#9a9590]">Personal access token</p>
+          <p className="text-[13px] text-[#9a9590]">Booking sync</p>
         </div>
         <div className="flex items-center gap-1.5">
           <StatusDot active={hospitableConnected} />
@@ -734,8 +858,7 @@ export default function ClientsApp({ onModeChange }: Props) {
         ) : null}
       </div>
       <p className="px-4 py-[18px] text-[13px] text-[#6f6a65] lg:px-1">
-        Paste a Hospitable PAT, then import only the units MRG manages. Already-linked units are
-        hidden from the picker.
+        Reconnect if bookings stop appearing. Import only the units MRG manages.
       </p>
     </div>
   );
@@ -794,39 +917,39 @@ export default function ClientsApp({ onModeChange }: Props) {
             </div>
             <div className="flex flex-col gap-1.5">
               <FieldLabel>Status</FieldLabel>
-              <div className="flex gap-0.5 rounded-[9px] border border-white/10 bg-[#1a1a1a] p-0.5">
-                {(["active", "paused"] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setClientForm((f) => ({ ...f, status: s }))}
-                    className={`flex-1 rounded-[7px] py-2 text-[13px] font-semibold capitalize ${
-                      clientForm.status === s
-                        ? "bg-[#c4a35a] text-[#0a0a0a]"
-                        : "font-medium text-[#9a9590]"
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                value={clientForm.status}
+                onChange={(s) => setClientForm((f) => ({ ...f, status: s }))}
+                options={[
+                  { value: "active", label: "Active" },
+                  { value: "paused", label: "Paused" },
+                ]}
+              />
             </div>
             {clientSheet !== "create" && typeof clientSheet === "object" ? (
               <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setClientSheet(null);
-                    setTab("properties");
-                    setSelectedPropertyId(null);
-                    setPropertyDetail(null);
-                  }}
-                  className="mt-2 flex items-center justify-between border-t border-white/8 pt-3.5 text-sm font-medium text-[#f5f5f5]"
-                >
-                  <span>Properties</span>
-                  <span className="text-[#c4a35a]">View</span>
-                </button>
-                <div className="-mx-4 mt-2">
+                <div className="mt-2 flex flex-col border-t border-white/8">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClientSheet(null);
+                      setTab("properties");
+                      setSelectedPropertyId(null);
+                      setPropertyDetail(null);
+                    }}
+                    className="flex items-center justify-between py-3.5 text-sm font-medium text-[#f5f5f5]"
+                  >
+                    <span>Properties</span>
+                    <span className="flex items-center gap-2">
+                      <span className="text-[13px] text-[#6f6a65]">
+                        {clientSheet.property_count ?? 0} unit
+                        {(clientSheet.property_count ?? 0) === 1 ? "" : "s"}
+                      </span>
+                      <span className="text-[13px] font-semibold text-[#c4a35a]">View</span>
+                    </span>
+                  </button>
+                </div>
+                <div className="-mx-4">
                   <ContractsPanel clientId={clientSheet.id} onError={setLoadError} />
                 </div>
               </>

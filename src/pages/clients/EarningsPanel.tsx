@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { pmGet, pmPost } from "./api";
+import { pmGet, pmPost, rateLabel } from "./api";
 import { todayInputValue } from "./format";
 import { FieldLabel, GoldButton, MonthPicker, TextInput } from "./ui";
 
@@ -7,13 +7,27 @@ export type MonthStatement = {
   year_month: string;
   currency: string;
   reservation_count: number;
-  gross_cents: number;
-  host_payout_cents: number;
+  nights_total: number;
+  commission_base_cents: number;
   expense_cents: number;
+  expense_count: number;
   mrg_commission_cents: number;
+  hst_cents: number;
+  cleaning_fee_cents: number;
+  cleaning_fee_keeper: "mrg" | "host";
+  cleaning_turnovers: number;
   net_to_host_cents: number;
   rate_bps_used: number | null;
-  lines: { kind: string; label: string; amount_cents: number; meta?: string }[];
+  hst_bps_used: number;
+  last_synced_at: string | null;
+  stays: {
+    label: string;
+    meta: string;
+    net_cents: number;
+    base_cents: number;
+    mrg_cents: number;
+    hst_cents: number;
+  }[];
   expenses: { id: string; label: string; amount_cents: number; expense_date: string }[];
 };
 
@@ -36,13 +50,37 @@ function defaultMonth(): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+function monthTitle(yearMonth: string): string {
+  const [ys, ms] = yearMonth.split("-");
+  const d = new Date(Date.UTC(Number(ys), Number(ms) - 1, 1));
+  if (Number.isNaN(d.getTime())) return yearMonth;
+  return d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+function shiftMonth(yearMonth: string, delta: number): string {
+  const [ys, ms] = yearMonth.split("-").map(Number);
+  const d = new Date(Date.UTC(ys!, ms! - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function syncedLabel(iso: string | null): string {
+  if (!iso) return "Not synced yet";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Synced";
+  return `Updated ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+}
+
 export function EarningsPanel({
   propertyId,
   linked,
+  rateBps,
+  hstBps,
   onError,
 }: {
   propertyId: string;
   linked: boolean;
+  rateBps: number | null;
+  hstBps: number;
   onError: (msg: string) => void;
 }) {
   const [month, setMonth] = useState(defaultMonth);
@@ -50,6 +88,7 @@ export function EarningsPanel({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [localError, setLocalError] = useState("");
+  const [showAllStays, setShowAllStays] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
     label: "",
@@ -70,15 +109,13 @@ export function EarningsPanel({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await pmGet<{ statement: MonthStatement; auto_synced?: boolean }>(
-        "earnings",
-        {
-          property_id: propertyId,
-          month,
-        },
-      );
+      const data = await pmGet<{ statement: MonthStatement }>("earnings", {
+        property_id: propertyId,
+        month,
+      });
       setStatement(data.statement);
       setLocalError("");
+      setShowAllStays(false);
     } finally {
       setLoading(false);
     }
@@ -95,10 +132,12 @@ export function EarningsPanel({
     setBusy(true);
     setLocalError("");
     try {
-      const data = await pmPost<{ statement: MonthStatement | null; synced: number }>(
-        "earnings",
-        { op: "sync", property_id: propertyId, month, lookback: true },
-      );
+      const data = await pmPost<{ statement: MonthStatement | null }>("earnings", {
+        op: "sync",
+        property_id: propertyId,
+        month,
+        lookback: true,
+      });
       if (data.statement) setStatement(data.statement);
       else await load();
     } catch (e) {
@@ -148,130 +187,185 @@ export function EarningsPanel({
 
   const cur = statement?.currency || "CAD";
   const blocked = busy || loading;
+  const rateUsed = statement?.rate_bps_used ?? rateBps;
+  const hstUsed = statement?.hst_bps_used ?? hstBps;
+  const stays = statement?.stays ?? [];
+  const visibleStays = showAllStays ? stays : stays.slice(0, 4);
 
   return (
-    <div className="border-t border-white/8 px-4 py-5 lg:px-1">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65]">
-            Earnings
-          </p>
-          <p className="mt-1 text-[13px] text-[#9a9590]">
-            Browse months anytime — Hospitable updates automatically about every 2 days.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <MonthPicker value={month} onChange={setMonth} disabled={blocked} />
+    <div>
+      <div className="flex items-center justify-between px-4 pb-3 pt-5 lg:px-0">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65]">
+          Earnings
+        </p>
+        <p className="text-xs text-[#6f6a65]">
+          {syncedLabel(statement?.last_synced_at ?? null)}
           {linked ? (
-            <button
-              type="button"
-              disabled={blocked}
-              onClick={() => refresh()}
-              className="text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084] disabled:text-[#6f6a65]"
-            >
-              {busy || loading ? "Updating…" : "Refresh"}
-            </button>
+            <>
+              {" · "}
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => refresh()}
+                className="font-semibold text-[#c4a35a] disabled:text-[#6f6a65]"
+              >
+                {busy || loading ? "Updating…" : "Refresh"}
+              </button>
+            </>
           ) : null}
-        </div>
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between px-4 pb-3.5 lg:px-0">
+        <button
+          type="button"
+          disabled={blocked}
+          aria-label="Previous month"
+          onClick={() => setMonth((m) => shiftMonth(m, -1))}
+          className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-white/10 bg-[#141414] text-[15px] text-[#9a9590] hover:text-[#f5f5f5] disabled:opacity-50"
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          disabled={blocked}
+          className="flex flex-col items-center gap-0.5"
+          onClick={() => {
+            /* MonthPicker below also available; center title is display */
+          }}
+        >
+          <span className="text-base font-bold text-[#f5f5f5]">{monthTitle(month)}</span>
+          <span className="text-xs text-[#6f6a65]">
+            {statement
+              ? `${statement.reservation_count} stay${statement.reservation_count === 1 ? "" : "s"} · ${statement.nights_total} night${statement.nights_total === 1 ? "" : "s"}`
+              : loading
+                ? "Loading…"
+                : "—"}
+          </span>
+        </button>
+        <button
+          type="button"
+          disabled={blocked}
+          aria-label="Next month"
+          onClick={() => setMonth((m) => shiftMonth(m, 1))}
+          className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-white/10 bg-[#141414] text-[15px] text-[#9a9590] hover:text-[#f5f5f5] disabled:opacity-50"
+        >
+          ›
+        </button>
+      </div>
+
+      <div className="flex justify-center px-4 pb-3 lg:hidden">
+        <MonthPicker value={month} onChange={setMonth} disabled={blocked} />
+      </div>
+      <div className="mb-2 hidden justify-end lg:flex">
+        <MonthPicker value={month} onChange={setMonth} disabled={blocked} />
       </div>
 
       {localError ? (
-        <p className="mb-3 text-sm text-[#cf7f7b]">{localError}</p>
+        <p className="px-4 pb-3 text-sm text-[#cf7f7b] lg:px-0">{localError}</p>
       ) : null}
 
       {!linked ? (
-        <p className="text-[13px] text-[#6f6a65]">Link Hospitable to sync bookings.</p>
+        <p className="px-4 pb-3 text-[13px] text-[#6f6a65] lg:px-0">
+          Link Hospitable to sync bookings.
+        </p>
       ) : null}
 
       {statement ? (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
             <div>
-              <p className="text-[11px] text-[#6f6a65]">Host payout</p>
-              <p className="text-lg font-semibold text-[#f5f5f5]">
-                {money(statement.host_payout_cents, cur)}
+              <p className="text-sm text-[#f5f5f5]">Commission base</p>
+              <p className="text-xs text-[#6f6a65]">Nightly − platform host fees</p>
+            </div>
+            <p className="text-[15px] font-semibold tabular-nums">
+              {money(statement.commission_base_cents, cur)}
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
+            <div>
+              <p className="text-sm text-[#f5f5f5]">MRG fee</p>
+              <p className="text-xs text-[#6f6a65]">
+                Base × {rateLabel(rateUsed)}
               </p>
             </div>
+            <p className="text-[15px] font-semibold tabular-nums text-[#9a9590]">
+              − {money(statement.mrg_commission_cents, cur)}
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
             <div>
-              <p className="text-[11px] text-[#6f6a65]">MRG split</p>
-              <p className="text-lg font-semibold text-[#c4a35a]">
-                {money(statement.mrg_commission_cents, cur)}
+              <p className="text-sm text-[#f5f5f5]">HST</p>
+              <p className="text-xs text-[#6f6a65]">Base × {rateLabel(hstUsed)}</p>
+            </div>
+            <p className="text-[15px] font-semibold tabular-nums text-[#9a9590]">
+              − {money(statement.hst_cents, cur)}
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
+            <div>
+              <p className="text-sm text-[#f5f5f5]">Cleaning</p>
+              <p className="text-xs text-[#6f6a65]">
+                Kept by {statement.cleaning_fee_keeper === "host" ? "host" : "MRG"}
+                {statement.cleaning_turnovers
+                  ? ` · ${statement.cleaning_turnovers} turnover${statement.cleaning_turnovers === 1 ? "" : "s"}`
+                  : ""}
               </p>
             </div>
+            <p
+              className={`text-[15px] font-semibold tabular-nums ${
+                statement.cleaning_fee_keeper === "mrg" ? "text-[#6f6a65]" : "text-[#f5f5f5]"
+              }`}
+            >
+              {money(statement.cleaning_fee_cents, cur)}
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
             <div>
-              <p className="text-[11px] text-[#6f6a65]">Expenses</p>
-              <p className="text-lg font-semibold text-[#f5f5f5]">
-                {money(statement.expense_cents, cur)}
+              <p className="text-sm text-[#f5f5f5]">Expenses</p>
+              <p className="text-xs text-[#6f6a65]">
+                {statement.expense_count} item{statement.expense_count === 1 ? "" : "s"}
               </p>
             </div>
-            <div>
-              <p className="text-[11px] text-[#6f6a65]">Net to host</p>
-              <p className="text-lg font-semibold text-[#f5f5f5]">
-                {money(statement.net_to_host_cents, cur)}
-              </p>
-            </div>
+            <p className="text-[15px] font-semibold tabular-nums text-[#9a9590]">
+              − {money(statement.expense_cents, cur)}
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/10 bg-[#0e0e0e] px-4 py-4 lg:rounded-lg lg:border lg:border-white/8 lg:px-4">
+            <p className="text-[15px] font-bold">Net to host</p>
+            <p className="text-[22px] font-bold tracking-tight tabular-nums">
+              {money(statement.net_to_host_cents, cur)}
+            </p>
           </div>
 
-          <p className="mt-3 text-[13px] text-[#6f6a65]">
-            {statement.reservation_count} stay
-            {statement.reservation_count === 1 ? "" : "s"}
-            {statement.rate_bps_used != null
-              ? ` · commission ~${(statement.rate_bps_used / 100).toFixed(
-                  statement.rate_bps_used % 100 === 0 ? 0 : 2,
-                )}%`
-              : ""}
-          </p>
-
-          <div className="mt-2 space-y-2">
-            {statement.lines
-              .filter((l) => l.kind === "reservation")
-              .map((l, i) => (
-                <div key={`${l.label}-${i}`} className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm text-[#f5f5f5]">{l.label}</p>
-                    {l.meta ? (
-                      <p className="text-[12px] text-[#6f6a65]">{l.meta}</p>
-                    ) : null}
-                  </div>
-                  <span className="shrink-0 text-sm tabular-nums text-[#f5f5f5]">
-                    {money(l.amount_cents, cur)}
-                  </span>
-                </div>
-              ))}
-          </div>
-
-          <div className="mt-4">
+          <div className="flex items-center gap-3 px-4 py-3 lg:px-0">
             <button
               type="button"
               onClick={() => setExpenseOpen((o) => !o)}
               className="text-[13px] font-semibold text-[#c4a35a]"
             >
-              {expenseOpen ? "Cancel" : "+ Add expense"}
+              {expenseOpen ? "Cancel" : "Add expense"}
             </button>
           </div>
 
           {expenseOpen ? (
-            <div className="mt-3 flex flex-col gap-2 rounded-lg border border-white/8 bg-[#141414] p-3">
+            <div className="mx-4 mb-3 flex flex-col gap-2 rounded-lg border border-white/8 bg-[#141414] p-3 lg:mx-0">
+              <div className="flex flex-col gap-1">
+                <FieldLabel>Label</FieldLabel>
+                <TextInput
+                  value={expenseForm.label}
+                  onChange={(e) => setExpenseForm((f) => ({ ...f, label: e.target.value }))}
+                  placeholder="Supplies"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="col-span-2 flex flex-col gap-1">
-                  <FieldLabel>Label</FieldLabel>
-                  <TextInput
-                    value={expenseForm.label}
-                    onChange={(e) =>
-                      setExpenseForm((f) => ({ ...f, label: e.target.value }))
-                    }
-                    placeholder="Turnover clean"
-                  />
-                </div>
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Amount</FieldLabel>
                   <TextInput
                     inputMode="decimal"
                     value={expenseForm.amount}
-                    onChange={(e) =>
-                      setExpenseForm((f) => ({ ...f, amount: e.target.value }))
-                    }
-                    placeholder="120"
+                    onChange={(e) => setExpenseForm((f) => ({ ...f, amount: e.target.value }))}
+                    placeholder="85"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -280,10 +374,7 @@ export function EarningsPanel({
                     type="date"
                     value={expenseForm.expense_date}
                     onChange={(e) =>
-                      setExpenseForm((f) => ({
-                        ...f,
-                        expense_date: e.target.value,
-                      }))
+                      setExpenseForm((f) => ({ ...f, expense_date: e.target.value }))
                     }
                   />
                 </div>
@@ -300,12 +391,12 @@ export function EarningsPanel({
           ) : null}
 
           {statement.expenses.length > 0 ? (
-            <div className="mt-3 space-y-1.5">
+            <div className="space-y-1 px-4 pb-2 lg:px-0">
               {statement.expenses.map((e) => (
-                <div key={e.id} className="flex items-center justify-between gap-3">
+                <div key={e.id} className="flex items-center justify-between gap-3 py-1">
                   <div>
                     <p className="text-sm text-[#9a9590]">{e.label}</p>
-                    <p className="text-[12px] text-[#6f6a65]">{e.expense_date}</p>
+                    <p className="text-xs text-[#6f6a65]">{e.expense_date}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm tabular-nums text-[#9a9590]">
@@ -314,7 +405,7 @@ export function EarningsPanel({
                     <button
                       type="button"
                       onClick={() => removeExpense(e.id)}
-                      className="text-[12px] text-[#6f6a65] hover:text-[#cf7f7b]"
+                      className="text-xs text-[#6f6a65] hover:text-[#cf7f7b]"
                     >
                       Remove
                     </button>
@@ -323,9 +414,40 @@ export function EarningsPanel({
               ))}
             </div>
           ) : null}
+
+          <p className="border-t border-white/8 px-4 pb-2.5 pt-5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65] lg:px-0">
+            Stays
+          </p>
+          {visibleStays.map((s, i) => (
+            <div
+              key={`${s.label}-${i}`}
+              className="flex items-center justify-between gap-3 border-t border-white/8 px-4 py-3 lg:px-0"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-[#f5f5f5]">{s.label}</p>
+                <p className="text-xs text-[#6f6a65]">{s.meta}</p>
+              </div>
+              <span className="shrink-0 text-sm font-semibold tabular-nums">
+                {money(s.net_cents, cur)}
+              </span>
+            </div>
+          ))}
+          {stays.length > 4 ? (
+            <button
+              type="button"
+              onClick={() => setShowAllStays((v) => !v)}
+              className="border-t border-white/8 px-4 py-3 text-[13px] font-semibold text-[#c4a35a] lg:px-0"
+            >
+              {showAllStays ? "Show fewer" : `All ${stays.length} stays`}
+            </button>
+          ) : stays.length === 0 ? (
+            <p className="border-t border-white/8 px-4 py-3 text-[13px] text-[#6f6a65] lg:px-0">
+              No stays in this month.
+            </p>
+          ) : null}
         </>
       ) : loading ? (
-        <p className="text-[13px] text-[#6f6a65]">Loading earnings…</p>
+        <p className="px-4 py-3 text-[13px] text-[#6f6a65] lg:px-0">Loading earnings…</p>
       ) : null}
     </div>
   );
