@@ -137,7 +137,7 @@ Stage guidance:
 - low_fit / skip: end of road
 - null: leave stage unchanged
 
-If include_book_link is true, include ${BOOK_A_CALL_URL} in reply_text exactly once (management/makeover paths).`;
+If include_book_link is true, include ${BOOK_A_CALL_URL} in reply_text exactly once (management/makeover paths), and always invite them to text questions here before booking — e.g. "If you have any questions before booking, just message us here."`;
 }
 
 /**
@@ -208,9 +208,41 @@ function adminFacingAiError(raw: string | undefined, status?: number): string {
   if (status === 401 || /invalid.?api.?key|authentication|unauthorized/i.test(lower)) {
     return "AI unavailable (API key). Reply manually from CRM — customer was not texted an error.";
   }
+  if (/model:|not_found_error|deprecated|retired/i.test(lower)) {
+    return "AI unavailable (model). Check ANTHROPIC_MODEL — customer was not texted an error.";
+  }
   if (msg) return `AI unavailable: ${msg.slice(0, 180)}. Reply manually — customer was not texted an error.`;
   if (status) return `AI unavailable (HTTP ${status}). Reply manually — customer was not texted an error.`;
   return "AI unavailable. Reply manually from CRM — customer was not texted an error.";
+}
+
+/** Cheapest solid Claude for SMS closer — Haiku 4.5 (~⅓ Sonnet cost). Override with ANTHROPIC_MODEL if needed. */
+export const DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5";
+
+const BOOK_LINK_INVITE =
+  "If you have any questions before booking, just message us here.";
+
+/**
+ * When a book-a-call URL is in the SMS, always invite replies here
+ * so leads know they can keep texting instead of only booking.
+ */
+export function ensureBookLinkInvite(body: string): string {
+  const text = body.trim();
+  if (!text) return text;
+  if (!text.includes(BOOK_A_CALL_URL) && !/calendar\.app\.google/i.test(text)) {
+    return text;
+  }
+  if (/questions before booking|message us here|text us (here|back)/i.test(text)) {
+    return text;
+  }
+
+  // Keep STOP line last if present
+  const stopMatch = text.match(/\nReply STOP to opt out\.?\s*$/i);
+  if (stopMatch) {
+    const withoutStop = text.slice(0, stopMatch.index).trimEnd();
+    return `${withoutStop}\n${BOOK_LINK_INVITE}\nReply STOP to opt out.`;
+  }
+  return `${text}\n${BOOK_LINK_INVITE}`;
 }
 
 async function noteAiFailure(leadId: string, reason: string): Promise<void> {
@@ -256,7 +288,7 @@ async function callClaude(input: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-20250514",
+        model: process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_ANTHROPIC_MODEL,
         max_tokens: 700,
         system: input.system,
         messages: [{ role: "user", content: input.user }],
@@ -532,13 +564,17 @@ export async function canAiTextLead(lead: LeadRow): Promise<{ ok: boolean; reaso
 function safeFirstSmsFallback(lead: LeadRow): string {
   const name = firstName(lead.name);
   const city = lead.address || "your area";
+  let body: string;
   if (lead.offer_path === "education") {
-    return `Hey ${name}, thanks for reaching out to Mandel Realty Group — we'd love to help you learn more about Airbnb. Reply YES and we'll send our free intro guide, or book a quick chat here: ${BOOK_A_CALL_URL}\nReply STOP to opt out.`;
+    body = `Hey ${name}, thanks for reaching out to Mandel Realty Group — we'd love to help you learn more about Airbnb. Reply YES and we'll send our free intro guide, or book a quick chat here: ${BOOK_A_CALL_URL}`;
+  } else if (lead.offer_path === "makeover") {
+    body = `Hey ${name}, it's Mandel Realty Group — thanks for applying for the free Airbnb makeover. Spots are limited; grab a free intro call so we can see if your place in ${city} is a fit: ${BOOK_A_CALL_URL}`;
+  } else {
+    body = `Hey ${name}, it's Mandel Realty Group — thanks for your interest in our management services. I saw your note about ${city}${lead.has_listing === "yes" ? " and your listing" : ""}. Happy to walk you through how we help — book a free intro call: ${BOOK_A_CALL_URL}`;
   }
-  if (lead.offer_path === "makeover") {
-    return `Hey ${name}, it's Mandel Realty Group — thanks for applying for the free Airbnb makeover. Spots are limited; grab a free intro call so we can see if your place in ${city} is a fit: ${BOOK_A_CALL_URL}\nReply STOP to opt out.`;
-  }
-  return `Hey ${name}, it's Mandel Realty Group — thanks for your interest in our management services. I saw your note about ${city}${lead.has_listing === "yes" ? " and your listing" : ""}. Happy to walk you through how we help — book a free intro call: ${BOOK_A_CALL_URL}\nReply STOP to opt out.`;
+  body = ensureBookLinkInvite(body);
+  if (!/stop/i.test(body)) body = `${body.trim()}\nReply STOP to opt out.`;
+  return body;
 }
 
 /** First outbound after import. Uses a safe MRG template if Claude fails — never API/billing text. */
@@ -566,6 +602,7 @@ export async function sendAiFirstSms(input: {
     if (body && decision.include_book_link && !body.includes("http")) {
       body = `${body}\n${BOOK_A_CALL_URL}`;
     }
+    body = ensureBookLinkInvite(body);
     if (body && !/stop/i.test(body)) {
       body = `${body.trim()}\nReply STOP to opt out.`;
     }
@@ -669,6 +706,7 @@ export async function sendAiReplyToInbound(input: {
   if (body && decision.include_book_link && !body.includes("http")) {
     body = `${body}\n${BOOK_A_CALL_URL}`;
   }
+  body = ensureBookLinkInvite(body);
 
   if (decision.stop_ai && !body.trim()) {
     await applyDecision(lead, decision);
