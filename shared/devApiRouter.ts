@@ -51,6 +51,7 @@ import {
   listKnowledgeDocs,
   updateKnowledgeDoc,
   uploadAndIndexKnowledgeFile,
+  uploadAndIndexKnowledgeText,
 } from "./knowledgeStore.js";
 import { parseLeadRequestBody } from "./parseLeadRequest.js";
 import { isSupabaseConfigured } from "./supabase.js";
@@ -617,12 +618,38 @@ export async function handleDevApi(
     }
     if (method === "POST") {
       const body = await readJsonBody(req);
+      const titleIn = String(body.title ?? "").trim();
+      const pasted = typeof body.text === "string" ? body.text : "";
+      if (pasted.trim()) {
+        if (pasted.length > 400_000) {
+          json(res, 400, { error: "Text too long (max ~400k characters)." });
+          return true;
+        }
+        try {
+          const doc = await uploadAndIndexKnowledgeText({
+            title: titleIn,
+            text: pasted,
+          });
+          json(
+            res,
+            doc ? 200 : 500,
+            doc ? { ok: true, doc } : { error: "Could not save knowledge text." },
+          );
+        } catch (err) {
+          json(res, 500, {
+            error: err instanceof Error ? err.message : "Upload failed",
+          });
+        }
+        return true;
+      }
       const filename = String(body.filename ?? "").trim();
-      const title = String(body.title ?? filename).trim() || filename;
+      const title = titleIn || filename;
       const mime = String(body.mime ?? "application/octet-stream");
       const base64 = String(body.contentBase64 ?? "").trim();
       if (!filename || !base64) {
-        json(res, 400, { error: "filename and contentBase64 required." });
+        json(res, 400, {
+          error: "Paste text, or provide filename + contentBase64 for a file upload.",
+        });
         return true;
       }
       try {

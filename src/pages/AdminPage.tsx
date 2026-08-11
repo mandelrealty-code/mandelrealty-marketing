@@ -300,6 +300,7 @@ export function AdminPage() {
   const [docsError, setDocsError] = useState<string | null>(null);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadTitle, setUploadTitle] = useState("");
+  const [uploadText, setUploadText] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim()), 250);
@@ -1061,9 +1062,37 @@ export function AdminPage() {
       const data = (await res.json().catch(() => ({}))) as { error?: string; doc?: KnowledgeDoc };
       if (!res.ok) throw new Error(data.error || "Upload failed");
       setUploadTitle("");
+      setUploadText("");
       await loadDocs();
     } catch (err) {
       setDocsError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadBusy(false);
+    }
+  };
+
+  const uploadKnowledgePaste = async () => {
+    const text = uploadText.trim();
+    if (!text) return;
+    setUploadBusy(true);
+    setDocsError(null);
+    try {
+      const res = await fetch("/api/admin/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          title: uploadTitle.trim(),
+          text,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; doc?: KnowledgeDoc };
+      if (!res.ok) throw new Error(data.error || "Could not save text");
+      setUploadTitle("");
+      setUploadText("");
+      await loadDocs();
+    } catch (err) {
+      setDocsError(err instanceof Error ? err.message : "Could not save text");
     } finally {
       setUploadBusy(false);
     }
@@ -2054,17 +2083,33 @@ export function AdminPage() {
               className="mx-auto max-w-[820px] space-y-4"
             >
               <p className="text-sm leading-relaxed text-[#9a9590]">
-                The AI only answers from these docs. Turn one off and it stops citing it.
+                The AI only answers from these docs. Paste talk tracks / markdown, or upload a file.
+                One doc at a time — turn one off and it stops citing it.
               </p>
               <div className="flex flex-col gap-2.5">
                 <input
                   value={uploadTitle}
                   onChange={(e) => setUploadTitle(e.target.value)}
-                  placeholder="Title (optional)"
-                  className="h-11 w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-3.5 text-[14.5px] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+                  placeholder="Title (optional — e.g. Makeover pitch)"
+                  className="h-11 w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-3.5 text-base outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
                 />
-                <label className="flex h-[46px] cursor-pointer items-center justify-center rounded-xl bg-[#c4a35a] text-[14.5px] font-bold text-[#14100a] hover:bg-[#dcc084]">
-                  {uploadBusy ? "Uploading & indexing…" : "Add PDF / DOCX / TXT"}
+                <textarea
+                  value={uploadText}
+                  onChange={(e) => setUploadText(e.target.value)}
+                  rows={10}
+                  placeholder="Paste text or markdown here…"
+                  className="min-h-[180px] w-full resize-y rounded-[14px] border border-white/10 bg-[#1a1a1a] px-3.5 py-3 font-mono text-base leading-relaxed outline-none placeholder:font-sans placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+                />
+                <button
+                  type="button"
+                  disabled={uploadBusy || !uploadText.trim()}
+                  onClick={() => uploadKnowledgePaste().catch(() => undefined)}
+                  className="flex h-[46px] items-center justify-center rounded-xl bg-[#c4a35a] text-[14.5px] font-bold text-[#14100a] hover:bg-[#dcc084] disabled:cursor-not-allowed disabled:bg-[#c4a35a]/25 disabled:text-[#8a7c5f]"
+                >
+                  {uploadBusy ? "Saving & indexing…" : "Save text to knowledge"}
+                </button>
+                <label className="flex h-[46px] cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-transparent text-[14.5px] font-semibold text-[#e8e4de] hover:border-[#c4a35a]/50 hover:text-[#dcc084]">
+                  {uploadBusy ? "Uploading…" : "Or add PDF / DOCX / TXT / MD"}
                   <input
                     type="file"
                     accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"

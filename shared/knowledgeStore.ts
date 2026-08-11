@@ -413,3 +413,31 @@ export async function uploadAndIndexKnowledgeFile(input: {
 
   return indexKnowledgeDocFromText(doc.id, text);
 }
+
+/** Paste plain text / markdown into the KB (no file picker). */
+export async function uploadAndIndexKnowledgeText(input: {
+  title: string;
+  text: string;
+}): Promise<KnowledgeDoc | null> {
+  const text = input.text.replace(/\u0000/g, "").trim();
+  if (!text) return null;
+
+  const title =
+    input.title.trim() ||
+    text.split(/\n/).find((l) => l.trim())?.replace(/^#+\s*/, "").trim().slice(0, 80) ||
+    "Pasted note";
+
+  const safe =
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 48) || "pasted-note";
+
+  return uploadAndIndexKnowledgeFile({
+    title,
+    filename: `${safe}.md`,
+    mime: "text/markdown",
+    buffer: Buffer.from(text, "utf8"),
+  });
+}

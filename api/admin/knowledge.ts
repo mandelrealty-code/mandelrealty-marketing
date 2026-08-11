@@ -9,6 +9,7 @@ import {
   listKnowledgeDocs,
   updateKnowledgeDoc,
   uploadAndIndexKnowledgeFile,
+  uploadAndIndexKnowledgeText,
 } from "../../shared/knowledgeStore.js";
 import { isSupabaseConfigured } from "../../shared/supabase.js";
 
@@ -50,12 +51,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     const body = readBody(req);
+    const titleIn = String(body.title ?? "").trim();
+    const pasted = typeof body.text === "string" ? body.text : "";
+
+    if (pasted.trim()) {
+      if (pasted.length > 400_000) {
+        return res.status(400).json({ error: "Text too long (max ~400k characters)." });
+      }
+      const doc = await uploadAndIndexKnowledgeText({
+        title: titleIn,
+        text: pasted,
+      });
+      if (!doc) return res.status(500).json({ error: "Could not save knowledge text." });
+      return res.status(200).json({ ok: true, doc });
+    }
+
     const filename = String(body.filename ?? "").trim();
-    const title = String(body.title ?? filename).trim() || filename;
+    const title = titleIn || filename;
     const mime = String(body.mime ?? "application/octet-stream");
     const base64 = String(body.contentBase64 ?? "").trim();
     if (!filename || !base64) {
-      return res.status(400).json({ error: "filename and contentBase64 required." });
+      return res.status(400).json({
+        error: "Paste text, or provide filename + contentBase64 for a file upload.",
+      });
     }
     if (base64.length > 12_000_000) {
       return res.status(400).json({ error: "File too large (max ~8MB)." });
@@ -69,7 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const doc = await uploadAndIndexKnowledgeFile({
-      title,
+      title: title || filename,
       filename,
       mime,
       buffer,
