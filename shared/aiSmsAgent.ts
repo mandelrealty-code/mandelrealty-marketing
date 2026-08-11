@@ -465,6 +465,13 @@ async function applyDecision(lead: LeadRow, decision: ClaudeDecision): Promise<v
 
   const nextStatus = patch.status ?? lead.status;
   if (nextStatus === "nurturing") {
+    // Handled + parked — clear unread so they don't look like Needs you
+    try {
+      const { markLeadSmsRead } = await import("./crmInbox.js");
+      await markLeadSmsRead(lead.id);
+    } catch {
+      /* ignore */
+    }
     const after = await getLeadById(lead.id);
     if (after) {
       const { scheduleEducationNurtureFollowup } = await import("./nurtureFollowups.js");

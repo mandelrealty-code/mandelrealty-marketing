@@ -24,13 +24,20 @@ export type LeadInboxRow = LeadRow & {
 };
 
 const HIGH_INTENT_RE =
-  /\b(call me|book(ed|ing)?|schedule|ready to (talk|book|move)|want to (talk|book|call)|when can we|let'?s (talk|chat|call)|interested in (a )?call|hop on (a )?call|free (to )?chat)\b/i;
+  /\b(call me|book a call|let'?s book|booked|booking|schedule (a )?(call|chat)|ready to (talk|book|move)|want to (talk|book|call)|when can we|let'?s (talk|chat|call)|interested in (a )?call|hop on (a )?call|free (to )?chat)\b/i;
+
+/** Soft “park me” replies — not high intent, and fine in nurturing */
+const SOFT_PARK_RE =
+  /\b(not ready|just research(ing)?|just looking|maybe later|not interested|no thanks|don'?t want (a )?call|not looking to book)\b/i;
 
 const KB_MISS_RE =
   /knowledge|kb miss|not in (the )?kb|not in (the )?knowledge|couldn'?t find|cannot find|no (doc|guide) in/i;
 
 const AI_STUCK_RE =
   /^\[AI |AI unavailable|AI draft blocked|billing\/credits|ANTHROPIC|Refused to send/i;
+
+/** Stages where unread alone should not put them in Needs you */
+const PARKED_FROM_NEEDS_YOU = new Set(["nurturing"]);
 
 export function detectNeedsYou(input: {
   lead: Pick<LeadRow, "whats_next" | "ai_paused" | "ai_force_on" | "status">;
@@ -40,26 +47,31 @@ export function detectNeedsYou(input: {
 }): NeedsYouReason[] {
   const reasons: NeedsYouReason[] = [];
   const wn = (input.lead.whats_next || "").trim();
+  const parked = PARKED_FROM_NEEDS_YOU.has(input.lead.status);
 
   if (AI_STUCK_RE.test(wn)) reasons.push("ai_stuck");
   if (KB_MISS_RE.test(wn)) reasons.push("kb_miss");
 
   if (input.lastSms?.direction === "inbound") {
-    if (HIGH_INTENT_RE.test(input.lastSms.body)) reasons.push("high_intent");
+    const body = input.lastSms.body;
+    const softPark = SOFT_PARK_RE.test(body);
+    if (!parked && !softPark && HIGH_INTENT_RE.test(body)) {
+      reasons.push("high_intent");
+    }
 
     const aiActiveHere =
       !input.lead.ai_paused &&
       (input.aiGlobalOn || Boolean(input.lead.ai_force_on));
     const pausedOrOff = !aiActiveHere;
     const aiStoppedStage = [
-      "nurturing",
       "booked",
       "call_done",
       "won",
       "low_fit",
       "skip",
     ].includes(input.lead.status);
-    if (input.unread && (pausedOrOff || aiStoppedStage)) {
+    // Nurturing = intentional park (guide / later follow-up) — not Needs you
+    if (!parked && input.unread && (pausedOrOff || aiStoppedStage)) {
       reasons.push("unanswered_inbound");
     }
   }

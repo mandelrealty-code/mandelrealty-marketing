@@ -1856,7 +1856,15 @@ export function AdminPage() {
                       </span>
                     </div>
                     <p className="truncate text-[13.5px] leading-snug text-[#9a9590]">{subtitle}</p>
-                    <p className="truncate text-[11.5px] text-[#6f6a65]">{meta}</p>
+                    <p
+                      className={`truncate text-[11.5px] ${
+                        lead.status === "nurturing"
+                          ? "text-[#8eb4d4]"
+                          : "text-[#6f6a65]"
+                      }`}
+                    >
+                      {meta}
+                    </p>
                   </div>
                 </button>
                 <button
