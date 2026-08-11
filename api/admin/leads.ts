@@ -7,15 +7,16 @@ import {
 import { importMetaLeadPaste, previewMetaLeadPaste } from "../../shared/importMetaLead.js";
 import {
   listFollowupsForLead,
+  cancelLeadFollowups,
   markLeadBookedAndStopSms,
   sendCustomSmsToLead,
   sendManualBumpForLead,
 } from "../../shared/followUpStore.js";
 import { listSmsForLead } from "../../shared/smsStore.js";
+import { listLeadsInbox, markLeadSmsRead } from "../../shared/crmInbox.js";
 import {
   LEAD_STATUSES,
   deleteLead,
-  listLeads,
   updateLeadCrm,
   type LeadStatus,
   type OfferPath,
@@ -67,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ followups, messages });
       }
       const q = typeof req.query.q === "string" ? req.query.q : "";
-      const leads = await listLeads(200, q);
+      const leads = await listLeadsInbox(200, q);
       return res.status(200).json({ leads });
     } catch {
       return res.status(500).json({ error: "Could not load leads." });
@@ -151,6 +152,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         listSmsForLead(id),
       ]);
       return res.status(200).json({ ok: true, lead: updated, followups, messages });
+    }
+
+    if (body.markRead === true) {
+      await markLeadSmsRead(id);
+      return res.status(200).json({ ok: true, id, markedRead: true });
     }
 
     const patch: {

@@ -66,6 +66,7 @@ function mapLeadRow(row: Record<string, unknown>): LeadRow {
     qualified_at: (row.qualified_at as string | null) ?? null,
     ai_paused: Boolean(row.ai_paused),
     offer_path: (row.offer_path as LeadRow["offer_path"]) || "unknown",
+    sms_last_read_at: (row.sms_last_read_at as string | null) ?? null,
   };
 }
 

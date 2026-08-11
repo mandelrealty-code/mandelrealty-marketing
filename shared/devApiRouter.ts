@@ -29,9 +29,9 @@ import { buildCallInviteIcs, isValidCallStartIso } from "./callSlots.js";
 import { importMetaLeadPaste, importMetaLeadWebhook, previewMetaLeadPaste } from "./importMetaLead.js";
 import { cancelLeadFollowups, listFollowupsForLead, markLeadBookedAndStopSms, sendCustomSmsToLead, sendManualBumpForLead } from "./followUpStore.js";
 import { listSmsForLead } from "./smsStore.js";
+import { listLeadsInbox, markLeadSmsRead } from "./crmInbox.js";
 import {
   insertLead,
-  listLeads,
   deleteLead,
   findLeadsByEmailOrPhone,
   markLeadBooked,
@@ -336,7 +336,7 @@ export async function handleDevApi(
           return true;
         }
         const q = qs.get("q") || "";
-        json(res, 200, { leads: await listLeads(200, q) });
+        json(res, 200, { leads: await listLeadsInbox(200, q) });
       } catch {
         json(res, 500, { error: "Could not load leads." });
       }
@@ -385,6 +385,11 @@ export async function handleDevApi(
               }
             : { error: "Could not mark booked." },
         );
+        return true;
+      }
+      if (body.markRead === true) {
+        await markLeadSmsRead(id);
+        json(res, 200, { ok: true, id, markedRead: true });
         return true;
       }
       if (body.sendSmsBump === true) {

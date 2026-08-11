@@ -45,6 +45,7 @@ export type LeadRow = {
   qualified_at: string | null;
   ai_paused: boolean;
   offer_path: OfferPath;
+  sms_last_read_at: string | null;
 };
 
 export type InsertLeadInput = {
@@ -111,6 +112,7 @@ function mapLead(row: Record<string, unknown>): LeadRow {
     qualified_at: (row.qualified_at as string | null) ?? null,
     ai_paused: Boolean(row.ai_paused),
     offer_path: normalizeOfferPath(row.offer_path as string),
+    sms_last_read_at: (row.sms_last_read_at as string | null) ?? null,
   };
 }
 

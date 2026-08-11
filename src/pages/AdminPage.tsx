@@ -3,12 +3,18 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   LEAD_STATUSES,
   OFFER_PATH_LABEL,
+  OFFER_PATHS,
   PIPELINE_STATUSES,
   STATUS_JOURNEY,
   STATUS_LABEL,
   type LeadStatus,
   type OfferPath,
 } from "../../shared/crmTypes";
+import {
+  isBookedThisWeek,
+  NEEDS_YOU_LABEL,
+  type NeedsYouReason,
+} from "../../shared/crmInboxTypes";
 
 type Lead = {
   id: string;
@@ -32,6 +38,15 @@ type Lead = {
   notes_updated_at: string | null;
   ai_paused: boolean;
   offer_path: OfferPath;
+  sms_last_read_at?: string | null;
+  last_sms?: {
+    body: string;
+    direction: "inbound" | "outbound";
+    created_at: string;
+  } | null;
+  unread?: boolean;
+  needs_you?: NeedsYouReason[];
+  last_activity_at?: string;
 };
 
 type KnowledgeDoc = {
@@ -67,6 +82,39 @@ const STR_ALLOWED_LABEL: Record<string, string> = {
 };
 
 const easeOut = [0.22, 1, 0.36, 1] as const;
+
+function formatSmsTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) {
+    return d.toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" });
+  }
+  return d.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+}
+
+function previewSms(body: string, max = 72): string {
+  const t = body.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+}
+
+function telHref(phone: string): string | null {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 10) return null;
+  const e164 =
+    digits.length === 10
+      ? `+1${digits}`
+      : digits.length === 11 && digits.startsWith("1")
+        ? `+${digits}`
+        : phone.startsWith("+")
+          ? `+${digits}`
+          : null;
+  return e164 ? `tel:${e164}` : null;
+}
 
 function MotionToggle({
   on,
@@ -259,7 +307,17 @@ export function AdminPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [filterPath, setFilterPath] = useState<OfferPath | "all">("all");
+  const [filterStage, setFilterStage] = useState<LeadStatus | "all">("all");
+  const [filterAi, setFilterAi] = useState<"all" | "live" | "paused">("all");
+  const [filterBookedWeek, setFilterBookedWeek] = useState(false);
+  const [pipelineStage, setPipelineStage] = useState<LeadStatus | "all">("all");
+  const [actionLeadId, setActionLeadId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [copyFlash, setCopyFlash] = useState<string | null>(null);
+  const pullStartY = useRef<number | null>(null);
 
   const [notes, setNotes] = useState("");
   const [whatsNext, setWhatsNext] = useState("");
@@ -396,10 +454,25 @@ export function AdminPage() {
         whats_next: l.whats_next ?? "",
         ai_paused: Boolean(l.ai_paused),
         offer_path: (l.offer_path as OfferPath) || "unknown",
+        unread: Boolean(l.unread),
+        needs_you: Array.isArray(l.needs_you) ? l.needs_you : [],
+        last_sms: l.last_sms ?? null,
+        last_activity_at: l.last_activity_at,
+        sms_last_read_at: l.sms_last_read_at ?? null,
       })),
     );
     setAuthed(true);
   }, []);
+
+  const softRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadLeads(searchDebounced);
+      if (selectedId) await loadFollowups(selectedId);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadLeads, loadFollowups, searchDebounced, selectedId]);
 
   useEffect(() => {
     document.title = "CRM | Mandel Realty Group";
@@ -431,26 +504,91 @@ export function AdminPage() {
     if (authed && tab === "knowledge") loadDocs().catch(() => undefined);
   }, [authed, tab, loadDocs]);
 
+  // Live poll contacts + open thread
+  useEffect(() => {
+    if (!authed) return;
+    const id = window.setInterval(() => {
+      loadLeads(searchDebounced).catch(() => undefined);
+      if (selectedId) loadFollowups(selectedId).catch(() => undefined);
+    }, 12_000);
+    return () => window.clearInterval(id);
+  }, [authed, searchDebounced, selectedId, loadLeads, loadFollowups]);
+
+  const filteredLeads = useMemo(() => {
+    return leads.filter((l) => {
+      if (filterPath !== "all" && l.offer_path !== filterPath) return false;
+      if (filterStage !== "all" && l.status !== filterStage) return false;
+      if (filterAi === "live" && (l.ai_paused || !aiEffective)) return false;
+      if (filterAi === "paused" && !(l.ai_paused || !aiEffective)) return false;
+      if (filterBookedWeek && !isBookedThisWeek(l)) return false;
+      return true;
+    });
+  }, [leads, filterPath, filterStage, filterAi, filterBookedWeek, aiEffective]);
+
+  const needsYouLeads = useMemo(
+    () => filteredLeads.filter((l) => (l.needs_you?.length ?? 0) > 0),
+    [filteredLeads],
+  );
+
+  const pipelineLeads = useMemo(() => {
+    const list =
+      pipelineStage === "all"
+        ? leads
+        : leads.filter((l) => l.status === pipelineStage);
+    return [...list].sort((a, b) => {
+      const at = a.last_activity_at || a.created_at;
+      const bt = b.last_activity_at || b.created_at;
+      return new Date(bt).getTime() - new Date(at).getTime();
+    });
+  }, [leads, pipelineStage]);
+
+  const actionLead = useMemo(
+    () => leads.find((l) => l.id === actionLeadId) ?? null,
+    [leads, actionLeadId],
+  );
+
   const selected = useMemo(
     () => leads.find((l) => l.id === selectedId) ?? null,
     [leads, selectedId],
   );
 
   useEffect(() => {
-    if (!selected) {
+    if (!selectedId) {
       setFollowups([]);
       setSmsMessages([]);
       return;
     }
-    setNotes(selected.notes || "");
-    setWhatsNext(selected.whats_next || "");
+    const lead = leads.find((l) => l.id === selectedId);
+    if (!lead) return;
+    setNotes(lead.notes || "");
+    setWhatsNext(lead.whats_next || "");
     setSaveMsg(null);
     setSmsDraft("");
-    loadFollowups(selected.id).catch(() => {
+    loadFollowups(selectedId).catch(() => {
       setFollowups([]);
       setSmsMessages([]);
     });
-  }, [selected?.id, selected?.notes, selected?.whats_next, loadFollowups]);
+    fetch("/api/admin/leads", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ id: selectedId, markRead: true }),
+    }).catch(() => undefined);
+    setLeads((prev) =>
+      prev.map((l) =>
+        l.id === selectedId
+          ? {
+              ...l,
+              unread: false,
+              sms_last_read_at: new Date().toISOString(),
+              needs_you: (l.needs_you ?? []).filter((r) => r !== "unanswered_inbound"),
+            }
+          : l,
+      ),
+    );
+    // Only when opening a different lead
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: open once per id
+  }, [selectedId, loadFollowups]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -458,11 +596,48 @@ export function AdminPage() {
 
   const openLead = (id: string) => {
     setDetailsOpen(false);
+    setActionLeadId(null);
     setSelectedId(id);
   };
   const closeLead = () => {
     setDetailsOpen(false);
     setSelectedId(null);
+  };
+
+  const patchLeadById = async (id: string, body: Record<string, unknown>) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/leads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id, ...body }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        lead?: Lead;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      if (data.lead) {
+        setLeads((prev) =>
+          prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)),
+        );
+      }
+      return data.lead;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyPhone = async (phone: string) => {
+    try {
+      await navigator.clipboard.writeText(phone);
+      setCopyFlash("Phone copied");
+      window.setTimeout(() => setCopyFlash(null), 1600);
+    } catch {
+      setCopyFlash("Could not copy");
+      window.setTimeout(() => setCopyFlash(null), 1600);
+    }
   };
 
   const patchLead = async (body: Record<string, unknown>) => {
@@ -1096,10 +1271,10 @@ export function AdminPage() {
             </span>
             <button
               type="button"
-              onClick={() => loadLeads(searchDebounced)}
+              onClick={() => softRefresh().catch(() => undefined)}
               className="min-h-10 rounded-full px-3 text-sm text-mrg-muted"
             >
-              Refresh
+              {refreshing ? "…" : "Refresh"}
             </button>
             <button
               type="button"
@@ -1123,6 +1298,16 @@ export function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25, ease: easeOut }}
+              onTouchStart={(e) => {
+                pullStartY.current = e.touches[0]?.clientY ?? null;
+              }}
+              onTouchEnd={(e) => {
+                const start = pullStartY.current;
+                pullStartY.current = null;
+                if (start == null) return;
+                const dy = (e.changedTouches[0]?.clientY ?? 0) - start;
+                if (dy > 90 && window.scrollY < 8) softRefresh().catch(() => undefined);
+              }}
             >
             <div className="mb-4 grid grid-cols-3 gap-2">
               {(
@@ -1141,6 +1326,45 @@ export function AdminPage() {
                 </div>
               ))}
             </div>
+
+            {needsYouLeads.length > 0 && (
+              <div className="mb-4 overflow-hidden rounded-2xl bg-amber-500/10 ring-1 ring-amber-500/25">
+                <div className="flex items-center justify-between px-4 py-2.5">
+                  <p className="text-sm font-semibold text-amber-100">
+                    Needs you · {needsYouLeads.length}
+                  </p>
+                  <p className="text-[11px] text-amber-200/80">Action list</p>
+                </div>
+                <ul className="divide-y divide-amber-500/15">
+                  {needsYouLeads.slice(0, 8).map((lead) => (
+                    <li key={`need-${lead.id}`}>
+                      <button
+                        type="button"
+                        onClick={() => openLead(lead.id)}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-white/5"
+                      >
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold">{lead.name || "Unnamed"}</p>
+                          <p className="truncate text-xs text-amber-100/80">
+                            {(lead.needs_you ?? [])
+                              .map((r) => NEEDS_YOU_LABEL[r])
+                              .join(" · ")}
+                          </p>
+                          <p className="truncate text-xs text-mrg-muted">
+                            {lead.whats_next ||
+                              (lead.last_sms
+                                ? previewSms(lead.last_sms.body)
+                                : STATUS_JOURNEY[lead.status])}
+                          </p>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <input
                 value={search}
@@ -1156,19 +1380,185 @@ export function AdminPage() {
                 + Lead
               </button>
             </div>
+
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <select
+                value={filterPath}
+                onChange={(e) => setFilterPath(e.target.value as OfferPath | "all")}
+                className="min-h-9 shrink-0 rounded-full bg-mrg-surface-elevated px-3 text-xs text-mrg-text outline-none ring-1 ring-white/10"
+              >
+                <option value="all">All paths</option>
+                {OFFER_PATHS.map((p) => (
+                  <option key={p} value={p}>
+                    {OFFER_PATH_LABEL[p]}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={filterStage}
+                onChange={(e) => setFilterStage(e.target.value as LeadStatus | "all")}
+                className="min-h-9 shrink-0 rounded-full bg-mrg-surface-elevated px-3 text-xs text-mrg-text outline-none ring-1 ring-white/10"
+              >
+                <option value="all">All stages</option>
+                {LEAD_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={filterAi}
+                onChange={(e) => setFilterAi(e.target.value as "all" | "live" | "paused")}
+                className="min-h-9 shrink-0 rounded-full bg-mrg-surface-elevated px-3 text-xs text-mrg-text outline-none ring-1 ring-white/10"
+              >
+                <option value="all">AI: all</option>
+                <option value="live">AI live</option>
+                <option value="paused">AI paused</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => setFilterBookedWeek((v) => !v)}
+                className={`min-h-9 shrink-0 rounded-full px-3 text-xs font-semibold ring-1 ${
+                  filterBookedWeek
+                    ? "bg-sky-500/20 text-sky-200 ring-sky-500/35"
+                    : "bg-mrg-surface-elevated text-mrg-muted ring-white/10"
+                }`}
+              >
+                Booked this week
+              </button>
+            </div>
+
             <ul className="mt-4 divide-y divide-white/8 overflow-hidden rounded-2xl bg-mrg-surface-elevated ring-1 ring-white/10">
-              {leads.length === 0 && (
+              {filteredLeads.length === 0 && (
                 <li className="px-4 py-10 text-center text-sm text-mrg-muted">
-                  No contacts yet. Paste a Meta lead in Settings.
+                  {leads.length === 0
+                    ? "No contacts yet. Paste a Meta lead in Settings."
+                    : "No contacts match these filters."}
                 </li>
               )}
-              {leads.map((lead, i) => (
-                <motion.li
-                  key={lead.id}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.22, delay: Math.min(i * 0.03, 0.24), ease: easeOut }}
-                >
+              {filteredLeads.map((lead, i) => {
+                const subtitle =
+                  lead.whats_next?.trim() ||
+                  (lead.last_sms
+                    ? `${lead.last_sms.direction === "inbound" ? "Them: " : "You: "}${previewSms(lead.last_sms.body, 64)}`
+                    : STATUS_JOURNEY[lead.status]);
+                return (
+                  <motion.li
+                    key={lead.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.22, delay: Math.min(i * 0.03, 0.24), ease: easeOut }}
+                  >
+                    <div className="flex items-stretch">
+                      <button
+                        type="button"
+                        onClick={() => openLead(lead.id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setActionLeadId(lead.id);
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3.5 text-left active:bg-white/5"
+                      >
+                        {lead.unread ? (
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-mrg-gold" />
+                        ) : (
+                          <JourneyMark
+                            status={lead.status}
+                            aiPaused={lead.ai_paused}
+                            aiEffective={aiEffective}
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p
+                              className={`truncate ${lead.unread ? "font-bold" : "font-semibold"}`}
+                            >
+                              {lead.name || "Unnamed"}
+                            </p>
+                            {(lead.needs_you?.length ?? 0) > 0 && (
+                              <span className="shrink-0 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-100">
+                                Needs you
+                              </span>
+                            )}
+                          </div>
+                          <p
+                            className={`truncate text-sm ${lead.unread ? "text-mrg-text" : "text-mrg-muted"}`}
+                          >
+                            {subtitle}
+                          </p>
+                          <p className="truncate text-[11px] text-mrg-muted">
+                            {OFFER_PATH_LABEL[lead.offer_path]} · {STATUS_LABEL[lead.status]}
+                            {lead.last_sms
+                              ? ` · ${formatSmsTime(lead.last_sms.created_at)}`
+                              : ""}
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Quick actions"
+                        onClick={() => setActionLeadId(lead.id)}
+                        className="shrink-0 px-3 text-lg text-mrg-muted active:text-mrg-text"
+                      >
+                        ···
+                      </button>
+                    </div>
+                  </motion.li>
+                );
+              })}
+            </ul>
+            {refreshing && (
+              <p className="mt-2 text-center text-xs text-mrg-muted">Refreshing…</p>
+            )}
+            </motion.div>
+          )}
+
+          {tab === "pipeline" && (
+            <motion.div
+              key="pipeline"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25, ease: easeOut }}
+            >
+            <div className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <button
+                type="button"
+                onClick={() => setPipelineStage("all")}
+                className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold ring-1 ${
+                  pipelineStage === "all"
+                    ? "bg-mrg-gold/20 text-mrg-gold ring-mrg-gold/35"
+                    : "bg-white/5 text-mrg-muted ring-white/10"
+                }`}
+              >
+                All · {leads.length}
+              </button>
+              {PIPELINE_STATUSES.map((status) => {
+                const count = leads.filter((l) => l.status === status).length;
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setPipelineStage(status)}
+                    className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold ring-1 ${
+                      pipelineStage === status
+                        ? statusTone(status)
+                        : "bg-white/5 text-mrg-muted ring-white/10"
+                    }`}
+                  >
+                    {STATUS_LABEL[status]} · {count}
+                  </button>
+                );
+              })}
+            </div>
+            <ul className="mt-2 divide-y divide-white/8 overflow-hidden rounded-2xl bg-mrg-surface-elevated ring-1 ring-white/10">
+              {pipelineLeads.length === 0 && (
+                <li className="px-4 py-10 text-center text-sm text-mrg-muted">
+                  No leads in this stage.
+                </li>
+              )}
+              {pipelineLeads.map((lead) => (
+                <li key={lead.id}>
                   <button
                     type="button"
                     onClick={() => openLead(lead.id)}
@@ -1180,78 +1570,27 @@ export function AdminPage() {
                       aiEffective={aiEffective}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate font-semibold">{lead.name || "Unnamed"}</p>
-                      </div>
+                      <p className="truncate font-semibold">{lead.name || "Unnamed"}</p>
                       <p className="truncate text-sm text-mrg-muted">
-                        {OFFER_PATH_LABEL[lead.offer_path]} · {STATUS_JOURNEY[lead.status]}
+                        {lead.whats_next?.trim() ||
+                          OFFER_PATH_LABEL[lead.offer_path]}
                       </p>
-                      <p className="truncate text-xs text-mrg-muted">
-                        {lead.address || lead.phone || lead.email}
-                        {" · "}
-                        {listingShort(lead.has_listing)}
+                      <p className="truncate text-[11px] text-mrg-muted">
+                        {STATUS_LABEL[lead.status]}
+                        {lead.last_sms
+                          ? ` · ${formatSmsTime(lead.last_sms.created_at)}`
+                          : ""}
                       </p>
                     </div>
                     <span
                       className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${statusTone(lead.status)}`}
                     >
-                      {STATUS_LABEL[lead.status] || lead.status}
+                      {STATUS_LABEL[lead.status]}
                     </span>
                   </button>
-                </motion.li>
+                </li>
               ))}
             </ul>
-            </motion.div>
-          )}
-
-          {tab === "pipeline" && (
-            <motion.div
-              key="pipeline"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.25, ease: easeOut }}
-              className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-            {PIPELINE_STATUSES.map((status) => {
-              const column = leads.filter((l) => l.status === status);
-              return (
-                <motion.div
-                  key={status}
-                  layout
-                  className="w-[78vw] max-w-xs shrink-0 rounded-2xl bg-mrg-surface-elevated p-3 ring-1 ring-white/10 sm:w-72"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{STATUS_LABEL[status]}</p>
-                    <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-mrg-muted">
-                      {column.length}
-                    </span>
-                  </div>
-                  <ul className="space-y-2">
-                    {column.map((lead) => (
-                      <motion.li key={lead.id} layout>
-                        <button
-                          type="button"
-                          onClick={() => openLead(lead.id)}
-                          className="w-full rounded-xl bg-mrg-bg p-3 text-left ring-1 ring-white/8 active:ring-mrg-gold/40"
-                        >
-                          <p className="font-medium">{lead.name || "Unnamed"}</p>
-                          <p className="mt-0.5 truncate text-xs text-mrg-muted">
-                            {OFFER_PATH_LABEL[lead.offer_path]}
-                          </p>
-                          <p className="mt-0.5 truncate text-xs text-mrg-muted">
-                            {lead.address || lead.phone}
-                          </p>
-                        </button>
-                      </motion.li>
-                    ))}
-                    {column.length === 0 && (
-                      <li className="py-6 text-center text-xs text-mrg-muted">Empty</li>
-                    )}
-                  </ul>
-                </motion.div>
-              );
-            })}
             </motion.div>
           )}
 
@@ -1448,6 +1787,106 @@ export function AdminPage() {
           )}
         </AnimatePresence>
       </main>
+
+      {copyFlash && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-40 flex justify-center px-4">
+          <p className="rounded-full bg-mrg-surface-elevated px-4 py-2 text-sm text-mrg-text ring-1 ring-white/15">
+            {copyFlash}
+          </p>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {actionLead && (
+          <motion.div
+            key="actions"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 flex items-end justify-center bg-black/55 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-8"
+            onClick={() => setActionLeadId(null)}
+          >
+            <motion.div
+              initial={{ y: 40 }}
+              animate={{ y: 0 }}
+              exit={{ y: 24 }}
+              transition={{ duration: 0.22, ease: easeOut }}
+              className="w-full max-w-md overflow-hidden rounded-3xl bg-mrg-surface-elevated ring-1 ring-white/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="border-b border-white/8 px-4 py-3">
+                <p className="font-semibold">{actionLead.name || "Contact"}</p>
+                <p className="truncate text-xs text-mrg-muted">
+                  {actionLead.phone || actionLead.email || "No phone"}
+                </p>
+              </div>
+              <div className="grid gap-1 p-2">
+                <button
+                  type="button"
+                  disabled={saving || !aiEffective}
+                  onClick={() => {
+                    patchLeadById(actionLead.id, {
+                      aiPaused: !actionLead.ai_paused,
+                    })
+                      .then(() => setActionLeadId(null))
+                      .catch(() => undefined);
+                  }}
+                  className="min-h-12 rounded-2xl px-4 text-left text-sm font-semibold active:bg-white/5 disabled:opacity-40"
+                >
+                  {actionLead.ai_paused ? "Resume AI" : "Take over (pause AI)"}
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    patchLeadById(actionLead.id, { markBooked: true })
+                      .then(() => setActionLeadId(null))
+                      .catch(() => undefined);
+                  }}
+                  className="min-h-12 rounded-2xl px-4 text-left text-sm font-semibold text-sky-200 active:bg-white/5"
+                >
+                  Mark booked
+                </button>
+                {telHref(actionLead.phone) && (
+                  <a
+                    href={telHref(actionLead.phone)!}
+                    className="flex min-h-12 items-center rounded-2xl px-4 text-sm font-semibold active:bg-white/5"
+                    onClick={() => setActionLeadId(null)}
+                  >
+                    Call
+                  </a>
+                )}
+                {actionLead.phone && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      copyPhone(actionLead.phone).catch(() => undefined);
+                      setActionLeadId(null);
+                    }}
+                    className="min-h-12 rounded-2xl px-4 text-left text-sm font-semibold active:bg-white/5"
+                  >
+                    Copy phone
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => openLead(actionLead.id)}
+                  className="min-h-12 rounded-2xl px-4 text-left text-sm font-semibold text-mrg-gold active:bg-white/5"
+                >
+                  Open chat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActionLeadId(null)}
+                  className="min-h-12 rounded-2xl px-4 text-left text-sm text-mrg-muted active:bg-white/5"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-mrg-bg/95 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur">
         <div className="mx-auto grid max-w-5xl grid-cols-4">
