@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   LEAD_STATUSES,
@@ -15,6 +15,14 @@ import {
   NEEDS_YOU_LABEL,
   type NeedsYouReason,
 } from "../../shared/crmInboxTypes";
+import {
+  readStoredAdminMode,
+  writeStoredAdminMode,
+  type AdminProductMode,
+} from "./clients/mode";
+import { ModeSwitcher } from "./clients/ui";
+
+const ClientsApp = lazy(() => import("./clients/ClientsApp"));
 
 type Lead = {
   id: string;
@@ -228,6 +236,9 @@ export function AdminPage() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
+  const [productMode, setProductMode] = useState<AdminProductMode>(() =>
+    typeof window !== "undefined" ? readStoredAdminMode() : "crm",
+  );
 
   const [tab, setTab] = useState<Tab>("contacts");
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -1332,6 +1343,25 @@ export function AdminPage() {
     );
   }
 
+  if (productMode === "clients") {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex min-h-dvh items-center justify-center bg-[#0a0a0a] text-[#9a9590]">
+            Loading Clients…
+          </div>
+        }
+      >
+        <ClientsApp
+          onModeChange={(mode) => {
+            writeStoredAdminMode(mode);
+            setProductMode(mode);
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   /* -------- Contact detail (Claude Design inbox) -------- */
   if (selected) {
     const firstName =
@@ -2086,7 +2116,16 @@ export function AdminPage() {
         <div className="mx-auto flex max-w-[1000px] items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
             <CrmMark size={24} />
-            <h1 className="truncate text-base font-semibold text-[#f5f5f5]">{TAB_TITLE[tab]}</h1>
+            <ModeSwitcher
+              mode="crm"
+              onChange={(mode) => {
+                writeStoredAdminMode(mode);
+                setProductMode(mode);
+              }}
+            />
+            <h1 className="hidden truncate text-base font-semibold text-[#f5f5f5] sm:block">
+              {TAB_TITLE[tab]}
+            </h1>
           </div>
           <div className="flex items-center gap-2">
             {tab === "contacts" && (
