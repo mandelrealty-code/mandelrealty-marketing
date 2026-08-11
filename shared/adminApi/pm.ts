@@ -5,6 +5,12 @@ import {
   verifyAdminSessionToken,
 } from "../adminAuth.js";
 import {
+  createContract,
+  deleteContract,
+  getContractDownloadUrl,
+  listContracts,
+} from "../pm/contractStore.js";
+import {
   createPmClient,
   getHospitablePat,
   getPmSettings,
@@ -17,6 +23,15 @@ import {
   listAllHospitableProperties,
   verifyHospitablePat,
 } from "../pm/hospitableClient.js";
+import {
+  previousYearMonth,
+  syncHospitableReservations,
+} from "../pm/reservationStore.js";
+import {
+  buildMonthStatement,
+  createManualExpense,
+  deleteManualExpense,
+} from "../pm/statementMath.js";
 import {
   changePmCommission,
   createPmProperty,
@@ -53,6 +68,17 @@ function resourceOf(req: VercelRequest): string {
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function moneyToCents(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    return Math.round(v * 100);
+  }
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v.replace(/[^0-9.-]/g, ""));
+    if (Number.isFinite(n)) return Math.round(n * 100);
+  }
+  return NaN;
 }
 
 async function settingsPayload(extra: Record<string, unknown> = {}) {
@@ -115,6 +141,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           total: all.length,
           linked_count: linked.size,
         });
+      }
+      if (resource === "earnings") {
+        const propertyId =
+          typeof req.query.property_id === "string" ? req.query.property_id.trim() : "";
+        const yearMonth =
+          typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month)
+            ? req.query.month
+            : previousYearMonth();
+        if (!propertyId) return res.status(400).json({ error: "property_id required." });
+        const statement = await buildMonthStatement(propertyId, yearMonth);
+        return res.status(200).json({ statement });
+      }
+      if (resource === "contracts") {
+        const clientId =
+          typeof req.query.client_id === "string" ? req.query.client_id.trim() : "";
+        const propertyId =
+          typeof req.query.property_id === "string" ? req.query.property_id.trim() : "";
+        const contracts = await listContracts({
+          client_id: clientId || undefined,
+          property_id: propertyId || undefined,
+        });
+        return res.status(200).json({ contracts });
+      }
+      if (resource === "contract_url") {
+        const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+        if (!id) return res.status(400).json({ error: "id required." });
+        const url = await getContractDownloadUrl(id);
+        return res.status(200).json({ url });
       }
       return res.status(400).json({ error: "Unknown resource." });
     }
@@ -211,15 +265,99 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const linked = await listLinkedHospitableIds();
             const existing = await getPmPropertyDetail(id);
             if (linked.has(hid) && existing?.hospitable_property_id !== hid) {
-              return res
-                .status(400)
-                .json({ error: "That Hospitable unit is already linked to another property." });
+              return res.status(400).json({
+                error: "That Hospitable unit is already linked to another property.",
+              });
             }
           }
           const property = await updatePmProperty(id, {
             hospitable_property_id: hid,
           });
           return res.status(200).json({ property });
+        }
+      }
+
+      if (resource === "earnings") {
+        if (op === "sync") {
+          const yearMonth =
+            str(body.month) && /^\d{4}-\d{2}$/.test(str(body.month))
+              ? str(body.month)
+              : previousYearMonth();
+          const propertyId = str(body.property_id) || undefined;
+          const result = await syncHospitableReservations({
+            yearMonth,
+            propertyId,
+          });
+          const statement = propertyId
+            ? await buildMonthStatement(propertyId, yearMonth)
+            : null;
+          return res.status(200).json({ ...result, statement, month: yearMonth });
+        }
+        if (op === "add_expense") {
+          const amountCents =
+            typeof body.amount_cents === "number"
+              ? Math.round(body.amount_cents)
+              : moneyToCents(body.amount);
+          if (!Number.isFinite(amountCents)) {
+            return res.status(400).json({ error: "amount required." });
+          }
+          const expense = await createManualExpense({
+            property_id: str(body.property_id),
+            expense_date: str(body.expense_date),
+            category: str(body.category) || "other",
+            label: str(body.label),
+            amount_cents: amountCents,
+            note: str(body.note),
+          });
+          return res.status(200).json({ expense });
+        }
+        if (op === "delete_expense") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await deleteManualExpense(id);
+          return res.status(200).json({ ok: true });
+        }
+      }
+
+      if (resource === "contracts") {
+        if (op === "create") {
+          const filename = str(body.filename);
+          const base64 = str(body.contentBase64);
+          if (!filename || !base64) {
+            return res.status(400).json({ error: "filename + contentBase64 required." });
+          }
+          if (base64.length > 14_000_000) {
+            return res.status(400).json({ error: "File too large (max ~10MB)." });
+          }
+          let buffer: Buffer;
+          try {
+            buffer = Buffer.from(base64, "base64");
+          } catch {
+            return res.status(400).json({ error: "Invalid base64." });
+          }
+          const contract = await createContract({
+            client_id: str(body.client_id) || null,
+            property_id: str(body.property_id) || null,
+            title: str(body.title) || filename,
+            filename,
+            mime: str(body.mime) || "application/pdf",
+            buffer,
+            signed_on: str(body.signed_on) || null,
+            effective_from: str(body.effective_from) || null,
+            effective_to: str(body.effective_to) || null,
+            status:
+              body.status === "draft" || body.status === "expired"
+                ? body.status
+                : "signed",
+            note: str(body.note),
+          });
+          return res.status(200).json({ contract });
+        }
+        if (op === "delete") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await deleteContract(id);
+          return res.status(200).json({ ok: true });
         }
       }
 
@@ -254,7 +392,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         if (op === "clear_hospitable_pat") {
           const settings = await updatePmSettings({ hospitable_pat: "" });
-          // Env fallback may still count as connected
           return res.status(200).json({
             settings,
             hospitable_connected: await isHospitableConfigured(),

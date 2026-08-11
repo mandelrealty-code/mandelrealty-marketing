@@ -7,6 +7,8 @@ import {
   type PropertyDetail,
   type PropertyRow,
 } from "./api";
+import { ContractsPanel } from "./ContractsPanel";
+import { EarningsPanel } from "./EarningsPanel";
 import {
   clientSubtitle,
   formatDisplayDate,
@@ -661,6 +663,17 @@ export default function ClientsApp({ onModeChange }: Props) {
             ))}
           </>
         ) : null}
+
+        <EarningsPanel
+          propertyId={propertyDetail.id}
+          linked={Boolean(propertyDetail.hospitable_property_id)}
+          onError={setLoadError}
+        />
+        <ContractsPanel
+          propertyId={propertyDetail.id}
+          clientId={propertyDetail.client_id}
+          onError={setLoadError}
+        />
       </div>
     );
 
@@ -798,19 +811,24 @@ export default function ClientsApp({ onModeChange }: Props) {
               </div>
             </div>
             {clientSheet !== "create" && typeof clientSheet === "object" ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setClientSheet(null);
-                  setTab("properties");
-                  setSelectedPropertyId(null);
-                  setPropertyDetail(null);
-                }}
-                className="mt-2 flex items-center justify-between border-t border-white/8 pt-3.5 text-sm font-medium text-[#f5f5f5]"
-              >
-                <span>Properties</span>
-                <span className="text-[#c4a35a]">View</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientSheet(null);
+                    setTab("properties");
+                    setSelectedPropertyId(null);
+                    setPropertyDetail(null);
+                  }}
+                  className="mt-2 flex items-center justify-between border-t border-white/8 pt-3.5 text-sm font-medium text-[#f5f5f5]"
+                >
+                  <span>Properties</span>
+                  <span className="text-[#c4a35a]">View</span>
+                </button>
+                <div className="-mx-4 mt-2">
+                  <ContractsPanel clientId={clientSheet.id} onError={setLoadError} />
+                </div>
+              </>
             ) : null}
             <GoldButton type="button" disabled={busy || !clientForm.name.trim()} onClick={saveClient}>
               {busy ? "Saving…" : "Save"}
