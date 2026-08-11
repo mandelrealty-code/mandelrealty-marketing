@@ -113,3 +113,47 @@ export async function getLeadCallByCallSid(callSid: string): Promise<LeadCallRow
   if (error || !data) return null;
   return mapRow(data as Record<string, unknown>);
 }
+
+export async function getLatestLeadCallForLead(
+  leadId: string,
+): Promise<LeadCallRow | null> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return null;
+  const { data, error } = await sb
+    .from("lead_calls")
+    .select("*")
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapRow(data as Record<string, unknown>);
+}
+
+/** Newest first — used to detect double-click races. */
+export async function listRecentLeadCalls(
+  leadId: string,
+  limit = 3,
+): Promise<LeadCallRow[]> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from("lead_calls")
+    .select("*")
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(mapRow);
+}
+
+export async function countLeadCalls(leadId: string): Promise<number> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return 0;
+  const { count, error } = await sb
+    .from("lead_calls")
+    .select("id", { count: "exact", head: true })
+    .eq("lead_id", leadId);
+  if (error) return 0;
+  return count ?? 0;
+}

@@ -121,6 +121,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ok: true,
         callId: result.callId,
         callSid: result.callSid,
+        preCallSmsSent: Boolean(result.preCallSmsSent),
+        preCallSmsSkipped: Boolean(result.preCallSmsSkipped),
       });
     }
 

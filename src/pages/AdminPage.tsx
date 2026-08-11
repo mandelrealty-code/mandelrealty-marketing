@@ -104,6 +104,17 @@ function telHref(phone: string): string | null {
   return e164 ? `tel:${e164}` : null;
 }
 
+function leadHadPreCallSms(
+  messages: { direction: string; body: string; meta?: Record<string, unknown> }[],
+): boolean {
+  return messages.some(
+    (m) =>
+      m.direction === "outbound" &&
+      (m.meta?.pre_call === true ||
+        /calling you in a minute from this number/i.test(m.body)),
+  );
+}
+
 function leadActivityTime(lead: Lead): string {
   const iso = lead.last_sms?.created_at || lead.last_activity_at || lead.created_at;
   const d = new Date(iso);
@@ -301,6 +312,10 @@ export function AdminPage() {
   const [operatorMsg, setOperatorMsg] = useState<string | null>(null);
   const [callBusy, setCallBusy] = useState(false);
   const [callMsg, setCallMsg] = useState<string | null>(null);
+  const callLock = useRef(false);
+  const [preCallSmsByLead, setPreCallSmsByLead] = useState<Record<string, true>>(
+    {},
+  );
   const deepLinkConsumed = useRef(false);
 
   const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
@@ -542,6 +557,16 @@ export function AdminPage() {
     [leads, selectedId],
   );
 
+  const selectedPreCallDone = Boolean(
+    selected &&
+      (preCallSmsByLead[selected.id] || leadHadPreCallSms(smsMessages)),
+  );
+  const actionLeadPreCallDone = Boolean(
+    actionLead &&
+      (preCallSmsByLead[actionLead.id] ||
+        (actionLead.id === selectedId && leadHadPreCallSms(smsMessages))),
+  );
+
   useEffect(() => {
     if (!selectedId) {
       setFollowups([]);
@@ -716,6 +741,8 @@ export function AdminPage() {
   };
 
   const startCrmCall = async (leadId: string) => {
+    if (callLock.current || callBusy) return;
+    callLock.current = true;
     setCallBusy(true);
     setCallMsg(null);
     try {
@@ -725,10 +752,22 @@ export function AdminPage() {
         credentials: "include",
         body: JSON.stringify({ id: leadId, startCall: true }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        ok?: boolean;
+        preCallSmsSent?: boolean;
+        preCallSmsSkipped?: boolean;
+      };
       if (!res.ok) throw new Error(data.error || "Could not start call");
-      setCallMsg("Calling your phone now — answer to connect the lead.");
-      window.setTimeout(() => setCallMsg(null), 5000);
+      if (data.preCallSmsSent || data.preCallSmsSkipped) {
+        setPreCallSmsByLead((prev) => ({ ...prev, [leadId]: true }));
+      }
+      setCallMsg(
+        data.preCallSmsSent
+          ? "Texted the lead once — now ringing your phone. Answer to connect."
+          : "Ringing your phone (no new text) — answer to connect the lead.",
+      );
+      window.setTimeout(() => setCallMsg(null), 6000);
       if (selectedId === leadId) {
         await loadFollowups(leadId).catch(() => undefined);
       }
@@ -736,6 +775,7 @@ export function AdminPage() {
     } catch (err) {
       setCallMsg(err instanceof Error ? err.message : "Call failed");
     } finally {
+      callLock.current = false;
       setCallBusy(false);
     }
   };
@@ -1662,13 +1702,24 @@ export function AdminPage() {
                         type="button"
                         disabled={callBusy || !operatorCallbackPhone}
                         onClick={() => startCrmCall(selected.id).catch(() => undefined)}
-                        className="flex items-center justify-between gap-3 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121] disabled:opacity-50"
+                        className="flex flex-col gap-1 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121] disabled:opacity-50"
                       >
-                        <span className="text-sm text-[#9a9590]">
-                          {callBusy ? "Starting call…" : "Call via CRM"}
+                        <span className="flex w-full items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-[#f0eeea]">
+                            {callBusy
+                              ? "Starting call…"
+                              : selectedPreCallDone
+                                ? "Call again via CRM"
+                                : "Call via CRM"}
+                          </span>
+                          <span className="text-sm font-semibold text-[#dcc084]">
+                            {selected.phone}
+                          </span>
                         </span>
-                        <span className="text-sm font-semibold text-[#dcc084]">
-                          {selected.phone}
+                        <span className="text-[12.5px] leading-snug text-[#7d7873]">
+                          {selectedPreCallDone
+                            ? "Rings your phone only — no new text to the lead"
+                            : "Texts the lead once, then rings your phone"}
                         </span>
                       </button>
                       <a
@@ -2881,11 +2932,24 @@ export function AdminPage() {
                         .then(() => setActionLeadId(null))
                         .catch(() => undefined);
                     }}
-                    className="flex w-full items-center justify-between border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-left text-[14.5px] font-medium text-[#e8e4de] hover:bg-[#212121] disabled:opacity-40"
+                    className="flex w-full flex-col gap-1 border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-left hover:bg-[#212121] disabled:opacity-40"
                   >
-                    <span>{callBusy ? "Starting call…" : "Call via CRM"}</span>
-                    <span className="text-[13px] font-normal text-[#6f6a65]">
-                      {operatorCallbackPhone ? actionLead.phone : "Set phone in Settings"}
+                    <span className="flex w-full items-center justify-between gap-3">
+                      <span className="text-[14.5px] font-medium text-[#e8e4de]">
+                        {callBusy
+                          ? "Starting call…"
+                          : actionLeadPreCallDone
+                            ? "Call again via CRM"
+                            : "Call via CRM"}
+                      </span>
+                      <span className="text-[13px] font-normal text-[#6f6a65]">
+                        {operatorCallbackPhone ? actionLead.phone : "Set phone in Settings"}
+                      </span>
+                    </span>
+                    <span className="text-[12.5px] leading-snug text-[#7d7873]">
+                      {actionLeadPreCallDone
+                        ? "Rings your phone only — no new text"
+                        : "Texts the lead once, then rings you"}
                     </span>
                   </button>
                 )}

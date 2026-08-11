@@ -444,7 +444,13 @@ export async function handleDevApi(
           json(res, 400, { error: result.error || "Could not start call." });
           return true;
         }
-        json(res, 200, { ok: true, callId: result.callId, callSid: result.callSid });
+        json(res, 200, {
+          ok: true,
+          callId: result.callId,
+          callSid: result.callSid,
+          preCallSmsSent: Boolean(result.preCallSmsSent),
+          preCallSmsSkipped: Boolean(result.preCallSmsSkipped),
+        });
         return true;
       }
       if (body.sendSmsBump === true) {

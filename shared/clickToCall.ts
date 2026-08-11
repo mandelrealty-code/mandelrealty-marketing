@@ -4,8 +4,8 @@
 import { getCrmSettings } from "./crmSettings.js";
 import { isTwilioConfigured, toE164 } from "./followUpSequences.js";
 import { getLeadById, updateLeadCrm } from "./leadStore.js";
-import { createLeadCall, getLeadCallById, updateLeadCall } from "./leadCalls.js";
-import { logSmsMessage } from "./smsStore.js";
+import { createLeadCall, getLatestLeadCallForLead, getLeadCallById, listRecentLeadCalls, updateLeadCall } from "./leadCalls.js";
+import { listSmsForLead, logSmsMessage } from "./smsStore.js";
 import { sendTwilioSms } from "./twilioSms.js";
 import {
   createTwilioCall,
@@ -30,11 +30,31 @@ export function buildPreCallSms(leadName: string): string {
   return `Hey ${name}, it's Mandel Realty Group — calling you in a minute from this number. Feel free to pick up.`;
 }
 
+export function isPreCallSmsBody(body: string): boolean {
+  return /calling you in a minute from this number/i.test(body);
+}
+
+export async function leadAlreadyGotPreCallSms(leadId: string): Promise<boolean> {
+  const msgs = await listSmsForLead(leadId);
+  return msgs.some(
+    (m) =>
+      m.direction === "outbound" &&
+      (m.meta?.pre_call === true || isPreCallSmsBody(m.body)),
+  );
+}
+
 export async function startClickToCall(input: {
   leadId: string;
   operatorPhone?: string;
   env: TwilioVoiceEnv;
-}): Promise<{ ok: boolean; callId?: string; callSid?: string; error?: string }> {
+}): Promise<{
+  ok: boolean;
+  callId?: string;
+  callSid?: string;
+  preCallSmsSent?: boolean;
+  preCallSmsSkipped?: boolean;
+  error?: string;
+}> {
   if (!isTwilioConfigured(input.env)) {
     return { ok: false, error: "Twilio is not configured." };
   }
@@ -60,9 +80,28 @@ export async function startClickToCall(input: {
     return { ok: false, error: "Operator phone cannot be the same as the lead." };
   }
 
+  // Guard double-clicks: one call start per lead every 20s
+  const latest = await getLatestLeadCallForLead(lead.id);
+  if (latest) {
+    const ageMs = Date.now() - new Date(latest.created_at).getTime();
+    if (
+      ageMs < 20_000 &&
+      !["failed", "canceled", "completed", "summarized", "transcript_ready"].includes(
+        latest.status,
+      )
+    ) {
+      return {
+        ok: false,
+        error: "Call already starting — wait a moment before clicking again.",
+      };
+    }
+  }
+
   const from = input.env.TWILIO_PHONE_NUMBER!.trim();
   const accountSid = input.env.TWILIO_ACCOUNT_SID!.trim();
   const authToken = input.env.TWILIO_AUTH_TOKEN!.trim();
+
+  const alreadyTexted = await leadAlreadyGotPreCallSms(lead.id);
 
   const callRow = await createLeadCall({
     leadId: lead.id,
@@ -76,29 +115,55 @@ export async function startClickToCall(input: {
     };
   }
 
+  // Concurrent click race: another row won the insert race — abort without SMS/dial
+  const recent = await listRecentLeadCalls(lead.id, 3);
+  const olderSibling = recent.find((r) => r.id !== callRow.id);
+  if (olderSibling) {
+    const siblingAge = Date.now() - new Date(olderSibling.created_at).getTime();
+    if (
+      siblingAge < 20_000 &&
+      !["failed", "canceled"].includes(olderSibling.status)
+    ) {
+      await updateLeadCall(callRow.id, {
+        status: "failed",
+        error: "duplicate_click",
+      });
+      return {
+        ok: false,
+        error: "Call already starting — wait a moment before clicking again.",
+      };
+    }
+  }
+
   // Pause AI so it doesn't text mid-call
   await updateLeadCrm(lead.id, { aiPaused: true }).catch(() => undefined);
 
-  const smsBody = buildPreCallSms(lead.name);
-  const sms = await sendTwilioSms({
-    accountSid,
-    authToken,
-    from,
-    to: leadPhone,
-    body: smsBody,
-  });
-  if (sms.ok) {
-    await logSmsMessage({
-      leadId: lead.id,
-      direction: "outbound",
-      fromPhone: from,
-      toPhone: leadPhone,
+  let preCallSmsSent = false;
+  let preCallSmsSkipped = alreadyTexted;
+
+  if (!alreadyTexted) {
+    const smsBody = buildPreCallSms(lead.name);
+    const sms = await sendTwilioSms({
+      accountSid,
+      authToken,
+      from,
+      to: leadPhone,
       body: smsBody,
-      providerSid: sms.sid ?? null,
-      meta: { human: true, pre_call: true, call_id: callRow.id },
-    }).catch(() => undefined);
-  } else {
-    console.warn("[clickToCall] pre-call SMS failed", sms.error);
+    });
+    if (sms.ok) {
+      preCallSmsSent = true;
+      await logSmsMessage({
+        leadId: lead.id,
+        direction: "outbound",
+        fromPhone: from,
+        toPhone: leadPhone,
+        body: smsBody,
+        providerSid: sms.sid ?? null,
+        meta: { human: true, pre_call: true, call_id: callRow.id },
+      }).catch(() => undefined);
+    } else {
+      console.warn("[clickToCall] pre-call SMS failed", sms.error);
+    }
   }
 
   const base = twilioWebhookBaseUrl();
@@ -129,12 +194,23 @@ export async function startClickToCall(input: {
 
   const stamp = new Date().toLocaleString("en-CA", { timeZone: "America/Toronto" });
   const prev = (lead.whats_next || "").trim();
-  const line = `[Call ${stamp}] Click-to-call started — AI paused. Pre-call SMS ${sms.ok ? "sent" : "failed"}.`;
+  const smsNote = preCallSmsSent
+    ? "Pre-call SMS sent."
+    : preCallSmsSkipped
+      ? "Pre-call SMS skipped (already sent)."
+      : "Pre-call SMS failed.";
+  const line = `[Call ${stamp}] Click-to-call started — AI paused. ${smsNote}`;
   await updateLeadCrm(lead.id, {
     whatsNext: prev ? `${line}\n${prev}`.slice(0, 900) : line,
   }).catch(() => undefined);
 
-  return { ok: true, callId: callRow.id, callSid: call.sid };
+  return {
+    ok: true,
+    callId: callRow.id,
+    callSid: call.sid,
+    preCallSmsSent,
+    preCallSmsSkipped,
+  };
 }
 
 /** TwiML when the operator answers — bridge to the lead and record. */
