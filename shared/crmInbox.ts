@@ -13,6 +13,7 @@ export type SmsPreview = {
   body: string;
   direction: "inbound" | "outbound";
   created_at: string;
+  meta?: Record<string, unknown>;
 };
 
 export type LeadInboxRow = LeadRow & {
@@ -43,8 +44,10 @@ export function detectNeedsYou(input: {
   lead: Pick<LeadRow, "whats_next" | "ai_paused" | "ai_force_on" | "status">;
   lastSms: SmsPreview | null;
   unread: boolean;
+  /** Kept for callers; Needs you no longer hides threads just because AI is on. */
   aiGlobalOn: boolean;
 }): NeedsYouReason[] {
+  void input.aiGlobalOn;
   const reasons: NeedsYouReason[] = [];
   const wn = (input.lead.whats_next || "").trim();
   const parked = PARKED_FROM_NEEDS_YOU.has(input.lead.status);
@@ -58,22 +61,18 @@ export function detectNeedsYou(input: {
     if (!parked && !softPark && HIGH_INTENT_RE.test(body)) {
       reasons.push("high_intent");
     }
-
-    const aiActiveHere =
-      !input.lead.ai_paused &&
-      (input.aiGlobalOn || Boolean(input.lead.ai_force_on));
-    const pausedOrOff = !aiActiveHere;
-    const aiStoppedStage = [
-      "booked",
-      "call_done",
-      "won",
-      "low_fit",
-      "skip",
-    ].includes(input.lead.status);
-    // Nurturing = intentional park (guide / later follow-up) — not Needs you
-    if (!parked && input.unread && (pausedOrOff || aiStoppedStage)) {
+    // Always surface unread inbound — even when AI is live — so the team can review / step in
+    if (!parked && input.unread) {
       reasons.push("unanswered_inbound");
     }
+  } else if (
+    !parked &&
+    input.unread &&
+    input.lastSms?.direction === "outbound" &&
+    input.lastSms.meta?.ai_generated === true
+  ) {
+    // AI replied (or opened) — still flag so partners can read what Claude said
+    reasons.push("review_ai");
   }
 
   return reasons;
@@ -90,7 +89,7 @@ export async function fetchLatestSmsByLeadIds(
 
   const { data, error } = await sb
     .from("lead_sms_messages")
-    .select("lead_id, body, direction, created_at")
+    .select("lead_id, body, direction, created_at, meta")
     .in("lead_id", leadIds)
     .order("created_at", { ascending: false })
     .limit(Math.min(leadIds.length * 3, 600));
@@ -107,6 +106,10 @@ export async function fetchLatestSmsByLeadIds(
       body: String(row.body ?? ""),
       direction: row.direction === "inbound" ? "inbound" : "outbound",
       created_at: String(row.created_at),
+      meta:
+        row.meta && typeof row.meta === "object"
+          ? (row.meta as Record<string, unknown>)
+          : undefined,
     });
   }
   return map;
@@ -118,9 +121,9 @@ export function enrichLeadInbox(
   aiGlobalOn: boolean,
 ): LeadInboxRow {
   const smsLastReadAt = lead.sms_last_read_at ?? null;
+  // Any new SMS after last open counts as unread — including AI outbound — so the team can review
   const unread = Boolean(
     lastSms &&
-      lastSms.direction === "inbound" &&
       (!smsLastReadAt || new Date(lastSms.created_at) > new Date(smsLastReadAt)),
   );
   const needs_you = detectNeedsYou({

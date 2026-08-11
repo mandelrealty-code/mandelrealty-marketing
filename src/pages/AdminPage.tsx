@@ -600,7 +600,9 @@ export function AdminPage() {
               ...l,
               unread: false,
               sms_last_read_at: new Date().toISOString(),
-              needs_you: (l.needs_you ?? []).filter((r) => r !== "unanswered_inbound"),
+              needs_you: (l.needs_you ?? []).filter(
+                (r) => r !== "unanswered_inbound" && r !== "review_ai",
+              ),
             }
           : l,
       ),

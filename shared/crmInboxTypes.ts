@@ -3,12 +3,14 @@
 export type NeedsYouReason =
   | "ai_stuck"
   | "unanswered_inbound"
+  | "review_ai"
   | "kb_miss"
   | "high_intent";
 
 export const NEEDS_YOU_LABEL: Record<NeedsYouReason, string> = {
   ai_stuck: "AI stuck",
   unanswered_inbound: "Unanswered reply",
+  review_ai: "Review AI",
   kb_miss: "KB miss",
   high_intent: "High intent",
 };
