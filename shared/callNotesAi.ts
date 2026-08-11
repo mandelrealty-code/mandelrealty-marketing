@@ -1,5 +1,6 @@
 /**
- * Claude summary of a Twilio call transcript → CRM notes.
+ * Claude summary of a call transcript → CRM notes.
+ * Transcription: download Twilio recording + OpenAI Whisper (OPENAI_API_KEY).
  */
 const DEFAULT_MODEL = "claude-haiku-4-5";
 
@@ -55,5 +56,81 @@ Keep under 400 words. No invented facts.`,
   } catch (err) {
     console.error("[callNotesAi] failed", err);
     return null;
+  }
+}
+
+/** Download Twilio MP3 (Basic auth) and transcribe with OpenAI Whisper. */
+export async function transcribeTwilioRecording(input: {
+  recordingUrl: string;
+  accountSid: string;
+  authToken: string;
+}): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!openaiKey) {
+    return {
+      ok: false,
+      error: "OPENAI_API_KEY missing — needed to transcribe call recordings (same key as KB embeddings).",
+    };
+  }
+
+  const mp3Url = input.recordingUrl.endsWith(".mp3")
+    ? input.recordingUrl
+    : `${input.recordingUrl}.mp3`;
+
+  let audio: ArrayBuffer;
+  try {
+    const auth = Buffer.from(`${input.accountSid}:${input.authToken}`).toString("base64");
+    const audioRes = await fetch(mp3Url, {
+      headers: { Authorization: `Basic ${auth}` },
+    });
+    if (!audioRes.ok) {
+      return { ok: false, error: `Could not download recording (HTTP ${audioRes.status})` };
+    }
+    audio = await audioRes.arrayBuffer();
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Recording download failed",
+    };
+  }
+
+  if (audio.byteLength < 1000) {
+    return { ok: false, error: "Recording file was empty or too short" };
+  }
+
+  try {
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([new Uint8Array(audio)], { type: "audio/mpeg" }),
+      "call.mp3",
+    );
+    form.append("model", "whisper-1");
+    form.append("response_format", "text");
+
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${openaiKey}` },
+      body: form,
+    });
+
+    if (!res.ok) {
+      const errBody = (await res.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      return {
+        ok: false,
+        error: errBody.error?.message || `Whisper HTTP ${res.status}`,
+      };
+    }
+
+    const text = (await res.text()).trim();
+    if (!text) return { ok: false, error: "Whisper returned empty transcript" };
+    return { ok: true, text };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Whisper transcription failed",
+    };
   }
 }

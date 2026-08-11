@@ -1616,44 +1616,6 @@ export function AdminPage() {
                     }}
                   />
                 </div>
-                {!aiEffective && !aiEnvKill && (
-                  <div className="mb-3.5 space-y-2">
-                    {!selected.ai_force_on && (
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() =>
-                          patchLead({ aiForceOn: true }).catch(() => undefined)
-                        }
-                        className="flex h-11 w-full items-center justify-center rounded-xl border border-[#c4a35a]/35 bg-[#c4a35a]/10 text-sm font-semibold text-[#dcc084]"
-                      >
-                        Enable AI for this lead only
-                      </button>
-                    )}
-                    {selected.ai_force_on && (
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() =>
-                          patchLead({ aiForceOn: false, aiPaused: false }).catch(
-                            () => undefined,
-                          )
-                        }
-                        className="flex h-11 w-full items-center justify-center rounded-xl border border-white/10 text-sm font-semibold text-[#9a9590]"
-                      >
-                        Turn off AI for this lead
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={aiBusy}
-                      onClick={() => toggleGlobalAi().catch(() => undefined)}
-                      className="flex h-11 w-full items-center justify-center rounded-xl border border-white/10 text-sm font-semibold text-[#9a9590]"
-                    >
-                      Turn on CRM AI (all chats)
-                    </button>
-                  </div>
-                )}
 
                 <div className="mb-3.5 grid grid-cols-2 gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
                   {(

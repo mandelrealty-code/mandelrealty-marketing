@@ -9,7 +9,6 @@ import { logSmsMessage } from "./smsStore.js";
 import { sendTwilioSms } from "./twilioSms.js";
 import {
   createTwilioCall,
-  requestTwilioTranscription,
   twilioWebhookBaseUrl,
   twimlResponse,
   xmlEscape,
@@ -210,39 +209,72 @@ export async function handleRecordingReady(input: {
     status: "recording_ready",
   });
 
-  if (!isTwilioConfigured(input.env)) return;
+  const row = await getLeadCallById(input.callId);
+  if (!row) return;
 
-  const base = twilioWebhookBaseUrl();
-  const tx = await requestTwilioTranscription({
+  if (!isTwilioConfigured(input.env)) {
+    await appendCallNoteToLead(row.lead_id, {
+      summary: null,
+      transcript: null,
+      recordingUrl: mp3Url,
+      error: "Twilio not configured — recording saved without transcript.",
+    });
+    return;
+  }
+
+  await updateLeadCall(input.callId, { status: "transcribing" });
+
+  const { summarizeCallTranscript, transcribeTwilioRecording } = await import(
+    "./callNotesAi.js"
+  );
+
+  const tx = await transcribeTwilioRecording({
+    recordingUrl: mp3Url,
     accountSid: input.env.TWILIO_ACCOUNT_SID!.trim(),
     authToken: input.env.TWILIO_AUTH_TOKEN!.trim(),
-    recordingSid: input.recordingSid,
-    statusCallback: `${base}/api/twilio/voice?op=transcription&callId=${encodeURIComponent(input.callId)}`,
   });
 
-  if (tx.ok && tx.sid) {
-    await updateLeadCall(input.callId, {
-      transcription_sid: tx.sid,
-      status: "transcribing",
-    });
-  } else {
+  if (!tx.ok) {
     await updateLeadCall(input.callId, {
       status: "recording_ready",
-      error: tx.error || "Transcription request failed",
+      error: tx.error,
     });
-    // Still note the recording on the lead
-    const row = await getLeadCallById(input.callId);
-    if (row) {
-      await appendCallNoteToLead(row.lead_id, {
-        summary: null,
-        transcript: null,
-        recordingUrl: mp3Url,
-        error: tx.error || null,
-      });
-    }
+    await appendCallNoteToLead(row.lead_id, {
+      summary: null,
+      transcript: null,
+      recordingUrl: mp3Url,
+      error: tx.error,
+    });
+    return;
   }
+
+  const transcript = tx.text.trim();
+  await updateLeadCall(input.callId, {
+    transcript,
+    status: "summarizing",
+  });
+
+  const lead = await getLeadById(row.lead_id);
+  const summary = await summarizeCallTranscript({
+    leadName: lead?.name || "Lead",
+    transcript,
+  });
+
+  await updateLeadCall(input.callId, {
+    summary: summary || null,
+    status: summary ? "summarized" : "transcript_ready",
+    error: summary ? null : "Summary failed — transcript saved",
+  });
+
+  await appendCallNoteToLead(row.lead_id, {
+    summary,
+    transcript,
+    recordingUrl: mp3Url,
+    error: summary ? null : "Summary failed — transcript saved",
+  });
 }
 
+/** Legacy Twilio transcription webhook (unused — Dial recordings use Whisper). */
 export async function handleTranscriptionReady(input: {
   callId: string;
   transcriptionSid: string;
@@ -308,7 +340,7 @@ async function appendCallNoteToLead(
   else if (input.transcript) {
     parts.push(`Transcript:\n${input.transcript.slice(0, 2500)}`);
   } else if (input.recordingUrl) {
-    parts.push(`Recording ready (transcription pending): ${input.recordingUrl}`);
+    parts.push(`Recording saved: ${input.recordingUrl}`);
   }
   if (input.error) parts.push(`Note: ${input.error}`);
 

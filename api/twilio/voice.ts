@@ -6,6 +6,8 @@ import {
   handleVoiceStatus,
 } from "../../shared/clickToCall.js";
 
+export const config = { maxDuration: 60 };
+
 /**
  * Single Hobby-plan serverless function for all CRM voice webhooks.
  * Routes via ?op=bridge|status|recording|transcription

@@ -70,46 +70,6 @@ export async function createTwilioCall(input: {
   }
 }
 
-export async function requestTwilioTranscription(input: {
-  accountSid: string;
-  authToken: string;
-  recordingSid: string;
-  statusCallback: string;
-}): Promise<{ ok: boolean; sid?: string; error?: string }> {
-  const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(input.accountSid)}/Recordings/${encodeURIComponent(input.recordingSid)}/Transcriptions.json`;
-  const body = new URLSearchParams({
-    StatusCallback: input.statusCallback,
-  });
-
-  try {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${twilioBasicAuth(input.accountSid, input.authToken)}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body,
-    });
-    const data = (await res.json().catch(() => ({}))) as {
-      sid?: string;
-      message?: string;
-      error_message?: string;
-    };
-    if (!res.ok) {
-      return {
-        ok: false,
-        error: data.message || data.error_message || `Twilio HTTP ${res.status}`,
-      };
-    }
-    return { ok: true, sid: data.sid };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Twilio transcription failed",
-    };
-  }
-}
-
 export function xmlEscape(s: string): string {
   return s
     .replace(/&/g, "&amp;")
