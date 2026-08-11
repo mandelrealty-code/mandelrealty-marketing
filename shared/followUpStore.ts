@@ -65,6 +65,7 @@ function mapLeadRow(row: Record<string, unknown>): LeadRow {
     notes_updated_at: (row.notes_updated_at as string | null) ?? null,
     qualified_at: (row.qualified_at as string | null) ?? null,
     ai_paused: Boolean(row.ai_paused),
+    ai_force_on: Boolean(row.ai_force_on),
     offer_path: (row.offer_path as LeadRow["offer_path"]) || "unknown",
     sms_last_read_at: (row.sms_last_read_at as string | null) ?? null,
   };
@@ -276,7 +277,7 @@ export async function processDueFollowups(env: {
   const { data, error } = await sb
     .from("lead_followups")
     .select(
-      "*, leads!inner(id, phone, name, status, call_start_iso, offer_path, whats_next, ai_paused)",
+      "*, leads!inner(id, phone, name, status, call_start_iso, offer_path, whats_next, ai_paused, ai_force_on)",
     )
     .eq("status", "pending")
     .lte("send_at", nowIso)
