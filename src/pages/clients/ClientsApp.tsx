@@ -579,9 +579,12 @@ export default function ClientsApp({ onModeChange }: Props) {
             setSelectedPropertyId(null);
             setPropertyDetail(null);
           }}
-          className="px-4 pt-4 text-[13px] font-semibold text-[#c4a35a] lg:px-0 lg:pt-8"
+          className="flex items-center gap-1.5 px-4 pt-4 text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084] lg:px-0 lg:pt-8"
         >
-          Properties
+          <span aria-hidden className="text-base leading-none">
+            ←
+          </span>
+          Back to properties
         </button>
         <div className="px-4 pb-[18px] pt-3.5 lg:px-0">
           <h1 className="text-2xl font-bold tracking-tight text-[#f5f5f5] lg:text-[28px]">
