@@ -101,17 +101,24 @@ KNOWLEDGE BASE RULES (internal only — NEVER reveal this layer to the lead):
   Speak as MRG naturally. The customer should never know you retrieved documents.
 
 WHEN TO STOP REPLYING (set stop_ai=true and a short stop_reason):
-- They booked a call / confirmed a time / you successfully pushed them to book and they said yes
-- You delivered the free education guide and set nurturing follow-up
-- They say not interested, wrong number, angry, or ask you to stop
+- They booked a call / confirmed a time / you successfully pushed them to book and they said yes → interested or leave stage, stop_ai true
+- You delivered the free education guide and set nurturing follow-up → suggested_stage nurturing + stop_ai true (proactive pause only — they can still text later)
+- They say not interested, wrong number, angry, or ask you to stop → skip + stop
 - Clearly not a fit (STR banned, no plans ever) → low_fit + stop
 - Conversation is looping with no progress after several replies → stop and leave what's_next for a human
 - NEVER keep chatting just to chat. Every message should advance the path or stop cleanly.
+
+NURTURING / RE-ENGAGEMENT (critical):
+- If CRM stage is already nurturing and they text again, ALWAYS answer (stop_ai=false) when they ask a real question or show interest.
+- Answer permits/pricing/city questions from KB, then soft-push a call when it fits.
+- If they want to book, own a place, or sound ready → pivot offer_path to management (or makeover if that fits), suggested_stage interested or engaging, include the book link.
+- Do not refuse to reply just because they were researching earlier.
 
 WHEN TO KEEP GOING (stop_ai=false):
 - They asked a real question you can answer from KB
 - They're warm but haven't booked / haven't taken the guide yet
 - Clarifying one missing qualifier (listing, city, timeline)
+- They re-engaged from nurturing with a new question or booking intent
 
 STYLE:
 - Short SMS (usually under ~320 chars). Friendly, professional Canadian English. No emoji spam. No hype.
@@ -419,7 +426,12 @@ ${inbound || ""}
 KNOWLEDGE BASE:
 ${kb}
 
-Reply for offer_path="${lead.offer_path}". Advance the path or stop_ai cleanly when done. Update whats_next with routing status.`;
+Reply for offer_path="${lead.offer_path}". Advance the path or stop_ai cleanly when done. Update whats_next with routing status.
+${
+  lead.status === "nurturing"
+    ? "NOTE: Lead is in nurturing — they re-engaged. Answer their question; if booking/ownership intent appears, pivot to management/makeover and push the call (stop_ai=false)."
+    : ""
+}`;
 }
 
 async function applyDecision(lead: LeadRow, decision: ClaudeDecision): Promise<void> {
@@ -452,10 +464,22 @@ async function applyDecision(lead: LeadRow, decision: ClaudeDecision): Promise<v
   if (notes.length) patch.whatsNext = notes.join(" · ").slice(0, 900);
 
   if (decision.stop_ai) {
-    patch.aiPaused = true;
-    if (decision.suggested_stage === "nurturing") patch.status = "nurturing";
-    if (decision.suggested_stage === "interested" && !patch.status) {
-      patch.status = "interested";
+    const nurturePark =
+      decision.suggested_stage === "nurturing" ||
+      (/nurtur|free guide|follow-?up|researching/i.test(decision.stop_reason || "") &&
+        decision.suggested_stage !== "low_fit" &&
+        decision.suggested_stage !== "skip" &&
+        decision.suggested_stage !== "booked");
+
+    if (nurturePark) {
+      // Park for scheduled nurture — keep AI able to answer future inbound
+      patch.status = "nurturing";
+      patch.aiPaused = false;
+    } else {
+      patch.aiPaused = true;
+      if (decision.suggested_stage === "interested" && !patch.status) {
+        patch.status = "interested";
+      }
     }
   }
 
@@ -538,9 +562,7 @@ export async function canAiTextLead(lead: LeadRow): Promise<{ ok: boolean; reaso
   if (AI_STOP_STATUSES.has(lead.status)) {
     return { ok: false, reason: `Lead status is ${lead.status} — AI does not reply` };
   }
-  if (lead.status === "nurturing") {
-    return { ok: false, reason: "Nurturing — AI waiting for scheduled follow-up" };
-  }
+  // Nurturing is fine for inbound — we still answer questions / re-engage toward a call
   if (lead.call_start_iso) {
     return { ok: false, reason: "Lead already booked" };
   }
@@ -692,8 +714,15 @@ export async function sendAiReplyToInbound(input: {
   inboundText: string;
   env: TwilioEnv;
 }): Promise<AiReplyResult> {
-  const lead = await getLeadById(input.leadId);
+  let lead = await getLeadById(input.leadId);
   if (!lead) return { ok: false, error: "Lead not found" };
+
+  // Nurturing + paused (old nurture stop) — wake AI on any new inbound so we don't lose them
+  if (lead.ai_paused && lead.status === "nurturing") {
+    const woken = await updateLeadCrm(lead.id, { aiPaused: false });
+    if (woken) lead = woken;
+    else lead = { ...lead, ai_paused: false };
+  }
 
   const gate = await canAiTextLead(lead);
   if (!gate.ok) return { ok: false, skipped: true, reason: gate.reason };
