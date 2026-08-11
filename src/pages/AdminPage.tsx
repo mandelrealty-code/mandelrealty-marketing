@@ -96,6 +96,18 @@ function formatSmsTime(iso: string): string {
   return d.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
 }
 
+/** When the lead was uploaded into the CRM (created_at). */
+function formatUploadedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-CA", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function previewSms(body: string, max = 72): string {
   const t = body.replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
@@ -313,6 +325,7 @@ export function AdminPage() {
   const [filterStage, setFilterStage] = useState<LeadStatus | "all">("all");
   const [filterAi, setFilterAi] = useState<"all" | "live" | "paused">("all");
   const [filterBookedWeek, setFilterBookedWeek] = useState(false);
+  const [sortBy, setSortBy] = useState<"inbox" | "newest" | "oldest">("inbox");
   const [pipelineStage, setPipelineStage] = useState<LeadStatus | "all">("all");
   const [actionLeadId, setActionLeadId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -515,7 +528,7 @@ export function AdminPage() {
   }, [authed, searchDebounced, selectedId, loadLeads, loadFollowups]);
 
   const filteredLeads = useMemo(() => {
-    return leads.filter((l) => {
+    const list = leads.filter((l) => {
       if (filterPath !== "all" && l.offer_path !== filterPath) return false;
       if (filterStage !== "all" && l.status !== filterStage) return false;
       if (filterAi === "live" && (l.ai_paused || !aiEffective)) return false;
@@ -523,7 +536,20 @@ export function AdminPage() {
       if (filterBookedWeek && !isBookedThisWeek(l)) return false;
       return true;
     });
-  }, [leads, filterPath, filterStage, filterAi, filterBookedWeek, aiEffective]);
+
+    if (sortBy === "newest") {
+      return [...list].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+    }
+    if (sortBy === "oldest") {
+      return [...list].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
+    }
+    // inbox: keep API order (needs you → unread → last activity)
+    return list;
+  }, [leads, filterPath, filterStage, filterAi, filterBookedWeek, aiEffective, sortBy]);
 
   const needsYouLeads = useMemo(
     () => filteredLeads.filter((l) => (l.needs_you?.length ?? 0) > 0),
@@ -1426,6 +1452,18 @@ export function AdminPage() {
               >
                 Booked this week
               </button>
+              <select
+                value={sortBy}
+                onChange={(e) =>
+                  setSortBy(e.target.value as "inbox" | "newest" | "oldest")
+                }
+                className="min-h-9 shrink-0 rounded-full bg-mrg-surface-elevated px-3 text-xs text-mrg-text outline-none ring-1 ring-white/10"
+                aria-label="Sort contacts"
+              >
+                <option value="inbox">Sort: Needs you</option>
+                <option value="newest">Sort: Newest uploaded</option>
+                <option value="oldest">Sort: Oldest uploaded</option>
+              </select>
             </div>
 
             <ul className="mt-4 divide-y divide-white/8 overflow-hidden rounded-2xl bg-mrg-surface-elevated ring-1 ring-white/10">
@@ -1488,8 +1526,10 @@ export function AdminPage() {
                           </p>
                           <p className="truncate text-[11px] text-mrg-muted">
                             {OFFER_PATH_LABEL[lead.offer_path]} · {STATUS_LABEL[lead.status]}
-                            {lead.last_sms
-                              ? ` · ${formatSmsTime(lead.last_sms.created_at)}`
+                            {" · "}
+                            Added {formatUploadedAt(lead.created_at)}
+                            {sortBy === "inbox" && lead.last_sms
+                              ? ` · SMS ${formatSmsTime(lead.last_sms.created_at)}`
                               : ""}
                           </p>
                         </div>
