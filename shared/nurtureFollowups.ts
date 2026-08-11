@@ -62,7 +62,7 @@ export function buildEducationNurtureSms(input: {
   const name = firstName(input.name);
   void input.paidGuideUrl; // reserved for when guide landing is live
   return (
-    `Hey ${name}, checking in from Mandel Realty Group — still happy to help when you're ready. ` +
+    `Hey ${name}, checking in from Mandel Realty Group, still happy to help when you're ready. ` +
     `Easiest next step is a free 15-min intro call with our team: ${BOOK_A_CALL_URL} ` +
     `If you have any questions before booking, just message us here.\n` +
     `Reply STOP to opt out.`

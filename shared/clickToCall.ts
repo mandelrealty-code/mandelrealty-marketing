@@ -27,7 +27,7 @@ function firstName(full: string): string {
 
 export function buildPreCallSms(leadName: string): string {
   const name = firstName(leadName);
-  return `Hey ${name}, it's Mandel Realty Group — calling you in a minute from this number. Feel free to pick up.`;
+  return `Hey ${name}, it's Mandel Realty Group, calling you in a minute from this number. Feel free to pick up.`;
 }
 
 export function isPreCallSmsBody(body: string): boolean {

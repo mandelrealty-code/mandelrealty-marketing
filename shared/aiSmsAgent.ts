@@ -125,8 +125,9 @@ WHEN TO KEEP GOING (stop_ai=false):
 STYLE:
 - Short SMS (usually under ~320 chars). Friendly, professional Canadian English. No emoji spam. No hype.
 - Use their first name. Reference THEIR form facts (listing yes/no, city, permit confusion, readiness).
-- Sound like a real MRG closer — never like a bot reading a wiki.
-- STOP / opt-out is handled outside you.
+- Sound like a real person texting from MRG, never like ChatGPT or a bot.
+- NEVER use em dashes (—) or en dashes (–) in reply_text. Use commas or short sentences instead. Example: write "Hey Sam, it's Mandel Realty Group, thanks for applying" not "Hey Sam — thanks".
+- No "As an AI", no "Happy to help!", no stiff corporate filler. Keep it natural.
 
 Return STRICT JSON only:
 {
@@ -187,7 +188,7 @@ export function scrubInternalKbText(text: string): string {
     .trim();
 }
 
-/** Last-line defense: remove accidental source citations from outbound SMS. */
+/** Last-line defense: strip citations + AI-looking punctuation from outbound SMS. */
 export function sanitizeCustomerSms(body: string): string {
   return stripUnreadyGuideLinks(
     body
@@ -199,7 +200,11 @@ export function sanitizeCustomerSms(body: string): string {
       .replace(/\baccording to (our )?(knowledge base|kb|docs?|documents|files?)\b[,:]?\s*/gi, "")
       .replace(/\b(from|in) (our )?(knowledge base|kb)\b[,:]?\s*/gi, "")
       .replace(/\bper\s+(our )?(docs?|kb|knowledge base)\b[,:]?\s*/gi, "")
-      .replace(/\s+[—–-]\s*(?=[.,;]|$)/g, "")
+      // Em/en dashes read as "AI wrote this" — force commas instead
+      .replace(/\s*[—–―]\s*/g, ", ")
+      .replace(/,{2,}/g, ",")
+      .replace(/\s+,/g, ",")
+      .replace(/,\s*\./g, ".")
       .replace(/[ \t]{2,}/g, " ")
       .replace(/\n{3,}/g, "\n\n")
       .trim(),
@@ -534,7 +539,7 @@ async function sendAiSms(
   const to = toE164(lead.phone);
   if (!to) return { ok: false, error: "Invalid phone for SMS" };
 
-  const text = body.trim();
+  const text = sanitizeCustomerSms(body.trim());
   if (!text) return { ok: false, error: "Empty SMS body" };
   if (isUnsafeCustomerSms(text)) {
     console.error("[aiSms] blocked outbound SMS with internal/billing content");
@@ -614,15 +619,15 @@ function safeFirstSmsFallback(lead: LeadRow): string {
   const city = lead.address || "your area";
   let body: string;
   if (lead.offer_path === "education") {
-    body = `Hey ${name}, thanks for reaching out to Mandel Realty Group — happy to help you figure out Airbnb in ${city}. Easiest next step is a free 15-min intro call with our team: ${BOOK_A_CALL_URL}`;
+    body = `Hey ${name}, thanks for reaching out to Mandel Realty Group, happy to help you figure out Airbnb in ${city}. Easiest next step is a free 15-min intro call with our team: ${BOOK_A_CALL_URL}`;
   } else if (lead.offer_path === "makeover") {
-    body = `Hey ${name}, it's Mandel Realty Group — thanks for applying for the free Airbnb makeover. Spots are limited; grab a free intro call so we can see if your place in ${city} is a fit: ${BOOK_A_CALL_URL}`;
+    body = `Hey ${name}, it's Mandel Realty Group, thanks for applying for the free Airbnb makeover. Spots are limited, grab a free intro call so we can see if your place in ${city} is a fit: ${BOOK_A_CALL_URL}`;
   } else {
-    body = `Hey ${name}, it's Mandel Realty Group — thanks for your interest in our management services. I saw your note about ${city}${lead.has_listing === "yes" ? " and your listing" : ""}. Happy to walk you through how we help — book a free intro call: ${BOOK_A_CALL_URL}`;
+    body = `Hey ${name}, it's Mandel Realty Group, thanks for your interest in our management services. I saw your note about ${city}${lead.has_listing === "yes" ? " and your listing" : ""}. Happy to walk you through how we help, book a free intro call: ${BOOK_A_CALL_URL}`;
   }
   body = ensureBookLinkInvite(body);
   if (!/stop/i.test(body)) body = `${body.trim()}\nReply STOP to opt out.`;
-  return body;
+  return sanitizeCustomerSms(body);
 }
 
 /** First outbound after import. Uses a safe MRG template if Claude fails — never API/billing text. */

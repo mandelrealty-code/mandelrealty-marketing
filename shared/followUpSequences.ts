@@ -16,13 +16,13 @@ export const HOT_SMS_STEPS: FollowUpStepDef[] = [
     step: 1,
     delayMinutes: 0,
     body: (name, bookUrl) =>
-      `Hey ${first(name)}, it's Mandel Realty Group! We help Airbnb hosts fill more nights and earn more — and your free makeover application is in. Book a free 30-min call so we can get to know you and walk you through exactly how it works: ${bookUrl}\nReply STOP to opt out.`,
+      `Hey ${first(name)}, it's Mandel Realty Group! We help Airbnb hosts fill more nights and earn more, and your free makeover application is in. Book a free 30-min call so we can get to know you and walk you through exactly how it works: ${bookUrl}\nReply STOP to opt out.`,
   },
   {
     step: 2,
     delayMinutes: 120,
     body: (name, bookUrl) =>
-      `${first(name)}, quick bump from MRG — spots are limited this quarter, so we'd love to grab 30 minutes with you soon. Book here: ${bookUrl}`,
+      `${first(name)}, quick bump from MRG, spots are limited this quarter, so we'd love to grab 30 minutes with you soon. Book here: ${bookUrl}`,
   },
   {
     step: 3,
@@ -50,13 +50,13 @@ export const NURTURE_SMS_STEPS: FollowUpStepDef[] = [
     step: 2,
     delayMinutes: 60 * 24 * 30,
     body: (name) =>
-      `Hey ${first(name)}, checking in from Mandel Realty Group — hope the Airbnb intro was helpful. When you have a place in mind (or questions), reply here and we'll help with the next step.\nReply STOP to opt out.`,
+      `Hey ${first(name)}, checking in from Mandel Realty Group, hope the Airbnb intro was helpful. When you have a place in mind (or questions), reply here and we'll help with the next step.\nReply STOP to opt out.`,
   },
   {
     step: 3,
     delayMinutes: 60 * 24 * 60,
     body: (name) =>
-      `MRG here, ${first(name)}. Still here when you're ready — reply anytime.\nReply STOP to opt out.`,
+      `MRG here, ${first(name)}. Still here when you're ready, reply anytime.\nReply STOP to opt out.`,
   },
 ];
 
