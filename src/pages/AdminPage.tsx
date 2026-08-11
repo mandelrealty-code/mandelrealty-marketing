@@ -719,11 +719,11 @@ export function AdminPage() {
     setCallBusy(true);
     setCallMsg(null);
     try {
-      const res = await fetch("/api/admin/calls", {
-        method: "POST",
+      const res = await fetch("/api/admin/leads", {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ leadId }),
+        body: JSON.stringify({ id: leadId, startCall: true }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
       if (!res.ok) throw new Error(data.error || "Could not start call");
@@ -995,7 +995,7 @@ export function AdminPage() {
     setLoggingIn(true);
     setLoginError(null);
     try {
-      const res = await fetch("/api/admin/login", {
+      const res = await fetch("/api/admin/session?op=login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -1017,7 +1017,7 @@ export function AdminPage() {
   };
 
   const logout = async () => {
-    await fetch("/api/admin/logout", { method: "POST", credentials: "include" });
+    await fetch("/api/admin/session?op=logout", { method: "POST", credentials: "include" });
     setAuthed(false);
     setLeads([]);
     setSelectedId(null);

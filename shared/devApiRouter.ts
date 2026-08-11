@@ -303,12 +303,30 @@ export async function handleDevApi(
     return true;
   }
 
-  if (url === "/api/admin/login" && method === "POST") {
+  if (
+    (url === "/api/admin/login" ||
+      url.startsWith("/api/admin/session")) &&
+    method === "POST"
+  ) {
+    const body = await readJsonBody(req);
+    const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+    const op = (
+      qs.get("op") ||
+      String(body.op ?? body.action ?? "") ||
+      (url.includes("logout") ? "logout" : "login")
+    ).toLowerCase();
+
+    if (op === "logout" || url === "/api/admin/logout") {
+      json(res, 200, { ok: true }, {
+        "Set-Cookie": clearAdminSessionCookie({ secure: cookieShouldBeSecure(req) }),
+      });
+      return true;
+    }
+
     if (!isAdminConfigured()) {
       json(res, 503, { error: "Admin is not configured." });
       return true;
     }
-    const body = await readJsonBody(req);
     if (!passwordMatches(String(body.password ?? ""))) {
       json(res, 401, { error: "Wrong password." });
       return true;
@@ -408,6 +426,25 @@ export async function handleDevApi(
       if (body.markRead === true) {
         await markLeadSmsRead(id);
         json(res, 200, { ok: true, id, markedRead: true });
+        return true;
+      }
+      if (body.startCall === true) {
+        const { startClickToCall } = await import("./clickToCall.js");
+        const result = await startClickToCall({
+          leadId: id,
+          operatorPhone:
+            typeof body.operatorPhone === "string" ? body.operatorPhone.trim() : undefined,
+          env: {
+            TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+            TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+            TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
+          },
+        });
+        if (!result.ok) {
+          json(res, 400, { error: result.error || "Could not start call." });
+          return true;
+        }
+        json(res, 200, { ok: true, callId: result.callId, callSid: result.callSid });
         return true;
       }
       if (body.sendSmsBump === true) {
@@ -639,49 +676,6 @@ export async function handleDevApi(
       return true;
     }
     json(res, 405, { error: "Method not allowed" });
-    return true;
-  }
-
-  if (url === "/api/admin/calls") {
-    if (!isAdminConfigured()) {
-      json(res, 503, { error: "Admin is not configured." });
-      return true;
-    }
-    const token = getSessionFromRequest(req.headers.cookie);
-    if (!verifyAdminSessionToken(token)) {
-      json(res, 401, { error: "Unauthorized" });
-      return true;
-    }
-    if (!isSupabaseConfigured()) {
-      json(res, 503, { error: "Supabase is not configured." });
-      return true;
-    }
-    if (method !== "POST") {
-      json(res, 405, { error: "Method not allowed" });
-      return true;
-    }
-    const body = await readJsonBody(req);
-    const leadId = String(body.leadId ?? body.id ?? "").trim();
-    if (!leadId) {
-      json(res, 400, { error: "Missing lead id." });
-      return true;
-    }
-    const { startClickToCall } = await import("./clickToCall.js");
-    const result = await startClickToCall({
-      leadId,
-      operatorPhone:
-        typeof body.operatorPhone === "string" ? body.operatorPhone.trim() : undefined,
-      env: {
-        TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
-        TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-        TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
-      },
-    });
-    if (!result.ok) {
-      json(res, 400, { error: result.error || "Could not start call." });
-      return true;
-    }
-    json(res, 200, { ok: true, callId: result.callId, callSid: result.callSid });
     return true;
   }
 
@@ -957,12 +951,13 @@ export async function handleDevApi(
     return true;
   }
 
-  if (url.startsWith("/api/twilio/voice-") && method === "POST") {
+  if (url.startsWith("/api/twilio/voice") && (method === "POST" || method === "GET")) {
     const qs = new URL(req.url ?? "", "http://localhost").searchParams;
-    const body = await readFormBody(req);
+    const body = method === "POST" ? await readFormBody(req) : new URLSearchParams();
     const callId = qs.get("callId") || body.get("callId") || "";
+    const op = (qs.get("op") || "").toLowerCase();
 
-    if (url.startsWith("/api/twilio/voice-bridge")) {
+    if (op === "bridge") {
       const { buildOperatorBridgeTwiml } = await import("./clickToCall.js");
       const twiml = await buildOperatorBridgeTwiml(callId);
       res.statusCode = 200;
@@ -971,7 +966,13 @@ export async function handleDevApi(
       return true;
     }
 
-    if (url.startsWith("/api/twilio/voice-status")) {
+    if (method !== "POST") {
+      res.statusCode = 405;
+      res.end("Method not allowed");
+      return true;
+    }
+
+    if (op === "status") {
       const { handleVoiceStatus } = await import("./clickToCall.js");
       await handleVoiceStatus({
         callId,
@@ -985,7 +986,7 @@ export async function handleDevApi(
       return true;
     }
 
-    if (url.startsWith("/api/twilio/voice-recording")) {
+    if (op === "recording") {
       const { handleRecordingReady } = await import("./clickToCall.js");
       const recordingStatus = (body.get("RecordingStatus") || "").toLowerCase();
       const recordingSid = body.get("RecordingSid") || "";
@@ -1008,7 +1009,7 @@ export async function handleDevApi(
       return true;
     }
 
-    if (url.startsWith("/api/twilio/voice-transcription")) {
+    if (op === "transcription") {
       const { handleTranscriptionReady } = await import("./clickToCall.js");
       await handleTranscriptionReady({
         callId,
@@ -1021,6 +1022,10 @@ export async function handleDevApi(
       res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
       return true;
     }
+
+    res.statusCode = 400;
+    res.end("Unknown voice op");
+    return true;
   }
 
   return false;

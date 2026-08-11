@@ -103,8 +103,8 @@ export async function startClickToCall(input: {
   }
 
   const base = twilioWebhookBaseUrl();
-  const bridgeUrl = `${base}/api/twilio/voice-bridge?callId=${encodeURIComponent(callRow.id)}`;
-  const statusUrl = `${base}/api/twilio/voice-status?callId=${encodeURIComponent(callRow.id)}`;
+  const bridgeUrl = `${base}/api/twilio/voice?op=bridge&callId=${encodeURIComponent(callRow.id)}`;
+  const statusUrl = `${base}/api/twilio/voice?op=status&callId=${encodeURIComponent(callRow.id)}`;
 
   const call = await createTwilioCall({
     accountSid,
@@ -151,8 +151,8 @@ export async function buildOperatorBridgeTwiml(callId: string): Promise<string> 
   await updateLeadCall(callId, { status: "bridging" });
 
   const base = twilioWebhookBaseUrl();
-  const recordingCb = `${base}/api/twilio/voice-recording?callId=${encodeURIComponent(callId)}`;
-  const leadStatus = `${base}/api/twilio/voice-status?callId=${encodeURIComponent(callId)}&leg=lead`;
+  const recordingCb = `${base}/api/twilio/voice?op=recording&callId=${encodeURIComponent(callId)}`;
+  const leadStatus = `${base}/api/twilio/voice?op=status&callId=${encodeURIComponent(callId)}&leg=lead`;
 
   return twimlResponse(
     [
@@ -217,7 +217,7 @@ export async function handleRecordingReady(input: {
     accountSid: input.env.TWILIO_ACCOUNT_SID!.trim(),
     authToken: input.env.TWILIO_AUTH_TOKEN!.trim(),
     recordingSid: input.recordingSid,
-    statusCallback: `${base}/api/twilio/voice-transcription?callId=${encodeURIComponent(input.callId)}`,
+    statusCallback: `${base}/api/twilio/voice?op=transcription&callId=${encodeURIComponent(input.callId)}`,
   });
 
   if (tx.ok && tx.sid) {

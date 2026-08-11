@@ -50,6 +50,14 @@
   ],
   "rewrites": [
     {
+      "source": "/api/admin/login",
+      "destination": "/api/admin/session?op=login"
+    },
+    {
+      "source": "/api/admin/logout",
+      "destination": "/api/admin/session?op=logout"
+    },
+    {
       "source": "/robots.txt",
       "has": [{ "type": "host", "value": "admin.mandelrealtygroup.com" }],
       "destination": "/admin-robots.txt"

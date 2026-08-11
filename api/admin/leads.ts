@@ -14,6 +14,7 @@ import {
 } from "../../shared/followUpStore.js";
 import { listSmsForLead } from "../../shared/smsStore.js";
 import { listLeadsInbox, markLeadSmsRead } from "../../shared/crmInbox.js";
+import { startClickToCall } from "../../shared/clickToCall.js";
 import {
   LEAD_STATUSES,
   deleteLead,
@@ -101,6 +102,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body = readBody(req);
     const id = String(body.id ?? "").trim();
     if (!id) return res.status(400).json({ error: "Missing lead id." });
+
+    if (body.startCall === true) {
+      const result = await startClickToCall({
+        leadId: id,
+        operatorPhone:
+          typeof body.operatorPhone === "string" ? body.operatorPhone.trim() : undefined,
+        env: {
+          TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+          TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+          TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+        },
+      });
+      if (!result.ok) {
+        return res.status(400).json({ error: result.error || "Could not start call." });
+      }
+      return res.status(200).json({
+        ok: true,
+        callId: result.callId,
+        callSid: result.callSid,
+      });
+    }
 
     if (body.sendSmsBump === true) {
       const result = await sendManualBumpForLead(id, {

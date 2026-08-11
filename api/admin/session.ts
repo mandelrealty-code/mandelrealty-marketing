@@ -1,11 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   adminSessionCookie,
+  clearAdminSessionCookie,
   cookieShouldBeSecure,
-  isAdminConfigured,
-  passwordMatches,
   createAdminSessionToken,
   getAdminPassword,
+  isAdminConfigured,
+  passwordMatches,
 } from "../../shared/adminAuth.js";
 
 function readBody(req: VercelRequest): Record<string, unknown> {
@@ -28,21 +29,47 @@ function readBody(req: VercelRequest): Record<string, unknown> {
   return raw as Record<string, unknown>;
 }
 
+function opFromReq(req: VercelRequest, body: Record<string, unknown>): string {
+  const q = req.query.op;
+  if (typeof q === "string" && q.trim()) return q.trim().toLowerCase();
+  const b = String(body.op ?? body.action ?? "").trim().toLowerCase();
+  if (b) return b;
+  // Rewrites may preserve original path in some runtimes
+  const url = String(req.url || "");
+  if (url.includes("logout")) return "logout";
+  if (url.includes("login")) return "login";
+  return "";
+}
+
+/** Hobby plan: one function for admin login + logout. */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const body = readBody(req);
+  const op = opFromReq(req, body);
+
+  if (op === "logout") {
+    res.setHeader(
+      "Set-Cookie",
+      clearAdminSessionCookie({ secure: cookieShouldBeSecure(req) }),
+    );
+    return res.status(200).json({ ok: true });
+  }
+
+  if (op !== "login") {
+    return res.status(400).json({ error: "Use op=login or op=logout" });
+  }
+
   if (!isAdminConfigured()) {
-    console.error("[admin/login] ADMIN_PASSWORD is not set in this environment");
+    console.error("[admin/session] ADMIN_PASSWORD is not set in this environment");
     return res.status(503).json({ error: "Admin is not configured." });
   }
 
-  const body = readBody(req);
   const password = String(body.password ?? "");
-
   if (!passwordMatches(password)) {
-    console.warn("[admin/login] password mismatch", {
+    console.warn("[admin/session] password mismatch", {
       gotLen: password.trim().length,
       expectedLen: getAdminPassword()?.length ?? 0,
     });
