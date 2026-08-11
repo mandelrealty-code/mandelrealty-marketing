@@ -49,6 +49,7 @@ import {
 import {
   deleteKnowledgeDoc,
   listKnowledgeDocs,
+  reindexKnowledgeDoc,
   updateKnowledgeDoc,
   uploadAndIndexKnowledgeFile,
   uploadAndIndexKnowledgeText,
@@ -672,6 +673,19 @@ export async function handleDevApi(
       const id = String(body.id ?? "").trim();
       if (!id) {
         json(res, 400, { error: "Missing doc id." });
+        return true;
+      }
+      if (body.action === "reindex") {
+        const doc = await reindexKnowledgeDoc(id);
+        if (!doc) {
+          json(res, 500, { error: "Could not reindex doc." });
+          return true;
+        }
+        if (doc.status === "failed") {
+          json(res, 400, { error: doc.error || "Reindex failed", doc });
+          return true;
+        }
+        json(res, 200, { ok: true, doc });
         return true;
       }
       const patch: { title?: string; active?: boolean } = {};

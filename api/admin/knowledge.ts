@@ -7,6 +7,7 @@ import {
 import {
   deleteKnowledgeDoc,
   listKnowledgeDocs,
+  reindexKnowledgeDoc,
   updateKnowledgeDoc,
   uploadAndIndexKnowledgeFile,
   uploadAndIndexKnowledgeText,
@@ -100,6 +101,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body = readBody(req);
     const id = String(body.id ?? "").trim();
     if (!id) return res.status(400).json({ error: "Missing doc id." });
+
+    if (body.action === "reindex") {
+      const doc = await reindexKnowledgeDoc(id);
+      if (!doc) return res.status(500).json({ error: "Could not reindex doc." });
+      if (doc.status === "failed") {
+        return res.status(400).json({ error: doc.error || "Reindex failed", doc });
+      }
+      return res.status(200).json({ ok: true, doc });
+    }
 
     const patch: { title?: string; active?: boolean } = {};
     if (typeof body.title === "string") patch.title = body.title.trim();

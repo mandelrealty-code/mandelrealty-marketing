@@ -2083,8 +2083,9 @@ export function AdminPage() {
               className="mx-auto max-w-[820px] space-y-4"
             >
               <p className="text-sm leading-relaxed text-[#9a9590]">
-                The AI only answers from these docs. Paste talk tracks / markdown, or upload a file.
-                One doc at a time — turn one off and it stops citing it.
+                Paste talk tracks / markdown for Claude. Docs save and index without OpenAI —
+                Anthropic has no embeddings API. One doc at a time; turn one off and it stops
+                citing it.
               </p>
               <div className="flex flex-col gap-2.5">
                 <input
@@ -2157,6 +2158,38 @@ export function AdminPage() {
                           </p>
                         )}
                       </div>
+                      {doc.status === "failed" && (
+                        <button
+                          type="button"
+                          disabled={uploadBusy}
+                          onClick={async () => {
+                            setUploadBusy(true);
+                            setDocsError(null);
+                            try {
+                              const res = await fetch("/api/admin/knowledge", {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                credentials: "include",
+                                body: JSON.stringify({ id: doc.id, action: "reindex" }),
+                              });
+                              const data = (await res.json().catch(() => ({}))) as {
+                                error?: string;
+                              };
+                              if (!res.ok) throw new Error(data.error || "Reindex failed");
+                              await loadDocs();
+                            } catch (err) {
+                              setDocsError(
+                                err instanceof Error ? err.message : "Reindex failed",
+                              );
+                            } finally {
+                              setUploadBusy(false);
+                            }
+                          }}
+                          className="shrink-0 text-[12.5px] font-semibold text-[#dcc084]"
+                        >
+                          Retry
+                        </button>
+                      )}
                       <MotionToggle
                         on={doc.active}
                         label={doc.active ? "Deactivate document" : "Activate document"}

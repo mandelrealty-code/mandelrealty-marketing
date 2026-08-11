@@ -290,11 +290,11 @@ async function buildUserPrompt(lead: LeadRow, mode: "first" | "reply", inbound?:
     .filter(Boolean)
     .join(" ");
 
-  const chunks = await matchKnowledgeChunks(retrievalQuery, 8);
+  const chunks = await matchKnowledgeChunks(retrievalQuery, 12);
   const kb =
     chunks.length > 0
       ? chunks.map((c, i) => `[${i + 1}] (${c.doc_title})\n${c.content}`).join("\n\n")
-      : "(No knowledge base documents retrieved yet. Keep answers high-level; do not invent guide URLs or permit law.)";
+      : "(No knowledge base documents retrieved yet. Keep answers high-level; do not invent guide URLs, fees, permit rules, or program terms.)";
 
   const thread = await listSmsForLead(lead.id);
   const recent = thread

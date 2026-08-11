@@ -152,7 +152,7 @@ export function chunkText(text: string, size = 900, overlap = 120): string[] {
 
 export async function replaceDocChunks(
   docId: string,
-  chunks: { content: string; embedding: number[] }[],
+  chunks: { content: string; embedding: number[] | null }[],
 ): Promise<void> {
   const sb = getSupabaseAdmin();
   if (!sb) return;
@@ -179,9 +179,18 @@ export async function replaceDocChunks(
   }
 }
 
+/** OpenAI embeddings are optional — Claude (Anthropic) does not provide an embeddings API. */
+export function hasEmbeddingProvider(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY?.trim());
+}
+
 export async function embedTexts(texts: string[]): Promise<number[][]> {
   const key = process.env.OPENAI_API_KEY?.trim();
-  if (!key) throw new Error("OPENAI_API_KEY is not configured");
+  if (!key) {
+    throw new Error(
+      "OPENAI_API_KEY is not configured (optional — used only for vector search; Claude still answers SMS)",
+    );
+  }
 
   const res = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
@@ -209,6 +218,118 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
     .map((d) => d.embedding);
 }
 
+async function embedTextsOrNull(
+  texts: string[],
+): Promise<{ embeddings: (number[] | null)[]; usedVectors: boolean }> {
+  if (!hasEmbeddingProvider()) {
+    return { embeddings: texts.map(() => null), usedVectors: false };
+  }
+  try {
+    const embeddings: (number[] | null)[] = [];
+    for (let i = 0; i < texts.length; i += 20) {
+      const batch = texts.slice(i, i + 20);
+      const embs = await embedTexts(batch);
+      embeddings.push(...embs);
+    }
+    return { embeddings, usedVectors: true };
+  } catch (err) {
+    console.warn(
+      "[knowledge] embedding failed — saving chunks for keyword retrieval",
+      err instanceof Error ? err.message : err,
+    );
+    return { embeddings: texts.map(() => null), usedVectors: false };
+  }
+}
+
+const STOP_WORDS = new Set([
+  "that",
+  "this",
+  "with",
+  "from",
+  "have",
+  "were",
+  "been",
+  "they",
+  "them",
+  "their",
+  "what",
+  "when",
+  "where",
+  "which",
+  "will",
+  "would",
+  "could",
+  "should",
+  "about",
+  "into",
+  "your",
+  "youre",
+  "just",
+  "like",
+  "also",
+  "than",
+  "then",
+  "some",
+  "only",
+  "over",
+  "such",
+  "here",
+  "there",
+  "very",
+  "more",
+  "most",
+  "other",
+  "into",
+  "does",
+  "dont",
+  "didnt",
+  "isnt",
+  "arent",
+  "wasnt",
+  "werent",
+]);
+
+/** Expand common lead/CRM terms so keyword retrieval hits the right talk tracks. */
+function expandQueryTerms(query: string): string[] {
+  const lower = query.toLowerCase();
+  const extras: string[] = [];
+  if (/manage|co-?host|full.?service/.test(lower)) {
+    extras.push("management", "co-hosting", "cohost", "fee", "percent");
+  }
+  if (/makeover|furnish|staging|furniture/.test(lower)) {
+    extras.push("makeover", "furniture", "investment", "staging", "buyout");
+  }
+  if (/educat|guide|learn|curious|research/.test(lower)) {
+    extras.push("education", "guide", "intro", "nurture");
+  }
+  if (/permit|licence|license|str|bylaw|zoning/.test(lower)) {
+    extras.push("permit", "licence", "str", "toronto", "mississauga", "vaughan");
+  }
+  if (/book|call|calendly|schedule|walkthrough/.test(lower)) {
+    extras.push("booking", "call", "schedule", "promise");
+  }
+  if (/price|pricing|cost|fee|contract|percent|%/.test(lower)) {
+    extras.push("pricing", "contract", "fee", "percent");
+  }
+  if (/fit|exclu|skip|low.?fit|out of area/.test(lower)) {
+    extras.push("exclusion", "fit", "client");
+  }
+  if (/sms|tone|style|reply|text/.test(lower)) {
+    extras.push("sms", "tone", "style");
+  }
+  return extras;
+}
+
+function tokenizeQuery(query: string): string[] {
+  const base = query
+    .toLowerCase()
+    .split(/[^a-z0-9%+.-]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
+  const expanded = [...base, ...expandQueryTerms(query)];
+  return [...new Set(expanded)].slice(0, 24);
+}
+
 export async function matchKnowledgeChunks(
   query: string,
   matchCount = 6,
@@ -216,46 +337,61 @@ export async function matchKnowledgeChunks(
   const sb = getSupabaseAdmin();
   if (!sb) return [];
 
+  const keywordHits = await keywordSearch(query, Math.max(matchCount, 10));
+
+  if (!hasEmbeddingProvider()) {
+    return keywordHits.slice(0, matchCount);
+  }
+
   let embedding: number[];
   try {
     const [emb] = await embedTexts([query]);
     embedding = emb;
   } catch (err) {
     console.warn("[knowledge] embed query failed", err);
-    return fallbackKeywordSearch(query, matchCount);
+    return keywordHits.slice(0, matchCount);
   }
 
   const { data, error } = await sb.rpc("match_knowledge_chunks", {
     query_embedding: embedding,
     match_count: matchCount,
-    match_threshold: 0.55,
+    match_threshold: 0.45,
   });
 
   if (error) {
     console.warn("[knowledge] match rpc failed", error.message);
-    return fallbackKeywordSearch(query, matchCount);
+    return keywordHits.slice(0, matchCount);
   }
 
-  return (data ?? []).map((row: Record<string, unknown>) => ({
-    id: String(row.id),
-    doc_id: String(row.doc_id),
-    content: String(row.content ?? ""),
-    similarity: Number(row.similarity ?? 0),
-    doc_title: String(row.doc_title ?? ""),
-  }));
+  const vectorHits: KnowledgeChunkMatch[] = (data ?? []).map(
+    (row: Record<string, unknown>) => ({
+      id: String(row.id),
+      doc_id: String(row.doc_id),
+      content: String(row.content ?? ""),
+      similarity: Number(row.similarity ?? 0),
+      doc_title: String(row.doc_title ?? ""),
+    }),
+  );
+
+  // Prefer vector hits; backfill with keyword so null-embedding docs still surface
+  const seen = new Set(vectorHits.map((h) => h.id));
+  const merged: KnowledgeChunkMatch[] = [...vectorHits];
+  for (const hit of keywordHits) {
+    if (seen.has(hit.id)) continue;
+    merged.push(hit);
+    seen.add(hit.id);
+    if (merged.length >= matchCount) break;
+  }
+  return merged.slice(0, matchCount);
 }
 
-async function fallbackKeywordSearch(
+async function keywordSearch(
   query: string,
   matchCount: number,
 ): Promise<KnowledgeChunkMatch[]> {
   const sb = getSupabaseAdmin();
   if (!sb) return [];
-  const terms = query
-    .toLowerCase()
-    .split(/\W+/)
-    .filter((t) => t.length > 3)
-    .slice(0, 5);
+  const terms = tokenizeQuery(query);
   if (terms.length === 0) return [];
 
   const { data, error } = await sb
@@ -263,30 +399,53 @@ async function fallbackKeywordSearch(
     .select("id, doc_id, content, knowledge_docs!inner(title, active, status)")
     .eq("knowledge_docs.active", true)
     .eq("knowledge_docs.status", "ready")
-    .limit(80);
+    .limit(500);
 
-  if (error || !data) return [];
+  if (error || !data) {
+    if (error) console.warn("[knowledge] keyword fetch failed", error.message);
+    return [];
+  }
 
   const scored = data
     .map((row) => {
-      const content = String(row.content ?? "").toLowerCase();
-      const hits = terms.reduce((n, t) => n + (content.includes(t) ? 1 : 0), 0);
+      const content = String(row.content ?? "");
+      const contentLower = content.toLowerCase();
       const docs = row.knowledge_docs as { title?: string } | { title?: string }[] | null;
-      const title = Array.isArray(docs) ? docs[0]?.title : docs?.title;
+      const title = String(
+        (Array.isArray(docs) ? docs[0]?.title : docs?.title) ?? "",
+      );
+      const titleLower = title.toLowerCase();
+
+      let score = 0;
+      let hits = 0;
+      for (const t of terms) {
+        if (contentLower.includes(t)) {
+          hits += 1;
+          score += 1;
+          // Extra weight for heading-ish lines / early mention
+          if (contentLower.slice(0, 200).includes(t)) score += 0.35;
+        }
+        if (titleLower.includes(t)) {
+          hits += 1;
+          score += 1.6;
+        }
+      }
+
       return {
         id: String(row.id),
         doc_id: String(row.doc_id),
-        content: String(row.content ?? ""),
-        similarity: hits / terms.length,
-        doc_title: String(title ?? ""),
+        content,
+        similarity: terms.length > 0 ? score / (terms.length * 1.6) : 0,
+        doc_title: title,
         hits,
+        score,
       };
     })
     .filter((r) => r.hits > 0)
-    .sort((a, b) => b.similarity - a.similarity)
+    .sort((a, b) => b.score - a.score || b.similarity - a.similarity)
     .slice(0, matchCount);
 
-  return scored.map(({ hits: _h, ...rest }) => rest);
+  return scored.map(({ hits: _h, score: _s, ...rest }) => rest);
 }
 
 export async function extractTextFromUpload(
@@ -346,16 +505,11 @@ export async function indexKnowledgeDocFromText(
       });
     }
 
-    const embeddings: number[][] = [];
-    for (let i = 0; i < pieces.length; i += 20) {
-      const batch = pieces.slice(i, i + 20);
-      const embs = await embedTexts(batch);
-      embeddings.push(...embs);
-    }
+    const { embeddings } = await embedTextsOrNull(pieces);
 
     await replaceDocChunks(
       docId,
-      pieces.map((content, i) => ({ content, embedding: embeddings[i] })),
+      pieces.map((content, i) => ({ content, embedding: embeddings[i] ?? null })),
     );
 
     return updateKnowledgeDoc(docId, {
@@ -440,4 +594,40 @@ export async function uploadAndIndexKnowledgeText(input: {
     mime: "text/markdown",
     buffer: Buffer.from(text, "utf8"),
   });
+}
+
+/** Re-run indexing for a failed/ready doc from stored file bytes. */
+export async function reindexKnowledgeDoc(id: string): Promise<KnowledgeDoc | null> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return null;
+  const doc = await getKnowledgeDoc(id);
+  if (!doc) return null;
+
+  await updateKnowledgeDoc(id, { status: "processing", error: null });
+
+  if (!doc.storage_path) {
+    return updateKnowledgeDoc(id, {
+      status: "failed",
+      error: "No stored file to reindex — delete and paste/upload again.",
+    });
+  }
+
+  const { data, error } = await sb.storage.from("knowledge").download(doc.storage_path);
+  if (error || !data) {
+    return updateKnowledgeDoc(id, {
+      status: "failed",
+      error: error?.message || "Could not download stored file for reindex.",
+    });
+  }
+
+  const buffer = Buffer.from(await data.arrayBuffer());
+  let text = "";
+  try {
+    text = await extractTextFromUpload(buffer, doc.mime, doc.filename);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Extract failed";
+    return updateKnowledgeDoc(id, { status: "failed", error: message });
+  }
+
+  return indexKnowledgeDocFromText(id, text);
 }
