@@ -242,7 +242,9 @@ export async function listFollowupsForLead(leadId: string): Promise<FollowUpRow[
 }
 
 /**
- * Auto-send is first message only. Any leftover pending step 2+ rows are cancelled.
+ * Sends due follow-ups with stage gates:
+ * - hot_sms: step 1 only (legacy); later hot bumps stay manual
+ * - nurture_sms: only while lead.status is nurturing — body locked at schedule time (no AI rewrite)
  */
 export async function processDueFollowups(env: {
   TWILIO_ACCOUNT_SID?: string;
@@ -256,13 +258,15 @@ export async function processDueFollowups(env: {
   const sb = getSupabaseAdmin();
   if (!sb) return result;
 
+  // Cancel leftover hot_sms bumps (step 2+) — those are manual / replaced by AI closer
   await sb
     .from("lead_followups")
     .update({
       status: "cancelled",
-      error: "Auto follow-ups disabled — send manually from CRM",
+      error: "Hot SMS auto-bumps disabled — AI closer + manual CRM only",
     })
     .eq("status", "pending")
+    .eq("sequence", "hot_sms")
     .gt("step", 1);
 
   const limit = env.limit ?? 20;
@@ -270,9 +274,10 @@ export async function processDueFollowups(env: {
 
   const { data, error } = await sb
     .from("lead_followups")
-    .select("*, leads!inner(id, phone, name, status, call_start_iso)")
+    .select(
+      "*, leads!inner(id, phone, name, status, call_start_iso, offer_path, whats_next, ai_paused)",
+    )
     .eq("status", "pending")
-    .eq("step", 1)
     .lte("send_at", nowIso)
     .order("send_at", { ascending: true })
     .limit(limit);
@@ -291,16 +296,55 @@ export async function processDueFollowups(env: {
       name: string;
       status: string;
       call_start_iso: string | null;
+      offer_path?: string;
+      whats_next?: string;
+      ai_paused?: boolean;
     };
 
-    if (lead.call_start_iso || lead.status === "skip" || lead.status === "won") {
+    // Stage / terminal gates — never text the wrong path
+    const terminal =
+      lead.call_start_iso ||
+      ["skip", "won", "booked", "call_done", "low_fit"].includes(lead.status);
+
+    if (terminal) {
       await sb
         .from("lead_followups")
-        .update({ status: "cancelled" })
+        .update({ status: "cancelled", error: `Cancelled — lead is ${lead.status}` })
         .eq("lead_id", lead.id)
         .eq("status", "pending");
       result.skipped += 1;
       continue;
+    }
+
+    if (followup.sequence === "hot_sms" && followup.step !== 1) {
+      await sb
+        .from("lead_followups")
+        .update({ status: "cancelled", error: "Hot SMS step not auto-sent" })
+        .eq("id", followup.id);
+      result.skipped += 1;
+      continue;
+    }
+
+    if (followup.sequence === "nurture_sms") {
+      if (lead.status !== "nurturing") {
+        await sb
+          .from("lead_followups")
+          .update({
+            status: "cancelled",
+            error: `Nurture skipped — lead status is ${lead.status}, not nurturing`,
+          })
+          .eq("id", followup.id);
+        result.skipped += 1;
+        continue;
+      }
+      if (!followup.body?.trim()) {
+        await sb
+          .from("lead_followups")
+          .update({ status: "failed", error: "Empty nurture body — not sent" })
+          .eq("id", followup.id);
+        result.failed += 1;
+        continue;
+      }
     }
 
     const to = toE164(lead.phone);
@@ -313,6 +357,7 @@ export async function processDueFollowups(env: {
       continue;
     }
 
+    // Send the stored body only — never regenerate with AI (no hallucinations)
     const send = await sendTwilioSms({
       accountSid: env.TWILIO_ACCOUNT_SID!,
       authToken: env.TWILIO_AUTH_TOKEN!,
@@ -339,7 +384,25 @@ export async function processDueFollowups(env: {
         toPhone: to,
         body: followup.body,
         providerSid: send.sid ?? null,
+        meta: {
+          nurture: followup.sequence === "nurture_sms",
+          sequence: followup.sequence,
+          step: followup.step,
+        },
       });
+
+      if (followup.sequence === "nurture_sms") {
+        const { updateLeadCrm } = await import("./leadStore.js");
+        const stamp = new Date().toLocaleString("en-CA", { timeZone: "America/Toronto" });
+        const line = `[Nurture ${stamp}] Stage-aware check-in sent (still nurturing — waiting on reply)`;
+        const prev = (lead.whats_next || "").trim();
+        await updateLeadCrm(lead.id, {
+          whatsNext: prev.startsWith("[Nurture ")
+            ? line
+            : [line, prev].filter(Boolean).join(" · ").slice(0, 900),
+        });
+      }
+
       result.sent += 1;
     } else {
       await sb

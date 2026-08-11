@@ -191,7 +191,7 @@ Upload things like:
 1. Upload better knowledge (permits by city, winning SMS lines, guide links)
 2. Watch which paths convert (management vs makeover vs education)
 3. Tighten talk tracks in Knowledge — AI pitches improve without rebuilding the CRM
-4. Later: timed nurture follow-ups (e.g. “did you read the guide?” + paid offer ~30 days)
+4. Later: timed nurture follow-ups (~30 days) — **template + KB URLs only**, only while stage is **nurturing** (no free-form AI at send time)
 
 ---
 

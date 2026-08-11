@@ -259,7 +259,7 @@ export function AdminPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const [notes, setNotes] = useState("");
   const [whatsNext, setWhatsNext] = useState("");
@@ -456,8 +456,14 @@ export function AdminPage() {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [smsMessages.length, selectedId]);
 
-  const openLead = (id: string) => setSelectedId(id);
-  const closeLead = () => setSelectedId(null);
+  const openLead = (id: string) => {
+    setDetailsOpen(false);
+    setSelectedId(id);
+  };
+  const closeLead = () => {
+    setDetailsOpen(false);
+    setSelectedId(null);
+  };
 
   const patchLead = async (body: Record<string, unknown>) => {
     if (!selected) return;
@@ -755,7 +761,7 @@ export function AdminPage() {
     );
   }
 
-  /* -------- Contact detail (full screen) -------- */
+  /* -------- Contact detail (inbox layout) -------- */
   if (selected) {
     return (
       <motion.div
@@ -764,35 +770,64 @@ export function AdminPage() {
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: 28 }}
         transition={{ duration: 0.28, ease: easeOut }}
-        className="flex min-h-dvh flex-col bg-mrg-bg text-mrg-text"
+        className="flex h-dvh flex-col overflow-hidden bg-mrg-bg text-mrg-text"
       >
-        <header className="sticky top-0 z-20 border-b border-white/8 bg-mrg-bg/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
+        {/* Top: everything about the client */}
+        <header className="shrink-0 border-b border-white/8 bg-mrg-bg px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div className="mx-auto flex max-w-3xl items-start gap-3">
             <button
               type="button"
               onClick={closeLead}
-              className="mt-1 min-h-11 min-w-11 rounded-full bg-white/5 text-lg text-mrg-muted ring-1 ring-white/10"
+              className="mt-0.5 min-h-11 min-w-11 rounded-full bg-white/5 text-lg text-mrg-muted ring-1 ring-white/10"
               aria-label="Back"
             >
               ←
             </button>
             <div className="min-w-0 flex-1">
-              <h1 className="truncate text-lg font-semibold">{selected.name || "Contact"}</h1>
+              <div className="flex items-start gap-2">
+                <h1 className="min-w-0 flex-1 truncate text-lg font-semibold">
+                  {selected.name || "Contact"}
+                </h1>
+                <JourneyMark
+                  status={selected.status}
+                  aiPaused={selected.ai_paused}
+                  aiEffective={aiEffective}
+                />
+              </div>
               <p className="truncate text-sm text-mrg-muted">
-                {OFFER_PATH_LABEL[selected.offer_path]} · {STATUS_JOURNEY[selected.status]}
+                {OFFER_PATH_LABEL[selected.offer_path]} · {STATUS_LABEL[selected.status]}
               </p>
               <p className="truncate text-xs text-mrg-muted">
-                {selected.phone || selected.email}
+                {selected.phone || "No phone"}
+                {selected.email ? ` · ${selected.email}` : ""}
                 {selected.address ? ` · ${selected.address}` : ""}
               </p>
             </div>
-            <div className="mt-1 flex shrink-0 items-start">
-              <JourneyMark
-                status={selected.status}
-                aiPaused={selected.ai_paused}
-                aiEffective={aiEffective}
-              />
-            </div>
+          </div>
+
+          <div className="mx-auto mt-2 grid max-w-3xl grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-mrg-muted sm:grid-cols-4">
+            <p>
+              <span className="text-white/40">Airbnb</span>{" "}
+              {listingShort(selected.has_listing)}
+            </p>
+            <p>
+              <span className="text-white/40">Process</span>{" "}
+              {selected.property_stage
+                ? STAGE_LABEL[selected.property_stage] || selected.property_stage
+                : "—"}
+            </p>
+            <p>
+              <span className="text-white/40">STR</span>{" "}
+              {selected.str_allowed
+                ? STR_ALLOWED_LABEL[selected.str_allowed] || selected.str_allowed
+                : "—"}
+            </p>
+            <p>
+              <span className="text-white/40">Permit</span>{" "}
+              {selected.permit_status
+                ? PERMIT_LABEL[selected.permit_status] || selected.permit_status
+                : "—"}
+            </p>
           </div>
 
           <div className="mx-auto mt-3 flex max-w-3xl gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -813,9 +848,8 @@ export function AdminPage() {
             ))}
           </div>
 
-          <motion.div
-            layout
-            className={`mx-auto mt-3 flex max-w-3xl items-center justify-between gap-3 rounded-2xl px-3.5 py-3 ring-1 ${
+          <div
+            className={`mx-auto mt-3 flex max-w-3xl items-center justify-between gap-3 rounded-2xl px-3.5 py-2.5 ring-1 ${
               !aiEffective
                 ? "bg-white/5 ring-white/10"
                 : selected.ai_paused
@@ -826,17 +860,13 @@ export function AdminPage() {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-mrg-text">
                 {!aiEffective
-                  ? "CRM AI is off (all chats)"
+                  ? "CRM AI off"
                   : selected.ai_paused
-                    ? "AI paused on this chat"
-                    : "AI live on this chat"}
+                    ? "AI paused here"
+                    : "AI live"}
               </p>
-              <p className="mt-0.5 text-xs text-mrg-muted">
-                {!aiEffective
-                  ? "Turn on AI Responses in Settings to resume automation."
-                  : selected.ai_paused
-                    ? "You're in control — AI won't reply here until you resume."
-                    : "Toggle off to jump in. Only affects this lead, not the whole CRM."}
+              <p className="truncate text-[11px] text-mrg-muted">
+                {whatsNext || STATUS_JOURNEY[selected.status]}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -856,144 +886,134 @@ export function AdminPage() {
                 onClick={() =>
                   patchLead({ aiPaused: !selected.ai_paused }).catch(() => undefined)
                 }
-                className={`min-h-10 rounded-full px-3 text-xs font-semibold ring-1 disabled:opacity-40 ${
+                className={`min-h-9 rounded-full px-3 text-xs font-semibold ring-1 disabled:opacity-40 ${
                   selected.ai_paused
                     ? "bg-emerald-500/20 text-emerald-200 ring-emerald-500/35"
                     : "bg-amber-500/20 text-amber-100 ring-amber-500/35"
                 }`}
               >
-                {selected.ai_paused ? "Resume AI" : "Take over"}
+                {selected.ai_paused ? "Resume" : "Take over"}
               </button>
             </div>
-          </motion.div>
-        </header>
-
-        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] pt-4">
-          <div className="rounded-2xl bg-mrg-surface-elevated p-4 ring-1 ring-white/10">
-            <dl>
-              <Row label="Airbnb" value={listingShort(selected.has_listing)} />
-              <Row
-                label="Process"
-                value={
-                  selected.property_stage
-                    ? STAGE_LABEL[selected.property_stage] || selected.property_stage
-                    : "—"
-                }
-              />
-              <Row
-                label="STR"
-                value={
-                  selected.str_allowed
-                    ? STR_ALLOWED_LABEL[selected.str_allowed] || selected.str_allowed
-                    : "—"
-                }
-              />
-              <Row
-                label="Permit"
-                value={
-                  selected.permit_status
-                    ? PERMIT_LABEL[selected.permit_status] || selected.permit_status
-                    : "—"
-                }
-              />
-              <Row label="Email" value={selected.email || "—"} />
-              <Row label="Offer path" value={OFFER_PATH_LABEL[selected.offer_path]} />
-              <Row label="Journey" value={STATUS_JOURNEY[selected.status]} />
-              <Row label="Call" value={selected.call_booking || "—"} />
-            </dl>
           </div>
 
-          <div className="mt-4 flex flex-1 flex-col gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-              SMS inbox
-            </p>
-            <div className="flex max-h-[42vh] flex-col gap-2 overflow-y-auto rounded-2xl bg-mrg-surface p-3 ring-1 ring-white/8 sm:max-h-none sm:min-h-[240px]">
-              {smsMessages.length === 0 && (
-                <p className="py-6 text-center text-sm text-mrg-muted">No messages yet.</p>
-              )}
-              <AnimatePresence initial={false}>
-                {smsMessages.map((m) => (
-                  <motion.div
-                    key={m.id}
-                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ duration: 0.22, ease: easeOut }}
-                    className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                      m.direction === "outbound"
-                        ? "ml-auto bg-mrg-gold/20 text-mrg-text"
-                        : "mr-auto bg-white/8 text-mrg-text"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap">{m.body}</p>
-                    <p className="mt-1 text-[10px] text-mrg-muted">
-                      {m.direction === "outbound" && m.meta?.ai_generated ? "AI · " : ""}
-                      {new Date(m.created_at).toLocaleString("en-CA", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-              <div ref={threadEndRef} />
+          <div className="mx-auto mt-2 flex max-w-3xl items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((v) => !v)}
+              className="text-xs font-semibold text-mrg-gold"
+            >
+              {detailsOpen ? "Hide notes" : "Notes & actions"}
+            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => patchLead({ markBooked: true })}
+                className="min-h-8 rounded-full bg-sky-500/20 px-3 text-xs font-semibold text-sky-200 ring-1 ring-sky-500/30"
+              >
+                Mark booked
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={deleteSelectedLead}
+                className="min-h-8 rounded-full bg-red-500/10 px-3 text-xs font-semibold text-red-300 ring-1 ring-red-500/20"
+              >
+                Delete
+              </button>
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3">
-            <label className="block">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                What’s next
-              </span>
-              <input
-                value={whatsNext}
-                onChange={(e) => setWhatsNext(e.target.value)}
-                onBlur={() => {
-                  if (whatsNext !== (selected.whats_next || "")) patchLead({ whatsNext });
-                }}
-                className="mt-1.5 w-full rounded-2xl bg-mrg-surface-elevated px-4 py-3 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
-                placeholder="Next action…"
-              />
-            </label>
-            <label className="block">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
-                Notes
-              </span>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                onBlur={() => {
-                  if (notes !== (selected.notes || "")) patchLead({ notes });
-                }}
-                rows={3}
-                className="mt-1.5 w-full rounded-2xl bg-mrg-surface-elevated px-4 py-3 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
-              />
-            </label>
-          </div>
+          <AnimatePresence initial={false}>
+            {detailsOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="mx-auto max-w-3xl overflow-hidden"
+              >
+                <div className="mt-2 grid gap-2">
+                  <label className="block">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+                      What’s next
+                    </span>
+                    <input
+                      value={whatsNext}
+                      onChange={(e) => setWhatsNext(e.target.value)}
+                      onBlur={() => {
+                        if (whatsNext !== (selected.whats_next || "")) {
+                          patchLead({ whatsNext });
+                        }
+                      }}
+                      className="mt-1 w-full rounded-xl bg-mrg-surface-elevated px-3 py-2 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
+                      placeholder="Next action…"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+                      Notes
+                    </span>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      onBlur={() => {
+                        if (notes !== (selected.notes || "")) patchLead({ notes });
+                      }}
+                      rows={2}
+                      className="mt-1 w-full rounded-xl bg-mrg-surface-elevated px-3 py-2 text-sm outline-none ring-1 ring-white/10 focus:ring-mrg-gold/40"
+                    />
+                  </label>
+                  {saveMsg && <p className="text-xs text-mrg-muted">{saveMsg}</p>}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </header>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => patchLead({ markBooked: true })}
-              className="min-h-11 rounded-full bg-sky-500/20 px-4 text-sm font-semibold text-sky-200 ring-1 ring-sky-500/30"
-            >
-              Mark booked
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={deleteSelectedLead}
-              className="min-h-11 rounded-full bg-red-500/10 px-4 text-sm font-semibold text-red-300 ring-1 ring-red-500/20"
-            >
-              Delete
-            </button>
-            {saveMsg && <span className="self-center text-sm text-mrg-muted">{saveMsg}</span>}
+        {/* Middle: chat stays in frame — only this scrolls */}
+        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-4 pt-3">
+          <p className="mb-2 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold">
+            SMS
+          </p>
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain rounded-2xl bg-mrg-surface p-3 ring-1 ring-white/8">
+            {smsMessages.length === 0 && (
+              <p className="py-8 text-center text-sm text-mrg-muted">No messages yet.</p>
+            )}
+            <AnimatePresence initial={false}>
+              {smsMessages.map((m) => (
+                <motion.div
+                  key={m.id}
+                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.22, ease: easeOut }}
+                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                    m.direction === "outbound"
+                      ? "ml-auto bg-mrg-gold/20 text-mrg-text"
+                      : "mr-auto bg-white/8 text-mrg-text"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{m.body}</p>
+                  <p className="mt-1 text-[10px] text-mrg-muted">
+                    {m.direction === "outbound" && m.meta?.ai_generated ? "AI · " : ""}
+                    {m.direction === "outbound" && m.meta?.nurture ? "Nurture · " : ""}
+                    {new Date(m.created_at).toLocaleString("en-CA", {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            <div ref={threadEndRef} />
           </div>
         </div>
 
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-mrg-bg/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
+        {/* Bottom: composer always visible */}
+        <div className="shrink-0 border-t border-white/10 bg-mrg-bg px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
           <div className="mx-auto max-w-3xl">
             {aiEffective && !selected.ai_paused && (
               <p className="mb-2 text-center text-[11px] text-mrg-muted">
@@ -1002,7 +1022,7 @@ export function AdminPage() {
             )}
             {selected.ai_paused && aiEffective && (
               <p className="mb-2 text-center text-[11px] text-amber-200/90">
-                AI paused on this chat — tap Resume AI above when you want it back.
+                AI paused — Resume above when you want it back.
               </p>
             )}
             <div className="flex gap-2">

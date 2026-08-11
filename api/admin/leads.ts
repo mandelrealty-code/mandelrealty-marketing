@@ -185,6 +185,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const updated = await updateLeadCrm(id, patch);
     if (!updated) return res.status(500).json({ error: "Could not update lead." });
+
+    if (updated.status === "nurturing") {
+      const { scheduleEducationNurtureFollowup } = await import(
+        "../../shared/nurtureFollowups.js"
+      );
+      await scheduleEducationNurtureFollowup(updated).catch(() => undefined);
+    } else if (patch.status) {
+      // Left nurturing — cancel pending nurture texts
+      await cancelLeadFollowups(id);
+    }
+
     return res.status(200).json({ ok: true, lead: updated });
   }
 

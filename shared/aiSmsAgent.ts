@@ -375,6 +375,17 @@ async function applyDecision(lead: LeadRow, decision: ClaudeDecision): Promise<v
   if (Object.keys(patch).length) {
     await updateLeadCrm(lead.id, patch);
   }
+
+  const nextStatus = patch.status ?? lead.status;
+  if (nextStatus === "nurturing") {
+    const after = await getLeadById(lead.id);
+    if (after) {
+      const { scheduleEducationNurtureFollowup } = await import("./nurtureFollowups.js");
+      await scheduleEducationNurtureFollowup(after).catch((err) =>
+        console.error("[aiSms] nurture schedule failed", err),
+      );
+    }
+  }
 }
 
 async function sendAiSms(
@@ -532,6 +543,14 @@ export async function sendAiFirstSms(input: {
     await updateLeadCrm(lead.id, {
       status: after.offer_path === "education" ? "nurturing" : "engaging",
     });
+  }
+
+  const finalLead = await getLeadById(lead.id);
+  if (finalLead?.status === "nurturing") {
+    const { scheduleEducationNurtureFollowup } = await import("./nurtureFollowups.js");
+    await scheduleEducationNurtureFollowup(finalLead).catch((err) =>
+      console.error("[aiSms] nurture schedule failed", err),
+    );
   }
 
   return {

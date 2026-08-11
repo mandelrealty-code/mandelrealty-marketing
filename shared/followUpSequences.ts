@@ -38,7 +38,7 @@ export const HOT_SMS_STEPS: FollowUpStepDef[] = [
   },
 ];
 
-/** Nurture: no listing yet → stay warm, no hard booking push. */
+/** Nurture: education path. Step 2 body is normally built by scheduleEducationNurtureFollowup. */
 export const NURTURE_SMS_STEPS: FollowUpStepDef[] = [
   {
     step: 1,
@@ -48,15 +48,15 @@ export const NURTURE_SMS_STEPS: FollowUpStepDef[] = [
   },
   {
     step: 2,
-    delayMinutes: 60 * 24 * 7,
-    body: (name, bookUrl) =>
-      `${first(name)}, checking in from MRG. If your short-term rental is live now, book a quick call: ${bookUrl} Reply STOP to opt out.`,
+    delayMinutes: 60 * 24 * 30,
+    body: (name) =>
+      `Hey ${first(name)}, checking in from Mandel Realty Group — hope the Airbnb intro was helpful. When you have a place in mind (or questions), reply here and we'll help with the next step.\nReply STOP to opt out.`,
   },
   {
     step: 3,
-    delayMinutes: 60 * 24 * 30,
-    body: (name, bookUrl) =>
-      `MRG here, ${first(name)}. Still here when you're ready for a free unit makeover. ${bookUrl}`,
+    delayMinutes: 60 * 24 * 60,
+    body: (name) =>
+      `MRG here, ${first(name)}. Still here when you're ready — reply anytime.\nReply STOP to opt out.`,
   },
 ];
 
