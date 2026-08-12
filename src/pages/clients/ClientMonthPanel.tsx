@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { pmGet, rateLabel } from "./api";
+import { pmGet, rateLabel, takeRateLabel } from "./api";
 import type { MonthPortfolio, PortfolioUnit } from "./MonthClosePanel";
 import { GoldButton, MonthPicker } from "./ui";
+
+function unitMrgTake(unit: PortfolioUnit): number | null {
+  if (unit.mrg_take_cents != null) return unit.mrg_take_cents;
+  if (unit.mrg_commission_cents == null) return null;
+  return unit.mrg_commission_cents;
+}
 
 function money(cents: number | null | undefined, currency = "CAD"): string {
   if (cents == null) return "—";
@@ -77,11 +83,12 @@ function syncLine(unit: PortfolioUnit): { text: string; className: string } {
 
 function feeLine(unit: PortfolioUnit, currency: string): string {
   if (!unit.linked) return "Link to pull stays";
-  const fee = money(unit.mrg_commission_cents, currency);
+  const take = takeRateLabel(unit.rate_bps, unit.hst_mode, unit.hst_bps);
+  const fee = money(unitMrgTake(unit), currency);
   if (unit.hst_mode === "invoice" && unit.hst_invoice_cents != null) {
-    return `fee ${fee} · HST ${money(unit.hst_invoice_cents, currency)}`;
+    return `${take} · take ${fee} · HST ${money(unit.hst_invoice_cents, currency)}`;
   }
-  return `fee ${fee} · cohost HST`;
+  return `${take} take · ${fee}`;
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -105,9 +112,9 @@ function clientHstSummary(
   const lines = [
     `${clientName} — ${title} HST invoice (${currency})`,
     ...invoice.map((u) => {
-      const nightly = moneyExact(u.nightly_total_cents ?? 0, currency);
+      const fee = moneyExact(u.mrg_commission_cents ?? unitMrgTake(u) ?? 0, currency);
       const hst = moneyExact(u.hst_invoice_cents ?? 0, currency);
-      return `${u.property_name}: ${hst} (nightly ${nightly} × ${rateLabel(u.hst_bps)})`;
+      return `${u.property_name}: ${hst} (MRG fee ${fee} × ${rateLabel(u.hst_bps)})`;
     }),
     `Total: ${moneyExact(total, currency)}`,
   ];
@@ -163,12 +170,12 @@ export function ClientMonthPanel({
   const hstHint = useMemo(() => {
     const invoice = units.filter((u) => u.hst_mode === "invoice");
     if (invoice.length) {
-      const bps = invoice[0]?.hst_bps ?? 1300;
-      return `HST invoiced at ${rateLabel(bps)}`;
+      const u = invoice[0]!;
+      return takeRateLabel(u.rate_bps, "invoice", u.hst_bps);
     }
     const cohost = units.find((u) => u.hst_mode === "cohost");
-    if (cohost) return `HST cohost ${rateLabel(cohost.hst_bps)}`;
-    return "No HST set";
+    if (cohost) return `${takeRateLabel(cohost.rate_bps, "cohost", cohost.hst_bps)} take`;
+    return "No rate set";
   }, [units]);
 
   const hasInvoice = units.some((u) => u.hst_mode === "invoice" && u.linked);
@@ -191,7 +198,7 @@ export function ClientMonthPanel({
               <span className="hidden lg:inline">{clientName}</span>
             </h1>
             <span className="hidden rounded-full border border-white/12 px-2.5 py-1 text-[12.5px] text-[#9a9590] lg:inline">
-              {hstHint.includes("invoice") ? `HST invoice · ${hstHint.replace(/^HST invoiced at /, "")}` : hstHint}
+              {hstHint}
             </span>
             <div className="hidden lg:block">
               <MonthPicker value={month} onChange={setMonth} disabled={loading} />
@@ -237,7 +244,7 @@ export function ClientMonthPanel({
           {(
             [
               ["Net to host", portfolio?.net_to_host_cents, false, true],
-              ["MRG fees", portfolio?.mrg_commission_cents, false, false],
+              ["MRG fees", portfolio?.mrg_take_cents ?? portfolio?.mrg_commission_cents, false, false],
               ["HST to invoice", portfolio?.hst_invoice_cents, true, false],
               ["Expenses", portfolio?.expense_cents, false, false],
             ] as const
@@ -362,7 +369,7 @@ export function ClientMonthPanel({
                 {money(unit.net_to_host_cents, currency)}
               </p>
               <p className="text-right text-[15px] tabular-nums text-[#9a9590]">
-                {money(unit.mrg_commission_cents, currency)}
+                {money(unitMrgTake(unit), currency)}
               </p>
               <p
                 className={`text-right text-[15px] tabular-nums ${

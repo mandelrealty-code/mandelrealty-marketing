@@ -77,3 +77,31 @@ export function rateLabel(bps: number | null | undefined): string {
   const pct = bps / 100;
   return Number.isInteger(pct) ? `${pct}%` : `${pct}%`;
 }
+
+/** What MRG takes from the booking base (cohost = commission + HST). */
+export function takeRateBps(
+  commissionBps: number | null | undefined,
+  hstMode: "cohost" | "invoice" | null | undefined,
+  hstBps: number | null | undefined,
+): number {
+  const commission = Number.isFinite(commissionBps) ? Number(commissionBps) : 0;
+  const hst = Number.isFinite(hstBps) ? Number(hstBps) : 0;
+  if (hstMode === "cohost") return commission + hst;
+  return commission;
+}
+
+/** Label next to a host/unit: "23%" cohost take, or "20% · invoice 13%". */
+export function takeRateLabel(
+  commissionBps: number | null | undefined,
+  hstMode: "cohost" | "invoice" | null | undefined,
+  hstBps: number | null | undefined,
+): string {
+  const commission = Number.isFinite(commissionBps) ? Number(commissionBps) : null;
+  const hst = Number.isFinite(hstBps) ? Number(hstBps) : null;
+  if (hstMode === "invoice") {
+    const left = rateLabel(commission);
+    const right = rateLabel(hst);
+    return commission == null && hst == null ? "—" : `${left} · invoice ${right}`;
+  }
+  return rateLabel(takeRateBps(commission, "cohost", hst));
+}

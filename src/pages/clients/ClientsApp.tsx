@@ -3,6 +3,7 @@ import {
   pmGet,
   pmPost,
   rateLabel,
+  takeRateLabel,
   type ClientRow,
   type PropertyDetail,
   type PropertyRow,
@@ -833,10 +834,11 @@ export default function ClientsApp({ onModeChange }: Props) {
                     {[
                       p.address || null,
                       p.client_name,
-                      rateLabel(p.current_rate_bps),
-                      p.hst_mode === "invoice"
-                        ? `HST invoice ${rateLabel(p.hst_bps)}`
-                        : null,
+                      takeRateLabel(
+                        p.current_rate_bps,
+                        p.hst_mode === "invoice" ? "invoice" : "cohost",
+                        p.hst_bps,
+                      ),
                     ]
                       .filter(Boolean)
                       .join(" · ")}
@@ -925,8 +927,11 @@ export default function ClientsApp({ onModeChange }: Props) {
               <p className="text-[15px] font-semibold text-[#f5f5f5]">Commission</p>
               <p className="text-[13px] text-[#6f6a65]">
                 {propertyDetail.current_term
-                  ? `Since ${formatDisplayDate(propertyDetail.current_term.effective_from)}`
+                  ? `Mgmt fee · since ${formatDisplayDate(propertyDetail.current_term.effective_from)}`
                   : "No rate set"}
+                {propertyDetail.hst_mode !== "invoice" && currentRateBps != null
+                  ? ` · take ${takeRateLabel(currentRateBps, "cohost", propertyDetail.hst_bps ?? 300)}`
+                  : ""}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -970,6 +975,7 @@ export default function ClientsApp({ onModeChange }: Props) {
                 {hstSummaryLabel(
                   propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost",
                   propertyDetail.hst_bps ?? 300,
+                  currentRateBps,
                 )}
               </p>
             </div>
@@ -1549,6 +1555,7 @@ export default function ClientsApp({ onModeChange }: Props) {
                       {hstSummaryLabel(
                         propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost",
                         propertyDetail.hst_bps ?? 300,
+                        currentRateBps,
                       )}
                     </p>
                   </div>

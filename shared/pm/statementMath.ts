@@ -66,7 +66,7 @@ export type MonthStatement = {
   reservation_count: number;
   nights_total: number;
   commission_base_cents: number;
-  /** Sum of nightly/accommodation (invoice HST base). */
+  /** Sum of nightly/accommodation (reference; invoice HST is on MRG fee). */
   nightly_total_cents: number;
   gross_cents: number;
   host_payout_cents: number;
@@ -89,6 +89,8 @@ export type MonthStatement = {
   net_to_host_cents: number;
   /** When invoice mode: net after subtracting QB HST. Same as net_to_host when cohost. */
   net_after_hst_invoice_cents: number;
+  /** MRG management + cohost HST (invoice HST excluded — billed separately). */
+  mrg_take_cents: number;
   rate_bps_used: number | null;
   hst_bps_used: number;
   last_synced_at: string | null;
@@ -311,10 +313,10 @@ export async function buildMonthStatement(
     const base = bd.commission_base_cents;
     const nightly = bd.accommodation_cents || base;
     const mrg = Math.round((base * rate) / 10000);
-    // Cohost: % of commission base taken with fee. Invoice: % of nightly (QB).
+    // Cohost: HST % of base (added into total take). Invoice: HST % of MRG fee (QB).
     const hst =
       hstMode === "invoice"
-        ? Math.round((nightly * hstBps) / 10000)
+        ? Math.round((mrg * hstBps) / 10000)
         : Math.round((base * hstBps) / 10000);
     const cleaning = bd.cleaning_fee_cents;
     if (cleaning > 0) cleaningTurnovers += 1;
@@ -347,10 +349,9 @@ export async function buildMonthStatement(
       `Fee −${moneyLabel(bd.host_fees_cents)}`,
       cleaning ? `Clean ${moneyLabel(cleaning)}` : null,
       `Base ${moneyLabel(base)}`,
-      `MRG ${moneyLabel(mrg)}`,
       hstMode === "invoice"
-        ? `HST inv ${moneyLabel(hst)}`
-        : `HST ${moneyLabel(hst)}`,
+        ? `MRG ${moneyLabel(mrg)} · HST inv ${moneyLabel(hst)} (${hstBps / 100}% of fee)`
+        : `Take ${moneyLabel(mrg + hst)} (${rate / 100}%+${hstBps / 100}%)`,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -390,6 +391,7 @@ export async function buildMonthStatement(
   const mrgCleaning = keeper === "mrg" ? cleaningTotal : 0;
   const hostCleaningTotal = keeper === "host" ? cleaningTotal : 0;
   const cohostHstTotal = hstMode === "cohost" ? hstTotal : 0;
+  const mrgTake = mrgTotal + cohostHstTotal;
   const netToHost =
     baseTotal - mrgTotal - cohostHstTotal + hostCleaningTotal - expenseTotal;
   const netAfterInvoice =
@@ -425,6 +427,7 @@ export async function buildMonthStatement(
     cleaning_turnovers: cleaningTurnovers,
     net_to_host_cents: netToHost,
     net_after_hst_invoice_cents: netAfterInvoice,
+    mrg_take_cents: mrgTake,
     rate_bps_used: lastRate,
     hst_bps_used: hstBps,
     last_synced_at: lastSynced,
@@ -444,6 +447,8 @@ export type PortfolioUnitRow = {
   client_name: string;
   linked: boolean;
   active: boolean;
+  /** Current management commission (bps). */
+  rate_bps: number | null;
   hst_mode: "cohost" | "invoice";
   hst_bps: number;
   sync_status: PortfolioSyncStatus;
@@ -452,10 +457,13 @@ export type PortfolioUnitRow = {
   reservation_count: number;
   /** null when unlinked (excluded from totals). */
   net_to_host_cents: number | null;
+  /** Management fee only (excludes cohost HST). */
   mrg_commission_cents: number | null;
-  /** Nightly accommodation total for the month (invoice HST base). */
+  /** Management + cohost HST (what MRG takes from the booking). */
+  mrg_take_cents: number | null;
+  /** Nightly accommodation total for the month (reference). */
   nightly_total_cents: number | null;
-  /** Invoice-mode HST only; null when cohost or unlinked. */
+  /** Invoice-mode HST only (HST on MRG fee); null when cohost or unlinked. */
   hst_invoice_cents: number | null;
   expense_cents: number | null;
   currency: string;
@@ -469,6 +477,8 @@ export type MonthPortfolio = {
   unlinked_count: number;
   net_to_host_cents: number;
   mrg_commission_cents: number;
+  /** Management + cohost HST across linked units. */
+  mrg_take_cents: number;
   hst_invoice_cents: number;
   expense_cents: number;
   reservation_count: number;
@@ -506,6 +516,7 @@ export async function buildMonthPortfolio(
   const units: PortfolioUnitRow[] = [];
   let netTotal = 0;
   let mrgTotal = 0;
+  let mrgTakeTotal = 0;
   let hstInvoiceTotal = 0;
   let expenseTotal = 0;
   let reservationTotal = 0;
@@ -525,6 +536,7 @@ export async function buildMonthPortfolio(
         client_name: p.client_name,
         linked: false,
         active: true,
+        rate_bps: p.current_rate_bps ?? null,
         hst_mode: p.hst_mode === "invoice" ? "invoice" : "cohost",
         hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
         sync_status: "unlinked",
@@ -533,6 +545,7 @@ export async function buildMonthPortfolio(
         reservation_count: 0,
         net_to_host_cents: null,
         mrg_commission_cents: null,
+        mrg_take_cents: null,
         nightly_total_cents: null,
         hst_invoice_cents: null,
         expense_cents: null,
@@ -562,6 +575,7 @@ export async function buildMonthPortfolio(
 
     netTotal += statement.net_to_host_cents;
     mrgTotal += statement.mrg_commission_cents;
+    mrgTakeTotal += statement.mrg_take_cents;
     if (invoiceHst != null) hstInvoiceTotal += invoiceHst;
     expenseTotal += statement.expense_cents;
     reservationTotal += statement.reservation_count;
@@ -573,6 +587,7 @@ export async function buildMonthPortfolio(
       client_name: p.client_name,
       linked: true,
       active: true,
+      rate_bps: statement.rate_bps_used,
       hst_mode: statement.hst_mode,
       hst_bps: statement.hst_bps_used,
       sync_status: sync.status,
@@ -581,6 +596,7 @@ export async function buildMonthPortfolio(
       reservation_count: statement.reservation_count,
       net_to_host_cents: statement.net_to_host_cents,
       mrg_commission_cents: statement.mrg_commission_cents,
+      mrg_take_cents: statement.mrg_take_cents,
       nightly_total_cents: statement.nightly_total_cents ?? null,
       hst_invoice_cents: invoiceHst,
       expense_cents: statement.expense_cents,
@@ -602,6 +618,7 @@ export async function buildMonthPortfolio(
     unlinked_count: units.length - linkedCount,
     net_to_host_cents: netTotal,
     mrg_commission_cents: mrgTotal,
+    mrg_take_cents: mrgTakeTotal,
     hst_invoice_cents: hstInvoiceTotal,
     expense_cents: expenseTotal,
     reservation_count: reservationTotal,

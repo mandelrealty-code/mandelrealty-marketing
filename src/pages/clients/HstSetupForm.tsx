@@ -2,13 +2,28 @@ import { FieldLabel } from "./ui";
 
 export type HstMode = "cohost" | "invoice";
 
-export function hstSummaryLabel(mode: HstMode, bps: number): string {
+export function hstSummaryLabel(
+  mode: HstMode,
+  bps: number,
+  commissionBps?: number | null,
+): string {
   const pct = bps / 100;
   const pctLabel = Number.isInteger(pct) ? `${pct}%` : `${pct}%`;
   if (mode === "invoice") {
-    return `Monthly invoice · ${pctLabel} of total nightly`;
+    return `Monthly invoice · ${pctLabel} HST on MRG fee`;
   }
-  return `Cohost · ${pctLabel} of base`;
+  const commission =
+    commissionBps != null && Number.isFinite(commissionBps)
+      ? commissionBps
+      : null;
+  if (commission != null) {
+    const total = (commission + bps) / 100;
+    const totalLabel = Number.isInteger(total) ? `${total}%` : `${total}%`;
+    const mgmt = commission / 100;
+    const mgmtLabel = Number.isInteger(mgmt) ? `${mgmt}%` : `${mgmt}%`;
+    return `Adds ${pctLabel} on each stay · total take ${totalLabel} (${mgmtLabel} + ${pctLabel} HST)`;
+  }
+  return `Adds ${pctLabel} HST on each stay (on top of commission)`;
 }
 
 export function HstSetupForm({
@@ -76,7 +91,8 @@ export function HstSetupForm({
                 mode === "cohost" ? "text-[#9a9590]" : "text-[#6f6a65]"
               }`}
             >
-              HST % is taken automatically with your management fee on each stay.
+              Added on top of commission on each stay (e.g. 20% + 3% = 23% total
+              take on base).
             </span>
           </span>
         </button>
@@ -112,7 +128,8 @@ export function HstSetupForm({
                 mode === "invoice" ? "text-[#9a9590]" : "text-[#6f6a65]"
               }`}
             >
-              Invoice HST at month end as % of total nightly rate — not via cohost.
+              Invoice HST at month end on your management fee (e.g. 13% of the
+              20% MRG fee) — not on booking revenue.
             </span>
           </span>
         </button>
@@ -136,7 +153,7 @@ export function HstSetupForm({
         </div>
         <p className="text-[13px] text-[#6f6a65]">
           {mode === "invoice"
-            ? "Suggested. Invoiced at month end on total nightly."
+            ? "Suggested. Invoiced at month end on the MRG management fee."
             : "Taken with the management fee on each stay."}
         </p>
       </div>

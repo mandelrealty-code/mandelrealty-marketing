@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { pmGet, pmPost, rateLabel } from "./api";
+import { pmGet, pmPost, rateLabel, takeRateLabel } from "./api";
 import { todayInputValue } from "./format";
 import { FieldLabel, GoldButton, MonthPicker, TextInput } from "./ui";
 
@@ -49,6 +49,7 @@ export type MonthStatement = {
   expense_cents: number;
   expense_count: number;
   mrg_commission_cents: number;
+  mrg_take_cents?: number;
   hst_cents: number;
   hst_mode?: "cohost" | "invoice";
   cleaning_fee_cents: number;
@@ -379,43 +380,58 @@ export function EarningsPanel({
           <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
             <div>
               <p className="text-sm text-[#f5f5f5]">Commission base</p>
-              <p className="text-xs text-[#6f6a65]">Accommodation − platform host fees</p>
+              <p className="text-xs text-[#6f6a65]">
+                Accommodation − promotions − Airbnb host fee
+              </p>
             </div>
             <p className="text-[15px] font-semibold tabular-nums">
               {money(statement.commission_base_cents, cur)}
             </p>
           </div>
-          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
-            <div>
-              <p className="text-sm text-[#f5f5f5]">MRG fee</p>
-              <p className="text-xs text-[#6f6a65]">
-                Base × {rateLabel(rateUsed)}
-              </p>
-            </div>
-            <p className="text-[15px] font-semibold tabular-nums text-[#9a9590]">
-              − {money(statement.mrg_commission_cents, cur)}
-            </p>
-          </div>
           {invoiceMode ? (
-            <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
-              <div>
-                <p className="text-sm text-[#f5f5f5]">HST to invoice</p>
-                <p className="text-xs text-[#6f6a65]">
-                  Nightly × {rateLabel(hstUsed)} · QuickBooks
+            <>
+              <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
+                <div>
+                  <p className="text-sm text-[#f5f5f5]">MRG fee</p>
+                  <p className="text-xs text-[#6f6a65]">
+                    Base × {rateLabel(rateUsed)}
+                  </p>
+                </div>
+                <p className="text-[15px] font-semibold tabular-nums text-[#9a9590]">
+                  − {money(statement.mrg_commission_cents, cur)}
                 </p>
               </div>
-              <p className="text-[15px] font-semibold tabular-nums text-[#c4a35a]">
-                {money(statement.hst_cents, cur)}
-              </p>
-            </div>
+              <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
+                <div>
+                  <p className="text-sm text-[#f5f5f5]">HST to invoice</p>
+                  <p className="text-xs text-[#6f6a65]">
+                    MRG fee × {rateLabel(hstUsed)} · QuickBooks
+                  </p>
+                </div>
+                <p className="text-[15px] font-semibold tabular-nums text-[#c4a35a]">
+                  {money(statement.hst_cents, cur)}
+                </p>
+              </div>
+            </>
           ) : (
             <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
               <div>
-                <p className="text-sm text-[#f5f5f5]">HST / cohost</p>
-                <p className="text-xs text-[#6f6a65]">Base × {rateLabel(hstUsed)}</p>
+                <p className="text-sm text-[#f5f5f5]">MRG take</p>
+                <p className="text-xs text-[#6f6a65]">
+                  Base ×{" "}
+                  {takeRateLabel(rateUsed, "cohost", hstUsed)}
+                  {rateUsed != null
+                    ? ` · ${rateLabel(rateUsed)} + ${rateLabel(hstUsed)} HST`
+                    : ""}
+                </p>
               </div>
               <p className="text-[15px] font-semibold tabular-nums text-[#9a9590]">
-                − {money(statement.hst_cents, cur)}
+                −{" "}
+                {money(
+                  statement.mrg_take_cents ??
+                    statement.mrg_commission_cents + statement.hst_cents,
+                  cur,
+                )}
               </p>
             </div>
           )}

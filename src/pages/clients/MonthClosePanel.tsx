@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { pmGet, pmPost, rateLabel } from "./api";
+import { pmGet, pmPost, rateLabel, takeRateLabel } from "./api";
 import { GoldButton, MonthPicker } from "./ui";
 
 export type PortfolioSyncStatus = "fresh" | "stale" | "empty" | "unlinked";
@@ -10,6 +10,7 @@ export type PortfolioUnit = {
   client_id: string;
   client_name: string;
   linked: boolean;
+  rate_bps?: number | null;
   hst_mode: "cohost" | "invoice";
   hst_bps: number;
   sync_status: PortfolioSyncStatus;
@@ -18,6 +19,7 @@ export type PortfolioUnit = {
   reservation_count: number;
   net_to_host_cents: number | null;
   mrg_commission_cents: number | null;
+  mrg_take_cents?: number | null;
   nightly_total_cents?: number | null;
   hst_invoice_cents: number | null;
   expense_cents: number | null;
@@ -32,6 +34,7 @@ export type MonthPortfolio = {
   unlinked_count: number;
   net_to_host_cents: number;
   mrg_commission_cents: number;
+  mrg_take_cents?: number;
   hst_invoice_cents: number;
   expense_cents: number;
   reservation_count: number;
@@ -150,9 +153,14 @@ function fleetSyncLabel(iso: string | null): string {
   return `Fleet synced ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 }
 
-function hstModeLabel(unit: PortfolioUnit): string {
-  const pct = rateLabel(unit.hst_bps);
-  return unit.hst_mode === "invoice" ? `invoice ${pct}` : `cohost ${pct}`;
+function takeLabel(unit: PortfolioUnit): string {
+  return takeRateLabel(unit.rate_bps, unit.hst_mode, unit.hst_bps);
+}
+
+function unitMrgTake(unit: PortfolioUnit): number | null {
+  if (unit.mrg_take_cents != null) return unit.mrg_take_cents;
+  if (unit.mrg_commission_cents == null) return null;
+  return unit.mrg_commission_cents;
 }
 
 function rowStatusLabel(unit: PortfolioUnit): string {
@@ -176,11 +184,12 @@ function exportCsv(portfolio: MonthPortfolio) {
       "Property",
       "Client",
       "Linked",
+      "Take %",
       "HST mode",
       "HST %",
       "Sync",
       "Net to host",
-      "MRG fee",
+      "MRG take",
       "Nightly",
       "HST to invoice",
       "Expenses",
@@ -190,11 +199,12 @@ function exportCsv(portfolio: MonthPortfolio) {
       u.property_name,
       u.client_name,
       u.linked ? "yes" : "no",
+      takeLabel(u),
       u.hst_mode,
       String(u.hst_bps / 100),
       u.sync_status,
       u.net_to_host_cents == null ? "" : (u.net_to_host_cents / 100).toFixed(2),
-      u.mrg_commission_cents == null ? "" : (u.mrg_commission_cents / 100).toFixed(2),
+      unitMrgTake(u) == null ? "" : ((unitMrgTake(u) as number) / 100).toFixed(2),
       u.nightly_total_cents == null ? "" : (u.nightly_total_cents / 100).toFixed(2),
       u.hst_invoice_cents == null ? "" : (u.hst_invoice_cents / 100).toFixed(2),
       u.expense_cents == null ? "" : (u.expense_cents / 100).toFixed(2),
@@ -246,9 +256,9 @@ function clientSummaryText(group: InvoiceClientGroup, yearMonth: string, currenc
   const lines = [
     `${group.client_name} — ${title} HST invoice (${currency})`,
     ...group.units.map((u) => {
-      const nightly = moneyExact(u.nightly_total_cents ?? 0, currency);
+      const fee = moneyExact(u.mrg_commission_cents ?? unitMrgTake(u) ?? 0, currency);
       const hst = moneyExact(u.hst_invoice_cents ?? 0, currency);
-      return `${u.property_name}: ${hst} (nightly ${nightly} × ${rateLabel(u.hst_bps)})`;
+      return `${u.property_name}: ${hst} (MRG fee ${fee} × ${rateLabel(u.hst_bps)})`;
     }),
     `Total: ${moneyExact(group.hst_total_cents, currency)}`,
   ];
@@ -523,7 +533,7 @@ export function MonthClosePanel({
                 </div>
               </div>
               <p className="text-[12.5px] text-[#6f6a65]">
-                Bill outside cohost · QuickBooks
+                Bill HST on MRG fee · QuickBooks
               </p>
             </div>
             <div className="hidden items-center gap-5 lg:flex">
@@ -598,8 +608,8 @@ export function MonthClosePanel({
 
         <div className="hidden grid-cols-[1.6fr_1fr_0.7fr_1fr_0.9fr] border-b border-white/8 px-8 py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#6f6a65] lg:grid">
           <div>Property</div>
-          <div className="text-right">Total nightly</div>
-          <div className="text-right">Rate</div>
+          <div className="text-right">MRG fee</div>
+          <div className="text-right">HST %</div>
           <div className="text-right">HST to invoice</div>
           <div />
         </div>
@@ -672,7 +682,7 @@ export function MonthClosePanel({
                             {unit.reservation_count === 1 ? "" : "s"}
                             <span className="lg:hidden">
                               {" "}
-                              · Nightly {moneyExact(unit.nightly_total_cents ?? 0, currency)} ·{" "}
+                              · MRG fee {moneyExact(unit.mrg_commission_cents ?? 0, currency)} ·{" "}
                               {rateLabel(unit.hst_bps)}
                             </span>
                             {needsAttention(unit) ? (
@@ -681,7 +691,7 @@ export function MonthClosePanel({
                           </p>
                         </div>
                         <p className="hidden text-right text-[15px] tabular-nums text-[#9a9590] lg:block">
-                          {moneyExact(unit.nightly_total_cents ?? 0, currency)}
+                          {moneyExact(unit.mrg_commission_cents ?? 0, currency)}
                         </p>
                         <p className="hidden text-right text-[14px] text-[#9a9590] lg:block">
                           {rateLabel(unit.hst_bps)}
@@ -756,7 +766,7 @@ export function MonthClosePanel({
                 <span>
                   {u.client_name} · {u.property_name}
                 </span>
-                <span>cohost {rateLabel(u.hst_bps)}</span>
+                <span>{takeLabel(u)}</span>
               </div>
             ))}
             <p className="mt-2 text-[12px] leading-relaxed text-[#6f6a65]">
@@ -895,7 +905,7 @@ export function MonthClosePanel({
           {(
             [
               ["Net to hosts", portfolio?.net_to_host_cents],
-              ["MRG fees", portfolio?.mrg_commission_cents],
+              ["MRG fees", portfolio?.mrg_take_cents ?? portfolio?.mrg_commission_cents],
               ["HST to invoice", portfolio?.hst_invoice_cents, true],
               ["Expenses", portfolio?.expense_cents],
             ] as const
@@ -1100,7 +1110,7 @@ export function MonthClosePanel({
           {(
             [
               ["Net to hosts", portfolio?.net_to_host_cents],
-              ["MRG fees", portfolio?.mrg_commission_cents],
+              ["MRG fees", portfolio?.mrg_take_cents ?? portfolio?.mrg_commission_cents],
               ["HST to invoice", portfolio?.hst_invoice_cents, true],
               ["Expenses", portfolio?.expense_cents],
             ] as const
@@ -1130,7 +1140,7 @@ export function MonthClosePanel({
           <div>Property</div>
           <div>Sync</div>
           <div className="text-right">Net to host</div>
-          <div className="text-right">MRG fee</div>
+          <div className="text-right">MRG take</div>
           <div className="text-right">HST to invoice</div>
           <div className="text-right">Expenses</div>
         </div>
@@ -1219,7 +1229,7 @@ export function MonthClosePanel({
                   >
                     <p className="truncate text-[15px] font-semibold">{unit.property_name}</p>
                     <p className="truncate text-[12.5px] text-[#9a9590]">
-                      {unit.client_name} · {unit.linked ? hstModeLabel(unit) : "no HST set"}
+                      {unit.client_name} · {unit.linked ? takeLabel(unit) : "no rate set"}
                     </p>
                   </button>
                   <div
@@ -1275,7 +1285,7 @@ export function MonthClosePanel({
                     {moneyExact(unit.net_to_host_cents, currency)}
                   </p>
                   <p className="text-right text-[15px] tabular-nums text-[#9a9590]">
-                    {moneyExact(unit.mrg_commission_cents, currency)}
+                    {moneyExact(unitMrgTake(unit), currency)}
                   </p>
                   <p
                     className={`text-right text-[15px] tabular-nums ${
