@@ -289,6 +289,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           else if (typeof body.hst_percent === "number" || typeof body.hst_percent === "string") {
             hstBps = percentToRateBps(Number(body.hst_percent));
           }
+          let rateBps: number | undefined;
+          if (typeof body.rate_bps === "number") rateBps = body.rate_bps;
+          else if (typeof body.rate_percent === "number" || typeof body.rate_percent === "string") {
+            rateBps = percentToRateBps(Number(body.rate_percent));
+          }
           const property = await createPmProperty({
             client_id: str(body.client_id),
             name: str(body.name),
@@ -308,6 +313,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 ? body.hst_mode
                 : undefined,
             hst_bps: hstBps,
+            rate_bps: rateBps,
           });
           return res.status(200).json({ property });
         }
@@ -316,6 +322,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (typeof body.hst_bps === "number") hstBps = body.hst_bps;
           else if (typeof body.hst_percent === "number" || typeof body.hst_percent === "string") {
             hstBps = percentToRateBps(Number(body.hst_percent));
+          }
+          let rateBps: number | undefined;
+          if (typeof body.rate_bps === "number") rateBps = body.rate_bps;
+          else if (typeof body.rate_percent === "number" || typeof body.rate_percent === "string") {
+            rateBps = percentToRateBps(Number(body.rate_percent));
           }
           const property = await importHospitableProperty({
             client_id: str(body.client_id),
@@ -336,6 +347,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 ? body.hst_mode
                 : undefined,
             hst_bps: hstBps,
+            rate_bps: rateBps,
           });
           return res.status(200).json({ property });
         }

@@ -105,6 +105,7 @@ export async function createPmProperty(input: {
   commission_base_mode?: "nightly" | "nightly_minus_host_fee";
   hst_mode?: "cohost" | "invoice";
   hst_bps?: number;
+  rate_bps?: number;
 }): Promise<PmPropertyDetail> {
   const name = input.name.trim();
   if (!name) throw new Error("Name is required.");
@@ -128,6 +129,14 @@ export async function createPmProperty(input: {
         ? "nightly"
         : "nightly_minus_host_fee";
 
+  let rateBps =
+    input.rate_bps != null
+      ? Math.round(input.rate_bps)
+      : settings.default_commission_bps;
+  if (!Number.isFinite(rateBps) || rateBps < 0 || rateBps > 10000) {
+    throw new Error("Commission must be between 0% and 100%.");
+  }
+
   const { data: prop, error } = await db()
     .from("pm_properties")
     .insert({
@@ -146,7 +155,7 @@ export async function createPmProperty(input: {
 
   const { error: termErr } = await db().from("pm_commission_terms").insert({
     property_id: (prop as PmProperty).id,
-    rate_bps: settings.default_commission_bps,
+    rate_bps: rateBps,
     effective_from: todayIsoDate(),
     note: "Initial rate",
   });
@@ -298,6 +307,7 @@ export async function importHospitableProperty(input: {
   commission_base_mode?: "nightly" | "nightly_minus_host_fee";
   hst_mode?: "cohost" | "invoice";
   hst_bps?: number;
+  rate_bps?: number;
 }): Promise<PmPropertyDetail> {
   const hid = input.hospitable_property_id.trim();
   if (!hid) throw new Error("Hospitable property id is required.");
@@ -317,5 +327,6 @@ export async function importHospitableProperty(input: {
     commission_base_mode: input.commission_base_mode,
     hst_mode: input.hst_mode,
     hst_bps: input.hst_bps,
+    rate_bps: input.rate_bps,
   });
 }

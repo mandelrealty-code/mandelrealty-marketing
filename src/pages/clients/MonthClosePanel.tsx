@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { pmGet, pmPost, rateLabel, takeRateLabel } from "./api";
+import { pmGet, pmPost, rateLabel } from "./api";
+import { dealSummaryLabel } from "./BillingTermsForm";
 import { GoldButton, MonthPicker } from "./ui";
 
 export type PortfolioSyncStatus = "fresh" | "stale" | "empty" | "unlinked";
@@ -11,6 +12,8 @@ export type PortfolioUnit = {
   client_name: string;
   linked: boolean;
   rate_bps?: number | null;
+  commission_base_mode?: "nightly" | "nightly_minus_host_fee";
+  cleaning_fee_keeper?: "mrg" | "host";
   hst_mode: "cohost" | "invoice";
   hst_bps: number;
   sync_status: PortfolioSyncStatus;
@@ -154,7 +157,13 @@ function fleetSyncLabel(iso: string | null): string {
 }
 
 function takeLabel(unit: PortfolioUnit): string {
-  return takeRateLabel(unit.rate_bps, unit.hst_mode, unit.hst_bps);
+  return dealSummaryLabel({
+    commissionBps: unit.rate_bps,
+    baseMode: unit.commission_base_mode,
+    cleaningKeeper: unit.cleaning_fee_keeper,
+    hstMode: unit.hst_mode,
+    hstBps: unit.hst_bps,
+  });
 }
 
 function unitMrgTake(unit: PortfolioUnit): number | null {

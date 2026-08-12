@@ -3,18 +3,21 @@ import {
   pmGet,
   pmPost,
   rateLabel,
-  takeRateLabel,
   type ClientRow,
   type PropertyDetail,
   type PropertyRow,
 } from "./api";
+import {
+  BillingTermsForm,
+  dealSummaryLabel,
+  defaultBillingTerms,
+  type BillingTermsValue,
+} from "./BillingTermsForm";
 import { ClientMonthPanel } from "./ClientMonthPanel";
 import { ContractsPanel } from "./ContractsPanel";
 import { EarningsPanel } from "./EarningsPanel";
-import { HstSetupForm, hstSummaryLabel, type HstMode } from "./HstSetupForm";
 import { MonthClosePanel } from "./MonthClosePanel";
 import {
-  formatDisplayDate,
   formatRateHistoryRange,
   todayInputValue,
 } from "./format";
@@ -116,12 +119,14 @@ export default function ClientsApp({ onModeChange }: Props) {
   const [importClientId, setImportClientId] = useState("");
   const [importSelectedId, setImportSelectedId] = useState("");
   const [importLoading, setImportLoading] = useState(false);
-  const [importHstMode, setImportHstMode] = useState<HstMode>("cohost");
-  const [importHstPercent, setImportHstPercent] = useState("3");
-  const [hstFormMode, setHstFormMode] = useState<HstMode>("cohost");
-  const [hstFormPercent, setHstFormPercent] = useState("3");
-  const [propertyHstMode, setPropertyHstMode] = useState<HstMode>("cohost");
-  const [propertyHstPercent, setPropertyHstPercent] = useState("3");
+  const [importBilling, setImportBilling] = useState<BillingTermsValue>(() =>
+    defaultBillingTerms(),
+  );
+  const [addBilling, setAddBilling] = useState<BillingTermsValue>(() =>
+    defaultBillingTerms(),
+  );
+  const [termsBilling, setTermsBilling] = useState<BillingTermsValue | null>(null);
+  const [hstSheetBilling, setHstSheetBilling] = useState<BillingTermsValue | null>(null);
 
   const loadLists = useCallback(async () => {
     setLoadError("");
@@ -144,6 +149,18 @@ export default function ClientsApp({ onModeChange }: Props) {
     const data = await pmGet<{ property: PropertyDetail }>("properties", { id });
     setPropertyDetail(data.property);
     setSelectedPropertyId(id);
+    const rate = data.property.current_term?.rate_bps;
+    setTermsBilling({
+      commissionPercent: String((rate ?? 2000) / 100),
+      baseMode:
+        data.property.commission_base_mode === "nightly"
+          ? "nightly"
+          : "nightly_minus_host_fee",
+      cleaningKeeper:
+        data.property.cleaning_fee_keeper === "host" ? "host" : "mrg",
+      hstMode: data.property.hst_mode === "invoice" ? "invoice" : "cohost",
+      hstPercent: String((data.property.hst_bps ?? 300) / 100),
+    });
   }, []);
 
   useEffect(() => {
@@ -202,8 +219,13 @@ export default function ClientsApp({ onModeChange }: Props) {
       client_id: prefillClientId || clients[0]?.id || "",
       hospitable_property_id: "",
     });
-    setPropertyHstMode("cohost");
-    setPropertyHstPercent(String(defaultHstPercent || 3));
+    setAddBilling(
+      defaultBillingTerms({
+        commissionPercent: defaultRatePercent || 20,
+        hstPercent: defaultHstPercent || 3,
+        hstMode: "cohost",
+      }),
+    );
     setPropertySheet(true);
   };
 
@@ -221,8 +243,13 @@ export default function ClientsApp({ onModeChange }: Props) {
     setImportClientId(prefillClientId || clients[0]?.id || "");
     setImportSelectedId("");
     setImportStep(1);
-    setImportHstMode("cohost");
-    setImportHstPercent(String(defaultHstPercent || 3));
+    setImportBilling(
+      defaultBillingTerms({
+        commissionPercent: defaultRatePercent || 20,
+        hstPercent: defaultHstPercent || 3,
+        hstMode: "cohost",
+      }),
+    );
     setImportSheet(true);
     setImportLoading(true);
     setLoadError("");
@@ -248,9 +275,14 @@ export default function ClientsApp({ onModeChange }: Props) {
   const saveImport = async () => {
     const unit = hospitableAvailable.find((u) => u.id === importSelectedId);
     if (!unit || !importClientId) return;
-    const hstPct = Number(importHstPercent);
+    const hstPct = Number(importBilling.hstPercent);
+    const ratePct = Number(importBilling.commissionPercent);
     if (!Number.isFinite(hstPct) || hstPct < 0 || hstPct > 20) {
       setLoadError("HST rate must be between 0% and 20%.");
+      return;
+    }
+    if (!Number.isFinite(ratePct) || ratePct < 0 || ratePct > 100) {
+      setLoadError("Commission must be between 0% and 100%.");
       return;
     }
     setBusy(true);
@@ -262,7 +294,10 @@ export default function ClientsApp({ onModeChange }: Props) {
         hospitable_property_id: unit.id,
         name: unit.name,
         address: unit.address,
-        hst_mode: importHstMode,
+        rate_percent: ratePct,
+        commission_base_mode: importBilling.baseMode,
+        cleaning_fee_keeper: importBilling.cleaningKeeper,
+        hst_mode: importBilling.hstMode,
         hst_percent: hstPct,
       });
       setImportSheet(false);
@@ -321,9 +356,14 @@ export default function ClientsApp({ onModeChange }: Props) {
   };
 
   const saveProperty = async () => {
-    const hstPct = Number(propertyHstPercent);
+    const hstPct = Number(addBilling.hstPercent);
+    const ratePct = Number(addBilling.commissionPercent);
     if (!Number.isFinite(hstPct) || hstPct < 0 || hstPct > 20) {
       setLoadError("HST rate must be between 0% and 20%.");
+      return;
+    }
+    if (!Number.isFinite(ratePct) || ratePct < 0 || ratePct > 100) {
+      setLoadError("Commission must be between 0% and 100%.");
       return;
     }
     setBusy(true);
@@ -332,7 +372,10 @@ export default function ClientsApp({ onModeChange }: Props) {
       const data = await pmPost<{ property: PropertyDetail }>("properties", {
         op: "create",
         ...propertyForm,
-        hst_mode: propertyHstMode,
+        rate_percent: ratePct,
+        commission_base_mode: addBilling.baseMode,
+        cleaning_fee_keeper: addBilling.cleaningKeeper,
+        hst_mode: addBilling.hstMode,
         hst_percent: hstPct,
       });
       setPropertySheet(false);
@@ -359,10 +402,17 @@ export default function ClientsApp({ onModeChange }: Props) {
 
   const openChangeHst = () => {
     if (!propertyDetail) return;
-    const mode: HstMode =
-      propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost";
-    setHstFormMode(mode);
-    setHstFormPercent(String((propertyDetail.hst_bps ?? 300) / 100));
+    setHstSheetBilling({
+      commissionPercent: String((propertyDetail.current_term?.rate_bps ?? 2000) / 100),
+      baseMode:
+        propertyDetail.commission_base_mode === "nightly"
+          ? "nightly"
+          : "nightly_minus_host_fee",
+      cleaningKeeper:
+        propertyDetail.cleaning_fee_keeper === "host" ? "host" : "mrg",
+      hstMode: propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost",
+      hstPercent: String((propertyDetail.hst_bps ?? 300) / 100),
+    });
     setHstSheet(true);
   };
 
@@ -442,6 +492,12 @@ export default function ClientsApp({ onModeChange }: Props) {
       });
       setRateSheet(false);
       setPropertyDetail(data.property);
+      const rate = data.property.current_term?.rate_bps;
+      setTermsBilling((prev) =>
+        prev
+          ? { ...prev, commissionPercent: String((rate ?? 2000) / 100) }
+          : prev,
+      );
       await loadLists();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Save failed.");
@@ -535,6 +591,18 @@ export default function ClientsApp({ onModeChange }: Props) {
         ...patch,
       });
       setPropertyDetail(data.property);
+      const rate = data.property.current_term?.rate_bps;
+      setTermsBilling({
+        commissionPercent: String((rate ?? 2000) / 100),
+        baseMode:
+          data.property.commission_base_mode === "nightly"
+            ? "nightly"
+            : "nightly_minus_host_fee",
+        cleaningKeeper:
+          data.property.cleaning_fee_keeper === "host" ? "host" : "mrg",
+        hstMode: data.property.hst_mode === "invoice" ? "invoice" : "cohost",
+        hstPercent: String((data.property.hst_bps ?? 300) / 100),
+      });
       await loadLists();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Save failed.");
@@ -545,16 +613,20 @@ export default function ClientsApp({ onModeChange }: Props) {
   };
 
   const saveHst = async () => {
-    const hstPct = Number(hstFormPercent);
+    if (!hstSheetBilling) return;
+    const hstPct = Number(hstSheetBilling.hstPercent);
     if (!Number.isFinite(hstPct) || hstPct < 0 || hstPct > 20) {
       setLoadError("HST rate must be between 0% and 20%.");
       return;
     }
     try {
       await savePropertyTerms({
-        hst_mode: hstFormMode,
+        commission_base_mode: hstSheetBilling.baseMode,
+        cleaning_fee_keeper: hstSheetBilling.cleaningKeeper,
+        hst_mode: hstSheetBilling.hstMode,
         hst_percent: hstPct,
       });
+      setTermsBilling(hstSheetBilling);
       setHstSheet(false);
     } catch {
       // Error already surfaced via loadError.
@@ -835,11 +907,13 @@ export default function ClientsApp({ onModeChange }: Props) {
                     {[
                       p.address || null,
                       p.client_name,
-                      takeRateLabel(
-                        p.current_rate_bps,
-                        p.hst_mode === "invoice" ? "invoice" : "cohost",
-                        p.hst_bps,
-                      ),
+                      dealSummaryLabel({
+                        commissionBps: p.current_rate_bps,
+                        baseMode: p.commission_base_mode,
+                        cleaningKeeper: p.cleaning_fee_keeper,
+                        hstMode: p.hst_mode,
+                        hstBps: p.hst_bps,
+                      }),
                     ]
                       .filter(Boolean)
                       .join(" · ")}
@@ -921,100 +995,53 @@ export default function ClientsApp({ onModeChange }: Props) {
       <div className="lg:grid lg:grid-cols-2 lg:gap-10 lg:px-0">
         <div>
           <p className="border-t border-white/8 px-4 pb-2 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65] lg:px-0">
-            Terms
+            How we bill
           </p>
-          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3.5 lg:px-0">
-            <div>
-              <p className="text-[15px] font-semibold text-[#f5f5f5]">Commission</p>
-              <p className="text-[13px] text-[#6f6a65]">
-                {propertyDetail.current_term
-                  ? `Mgmt fee · since ${formatDisplayDate(propertyDetail.current_term.effective_from)}`
-                  : "No rate set"}
-                {propertyDetail.hst_mode !== "invoice" && currentRateBps != null
-                  ? ` · take ${takeRateLabel(currentRateBps, "cohost", propertyDetail.hst_bps ?? 300)}`
-                  : ""}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[17px] font-bold tabular-nums">{rateLabel(currentRateBps)}</span>
-              <button
-                type="button"
-                onClick={openChangeRate}
-                className="text-[13px] font-semibold text-[#c4a35a]"
-              >
-                Change
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2.5 border-t border-white/8 px-4 py-3.5 lg:px-0">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-[15px] font-semibold text-[#f5f5f5]">Fee base</p>
-            </div>
-            <SegmentedControl<"nightly" | "nightly_minus_host_fee">
-              value={
-                propertyDetail.commission_base_mode === "nightly"
-                  ? "nightly"
-                  : "nightly_minus_host_fee"
-              }
-              disabled={busy}
-              onChange={(v) => {
-                void savePropertyTerms({ commission_base_mode: v }).catch(() => undefined);
-              }}
-              options={[
-                { value: "nightly", label: "Nightly" },
-                { value: "nightly_minus_host_fee", label: "Nightly − fee" },
-              ]}
-            />
-            <p className="text-[13px] text-[#6f6a65] text-pretty">
-              {propertyDetail.commission_base_mode === "nightly"
-                ? "Bill on Airbnb room fee (nightly × commission %). Host service fee is not deducted."
-                : "Commission on room fee minus Airbnb host service fee (3% or 15%)."}
+          <div className="border-t border-white/8 px-4 py-3 lg:px-0">
+            <p className="text-[14px] font-semibold text-[#dcc084] text-pretty">
+              {dealSummaryLabel({
+                commissionBps: currentRateBps,
+                baseMode: propertyDetail.commission_base_mode,
+                cleaningKeeper: propertyDetail.cleaning_fee_keeper,
+                hstMode: propertyDetail.hst_mode,
+                hstBps: propertyDetail.hst_bps,
+              })}
             </p>
           </div>
-
-          <div className="flex flex-col gap-2.5 border-t border-white/8 px-4 py-3.5 lg:px-0">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-[15px] font-semibold text-[#f5f5f5]">Cleaning fee</p>
+          {termsBilling ? (
+            <div className="border-t border-white/8 px-4 py-3.5 lg:px-0">
+              <BillingTermsForm
+                compact
+                commissionLocked
+                value={termsBilling}
+                onChangeCommission={openChangeRate}
+                onChange={setTermsBilling}
+                footer={
+                  <GoldButton
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      const hstPct = Number(termsBilling.hstPercent);
+                      if (!Number.isFinite(hstPct) || hstPct < 0 || hstPct > 20) {
+                        setLoadError("HST rate must be between 0% and 20%.");
+                        return;
+                      }
+                      void savePropertyTerms({
+                        commission_base_mode: termsBilling.baseMode,
+                        cleaning_fee_keeper: termsBilling.cleaningKeeper,
+                        hst_mode: termsBilling.hstMode,
+                        hst_percent: hstPct,
+                      })
+                        .then(() => setToast("Billing terms saved."))
+                        .catch(() => undefined);
+                    }}
+                  >
+                    {busy ? "Saving…" : "Save billing terms"}
+                  </GoldButton>
+                }
+              />
             </div>
-            <SegmentedControl
-              value={propertyDetail.cleaning_fee_keeper === "host" ? "host" : "mrg"}
-              disabled={busy}
-              onChange={(v) => {
-                void savePropertyTerms({ cleaning_fee_keeper: v }).catch(() => undefined);
-              }}
-              options={[
-                { value: "mrg", label: "MRG keeps" },
-                { value: "host", label: "Host keeps" },
-              ]}
-            />
-            <p className="text-[13px] text-[#6f6a65] text-pretty">
-              {propertyDetail.cleaning_fee_keeper === "host"
-                ? "Host pays their cleaners; cleaning stays with the host."
-                : "MRG pays the cleaners; cleaning stays with MRG."}
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between gap-3 border-t border-b border-white/8 px-4 py-3.5 lg:px-0">
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <p className="text-[15px] font-semibold text-[#f5f5f5]">HST</p>
-              <p className="text-[13px] text-[#6f6a65] text-pretty">
-                {hstSummaryLabel(
-                  propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost",
-                  propertyDetail.hst_bps ?? 300,
-                  currentRateBps,
-                )}
-              </p>
-            </div>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={openChangeHst}
-              className="shrink-0 text-[13px] font-semibold text-[#c4a35a] disabled:opacity-50"
-            >
-              Change
-            </button>
-          </div>
+          ) : null}
 
           {propertyDetail.terms.length > 1 ? (
             <>
@@ -1053,6 +1080,13 @@ export default function ClientsApp({ onModeChange }: Props) {
             rateBps={currentRateBps}
             hstBps={propertyDetail.hst_bps ?? 300}
             hstMode={propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost"}
+            dealLabel={dealSummaryLabel({
+              commissionBps: currentRateBps,
+              baseMode: propertyDetail.commission_base_mode,
+              cleaningKeeper: propertyDetail.cleaning_fee_keeper,
+              hstMode: propertyDetail.hst_mode,
+              hstBps: propertyDetail.hst_bps,
+            })}
             onError={setLoadError}
           />
           <div className="lg:hidden">
@@ -1346,11 +1380,10 @@ export default function ClientsApp({ onModeChange }: Props) {
               />
             </div>
             <div className="border-t border-white/8 pt-3">
-              <HstSetupForm
-                mode={propertyHstMode}
-                ratePercent={propertyHstPercent}
-                onModeChange={setPropertyHstMode}
-                onRateChange={setPropertyHstPercent}
+              <BillingTermsForm
+                smartDefaults
+                value={addBilling}
+                onChange={setAddBilling}
               />
             </div>
             <GoldButton
@@ -1577,13 +1610,15 @@ export default function ClientsApp({ onModeChange }: Props) {
                 </div>
                 <div className="flex items-center justify-between border-t border-white/8 bg-[#0c0c0c] px-3.5 py-3.5">
                   <div>
-                    <p className="text-[14.5px] font-semibold">HST</p>
-                    <p className="text-[12px] text-[#6f6a65]">
-                      {hstSummaryLabel(
-                        propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost",
-                        propertyDetail.hst_bps ?? 300,
-                        currentRateBps,
-                      )}
+                    <p className="text-[14.5px] font-semibold">Billing</p>
+                    <p className="text-[12px] text-[#6f6a65] text-pretty">
+                      {dealSummaryLabel({
+                        commissionBps: currentRateBps,
+                        baseMode: propertyDetail.commission_base_mode,
+                        cleaningKeeper: propertyDetail.cleaning_fee_keeper,
+                        hstMode: propertyDetail.hst_mode,
+                        hstBps: propertyDetail.hst_bps,
+                      })}
                     </p>
                   </div>
                   <button
@@ -1629,13 +1664,21 @@ export default function ClientsApp({ onModeChange }: Props) {
         </Sheet>
       ) : null}
 
-      {hstSheet && propertyDetail ? (
-        <Sheet title="HST" onCancel={() => setHstSheet(false)} desktop={desktop}>
-          <HstSetupForm
-            mode={hstFormMode}
-            ratePercent={hstFormPercent}
-            onModeChange={setHstFormMode}
-            onRateChange={setHstFormPercent}
+      {hstSheet && propertyDetail && hstSheetBilling ? (
+        <Sheet
+          title="How we bill"
+          onCancel={() => setHstSheet(false)}
+          desktop={desktop}
+        >
+          <BillingTermsForm
+            smartDefaults
+            commissionLocked
+            value={hstSheetBilling}
+            onChange={setHstSheetBilling}
+            onChangeCommission={() => {
+              setHstSheet(false);
+              openChangeRate();
+            }}
             subtitle={propertyDetail.name}
           />
           <GoldButton
@@ -1644,14 +1687,14 @@ export default function ClientsApp({ onModeChange }: Props) {
             disabled={busy}
             onClick={() => void saveHst()}
           >
-            {busy ? "Saving…" : "Save HST"}
+            {busy ? "Saving…" : "Save billing terms"}
           </GoldButton>
         </Sheet>
       ) : null}
 
       {importSheet ? (
         <Sheet
-          title={importStep === 2 ? "HST" : "Import from Hospitable"}
+          title={importStep === 2 ? "How we bill" : "Import from Hospitable"}
           onCancel={() => {
             setImportSheet(false);
             setImportStep(1);
@@ -1735,11 +1778,10 @@ export default function ClientsApp({ onModeChange }: Props) {
               >
                 ← Back
               </button>
-              <HstSetupForm
-                mode={importHstMode}
-                ratePercent={importHstPercent}
-                onModeChange={setImportHstMode}
-                onRateChange={setImportHstPercent}
+              <BillingTermsForm
+                smartDefaults
+                value={importBilling}
+                onChange={setImportBilling}
                 subtitle={
                   hospitableAvailable.find((u) => u.id === importSelectedId)?.name
                 }

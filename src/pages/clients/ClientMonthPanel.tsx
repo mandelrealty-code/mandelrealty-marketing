@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { pmGet, rateLabel, takeRateLabel } from "./api";
+import { pmGet, rateLabel } from "./api";
+import { dealSummaryLabel } from "./BillingTermsForm";
 import type { MonthPortfolio, PortfolioUnit } from "./MonthClosePanel";
 import { GoldButton, MonthPicker } from "./ui";
 
@@ -83,12 +84,18 @@ function syncLine(unit: PortfolioUnit): { text: string; className: string } {
 
 function feeLine(unit: PortfolioUnit, currency: string): string {
   if (!unit.linked) return "Link to pull stays";
-  const take = takeRateLabel(unit.rate_bps, unit.hst_mode, unit.hst_bps);
+  const deal = dealSummaryLabel({
+    commissionBps: unit.rate_bps,
+    baseMode: unit.commission_base_mode,
+    cleaningKeeper: unit.cleaning_fee_keeper,
+    hstMode: unit.hst_mode,
+    hstBps: unit.hst_bps,
+  });
   const fee = money(unitMrgTake(unit), currency);
   if (unit.hst_mode === "invoice" && unit.hst_invoice_cents != null) {
-    return `${take} · take ${fee} · HST ${money(unit.hst_invoice_cents, currency)}`;
+    return `${deal} · ${fee} · HST ${money(unit.hst_invoice_cents, currency)}`;
   }
-  return `${take} take · ${fee}`;
+  return `${deal} · ${fee}`;
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -168,14 +175,15 @@ export function ClientMonthPanel({
   const units = portfolio?.units ?? [];
 
   const hstHint = useMemo(() => {
-    const invoice = units.filter((u) => u.hst_mode === "invoice");
-    if (invoice.length) {
-      const u = invoice[0]!;
-      return takeRateLabel(u.rate_bps, "invoice", u.hst_bps);
-    }
-    const cohost = units.find((u) => u.hst_mode === "cohost");
-    if (cohost) return `${takeRateLabel(cohost.rate_bps, "cohost", cohost.hst_bps)} take`;
-    return "No rate set";
+    const u = units[0];
+    if (!u) return "No rate set";
+    return dealSummaryLabel({
+      commissionBps: u.rate_bps,
+      baseMode: u.commission_base_mode,
+      cleaningKeeper: u.cleaning_fee_keeper,
+      hstMode: u.hst_mode,
+      hstBps: u.hst_bps,
+    });
   }, [units]);
 
   const hasInvoice = units.some((u) => u.hst_mode === "invoice" && u.linked);

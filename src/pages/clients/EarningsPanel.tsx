@@ -131,6 +131,7 @@ export function EarningsPanel({
   rateBps,
   hstBps,
   hstMode = "cohost",
+  dealLabel,
   onError,
 }: {
   propertyId: string;
@@ -138,6 +139,7 @@ export function EarningsPanel({
   rateBps: number | null;
   hstBps: number;
   hstMode?: "cohost" | "invoice";
+  dealLabel?: string;
   onError: (msg: string) => void;
 }) {
   const [month, setMonth] = useState(defaultMonth);
@@ -351,6 +353,17 @@ export function EarningsPanel({
         <p className="px-4 pb-3 text-[13px] text-[#6f6a65] lg:px-0">
           Link Hospitable to sync bookings.
         </p>
+      ) : null}
+
+      {dealLabel ? (
+        <div className="border-t border-white/8 px-4 py-3 lg:px-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65]">
+            Deal
+          </p>
+          <p className="mt-1 text-[13px] font-semibold text-[#dcc084] text-pretty">
+            {dealLabel}
+          </p>
+        </div>
       ) : null}
 
       {statement ? (

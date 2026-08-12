@@ -459,6 +459,8 @@ export type PortfolioUnitRow = {
   active: boolean;
   /** Current management commission (bps). */
   rate_bps: number | null;
+  commission_base_mode: "nightly" | "nightly_minus_host_fee";
+  cleaning_fee_keeper: "mrg" | "host";
   hst_mode: "cohost" | "invoice";
   hst_bps: number;
   sync_status: PortfolioSyncStatus;
@@ -547,6 +549,8 @@ export async function buildMonthPortfolio(
         linked: false,
         active: true,
         rate_bps: p.current_rate_bps ?? null,
+        commission_base_mode: normalizeCommissionBaseMode(p.commission_base_mode),
+        cleaning_fee_keeper: p.cleaning_fee_keeper === "host" ? "host" : "mrg",
         hst_mode: p.hst_mode === "invoice" ? "invoice" : "cohost",
         hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
         sync_status: "unlinked",
@@ -598,6 +602,8 @@ export async function buildMonthPortfolio(
       linked: true,
       active: true,
       rate_bps: statement.rate_bps_used,
+      commission_base_mode: statement.commission_base_mode,
+      cleaning_fee_keeper: statement.cleaning_fee_keeper,
       hst_mode: statement.hst_mode,
       hst_bps: statement.hst_bps_used,
       sync_status: sync.status,
