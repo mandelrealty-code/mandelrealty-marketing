@@ -33,6 +33,11 @@ export type PmReservationRow = {
 export const SYNC_STALE_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
 /** How many months back (including current) to pull on auto-sync. */
 export const AUTO_SYNC_LOOKBACK_MONTHS = 12;
+/**
+ * How many months ahead to pull on auto-sync.
+ * STR night caps (Airbnb “booked this year”) and booking pace need future stays.
+ */
+export const AUTO_SYNC_LOOKAHEAD_MONTHS = 6;
 
 export function monthBounds(yearMonth: string): { start: string; end: string } {
   const [y, m] = yearMonth.split("-").map(Number);
@@ -47,16 +52,39 @@ export function previousYearMonth(now = new Date()): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function lookbackRange(
+/** Inclusive ISO dates for a calendar year, plus Jan buffer for year-end checkouts. */
+export function calendarYearSyncRange(
+  year: number,
+): { start: string; end: string } {
+  return {
+    start: `${year}-01-01`,
+    // Checkout-query: stays that occupy Dec nights may check out in early January.
+    end: `${year + 1}-01-31`,
+  };
+}
+
+function rollingSyncRange(
   lookbackMonths: number,
+  lookaheadMonths = AUTO_SYNC_LOOKAHEAD_MONTHS,
   now = new Date(),
 ): { start: string; end: string } {
-  const endMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
   const startMonth = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (lookbackMonths - 1), 1),
   );
+  const lookaheadEnd = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + lookaheadMonths + 1, 0),
+  );
+  // Always cover the rest of the STR calendar year (Airbnb counts booked nights YTD+forward).
+  const yearEnd = new Date(Date.UTC(now.getUTCFullYear(), 11, 31));
+  const yearSpill = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 31));
+  const endDate =
+    lookaheadEnd > yearEnd
+      ? lookaheadEnd > yearSpill
+        ? lookaheadEnd
+        : yearSpill
+      : yearSpill;
   const start = `${startMonth.getUTCFullYear()}-${String(startMonth.getUTCMonth() + 1).padStart(2, "0")}-01`;
-  const end = `${endMonth.getUTCFullYear()}-${String(endMonth.getUTCMonth() + 1).padStart(2, "0")}-${String(endMonth.getUTCDate()).padStart(2, "0")}`;
+  const end = `${endDate.getUTCFullYear()}-${String(endDate.getUTCMonth() + 1).padStart(2, "0")}-${String(endDate.getUTCDate()).padStart(2, "0")}`;
   return { start, end };
 }
 
@@ -126,11 +154,15 @@ export async function propertyNeedsAutoSync(
 
 /**
  * Sync reservations for one property or all linked properties.
- * Pass yearMonth for a single month, or lookbackMonths for a rolling window.
+ * Pass yearMonth for a single month, lookbackMonths for a rolling window
+ * (includes lookahead through year-end), or explicit startDate/endDate.
  */
 export async function syncHospitableReservations(input: {
   yearMonth?: string;
   lookbackMonths?: number;
+  /** Inclusive checkout-query window (overrides yearMonth / lookback). */
+  startDate?: string;
+  endDate?: string;
   propertyId?: string;
 }): Promise<{ synced: number; properties: number; start: string; end: string }> {
   const pat = await getHospitablePat();
@@ -151,9 +183,11 @@ export async function syncHospitableReservations(input: {
   }
 
   const range =
-    input.lookbackMonths && input.lookbackMonths > 0
-      ? lookbackRange(input.lookbackMonths)
-      : monthBounds(input.yearMonth || previousYearMonth());
+    input.startDate && input.endDate
+      ? { start: input.startDate, end: input.endDate }
+      : input.lookbackMonths && input.lookbackMonths > 0
+        ? rollingSyncRange(input.lookbackMonths)
+        : monthBounds(input.yearMonth || previousYearMonth());
   const { start, end } = range;
 
   const byHospitable = new Map(

@@ -1302,6 +1302,9 @@ export default function ClientsApp({ onModeChange }: Props) {
                     </p>
                   </div>
                 </div>
+                <p className="mt-2 text-[12px] text-[#6f6a65]">
+                  Booked nights this year, including upcoming stays
+                </p>
                 <button
                   type="button"
                   onClick={openEditProperty}

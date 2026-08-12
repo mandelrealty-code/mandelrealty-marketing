@@ -2,7 +2,9 @@
 
 import { isExcludedReservationStatus } from "./financialBreakdown.js";
 import {
+  calendarYearSyncRange,
   listReservationsOverlappingRange,
+  syncHospitableReservations,
   type PmReservationRow,
 } from "./reservationStore.js";
 
@@ -150,10 +152,28 @@ export async function loadStrComplianceForProperty(
     day_cap?: number | null;
     calendar_year?: number;
     as_of?: string;
+    /** Skip Hospitable refresh (tests / nested calls). */
+    skip_sync?: boolean;
   },
 ): Promise<StrComplianceSnapshot> {
   const asOf = opts?.as_of || new Date().toISOString().slice(0, 10);
   const year = opts?.calendar_year ?? Number(asOf.slice(0, 4));
+
+  // Airbnb’s night limit counts booked nights for the calendar year, including
+  // future stays. Pull that full window (checkout spill into early Jan) first.
+  if (!opts?.skip_sync) {
+    try {
+      const range = calendarYearSyncRange(year);
+      await syncHospitableReservations({
+        propertyId,
+        startDate: range.start,
+        endDate: range.end,
+      });
+    } catch {
+      /* unlinked / no PAT / API — still count whatever is cached */
+    }
+  }
+
   const start = `${year}-01-01`;
   const end = `${year}-12-31`;
   const rows = await listReservationsOverlappingRange([propertyId], start, end);
