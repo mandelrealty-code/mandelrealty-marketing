@@ -8,6 +8,7 @@ import {
   monthBounds,
   type PmReservationRow,
 } from "./reservationStore.js";
+import { loadStrComplianceForProperty } from "./strCompliance.js";
 import {
   buildMonthPortfolio,
   buildMonthStatement,
@@ -290,6 +291,7 @@ export async function buildOwnerStatement(
   const coverById = new Map(
     props.map((p) => [p.id, (p.cover_image_url || null) as string | null]),
   );
+  const propById = new Map(props.map((p) => [p.id, p]));
   const linked = portfolio.units.filter((u) => u.linked && u.active !== false);
 
   const units: OwnerStatementUnit[] = [];
@@ -419,6 +421,41 @@ export async function buildOwnerStatement(
   }
 
   const { end: monthEnd } = monthBounds(yearMonth);
+  const statementYear = Number(yearMonth.slice(0, 4));
+  const compliance: OwnerComplianceItem[] = [];
+  for (const u of units) {
+    const p = propById.get(u.property_id);
+    if (!p) continue;
+    try {
+      const snap = await loadStrComplianceForProperty(u.property_id, {
+        permit_number: p.str_permit_number,
+        municipality: p.str_municipality,
+        applied_on: p.str_permit_applied_on,
+        issued_on: p.str_permit_issued_on,
+        day_cap: p.str_day_cap,
+        calendar_year: statementYear,
+        as_of: monthEnd,
+      });
+      if (snap.status === "unset" && !snap.permit_number && !snap.issued_on) continue;
+      const city = snap.municipality || "STR Permit";
+      compliance.push({
+        label: `${city}${snap.permit_number ? ` · #${snap.permit_number}` : ""}`,
+        property_name: u.property_name,
+        status: snap.status_label,
+        detail: [
+          snap.applied_on ? `Applied ${snap.applied_on}` : null,
+          snap.issued_on ? `Issued ${snap.issued_on}` : null,
+          snap.renews_on ? `Renews ${snap.renews_on}` : null,
+          `${snap.nights_used} of ${snap.day_cap} nights in ${snap.calendar_year} · ${snap.nights_remaining} left (resets Jan 1)`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      });
+    } catch {
+      /* skip unit */
+    }
+  }
+
   const paceStart = addDaysIso(monthEnd, 1);
   const paceDays = 60;
   const paceEnd = addDaysIso(paceStart, paceDays - 1);
@@ -603,7 +640,7 @@ export async function buildOwnerStatement(
     },
     actions: [],
     recommendations: [],
-    compliance: [],
+    compliance,
     market: {
       available: false,
       market_occupancy_bps: null,

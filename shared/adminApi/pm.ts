@@ -415,6 +415,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             commission_base_mode: baseMode,
             hst_mode: hstMode,
             hst_bps: hstBps,
+            str_permit_number:
+              body.str_permit_number != null ? str(body.str_permit_number) : undefined,
+            str_municipality:
+              body.str_municipality != null ? str(body.str_municipality) : undefined,
+            str_permit_applied_on:
+              body.str_permit_applied_on === null
+                ? null
+                : body.str_permit_applied_on != null
+                  ? str(body.str_permit_applied_on) || null
+                  : undefined,
+            str_permit_issued_on:
+              body.str_permit_issued_on === null
+                ? null
+                : body.str_permit_issued_on != null
+                  ? str(body.str_permit_issued_on) || null
+                  : undefined,
+            str_day_cap:
+              typeof body.str_day_cap === "number"
+                ? body.str_day_cap
+                : body.str_day_cap != null
+                  ? Number(body.str_day_cap)
+                  : undefined,
           });
           return res.status(200).json({ property });
         }

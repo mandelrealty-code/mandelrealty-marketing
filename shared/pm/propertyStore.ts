@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { getPmSettings } from "./clientStore.js";
 import { normalizeCommissionBaseMode } from "./financialBreakdown.js";
+import { loadStrComplianceForProperty } from "./strCompliance.js";
 import type {
   PmCommissionTerm,
   PmProperty,
@@ -30,6 +31,14 @@ function normalizePropertyRow(p: PmProperty): PmProperty {
     cover_image_path: (p.cover_image_path || "").trim(),
     cover_image_filename: (p.cover_image_filename || "").trim(),
     cover_image_mime: (p.cover_image_mime || "").trim(),
+    str_permit_number: (p.str_permit_number || "").trim(),
+    str_permit_applied_on: p.str_permit_applied_on || null,
+    str_permit_issued_on: p.str_permit_issued_on || null,
+    str_day_cap:
+      Number.isFinite(p.str_day_cap) && (p.str_day_cap as number) > 0
+        ? Math.round(p.str_day_cap as number)
+        : 180,
+    str_municipality: (p.str_municipality || "").trim(),
   };
 }
 
@@ -111,12 +120,25 @@ export async function getPmPropertyDetail(id: string): Promise<PmPropertyDetail 
   const { pm_clients, pm_commission_terms: _t, ...prop } = r;
   const p = prop as PmProperty;
   const normalized = normalizePropertyRow(p);
+  let strCompliance = null;
+  try {
+    strCompliance = await loadStrComplianceForProperty(id, {
+      permit_number: normalized.str_permit_number,
+      municipality: normalized.str_municipality,
+      applied_on: normalized.str_permit_applied_on,
+      issued_on: normalized.str_permit_issued_on,
+      day_cap: normalized.str_day_cap,
+    });
+  } catch {
+    strCompliance = null;
+  }
   return {
     ...normalized,
     client_name: pm_clients?.name ?? "—",
     current_term: pickCurrentTerm(terms),
     terms,
     cover_image_url: await signedCoverUrl(normalized.cover_image_path),
+    str_compliance: strCompliance,
   };
 }
 
@@ -202,6 +224,11 @@ export async function updatePmProperty(
     commission_base_mode?: "nightly" | "nightly_minus_host_fee";
     hst_mode?: "cohost" | "invoice";
     hst_bps?: number;
+    str_permit_number?: string;
+    str_permit_applied_on?: string | null;
+    str_permit_issued_on?: string | null;
+    str_day_cap?: number;
+    str_municipality?: string;
   },
 ): Promise<PmPropertyDetail> {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -247,9 +274,43 @@ export async function updatePmProperty(
     }
     updates.hst_bps = bps;
   }
+  if (patch.str_permit_number != null) {
+    updates.str_permit_number = patch.str_permit_number.trim();
+  }
+  if (patch.str_municipality != null) {
+    updates.str_municipality = patch.str_municipality.trim();
+  }
+  if (patch.str_permit_applied_on !== undefined) {
+    const v = patch.str_permit_applied_on;
+    if (v == null || v === "") updates.str_permit_applied_on = null;
+    else if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      throw new Error("Applied date must be YYYY-MM-DD.");
+    } else updates.str_permit_applied_on = v;
+  }
+  if (patch.str_permit_issued_on !== undefined) {
+    const v = patch.str_permit_issued_on;
+    if (v == null || v === "") updates.str_permit_issued_on = null;
+    else if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      throw new Error("Issued date must be YYYY-MM-DD.");
+    } else updates.str_permit_issued_on = v;
+  }
+  if (patch.str_day_cap != null) {
+    const cap = Math.round(patch.str_day_cap);
+    if (!Number.isFinite(cap) || cap < 1 || cap > 366) {
+      throw new Error("STR day cap must be between 1 and 366.");
+    }
+    updates.str_day_cap = cap;
+  }
 
   const { error } = await db().from("pm_properties").update(updates).eq("id", id);
-  if (error) throw error;
+  if (error) {
+    if (/str_permit|str_day|str_municipality/i.test(error.message || "")) {
+      throw new Error(
+        "STR permit columns missing. Run supabase/pm_str_compliance_v1.sql in Supabase, then retry.",
+      );
+    }
+    throw error;
+  }
 
   const detail = await getPmPropertyDetail(id);
   if (!detail) throw new Error("Property not found.");

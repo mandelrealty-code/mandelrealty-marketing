@@ -1,3 +1,5 @@
+import type { StrComplianceSnapshot } from "./strCompliance.js";
+
 export type PmClientStatus = "active" | "paused";
 
 export type PmClient = {
@@ -35,6 +37,14 @@ export type PmProperty = {
   cover_image_path?: string;
   cover_image_filename?: string;
   cover_image_mime?: string;
+  /** Municipal STR registration / permit number. */
+  str_permit_number?: string;
+  str_permit_applied_on?: string | null;
+  /** Date permit became active; renewal is anniversary (+1 year). */
+  str_permit_issued_on?: string | null;
+  /** Max STR nights per calendar year (default 180; resets Jan 1). */
+  str_day_cap?: number;
+  str_municipality?: string;
 };
 
 export type PmCommissionTerm = {
@@ -65,6 +75,7 @@ export type PmPropertyDetail = PmProperty & {
   current_term: PmCommissionTerm | null;
   terms: PmCommissionTerm[];
   cover_image_url?: string | null;
+  str_compliance?: StrComplianceSnapshot | null;
 };
 
 export type PmClientListItem = PmClient & {

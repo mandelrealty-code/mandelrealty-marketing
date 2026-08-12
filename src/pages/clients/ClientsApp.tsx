@@ -102,6 +102,11 @@ export default function ClientsApp({ onModeChange }: Props) {
     address: "",
     client_id: "",
     active: true,
+    str_permit_number: "",
+    str_permit_applied_on: "",
+    str_permit_issued_on: "",
+    str_municipality: "",
+    str_day_cap: "180",
   });
   const [propertySheet, setPropertySheet] = useState(false);
   const [importSheet, setImportSheet] = useState(false);
@@ -442,6 +447,11 @@ export default function ClientsApp({ onModeChange }: Props) {
       address: propertyDetail.address || "",
       client_id: propertyDetail.client_id,
       active: propertyDetail.active !== false,
+      str_permit_number: propertyDetail.str_permit_number || "",
+      str_permit_applied_on: propertyDetail.str_permit_applied_on || "",
+      str_permit_issued_on: propertyDetail.str_permit_issued_on || "",
+      str_municipality: propertyDetail.str_municipality || "",
+      str_day_cap: String(propertyDetail.str_day_cap ?? 180),
     });
     setDeactivateConfirm(false);
     setEditPropertySheet(true);
@@ -509,6 +519,11 @@ export default function ClientsApp({ onModeChange }: Props) {
         address: editPropertyForm.address,
         client_id: editPropertyForm.client_id,
         active: editPropertyForm.active,
+        str_permit_number: editPropertyForm.str_permit_number,
+        str_municipality: editPropertyForm.str_municipality,
+        str_permit_applied_on: editPropertyForm.str_permit_applied_on || null,
+        str_permit_issued_on: editPropertyForm.str_permit_issued_on || null,
+        str_day_cap: Number(editPropertyForm.str_day_cap) || 180,
       });
       setEditPropertySheet(false);
       setPropertyDetail(data.property);
@@ -1196,6 +1211,108 @@ export default function ClientsApp({ onModeChange }: Props) {
             </>
           ) : null}
 
+          <p className="border-t border-white/8 px-4 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65] lg:px-0">
+            STR compliance
+          </p>
+          {(() => {
+            const str = propertyDetail.str_compliance;
+            const hasPermit =
+              Boolean(propertyDetail.str_permit_number) ||
+              Boolean(propertyDetail.str_permit_issued_on);
+            if (!hasPermit || !str) {
+              return (
+                <div className="border-t border-white/8 px-4 py-3.5 lg:px-0">
+                  <p className="text-[13.5px] text-[#9a9590]">
+                    No STR permit on file. Add registration number and issued date in Edit —
+                    we track renewal and the {propertyDetail.str_day_cap ?? 180}-day calendar
+                    year cap from bookings.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openEditProperty}
+                    className="mt-2 text-[13px] font-semibold text-[#c4a35a]"
+                  >
+                    Add permit
+                  </button>
+                </div>
+              );
+            }
+            const remainingTone =
+              str.nights_remaining <= 20
+                ? "text-[#cf7f7b]"
+                : str.nights_remaining <= 45
+                  ? "text-[#dcc084]"
+                  : "text-[#4ea882]";
+            return (
+              <div className="border-t border-white/8 px-4 py-3.5 lg:px-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-semibold text-[#f5f5f5]">
+                      {str.municipality || "STR Permit"}
+                      {str.permit_number ? ` · #${str.permit_number}` : ""}
+                    </p>
+                    <p className="mt-1 text-[12.5px] text-[#9a9590]">
+                      {[
+                        str.applied_on ? `Applied ${str.applied_on}` : null,
+                        str.issued_on ? `Issued ${str.issued_on}` : null,
+                        str.renews_on ? `Renews ${str.renews_on}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 text-[12.5px] font-semibold ${
+                      str.status === "expired"
+                        ? "text-[#cf7f7b]"
+                        : str.status === "renewal_due"
+                          ? "text-[#dcc084]"
+                          : "text-[#4ea882]"
+                    }`}
+                  >
+                    {str.status_label}
+                  </span>
+                </div>
+                <div className="mt-3.5 grid grid-cols-3 gap-2">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6f6a65]">
+                      Used {str.calendar_year}
+                    </p>
+                    <p className="mt-1 text-[18px] font-bold tabular-nums">
+                      {str.nights_used}
+                      <span className="text-[13px] font-semibold text-[#6f6a65]">
+                        /{str.day_cap}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6f6a65]">
+                      Remaining
+                    </p>
+                    <p className={`mt-1 text-[18px] font-bold tabular-nums ${remainingTone}`}>
+                      {str.nights_remaining}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6f6a65]">
+                      Cap
+                    </p>
+                    <p className="mt-1 text-[13px] font-semibold text-[#9a9590]">
+                      Resets Jan 1
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={openEditProperty}
+                  className="mt-3 text-[13px] font-semibold text-[#c4a35a]"
+                >
+                  Edit permit
+                </button>
+              </div>
+            );
+          })()}
+
           <div className="mt-2 hidden lg:block">
             <ContractsPanel
               propertyId={propertyDetail.id}
@@ -1797,6 +1914,71 @@ export default function ClientsApp({ onModeChange }: Props) {
                   </button>
                 </div>
               </div>
+
+              <p className="pt-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#6f6a65]">
+                STR permit
+              </p>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Municipality</FieldLabel>
+                <TextInput
+                  placeholder="Toronto, Brampton, Ottawa…"
+                  value={editPropertyForm.str_municipality}
+                  onChange={(e) =>
+                    setEditPropertyForm((f) => ({ ...f, str_municipality: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Registration / permit number</FieldLabel>
+                <TextInput
+                  value={editPropertyForm.str_permit_number}
+                  onChange={(e) =>
+                    setEditPropertyForm((f) => ({ ...f, str_permit_number: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>Applied</FieldLabel>
+                  <TextInput
+                    type="date"
+                    value={editPropertyForm.str_permit_applied_on}
+                    onChange={(e) =>
+                      setEditPropertyForm((f) => ({
+                        ...f,
+                        str_permit_applied_on: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>Issued / activated</FieldLabel>
+                  <TextInput
+                    type="date"
+                    value={editPropertyForm.str_permit_issued_on}
+                    onChange={(e) =>
+                      setEditPropertyForm((f) => ({
+                        ...f,
+                        str_permit_issued_on: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Night cap per calendar year</FieldLabel>
+                <TextInput
+                  inputMode="numeric"
+                  value={editPropertyForm.str_day_cap}
+                  onChange={(e) =>
+                    setEditPropertyForm((f) => ({ ...f, str_day_cap: e.target.value }))
+                  }
+                />
+                <p className="text-[12px] text-[#6f6a65]">
+                  Default 180. Counter resets every Jan 1. Renewal date is 1 year after issued.
+                </p>
+              </div>
+
               <div className="flex gap-2.5">
                 <button
                   type="button"

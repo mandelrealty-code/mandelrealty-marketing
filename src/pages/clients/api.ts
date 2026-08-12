@@ -41,6 +41,25 @@ export type PropertyDetail = PropertyRow & {
   active?: boolean;
   current_term: CommissionTerm | null;
   terms: CommissionTerm[];
+  str_permit_number?: string;
+  str_permit_applied_on?: string | null;
+  str_permit_issued_on?: string | null;
+  str_day_cap?: number;
+  str_municipality?: string;
+  str_compliance?: {
+    permit_number: string;
+    municipality: string;
+    applied_on: string | null;
+    issued_on: string | null;
+    renews_on: string | null;
+    day_cap: number;
+    calendar_year: number;
+    nights_used: number;
+    nights_remaining: number;
+    used_bps: number;
+    status: "unset" | "active" | "renewal_due" | "expired";
+    status_label: string;
+  } | null;
 };
 
 async function parseJson(res: Response): Promise<Record<string, unknown>> {
