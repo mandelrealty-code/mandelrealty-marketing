@@ -7,6 +7,7 @@ import { listPmProperties } from "./propertyStore.js";
 import {
   listReservationsOverlappingRange,
   monthBounds,
+  statementYearMonthForStay,
   type PmReservationRow,
 } from "./reservationStore.js";
 import {
@@ -719,7 +720,7 @@ export async function buildOwnerStatement(
       /* skip */
     }
   }
-  // Better YTD nights: sum reservation nights for checkout in YTD window.
+  // Better YTD nights: stays whose statement month (majority nights) is in YTD.
   const ytdStart = `${ys}-01-01`;
   const ytdRows = await listReservationsOverlappingRange(
     propertyIds,
@@ -729,12 +730,13 @@ export async function buildOwnerStatement(
   ytdNights = 0;
   for (const r of ytdRows) {
     if (isExcludedReservationStatus(r.status || "")) continue;
-    // Count nights with checkout in YTD (same rule as statements).
-    if (!r.check_out || r.check_out < ytdStart || r.check_out > monthEnd) continue;
+    const stmtMonth = statementYearMonthForStay(r.check_in, r.check_out);
+    if (!stmtMonth || stmtMonth < `${ys}-01` || stmtMonth > yearMonth) continue;
     ytdNights += Number(r.nights) || 0;
   }
   const priorYtdStart = `${ys! - 1}-01-01`;
   const priorYtdEnd = monthBounds(`${ys! - 1}-${yearMonth.slice(5)}`).end;
+  const priorYmEnd = `${ys! - 1}-${yearMonth.slice(5)}`;
   const priorYtdRows = await listReservationsOverlappingRange(
     propertyIds,
     priorYtdStart,
@@ -743,8 +745,14 @@ export async function buildOwnerStatement(
   priorYtdNights = 0;
   for (const r of priorYtdRows) {
     if (isExcludedReservationStatus(r.status || "")) continue;
-    if (!r.check_out || r.check_out < priorYtdStart || r.check_out > priorYtdEnd)
+    const stmtMonth = statementYearMonthForStay(r.check_in, r.check_out);
+    if (
+      !stmtMonth ||
+      stmtMonth < `${ys! - 1}-01` ||
+      stmtMonth > priorYmEnd
+    ) {
       continue;
+    }
     priorYtdNights += Number(r.nights) || 0;
   }
 

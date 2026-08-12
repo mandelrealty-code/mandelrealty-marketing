@@ -900,7 +900,7 @@ export function OwnerStatementPanel({
                     title="Airbnb room revenue"
                     hint={`${statement.reservation_count} reservation${
                       statement.reservation_count === 1 ? "" : "s"
-                    } · checkout in ${statement.month_title}`}
+                    } · majority nights in ${statement.month_title}`}
                     amount={moneyExact(statement.accommodation_cents, currency)}
                   />
                   <WaterfallRow
@@ -1121,7 +1121,7 @@ export function OwnerStatementPanel({
 
             {statement.stays.length === 0 ? (
               <p className="py-10 text-center text-[14px] text-[#6f6a65]">
-                No completed stays with checkout in this month.
+                No stays with a majority of nights in this month.
               </p>
             ) : (
               <div className="mt-2 overflow-x-auto">

@@ -47,6 +47,95 @@ export function monthBounds(yearMonth: string): { start: string; end: string } {
   return { start, end };
 }
 
+export function shiftYearMonth(yearMonth: string, deltaMonths: number): string {
+  const [y, m] = yearMonth.split("-").map(Number);
+  const d = new Date(Date.UTC(y!, (m || 1) - 1 + deltaMonths, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Count Airbnb-style nights of a stay that fall inside an inclusive calendar month.
+ * Night of date D is the stay night starting that evening; checkout day is not a night.
+ */
+export function nightsInYearMonth(
+  checkIn: string | null | undefined,
+  checkOut: string | null | undefined,
+  yearMonth: string,
+): number {
+  if (!checkIn || !checkOut) return 0;
+  const inDay = checkIn.slice(0, 10);
+  const outDay = checkOut.slice(0, 10);
+  if (outDay <= inDay) return 0;
+  const { start, end } = monthBounds(yearMonth);
+  // Nights are [check_in, check_out); clamp to [monthStart, monthEnd+1)
+  const rangeStart = inDay > start ? inDay : start;
+  const monthEndExclusive = (() => {
+    const [y, m] = yearMonth.split("-").map(Number);
+    const d = new Date(Date.UTC(y!, m!, 1)); // first of next month
+    return d.toISOString().slice(0, 10);
+  })();
+  const rangeEnd = outDay < monthEndExclusive ? outDay : monthEndExclusive;
+  if (rangeStart >= rangeEnd) return 0;
+  // Also require overlap with month calendar days
+  if (rangeEnd <= start || rangeStart > end) return 0;
+  const a = Date.parse(`${rangeStart}T12:00:00Z`);
+  const b = Date.parse(`${rangeEnd}T12:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
+  return Math.round((b - a) / 86_400_000);
+}
+
+/**
+ * Statement month for a stay: calendar month with the most nights.
+ * Tie → checkout month (Airbnb payout timing). Full P&L follows that month.
+ *
+ * Examples:
+ * - Aug 18 – Sep 3 (14 Aug nights, 2 Sep) → 2026-08
+ * - Jul 29 – Aug 15 (majority Aug) → 2026-08
+ * - Jul 29 – Aug 2 (3 Jul, 1 Aug) → 2026-07
+ */
+export function statementYearMonthForStay(
+  checkIn: string | null | undefined,
+  checkOut: string | null | undefined,
+): string | null {
+  const inDay = (checkIn || "").slice(0, 10);
+  const outDay = (checkOut || "").slice(0, 10);
+  if (!inDay && !outDay) return null;
+  if (!inDay || !outDay || outDay <= inDay) {
+    return (outDay || inDay).slice(0, 7) || null;
+  }
+
+  const counts = new Map<string, number>();
+  const cursor = new Date(`${inDay}T12:00:00Z`);
+  const end = new Date(`${outDay}T12:00:00Z`);
+  while (cursor < end) {
+    const key = cursor.toISOString().slice(0, 7);
+    counts.set(key, (counts.get(key) || 0) + 1);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  if (!counts.size) return outDay.slice(0, 7);
+
+  let bestMonth = outDay.slice(0, 7);
+  let bestNights = -1;
+  for (const [month, nights] of counts) {
+    if (nights > bestNights) {
+      bestNights = nights;
+      bestMonth = month;
+    } else if (nights === bestNights) {
+      // Tie: prefer checkout month
+      if (month === outDay.slice(0, 7)) bestMonth = month;
+    }
+  }
+  return bestMonth;
+}
+
+export function reservationBelongsToStatementMonth(
+  checkIn: string | null | undefined,
+  checkOut: string | null | undefined,
+  yearMonth: string,
+): boolean {
+  return statementYearMonthForStay(checkIn, checkOut) === yearMonth;
+}
+
 export function previousYearMonth(now = new Date()): string {
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -187,7 +276,14 @@ export async function syncHospitableReservations(input: {
       ? { start: input.startDate, end: input.endDate }
       : input.lookbackMonths && input.lookbackMonths > 0
         ? rollingSyncRange(input.lookbackMonths)
-        : monthBounds(input.yearMonth || previousYearMonth());
+        : (() => {
+            // Single-month sync: pull through next month's checkouts so
+            // majority-August stays that leave in early September are cached.
+            const ym = input.yearMonth || previousYearMonth();
+            const { start } = monthBounds(ym);
+            const { end } = monthBounds(shiftYearMonth(ym, 1));
+            return { start, end };
+          })();
   const { start, end } = range;
 
   const byHospitable = new Map(
@@ -230,6 +326,10 @@ export async function syncHospitableReservations(input: {
   return { synced, properties: targets.length, start, end };
 }
 
+/**
+ * Stays attributed to a statement month by majority of nights
+ * (not checkout date). Overlap query + filter.
+ */
 export async function listReservationsForPropertyMonth(
   propertyId: string,
   yearMonth: string,
@@ -241,11 +341,13 @@ export async function listReservationsForPropertyMonth(
       "id, property_id, hospitable_reservation_id, platform, platform_id, status, check_in, check_out, nights, currency, gross_cents, host_payout_cents, financials_json, synced_at",
     )
     .eq("property_id", propertyId)
+    .lte("check_in", end)
     .gte("check_out", start)
-    .lte("check_out", end)
-    .order("check_out", { ascending: true });
+    .order("check_in", { ascending: true });
   if (error) throw error;
-  return (data ?? []) as PmReservationRow[];
+  return ((data ?? []) as PmReservationRow[]).filter((r) =>
+    reservationBelongsToStatementMonth(r.check_in, r.check_out, yearMonth),
+  );
 }
 
 /** Reservations that overlap an inclusive date window (any property in the list). */
