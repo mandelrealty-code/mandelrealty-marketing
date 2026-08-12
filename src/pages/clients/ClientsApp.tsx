@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   pmGet,
   pmPost,
@@ -17,6 +17,7 @@ import { ClientMonthPanel } from "./ClientMonthPanel";
 import { ContractsPanel } from "./ContractsPanel";
 import { EarningsPanel } from "./EarningsPanel";
 import { MonthClosePanel } from "./MonthClosePanel";
+import { OwnerStatementPanel } from "./OwnerStatementPanel";
 import {
   formatRateHistoryRange,
   todayInputValue,
@@ -56,6 +57,19 @@ function useIsDesktop() {
   return desktop;
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function ClientsApp({ onModeChange }: Props) {
   const desktop = useIsDesktop();
   const [tab, setTab] = useState<Tab>("clients");
@@ -72,6 +86,10 @@ export default function ClientsApp({ onModeChange }: Props) {
 
   const [clientSheet, setClientSheet] = useState<null | "create" | ClientRow>(null);
   const [clientMonth, setClientMonth] = useState<ClientRow | null>(null);
+  const [ownerStatement, setOwnerStatement] = useState<{
+    client: ClientRow;
+    month: string;
+  } | null>(null);
   const [monthHstClientId, setMonthHstClientId] = useState<string | null>(null);
   const [propertyFilterClientId, setPropertyFilterClientId] = useState<string>("");
   const [propertyActiveFilter, setPropertyActiveFilter] = useState<"all" | "active" | "paused">(
@@ -127,6 +145,7 @@ export default function ClientsApp({ onModeChange }: Props) {
   );
   const [termsBilling, setTermsBilling] = useState<BillingTermsValue | null>(null);
   const [hstSheetBilling, setHstSheetBilling] = useState<BillingTermsValue | null>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const loadLists = useCallback(async () => {
     setLoadError("");
@@ -428,6 +447,52 @@ export default function ClientsApp({ onModeChange }: Props) {
     setEditPropertySheet(true);
   };
 
+  const uploadPropertyCover = async (file: File) => {
+    if (!propertyDetail) return;
+    if (!file.type.startsWith("image/")) {
+      setLoadError("Cover photo must be an image (JPEG, PNG, or WebP).");
+      return;
+    }
+    setBusy(true);
+    setLoadError("");
+    try {
+      const data = await pmPost<{ property: PropertyDetail }>("properties", {
+        op: "upload_cover",
+        id: propertyDetail.id,
+        filename: file.name,
+        mime: file.type || "image/jpeg",
+        image_base64: await fileToBase64(file),
+      });
+      setPropertyDetail(data.property);
+      await loadLists();
+      setToast("Cover photo saved.");
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Cover upload failed.");
+    } finally {
+      setBusy(false);
+      if (coverInputRef.current) coverInputRef.current.value = "";
+    }
+  };
+
+  const removePropertyCoverPhoto = async () => {
+    if (!propertyDetail) return;
+    setBusy(true);
+    setLoadError("");
+    try {
+      const data = await pmPost<{ property: PropertyDetail }>("properties", {
+        op: "remove_cover",
+        id: propertyDetail.id,
+      });
+      setPropertyDetail(data.property);
+      await loadLists();
+      setToast("Cover photo removed.");
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Could not remove cover.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveEditProperty = async () => {
     if (!propertyDetail) return;
     if (!editPropertyForm.name.trim() || !editPropertyForm.client_id) {
@@ -690,11 +755,12 @@ export default function ClientsApp({ onModeChange }: Props) {
           onClick={() => {
             setTab(id);
             setClientMonth(null);
+            setOwnerStatement(null);
             if (id !== "month") setMonthHstClientId(null);
             if (id !== "properties") setSelectedPropertyId(null);
           }}
           className={`rounded-md px-3 py-2 text-left text-sm font-medium ${
-            (clientMonth ? id === "clients" : tab === id)
+            (clientMonth || ownerStatement ? id === "clients" : tab === id)
               ? "bg-[#1a1a1a] font-semibold text-[#c4a35a]"
               : "text-[#9a9590] hover:text-[#f5f5f5]"
           }`}
@@ -721,11 +787,12 @@ export default function ClientsApp({ onModeChange }: Props) {
           onClick={() => {
             setTab(id);
             setClientMonth(null);
+            setOwnerStatement(null);
             if (id !== "month") setMonthHstClientId(null);
             if (id !== "properties") setSelectedPropertyId(null);
           }}
           className={`grid flex-1 place-items-center text-xs ${
-            (clientMonth ? id === "clients" : tab === id)
+            (clientMonth || ownerStatement ? id === "clients" : tab === id)
               ? "font-semibold text-[#c4a35a]"
               : "font-medium text-[#6f6a65]"
           }`}
@@ -897,11 +964,24 @@ export default function ClientsApp({ onModeChange }: Props) {
                 key={p.id}
                 type="button"
                 onClick={() => loadProperty(p.id).catch((e) => setLoadError(String(e.message)))}
-                className={`flex w-full items-start justify-between gap-3 border-t border-white/8 px-4 py-3.5 text-left last:border-b hover:bg-white/[0.02] lg:px-1 ${
+                className={`flex w-full items-center gap-3.5 border-t border-white/8 px-4 py-3.5 text-left last:border-b hover:bg-white/[0.02] lg:px-1 ${
                   active ? "" : "opacity-60"
                 }`}
               >
-                <div className="min-w-0">
+                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-[8px] bg-[#1a1a1a]">
+                  {p.cover_image_url ? (
+                    <img
+                      src={p.cover_image_url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6f6a65]">
+                      Photo
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-[15.5px] font-semibold text-[#f5f5f5]">{p.name}</p>
                   <p className="truncate text-[12.5px] text-[#9a9590]">
                     {[
@@ -956,39 +1036,91 @@ export default function ClientsApp({ onModeChange }: Props) {
         onClick={() => {
           setSelectedPropertyId(null);
           setPropertyDetail(null);
+          setTab("properties");
         }}
-        className="px-4 pt-4 text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084] lg:px-0 lg:pt-8"
+        className="self-start px-4 pt-4 text-[15px] font-semibold text-[#9a9590] hover:text-[#f5f5f5] lg:px-0 lg:pt-8"
       >
-        Properties
+        ‹ Properties
       </button>
-      <div className="flex flex-col gap-1.5 px-4 pb-4 pt-3 lg:px-0">
-        <div className="flex items-start justify-between gap-3">
-          <h1 className="text-[23px] font-bold tracking-tight text-[#f5f5f5] lg:text-[28px]">
-            {propertyDetail.name}
-          </h1>
-          <button
-            type="button"
-            onClick={openEditProperty}
-            className="shrink-0 pt-1 text-[13px] font-semibold text-[#c4a35a]"
-          >
-            Edit
-          </button>
-        </div>
-        <p className="text-sm text-[#9a9590]">{propertyDetail.address || "No address"}</p>
-        {propertyDetail.active === false ? (
-          <p className="text-[12.5px] font-semibold text-[#c99a4b]">Paused · hidden from Month close</p>
-        ) : null}
-        <div className="flex flex-wrap items-center gap-2.5 pt-1">
-          <span className="text-[13px] text-[#9a9590]">{propertyDetail.client_name}</span>
-          <span className="h-0.5 w-0.5 rounded-full bg-[#3a3a3a]" />
-          <button
-            type="button"
-            onClick={openLinkHospitable}
-            className="flex items-center gap-1.5 text-[13px] text-[#9a9590]"
-          >
-            <StatusDot active={Boolean(propertyDetail.hospitable_property_id)} />
-            {propertyDetail.hospitable_property_id ? "Hospitable linked" : "Link Hospitable"}
-          </button>
+      <div className="flex flex-col gap-4 px-4 pb-4 pt-3 lg:px-0">
+        <div className="flex gap-4">
+          <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[10px] bg-[#1a1a1a] lg:h-[112px] lg:w-[112px]">
+            {propertyDetail.cover_image_url ? (
+              <img
+                src={propertyDetail.cover_image_url}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="grid h-full w-full place-items-center px-2 text-center text-[11px] font-semibold uppercase tracking-[0.1em] text-[#6f6a65]">
+                Add photo
+              </div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="text-[23px] font-bold tracking-tight text-[#f5f5f5] lg:text-[28px]">
+                {propertyDetail.name}
+              </h1>
+              <button
+                type="button"
+                onClick={openEditProperty}
+                className="shrink-0 pt-1 text-[13px] font-semibold text-[#c4a35a]"
+              >
+                Edit
+              </button>
+            </div>
+            <p className="mt-1 text-sm text-[#9a9590]">
+              {propertyDetail.address || "No address"}
+            </p>
+            {propertyDetail.active === false ? (
+              <p className="mt-1 text-[12.5px] font-semibold text-[#c99a4b]">
+                Paused · hidden from Month close
+              </p>
+            ) : null}
+            <div className="mt-2 flex flex-wrap items-center gap-2.5">
+              <span className="text-[13px] text-[#9a9590]">{propertyDetail.client_name}</span>
+              <span className="h-0.5 w-0.5 rounded-full bg-[#3a3a3a]" />
+              <button
+                type="button"
+                onClick={openLinkHospitable}
+                className="flex items-center gap-1.5 text-[13px] text-[#9a9590]"
+              >
+                <StatusDot active={Boolean(propertyDetail.hospitable_property_id)} />
+                {propertyDetail.hospitable_property_id ? "Hospitable linked" : "Link Hospitable"}
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void uploadPropertyCover(file);
+                }}
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => coverInputRef.current?.click()}
+                className="text-[13px] font-semibold text-[#c4a35a] disabled:opacity-50"
+              >
+                {propertyDetail.cover_image_url ? "Replace photo" : "Upload photo"}
+              </button>
+              {propertyDetail.cover_image_url ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void removePropertyCoverPhoto()}
+                  className="text-[13px] font-semibold text-[#9a9590] disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1087,6 +1219,20 @@ export default function ClientsApp({ onModeChange }: Props) {
               hstMode: propertyDetail.hst_mode,
               hstBps: propertyDetail.hst_bps,
             })}
+            onOpenStatement={(month) => {
+              const client =
+                clients.find((c) => c.id === propertyDetail.client_id) ??
+                ({
+                  id: propertyDetail.client_id,
+                  name: propertyDetail.client_name || "Host",
+                  email: "",
+                  phone: "",
+                  status: "active" as const,
+                } as ClientRow);
+              setSelectedPropertyId(null);
+              setPropertyDetail(null);
+              setOwnerStatement({ client, month });
+            }}
             onError={setLoadError}
           />
           <div className="lg:hidden">
@@ -1180,7 +1326,20 @@ export default function ClientsApp({ onModeChange }: Props) {
   );
 
   let main = clientsView;
-  if (clientMonth) {
+  if (ownerStatement) {
+    main = (
+      <OwnerStatementPanel
+        clientId={ownerStatement.client.id}
+        clientName={ownerStatement.client.name}
+        initialMonth={ownerStatement.month}
+        onBack={() => {
+          setClientMonth(ownerStatement.client);
+          setOwnerStatement(null);
+        }}
+        onError={setLoadError}
+      />
+    );
+  } else if (clientMonth) {
     main = (
       <ClientMonthPanel
         clientId={clientMonth.id}
@@ -1200,6 +1359,11 @@ export default function ClientsApp({ onModeChange }: Props) {
           setClientMonth(null);
           setMonthHstClientId(id);
           setTab("month");
+        }}
+        onOpenStatement={(id, month) => {
+          setOwnerStatement({ client: clientMonth, month });
+          setClientMonth(null);
+          void id;
         }}
         onToast={setToast}
         onError={setLoadError}

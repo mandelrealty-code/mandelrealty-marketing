@@ -32,6 +32,9 @@ export type PmProperty = {
   /** cohost = HST % on commission base; invoice = HST % of MRG fee via QuickBooks */
   hst_mode: "cohost" | "invoice";
   hst_bps: number;
+  cover_image_path?: string;
+  cover_image_filename?: string;
+  cover_image_mime?: string;
 };
 
 export type PmCommissionTerm = {
@@ -53,12 +56,15 @@ export type PmSettings = {
 export type PmPropertyListItem = PmProperty & {
   client_name: string;
   current_rate_bps: number | null;
+  /** Short-lived signed URL when a cover is set. */
+  cover_image_url?: string | null;
 };
 
 export type PmPropertyDetail = PmProperty & {
   client_name: string;
   current_term: PmCommissionTerm | null;
   terms: PmCommissionTerm[];
+  cover_image_url?: string | null;
 };
 
 export type PmClientListItem = PmClient & {

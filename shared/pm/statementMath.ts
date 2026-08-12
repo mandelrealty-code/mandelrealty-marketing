@@ -40,6 +40,7 @@ export type StayStatementLine = {
   check_in: string | null;
   check_out: string | null;
   nights: number;
+  platform: string;
   platform_id: string;
   status: string;
   /** Airbnb accommodation fare (after discounts). */
@@ -370,6 +371,7 @@ export async function buildMonthStatement(
       check_in: r.check_in,
       check_out: r.check_out,
       nights: Number(r.nights) || 0,
+      platform: (r.platform || "").trim(),
       platform_id: r.platform_id || "",
       status: r.status || "",
       accommodation_cents: nightly,

@@ -132,6 +132,7 @@ export function EarningsPanel({
   hstBps,
   hstMode = "cohost",
   dealLabel,
+  onOpenStatement,
   onError,
 }: {
   propertyId: string;
@@ -140,6 +141,7 @@ export function EarningsPanel({
   hstBps: number;
   hstMode?: "cohost" | "invoice";
   dealLabel?: string;
+  onOpenStatement?: (month: string) => void;
   onError: (msg: string) => void;
 }) {
   const [month, setMonth] = useState(defaultMonth);
@@ -294,6 +296,19 @@ export function EarningsPanel({
                 className="font-semibold text-[#c4a35a] disabled:text-[#6f6a65]"
               >
                 {busy || loading ? "Updating…" : "Refresh"}
+              </button>
+            </>
+          ) : null}
+          {onOpenStatement ? (
+            <>
+              {" · "}
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => onOpenStatement(month)}
+                className="font-semibold text-[#c4a35a] disabled:text-[#6f6a65]"
+              >
+                Statement
               </button>
             </>
           ) : null}

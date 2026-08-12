@@ -20,6 +20,9 @@ export type PropertyRow = {
   hst_mode?: "cohost" | "invoice";
   hst_bps?: number;
   active?: boolean;
+  cover_image_path?: string;
+  cover_image_filename?: string;
+  cover_image_url?: string | null;
 };
 
 export type CommissionTerm = {

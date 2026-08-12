@@ -130,13 +130,24 @@ Each with type icon, title, date, “Included in PDF pack”.
 - Combined net + combined MoM/YoY
 - Which unit drove the change (one quiet insight line)
 
-### K. Closing / next steps
+### L. Guest experience & action plan (partner page)
 
-- Payout method + expected deposit date (e.g. EFT · on or after Aug 5)
-- HST invoice note if applicable (“QuickBooks invoice #… for $X”)
-- Questions CTA: reply to this email / contact MRG
-- Thank-you line — premium, short, no fluff
-- Footer: Mandel Realty Group · statement ID · page X of Y
+- Blended rating this month vs prior / trailing 12-mo + review count vs stays
+- Category sub-scores (cleanliness, accuracy, communication, location, value, check-in) with dip flags
+- 2–3 guest quotes (strong + critical when available)
+- Response rate / time to messages and reviews; Superhost / Guest Favorite changes when available
+- **Action tracker** table: Issue → Property → Raised → Status → Target/Resolved (feedback + ops)
+- **Recommendations to owner**: titled ask + cost + one-line payback rationale (not a to-do dump)
+
+### M. Market & outlook (partner page)
+
+- Local market occupancy / ADR vs portfolio (comp set)
+- Seasonality / events note
+- Booking pace: next 60 days on books vs same point last year
+- Channel mix (% Airbnb / Vrbo / direct) + fee / strategy notes
+- Compliance & risk: STR permit, insurance, noise/lock alerts, regulatory notes
+- Forward look: next month nights + projected revenue on books; known upcoming expenses
+- YTD net / occupancy / ADR vs prior year
 
 ---
 

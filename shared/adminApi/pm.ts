@@ -29,6 +29,7 @@ import {
   propertyNeedsAutoSync,
   syncHospitableReservations,
 } from "../pm/reservationStore.js";
+import { buildOwnerStatement } from "../pm/ownerStatement.js";
 import {
   buildMonthPortfolio,
   buildMonthStatement,
@@ -40,10 +41,13 @@ import {
   changePmCommission,
   createPmProperty,
   getPmPropertyDetail,
+  getPropertyCoverUrl,
   importHospitableProperty,
   listLinkedHospitableIds,
   listPmProperties,
+  removePropertyCover,
   updatePmProperty,
+  uploadPropertyCover,
 } from "../pm/propertyStore.js";
 import { percentToRateBps } from "../pm/types.js";
 import { isSupabaseConfigured } from "../supabase.js";
@@ -182,6 +186,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
         return res.status(200).json({ portfolio });
       }
+      if (resource === "owner_statement") {
+        const yearMonth =
+          typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month)
+            ? req.query.month
+            : previousYearMonth();
+        const clientId =
+          typeof req.query.client_id === "string" ? req.query.client_id.trim() : "";
+        if (!clientId) {
+          return res.status(400).json({ error: "client_id required." });
+        }
+        try {
+          const statement = await buildOwnerStatement(clientId, yearMonth);
+          return res.status(200).json({ statement });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Could not build statement.";
+          const status = msg.includes("not found") ? 404 : 400;
+          return res.status(status).json({ error: msg });
+        }
+      }
       if (resource === "earnings") {
         const propertyId =
           typeof req.query.property_id === "string" ? req.query.property_id.trim() : "";
@@ -230,6 +253,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
         if (!id) return res.status(400).json({ error: "id required." });
         const url = await getExpenseReceiptUrl(id);
+        return res.status(200).json({ url });
+      }
+      if (resource === "property_cover") {
+        const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+        if (!id) return res.status(400).json({ error: "id required." });
+        const url = await getPropertyCoverUrl(id);
+        if (!url) return res.status(404).json({ error: "No cover photo." });
         return res.status(200).json({ url });
       }
       if (resource === "contracts") {
@@ -424,6 +454,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const property = await updatePmProperty(id, {
             hospitable_property_id: hid,
           });
+          return res.status(200).json({ property });
+        }
+        if (op === "upload_cover") {
+          const id = str(body.id || body.property_id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          const b64 = str(body.image_base64 || body.cover_base64);
+          if (!b64) return res.status(400).json({ error: "image_base64 required." });
+          let buffer: Buffer;
+          try {
+            buffer = Buffer.from(b64, "base64");
+          } catch {
+            return res.status(400).json({ error: "Invalid image_base64." });
+          }
+          const property = await uploadPropertyCover({
+            property_id: id,
+            filename: str(body.filename) || "cover.jpg",
+            mime: str(body.mime) || "image/jpeg",
+            buffer,
+          });
+          return res.status(200).json({ property });
+        }
+        if (op === "remove_cover") {
+          const id = str(body.id || body.property_id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          const property = await removePropertyCover(id);
           return res.status(200).json({ property });
         }
       }

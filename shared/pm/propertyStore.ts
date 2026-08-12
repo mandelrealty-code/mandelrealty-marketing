@@ -27,7 +27,22 @@ function normalizePropertyRow(p: PmProperty): PmProperty {
     ),
     hst_mode: p.hst_mode === "invoice" ? "invoice" : "cohost",
     hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
+    cover_image_path: (p.cover_image_path || "").trim(),
+    cover_image_filename: (p.cover_image_filename || "").trim(),
+    cover_image_mime: (p.cover_image_mime || "").trim(),
   };
+}
+
+const COVER_SIGNED_TTL_SEC = 60 * 60 * 6;
+
+async function signedCoverUrl(path: string | null | undefined): Promise<string | null> {
+  const p = (path || "").trim();
+  if (!p) return null;
+  const { data, error } = await db()
+    .storage.from("pm-contracts")
+    .createSignedUrl(p, COVER_SIGNED_TTL_SEC);
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
 }
 
 function pickCurrentTerm(
@@ -53,7 +68,7 @@ export async function listPmProperties(clientId?: string): Promise<PmPropertyLis
   const { data, error } = await q;
   if (error) throw error;
 
-  return (data ?? []).map((row) => {
+  const items = (data ?? []).map((row) => {
     const r = row as PmProperty & {
       pm_clients: { name: string } | null;
       pm_commission_terms: PmCommissionTerm[] | null;
@@ -68,6 +83,13 @@ export async function listPmProperties(clientId?: string): Promise<PmPropertyLis
       current_rate_bps: current?.rate_bps ?? null,
     };
   });
+
+  return Promise.all(
+    items.map(async (item) => ({
+      ...item,
+      cover_image_url: await signedCoverUrl(item.cover_image_path),
+    })),
+  );
 }
 
 export async function getPmPropertyDetail(id: string): Promise<PmPropertyDetail | null> {
@@ -88,11 +110,13 @@ export async function getPmPropertyDetail(id: string): Promise<PmPropertyDetail 
   );
   const { pm_clients, pm_commission_terms: _t, ...prop } = r;
   const p = prop as PmProperty;
+  const normalized = normalizePropertyRow(p);
   return {
-    ...normalizePropertyRow(p),
+    ...normalized,
     client_name: pm_clients?.name ?? "—",
     current_term: pickCurrentTerm(terms),
     terms,
+    cover_image_url: await signedCoverUrl(normalized.cover_image_path),
   };
 }
 
@@ -329,4 +353,122 @@ export async function importHospitableProperty(input: {
     hst_bps: input.hst_bps,
     rate_bps: input.rate_bps,
   });
+}
+
+const COVER_MIME_OK = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+
+export async function getPropertyCoverUrl(propertyId: string): Promise<string | null> {
+  const detail = await getPmPropertyDetail(propertyId);
+  if (!detail) throw new Error("Property not found.");
+  return detail.cover_image_url ?? signedCoverUrl(detail.cover_image_path);
+}
+
+export async function uploadPropertyCover(input: {
+  property_id: string;
+  filename: string;
+  mime: string;
+  buffer: Buffer;
+}): Promise<PmPropertyDetail> {
+  const id = input.property_id.trim();
+  if (!id) throw new Error("property_id required.");
+  const detail = await getPmPropertyDetail(id);
+  if (!detail) throw new Error("Property not found.");
+
+  if (!input.buffer.length) throw new Error("Empty image.");
+  if (input.buffer.length > 8_000_000) {
+    throw new Error("Cover photo must be under 8 MB.");
+  }
+  const mime = (input.mime || "image/jpeg").toLowerCase();
+  if (!COVER_MIME_OK.has(mime) && !mime.startsWith("image/")) {
+    throw new Error("Cover photo must be a JPEG, PNG, or WebP image.");
+  }
+
+  const safeName =
+    input.filename.replace(/[^\w.-]+/g, "_").replace(/^\.+/, "") || "cover.jpg";
+  const ext =
+    safeName.includes(".")
+      ? safeName.slice(safeName.lastIndexOf("."))
+      : mime.includes("png")
+        ? ".png"
+        : mime.includes("webp")
+          ? ".webp"
+          : ".jpg";
+  const storagePath = `property-covers/${id}/cover${ext}`;
+
+  // Remove previous object if path differs.
+  const prev = (detail.cover_image_path || "").trim();
+  if (prev && prev !== storagePath) {
+    await db().storage.from("pm-contracts").remove([prev]).catch(() => undefined);
+  }
+
+  const { error: upErr } = await db()
+    .storage.from("pm-contracts")
+    .upload(storagePath, input.buffer, {
+      contentType: mime,
+      upsert: true,
+    });
+  if (upErr) {
+    if (/column|cover_image/i.test(upErr.message || "")) {
+      throw new Error(
+        "Property cover columns missing. Run supabase/pm_property_cover_v1.sql in Supabase, then retry.",
+      );
+    }
+    throw new Error(`Cover upload failed: ${upErr.message}`);
+  }
+
+  const { error } = await db()
+    .from("pm_properties")
+    .update({
+      cover_image_path: storagePath,
+      cover_image_filename: input.filename.trim() || safeName,
+      cover_image_mime: mime,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) {
+    if (/cover_image/i.test(error.message || "")) {
+      throw new Error(
+        "Property cover columns missing. Run supabase/pm_property_cover_v1.sql in Supabase, then retry.",
+      );
+    }
+    throw error;
+  }
+
+  const next = await getPmPropertyDetail(id);
+  if (!next) throw new Error("Cover saved but property could not reload.");
+  return next;
+}
+
+export async function removePropertyCover(propertyId: string): Promise<PmPropertyDetail> {
+  const id = propertyId.trim();
+  if (!id) throw new Error("property_id required.");
+  const detail = await getPmPropertyDetail(id);
+  if (!detail) throw new Error("Property not found.");
+
+  const prev = (detail.cover_image_path || "").trim();
+  if (prev) {
+    await db().storage.from("pm-contracts").remove([prev]).catch(() => undefined);
+  }
+
+  const { error } = await db()
+    .from("pm_properties")
+    .update({
+      cover_image_path: "",
+      cover_image_filename: "",
+      cover_image_mime: "",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  const next = await getPmPropertyDetail(id);
+  if (!next) throw new Error("Cover removed but property could not reload.");
+  return next;
 }

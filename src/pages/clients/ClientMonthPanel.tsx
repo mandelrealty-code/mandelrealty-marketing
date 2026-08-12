@@ -134,6 +134,7 @@ export function ClientMonthPanel({
   onBack,
   onOpenProperty,
   onOpenHstWorklist,
+  onOpenStatement,
   onToast,
   onError,
 }: {
@@ -142,6 +143,7 @@ export function ClientMonthPanel({
   onBack: () => void;
   onOpenProperty: (propertyId: string) => void;
   onOpenHstWorklist: (clientId: string) => void;
+  onOpenStatement: (clientId: string, month: string) => void;
   onToast: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -223,15 +225,23 @@ export function ClientMonthPanel({
             >
               Client details
             </button>
+            <GoldButton
+              type="button"
+              size="sm"
+              className="!rounded-[10px] !px-[18px] !py-2.5 !text-[13.5px]"
+              onClick={() => onOpenStatement(clientId, month)}
+              disabled={loading}
+            >
+              Preview statement
+            </GoldButton>
             {hasInvoice ? (
-              <GoldButton
+              <button
                 type="button"
-                size="sm"
-                className="!rounded-[10px] !px-[18px] !py-2.5 !text-[13.5px]"
+                className="rounded-[10px] border border-white/12 px-3.5 py-2.5 text-[13.5px] font-semibold text-[#f5f5f5]"
                 onClick={() => onOpenHstWorklist(clientId)}
               >
-                HST worklist for {clientName}
-              </GoldButton>
+                HST worklist
+              </button>
             ) : null}
           </div>
         </div>
@@ -278,14 +288,22 @@ export function ClientMonthPanel({
         </div>
 
         <div className="flex gap-2.5 lg:hidden">
+          <GoldButton
+            type="button"
+            className="flex-1 !py-3 !text-[14.5px]"
+            onClick={() => onOpenStatement(clientId, month)}
+            disabled={loading}
+          >
+            Preview statement
+          </GoldButton>
           {hasInvoice ? (
-            <GoldButton
+            <button
               type="button"
-              className="flex-1 !py-3 !text-[14.5px]"
+              className="rounded-[11px] border border-white/12 px-4 py-3 text-[14.5px] font-semibold text-[#f5f5f5]"
               onClick={() => onOpenHstWorklist(clientId)}
             >
-              HST for {clientName}
-            </GoldButton>
+              HST
+            </button>
           ) : null}
           <button
             type="button"

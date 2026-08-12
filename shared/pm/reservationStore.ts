@@ -213,3 +213,23 @@ export async function listReservationsForPropertyMonth(
   if (error) throw error;
   return (data ?? []) as PmReservationRow[];
 }
+
+/** Reservations that overlap an inclusive date window (any property in the list). */
+export async function listReservationsOverlappingRange(
+  propertyIds: string[],
+  startDate: string,
+  endDate: string,
+): Promise<PmReservationRow[]> {
+  if (!propertyIds.length) return [];
+  const { data, error } = await db()
+    .from("pm_reservations")
+    .select(
+      "id, property_id, hospitable_reservation_id, platform, platform_id, status, check_in, check_out, nights, currency, gross_cents, host_payout_cents, financials_json, synced_at",
+    )
+    .in("property_id", propertyIds)
+    .lte("check_in", endDate)
+    .gte("check_out", startDate)
+    .order("check_in", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as PmReservationRow[];
+}
