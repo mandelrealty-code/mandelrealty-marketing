@@ -351,3 +351,167 @@ export async function listHospitableReservations(input: {
 
   return out;
 }
+
+export type HospitableCategoryRating = {
+  type: string;
+  rating: number;
+};
+
+export type HospitableReviewNormalized = {
+  id: string;
+  property_id: string;
+  reservation_id: string;
+  platform: string;
+  /** Overall public star rating 1–5, or null if missing/invalid. */
+  rating: number | null;
+  rating_raw: string;
+  public_review: string;
+  public_response: string;
+  guest_first_name: string;
+  check_in: string | null;
+  check_out: string | null;
+  reviewed_at: string | null;
+  responded_at: string | null;
+  /** Category scores with rating in 1–5 only (0 = not collected, dropped). */
+  category_ratings: HospitableCategoryRating[];
+  raw: Record<string, unknown>;
+};
+
+function parseOverallRating(pub: Record<string, unknown>): {
+  rating: number | null;
+  rating_raw: string;
+} {
+  const raw =
+    str(pub.rating_platform_original) ||
+    str(pub.ratingPlatformOriginal) ||
+    (pub.rating != null ? String(pub.rating) : "");
+  const n =
+    typeof pub.rating === "number"
+      ? pub.rating
+      : typeof pub.rating === "string"
+        ? Number(pub.rating)
+        : Number.NaN;
+  if (!Number.isFinite(n) || n < 1 || n > 5) {
+    return { rating: null, rating_raw: raw };
+  }
+  const fromRaw = Number(String(raw).replace(/[^0-9.]/g, ""));
+  if (Number.isFinite(fromRaw) && fromRaw >= 1 && fromRaw <= 5) {
+    return {
+      rating: Math.round(fromRaw * 100) / 100,
+      rating_raw: raw || String(n),
+    };
+  }
+  return { rating: Math.round(n * 100) / 100, rating_raw: raw || String(n) };
+}
+
+function normalizeCategoryRatings(raw: unknown): HospitableCategoryRating[] {
+  const out: HospitableCategoryRating[] = [];
+  if (!Array.isArray(raw)) return out;
+  for (const item of raw) {
+    const row = asRecord(item);
+    const type = str(row.type).toLowerCase();
+    const rating =
+      typeof row.rating === "number" ? row.rating : Number(row.rating);
+    if (!type) continue;
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) continue;
+    out.push({ type, rating: Math.round(rating * 100) / 100 });
+  }
+  return out;
+}
+
+function normalizeReview(raw: unknown): HospitableReviewNormalized | null {
+  const r = asRecord(raw);
+  const id = str(r.id) || str(r.uuid);
+  if (!id) return null;
+
+  const pub = asRecord(r.public);
+  const priv = asRecord(r.private);
+  const guest = asRecord(r.guest);
+  const reservation = asRecord(r.reservation);
+  const property = asRecord(r.property);
+
+  const { rating, rating_raw } = parseOverallRating(pub);
+  const publicReview = str(pub.review) || str(pub.public_review) || "";
+  const publicResponse = str(pub.response) || "";
+
+  const categories = normalizeCategoryRatings(
+    priv.detailed_ratings ??
+      priv.detailedRatings ??
+      pub.detailed_ratings ??
+      pub.detailedRatings,
+  );
+
+  const propertyId = str(property.id) || str(r.property_id) || "";
+
+  const checkIn =
+    str(reservation.check_in)?.slice(0, 10) ||
+    str(reservation.checkIn)?.slice(0, 10) ||
+    null;
+  const checkOut =
+    str(reservation.check_out)?.slice(0, 10) ||
+    str(reservation.checkOut)?.slice(0, 10) ||
+    null;
+
+  const reviewedAt =
+    str(r.reviewed_at) || str(r.reviewedAt) || str(r.created_at) || null;
+  const respondedAt = str(r.responded_at) || str(r.respondedAt) || null;
+
+  return {
+    id,
+    property_id: propertyId,
+    reservation_id: str(reservation.id) || str(r.reservation_id) || "",
+    platform: str(r.platform),
+    rating,
+    rating_raw,
+    public_review: publicReview,
+    public_response: publicResponse,
+    guest_first_name: str(guest.first_name) || str(guest.firstName) || "",
+    check_in: checkIn,
+    check_out: checkOut,
+    reviewed_at: reviewedAt || null,
+    responded_at: respondedAt || null,
+    category_ratings: categories,
+    raw: r,
+  };
+}
+
+/** List reviews for one Hospitable property UUID. */
+export async function listHospitableReviews(input: {
+  pat: string;
+  propertyId: string;
+}): Promise<HospitableReviewNormalized[]> {
+  const propertyId = input.propertyId.trim();
+  if (!propertyId) return [];
+
+  const out: HospitableReviewNormalized[] = [];
+  let page = 1;
+  let lastPage = 1;
+
+  do {
+    const json = (await hospitableFetch(
+      input.pat,
+      `/properties/${encodeURIComponent(propertyId)}/reviews`,
+      {
+        page: String(page),
+        per_page: "100",
+        include: "guest,reservation,property",
+      },
+    )) as HospitableListResponse;
+
+    const rows = Array.isArray(json?.data) ? json.data : [];
+    for (const row of rows) {
+      const n = normalizeReview(row);
+      if (!n) continue;
+      if (!n.property_id) n.property_id = propertyId;
+      // Strict: need a valid public rating or public review text.
+      if (n.rating == null && !n.public_review) continue;
+      out.push(n);
+    }
+
+    const meta = asRecord(json?.meta);
+    lastPage = Number(meta.last_page) || page;
+    page += 1;
+  } while (page <= lastPage && page <= 30);
+
+  return out;
+}

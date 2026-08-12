@@ -262,6 +262,124 @@ function cityFromAddress(address: string): string {
   return address || "—";
 }
 
+function monthShortLabel(yearMonth: string): string {
+  const [ys, ms] = yearMonth.split("-");
+  const d = new Date(Date.UTC(Number(ys), Number(ms) - 1, 1));
+  if (Number.isNaN(d.getTime())) return yearMonth;
+  return d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+}
+
+function daysInYearMonth(yearMonth: string): number {
+  const [y, m] = yearMonth.split("-").map(Number);
+  return new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+}
+
+/** Occupied calendar nights in the statement month (check-in inclusive, check-out exclusive). */
+function occupiedDaysInMonth(
+  yearMonth: string,
+  stays: Array<{ check_in: string | null; check_out: string | null }>,
+): boolean[] {
+  const days = daysInYearMonth(yearMonth);
+  const occupied = Array.from({ length: days }, () => false);
+  const monthStart = `${yearMonth}-01`;
+  const monthEndExclusive = (() => {
+    const [y, m] = yearMonth.split("-").map(Number);
+    const next = new Date(Date.UTC(y!, m!, 1));
+    return next.toISOString().slice(0, 10);
+  })();
+
+  for (const stay of stays) {
+    if (!stay.check_in || !stay.check_out) continue;
+    let cursor = stay.check_in;
+    while (cursor < stay.check_out) {
+      if (cursor >= monthStart && cursor < monthEndExclusive) {
+        const day = Number(cursor.slice(8, 10));
+        if (day >= 1 && day <= days) occupied[day - 1] = true;
+      }
+      const d = new Date(`${cursor}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 1);
+      cursor = d.toISOString().slice(0, 10);
+      if (cursor > monthEndExclusive && cursor >= stay.check_out) break;
+    }
+  }
+  return occupied;
+}
+
+function gapInsight(occupied: boolean[]): string | null {
+  const gaps: number[] = [];
+  let run = 0;
+  for (let i = 0; i < occupied.length; i++) {
+    if (!occupied[i]) {
+      run += 1;
+    } else if (run > 0) {
+      gaps.push(run);
+      run = 0;
+    }
+  }
+  if (run > 0) gaps.push(run);
+  const mid = gaps.filter((g) => g >= 2);
+  if (mid.length === 0) {
+    if (occupied.every(Boolean)) return "Fully booked this month — no vacant nights.";
+    return null;
+  }
+  const min = Math.min(...mid);
+  const max = Math.max(...mid);
+  const range =
+    min === max ? `${min} night${min === 1 ? "" : "s"}` : `${min}–${max} nights`;
+  if (mid.length === 1) return `One gap of ${range} this month.`;
+  return `${mid.length} gaps of ${range} this month.`;
+}
+
+function NightlyOccupancyChart({
+  yearMonth,
+  stays,
+  subtitle,
+}: {
+  yearMonth: string;
+  stays: Array<{ check_in: string | null; check_out: string | null }>;
+  subtitle?: string;
+}) {
+  const occupied = occupiedDaysInMonth(yearMonth, stays);
+  const days = occupied.length;
+  const short = monthShortLabel(yearMonth);
+  const mid = Math.ceil(days / 2);
+  const insight = gapInsight(occupied);
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <SectionLabel>Nightly occupancy · {short}</SectionLabel>
+      {subtitle ? <p className="text-[12px] text-[#6f6a65]">{subtitle}</p> : null}
+      <div className="flex h-[60px] items-end gap-[3px]">
+        {occupied.map((on, i) => (
+          <div
+            key={i}
+            className={`min-w-0 flex-1 ${
+              on ? "h-full bg-[#c4a35a]" : "h-[16%] bg-white/10"
+            }`}
+            title={`${short} ${i + 1}${on ? " · occupied" : " · vacant"}`}
+          />
+        ))}
+      </div>
+      <div className="flex justify-between text-[11px] tabular-nums text-[#6f6a65]">
+        <span>
+          {short} 1
+        </span>
+        <span>
+          {short} {mid}
+        </span>
+        <span>
+          {short} {days}
+        </span>
+      </div>
+      {insight ? (
+        <p className="border-t border-white/8 pt-3.5 text-[12.5px] leading-relaxed text-[#9a9590]">
+          {insight}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#c4a35a]">
@@ -842,11 +960,14 @@ export function OwnerStatementPanel({
               <div className="flex items-baseline gap-3.5">
                 <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
                 <span className="text-[13px] uppercase tracking-[0.14em] text-[#6f6a65]">
-                  Stay ledger
+                  Stay-by-stay ledger
                 </span>
               </div>
               <p className="text-[12px] tabular-nums text-[#6f6a65]">
-                {statement.stays.length} stay{statement.stays.length === 1 ? "" : "s"}
+                {statement.reservation_count} reservation
+                {statement.reservation_count === 1 ? "" : "s"} · {statement.nights_booked} of{" "}
+                {statement.nights_available} nights · {pctLabel(statement.occupancy_bps)} · ADR{" "}
+                {moneyExact(statement.adr_cents, currency)}
               </p>
             </div>
 
@@ -907,7 +1028,7 @@ export function OwnerStatementPanel({
                   </div>
                 ))}
                 <div className="hidden min-w-[720px] grid-cols-[1.4fr_0.7fr_0.9fr_0.8fr_0.7fr_0.7fr_0.9fr] items-center pt-4 lg:grid">
-                  <p className="text-[13px] font-semibold">Totals</p>
+                  <p className="text-[13px] font-semibold">Stay totals</p>
                   <p className="text-right text-[13.5px] font-semibold tabular-nums">
                     {statement.nights_booked}
                   </p>
@@ -932,6 +1053,61 @@ export function OwnerStatementPanel({
                 </div>
               </div>
             )}
+
+            <div className="mt-8 grid gap-10 border-t border-white/8 pt-7 lg:grid-cols-2">
+              <div>
+                <SectionLabel>Reconciliation to net</SectionLabel>
+                <div className="mt-3.5 space-y-0 text-[13.5px] tabular-nums">
+                  <div className="flex justify-between border-b border-white/[0.06] py-2.5">
+                    <span className="text-[#9a9590]">Stay net</span>
+                    <span>
+                      {moneyExact(
+                        statement.stays.reduce((s, x) => s + x.net_cents, 0),
+                        currency,
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b border-white/[0.06] py-2.5">
+                    <span className="text-[#9a9590]">Owner expenses</span>
+                    <span className="text-[#cf7f7b]">
+                      {deductMoney(statement.expense_cents, currency)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between pt-3.5">
+                    <span className="font-semibold">Net to host</span>
+                    <span className="text-[16px] font-bold text-[#c4a35a]">
+                      {moneyExact(statement.net_to_host_cents, currency)}
+                    </span>
+                  </div>
+                </div>
+                {statement.hst_invoice_cents > 0 ? (
+                  <p className="mt-3 text-[11.5px] leading-relaxed text-[#6f6a65]">
+                    HST of {moneyExact(statement.hst_invoice_cents, currency)} is billed via
+                    QuickBooks and is not deducted here.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-8">
+                {statement.unit_count <= 1 ? (
+                  <NightlyOccupancyChart
+                    yearMonth={statement.year_month}
+                    stays={statement.stays}
+                  />
+                ) : (
+                  statement.units.map((u) => (
+                    <NightlyOccupancyChart
+                      key={u.property_id}
+                      yearMonth={statement.year_month}
+                      stays={statement.stays.filter(
+                        (s) => s.property_name === u.property_name,
+                      )}
+                      subtitle={u.property_name}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
           </section>
 
           {/* Expenses */}
@@ -988,16 +1164,14 @@ export function OwnerStatementPanel({
               <div className="rounded-[2px] border border-dashed border-white/10 bg-[#141414]/60 px-4 py-5">
                 <MetaLabel>Maintenance</MetaLabel>
                 <p className="mt-2 text-[13px] leading-relaxed text-[#6f6a65]">
-                  Work orders and photo reports will appear here once maintenance is linked to
-                  Clients.
+                  No maintenance work orders to report this month.
                 </p>
               </div>
               <div className="rounded-[2px] border border-dashed border-white/10 bg-[#141414]/60 px-4 py-5">
                 <MetaLabel>Cleaning reports</MetaLabel>
                 <p className="mt-2 text-[13px] leading-relaxed text-[#6f6a65]">
                   {statement.cleaning_turnovers} turnover
-                  {statement.cleaning_turnovers === 1 ? "" : "s"} this month. Checklist and
-                  photo reports arrive with cleaner hub.
+                  {statement.cleaning_turnovers === 1 ? "" : "s"} this month.
                 </p>
               </div>
             </div>
@@ -1022,13 +1196,31 @@ export function OwnerStatementPanel({
                 <MetaLabel>Blended rating</MetaLabel>
                 <p className="mt-2 text-[36px] font-semibold tracking-tight tabular-nums">
                   {statement.guest_experience.blended_rating != null
-                    ? statement.guest_experience.blended_rating.toFixed(2)
+                    ? `${statement.guest_experience.blended_rating.toFixed(2)} ★`
                     : "—"}
                 </p>
                 <p className="mt-2 text-[12px] text-[#6f6a65]">
-                  {statement.guest_experience.prior_month_rating != null
-                    ? `vs prior ${statement.guest_experience.prior_month_rating.toFixed(2)}`
-                    : "Reviews sync coming next"}
+                  {statement.guest_experience.prior_month_rating != null &&
+                  statement.guest_experience.blended_rating != null
+                    ? (() => {
+                        const delta =
+                          statement.guest_experience.blended_rating -
+                          statement.guest_experience.prior_month_rating;
+                        const sign = delta >= 0 ? "↑" : "↓";
+                        const tone =
+                          delta >= 0 ? "text-[#4ea882]" : "text-[#cf7f7b]";
+                        return (
+                          <span className={tone}>
+                            {sign} {Math.abs(delta).toFixed(2)} vs prior ·{" "}
+                            {statement.guest_experience.prior_month_rating.toFixed(2)}
+                          </span>
+                        );
+                      })()
+                    : statement.guest_experience.trailing_12mo_rating != null
+                      ? `Trailing 12 mo ${statement.guest_experience.trailing_12mo_rating.toFixed(2)}`
+                      : statement.guest_experience.available
+                        ? "Public guest reviews this month"
+                        : "No public reviews for this month yet"}
                 </p>
               </div>
               <div className="bg-[#141414] px-5 py-5">
@@ -1041,21 +1233,19 @@ export function OwnerStatementPanel({
                 <p className="mt-2 text-[12px] tabular-nums text-[#9a9590]">
                   of {statement.reservation_count} stays
                   {statement.guest_experience.reviews_pending > 0
-                    ? ` · ${statement.guest_experience.reviews_pending} pending`
+                    ? ` · ${statement.guest_experience.reviews_pending} without review yet`
                     : ""}
                 </p>
               </div>
               <div className="bg-[#141414] px-5 py-5">
-                <MetaLabel>Avg response time</MetaLabel>
+                <MetaLabel>Trailing 12-mo rating</MetaLabel>
                 <p className="mt-2 text-[36px] font-semibold tracking-tight tabular-nums">
-                  {statement.guest_experience.avg_response_minutes != null
-                    ? `${statement.guest_experience.avg_response_minutes} min`
+                  {statement.guest_experience.trailing_12mo_rating != null
+                    ? statement.guest_experience.trailing_12mo_rating.toFixed(2)
                     : "—"}
                 </p>
                 <p className="mt-2 text-[12px] text-[#6f6a65]">
-                  {statement.guest_experience.response_within_1h_bps != null
-                    ? `${pctLabel(statement.guest_experience.response_within_1h_bps)} within 1 hour`
-                    : "Message metrics not linked yet"}
+                  Across the last 12 months of public guest reviews
                 </p>
               </div>
             </div>
@@ -1084,9 +1274,9 @@ export function OwnerStatementPanel({
                   </div>
                 ) : (
                   <p className="mt-3 text-[13px] leading-relaxed text-[#6f6a65]">
-                    Cleanliness, accuracy, communication, location, value, and check-in scores
-                    will land here once Airbnb/Vrbo reviews are connected — dips get flagged
-                    automatically.
+                    No category scores for this month yet. When guests leave public ratings,
+                    cleanliness, accuracy, communication, location, value, and check-in appear
+                    here — dips get flagged automatically.
                   </p>
                 )}
                 {statement.guest_experience.insight ? (
@@ -1116,8 +1306,8 @@ export function OwnerStatementPanel({
                   </div>
                 ) : (
                   <p className="mt-3 text-[13px] leading-relaxed text-[#6f6a65]">
-                    2–3 representative quotes (a strong one and a critical one when available)
-                    will appear here — not just a star average.
+                    No guest quotes for this month yet. When available, a strong review and a
+                    critical one appear here — not just a star average.
                   </p>
                 )}
               </div>
@@ -1174,9 +1364,7 @@ export function OwnerStatementPanel({
               ) : (
                 <div className="mt-4 border border-dashed border-white/10 bg-[#141414]/60 px-4 py-5">
                   <p className="text-[13px] leading-relaxed text-[#6f6a65]">
-                    No tracked actions this month yet. Feedback-driven items (e.g. “two guests
-                    noted slow WiFi → router upgrade Aug 20”) will list here alongside ops
-                    tickets.
+                    No open guest-feedback or ops actions to report this month.
                   </p>
                 </div>
               )}
@@ -1214,9 +1402,7 @@ export function OwnerStatementPanel({
               ) : (
                 <div className="mt-4 border border-dashed border-white/10 bg-[#141414]/60 px-4 py-5">
                   <p className="text-[13px] leading-relaxed text-[#6f6a65]">
-                    Example format: “Replace living room mattress (~$450) — 2 guests cited sleep
-                    quality; likely a 0.1–0.2 rating lift.” Recommendations appear when MRG
-                    adds them for the month.
+                    No owner recommendations this month.
                   </p>
                 </div>
               )}
@@ -1253,7 +1439,7 @@ export function OwnerStatementPanel({
                           ? "+"
                           : ""
                       }${((statement.occupancy_bps - statement.market.market_occupancy_bps) / 100).toFixed(1)} pts`
-                    : " · comp set not linked yet"}
+                    : ""}
                 </p>
               </div>
               <div className="bg-[#141414] px-5 py-5">
@@ -1286,12 +1472,7 @@ export function OwnerStatementPanel({
               <p className="mt-5 text-[13px] leading-relaxed text-[#9a9590]">
                 {statement.market.seasonality_note}
               </p>
-            ) : (
-              <p className="mt-5 text-[13px] leading-relaxed text-[#6f6a65]">
-                Seasonality and local event notes will sit here once market context is added for
-                the month. Booking pace above is live from Hospitable stays already on the books.
-              </p>
-            )}
+            ) : null}
 
             <div className="mt-8 grid gap-10 lg:grid-cols-2">
               <div>
@@ -1365,9 +1546,7 @@ export function OwnerStatementPanel({
                   </div>
                 ) : (
                   <p className="mt-3 text-[13px] leading-relaxed text-[#6f6a65]">
-                    STR permits, insurance renewals, noise/smart-lock alerts, and local
-                    regulatory changes will list here per unit once compliance records are
-                    attached to the client.
+                    No compliance items to report for this month.
                   </p>
                 )}
 
@@ -1392,8 +1571,7 @@ export function OwnerStatementPanel({
                       </span>
                     </div>
                     <p className="pt-2 text-[12px] leading-relaxed text-[#6f6a65]">
-                      Based on confirmed stays overlapping {statement.next_month.title}. Known
-                      upcoming expenses (repairs, permits, HOA) will append when entered.
+                      Based on confirmed stays overlapping {statement.next_month.title}.
                     </p>
                   </div>
                 </div>

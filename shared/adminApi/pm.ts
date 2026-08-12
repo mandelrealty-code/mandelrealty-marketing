@@ -29,6 +29,7 @@ import {
   propertyNeedsAutoSync,
   syncHospitableReservations,
 } from "../pm/reservationStore.js";
+import { syncHospitableReviews } from "../pm/reviewStore.js";
 import { buildOwnerStatement } from "../pm/ownerStatement.js";
 import {
   buildMonthPortfolio,
@@ -519,10 +520,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               ? { propertyId, lookbackMonths: AUTO_SYNC_LOOKBACK_MONTHS }
               : { yearMonth, propertyId },
           );
+          let reviewsSynced = 0;
+          try {
+            const rev = await syncHospitableReviews(
+              propertyId ? { propertyId } : undefined,
+            );
+            reviewsSynced = rev.synced;
+          } catch {
+            /* reviews optional until migration */
+          }
           const statement = propertyId
             ? await buildMonthStatement(propertyId, yearMonth)
             : null;
-          return res.status(200).json({ ...result, statement, month: yearMonth });
+          return res.status(200).json({
+            ...result,
+            reviews_synced: reviewsSynced,
+            statement,
+            month: yearMonth,
+          });
+        }
+        if (op === "sync_reviews") {
+          const propertyId = str(body.property_id) || undefined;
+          const result = await syncHospitableReviews(
+            propertyId ? { propertyId } : undefined,
+          );
+          return res.status(200).json(result);
         }
         if (op === "add_expense") {
           const amountCents =

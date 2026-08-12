@@ -2,12 +2,19 @@
 
 import { getPmClient } from "./clientStore.js";
 import { isExcludedReservationStatus } from "./financialBreakdown.js";
+import { buildGuestExperienceFromReviews } from "./guestExperience.js";
 import { listPmProperties } from "./propertyStore.js";
 import {
   listReservationsOverlappingRange,
   monthBounds,
   type PmReservationRow,
 } from "./reservationStore.js";
+import {
+  listReviewsForPropertiesInRange,
+  listReviewsForPropertiesSince,
+  propertyNeedsReviewSync,
+  syncHospitableReviews,
+} from "./reviewStore.js";
 import { loadStrComplianceForProperty } from "./strCompliance.js";
 import {
   buildMonthPortfolio,
@@ -294,6 +301,18 @@ export async function buildOwnerStatement(
   const propById = new Map(props.map((p) => [p.id, p]));
   const linked = portfolio.units.filter((u) => u.linked && u.active !== false);
 
+  // Refresh reviews when stale (best-effort — statement still builds if sync fails).
+  for (const u of linked) {
+    try {
+      const need = await propertyNeedsReviewSync(u.property_id);
+      if (need.needed) {
+        await syncHospitableReviews({ propertyId: u.property_id });
+      }
+    } catch {
+      /* keep going with cached reviews */
+    }
+  }
+
   const units: OwnerStatementUnit[] = [];
   const fullByProperty = new Map<string, MonthStatement>();
   for (const u of linked) {
@@ -389,7 +408,37 @@ export async function buildOwnerStatement(
     }))
     .sort((a, b) => b.nights - a.nights);
 
+  const propertyIds = units.map((u) => u.property_id);
+  const nameById = new Map(units.map((u) => [u.property_id, u.property_name]));
+
   const priorMonthKey = shiftYearMonth(yearMonth, -1);
+  const { start: monthStart, end: monthEndForReviews } = monthBounds(yearMonth);
+  const priorBounds = monthBounds(priorMonthKey);
+  const trailStart = shiftYearMonth(yearMonth, -11) + "-01";
+  const trailEnd = `${monthEndForReviews}T23:59:59.999Z`;
+
+  const [monthReviews, priorReviews, trailReviews] = await Promise.all([
+    listReviewsForPropertiesInRange(propertyIds, monthStart, monthEndForReviews),
+    listReviewsForPropertiesInRange(
+      propertyIds,
+      priorBounds.start,
+      priorBounds.end,
+    ),
+    listReviewsForPropertiesSince(
+      propertyIds,
+      `${trailStart}T00:00:00.000Z`,
+      trailEnd,
+    ),
+  ]);
+
+  const guest_experience = buildGuestExperienceFromReviews({
+    monthReviews,
+    priorMonthReviews: priorReviews,
+    trailing12Reviews: trailReviews,
+    reservationCount: reservations,
+    propertyNameById: nameById,
+  });
+
   let prior: OwnerStatementCompare | null = null;
   try {
     const priorPortfolio = await buildMonthPortfolio(priorMonthKey, { clientId });
@@ -459,7 +508,6 @@ export async function buildOwnerStatement(
   const paceStart = addDaysIso(monthEnd, 1);
   const paceDays = 60;
   const paceEnd = addDaysIso(paceStart, paceDays - 1);
-  const propertyIds = units.map((u) => u.property_id);
   const paceRows = await listReservationsOverlappingRange(
     propertyIds,
     paceStart,
@@ -625,19 +673,7 @@ export async function buildOwnerStatement(
     prior_month: prior,
     mom_net_delta_cents: momDelta,
     mom_net_bps: momBps,
-    guest_experience: {
-      available: false,
-      blended_rating: null,
-      prior_month_rating: null,
-      trailing_12mo_rating: null,
-      reviews_received: 0,
-      reviews_pending: Math.max(0, reservations),
-      avg_response_minutes: null,
-      response_within_1h_bps: null,
-      categories: [],
-      insight: "",
-      quotes: [],
-    },
+    guest_experience,
     actions: [],
     recommendations: [],
     compliance,
