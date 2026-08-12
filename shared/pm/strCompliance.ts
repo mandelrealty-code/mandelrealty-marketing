@@ -4,6 +4,7 @@ import { isExcludedReservationStatus } from "./financialBreakdown.js";
 import {
   calendarYearSyncRange,
   listReservationsOverlappingRange,
+  propertyNeedsAutoSync,
   syncHospitableReservations,
   type PmReservationRow,
 } from "./reservationStore.js";
@@ -110,7 +111,7 @@ export function buildStrComplianceSnapshot(input: {
     if (renews && renews < asOf) {
       status = "expired";
       status_label = "Expired · renew";
-    } else if (renews && renews <= addDays(asOf, 60)) {
+    } else if (renews && renews <= addDays(asOf, 30)) {
       status = "renewal_due";
       status_label = "Active · renew soon";
     } else {
@@ -152,23 +153,32 @@ export async function loadStrComplianceForProperty(
     day_cap?: number | null;
     calendar_year?: number;
     as_of?: string;
-    /** Skip Hospitable refresh (tests / nested calls). */
+    /**
+     * Hospitable refresh policy:
+     * - `false` / omitted: sync only when reservation cache is missing or stale
+     * - `true`: never call Hospitable (count from DB only — use on statement builds)
+     */
     skip_sync?: boolean;
   },
 ): Promise<StrComplianceSnapshot> {
   const asOf = opts?.as_of || new Date().toISOString().slice(0, 10);
   const year = opts?.calendar_year ?? Number(asOf.slice(0, 4));
 
-  // Airbnb’s night limit counts booked nights for the calendar year, including
-  // future stays. Pull that full window (checkout spill into early Jan) first.
+  // Do not block every page load on a full-year Hospitable pull — only when stale.
   if (!opts?.skip_sync) {
     try {
-      const range = calendarYearSyncRange(year);
-      await syncHospitableReservations({
+      const need = await propertyNeedsAutoSync(
         propertyId,
-        startDate: range.start,
-        endDate: range.end,
-      });
+        `${year}-${String(asOf.slice(5, 7)).padStart(2, "0")}`,
+      );
+      if (need.needed) {
+        const range = calendarYearSyncRange(year);
+        await syncHospitableReservations({
+          propertyId,
+          startDate: range.start,
+          endDate: range.end,
+        });
+      }
     } catch {
       /* unlinked / no PAT / API — still count whatever is cached */
     }

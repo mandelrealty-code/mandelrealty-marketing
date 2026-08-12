@@ -46,6 +46,7 @@ export type PropertyDetail = PropertyRow & {
   str_permit_issued_on?: string | null;
   str_day_cap?: number;
   str_municipality?: string;
+  mat_required?: boolean;
   str_compliance?: {
     permit_number: string;
     municipality: string;
@@ -59,6 +60,39 @@ export type PropertyDetail = PropertyRow & {
     used_bps: number;
     status: "unset" | "active" | "renewal_due" | "expired";
     status_label: string;
+  } | null;
+  mat_compliance?: {
+    required: boolean;
+    as_of: string;
+    owner_note: string;
+    focus: {
+      year: number;
+      quarter: number;
+      period_start: string;
+      period_end: string;
+      due_on: string;
+      label: string;
+      filing_status: "upcoming" | "due_soon" | "overdue" | "filed";
+      status_label: string;
+      days_until_due: number;
+      filed_on: string | null;
+      notes: string;
+      filing_id: string | null;
+    } | null;
+    quarters: Array<{
+      year: number;
+      quarter: number;
+      period_start: string;
+      period_end: string;
+      due_on: string;
+      label: string;
+      filing_status: "upcoming" | "due_soon" | "overdue" | "filed";
+      status_label: string;
+      days_until_due: number;
+      filed_on: string | null;
+      notes: string;
+      filing_id: string | null;
+    }>;
   } | null;
 };
 

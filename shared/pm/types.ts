@@ -1,3 +1,4 @@
+import type { MatComplianceSnapshot } from "./matCompliance.js";
 import type { StrComplianceSnapshot } from "./strCompliance.js";
 
 export type PmClientStatus = "active" | "paused";
@@ -45,6 +46,8 @@ export type PmProperty = {
   /** Max STR nights per calendar year (default 180; resets Jan 1). */
   str_day_cap?: number;
   str_municipality?: string;
+  /** Track City of Toronto MAT quarterly filings. */
+  mat_required?: boolean;
 };
 
 export type PmCommissionTerm = {
@@ -76,6 +79,7 @@ export type PmPropertyDetail = PmProperty & {
   terms: PmCommissionTerm[];
   cover_image_url?: string | null;
   str_compliance?: StrComplianceSnapshot | null;
+  mat_compliance?: MatComplianceSnapshot | null;
 };
 
 export type PmClientListItem = PmClient & {

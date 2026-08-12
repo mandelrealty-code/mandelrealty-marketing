@@ -12,9 +12,8 @@ import {
 import {
   listReviewsForPropertiesInRange,
   listReviewsForPropertiesSince,
-  propertyNeedsReviewSync,
-  syncHospitableReviews,
 } from "./reviewStore.js";
+import { loadMatComplianceForProperty, MAT_OWNER_NOTE } from "./matCompliance.js";
 import { loadStrComplianceForProperty } from "./strCompliance.js";
 import {
   buildMonthPortfolio,
@@ -301,33 +300,31 @@ export async function buildOwnerStatement(
   const propById = new Map(props.map((p) => [p.id, p]));
   const linked = portfolio.units.filter((u) => u.linked && u.active !== false);
 
-  // Refresh reviews when stale (best-effort — statement still builds if sync fails).
-  for (const u of linked) {
-    try {
-      const need = await propertyNeedsReviewSync(u.property_id);
-      if (need.needed) {
-        await syncHospitableReviews({ propertyId: u.property_id });
-      }
-    } catch {
-      /* keep going with cached reviews */
-    }
-  }
+  // Reviews: use cache only here. Syncing Hospitable per unit blocks statement builds
+  // for 30–60s+; earnings sync / Preview refresh already pull reviews when stale.
 
-  const units: OwnerStatementUnit[] = [];
-  const fullByProperty = new Map<string, MonthStatement>();
-  for (const u of linked) {
-    const full = await buildMonthStatement(u.property_id, yearMonth);
-    fullByProperty.set(u.property_id, full);
-    const { reservations: _r, lines: _l, ...statement } = full;
-    units.push({
-      property_id: u.property_id,
-      property_name: u.property_name,
-      address: addressById.get(u.property_id) || "",
-      deal_label: dealLabelFromStatement(full),
-      cover_image_url: coverById.get(u.property_id) || null,
-      statement,
-    });
-  }
+  const built = await Promise.all(
+    linked.map(async (u) => {
+      const full = await buildMonthStatement(u.property_id, yearMonth);
+      const { reservations: _r, lines: _l, ...statement } = full;
+      return {
+        full,
+        unit: {
+          property_id: u.property_id,
+          property_name: u.property_name,
+          address: addressById.get(u.property_id) || "",
+          deal_label: dealLabelFromStatement(full),
+          cover_image_url: coverById.get(u.property_id) || null,
+          statement,
+        } satisfies OwnerStatementUnit,
+      };
+    }),
+  );
+
+  const units: OwnerStatementUnit[] = built.map((b) => b.unit);
+  const fullByProperty = new Map(
+    built.map((b) => [b.unit.property_id, b.full] as const),
+  );
 
   let accommodation = 0;
   let hostFees = 0;
@@ -471,39 +468,86 @@ export async function buildOwnerStatement(
 
   const { end: monthEnd } = monthBounds(yearMonth);
   const statementYear = Number(yearMonth.slice(0, 4));
-  const compliance: OwnerComplianceItem[] = [];
-  for (const u of units) {
-    const p = propById.get(u.property_id);
-    if (!p) continue;
-    try {
-      const snap = await loadStrComplianceForProperty(u.property_id, {
-        permit_number: p.str_permit_number,
-        municipality: p.str_municipality,
-        applied_on: p.str_permit_applied_on,
-        issued_on: p.str_permit_issued_on,
-        day_cap: p.str_day_cap,
-        calendar_year: statementYear,
-        as_of: monthEnd,
-      });
-      if (snap.status === "unset" && !snap.permit_number && !snap.issued_on) continue;
-      const city = snap.municipality || "STR Permit";
-      compliance.push({
-        label: `${city}${snap.permit_number ? ` · #${snap.permit_number}` : ""}`,
-        property_name: u.property_name,
-        status: snap.status_label,
-        detail: [
-          snap.applied_on ? `Applied ${snap.applied_on}` : null,
-          snap.issued_on ? `Issued ${snap.issued_on}` : null,
-          snap.renews_on ? `Renews ${snap.renews_on}` : null,
-          `${snap.nights_used} of ${snap.day_cap} nights in ${snap.calendar_year} · ${snap.nights_remaining} left (resets Jan 1)`,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      });
-    } catch {
-      /* skip unit */
-    }
-  }
+  const complianceNested = await Promise.all(
+    units.map(async (u) => {
+      const p = propById.get(u.property_id);
+      if (!p) return [] as OwnerComplianceItem[];
+      const items: OwnerComplianceItem[] = [];
+      try {
+        const snap = await loadStrComplianceForProperty(u.property_id, {
+          permit_number: p.str_permit_number,
+          municipality: p.str_municipality,
+          applied_on: p.str_permit_applied_on,
+          issued_on: p.str_permit_issued_on,
+          day_cap: p.str_day_cap,
+          calendar_year: statementYear,
+          as_of: monthEnd,
+          skip_sync: true,
+        });
+        if (!(snap.status === "unset" && !snap.permit_number && !snap.issued_on)) {
+          const city = snap.municipality || "STR Permit";
+          items.push({
+            label: `${city}${snap.permit_number ? ` · #${snap.permit_number}` : ""}`,
+            property_name: u.property_name,
+            status: snap.status_label,
+            detail: [
+              snap.applied_on ? `Applied ${snap.applied_on}` : null,
+              snap.issued_on ? `Issued ${snap.issued_on}` : null,
+              snap.renews_on ? `Renews ${snap.renews_on}` : null,
+              `${snap.nights_used} of ${snap.day_cap} nights in ${snap.calendar_year} · ${snap.nights_remaining} left (resets Jan 1)`,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          });
+        }
+      } catch {
+        /* skip unit */
+      }
+
+      if (p.mat_required) {
+        try {
+          const mat = await loadMatComplianceForProperty(u.property_id, {
+            required: true,
+            as_of: monthEnd,
+          });
+          const focus = mat.focus;
+          if (
+            focus &&
+            (focus.filing_status === "due_soon" ||
+              focus.filing_status === "overdue" ||
+              focus.filing_status === "filed")
+          ) {
+            items.push({
+              label: `Toronto MAT · ${focus.label}`,
+              property_name: u.property_name,
+              status: focus.status_label,
+              detail: [
+                `${focus.period_start} – ${focus.period_end}`,
+                MAT_OWNER_NOTE,
+              ].join(" · "),
+            });
+          }
+          for (const q of mat.quarters) {
+            if (focus && q.year === focus.year && q.quarter === focus.quarter) continue;
+            if (q.filing_status !== "overdue") continue;
+            items.push({
+              label: `Toronto MAT · ${q.label}`,
+              property_name: u.property_name,
+              status: q.status_label,
+              detail: [
+                `${q.period_start} – ${q.period_end}`,
+                MAT_OWNER_NOTE,
+              ].join(" · "),
+            });
+          }
+        } catch {
+          /* skip MAT if migration missing */
+        }
+      }
+      return items;
+    }),
+  );
+  const compliance: OwnerComplianceItem[] = complianceNested.flat();
 
   const paceStart = addDaysIso(monthEnd, 1);
   const paceDays = 60;

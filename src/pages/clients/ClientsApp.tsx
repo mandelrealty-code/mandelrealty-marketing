@@ -107,6 +107,7 @@ export default function ClientsApp({ onModeChange }: Props) {
     str_permit_issued_on: "",
     str_municipality: "",
     str_day_cap: "180",
+    mat_required: false,
   });
   const [propertySheet, setPropertySheet] = useState(false);
   const [importSheet, setImportSheet] = useState(false);
@@ -452,6 +453,7 @@ export default function ClientsApp({ onModeChange }: Props) {
       str_permit_issued_on: propertyDetail.str_permit_issued_on || "",
       str_municipality: propertyDetail.str_municipality || "",
       str_day_cap: String(propertyDetail.str_day_cap ?? 180),
+      mat_required: Boolean(propertyDetail.mat_required),
     });
     setDeactivateConfirm(false);
     setEditPropertySheet(true);
@@ -524,6 +526,7 @@ export default function ClientsApp({ onModeChange }: Props) {
         str_permit_applied_on: editPropertyForm.str_permit_applied_on || null,
         str_permit_issued_on: editPropertyForm.str_permit_issued_on || null,
         str_day_cap: Number(editPropertyForm.str_day_cap) || 180,
+        mat_required: editPropertyForm.mat_required,
       });
       setEditPropertySheet(false);
       setPropertyDetail(data.property);
@@ -531,6 +534,31 @@ export default function ClientsApp({ onModeChange }: Props) {
       setToast("Property updated.");
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const markMatQuarter = async (
+    year: number,
+    quarter: number,
+    filed: boolean,
+  ) => {
+    if (!propertyDetail) return;
+    setBusy(true);
+    setLoadError("");
+    try {
+      const data = await pmPost<{ property: PropertyDetail }>("properties", {
+        op: "mark_mat_filing",
+        property_id: propertyDetail.id,
+        year,
+        quarter,
+        filed,
+      });
+      setPropertyDetail(data.property);
+      setToast(filed ? "MAT marked filed." : "MAT filing cleared.");
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Could not update MAT filing.");
     } finally {
       setBusy(false);
     }
@@ -1316,6 +1344,158 @@ export default function ClientsApp({ onModeChange }: Props) {
             );
           })()}
 
+          <p className="border-t border-white/8 px-4 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65] lg:px-0">
+            Toronto MAT
+          </p>
+          {(() => {
+            const mat = propertyDetail.mat_compliance;
+            if (!propertyDetail.mat_required) {
+              return (
+                <div className="border-t border-white/8 px-4 py-3.5 lg:px-0">
+                  <p className="text-[13.5px] text-[#9a9590]">
+                    MAT tracking off. Enable for Toronto units so we remind the owner 30 days
+                    before each quarterly filing (nil returns required).
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openEditProperty}
+                    className="mt-2 text-[13px] font-semibold text-[#c4a35a]"
+                  >
+                    Enable in Edit
+                  </button>
+                </div>
+              );
+            }
+            if (!mat?.required) {
+              return (
+                <div className="border-t border-white/8 px-4 py-3.5 lg:px-0">
+                  <p className="text-[13.5px] text-[#9a9590]">
+                    MAT is enabled but filings could not load. Run supabase/pm_mat_filings_v1.sql
+                    in Supabase, then reopen this property.
+                  </p>
+                </div>
+              );
+            }
+            const focus = mat.focus;
+            const focusTone =
+              focus?.filing_status === "overdue"
+                ? "text-[#cf7f7b]"
+                : focus?.filing_status === "due_soon"
+                  ? "text-[#dcc084]"
+                  : focus?.filing_status === "filed"
+                    ? "text-[#4ea882]"
+                    : "text-[#9a9590]";
+            return (
+              <div className="border-t border-white/8 px-4 py-3.5 lg:px-0">
+                {focus ? (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[15px] font-semibold text-[#f5f5f5]">
+                          {focus.label} · due {focus.due_on}
+                        </p>
+                        <p className="mt-1 text-[12.5px] text-[#9a9590]">
+                          Period {focus.period_start} – {focus.period_end}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 text-[12.5px] font-semibold ${focusTone}`}>
+                        {focus.status_label}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[12px] leading-relaxed text-[#6f6a65]">
+                      {mat.owner_note}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {focus.filing_status !== "filed" ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void markMatQuarter(focus.year, focus.quarter, true)
+                          }
+                          className="rounded-[8px] border border-[#c4a35a]/40 bg-[#c4a35a]/15 px-3 py-1.5 text-[13px] font-semibold text-[#c4a35a]"
+                        >
+                          Mark filed
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void markMatQuarter(focus.year, focus.quarter, false)
+                          }
+                          className="text-[13px] font-semibold text-[#9a9590]"
+                        >
+                          Undo filed
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : null}
+                {mat.quarters.length > 0 ? (
+                  <div className="mt-4 space-y-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6f6a65]">
+                      Last 4 quarters
+                    </p>
+                    {mat.quarters.map((q) => {
+                      const tone =
+                        q.filing_status === "overdue"
+                          ? "text-[#cf7f7b]"
+                          : q.filing_status === "due_soon"
+                            ? "text-[#dcc084]"
+                            : q.filing_status === "filed"
+                              ? "text-[#4ea882]"
+                              : "text-[#9a9590]";
+                      return (
+                        <div
+                          key={`${q.year}-Q${q.quarter}`}
+                          className="flex items-center justify-between gap-3 border-b border-white/8 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-[13.5px] font-medium text-[#f5f5f5]">
+                              {q.label}
+                            </p>
+                            <p className="text-[12px] text-[#6f6a65]">Due {q.due_on}</p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className={`text-[12px] font-semibold ${tone}`}>
+                              {q.filing_status === "filed"
+                                ? "Filed"
+                                : q.filing_status === "overdue"
+                                  ? "Overdue"
+                                  : q.filing_status === "due_soon"
+                                    ? "Due soon"
+                                    : "Open"}
+                            </span>
+                            {q.filing_status !== "filed" ? (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void markMatQuarter(q.year, q.quarter, true)}
+                                className="text-[12px] font-semibold text-[#c4a35a]"
+                              >
+                                Mark filed
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void markMatQuarter(q.year, q.quarter, false)}
+                                className="text-[12px] font-semibold text-[#6f6a65]"
+                              >
+                                Undo
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })()}
+
           <div className="mt-2 hidden lg:block">
             <ContractsPanel
               propertyId={propertyDetail.id}
@@ -1929,9 +2109,15 @@ export default function ClientsApp({ onModeChange }: Props) {
                 <TextInput
                   placeholder="Toronto, Brampton, Ottawa…"
                   value={editPropertyForm.str_municipality}
-                  onChange={(e) =>
-                    setEditPropertyForm((f) => ({ ...f, str_municipality: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setEditPropertyForm((f) => ({
+                      ...f,
+                      str_municipality: value,
+                      mat_required:
+                        value.trim().toLowerCase() === "toronto" ? true : f.mat_required,
+                    }));
+                  }}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -1981,9 +2167,29 @@ export default function ClientsApp({ onModeChange }: Props) {
                   }
                 />
                 <p className="text-[12px] text-[#6f6a65]">
-                  Default 180. Counter resets every Jan 1. Renewal date is 1 year after issued.
+                  Default 180. Counter resets every Jan 1. Renewal reminder starts 30 days before
+                  the anniversary of issued.
                 </p>
               </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-white/10 bg-[#141414] px-3.5 py-3">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={editPropertyForm.mat_required}
+                  onChange={(e) =>
+                    setEditPropertyForm((f) => ({ ...f, mat_required: e.target.checked }))
+                  }
+                />
+                <span>
+                  <span className="block text-[14px] font-semibold text-[#f5f5f5]">
+                    MAT required (Toronto)
+                  </span>
+                  <span className="mt-0.5 block text-[12px] leading-relaxed text-[#6f6a65]">
+                    Owner files quarterly with the city. We remind 30 days before due and track
+                    filed / not filed. Setting municipality to Toronto turns this on by default.
+                  </span>
+                </span>
+              </label>
 
               <div className="flex gap-2.5">
                 <button

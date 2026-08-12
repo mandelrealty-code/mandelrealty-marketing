@@ -1,6 +1,10 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { getPmSettings } from "./clientStore.js";
 import { normalizeCommissionBaseMode } from "./financialBreakdown.js";
+import {
+  isTorontoMunicipality,
+  loadMatComplianceForProperty,
+} from "./matCompliance.js";
 import { loadStrComplianceForProperty } from "./strCompliance.js";
 import type {
   PmCommissionTerm,
@@ -39,6 +43,7 @@ function normalizePropertyRow(p: PmProperty): PmProperty {
         ? Math.round(p.str_day_cap as number)
         : 180,
     str_municipality: (p.str_municipality || "").trim(),
+    mat_required: Boolean((p as { mat_required?: boolean }).mat_required),
   };
 }
 
@@ -132,6 +137,14 @@ export async function getPmPropertyDetail(id: string): Promise<PmPropertyDetail 
   } catch {
     strCompliance = null;
   }
+  let matCompliance = null;
+  try {
+    matCompliance = await loadMatComplianceForProperty(id, {
+      required: Boolean(normalized.mat_required),
+    });
+  } catch {
+    matCompliance = null;
+  }
   return {
     ...normalized,
     client_name: pm_clients?.name ?? "—",
@@ -139,6 +152,7 @@ export async function getPmPropertyDetail(id: string): Promise<PmPropertyDetail 
     terms,
     cover_image_url: await signedCoverUrl(normalized.cover_image_path),
     str_compliance: strCompliance,
+    mat_compliance: matCompliance,
   };
 }
 
@@ -229,6 +243,7 @@ export async function updatePmProperty(
     str_permit_issued_on?: string | null;
     str_day_cap?: number;
     str_municipality?: string;
+    mat_required?: boolean;
   },
 ): Promise<PmPropertyDetail> {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -279,6 +294,10 @@ export async function updatePmProperty(
   }
   if (patch.str_municipality != null) {
     updates.str_municipality = patch.str_municipality.trim();
+    // Default MAT on when municipality is set to Toronto (ops can still toggle off).
+    if (patch.mat_required === undefined && isTorontoMunicipality(patch.str_municipality)) {
+      updates.mat_required = true;
+    }
   }
   if (patch.str_permit_applied_on !== undefined) {
     const v = patch.str_permit_applied_on;
@@ -301,12 +320,20 @@ export async function updatePmProperty(
     }
     updates.str_day_cap = cap;
   }
+  if (patch.mat_required != null) {
+    updates.mat_required = Boolean(patch.mat_required);
+  }
 
   const { error } = await db().from("pm_properties").update(updates).eq("id", id);
   if (error) {
     if (/str_permit|str_day|str_municipality/i.test(error.message || "")) {
       throw new Error(
         "STR permit columns missing. Run supabase/pm_str_compliance_v1.sql in Supabase, then retry.",
+      );
+    }
+    if (/mat_required|pm_mat/i.test(error.message || "")) {
+      throw new Error(
+        "MAT columns missing. Run supabase/pm_mat_filings_v1.sql in Supabase, then retry.",
       );
     }
     throw error;

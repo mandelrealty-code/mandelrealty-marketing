@@ -30,6 +30,7 @@ import {
   syncHospitableReservations,
 } from "../pm/reservationStore.js";
 import { syncHospitableReviews } from "../pm/reviewStore.js";
+import { markMatFiling } from "../pm/matCompliance.js";
 import { buildOwnerStatement } from "../pm/ownerStatement.js";
 import {
   buildMonthPortfolio,
@@ -438,7 +439,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 : body.str_day_cap != null
                   ? Number(body.str_day_cap)
                   : undefined,
+            mat_required:
+              typeof body.mat_required === "boolean" ? body.mat_required : undefined,
           });
+          return res.status(200).json({ property });
+        }
+        if (op === "mark_mat_filing") {
+          const propertyId = str(body.property_id || body.id);
+          if (!propertyId) return res.status(400).json({ error: "property_id required." });
+          const year = Number(body.year);
+          const quarter = Number(body.quarter);
+          if (!Number.isFinite(year) || !Number.isFinite(quarter)) {
+            return res.status(400).json({ error: "year and quarter required." });
+          }
+          const filed =
+            body.filed === true || body.filed === 1 || body.filed === "1";
+          await markMatFiling({
+            property_id: propertyId,
+            year,
+            quarter,
+            filed,
+            filed_on:
+              body.filed_on === null
+                ? null
+                : body.filed_on != null
+                  ? str(body.filed_on) || null
+                  : undefined,
+            notes: body.notes != null ? str(body.notes) : undefined,
+          });
+          const property = await getPmPropertyDetail(propertyId);
           return res.status(200).json({ property });
         }
         if (op === "change_rate") {
