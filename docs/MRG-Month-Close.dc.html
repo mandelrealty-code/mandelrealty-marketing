@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#080808; font-family:'Manrope',system-ui,sans-serif; color:#f5f5f5; -webkit-font-smoothing:antialiased; }
+  a { color:#c4a35a; text-decoration:none; }
+  a:hover { color:#dcc084; }
+</style>
+</helmet>
+
+<div style="padding:64px 72px 120px;display:flex;flex-direction:column;gap:96px;background:#080808">
+
+<div style="display:flex;flex-direction:column;gap:10px;max-width:900px">
+  <div style="font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#c4a35a;font-weight:600">MRG Admin · Clients mode</div>
+  <div style="font-size:40px;font-weight:700;letter-spacing:-0.02em">Month close cockpit</div>
+  <div style="font-size:15px;line-height:1.6;color:#9a9590;text-wrap:pretty">Six feature-sized surfaces, each shippable alone. New fourth nav item <span style="color:#f5f5f5">Month</span> carries features 1–3; client month lives in client detail; expenses and hygiene extend existing sheets. Sample month July 2026, CAD.</div>
+</div>
+
+<section id="f1" style="display:flex;flex-direction:column;gap:24px">
+  <div style="display:flex;align-items:baseline;gap:14px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:14px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;color:#0a0a0a;background:#c4a35a;padding:4px 8px;border-radius:4px">F1</div>
+    <div style="font-size:20px;font-weight:600">Feature 1 — Month ops / portfolio rollup</div>
+    <div style="font-size:13px;color:#6f6a65">One screen per month · totals, per-unit payouts, tap through to earnings</div>
+  </div>
+  <div style="display:flex;gap:56px;align-items:flex-start;flex-wrap:wrap">
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F1 · mobile 390×844</div>
+      <div style="width:390px;height:844px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12px;color:#9a9590;font-weight:600;flex:none">
+          <div>9:41</div>
+          <div style="letter-spacing:0.1em">LTE ▮</div>
+        </div>
+        <div style="padding:6px 20px 18px;display:flex;flex-direction:column;gap:16px;flex:none">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:26px;font-weight:700;letter-spacing:-0.02em">Month close</div>
+            <div style="font-size:13px;font-weight:600;color:#9a9590">Export</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;background:#141414;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:10px 14px">
+            <div style="font-size:17px;color:#6f6a65;font-weight:600">‹</div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+              <div style="font-size:15px;font-weight:600">July 2026</div>
+              <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#c4a35a;font-weight:600">Open month</div>
+            </div>
+            <div style="font-size:17px;color:#6f6a65;font-weight:600">›</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden">
+            <div style="background:#0f0f0f;padding:13px 14px;display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">Net to hosts</div>
+              <div style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.01em">$11,420</div>
+            </div>
+            <div style="background:#0f0f0f;padding:13px 14px;display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">MRG fees</div>
+              <div style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.01em">$2,180</div>
+            </div>
+            <div style="background:#0f0f0f;padding:13px 14px;display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">HST to invoice</div>
+              <div style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:#dcc084;letter-spacing:-0.01em">$1,170</div>
+            </div>
+            <div style="background:#0f0f0f;padding:13px 14px;display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">Expenses</div>
+              <div style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.01em">$186</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#6f6a65">
+            <div>4 units · 3 linked · 1 unlinked</div>
+            <div>Fleet synced 9:12 AM</div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1;background:#c4a35a;color:#0a0a0a;font-size:15px;font-weight:700;text-align:center;padding:13px 0;border-radius:11px">Sync all</div>
+            <div style="width:52px;border:1px solid rgba(255,255,255,0.12);border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#9a9590;font-weight:600">HST</div>
+          </div>
+        </div>
+        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+          <div style="padding:8px 20px;font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600;border-top:1px solid rgba(255,255,255,0.08);background:#0c0c0c">Units · July</div>
+          <div style="display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <div style="font-size:15.5px;font-weight:600">Maple Suite</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882;display:inline-block"></span>Khamraj · Updated 9:12 AM</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none">
+                <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$4,180</div>
+                <div style="font-size:12px;color:#6f6a65;font-variant-numeric:tabular-nums">fee $820 · HST $520</div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <div style="font-size:15.5px;font-weight:600">Harbour Loft</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#c99a4b"><span style="width:6px;height:6px;border-radius:50%;background:#c99a4b;display:inline-block"></span>Khamraj · 2 days ago</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none">
+                <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$3,940</div>
+                <div style="font-size:12px;color:#6f6a65;font-variant-numeric:tabular-nums">fee $760 · HST $650</div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <div style="font-size:15.5px;font-weight:600">King West</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882;display:inline-block"></span>Danielle · Updated 9:12 AM</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none">
+                <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$3,300</div>
+                <div style="font-size:12px;color:#6f6a65;font-variant-numeric:tabular-nums">fee $600 · cohost HST</div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08);opacity:0.62">
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <div style="font-size:15.5px;font-weight:600">Bayview Studio</div>
+                <div style="font-size:12.5px;color:#6f6a65">Danielle · Not linked</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none">
+                <div style="font-size:16px;font-weight:600;color:#6f6a65;font-variant-numeric:tabular-nums">—</div>
+                <div style="font-size:12px;color:#6f6a65">Link to pull stays</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:8px 20px;font-size:12px;color:#6f6a65">Totals exclude unlinked units.</div>
+        </div>
+        <div style="flex:none;border-top:1px solid rgba(255,255,255,0.08);background:#0c0c0c;display:grid;grid-template-columns:repeat(4,1fr);padding:10px 0 24px">
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Clients</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Properties</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:700;color:#c4a35a">Month</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F1b · desktop 1280×800</div>
+      <div style="width:1280px;height:800px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:14px;overflow:hidden;display:flex;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="width:222px;flex:none;background:#0c0c0c;border-right:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;padding:22px 16px;gap:26px">
+          <div style="font-size:13px;font-weight:700;letter-spacing:0.14em;color:#c4a35a;padding:0 8px">MRG ADMIN</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:600;color:#9a9590">Clients</div>
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:600;color:#9a9590">Properties</div>
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:700;color:#f5f5f5;background:#1c1c1c">Month close</div>
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:600;color:#9a9590">Settings</div>
+          </div>
+          <div style="margin-top:auto;font-size:12px;color:#6f6a65;line-height:1.6;padding:0 10px">Fleet sync<br><span style="color:#4ea882">Last run 9:12 AM</span></div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+          <div style="padding:22px 32px 18px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:20px">
+              <div style="display:flex;align-items:center;gap:16px">
+                <div style="font-size:24px;font-weight:700;letter-spacing:-0.02em">Month close</div>
+                <div style="display:flex;align-items:center;gap:12px;background:#141414;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:7px 12px">
+                  <span style="color:#6f6a65;font-weight:600">‹</span>
+                  <span style="font-size:14px;font-weight:600">July 2026</span>
+                  <span style="color:#6f6a65;font-weight:600">›</span>
+                </div>
+                <div style="font-size:12.5px;color:#6f6a65">4 units · 3 linked · 1 unlinked</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="font-size:13.5px;font-weight:600;color:#9a9590;padding:10px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:10px">Export CSV</div>
+                <div style="font-size:13.5px;font-weight:600;color:#f5f5f5;padding:10px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:10px">HST worklist</div>
+                <div style="font-size:13.5px;font-weight:700;color:#0a0a0a;background:#c4a35a;padding:10px 18px;border-radius:10px">Sync all</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:1px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden">
+              <div style="flex:1;background:#0f0f0f;padding:16px 20px;display:flex;flex-direction:column;gap:6px">
+                <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">Net to hosts</div>
+                <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">$11,420</div>
+              </div>
+              <div style="flex:1;background:#0f0f0f;padding:16px 20px;display:flex;flex-direction:column;gap:6px">
+                <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">MRG fees</div>
+                <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">$2,180</div>
+              </div>
+              <div style="flex:1;background:#0f0f0f;padding:16px 20px;display:flex;flex-direction:column;gap:6px">
+                <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">HST to invoice</div>
+                <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;color:#dcc084;letter-spacing:-0.02em">$1,170</div>
+              </div>
+              <div style="flex:1;background:#0f0f0f;padding:16px 20px;display:flex;flex-direction:column;gap:6px">
+                <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">Expenses</div>
+                <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">$186</div>
+              </div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 0.9fr;padding:12px 32px;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#6f6a65;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div>Property</div><div>Sync</div><div style="text-align:right">Net to host</div><div style="text-align:right">MRG fee</div><div style="text-align:right">HST to invoice</div><div style="text-align:right">Expenses</div>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 0.9fr;align-items:center;padding:16px 32px;border-bottom:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex;flex-direction:column;gap:3px"><div style="font-size:15px;font-weight:600">Maple Suite</div><div style="font-size:12.5px;color:#9a9590">Khamraj · invoice 13%</div></div>
+              <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span>9:12 AM</div>
+              <div style="text-align:right;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$4,180</div>
+              <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$820</div>
+              <div style="text-align:right;font-size:15px;font-weight:600;color:#dcc084;font-variant-numeric:tabular-nums">$520</div>
+              <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$86</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 0.9fr;align-items:center;padding:16px 32px;border-bottom:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex;flex-direction:column;gap:3px"><div style="font-size:15px;font-weight:600">Harbour Loft</div><div style="font-size:12.5px;color:#9a9590">Khamraj · invoice 13%</div></div>
+              <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#c99a4b"><span style="width:6px;height:6px;border-radius:50%;background:#c99a4b"></span>2 days ago</div>
+              <div style="text-align:right;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$3,940</div>
+              <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$760</div>
+              <div style="text-align:right;font-size:15px;font-weight:600;color:#dcc084;font-variant-numeric:tabular-nums">$650</div>
+              <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$100</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 0.9fr;align-items:center;padding:16px 32px;border-bottom:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex;flex-direction:column;gap:3px"><div style="font-size:15px;font-weight:600">King West</div><div style="font-size:12.5px;color:#9a9590">Danielle · cohost 3%</div></div>
+              <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span>9:12 AM</div>
+              <div style="text-align:right;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$3,300</div>
+              <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$600</div>
+              <div style="text-align:right;font-size:14px;color:#6f6a65">cohost</div>
+              <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$0</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 0.9fr;align-items:center;padding:16px 32px;border-bottom:1px solid rgba(255,255,255,0.08);opacity:0.62">
+              <div style="display:flex;flex-direction:column;gap:3px"><div style="font-size:15px;font-weight:600">Bayview Studio</div><div style="font-size:12.5px;color:#6f6a65">Danielle · no HST set</div></div>
+              <div style="font-size:12.5px;color:#6f6a65">Not linked</div>
+              <div style="text-align:right;font-size:15px;color:#6f6a65">—</div>
+              <div style="text-align:right;font-size:15px;color:#6f6a65">—</div>
+              <div style="text-align:right;font-size:15px;color:#6f6a65">—</div>
+              <div style="text-align:right;font-size:15px;color:#6f6a65">—</div>
+            </div>
+          </div>
+          <div style="margin-top:auto;padding:16px 32px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;font-size:12.5px;color:#6f6a65">
+            <div>Unlinked units are excluded from totals until linked.</div>
+            <div>July 2026 · CAD</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div style="display:flex;gap:36px;flex-wrap:wrap">
+    <div style="width:390px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F1 edge · zero-stay month</div>
+      <div style="border:1px solid rgba(255,255,255,0.08);border-radius:16px;background:#0c0c0c;padding:34px 24px;display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center">
+        <div style="width:34px;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,0.14)"></div>
+        <div style="font-size:16px;font-weight:600">No stays in July 2026</div>
+        <div style="font-size:13px;color:#9a9590;line-height:1.5">All 4 units are linked and synced — there is simply nothing to pay out. Expenses can still be added.</div>
+        <div style="margin-top:6px;font-size:13px;font-weight:600;color:#c4a35a">Check another month</div>
+      </div>
+    </div>
+    <div style="width:390px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F1 edge · no properties yet</div>
+      <div style="border:1px solid rgba(255,255,255,0.08);border-radius:16px;background:#0c0c0c;padding:34px 24px;display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center">
+        <div style="width:34px;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,0.14)"></div>
+        <div style="font-size:16px;font-weight:600">Nothing to close yet</div>
+        <div style="font-size:13px;color:#9a9590;line-height:1.5">Import or add a property, assign a client, then come back to close the month.</div>
+        <div style="margin-top:8px;background:#c4a35a;color:#0a0a0a;font-size:14px;font-weight:700;padding:11px 20px;border-radius:10px">Add property</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="f2" style="display:flex;flex-direction:column;gap:24px">
+  <div style="display:flex;align-items:baseline;gap:14px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:14px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;color:#0a0a0a;background:#c4a35a;padding:4px 8px;border-radius:4px">F2</div>
+    <div style="font-size:20px;font-weight:600">Feature 2 — QuickBooks HST invoice worklist</div>
+    <div style="font-size:13px;color:#6f6a65">Invoice-mode units only · grouped by client · copy chips</div>
+  </div>
+  <div style="display:flex;gap:56px;align-items:flex-start;flex-wrap:wrap">
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F2 · mobile worklist</div>
+      <div style="width:390px;height:844px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12px;color:#9a9590;font-weight:600;flex:none"><div>9:41</div><div style="letter-spacing:0.1em">LTE ▮</div></div>
+        <div style="padding:6px 20px 16px;display:flex;flex-direction:column;gap:14px;flex:none;border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:15px;color:#9a9590;font-weight:600">‹ Month</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="font-size:26px;font-weight:700;letter-spacing:-0.02em">HST to invoice</div>
+            <div style="font-size:12.5px;color:#6f6a65">Bill outside cohost · QuickBooks</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;background:#141414;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:10px 14px">
+            <div style="font-size:17px;color:#6f6a65;font-weight:600">‹</div>
+            <div style="font-size:15px;font-weight:600">July 2026</div>
+            <div style="font-size:17px;color:#6f6a65;font-weight:600">›</div>
+          </div>
+          <div style="display:flex;align-items:flex-end;justify-content:space-between">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#9a9590;font-weight:600">Grand total HST</div>
+              <div style="font-size:30px;font-weight:700;color:#dcc084;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">$1,170.00</div>
+            </div>
+            <div style="border:1px solid rgba(196,163,90,0.45);color:#dcc084;font-size:12.5px;font-weight:600;padding:8px 12px;border-radius:999px">Copy total</div>
+          </div>
+          <div style="font-size:12px;color:#6f6a65">2 units · 1 client · invoice mode only</div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 20px;background:#0f0f0f;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <div style="font-size:15.5px;font-weight:700">Khamraj</div>
+              <div style="font-size:12px;color:#9a9590">2 units · HST 13%</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-size:16px;font-weight:700;color:#dcc084;font-variant-numeric:tabular-nums">$1,170.00</div>
+              <div style="font-size:15px;color:#6f6a65">⌄</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px 14px 26px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15px;font-weight:600">Maple Suite</div>
+              <div style="font-size:12.5px;color:#9a9590;font-variant-numeric:tabular-nums">Nightly $4,000.00 · 13%</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$520.00</div>
+              <div style="border:1px solid rgba(255,255,255,0.14);color:#9a9590;font-size:11.5px;font-weight:600;padding:5px 9px;border-radius:999px">Copy</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px 14px 26px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15px;font-weight:600">Harbour Loft</div>
+              <div style="font-size:12.5px;color:#9a9590;font-variant-numeric:tabular-nums">Nightly $5,000.00 · 13%</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$650.00</div>
+              <div style="border:1px solid rgba(255,255,255,0.14);color:#9a9590;font-size:11.5px;font-weight:600;padding:5px 9px;border-radius:999px">Copy</div>
+            </div>
+          </div>
+          <div style="padding:13px 20px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;background:#0c0c0c">
+            <div style="font-size:12.5px;color:#9a9590">Client subtotal</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">$1,170.00</div>
+              <div style="border:1px solid rgba(196,163,90,0.45);color:#dcc084;font-size:11.5px;font-weight:600;padding:5px 9px;border-radius:999px">Copy summary</div>
+            </div>
+          </div>
+          <div style="padding:16px 20px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Not invoiced</div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:#6f6a65">
+              <div>Danielle · King West</div>
+              <div>cohost 3%</div>
+            </div>
+            <div style="font-size:12px;color:#6f6a65;line-height:1.5;margin-top:4px">Cohost HST is withheld inside the payout — nothing to bill in QuickBooks.</div>
+          </div>
+        </div>
+        <div style="flex:none;padding:12px 20px 26px;border-top:1px solid rgba(255,255,255,0.08);background:#0c0c0c">
+          <div style="background:#c4a35a;color:#0a0a0a;font-size:15px;font-weight:700;text-align:center;padding:13px 0;border-radius:11px">Copy client summary</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F2b · desktop worklist · F2c one client expanded</div>
+      <div style="width:1280px;height:800px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:14px;overflow:hidden;display:flex;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="width:222px;flex:none;background:#0c0c0c;border-right:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;padding:22px 16px;gap:26px">
+          <div style="font-size:13px;font-weight:700;letter-spacing:0.14em;color:#c4a35a;padding:0 8px">MRG ADMIN</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:600;color:#9a9590">Clients</div>
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:600;color:#9a9590">Properties</div>
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:700;color:#f5f5f5;background:#1c1c1c">Month close</div>
+            <div style="padding:6px 10px 6px 22px;font-size:13px;font-weight:600;color:#c4a35a">HST worklist</div>
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:600;color:#9a9590">Settings</div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+          <div style="padding:22px 32px 18px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:flex-end;justify-content:space-between;gap:24px">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:16px">
+                <div style="font-size:24px;font-weight:700;letter-spacing:-0.02em">HST to invoice</div>
+                <div style="display:flex;align-items:center;gap:12px;background:#141414;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:7px 12px">
+                  <span style="color:#6f6a65;font-weight:600">‹</span><span style="font-size:14px;font-weight:600">July 2026</span><span style="color:#6f6a65;font-weight:600">›</span>
+                </div>
+              </div>
+              <div style="font-size:12.5px;color:#6f6a65">Invoice-mode units only · bill outside cohost · QuickBooks</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:22px">
+              <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+                <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">Grand total HST</div>
+                <div style="font-size:30px;font-weight:700;color:#dcc084;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">$1,170.00</div>
+              </div>
+              <div style="font-size:13.5px;font-weight:700;color:#0a0a0a;background:#c4a35a;padding:11px 18px;border-radius:10px">Copy month summary</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.6fr 1fr 0.7fr 1fr 0.9fr;padding:12px 32px;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#6f6a65;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div>Property</div><div style="text-align:right">Total nightly</div><div style="text-align:right">Rate</div><div style="text-align:right">HST to invoice</div><div></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 32px;background:#0f0f0f;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="font-size:12px;color:#6f6a65">⌄</div>
+              <div style="font-size:16px;font-weight:700">Khamraj</div>
+              <div style="font-size:12.5px;color:#9a9590">2 units · HST 13% · invoice</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px">
+              <div style="font-size:16px;font-weight:700;color:#dcc084;font-variant-numeric:tabular-nums">$1,170.00</div>
+              <div style="border:1px solid rgba(196,163,90,0.45);color:#dcc084;font-size:12px;font-weight:600;padding:6px 11px;border-radius:999px">Copy client summary</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.6fr 1fr 0.7fr 1fr 0.9fr;align-items:center;padding:15px 32px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:3px;padding-left:24px"><div style="font-size:15px;font-weight:600">Maple Suite</div><div style="font-size:12.5px;color:#9a9590">12 stays</div></div>
+            <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$4,000.00</div>
+            <div style="text-align:right;font-size:14px;color:#9a9590">13%</div>
+            <div style="text-align:right;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$520.00</div>
+            <div style="display:flex;justify-content:flex-end;gap:8px"><div style="border:1px solid rgba(255,255,255,0.14);color:#9a9590;font-size:12px;font-weight:600;padding:6px 11px;border-radius:999px">Copy</div><div style="font-size:12px;font-weight:600;color:#6f6a65;padding:6px 4px">Open</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.6fr 1fr 0.7fr 1fr 0.9fr;align-items:center;padding:15px 32px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:3px;padding-left:24px"><div style="font-size:15px;font-weight:600">Harbour Loft</div><div style="font-size:12.5px;color:#c99a4b">15 stays · synced 2 days ago</div></div>
+            <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$5,000.00</div>
+            <div style="text-align:right;font-size:14px;color:#9a9590">13%</div>
+            <div style="text-align:right;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$650.00</div>
+            <div style="display:flex;justify-content:flex-end;gap:8px"><div style="border:1px solid rgba(255,255,255,0.14);color:#9a9590;font-size:12px;font-weight:600;padding:6px 11px;border-radius:999px">Copy</div><div style="font-size:12px;font-weight:600;color:#6f6a65;padding:6px 4px">Open</div></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid rgba(255,255,255,0.08);opacity:0.6">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="font-size:12px;color:#6f6a65">›</div>
+              <div style="font-size:16px;font-weight:700">Danielle</div>
+              <div style="font-size:12.5px;color:#6f6a65">1 unit · cohost 3% · withheld in payout</div>
+            </div>
+            <div style="font-size:14px;color:#6f6a65">Nothing to invoice</div>
+          </div>
+          <div style="margin-top:auto;padding:16px 32px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;font-size:12.5px;color:#6f6a65">
+            <div>Stay ledgers live on the property earnings screen — open a unit to audit.</div>
+            <div>July 2026 · CAD</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section id="f3" style="display:flex;flex-direction:column;gap:24px">
+  <div style="display:flex;align-items:baseline;gap:14px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:14px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;color:#0a0a0a;background:#c4a35a;padding:4px 8px;border-radius:4px">F3</div>
+    <div style="font-size:20px;font-weight:600">Feature 3 — Fleet sync + stale flags</div>
+    <div style="font-size:13px;color:#6f6a65">Status lives in the F1 rows · filter chips · busy state · result banner</div>
+  </div>
+  <div style="display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap">
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F3 · mixed sync states + filters</div>
+      <div style="width:390px;height:844px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12px;color:#9a9590;font-weight:600;flex:none"><div>9:41</div><div style="letter-spacing:0.1em">LTE ▮</div></div>
+        <div style="padding:6px 20px 14px;display:flex;flex-direction:column;gap:14px;flex:none">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:26px;font-weight:700;letter-spacing:-0.02em">Month close</div>
+            <div style="font-size:13px;font-weight:600;color:#9a9590">Export</div>
+          </div>
+          <div style="border:1px solid rgba(201,154,75,0.35);background:rgba(201,154,75,0.08);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <div style="font-size:13.5px;font-weight:600;color:#dcc084">2 units need a sync</div>
+              <div style="font-size:12px;color:#9a9590">1 stale · 1 with no financials</div>
+            </div>
+            <div style="background:#c4a35a;color:#0a0a0a;font-size:13px;font-weight:700;padding:9px 14px;border-radius:9px;flex:none">Sync all</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div style="font-size:12.5px;font-weight:600;color:#0a0a0a;background:#f5f5f5;padding:7px 13px;border-radius:999px">All 4</div>
+            <div style="font-size:12.5px;font-weight:600;color:#dcc084;border:1px solid rgba(255,255,255,0.12);padding:7px 13px;border-radius:999px">Stale 2</div>
+            <div style="font-size:12.5px;font-weight:600;color:#9a9590;border:1px solid rgba(255,255,255,0.12);padding:7px 13px;border-radius:999px">Unlinked 1</div>
+            <div style="font-size:12.5px;font-weight:600;color:#9a9590;border:1px solid rgba(255,255,255,0.12);padding:7px 13px;border-radius:999px">Ready 2</div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Maple Suite</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span>Updated 9:12 AM</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+              <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$4,180</div>
+              <div style="font-size:12px;color:#6f6a65">Ready</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(201,154,75,0.05)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Harbour Loft</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#c99a4b"><span style="width:6px;height:6px;border-radius:50%;background:#c99a4b"></span>Synced 2 days ago</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+              <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$3,940</div>
+              <div style="font-size:12px;font-weight:600;color:#dcc084">Sync</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">King West</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span>Updated 9:12 AM</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+              <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$3,300</div>
+              <div style="font-size:12px;color:#6f6a65">Ready</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Queen Annex</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#c99a4b"><span style="width:6px;height:6px;border-radius:50%;background:#c99a4b"></span>$0 financials · needs sync</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+              <div style="font-size:16px;font-weight:600;color:#6f6a65;font-variant-numeric:tabular-nums">$0</div>
+              <div style="font-size:12px;font-weight:600;color:#dcc084">Sync</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08);opacity:0.62">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Bayview Studio</div>
+              <div style="font-size:12.5px;color:#6f6a65">Not linked to Hospitable</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+              <div style="font-size:16px;color:#6f6a65">—</div>
+              <div style="font-size:12px;font-weight:600;color:#9a9590">Link</div>
+            </div>
+          </div>
+        </div>
+        <div style="flex:none;border-top:1px solid rgba(255,255,255,0.08);background:#0c0c0c;display:grid;grid-template-columns:repeat(4,1fr);padding:10px 0 24px">
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Clients</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Properties</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:700;color:#c4a35a">Month</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F3b · syncing</div>
+      <div style="width:390px;height:844px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12px;color:#9a9590;font-weight:600;flex:none"><div>9:41</div><div style="letter-spacing:0.1em">LTE ▮</div></div>
+        <div style="padding:6px 20px 14px;display:flex;flex-direction:column;gap:14px;flex:none">
+          <div style="font-size:26px;font-weight:700;letter-spacing:-0.02em">Month close</div>
+          <div style="border:1px solid rgba(255,255,255,0.10);background:#141414;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div style="font-size:13.5px;font-weight:600">Syncing 4 units…</div>
+              <div style="font-size:12.5px;color:#9a9590;font-variant-numeric:tabular-nums">2 of 4</div>
+            </div>
+            <div style="height:3px;border-radius:2px;background:rgba(255,255,255,0.10);overflow:hidden">
+              <div style="width:50%;height:100%;background:#c4a35a"></div>
+            </div>
+            <div style="font-size:12px;color:#6f6a65">Pulling stays from Hospitable · keep this screen open</div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1;background:#1c1c1c;color:#9a9590;font-size:15px;font-weight:700;text-align:center;padding:13px 0;border-radius:11px">Syncing…</div>
+            <div style="width:52px;border:1px solid rgba(255,255,255,0.12);border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#6f6a65;font-weight:600">HST</div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Maple Suite</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#4ea882"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span>Updated just now</div>
+            </div>
+            <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$4,180</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Harbour Loft</div>
+              <div style="font-size:12.5px;color:#9a9590">Syncing…</div>
+            </div>
+            <div style="font-size:15px;color:#6f6a65;font-variant-numeric:tabular-nums">$3,940</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">King West</div>
+              <div style="font-size:12.5px;color:#6f6a65">Queued</div>
+            </div>
+            <div style="font-size:15px;color:#6f6a65;font-variant-numeric:tabular-nums">$3,300</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(207,127,123,0.06)">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="font-size:15.5px;font-weight:600">Queen Annex</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#cf7f7b"><span style="width:6px;height:6px;border-radius:50%;background:#cf7f7b"></span>Sync failed · Hospitable timed out</div>
+            </div>
+            <div style="display:flex;align-items:center"><div style="border:1px solid rgba(207,127,123,0.5);color:#cf7f7b;font-size:12px;font-weight:600;padding:6px 11px;border-radius:999px">Retry</div></div>
+          </div>
+          <div style="padding:16px 20px;font-size:12px;color:#6f6a65;line-height:1.5">A failed unit keeps its last known figures and stays flagged — the rest of the month stays usable.</div>
+        </div>
+        <div style="flex:none;border-top:1px solid rgba(255,255,255,0.08);background:#0c0c0c;display:grid;grid-template-columns:repeat(4,1fr);padding:10px 0 24px">
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Clients</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Properties</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:700;color:#c4a35a">Month</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="width:390px;display:flex;flex-direction:column;gap:22px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F3c · success toast</div>
+        <div style="background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 18px 40px rgba(0,0,0,0.55)">
+          <span style="width:8px;height:8px;border-radius:50%;background:#4ea882;flex:none"></span>
+          <div style="font-size:14px;font-weight:600;flex:1">12 units synced · 9:41 AM</div>
+          <div style="font-size:13px;font-weight:600;color:#c4a35a">Undo</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F3c · partial result banner</div>
+        <div style="background:#141414;border:1px solid rgba(207,127,123,0.35);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div style="font-size:14px;font-weight:600">11 synced · 1 failed</div>
+            <div style="font-size:13px;font-weight:600;color:#cf7f7b">Retry 1</div>
+          </div>
+          <div style="font-size:12.5px;color:#9a9590">Queen Annex kept its 6 Jul figures. Payouts for the other units are safe to send.</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">Row status vocabulary</div>
+        <div style="border:1px solid rgba(255,255,255,0.08);border-radius:14px;background:#0c0c0c;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span><div style="font-size:13px;font-weight:600;flex:1">Fresh</div><div style="font-size:12.5px;color:#9a9590">Updated 9:12 AM</div></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="width:6px;height:6px;border-radius:50%;background:#c99a4b"></span><div style="font-size:13px;font-weight:600;flex:1">Stale</div><div style="font-size:12.5px;color:#c99a4b">2 days ago</div></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="width:6px;height:6px;border-radius:50%;background:#c99a4b"></span><div style="font-size:13px;font-weight:600;flex:1">Empty</div><div style="font-size:12.5px;color:#c99a4b">Needs sync</div></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.08)"><span style="width:6px;height:6px;border-radius:50%;background:#cf7f7b"></span><div style="font-size:13px;font-weight:600;flex:1">Failed</div><div style="font-size:12.5px;color:#cf7f7b">Retry</div></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px"><span style="width:6px;height:6px;border-radius:50%;background:#6f6a65"></span><div style="font-size:13px;font-weight:600;flex:1;color:#9a9590">Not linked</div><div style="font-size:12.5px;color:#6f6a65">Link</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section id="f4" style="display:flex;flex-direction:column;gap:24px">
+  <div style="display:flex;align-items:baseline;gap:14px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:14px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;color:#0a0a0a;background:#c4a35a;padding:4px 8px;border-radius:4px">F4</div>
+    <div style="font-size:20px;font-weight:600">Feature 4 — Client-scoped month</div>
+    <div style="font-size:13px;color:#6f6a65">Entered from client detail · same row language as F1</div>
+  </div>
+  <div style="display:flex;gap:56px;align-items:flex-start;flex-wrap:wrap">
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F4 · client month mobile</div>
+      <div style="width:390px;height:844px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12px;color:#9a9590;font-weight:600;flex:none"><div>9:41</div><div style="letter-spacing:0.1em">LTE ▮</div></div>
+        <div style="padding:6px 20px 16px;display:flex;flex-direction:column;gap:14px;flex:none;border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="font-size:15px;color:#9a9590;font-weight:600">‹ Khamraj</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="font-size:26px;font-weight:700;letter-spacing:-0.02em">July earnings</div>
+            <div style="font-size:12.5px;color:#6f6a65">Khamraj · 2 units · HST invoiced at 13%</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;background:#141414;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:10px 14px">
+            <div style="font-size:17px;color:#6f6a65;font-weight:600">‹</div>
+            <div style="font-size:15px;font-weight:600">July 2026</div>
+            <div style="font-size:17px;color:#6f6a65;font-weight:600">›</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:1px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden">
+            <div style="background:#0f0f0f;padding:14px;display:flex;justify-content:space-between;align-items:center">
+              <div style="font-size:13px;color:#9a9590;font-weight:600">Net to host</div>
+              <div style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums">$8,120</div>
+            </div>
+            <div style="background:#0f0f0f;padding:12px 14px;display:flex;justify-content:space-between;align-items:center">
+              <div style="font-size:13px;color:#9a9590">MRG fees</div>
+              <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$1,580</div>
+            </div>
+            <div style="background:#0f0f0f;padding:12px 14px;display:flex;justify-content:space-between;align-items:center">
+              <div style="font-size:13px;color:#9a9590">HST to invoice</div>
+              <div style="font-size:15px;font-weight:700;color:#dcc084;font-variant-numeric:tabular-nums">$1,170</div>
+            </div>
+            <div style="background:#0f0f0f;padding:12px 14px;display:flex;justify-content:space-between;align-items:center">
+              <div style="font-size:13px;color:#9a9590">Expenses</div>
+              <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$186</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1;background:#c4a35a;color:#0a0a0a;font-size:14.5px;font-weight:700;text-align:center;padding:12px 0;border-radius:11px">HST for Khamraj</div>
+            <div style="flex:none;border:1px solid rgba(255,255,255,0.12);color:#f5f5f5;font-size:14.5px;font-weight:600;padding:12px 16px;border-radius:11px">Copy</div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column">
+          <div style="padding:9px 20px;font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600;background:#0c0c0c;border-bottom:1px solid rgba(255,255,255,0.08)">His units</div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Maple Suite</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span>Updated 9:12 AM</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+              <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$4,180</div>
+              <div style="font-size:12px;color:#6f6a65;font-variant-numeric:tabular-nums">fee $820 · HST $520</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Harbour Loft</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#c99a4b"><span style="width:6px;height:6px;border-radius:50%;background:#c99a4b"></span>2 days ago</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+              <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums">$3,940</div>
+              <div style="font-size:12px;color:#6f6a65;font-variant-numeric:tabular-nums">fee $760 · HST $650</div>
+            </div>
+          </div>
+          <div style="padding:16px 20px;font-size:12px;color:#6f6a65;line-height:1.5">Tap a unit for its earnings waterfall and expenses.</div>
+        </div>
+        <div style="flex:none;border-top:1px solid rgba(255,255,255,0.08);background:#0c0c0c;display:grid;grid-template-columns:repeat(4,1fr);padding:10px 0 24px">
+          <div style="text-align:center;font-size:11.5px;font-weight:700;color:#c4a35a">Clients</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Properties</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Month</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F4b · desktop client context</div>
+      <div style="width:1280px;height:800px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:14px;overflow:hidden;display:flex;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="width:222px;flex:none;background:#0c0c0c;border-right:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;padding:22px 16px;gap:26px">
+          <div style="font-size:13px;font-weight:700;letter-spacing:0.14em;color:#c4a35a;padding:0 8px">MRG ADMIN</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:700;color:#f5f5f5;background:#1c1c1c">Clients</div>
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:600;color:#9a9590">Properties</div>
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:600;color:#9a9590">Month close</div>
+            <div style="padding:9px 10px;border-radius:8px;font-size:14px;font-weight:600;color:#9a9590">Settings</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;border-top:1px solid rgba(255,255,255,0.08);padding-top:16px">
+            <div style="padding:8px 10px;font-size:13.5px;font-weight:700;color:#c4a35a">Khamraj</div>
+            <div style="padding:8px 10px;font-size:13.5px;font-weight:600;color:#9a9590">Danielle</div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+          <div style="padding:22px 32px 20px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:20px">
+              <div style="display:flex;align-items:center;gap:16px">
+                <div style="font-size:24px;font-weight:700;letter-spacing:-0.02em">Khamraj</div>
+                <div style="font-size:12.5px;color:#9a9590;border:1px solid rgba(255,255,255,0.12);padding:4px 10px;border-radius:999px">HST invoice · 13%</div>
+                <div style="display:flex;align-items:center;gap:12px;background:#141414;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:7px 12px">
+                  <span style="color:#6f6a65;font-weight:600">‹</span><span style="font-size:14px;font-weight:600">July 2026</span><span style="color:#6f6a65;font-weight:600">›</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:10px">
+                <div style="font-size:13.5px;font-weight:600;color:#f5f5f5;padding:10px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:10px">Client details</div>
+                <div style="font-size:13.5px;font-weight:700;color:#0a0a0a;background:#c4a35a;padding:10px 18px;border-radius:10px">HST worklist for Khamraj</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:1px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden">
+              <div style="flex:1;background:#0f0f0f;padding:16px 20px;display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">Net to host</div><div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">$8,120</div></div>
+              <div style="flex:1;background:#0f0f0f;padding:16px 20px;display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">MRG fees</div><div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">$1,580</div></div>
+              <div style="flex:1;background:#0f0f0f;padding:16px 20px;display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">HST to invoice</div><div style="font-size:28px;font-weight:700;color:#dcc084;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">$1,170</div></div>
+              <div style="flex:1;background:#0f0f0f;padding:16px 20px;display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#9a9590;font-weight:600">Expenses</div><div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">$186</div></div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 0.9fr;padding:12px 32px;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#6f6a65;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div>Unit</div><div>Sync</div><div style="text-align:right">Net to host</div><div style="text-align:right">MRG fee</div><div style="text-align:right">HST</div><div style="text-align:right">Expenses</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 0.9fr;align-items:center;padding:16px 32px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="font-size:15px;font-weight:600">Maple Suite</div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span>9:12 AM</div>
+            <div style="text-align:right;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$4,180</div>
+            <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$820</div>
+            <div style="text-align:right;font-size:15px;font-weight:600;color:#dcc084;font-variant-numeric:tabular-nums">$520</div>
+            <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$86</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 0.9fr;align-items:center;padding:16px 32px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="font-size:15px;font-weight:600">Harbour Loft</div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#c99a4b"><span style="width:6px;height:6px;border-radius:50%;background:#c99a4b"></span>2 days ago</div>
+            <div style="text-align:right;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$3,940</div>
+            <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$760</div>
+            <div style="text-align:right;font-size:15px;font-weight:600;color:#dcc084;font-variant-numeric:tabular-nums">$650</div>
+            <div style="text-align:right;font-size:15px;color:#9a9590;font-variant-numeric:tabular-nums">$100</div>
+          </div>
+          <div style="margin-top:auto;padding:16px 32px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;font-size:12.5px;color:#6f6a65">
+            <div>Same row language as Month close — this view is just scoped to one client.</div>
+            <div>July 2026 · CAD</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section id="f5" style="display:flex;flex-direction:column;gap:24px">
+  <div style="display:flex;align-items:baseline;gap:14px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:14px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;color:#0a0a0a;background:#c4a35a;padding:4px 8px;border-radius:4px">F5</div>
+    <div style="font-size:20px;font-weight:600">Feature 5 — Richer expenses on property earnings</div>
+    <div style="font-size:13px;color:#6f6a65">Category · note · date · receipt attach — extends the v2 expense rows</div>
+  </div>
+  <div style="display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap">
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F5 · earnings + rich expense rows</div>
+      <div style="width:390px;height:844px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12px;color:#9a9590;font-weight:600;flex:none"><div>9:41</div><div style="letter-spacing:0.1em">LTE ▮</div></div>
+        <div style="padding:6px 20px 14px;display:flex;flex-direction:column;gap:12px;flex:none">
+          <div style="font-size:15px;color:#9a9590;font-weight:600">‹ Maple Suite</div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:24px;font-weight:700;letter-spacing:-0.02em">July earnings</div>
+            <div style="font-size:12.5px;color:#9a9590">Khamraj</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:1px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden">
+            <div style="background:#0f0f0f;padding:11px 14px;display:flex;justify-content:space-between"><div style="font-size:13px;color:#9a9590">Gross nightly</div><div style="font-size:14px;font-weight:600;font-variant-numeric:tabular-nums">$4,000.00</div></div>
+            <div style="background:#0f0f0f;padding:11px 14px;display:flex;justify-content:space-between"><div style="font-size:13px;color:#9a9590">MRG fee (20%)</div><div style="font-size:14px;color:#cf7f7b;font-variant-numeric:tabular-nums">−$820.00</div></div>
+            <div style="background:#0f0f0f;padding:11px 14px;display:flex;justify-content:space-between"><div style="font-size:13px;color:#9a9590">Expenses</div><div style="font-size:14px;color:#cf7f7b;font-variant-numeric:tabular-nums">−$86.00</div></div>
+            <div style="background:#141414;padding:13px 14px;display:flex;justify-content:space-between;align-items:center"><div style="font-size:13px;font-weight:600">Net to host</div><div style="font-size:19px;font-weight:700;font-variant-numeric:tabular-nums">$4,180.00</div></div>
+            <div style="background:#0f0f0f;padding:11px 14px;display:flex;justify-content:space-between"><div style="font-size:13px;color:#9a9590">HST 13% · invoice</div><div style="font-size:14px;font-weight:600;color:#dcc084;font-variant-numeric:tabular-nums">$520.00</div></div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:#0c0c0c;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Expenses · July</div>
+            <div style="font-size:13px;font-weight:700;color:#c4a35a">Add</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:13px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="font-size:14.5px;font-weight:600">Paper towels, soap</div>
+                <div style="font-size:11.5px;color:#9a9590">⌇</div>
+              </div>
+              <div style="font-size:12px;color:#9a9590">Supplies · 6 Jul</div>
+            </div>
+            <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;flex:none">$42.00</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:13px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+              <div style="font-size:14.5px;font-weight:600">Tap washer replaced</div>
+              <div style="font-size:12px;color:#9a9590">Maintenance · 14 Jul</div>
+            </div>
+            <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;flex:none">$28.00</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:13px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="font-size:14.5px;font-weight:600">Deep clean top-up</div>
+                <div style="font-size:11.5px;color:#9a9590">⌇</div>
+              </div>
+              <div style="font-size:12px;color:#9a9590">Cleaning · 28 Jul</div>
+            </div>
+            <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;flex:none">$16.00</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:13px 20px;background:#0c0c0c;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="font-size:12.5px;color:#9a9590">3 expenses</div>
+            <div style="font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">$86.00</div>
+          </div>
+          <div style="padding:16px 20px;font-size:12px;color:#6f6a65;line-height:1.5">Swipe a row to delete. Receipts stay attached to the expense for the host statement.</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F5b · add expense sheet</div>
+      <div style="width:390px;height:844px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="position:absolute"></div>
+        <div style="flex:1;background:#0a0a0a;opacity:0.45;display:flex;flex-direction:column;padding:52px 20px 0;gap:12px">
+          <div style="font-size:24px;font-weight:700">July earnings</div>
+          <div style="height:1px;background:rgba(255,255,255,0.08)"></div>
+          <div style="font-size:13px;color:#6f6a65">Maple Suite · Khamraj</div>
+        </div>
+        <div style="background:#141414;border-top:1px solid rgba(255,255,255,0.10);border-radius:22px 22px 0 0;padding:16px 20px 26px;display:flex;flex-direction:column;gap:16px;box-shadow:0 -24px 60px rgba(0,0,0,0.7)">
+          <div style="width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,0.18);align-self:center"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:14px;font-weight:600;color:#9a9590">Cancel</div>
+            <div style="font-size:16px;font-weight:700">Add expense</div>
+            <div style="font-size:14px;font-weight:700;color:#c4a35a">Save</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Amount</div>
+            <div style="background:#0c0c0c;border:1px solid rgba(255,255,255,0.10);border-radius:11px;padding:14px;display:flex;align-items:baseline;gap:8px">
+              <div style="font-size:15px;color:#6f6a65">CAD</div>
+              <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums">42.00</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:12px">
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Date</div>
+              <div style="background:#0c0c0c;border:1px solid rgba(255,255,255,0.10);border-radius:11px;padding:13px 14px;font-size:14.5px;font-weight:600">6 Jul 2026</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Category</div>
+              <div style="background:#0c0c0c;border:1px solid rgba(255,255,255,0.10);border-radius:11px;padding:13px 14px;font-size:14.5px;font-weight:600;display:flex;justify-content:space-between">Supplies<span style="color:#6f6a65">⌄</span></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div style="font-size:12.5px;font-weight:600;color:#0a0a0a;background:#dcc084;padding:7px 13px;border-radius:999px">Supplies</div>
+            <div style="font-size:12.5px;font-weight:600;color:#9a9590;border:1px solid rgba(255,255,255,0.12);padding:7px 13px;border-radius:999px">Maintenance</div>
+            <div style="font-size:12.5px;font-weight:600;color:#9a9590;border:1px solid rgba(255,255,255,0.12);padding:7px 13px;border-radius:999px">Cleaning</div>
+            <div style="font-size:12.5px;font-weight:600;color:#9a9590;border:1px solid rgba(255,255,255,0.12);padding:7px 13px;border-radius:999px">Other</div>
+            <div style="font-size:12.5px;font-weight:600;color:#c4a35a;border:1px dashed rgba(196,163,90,0.5);padding:7px 13px;border-radius:999px">+ New</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Note · optional</div>
+            <div style="background:#0c0c0c;border:1px solid rgba(255,255,255,0.10);border-radius:11px;padding:13px 14px;font-size:14.5px">Paper towels, soap</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Receipt · optional</div>
+            <div style="border:1px dashed rgba(255,255,255,0.14);border-radius:11px;padding:16px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:13.5px;color:#9a9590;font-weight:600">Attach PDF or photo</div>
+          </div>
+          <div style="background:#c4a35a;color:#0a0a0a;font-size:15px;font-weight:700;text-align:center;padding:14px 0;border-radius:11px">Save expense</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="width:390px;display:flex;flex-direction:column;gap:22px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F5c · receipt attached</div>
+        <div style="background:#141414;border:1px solid rgba(255,255,255,0.10);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px">
+          <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Receipt</div>
+          <div style="display:flex;align-items:center;gap:12px;border:1px solid rgba(255,255,255,0.10);border-radius:11px;padding:10px;background:#0c0c0c">
+            <div style="width:44px;height:56px;border-radius:6px;background:repeating-linear-gradient(135deg,#1c1c1c,#1c1c1c 5px,#141414 5px,#141414 10px);border:1px solid rgba(255,255,255,0.10);flex:none"></div>
+            <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:0">
+              <div style="font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">costco-jul06.pdf</div>
+              <div style="font-size:12px;color:#6f6a65">248 KB · attached 9:38 AM</div>
+            </div>
+            <div style="font-size:12.5px;font-weight:600;color:#cf7f7b">Remove</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:3px"><div style="font-size:14.5px;font-weight:600">Paper towels, soap ⌇</div><div style="font-size:12px;color:#9a9590">Supplies · 6 Jul</div></div>
+            <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$42.00</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F5 · empty state</div>
+        <div style="border:1px solid rgba(255,255,255,0.08);border-radius:16px;background:#0c0c0c;padding:30px 24px;display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center">
+          <div style="font-size:15.5px;font-weight:600">No expenses this month</div>
+          <div style="font-size:13px;color:#9a9590;line-height:1.5">Owner charges you add here reduce net to host and show on their statement.</div>
+          <div style="margin-top:6px;background:#c4a35a;color:#0a0a0a;font-size:14px;font-weight:700;padding:11px 20px;border-radius:10px">Add expense</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F5 · delete confirm</div>
+        <div style="border:1px solid rgba(255,255,255,0.10);border-radius:16px;background:#141414;padding:18px;display:flex;flex-direction:column;gap:12px">
+          <div style="font-size:15px;font-weight:600">Delete $42.00 supplies expense?</div>
+          <div style="font-size:13px;color:#9a9590">Net to host goes back to $4,222.00. The receipt is deleted too.</div>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 0;text-align:center;font-size:14px;font-weight:600;color:#9a9590">Keep</div>
+            <div style="flex:1;border:1px solid rgba(207,127,123,0.5);color:#cf7f7b;border-radius:10px;padding:11px 0;text-align:center;font-size:14px;font-weight:700">Delete</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section id="f6" style="display:flex;flex-direction:column;gap:24px">
+  <div style="display:flex;align-items:baseline;gap:14px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:14px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;color:#0a0a0a;background:#c4a35a;padding:4px 8px;border-radius:4px">F6</div>
+    <div style="font-size:20px;font-weight:600">Feature 6 — Property hygiene</div>
+    <div style="font-size:13px;color:#6f6a65">Client scope on the list · edit sheet · quiet deactivate confirm</div>
+  </div>
+  <div style="display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap">
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F6 · properties filtered by client</div>
+      <div style="width:390px;height:844px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12px;color:#9a9590;font-weight:600;flex:none"><div>9:41</div><div style="letter-spacing:0.1em">LTE ▮</div></div>
+        <div style="padding:6px 20px 14px;display:flex;flex-direction:column;gap:13px;flex:none">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:26px;font-weight:700;letter-spacing:-0.02em">Properties</div>
+            <div style="font-size:13px;font-weight:700;color:#c4a35a">Import</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div style="font-size:12.5px;font-weight:600;color:#9a9590;border:1px solid rgba(255,255,255,0.12);padding:7px 13px;border-radius:999px">All clients</div>
+            <div style="font-size:12.5px;font-weight:700;color:#0a0a0a;background:#f5f5f5;padding:7px 13px;border-radius:999px">Khamraj 2</div>
+            <div style="font-size:12.5px;font-weight:600;color:#9a9590;border:1px solid rgba(255,255,255,0.12);padding:7px 13px;border-radius:999px">Danielle 2</div>
+          </div>
+          <div style="font-size:12px;color:#6f6a65">2 active · 1 paused · HST invoice 13%</div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Maple Suite</div>
+              <div style="font-size:12.5px;color:#9a9590">14 Maple Ave · Khamraj · 20% · HST invoice</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none">
+              <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span>Linked</div>
+              <div style="font-size:12px;color:#6f6a65">Active</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Harbour Loft</div>
+              <div style="font-size:12.5px;color:#9a9590">8 Harbour St · Khamraj · 20% · HST invoice</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none">
+              <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span>Linked</div>
+              <div style="font-size:12px;color:#6f6a65">Active</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08);opacity:0.62">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:15.5px;font-weight:600">Bayview Studio</div>
+              <div style="font-size:12.5px;color:#6f6a65">31 Bayview Rd · Danielle · rate not set</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none">
+              <div style="font-size:12px;color:#c99a4b">Not linked</div>
+              <div style="font-size:12px;color:#6f6a65">Paused</div>
+            </div>
+          </div>
+          <div style="padding:16px 20px;font-size:12px;color:#6f6a65;line-height:1.5">Paused units stay out of Month close but keep their earnings history.</div>
+        </div>
+        <div style="flex:none;border-top:1px solid rgba(255,255,255,0.08);background:#0c0c0c;display:grid;grid-template-columns:repeat(4,1fr);padding:10px 0 24px">
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Clients</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:700;color:#c4a35a">Properties</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Month</div>
+          <div style="text-align:center;font-size:11.5px;font-weight:600;color:#6f6a65">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F6b · edit property sheet</div>
+      <div style="width:390px;height:844px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.10);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
+        <div style="flex:1;opacity:0.4;padding:52px 20px 0;display:flex;flex-direction:column;gap:12px">
+          <div style="font-size:26px;font-weight:700">Properties</div>
+          <div style="height:1px;background:rgba(255,255,255,0.08)"></div>
+          <div style="font-size:13px;color:#6f6a65">Khamraj · 2 units</div>
+        </div>
+        <div style="background:#141414;border-top:1px solid rgba(255,255,255,0.10);border-radius:22px 22px 0 0;padding:16px 20px 26px;display:flex;flex-direction:column;gap:16px;box-shadow:0 -24px 60px rgba(0,0,0,0.7)">
+          <div style="width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,0.18);align-self:center"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:14px;font-weight:600;color:#9a9590">Cancel</div>
+            <div style="font-size:16px;font-weight:700">Edit property</div>
+            <div style="font-size:14px;font-weight:700;color:#c4a35a">Save</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Name</div>
+            <div style="background:#0c0c0c;border:1px solid rgba(255,255,255,0.10);border-radius:11px;padding:13px 14px;font-size:15px;font-weight:600">Maple Suite</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Address</div>
+            <div style="background:#0c0c0c;border:1px solid rgba(255,255,255,0.10);border-radius:11px;padding:13px 14px;font-size:15px">14 Maple Ave, Toronto</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#6f6a65;font-weight:600">Client</div>
+            <div style="background:#0c0c0c;border:1px solid rgba(255,255,255,0.10);border-radius:11px;padding:13px 14px;font-size:15px;font-weight:600;display:flex;justify-content:space-between">Khamraj<span style="color:#6f6a65">⌄</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:1px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.10);border-radius:11px;overflow:hidden">
+            <div style="background:#0c0c0c;padding:13px 14px;display:flex;justify-content:space-between;align-items:center">
+              <div style="display:flex;flex-direction:column;gap:3px"><div style="font-size:14.5px;font-weight:600">Active</div><div style="font-size:12px;color:#6f6a65">Included in Month close</div></div>
+              <div style="width:44px;height:26px;border-radius:13px;background:#c4a35a;display:flex;align-items:center;justify-content:flex-end;padding:0 3px"><div style="width:20px;height:20px;border-radius:50%;background:#0a0a0a"></div></div>
+            </div>
+            <div style="background:#0c0c0c;padding:13px 14px;display:flex;justify-content:space-between;align-items:center">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="font-size:14.5px;font-weight:600">Hospitable link</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#9a9590"><span style="width:6px;height:6px;border-radius:50%;background:#4ea882"></span>Linked · Maple Suite (id 4412)</div>
+              </div>
+              <div style="font-size:13px;font-weight:600;color:#c4a35a">Change</div>
+            </div>
+            <div style="background:#0c0c0c;padding:13px 14px;display:flex;justify-content:space-between;align-items:center">
+              <div style="display:flex;flex-direction:column;gap:3px"><div style="font-size:14.5px;font-weight:600">HST</div><div style="font-size:12px;color:#6f6a65">Invoice · 13%</div></div>
+              <div style="font-size:13px;font-weight:600;color:#9a9590">Change</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1;border:1px solid rgba(255,255,255,0.12);border-radius:11px;padding:13px 0;text-align:center;font-size:14.5px;font-weight:600;color:#9a9590">Cancel</div>
+            <div style="flex:1;background:#c4a35a;color:#0a0a0a;border-radius:11px;padding:13px 0;text-align:center;font-size:14.5px;font-weight:700">Save</div>
+          </div>
+          <div style="text-align:center;font-size:13.5px;font-weight:600;color:#cf7f7b">Deactivate property</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="width:390px;display:flex;flex-direction:column;gap:22px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F6c · deactivate confirm</div>
+        <div style="border:1px solid rgba(255,255,255,0.10);border-radius:16px;background:#141414;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 18px 40px rgba(0,0,0,0.55)">
+          <div style="font-size:16px;font-weight:700">Hide Maple Suite from active lists?</div>
+          <div style="font-size:13.5px;color:#9a9590;line-height:1.55">Earnings history is kept. It stops appearing in Month close, HST worklist and fleet sync until you reactivate it.</div>
+          <div style="display:flex;gap:10px;margin-top:4px">
+            <div style="flex:1;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:12px 0;text-align:center;font-size:14px;font-weight:600;color:#9a9590">Cancel</div>
+            <div style="flex:1;background:#f5f5f5;color:#0a0a0a;border-radius:10px;padding:12px 0;text-align:center;font-size:14px;font-weight:700">Deactivate</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:12px;color:#6f6a65;font-family:ui-monospace,monospace">F6 · desktop scope bar (reuse on 1280 list)</div>
+        <div style="border:1px solid rgba(255,255,255,0.08);border-radius:14px;background:#0c0c0c;padding:16px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:16px;font-weight:700">Properties</div>
+            <div style="display:flex;gap:8px">
+              <div style="font-size:12.5px;font-weight:600;color:#9a9590;border:1px solid rgba(255,255,255,0.12);padding:7px 12px;border-radius:8px">Client: Khamraj ⌄</div>
+              <div style="font-size:12.5px;font-weight:700;color:#0a0a0a;background:#c4a35a;padding:7px 12px;border-radius:8px">Import</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div style="font-size:12px;font-weight:600;color:#0a0a0a;background:#f5f5f5;padding:6px 11px;border-radius:999px">Active 2</div>
+            <div style="font-size:12px;font-weight:600;color:#9a9590;border:1px solid rgba(255,255,255,0.12);padding:6px 11px;border-radius:999px">Paused 1</div>
+            <div style="font-size:12px;font-weight:600;color:#c99a4b;border:1px solid rgba(255,255,255,0.12);padding:6px 11px;border-radius:999px">Not linked 1</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}"></script>
+</body>
+</html>

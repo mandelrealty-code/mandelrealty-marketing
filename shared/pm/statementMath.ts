@@ -1,9 +1,10 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { breakdownFromFinancials } from "./financialBreakdown.js";
-import { getPmPropertyDetail } from "./propertyStore.js";
+import { getPmPropertyDetail, listPmProperties } from "./propertyStore.js";
 import {
   listReservationsForPropertyMonth,
   monthBounds,
+  SYNC_STALE_MS,
   type PmReservationRow,
 } from "./reservationStore.js";
 import type { PmCommissionTerm } from "./types.js";
@@ -299,5 +300,156 @@ export async function buildMonthStatement(
     expenses,
     stays,
     lines,
+  };
+}
+
+export type PortfolioSyncStatus = "fresh" | "stale" | "unlinked";
+
+export type PortfolioUnitRow = {
+  property_id: string;
+  property_name: string;
+  client_id: string;
+  client_name: string;
+  linked: boolean;
+  active: boolean;
+  hst_mode: "cohost" | "invoice";
+  hst_bps: number;
+  sync_status: PortfolioSyncStatus;
+  last_synced_at: string | null;
+  reservation_count: number;
+  /** null when unlinked (excluded from totals). */
+  net_to_host_cents: number | null;
+  mrg_commission_cents: number | null;
+  /** Invoice-mode HST only; null when cohost or unlinked. */
+  hst_invoice_cents: number | null;
+  expense_cents: number | null;
+  currency: string;
+};
+
+export type MonthPortfolio = {
+  year_month: string;
+  currency: string;
+  unit_count: number;
+  linked_count: number;
+  unlinked_count: number;
+  net_to_host_cents: number;
+  mrg_commission_cents: number;
+  hst_invoice_cents: number;
+  expense_cents: number;
+  reservation_count: number;
+  fleet_last_synced_at: string | null;
+  units: PortfolioUnitRow[];
+};
+
+function syncStatusFor(
+  linked: boolean,
+  lastSyncedAt: string | null,
+): PortfolioSyncStatus {
+  if (!linked) return "unlinked";
+  if (!lastSyncedAt) return "stale";
+  const t = new Date(lastSyncedAt).getTime();
+  if (!Number.isFinite(t)) return "stale";
+  return Date.now() - t > SYNC_STALE_MS ? "stale" : "fresh";
+}
+
+/** Portfolio rollup for Month close — one statement per active property. */
+export async function buildMonthPortfolio(
+  yearMonth: string,
+  opts?: { clientId?: string },
+): Promise<MonthPortfolio> {
+  const props = await listPmProperties(opts?.clientId);
+  const active = props.filter((p) => p.active !== false);
+
+  const units: PortfolioUnitRow[] = [];
+  let netTotal = 0;
+  let mrgTotal = 0;
+  let hstInvoiceTotal = 0;
+  let expenseTotal = 0;
+  let reservationTotal = 0;
+  let linkedCount = 0;
+  let fleetLast: string | null = null;
+  let currency = "CAD";
+
+  for (const p of active) {
+    const linked = Boolean(p.hospitable_property_id);
+    if (linked) linkedCount += 1;
+
+    if (!linked) {
+      units.push({
+        property_id: p.id,
+        property_name: p.name,
+        client_id: p.client_id,
+        client_name: p.client_name,
+        linked: false,
+        active: true,
+        hst_mode: p.hst_mode === "invoice" ? "invoice" : "cohost",
+        hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
+        sync_status: "unlinked",
+        last_synced_at: null,
+        reservation_count: 0,
+        net_to_host_cents: null,
+        mrg_commission_cents: null,
+        hst_invoice_cents: null,
+        expense_cents: null,
+        currency: p.currency || "CAD",
+      });
+      continue;
+    }
+
+    const statement = await buildMonthStatement(p.id, yearMonth);
+    currency = statement.currency || currency;
+    const lastSynced = statement.last_synced_at;
+    if (lastSynced && (!fleetLast || lastSynced > fleetLast)) {
+      fleetLast = lastSynced;
+    }
+
+    const invoiceHst =
+      statement.hst_mode === "invoice" ? statement.hst_cents : null;
+
+    netTotal += statement.net_to_host_cents;
+    mrgTotal += statement.mrg_commission_cents;
+    if (invoiceHst != null) hstInvoiceTotal += invoiceHst;
+    expenseTotal += statement.expense_cents;
+    reservationTotal += statement.reservation_count;
+
+    units.push({
+      property_id: p.id,
+      property_name: p.name,
+      client_id: p.client_id,
+      client_name: p.client_name,
+      linked: true,
+      active: true,
+      hst_mode: statement.hst_mode,
+      hst_bps: statement.hst_bps_used,
+      sync_status: syncStatusFor(true, lastSynced),
+      last_synced_at: lastSynced,
+      reservation_count: statement.reservation_count,
+      net_to_host_cents: statement.net_to_host_cents,
+      mrg_commission_cents: statement.mrg_commission_cents,
+      hst_invoice_cents: invoiceHst,
+      expense_cents: statement.expense_cents,
+      currency: statement.currency,
+    });
+  }
+
+  units.sort((a, b) => {
+    const c = a.client_name.localeCompare(b.client_name);
+    if (c !== 0) return c;
+    return a.property_name.localeCompare(b.property_name);
+  });
+
+  return {
+    year_month: yearMonth,
+    currency,
+    unit_count: units.length,
+    linked_count: linkedCount,
+    unlinked_count: units.length - linkedCount,
+    net_to_host_cents: netTotal,
+    mrg_commission_cents: mrgTotal,
+    hst_invoice_cents: hstInvoiceTotal,
+    expense_cents: expenseTotal,
+    reservation_count: reservationTotal,
+    fleet_last_synced_at: fleetLast,
+    units,
   };
 }

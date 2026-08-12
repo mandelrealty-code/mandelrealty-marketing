@@ -30,6 +30,7 @@ import {
   syncHospitableReservations,
 } from "../pm/reservationStore.js";
 import {
+  buildMonthPortfolio,
   buildMonthStatement,
   createManualExpense,
   deleteManualExpense,
@@ -167,6 +168,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           total: all.length,
           linked_count: linked.size,
         });
+      }
+      if (resource === "month_close") {
+        const yearMonth =
+          typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month)
+            ? req.query.month
+            : previousYearMonth();
+        const clientId =
+          typeof req.query.client_id === "string" ? req.query.client_id.trim() : "";
+        const portfolio = await buildMonthPortfolio(yearMonth, {
+          clientId: clientId || undefined,
+        });
+        return res.status(200).json({ portfolio });
       }
       if (resource === "earnings") {
         const propertyId =

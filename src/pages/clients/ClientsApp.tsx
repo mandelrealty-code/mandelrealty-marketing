@@ -10,6 +10,7 @@ import {
 import { ContractsPanel } from "./ContractsPanel";
 import { EarningsPanel } from "./EarningsPanel";
 import { HstSetupForm, hstSummaryLabel, type HstMode } from "./HstSetupForm";
+import { MonthClosePanel } from "./MonthClosePanel";
 import {
   formatDisplayDate,
   formatRateHistoryRange,
@@ -31,7 +32,7 @@ import {
   TextInput,
 } from "./ui";
 
-type Tab = "clients" | "properties" | "settings";
+type Tab = "clients" | "properties" | "month" | "settings";
 
 type Props = {
   onModeChange: (mode: AdminProductMode) => void;
@@ -507,6 +508,7 @@ export default function ClientsApp({ onModeChange }: Props) {
         [
           ["clients", "Clients"],
           ["properties", "Properties"],
+          ["month", "Month close"],
           ["settings", "Settings"],
         ] as const
       ).map(([id, label]) => (
@@ -535,6 +537,7 @@ export default function ClientsApp({ onModeChange }: Props) {
         [
           ["clients", "Clients"],
           ["properties", "Properties"],
+          ["month", "Month"],
           ["settings", "Settings"],
         ] as const
       ).map(([id, label]) => (
@@ -917,7 +920,20 @@ export default function ClientsApp({ onModeChange }: Props) {
 
   let main = clientsView;
   if (tab === "settings") main = settingsView;
-  else if (tab === "properties") {
+  else if (tab === "month") {
+    main = (
+      <MonthClosePanel
+        onOpenProperty={(id) => {
+          setTab("properties");
+          void loadProperty(id).catch((e) =>
+            setLoadError(e instanceof Error ? e.message : "Could not open property."),
+          );
+        }}
+        onToast={setToast}
+        onError={setLoadError}
+      />
+    );
+  } else if (tab === "properties") {
     main = selectedPropertyId && propertyDetail ? propertyDetailView : propertiesList;
   }
 
