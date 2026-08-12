@@ -7,6 +7,7 @@ import {
   type PropertyDetail,
   type PropertyRow,
 } from "./api";
+import { ClientMonthPanel } from "./ClientMonthPanel";
 import { ContractsPanel } from "./ContractsPanel";
 import { EarningsPanel } from "./EarningsPanel";
 import { HstSetupForm, hstSummaryLabel, type HstMode } from "./HstSetupForm";
@@ -66,6 +67,20 @@ export default function ClientsApp({ onModeChange }: Props) {
   const [toast, setToast] = useState("");
 
   const [clientSheet, setClientSheet] = useState<null | "create" | ClientRow>(null);
+  const [clientMonth, setClientMonth] = useState<ClientRow | null>(null);
+  const [monthHstClientId, setMonthHstClientId] = useState<string | null>(null);
+  const [propertyFilterClientId, setPropertyFilterClientId] = useState<string>("");
+  const [propertyActiveFilter, setPropertyActiveFilter] = useState<"all" | "active" | "paused">(
+    "all",
+  );
+  const [editPropertySheet, setEditPropertySheet] = useState(false);
+  const [deactivateConfirm, setDeactivateConfirm] = useState(false);
+  const [editPropertyForm, setEditPropertyForm] = useState({
+    name: "",
+    address: "",
+    client_id: "",
+    active: true,
+  });
   const [propertySheet, setPropertySheet] = useState(false);
   const [importSheet, setImportSheet] = useState(false);
   const [importStep, setImportStep] = useState<1 | 2>(1);
@@ -350,6 +365,68 @@ export default function ClientsApp({ onModeChange }: Props) {
     setHstSheet(true);
   };
 
+  const openEditProperty = () => {
+    if (!propertyDetail) return;
+    setEditPropertyForm({
+      name: propertyDetail.name,
+      address: propertyDetail.address || "",
+      client_id: propertyDetail.client_id,
+      active: propertyDetail.active !== false,
+    });
+    setDeactivateConfirm(false);
+    setEditPropertySheet(true);
+  };
+
+  const saveEditProperty = async () => {
+    if (!propertyDetail) return;
+    if (!editPropertyForm.name.trim() || !editPropertyForm.client_id) {
+      setLoadError("Name and client are required.");
+      return;
+    }
+    setBusy(true);
+    setLoadError("");
+    try {
+      const data = await pmPost<{ property: PropertyDetail }>("properties", {
+        op: "update",
+        id: propertyDetail.id,
+        name: editPropertyForm.name,
+        address: editPropertyForm.address,
+        client_id: editPropertyForm.client_id,
+        active: editPropertyForm.active,
+      });
+      setEditPropertySheet(false);
+      setPropertyDetail(data.property);
+      await loadLists();
+      setToast("Property updated.");
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deactivateProperty = async () => {
+    if (!propertyDetail) return;
+    setBusy(true);
+    setLoadError("");
+    try {
+      const data = await pmPost<{ property: PropertyDetail }>("properties", {
+        op: "update",
+        id: propertyDetail.id,
+        active: false,
+      });
+      setDeactivateConfirm(false);
+      setEditPropertySheet(false);
+      setPropertyDetail(data.property);
+      await loadLists();
+      setToast("Property deactivated.");
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Could not deactivate.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveRate = async () => {
     if (!propertyDetail) return;
     setBusy(true);
@@ -487,6 +564,27 @@ export default function ClientsApp({ onModeChange }: Props) {
     onModeChange(mode);
   };
 
+  const filteredProperties = useMemo(() => {
+    return properties.filter((p) => {
+      if (propertyFilterClientId && p.client_id !== propertyFilterClientId) return false;
+      const active = p.active !== false;
+      if (propertyActiveFilter === "active" && !active) return false;
+      if (propertyActiveFilter === "paused" && active) return false;
+      return true;
+    });
+  }, [properties, propertyFilterClientId, propertyActiveFilter]);
+
+  const propertyCounts = useMemo(() => {
+    const scoped = propertyFilterClientId
+      ? properties.filter((p) => p.client_id === propertyFilterClientId)
+      : properties;
+    return {
+      active: scoped.filter((p) => p.active !== false).length,
+      paused: scoped.filter((p) => p.active === false).length,
+      unlinked: scoped.filter((p) => !p.hospitable_property_id).length,
+    };
+  }, [properties, propertyFilterClientId]);
+
   const currentRateBps = propertyDetail?.current_term?.rate_bps ?? null;
   const ratePreview = useMemo(() => {
     const n = Number(rateForm.rate_percent);
@@ -517,10 +615,12 @@ export default function ClientsApp({ onModeChange }: Props) {
           type="button"
           onClick={() => {
             setTab(id);
+            setClientMonth(null);
+            if (id !== "month") setMonthHstClientId(null);
             if (id !== "properties") setSelectedPropertyId(null);
           }}
           className={`rounded-md px-3 py-2 text-left text-sm font-medium ${
-            tab === id
+            (clientMonth ? id === "clients" : tab === id)
               ? "bg-[#1a1a1a] font-semibold text-[#c4a35a]"
               : "text-[#9a9590] hover:text-[#f5f5f5]"
           }`}
@@ -546,10 +646,14 @@ export default function ClientsApp({ onModeChange }: Props) {
           type="button"
           onClick={() => {
             setTab(id);
+            setClientMonth(null);
+            if (id !== "month") setMonthHstClientId(null);
             if (id !== "properties") setSelectedPropertyId(null);
           }}
           className={`grid flex-1 place-items-center text-xs ${
-            tab === id ? "font-semibold text-[#c4a35a]" : "font-medium text-[#6f6a65]"
+            (clientMonth ? id === "clients" : tab === id)
+              ? "font-semibold text-[#c4a35a]"
+              : "font-medium text-[#6f6a65]"
           }`}
         >
           {label}
@@ -621,62 +725,140 @@ export default function ClientsApp({ onModeChange }: Props) {
         <h1 className="text-2xl font-bold tracking-tight text-[#f5f5f5] lg:text-[28px]">
           Properties
         </h1>
-        <button
-          type="button"
-          onClick={() => openAddProperty()}
-          className="text-[13px] font-semibold text-[#c4a35a]"
-        >
-          Add
-        </button>
-      </div>
-      <div className="flex items-center justify-between px-4 pb-3.5 lg:px-0">
-        <p className="text-[13px] text-[#6f6a65]">
-          {properties.length} unit{properties.length === 1 ? "" : "s"} ·{" "}
-          {properties.filter((p) => p.hospitable_property_id).length} linked
-        </p>
-        <button
-          type="button"
-          onClick={() => openImport()}
-          className="text-[13px] font-semibold text-[#c4a35a]"
-        >
-          Import from Hospitable
-        </button>
-      </div>
-      {properties.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-5 px-10 py-24">
-          <p className="text-sm text-[#6f6a65]">No properties yet.</p>
-          <GoldButton type="button" size="sm" onClick={() => openImport()}>
-            Import from Hospitable
-          </GoldButton>
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => openAddProperty()}
             className="text-[13px] font-semibold text-[#9a9590]"
           >
-            Or add manually
+            Add
           </button>
+          <button
+            type="button"
+            onClick={() => openImport()}
+            className="text-[13px] font-bold text-[#c4a35a]"
+          >
+            Import
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto px-4 pb-3 lg:px-0">
+        <button
+          type="button"
+          onClick={() => setPropertyFilterClientId("")}
+          className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold ${
+            !propertyFilterClientId
+              ? "bg-[#f5f5f5] text-[#0a0a0a]"
+              : "border border-white/12 text-[#9a9590]"
+          }`}
+        >
+          All clients
+        </button>
+        {clients.map((c) => {
+          const n = properties.filter((p) => p.client_id === c.id).length;
+          if (!n) return null;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setPropertyFilterClientId(c.id)}
+              className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold ${
+                propertyFilterClientId === c.id
+                  ? "bg-[#f5f5f5] text-[#0a0a0a]"
+                  : "border border-white/12 text-[#9a9590]"
+              }`}
+            >
+              {c.name} {n}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 px-4 pb-3 lg:px-0">
+        {(
+          [
+            ["all", "All"],
+            ["active", `Active ${propertyCounts.active}`],
+            ["paused", `Paused ${propertyCounts.paused}`],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setPropertyActiveFilter(id)}
+            className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${
+              propertyActiveFilter === id
+                ? "bg-[#f5f5f5] text-[#0a0a0a]"
+                : "border border-white/12 text-[#9a9590]"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+        {propertyCounts.unlinked > 0 ? (
+          <span className="rounded-full border border-white/12 px-3 py-1.5 text-[12px] font-semibold text-[#c99a4b]">
+            Not linked {propertyCounts.unlinked}
+          </span>
+        ) : null}
+      </div>
+
+      <p className="px-4 pb-3 text-[12px] text-[#6f6a65] lg:px-0">
+        {propertyCounts.active} active · {propertyCounts.paused} paused
+      </p>
+
+      {filteredProperties.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-5 px-10 py-24">
+          <p className="text-sm text-[#6f6a65]">No properties in this filter.</p>
+          <GoldButton type="button" size="sm" onClick={() => openImport()}>
+            Import from Hospitable
+          </GoldButton>
         </div>
       ) : (
         <div>
-          {properties.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => loadProperty(p.id).catch((e) => setLoadError(String(e.message)))}
-              className="flex w-full items-center gap-3 border-t border-white/8 px-4 py-3.5 text-left last:border-b hover:bg-white/[0.02] lg:px-1"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-semibold text-[#f5f5f5]">{p.name}</p>
-                <p className="truncate text-[13px] text-[#9a9590]">
-                  {p.client_name}
-                  {!p.hospitable_property_id ? " · not linked" : ""}
-                </p>
-              </div>
-              <span className="shrink-0 text-[15px] font-semibold text-[#f5f5f5]">
-                {rateLabel(p.current_rate_bps)}
-              </span>
-            </button>
-          ))}
+          {filteredProperties.map((p) => {
+            const active = p.active !== false;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => loadProperty(p.id).catch((e) => setLoadError(String(e.message)))}
+                className={`flex w-full items-start justify-between gap-3 border-t border-white/8 px-4 py-3.5 text-left last:border-b hover:bg-white/[0.02] lg:px-1 ${
+                  active ? "" : "opacity-60"
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-[15.5px] font-semibold text-[#f5f5f5]">{p.name}</p>
+                  <p className="truncate text-[12.5px] text-[#9a9590]">
+                    {[
+                      p.address || null,
+                      p.client_name,
+                      rateLabel(p.current_rate_bps),
+                      p.hst_mode === "invoice"
+                        ? `HST invoice ${rateLabel(p.hst_bps)}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="flex items-center gap-1.5 text-[12px] text-[#9a9590]">
+                    <StatusDot active={Boolean(p.hospitable_property_id)} />
+                    {p.hospitable_property_id ? "Linked" : "Not linked"}
+                  </span>
+                  <span className="text-[12px] text-[#6f6a65]">
+                    {active ? "Active" : "Paused"}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+          {propertyCounts.paused > 0 ? (
+            <p className="px-4 py-4 text-[12px] leading-relaxed text-[#6f6a65] lg:px-1">
+              Paused units stay out of Month close but keep their earnings history.
+            </p>
+          ) : null}
         </div>
       )}
     </div>
@@ -703,10 +885,22 @@ export default function ClientsApp({ onModeChange }: Props) {
         Properties
       </button>
       <div className="flex flex-col gap-1.5 px-4 pb-4 pt-3 lg:px-0">
-        <h1 className="text-[23px] font-bold tracking-tight text-[#f5f5f5] lg:text-[28px]">
-          {propertyDetail.name}
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-[23px] font-bold tracking-tight text-[#f5f5f5] lg:text-[28px]">
+            {propertyDetail.name}
+          </h1>
+          <button
+            type="button"
+            onClick={openEditProperty}
+            className="shrink-0 pt-1 text-[13px] font-semibold text-[#c4a35a]"
+          >
+            Edit
+          </button>
+        </div>
         <p className="text-sm text-[#9a9590]">{propertyDetail.address || "No address"}</p>
+        {propertyDetail.active === false ? (
+          <p className="text-[12.5px] font-semibold text-[#c99a4b]">Paused · hidden from Month close</p>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2.5 pt-1">
           <span className="text-[13px] text-[#9a9590]">{propertyDetail.client_name}</span>
           <span className="h-0.5 w-0.5 rounded-full bg-[#3a3a3a]" />
@@ -919,11 +1113,38 @@ export default function ClientsApp({ onModeChange }: Props) {
   );
 
   let main = clientsView;
-  if (tab === "settings") main = settingsView;
+  if (clientMonth) {
+    main = (
+      <ClientMonthPanel
+        clientId={clientMonth.id}
+        clientName={clientMonth.name}
+        onBack={() => {
+          setClientMonth(null);
+          setClientSheet(clientMonth);
+        }}
+        onOpenProperty={(id) => {
+          setClientMonth(null);
+          setTab("properties");
+          void loadProperty(id).catch((e) =>
+            setLoadError(e instanceof Error ? e.message : "Could not open property."),
+          );
+        }}
+        onOpenHstWorklist={(id) => {
+          setClientMonth(null);
+          setMonthHstClientId(id);
+          setTab("month");
+        }}
+        onToast={setToast}
+        onError={setLoadError}
+      />
+    );
+  } else if (tab === "settings") main = settingsView;
   else if (tab === "month") {
     main = (
       <MonthClosePanel
+        hstClientId={monthHstClientId}
         onOpenProperty={(id) => {
+          setMonthHstClientId(null);
           setTab("properties");
           void loadProperty(id).catch((e) =>
             setLoadError(e instanceof Error ? e.message : "Could not open property."),
@@ -1000,6 +1221,19 @@ export default function ClientsApp({ onModeChange }: Props) {
                   <button
                     type="button"
                     onClick={() => {
+                      setClientMonth(clientSheet);
+                      setClientSheet(null);
+                      setTab("clients");
+                    }}
+                    className="flex items-center justify-between py-3.5 text-sm font-medium text-[#f5f5f5]"
+                  >
+                    <span>Month earnings</span>
+                    <span className="text-[13px] font-semibold text-[#c4a35a]">Open</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPropertyFilterClientId(clientSheet.id);
                       setClientSheet(null);
                       setTab("properties");
                       setSelectedPropertyId(null);
@@ -1196,6 +1430,168 @@ export default function ClientsApp({ onModeChange }: Props) {
           >
             {busy ? "Verifying…" : "Save & connect"}
           </GoldButton>
+        </Sheet>
+      ) : null}
+
+      {editPropertySheet && propertyDetail ? (
+        <Sheet
+          title="Edit property"
+          onCancel={() => {
+            setEditPropertySheet(false);
+            setDeactivateConfirm(false);
+          }}
+          desktop={desktop}
+        >
+          {deactivateConfirm ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-base font-bold">
+                Hide {propertyDetail.name} from active lists?
+              </p>
+              <p className="text-[13.5px] leading-relaxed text-[#9a9590]">
+                Earnings history is kept. It stops appearing in Month close, HST worklist and fleet
+                sync until you reactivate it.
+              </p>
+              <div className="mt-2 flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setDeactivateConfirm(false)}
+                  className="flex-1 rounded-[10px] border border-white/12 py-3 text-[14px] font-semibold text-[#9a9590]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void deactivateProperty()}
+                  className="flex-1 rounded-[10px] bg-[#f5f5f5] py-3 text-[14px] font-bold text-[#0a0a0a]"
+                >
+                  Deactivate
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3.5">
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Name</FieldLabel>
+                <TextInput
+                  value={editPropertyForm.name}
+                  onChange={(e) =>
+                    setEditPropertyForm((f) => ({ ...f, name: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Address</FieldLabel>
+                <TextInput
+                  value={editPropertyForm.address}
+                  onChange={(e) =>
+                    setEditPropertyForm((f) => ({ ...f, address: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Client</FieldLabel>
+                <select
+                  value={editPropertyForm.client_id}
+                  onChange={(e) =>
+                    setEditPropertyForm((f) => ({ ...f, client_id: e.target.value }))
+                  }
+                  className="w-full rounded-[9px] border border-white/10 bg-[#1c1c1c] px-3.5 py-3 text-[15px] font-semibold text-[#f5f5f5] outline-none"
+                >
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="overflow-hidden rounded-[11px] border border-white/10">
+                <div className="flex items-center justify-between bg-[#0c0c0c] px-3.5 py-3.5">
+                  <div>
+                    <p className="text-[14.5px] font-semibold">Active</p>
+                    <p className="text-[12px] text-[#6f6a65]">Included in Month close</p>
+                  </div>
+                  <SegmentedControl
+                    value={editPropertyForm.active ? "active" : "paused"}
+                    onChange={(v) =>
+                      setEditPropertyForm((f) => ({ ...f, active: v === "active" }))
+                    }
+                    options={[
+                      { value: "active", label: "On" },
+                      { value: "paused", label: "Off" },
+                    ]}
+                  />
+                </div>
+                <div className="flex items-center justify-between border-t border-white/8 bg-[#0c0c0c] px-3.5 py-3.5">
+                  <div>
+                    <p className="text-[14.5px] font-semibold">Hospitable link</p>
+                    <p className="text-[12px] text-[#9a9590]">
+                      {propertyDetail.hospitable_property_id
+                        ? `Linked · ${propertyDetail.hospitable_property_id.slice(0, 12)}…`
+                        : "Not linked"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditPropertySheet(false);
+                      openLinkHospitable();
+                    }}
+                    className="text-[13px] font-semibold text-[#c4a35a]"
+                  >
+                    Change
+                  </button>
+                </div>
+                <div className="flex items-center justify-between border-t border-white/8 bg-[#0c0c0c] px-3.5 py-3.5">
+                  <div>
+                    <p className="text-[14.5px] font-semibold">HST</p>
+                    <p className="text-[12px] text-[#6f6a65]">
+                      {hstSummaryLabel(
+                        propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost",
+                        propertyDetail.hst_bps ?? 300,
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditPropertySheet(false);
+                      openChangeHst();
+                    }}
+                    className="text-[13px] font-semibold text-[#9a9590]"
+                  >
+                    Change
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setEditPropertySheet(false)}
+                  className="flex-1 rounded-[11px] border border-white/12 py-3.5 text-[14.5px] font-semibold text-[#9a9590]"
+                >
+                  Cancel
+                </button>
+                <GoldButton
+                  type="button"
+                  className="flex-1"
+                  disabled={busy || !editPropertyForm.name.trim()}
+                  onClick={() => void saveEditProperty()}
+                >
+                  {busy ? "Saving…" : "Save"}
+                </GoldButton>
+              </div>
+              {editPropertyForm.active ? (
+                <button
+                  type="button"
+                  onClick={() => setDeactivateConfirm(true)}
+                  className="pt-1 text-center text-[13.5px] font-semibold text-[#cf7f7b]"
+                >
+                  Deactivate property
+                </button>
+              ) : null}
+            </div>
+          )}
         </Sheet>
       ) : null}
 

@@ -18,6 +18,7 @@ export type PropertyRow = {
   cleaning_fee_keeper?: "mrg" | "host";
   hst_mode?: "cohost" | "invoice";
   hst_bps?: number;
+  active?: boolean;
 };
 
 export type CommissionTerm = {
@@ -32,6 +33,7 @@ export type PropertyDetail = PropertyRow & {
   cleaning_fee_keeper: "mrg" | "host";
   hst_mode: "cohost" | "invoice";
   hst_bps: number;
+  active?: boolean;
   current_term: CommissionTerm | null;
   terms: CommissionTerm[];
 };

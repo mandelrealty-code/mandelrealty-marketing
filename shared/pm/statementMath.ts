@@ -24,6 +24,9 @@ export type ManualExpense = {
   amount_cents: number;
   note: string;
   created_at: string;
+  receipt_filename?: string;
+  receipt_mime?: string;
+  receipt_storage_path?: string;
 };
 
 export type StayStatementLine = {
@@ -126,6 +129,11 @@ export async function createManualExpense(input: {
   label: string;
   amount_cents: number;
   note?: string;
+  receipt?: {
+    filename: string;
+    mime: string;
+    buffer: Buffer;
+  } | null;
 }): Promise<ManualExpense> {
   const amount = Math.round(input.amount_cents);
   if (!Number.isFinite(amount) || amount < 0) {
@@ -133,23 +141,104 @@ export async function createManualExpense(input: {
   }
   const label = input.label.trim();
   if (!label) throw new Error("Label is required.");
+  const category = (input.category || "other").trim().toLowerCase();
+  const allowed = new Set([
+    "cleaning",
+    "supplies",
+    "maintenance",
+    "utilities",
+    "other",
+  ]);
+  if (!allowed.has(category)) {
+    throw new Error("Invalid expense category.");
+  }
+
   const { data, error } = await db()
     .from("pm_manual_expenses")
     .insert({
       property_id: input.property_id,
       expense_date: input.expense_date,
-      category: input.category || "other",
+      category,
       label,
       amount_cents: amount,
       note: (input.note ?? "").trim(),
     })
     .select("*")
     .single();
+  if (error) {
+    if (/receipt_/i.test(error.message || "")) {
+      throw new Error(
+        "Expense receipt columns missing. Run supabase/pm_expense_receipts_v1.sql in Supabase, then retry.",
+      );
+    }
+    throw error;
+  }
+
+  let expense = data as ManualExpense;
+  const receipt = input.receipt;
+  if (receipt && receipt.buffer.length) {
+    if (receipt.buffer.length > 10_000_000) {
+      await db().from("pm_manual_expenses").delete().eq("id", expense.id);
+      throw new Error("Receipt too large (max 10MB).");
+    }
+    const safeName =
+      receipt.filename.replace(/[^\w.-]+/g, "_") || "receipt.pdf";
+    const storagePath = `expense-receipts/${expense.id}/${safeName}`;
+    const { error: upErr } = await db()
+      .storage.from("pm-contracts")
+      .upload(storagePath, receipt.buffer, {
+        contentType: receipt.mime || "application/pdf",
+        upsert: true,
+      });
+    if (upErr) {
+      await db().from("pm_manual_expenses").delete().eq("id", expense.id);
+      throw new Error(`Receipt upload failed: ${upErr.message}`);
+    }
+    const { data: updated, error: updErr } = await db()
+      .from("pm_manual_expenses")
+      .update({
+        receipt_filename: receipt.filename.trim() || safeName,
+        receipt_mime: receipt.mime || "application/pdf",
+        receipt_storage_path: storagePath,
+      })
+      .eq("id", expense.id)
+      .select("*")
+      .single();
+    if (updErr) throw updErr;
+    expense = updated as ManualExpense;
+  }
+
+  return expense;
+}
+
+export async function getExpenseReceiptUrl(id: string): Promise<string> {
+  const { data, error } = await db()
+    .from("pm_manual_expenses")
+    .select("receipt_storage_path")
+    .eq("id", id)
+    .maybeSingle();
   if (error) throw error;
-  return data as ManualExpense;
+  const path = data?.receipt_storage_path;
+  if (!path) throw new Error("No receipt attached.");
+  const { data: signed, error: signErr } = await db()
+    .storage.from("pm-contracts")
+    .createSignedUrl(path, 60 * 30);
+  if (signErr || !signed?.signedUrl) {
+    throw new Error(signErr?.message || "Could not sign receipt URL.");
+  }
+  return signed.signedUrl;
 }
 
 export async function deleteManualExpense(id: string): Promise<void> {
+  const { data } = await db()
+    .from("pm_manual_expenses")
+    .select("receipt_storage_path")
+    .eq("id", id)
+    .maybeSingle();
+  const path = data?.receipt_storage_path;
+  if (path) {
+    await db().storage.from("pm-contracts").remove([path]).catch(() => undefined);
+  }
   const { error } = await db().from("pm_manual_expenses").delete().eq("id", id);
   if (error) throw error;
 }
@@ -303,7 +392,7 @@ export async function buildMonthStatement(
   };
 }
 
-export type PortfolioSyncStatus = "fresh" | "stale" | "unlinked";
+export type PortfolioSyncStatus = "fresh" | "stale" | "empty" | "unlinked";
 
 export type PortfolioUnitRow = {
   property_id: string;
@@ -315,11 +404,14 @@ export type PortfolioUnitRow = {
   hst_mode: "cohost" | "invoice";
   hst_bps: number;
   sync_status: PortfolioSyncStatus;
+  sync_reason: string | null;
   last_synced_at: string | null;
   reservation_count: number;
   /** null when unlinked (excluded from totals). */
   net_to_host_cents: number | null;
   mrg_commission_cents: number | null;
+  /** Nightly accommodation total for the month (invoice HST base). */
+  nightly_total_cents: number | null;
   /** Invoice-mode HST only; null when cohost or unlinked. */
   hst_invoice_cents: number | null;
   expense_cents: number | null;
@@ -341,15 +433,23 @@ export type MonthPortfolio = {
   units: PortfolioUnitRow[];
 };
 
-function syncStatusFor(
-  linked: boolean,
-  lastSyncedAt: string | null,
-): PortfolioSyncStatus {
-  if (!linked) return "unlinked";
-  if (!lastSyncedAt) return "stale";
-  const t = new Date(lastSyncedAt).getTime();
-  if (!Number.isFinite(t)) return "stale";
-  return Date.now() - t > SYNC_STALE_MS ? "stale" : "fresh";
+function syncStatusFor(input: {
+  linked: boolean;
+  lastSyncedAt: string | null;
+  zeroFinancials: boolean;
+}): { status: PortfolioSyncStatus; reason: string | null } {
+  if (!input.linked) return { status: "unlinked", reason: null };
+  if (input.zeroFinancials) {
+    return { status: "empty", reason: "zero_financials" };
+  }
+  if (!input.lastSyncedAt) {
+    return { status: "stale", reason: "never_synced" };
+  }
+  const t = new Date(input.lastSyncedAt).getTime();
+  if (!Number.isFinite(t) || Date.now() - t > SYNC_STALE_MS) {
+    return { status: "stale", reason: "stale" };
+  }
+  return { status: "fresh", reason: null };
 }
 
 /** Portfolio rollup for Month close — one statement per active property. */
@@ -385,10 +485,12 @@ export async function buildMonthPortfolio(
         hst_mode: p.hst_mode === "invoice" ? "invoice" : "cohost",
         hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
         sync_status: "unlinked",
+        sync_reason: null,
         last_synced_at: null,
         reservation_count: 0,
         net_to_host_cents: null,
         mrg_commission_cents: null,
+        nightly_total_cents: null,
         hst_invoice_cents: null,
         expense_cents: null,
         currency: p.currency || "CAD",
@@ -405,6 +507,15 @@ export async function buildMonthPortfolio(
 
     const invoiceHst =
       statement.hst_mode === "invoice" ? statement.hst_cents : null;
+    const zeroFinancials =
+      statement.reservation_count > 0 &&
+      statement.commission_base_cents === 0 &&
+      (statement.gross_cents === 0 || !statement.gross_cents);
+    const sync = syncStatusFor({
+      linked: true,
+      lastSyncedAt: lastSynced,
+      zeroFinancials,
+    });
 
     netTotal += statement.net_to_host_cents;
     mrgTotal += statement.mrg_commission_cents;
@@ -421,11 +532,13 @@ export async function buildMonthPortfolio(
       active: true,
       hst_mode: statement.hst_mode,
       hst_bps: statement.hst_bps_used,
-      sync_status: syncStatusFor(true, lastSynced),
+      sync_status: sync.status,
+      sync_reason: sync.reason,
       last_synced_at: lastSynced,
       reservation_count: statement.reservation_count,
       net_to_host_cents: statement.net_to_host_cents,
       mrg_commission_cents: statement.mrg_commission_cents,
+      nightly_total_cents: statement.nightly_total_cents ?? null,
       hst_invoice_cents: invoiceHst,
       expense_cents: statement.expense_cents,
       currency: statement.currency,

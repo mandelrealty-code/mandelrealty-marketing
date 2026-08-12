@@ -1,7 +1,40 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { pmGet, pmPost, rateLabel } from "./api";
 import { todayInputValue } from "./format";
 import { FieldLabel, GoldButton, MonthPicker, TextInput } from "./ui";
+
+const EXPENSE_CATEGORIES = [
+  { value: "supplies", label: "Supplies" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "cleaning", label: "Cleaning" },
+  { value: "other", label: "Other" },
+] as const;
+
+function categoryLabel(value: string | undefined): string {
+  const found = EXPENSE_CATEGORIES.find((c) => c.value === value);
+  if (found) return found.label;
+  if (value === "utilities") return "Utilities";
+  return value ? value[0]!.toUpperCase() + value.slice(1) : "Other";
+}
+
+function shortExpenseDate(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read file."));
+    reader.readAsDataURL(file);
+  });
+}
 
 export type MonthStatement = {
   year_month: string;
@@ -31,7 +64,16 @@ export type MonthStatement = {
     mrg_cents: number;
     hst_cents: number;
   }[];
-  expenses: { id: string; label: string; amount_cents: number; expense_date: string }[];
+  expenses: {
+    id: string;
+    label: string;
+    amount_cents: number;
+    expense_date: string;
+    category?: string;
+    note?: string;
+    receipt_filename?: string;
+    receipt_storage_path?: string;
+  }[];
 };
 
 function money(cents: number, currency = "CAD"): string {
@@ -95,12 +137,16 @@ export function EarningsPanel({
   const [localError, setLocalError] = useState("");
   const [showAllStays, setShowAllStays] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [expenseForm, setExpenseForm] = useState({
     label: "",
     amount: "",
     expense_date: todayInputValue(),
-    category: "cleaning",
+    category: "supplies",
+    note: "",
   });
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const receiptInputRef = useRef<HTMLInputElement>(null);
 
   const fail = useCallback(
     (e: unknown, fallback: string) => {
@@ -155,20 +201,29 @@ export function EarningsPanel({
   const addExpense = async () => {
     setBusy(true);
     try {
-      await pmPost("earnings", {
+      const payload: Record<string, unknown> = {
         op: "add_expense",
         property_id: propertyId,
-        label: expenseForm.label,
+        label: expenseForm.label.trim() || expenseForm.note.trim(),
         amount: Number(expenseForm.amount),
         expense_date: expenseForm.expense_date,
         category: expenseForm.category,
-      });
+        note: expenseForm.note.trim(),
+      };
+      if (receiptFile) {
+        payload.receipt_base64 = await fileToBase64(receiptFile);
+        payload.receipt_filename = receiptFile.name;
+        payload.receipt_mime = receiptFile.type || "application/pdf";
+      }
+      await pmPost("earnings", payload);
       setExpenseOpen(false);
+      setReceiptFile(null);
       setExpenseForm({
         label: "",
         amount: "",
         expense_date: todayInputValue(),
-        category: "cleaning",
+        category: "supplies",
+        note: "",
       });
       await load();
     } catch (e) {
@@ -182,11 +237,21 @@ export function EarningsPanel({
     setBusy(true);
     try {
       await pmPost("earnings", { op: "delete_expense", id });
+      setDeleteId(null);
       await load();
     } catch (e) {
       fail(e, "Could not delete expense.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openReceipt = async (id: string) => {
+    try {
+      const data = await pmGet<{ url: string }>("expense_receipt", { id });
+      if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      fail(e, "Could not open receipt.");
     }
   };
 
@@ -383,37 +448,37 @@ export function EarningsPanel({
             </div>
           ) : null}
 
-          <div className="flex items-center gap-3 px-4 py-3 lg:px-0">
+          <div className="flex items-center justify-between border-t border-white/8 bg-[#0c0c0c] px-4 py-3 lg:px-0">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6f6a65]">
+              Expenses · {monthTitle(month).replace(/ \d{4}$/, "")}
+            </p>
             <button
               type="button"
               onClick={() => setExpenseOpen((o) => !o)}
-              className="text-[13px] font-semibold text-[#c4a35a]"
+              className="text-[13px] font-bold text-[#c4a35a]"
             >
-              {expenseOpen ? "Cancel" : "Add expense"}
+              {expenseOpen ? "Cancel" : "Add"}
             </button>
           </div>
 
           {expenseOpen ? (
-            <div className="mx-4 mb-3 flex flex-col gap-2 rounded-lg border border-white/8 bg-[#141414] p-3 lg:mx-0">
-              <div className="flex flex-col gap-1">
-                <FieldLabel>Label</FieldLabel>
-                <TextInput
-                  value={expenseForm.label}
-                  onChange={(e) => setExpenseForm((f) => ({ ...f, label: e.target.value }))}
-                  placeholder="Supplies"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Amount</FieldLabel>
-                  <TextInput
+            <div className="mx-4 mb-3 flex flex-col gap-3.5 rounded-[14px] border border-white/10 bg-[#141414] p-4 lg:mx-0">
+              <p className="text-[15px] font-bold">Add expense</p>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Amount</FieldLabel>
+                <div className="flex items-baseline gap-2 rounded-[11px] border border-white/10 bg-[#0c0c0c] px-3.5 py-3">
+                  <span className="text-[15px] text-[#6f6a65]">CAD</span>
+                  <input
                     inputMode="decimal"
                     value={expenseForm.amount}
                     onChange={(e) => setExpenseForm((f) => ({ ...f, amount: e.target.value }))}
-                    placeholder="85"
+                    placeholder="42.00"
+                    className="w-full bg-transparent text-[28px] font-bold tabular-nums text-[#f5f5f5] outline-none"
                   />
                 </div>
-                <div className="flex flex-col gap-1">
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
                   <FieldLabel>Date</FieldLabel>
                   <TextInput
                     type="date"
@@ -423,40 +488,205 @@ export function EarningsPanel({
                     }
                   />
                 </div>
+                <div className="flex flex-col gap-1.5">
+                  <FieldLabel>Category</FieldLabel>
+                  <select
+                    value={expenseForm.category}
+                    onChange={(e) =>
+                      setExpenseForm((f) => ({ ...f, category: e.target.value }))
+                    }
+                    className="w-full rounded-[9px] border border-white/10 bg-[#0c0c0c] px-3.5 py-3 text-[15px] font-semibold text-[#f5f5f5] outline-none"
+                  >
+                    {EXPENSE_CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {EXPENSE_CATEGORIES.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setExpenseForm((f) => ({ ...f, category: c.value }))}
+                    className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold ${
+                      expenseForm.category === c.value
+                        ? "bg-[#dcc084] text-[#0a0a0a]"
+                        : "border border-white/12 text-[#9a9590]"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Description</FieldLabel>
+                <TextInput
+                  value={expenseForm.label}
+                  onChange={(e) => setExpenseForm((f) => ({ ...f, label: e.target.value }))}
+                  placeholder="Paper towels, soap"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel optional>Note</FieldLabel>
+                <TextInput
+                  value={expenseForm.note}
+                  onChange={(e) => setExpenseForm((f) => ({ ...f, note: e.target.value }))}
+                  placeholder="Vendor or context"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <FieldLabel optional>Receipt</FieldLabel>
+                <input
+                  ref={receiptInputRef}
+                  type="file"
+                  accept="image/*,.pdf,application/pdf"
+                  className="hidden"
+                  onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+                />
+                {receiptFile ? (
+                  <div className="flex items-center gap-3 rounded-[11px] border border-white/10 bg-[#0c0c0c] p-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13.5px] font-semibold">{receiptFile.name}</p>
+                      <p className="text-[12px] text-[#6f6a65]">
+                        {Math.max(1, Math.round(receiptFile.size / 1024))} KB
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReceiptFile(null)}
+                      className="text-[12.5px] font-semibold text-[#cf7f7b]"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => receiptInputRef.current?.click()}
+                    className="rounded-[11px] border border-dashed border-white/14 px-4 py-4 text-[13.5px] font-semibold text-[#9a9590]"
+                  >
+                    Attach PDF or photo
+                  </button>
+                )}
               </div>
               <GoldButton
                 type="button"
-                size="sm"
-                disabled={busy || !expenseForm.label.trim() || !expenseForm.amount}
-                onClick={() => addExpense()}
+                disabled={
+                  busy ||
+                  (!expenseForm.label.trim() && !expenseForm.note.trim()) ||
+                  !expenseForm.amount
+                }
+                onClick={() => void addExpense()}
               >
                 Save expense
               </GoldButton>
             </div>
           ) : null}
 
+          {statement.expenses.length === 0 && !expenseOpen ? (
+            <div className="mx-4 mb-3 flex flex-col items-center gap-2.5 rounded-2xl border border-white/8 bg-[#0c0c0c] px-6 py-8 text-center lg:mx-0">
+              <p className="text-[15.5px] font-semibold">No expenses this month</p>
+              <p className="text-[13px] text-[#9a9590] text-pretty">
+                Owner charges you add here reduce net to host and show on their statement.
+              </p>
+              <GoldButton
+                type="button"
+                size="sm"
+                className="mt-1"
+                onClick={() => setExpenseOpen(true)}
+              >
+                Add expense
+              </GoldButton>
+            </div>
+          ) : null}
+
           {statement.expenses.length > 0 ? (
-            <div className="space-y-1 px-4 pb-2 lg:px-0">
-              {statement.expenses.map((e) => (
-                <div key={e.id} className="flex items-center justify-between gap-3 py-1">
-                  <div>
-                    <p className="text-sm text-[#9a9590]">{e.label}</p>
-                    <p className="text-xs text-[#6f6a65]">{e.expense_date}</p>
+            <div className="pb-1">
+              {statement.expenses.map((e) => {
+                const hasReceipt = Boolean(e.receipt_storage_path || e.receipt_filename);
+                return (
+                  <div
+                    key={e.id}
+                    className="flex items-center justify-between gap-3 border-b border-white/8 px-4 py-3.5 lg:px-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 text-[14.5px] font-semibold text-[#f5f5f5]">
+                        <span className="truncate">{e.label}</span>
+                        {hasReceipt ? (
+                          <button
+                            type="button"
+                            onClick={() => void openReceipt(e.id)}
+                            className="shrink-0 text-[11.5px] text-[#9a9590]"
+                            title="Open receipt"
+                          >
+                            ⌇
+                          </button>
+                        ) : null}
+                      </p>
+                      <p className="text-[12px] text-[#9a9590]">
+                        {categoryLabel(e.category)} · {shortExpenseDate(e.expense_date)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="text-[15px] font-semibold tabular-nums">
+                        {money(e.amount_cents, cur)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteId(e.id)}
+                        className="text-xs text-[#6f6a65] hover:text-[#cf7f7b]"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm tabular-nums text-[#9a9590]">
-                      −{money(e.amount_cents, cur)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeExpense(e.id)}
-                      className="text-xs text-[#6f6a65] hover:text-[#cf7f7b]"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
+              <div className="flex items-center justify-between bg-[#0c0c0c] px-4 py-3.5 lg:px-0">
+                <p className="text-[12.5px] text-[#9a9590]">
+                  {statement.expenses.length} expense
+                  {statement.expenses.length === 1 ? "" : "s"}
+                </p>
+                <p className="text-[14px] font-bold tabular-nums">
+                  {money(statement.expense_cents, cur)}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {deleteId ? (
+            <div className="mx-4 mb-3 rounded-2xl border border-white/10 bg-[#141414] p-4 lg:mx-0">
+              <p className="text-[15px] font-semibold">
+                Delete{" "}
+                {money(
+                  statement.expenses.find((e) => e.id === deleteId)?.amount_cents ?? 0,
+                  cur,
+                )}{" "}
+                expense?
+              </p>
+              <p className="mt-2 text-[13px] text-[#9a9590]">
+                Net to host updates immediately. Any attached receipt is deleted too.
+              </p>
+              <div className="mt-3 flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setDeleteId(null)}
+                  className="flex-1 rounded-[10px] border border-white/12 py-2.5 text-[14px] font-semibold text-[#9a9590]"
+                >
+                  Keep
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void removeExpense(deleteId)}
+                  className="flex-1 rounded-[10px] border border-[#cf7f7b]/50 py-2.5 text-[14px] font-bold text-[#cf7f7b]"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           ) : null}
 

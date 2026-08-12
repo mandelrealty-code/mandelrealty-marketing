@@ -34,6 +34,7 @@ import {
   buildMonthStatement,
   createManualExpense,
   deleteManualExpense,
+  getExpenseReceiptUrl,
 } from "../pm/statementMath.js";
 import {
   changePmCommission,
@@ -224,6 +225,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           auto_synced: autoSynced,
           sync_reason: syncReason || undefined,
         });
+      }
+      if (resource === "expense_receipt") {
+        const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+        if (!id) return res.status(400).json({ error: "id required." });
+        const url = await getExpenseReceiptUrl(id);
+        return res.status(200).json({ url });
       }
       if (resource === "contracts") {
         const clientId =
@@ -420,13 +427,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (!Number.isFinite(amountCents)) {
             return res.status(400).json({ error: "amount required." });
           }
+          let receipt:
+            | { filename: string; mime: string; buffer: Buffer }
+            | null = null;
+          const receiptB64 = str(body.receipt_base64);
+          if (receiptB64) {
+            if (receiptB64.length > 14_000_000) {
+              return res.status(400).json({ error: "Receipt too large (max ~10MB)." });
+            }
+            try {
+              receipt = {
+                filename: str(body.receipt_filename) || "receipt.pdf",
+                mime: str(body.receipt_mime) || "application/pdf",
+                buffer: Buffer.from(receiptB64, "base64"),
+              };
+            } catch {
+              return res.status(400).json({ error: "Invalid receipt base64." });
+            }
+          }
           const expense = await createManualExpense({
             property_id: str(body.property_id),
             expense_date: str(body.expense_date),
             category: str(body.category) || "other",
-            label: str(body.label),
+            label: str(body.label) || str(body.note),
             amount_cents: amountCents,
             note: str(body.note),
+            receipt,
           });
           return res.status(200).json({ expense });
         }
