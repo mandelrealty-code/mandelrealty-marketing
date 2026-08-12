@@ -278,6 +278,52 @@ export async function listReviewsForPropertiesSince(
   return (data ?? []).map((r) => mapReviewRow(r as Record<string, unknown>));
 }
 
+/** Reservation UUIDs that checked out in [start, end] for these properties. */
+export async function listCheckoutReservationIds(
+  propertyIds: string[],
+  startDate: string,
+  endDate: string,
+): Promise<Set<string>> {
+  if (!propertyIds.length) return new Set();
+  const { data, error } = await db()
+    .from("pm_reservations")
+    .select("hospitable_reservation_id")
+    .in("property_id", propertyIds)
+    .gte("check_out", startDate)
+    .lte("check_out", endDate);
+  if (error) throw error;
+  return new Set(
+    (data ?? [])
+      .map((r) =>
+        String(
+          (r as { hospitable_reservation_id?: string }).hospitable_reservation_id ||
+            "",
+        ).trim(),
+      )
+      .filter(Boolean),
+  );
+}
+
+/** Reviews whose linked reservation checked out in the month (even if reviewed later). */
+export async function listReviewsForReservationIds(
+  propertyIds: string[],
+  reservationIds: Set<string>,
+): Promise<PmReviewRow[]> {
+  if (!propertyIds.length || !reservationIds.size) return [];
+  const ids = [...reservationIds];
+  const { data, error } = await db()
+    .from("pm_reviews")
+    .select("*")
+    .in("property_id", propertyIds)
+    .in("hospitable_reservation_id", ids)
+    .order("reviewed_at", { ascending: true });
+  if (error) {
+    if (/pm_reviews|relation/i.test(error.message || "")) return [];
+    throw error;
+  }
+  return (data ?? []).map((r) => mapReviewRow(r as Record<string, unknown>));
+}
+
 /** Fill missing check_in/out on reviews from pm_reservations (no Hospitable call). */
 export async function backfillReviewStayDates(
   propertyIds: string[],

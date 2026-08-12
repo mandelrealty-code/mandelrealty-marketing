@@ -427,10 +427,28 @@ function normalizeReview(raw: unknown): HospitableReviewNormalized | null {
   const pub = asRecord(r.public);
   const priv = asRecord(r.private);
   const guest = asRecord(r.guest);
-  const reservation = asRecord(r.reservation);
+  // reservation may be an object, or just a UUID string
+  const reservationField = r.reservation;
+  const reservation =
+    typeof reservationField === "string" || typeof reservationField === "number"
+      ? ({ id: String(reservationField) } as Record<string, unknown>)
+      : asRecord(reservationField);
   const property = asRecord(r.property);
 
   const { rating, rating_raw } = parseOverallRating(pub);
+  // Some payloads put the overall score on the review root.
+  const rootRating =
+    typeof r.rating === "number"
+      ? r.rating
+      : typeof r.rating === "string"
+        ? Number(r.rating)
+        : Number.NaN;
+  const resolvedRating =
+    rating != null
+      ? rating
+      : Number.isFinite(rootRating) && rootRating >= 1 && rootRating <= 5
+        ? Math.round(rootRating * 100) / 100
+        : null;
   const publicReview = str(pub.review) || str(pub.public_review) || "";
   const publicResponse = str(pub.response) || "";
 
@@ -464,10 +482,15 @@ function normalizeReview(raw: unknown): HospitableReviewNormalized | null {
   return {
     id,
     property_id: propertyId,
-    reservation_id: str(reservation.id) || str(r.reservation_id) || "",
+    reservation_id:
+      str(reservation.id) ||
+      str(reservation.uuid) ||
+      str(r.reservation_id) ||
+      str(r.reservationId) ||
+      "",
     platform: str(r.platform),
-    rating,
-    rating_raw,
+    rating: resolvedRating,
+    rating_raw: rating_raw || (resolvedRating != null ? String(resolvedRating) : ""),
     public_review: publicReview,
     public_response: publicResponse,
     guest_first_name: str(guest.first_name) || str(guest.firstName) || "",
@@ -499,7 +522,7 @@ export async function listHospitableReviews(input: {
       {
         page: String(page),
         per_page: "100",
-        include: "guest,reservation,property",
+        include: ["guest", "reservation", "property"],
       },
     )) as HospitableListResponse;
 
