@@ -52,17 +52,23 @@ export type MonthStatement = {
   reservation_count: number;
   nights_total: number;
   commission_base_cents: number;
+  /** Sum of nightly/accommodation (invoice HST base). */
+  nightly_total_cents: number;
   gross_cents: number;
   host_payout_cents: number;
   expense_cents: number;
   expense_count: number;
   mrg_commission_cents: number;
   hst_cents: number;
+  hst_mode: "cohost" | "invoice";
   cleaning_fee_cents: number;
   cleaning_fee_keeper: "mrg" | "host";
   mrg_cleaning_cents: number;
   cleaning_turnovers: number;
+  /** Net from stays + expenses (cohost HST already deducted if mode=cohost). */
   net_to_host_cents: number;
+  /** When invoice mode: net after subtracting QB HST. Same as net_to_host when cohost. */
+  net_after_hst_invoice_cents: number;
   rate_bps_used: number | null;
   hst_bps_used: number;
   last_synced_at: string | null;
@@ -155,6 +161,7 @@ export async function buildMonthStatement(
   if (!detail) throw new Error("Property not found.");
 
   const keeper = detail.cleaning_fee_keeper === "host" ? "host" : "mrg";
+  const hstMode = detail.hst_mode === "invoice" ? "invoice" : "cohost";
   const hstBps = Number.isFinite(detail.hst_bps) ? detail.hst_bps : 300;
 
   const [reservations, expenses] = await Promise.all([
@@ -165,6 +172,7 @@ export async function buildMonthStatement(
   const stays: StayStatementLine[] = [];
   const lines: StatementLine[] = [];
   let baseTotal = 0;
+  let nightlyTotal = 0;
   let mrgTotal = 0;
   let hstTotal = 0;
   let cleaningTotal = 0;
@@ -191,15 +199,23 @@ export async function buildMonthStatement(
     lastRate = rate;
 
     const base = bd.commission_base_cents;
+    const nightly = bd.accommodation_cents || base;
     const mrg = Math.round((base * rate) / 10000);
-    const hst = Math.round((base * hstBps) / 10000);
+    // Cohost: % of commission base taken with fee. Invoice: % of nightly (QB).
+    const hst =
+      hstMode === "invoice"
+        ? Math.round((nightly * hstBps) / 10000)
+        : Math.round((base * hstBps) / 10000);
     const cleaning = bd.cleaning_fee_cents;
     if (cleaning > 0) cleaningTurnovers += 1;
 
     const hostCleaning = keeper === "host" ? cleaning : 0;
-    const net = base - mrg - hst + hostCleaning;
+    // Stay-level net never subtracts invoice HST (billed separately via QB).
+    const cohostHst = hstMode === "cohost" ? hst : 0;
+    const net = base - mrg - cohostHst + hostCleaning;
 
     baseTotal += base;
+    nightlyTotal += nightly;
     mrgTotal += mrg;
     hstTotal += hst;
     cleaningTotal += cleaning;
@@ -212,7 +228,10 @@ export async function buildMonthStatement(
 
     const guest = r.platform_id || r.platform || "Stay";
     const label = `${shortStayRange(r.check_in, r.check_out)} · ${guest}`;
-    const meta = `Base ${moneyLabel(base)} · MRG ${moneyLabel(mrg)} · HST ${moneyLabel(hst)}`;
+    const meta =
+      hstMode === "invoice"
+        ? `Base ${moneyLabel(base)} · MRG ${moneyLabel(mrg)} · HST inv ${moneyLabel(hst)}`
+        : `Base ${moneyLabel(base)} · MRG ${moneyLabel(mrg)} · HST ${moneyLabel(hst)}`;
     const stay: StayStatementLine = {
       kind: "stay",
       label,
@@ -243,8 +262,11 @@ export async function buildMonthStatement(
 
   const mrgCleaning = keeper === "mrg" ? cleaningTotal : 0;
   const hostCleaningTotal = keeper === "host" ? cleaningTotal : 0;
+  const cohostHstTotal = hstMode === "cohost" ? hstTotal : 0;
   const netToHost =
-    baseTotal - mrgTotal - hstTotal + hostCleaningTotal - expenseTotal;
+    baseTotal - mrgTotal - cohostHstTotal + hostCleaningTotal - expenseTotal;
+  const netAfterInvoice =
+    hstMode === "invoice" ? netToHost - hstTotal : netToHost;
 
   const currency =
     reservations[0]?.currency || detail.currency || "CAD";
@@ -256,17 +278,20 @@ export async function buildMonthStatement(
     reservation_count: reservations.length,
     nights_total: nightsTotal,
     commission_base_cents: baseTotal,
+    nightly_total_cents: nightlyTotal,
     gross_cents: gross,
     host_payout_cents: hostPayoutLegacy || baseTotal + hostCleaningTotal,
     expense_cents: expenseTotal,
     expense_count: expenses.length,
     mrg_commission_cents: mrgTotal,
     hst_cents: hstTotal,
+    hst_mode: hstMode,
     cleaning_fee_cents: cleaningTotal,
     cleaning_fee_keeper: keeper,
     mrg_cleaning_cents: mrgCleaning,
     cleaning_turnovers: cleaningTurnovers,
     net_to_host_cents: netToHost,
+    net_after_hst_invoice_cents: netAfterInvoice,
     rate_bps_used: lastRate,
     hst_bps_used: hstBps,
     last_synced_at: lastSynced,

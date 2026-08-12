@@ -144,8 +144,8 @@ export async function updatePmSettings(patch: {
   }
   if (patch.default_hst_bps != null) {
     const bps = Math.round(patch.default_hst_bps);
-    if (!Number.isFinite(bps) || bps < 0 || bps > 1000) {
-      throw new Error("Default HST must be between 0% and 10%.");
+    if (!Number.isFinite(bps) || bps < 0 || bps > 2000) {
+      throw new Error("Default HST must be between 0% and 20%.");
     }
     updates.default_hst_bps = bps;
   }

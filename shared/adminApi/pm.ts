@@ -264,20 +264,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (resource === "properties") {
         if (op === "create") {
+          let hstBps: number | undefined;
+          if (typeof body.hst_bps === "number") hstBps = body.hst_bps;
+          else if (typeof body.hst_percent === "number" || typeof body.hst_percent === "string") {
+            hstBps = percentToRateBps(Number(body.hst_percent));
+          }
           const property = await createPmProperty({
             client_id: str(body.client_id),
             name: str(body.name),
             address: str(body.address),
             hospitable_property_id: str(body.hospitable_property_id),
+            cleaning_fee_keeper:
+              body.cleaning_fee_keeper === "host" || body.cleaning_fee_keeper === "mrg"
+                ? body.cleaning_fee_keeper
+                : undefined,
+            hst_mode:
+              body.hst_mode === "invoice" || body.hst_mode === "cohost"
+                ? body.hst_mode
+                : undefined,
+            hst_bps: hstBps,
           });
           return res.status(200).json({ property });
         }
         if (op === "import_hospitable") {
+          let hstBps: number | undefined;
+          if (typeof body.hst_bps === "number") hstBps = body.hst_bps;
+          else if (typeof body.hst_percent === "number" || typeof body.hst_percent === "string") {
+            hstBps = percentToRateBps(Number(body.hst_percent));
+          }
           const property = await importHospitableProperty({
             client_id: str(body.client_id),
             hospitable_property_id: str(body.hospitable_property_id),
             name: str(body.name),
             address: str(body.address),
+            cleaning_fee_keeper:
+              body.cleaning_fee_keeper === "host" || body.cleaning_fee_keeper === "mrg"
+                ? body.cleaning_fee_keeper
+                : undefined,
+            hst_mode:
+              body.hst_mode === "invoice" || body.hst_mode === "cohost"
+                ? body.hst_mode
+                : undefined,
+            hst_bps: hstBps,
           });
           return res.status(200).json({ property });
         }
@@ -293,6 +321,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body.cleaning_fee_keeper === "host" || body.cleaning_fee_keeper === "mrg"
               ? body.cleaning_fee_keeper
               : undefined;
+          const hstMode =
+            body.hst_mode === "invoice" || body.hst_mode === "cohost"
+              ? body.hst_mode
+              : undefined;
           const property = await updatePmProperty(id, {
             name: body.name != null ? str(body.name) : undefined,
             address: body.address != null ? str(body.address) : undefined,
@@ -303,6 +335,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 : undefined,
             active: typeof body.active === "boolean" ? body.active : undefined,
             cleaning_fee_keeper: keeper,
+            hst_mode: hstMode,
             hst_bps: hstBps,
           });
           return res.status(200).json({ property });

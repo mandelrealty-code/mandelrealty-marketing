@@ -9,6 +9,7 @@ import {
 } from "./api";
 import { ContractsPanel } from "./ContractsPanel";
 import { EarningsPanel } from "./EarningsPanel";
+import { HstSetupForm, hstSummaryLabel, type HstMode } from "./HstSetupForm";
 import {
   formatDisplayDate,
   formatRateHistoryRange,
@@ -66,7 +67,9 @@ export default function ClientsApp({ onModeChange }: Props) {
   const [clientSheet, setClientSheet] = useState<null | "create" | ClientRow>(null);
   const [propertySheet, setPropertySheet] = useState(false);
   const [importSheet, setImportSheet] = useState(false);
+  const [importStep, setImportStep] = useState<1 | 2>(1);
   const [rateSheet, setRateSheet] = useState(false);
+  const [hstSheet, setHstSheet] = useState(false);
   const [linkSheet, setLinkSheet] = useState(false);
   const [patSheet, setPatSheet] = useState(false);
 
@@ -96,6 +99,12 @@ export default function ClientsApp({ onModeChange }: Props) {
   const [importClientId, setImportClientId] = useState("");
   const [importSelectedId, setImportSelectedId] = useState("");
   const [importLoading, setImportLoading] = useState(false);
+  const [importHstMode, setImportHstMode] = useState<HstMode>("cohost");
+  const [importHstPercent, setImportHstPercent] = useState("3");
+  const [hstFormMode, setHstFormMode] = useState<HstMode>("cohost");
+  const [hstFormPercent, setHstFormPercent] = useState("3");
+  const [propertyHstMode, setPropertyHstMode] = useState<HstMode>("cohost");
+  const [propertyHstPercent, setPropertyHstPercent] = useState("3");
 
   const loadLists = useCallback(async () => {
     setLoadError("");
@@ -176,6 +185,8 @@ export default function ClientsApp({ onModeChange }: Props) {
       client_id: prefillClientId || clients[0]?.id || "",
       hospitable_property_id: "",
     });
+    setPropertyHstMode("cohost");
+    setPropertyHstPercent(String(defaultHstPercent || 3));
     setPropertySheet(true);
   };
 
@@ -192,6 +203,9 @@ export default function ClientsApp({ onModeChange }: Props) {
     }
     setImportClientId(prefillClientId || clients[0]?.id || "");
     setImportSelectedId("");
+    setImportStep(1);
+    setImportHstMode("cohost");
+    setImportHstPercent(String(defaultHstPercent || 3));
     setImportSheet(true);
     setImportLoading(true);
     setLoadError("");
@@ -217,6 +231,11 @@ export default function ClientsApp({ onModeChange }: Props) {
   const saveImport = async () => {
     const unit = hospitableAvailable.find((u) => u.id === importSelectedId);
     if (!unit || !importClientId) return;
+    const hstPct = Number(importHstPercent);
+    if (!Number.isFinite(hstPct) || hstPct < 0 || hstPct > 20) {
+      setLoadError("HST rate must be between 0% and 20%.");
+      return;
+    }
     setBusy(true);
     setLoadError("");
     try {
@@ -226,8 +245,11 @@ export default function ClientsApp({ onModeChange }: Props) {
         hospitable_property_id: unit.id,
         name: unit.name,
         address: unit.address,
+        hst_mode: importHstMode,
+        hst_percent: hstPct,
       });
       setImportSheet(false);
+      setImportStep(1);
       await loadLists();
       setTab("properties");
       setPropertyDetail(data.property);
@@ -282,12 +304,19 @@ export default function ClientsApp({ onModeChange }: Props) {
   };
 
   const saveProperty = async () => {
+    const hstPct = Number(propertyHstPercent);
+    if (!Number.isFinite(hstPct) || hstPct < 0 || hstPct > 20) {
+      setLoadError("HST rate must be between 0% and 20%.");
+      return;
+    }
     setBusy(true);
     setLoadError("");
     try {
       const data = await pmPost<{ property: PropertyDetail }>("properties", {
         op: "create",
         ...propertyForm,
+        hst_mode: propertyHstMode,
+        hst_percent: hstPct,
       });
       setPropertySheet(false);
       await loadLists();
@@ -309,6 +338,15 @@ export default function ClientsApp({ onModeChange }: Props) {
       note: "",
     });
     setRateSheet(true);
+  };
+
+  const openChangeHst = () => {
+    if (!propertyDetail) return;
+    const mode: HstMode =
+      propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost";
+    setHstFormMode(mode);
+    setHstFormPercent(String((propertyDetail.hst_bps ?? 300) / 100));
+    setHstSheet(true);
   };
 
   const saveRate = async () => {
@@ -404,6 +442,7 @@ export default function ClientsApp({ onModeChange }: Props) {
 
   const savePropertyTerms = async (patch: {
     cleaning_fee_keeper?: "mrg" | "host";
+    hst_mode?: "cohost" | "invoice";
     hst_percent?: number;
   }) => {
     if (!propertyDetail) return;
@@ -419,8 +458,26 @@ export default function ClientsApp({ onModeChange }: Props) {
       await loadLists();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Save failed.");
+      throw err;
     } finally {
       setBusy(false);
+    }
+  };
+
+  const saveHst = async () => {
+    const hstPct = Number(hstFormPercent);
+    if (!Number.isFinite(hstPct) || hstPct < 0 || hstPct > 20) {
+      setLoadError("HST rate must be between 0% and 20%.");
+      return;
+    }
+    try {
+      await savePropertyTerms({
+        hst_mode: hstFormMode,
+        hst_percent: hstPct,
+      });
+      setHstSheet(false);
+    } catch {
+      // Error already surfaced via loadError.
     }
   };
 
@@ -694,7 +751,9 @@ export default function ClientsApp({ onModeChange }: Props) {
             <SegmentedControl
               value={propertyDetail.cleaning_fee_keeper === "host" ? "host" : "mrg"}
               disabled={busy}
-              onChange={(v) => savePropertyTerms({ cleaning_fee_keeper: v })}
+              onChange={(v) => {
+                void savePropertyTerms({ cleaning_fee_keeper: v }).catch(() => undefined);
+              }}
               options={[
                 { value: "mrg", label: "MRG keeps" },
                 { value: "host", label: "Host keeps" },
@@ -707,32 +766,24 @@ export default function ClientsApp({ onModeChange }: Props) {
             </p>
           </div>
 
-          <div className="flex flex-col gap-1.5 border-t border-b border-white/8 px-4 py-3.5 lg:px-0">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[15px] font-semibold text-[#f5f5f5]">HST / cohost</p>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  step={0.5}
-                  disabled={busy}
-                  defaultValue={(propertyDetail.hst_bps ?? 300) / 100}
-                  key={`hst-${propertyDetail.id}-${propertyDetail.hst_bps}`}
-                  onBlur={(e) => {
-                    const n = Number(e.target.value);
-                    if (!Number.isFinite(n)) return;
-                    if (Math.round(n * 100) === (propertyDetail.hst_bps ?? 300)) return;
-                    void savePropertyTerms({ hst_percent: n });
-                  }}
-                  className="w-14 rounded-lg border border-white/10 bg-[#1c1c1c] px-2 py-1.5 text-center text-[15px] font-semibold text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
-                />
-                <span className="text-[15px] font-semibold text-[#9a9590]">%</span>
-              </div>
+          <div className="flex items-center justify-between gap-3 border-t border-b border-white/8 px-4 py-3.5 lg:px-0">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="text-[15px] font-semibold text-[#f5f5f5]">HST</p>
+              <p className="text-[13px] text-[#6f6a65] text-pretty">
+                {hstSummaryLabel(
+                  propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost",
+                  propertyDetail.hst_bps ?? 300,
+                )}
+              </p>
             </div>
-            <p className="text-[13px] text-[#6f6a65] text-pretty">
-              Added on top of management fee on nightly base.
-            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={openChangeHst}
+              className="shrink-0 text-[13px] font-semibold text-[#c4a35a] disabled:opacity-50"
+            >
+              Change
+            </button>
           </div>
 
           {propertyDetail.terms.length > 1 ? (
@@ -771,6 +822,7 @@ export default function ClientsApp({ onModeChange }: Props) {
             linked={Boolean(propertyDetail.hospitable_property_id)}
             rateBps={currentRateBps}
             hstBps={propertyDetail.hst_bps ?? 300}
+            hstMode={propertyDetail.hst_mode === "invoice" ? "invoice" : "cohost"}
             onError={setLoadError}
           />
           <div className="lg:hidden">
@@ -1010,6 +1062,14 @@ export default function ClientsApp({ onModeChange }: Props) {
                 placeholder="hsp_…"
               />
             </div>
+            <div className="border-t border-white/8 pt-3">
+              <HstSetupForm
+                mode={propertyHstMode}
+                ratePercent={propertyHstPercent}
+                onModeChange={setPropertyHstMode}
+                onRateChange={setPropertyHstPercent}
+              />
+            </div>
             <GoldButton
               type="button"
               disabled={busy || !propertyForm.name.trim() || !propertyForm.client_id}
@@ -1123,75 +1183,130 @@ export default function ClientsApp({ onModeChange }: Props) {
         </Sheet>
       ) : null}
 
+      {hstSheet && propertyDetail ? (
+        <Sheet title="HST" onCancel={() => setHstSheet(false)} desktop={desktop}>
+          <HstSetupForm
+            mode={hstFormMode}
+            ratePercent={hstFormPercent}
+            onModeChange={setHstFormMode}
+            onRateChange={setHstFormPercent}
+            subtitle={propertyDetail.name}
+          />
+          <GoldButton
+            type="button"
+            className="mt-4 w-full"
+            disabled={busy}
+            onClick={() => void saveHst()}
+          >
+            {busy ? "Saving…" : "Save HST"}
+          </GoldButton>
+        </Sheet>
+      ) : null}
+
       {importSheet ? (
-        <Sheet title="Import from Hospitable" onCancel={() => setImportSheet(false)} desktop={desktop}>
-          <div className="flex max-h-[70vh] flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel>Assign to client</FieldLabel>
-              <select
-                value={importClientId}
-                onChange={(e) => setImportClientId(e.target.value)}
-                className="w-full rounded-[9px] border border-white/10 bg-[#1c1c1c] px-3.5 py-3 text-[15px] text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
-              >
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <p className="text-[13px] text-[#6f6a65]">
-              {importLoading
-                ? "Loading units…"
-                : `${hospitableAvailable.length} available · ${hospitableMeta.linked_count} already in Clients · ${hospitableMeta.total} total in Hospitable`}
-            </p>
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-[9px] border border-white/8">
-              {importLoading ? (
-                <p className="px-3.5 py-8 text-center text-sm text-[#6f6a65]">Loading…</p>
-              ) : hospitableAvailable.length === 0 ? (
-                <p className="px-3.5 py-8 text-center text-sm text-[#6f6a65]">
-                  No unlinked units left to import.
-                </p>
-              ) : (
-                hospitableAvailable.map((u) => {
-                  const selected = importSelectedId === u.id;
-                  return (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => setImportSelectedId(u.id)}
-                      className={`flex w-full items-start gap-3 border-b border-white/8 px-3.5 py-3 text-left last:border-b-0 ${
-                        selected ? "bg-[#c4a35a]/12" : "hover:bg-white/[0.03]"
-                      }`}
-                    >
-                      <span
-                        className={`mt-1 h-3.5 w-3.5 shrink-0 rounded-full border ${
-                          selected
-                            ? "border-[#c4a35a] bg-[#c4a35a]"
-                            : "border-white/20"
+        <Sheet
+          title={importStep === 2 ? "HST" : "Import from Hospitable"}
+          onCancel={() => {
+            setImportSheet(false);
+            setImportStep(1);
+          }}
+          desktop={desktop}
+        >
+          {importStep === 1 ? (
+            <div className="flex max-h-[70vh] flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel>Assign to client</FieldLabel>
+                <select
+                  value={importClientId}
+                  onChange={(e) => setImportClientId(e.target.value)}
+                  className="w-full rounded-[9px] border border-white/10 bg-[#1c1c1c] px-3.5 py-3 text-[15px] text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
+                >
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-[13px] text-[#6f6a65]">
+                {importLoading
+                  ? "Loading units…"
+                  : `${hospitableAvailable.length} available · ${hospitableMeta.linked_count} already in Clients · ${hospitableMeta.total} total in Hospitable`}
+              </p>
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-[9px] border border-white/8">
+                {importLoading ? (
+                  <p className="px-3.5 py-8 text-center text-sm text-[#6f6a65]">Loading…</p>
+                ) : hospitableAvailable.length === 0 ? (
+                  <p className="px-3.5 py-8 text-center text-sm text-[#6f6a65]">
+                    No unlinked units left to import.
+                  </p>
+                ) : (
+                  hospitableAvailable.map((u) => {
+                    const selected = importSelectedId === u.id;
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => setImportSelectedId(u.id)}
+                        className={`flex w-full items-start gap-3 border-b border-white/8 px-3.5 py-3 text-left last:border-b-0 ${
+                          selected ? "bg-[#c4a35a]/12" : "hover:bg-white/[0.03]"
                         }`}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[15px] font-semibold text-[#f5f5f5]">
-                          {u.name}
+                      >
+                        <span
+                          className={`mt-1 h-3.5 w-3.5 shrink-0 rounded-full border ${
+                            selected
+                              ? "border-[#c4a35a] bg-[#c4a35a]"
+                              : "border-white/20"
+                          }`}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[15px] font-semibold text-[#f5f5f5]">
+                            {u.name}
+                          </span>
+                          <span className="block truncate text-[13px] text-[#9a9590]">
+                            {u.address || u.id}
+                          </span>
                         </span>
-                        <span className="block truncate text-[13px] text-[#9a9590]">
-                          {u.address || u.id}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })
-              )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              <GoldButton
+                type="button"
+                disabled={busy || !importSelectedId || !importClientId || importLoading}
+                onClick={() => setImportStep(2)}
+              >
+                Continue
+              </GoldButton>
             </div>
-            <GoldButton
-              type="button"
-              disabled={busy || !importSelectedId || !importClientId || importLoading}
-              onClick={saveImport}
-            >
-              {busy ? "Adding…" : "Add selected unit"}
-            </GoldButton>
-          </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <button
+                type="button"
+                onClick={() => setImportStep(1)}
+                className="self-start text-[13px] font-semibold text-[#c4a35a]"
+              >
+                ← Back
+              </button>
+              <HstSetupForm
+                mode={importHstMode}
+                ratePercent={importHstPercent}
+                onModeChange={setImportHstMode}
+                onRateChange={setImportHstPercent}
+                subtitle={
+                  hospitableAvailable.find((u) => u.id === importSelectedId)?.name
+                }
+              />
+              <GoldButton
+                type="button"
+                disabled={busy || !importSelectedId || !importClientId}
+                onClick={() => void saveImport()}
+              >
+                {busy ? "Adding…" : "Import unit"}
+              </GoldButton>
+            </div>
+          )}
         </Sheet>
       ) : null}
     </div>

@@ -52,6 +52,7 @@ export async function listPmProperties(clientId?: string): Promise<PmPropertyLis
     return {
       ...p,
       cleaning_fee_keeper: p.cleaning_fee_keeper === "host" ? "host" : "mrg",
+      hst_mode: p.hst_mode === "invoice" ? "invoice" : "cohost",
       hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
       client_name: pm_clients?.name ?? "—",
       current_rate_bps: current?.rate_bps ?? null,
@@ -80,6 +81,7 @@ export async function getPmPropertyDetail(id: string): Promise<PmPropertyDetail 
   return {
     ...p,
     cleaning_fee_keeper: p.cleaning_fee_keeper === "host" ? "host" : "mrg",
+    hst_mode: p.hst_mode === "invoice" ? "invoice" : "cohost",
     hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
     client_name: pm_clients?.name ?? "—",
     current_term: pickCurrentTerm(terms),
@@ -92,6 +94,9 @@ export async function createPmProperty(input: {
   name: string;
   address?: string;
   hospitable_property_id?: string;
+  cleaning_fee_keeper?: "mrg" | "host";
+  hst_mode?: "cohost" | "invoice";
+  hst_bps?: number;
 }): Promise<PmPropertyDetail> {
   const name = input.name.trim();
   if (!name) throw new Error("Name is required.");
@@ -99,6 +104,14 @@ export async function createPmProperty(input: {
 
   const settings = await getPmSettings();
   const hospitable = (input.hospitable_property_id ?? "").trim();
+  const hstMode = input.hst_mode === "invoice" ? "invoice" : "cohost";
+  let hstBps =
+    input.hst_bps != null ? Math.round(input.hst_bps) : settings.default_hst_bps ?? 300;
+  if (input.hst_bps == null && hstMode === "invoice") hstBps = 1300;
+  if (!Number.isFinite(hstBps) || hstBps < 0 || hstBps > 2000) {
+    throw new Error("HST must be between 0% and 20%.");
+  }
+  const keeper = input.cleaning_fee_keeper === "host" ? "host" : "mrg";
 
   const { data: prop, error } = await db()
     .from("pm_properties")
@@ -107,8 +120,9 @@ export async function createPmProperty(input: {
       name,
       address: (input.address ?? "").trim(),
       hospitable_property_id: hospitable,
-      cleaning_fee_keeper: "mrg",
-      hst_bps: settings.default_hst_bps ?? 300,
+      cleaning_fee_keeper: keeper,
+      hst_mode: hstMode,
+      hst_bps: hstBps,
     })
     .select("*")
     .single();
@@ -136,6 +150,7 @@ export async function updatePmProperty(
     hospitable_property_id?: string;
     active?: boolean;
     cleaning_fee_keeper?: "mrg" | "host";
+    hst_mode?: "cohost" | "invoice";
     hst_bps?: number;
   },
 ): Promise<PmPropertyDetail> {
@@ -160,10 +175,16 @@ export async function updatePmProperty(
     }
     updates.cleaning_fee_keeper = patch.cleaning_fee_keeper;
   }
+  if (patch.hst_mode != null) {
+    if (patch.hst_mode !== "cohost" && patch.hst_mode !== "invoice") {
+      throw new Error("hst_mode must be cohost or invoice.");
+    }
+    updates.hst_mode = patch.hst_mode;
+  }
   if (patch.hst_bps != null) {
     const bps = Math.round(patch.hst_bps);
-    if (!Number.isFinite(bps) || bps < 0 || bps > 1000) {
-      throw new Error("HST must be between 0% and 10%.");
+    if (!Number.isFinite(bps) || bps < 0 || bps > 2000) {
+      throw new Error("HST must be between 0% and 20%.");
     }
     updates.hst_bps = bps;
   }
@@ -247,6 +268,9 @@ export async function importHospitableProperty(input: {
   hospitable_property_id: string;
   name: string;
   address?: string;
+  cleaning_fee_keeper?: "mrg" | "host";
+  hst_mode?: "cohost" | "invoice";
+  hst_bps?: number;
 }): Promise<PmPropertyDetail> {
   const hid = input.hospitable_property_id.trim();
   if (!hid) throw new Error("Hospitable property id is required.");
@@ -262,5 +286,8 @@ export async function importHospitableProperty(input: {
     name: input.name,
     address: input.address,
     hospitable_property_id: hid,
+    cleaning_fee_keeper: input.cleaning_fee_keeper,
+    hst_mode: input.hst_mode,
+    hst_bps: input.hst_bps,
   });
 }

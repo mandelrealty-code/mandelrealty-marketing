@@ -9,14 +9,17 @@ export type MonthStatement = {
   reservation_count: number;
   nights_total: number;
   commission_base_cents: number;
+  nightly_total_cents?: number;
   expense_cents: number;
   expense_count: number;
   mrg_commission_cents: number;
   hst_cents: number;
+  hst_mode?: "cohost" | "invoice";
   cleaning_fee_cents: number;
   cleaning_fee_keeper: "mrg" | "host";
   cleaning_turnovers: number;
   net_to_host_cents: number;
+  net_after_hst_invoice_cents?: number;
   rate_bps_used: number | null;
   hst_bps_used: number;
   last_synced_at: string | null;
@@ -75,12 +78,14 @@ export function EarningsPanel({
   linked,
   rateBps,
   hstBps,
+  hstMode = "cohost",
   onError,
 }: {
   propertyId: string;
   linked: boolean;
   rateBps: number | null;
   hstBps: number;
+  hstMode?: "cohost" | "invoice";
   onError: (msg: string) => void;
 }) {
   const [month, setMonth] = useState(defaultMonth);
@@ -189,6 +194,8 @@ export function EarningsPanel({
   const blocked = busy || loading;
   const rateUsed = statement?.rate_bps_used ?? rateBps;
   const hstUsed = statement?.hst_bps_used ?? hstBps;
+  const mode = statement?.hst_mode ?? hstMode;
+  const invoiceMode = mode === "invoice";
   const stays = statement?.stays ?? [];
   const visibleStays = showAllStays ? stays : stays.slice(0, 4);
 
@@ -293,15 +300,29 @@ export function EarningsPanel({
               − {money(statement.mrg_commission_cents, cur)}
             </p>
           </div>
-          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
-            <div>
-              <p className="text-sm text-[#f5f5f5]">HST</p>
-              <p className="text-xs text-[#6f6a65]">Base × {rateLabel(hstUsed)}</p>
+          {invoiceMode ? (
+            <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
+              <div>
+                <p className="text-sm text-[#f5f5f5]">HST to invoice</p>
+                <p className="text-xs text-[#6f6a65]">
+                  Nightly × {rateLabel(hstUsed)} · QuickBooks
+                </p>
+              </div>
+              <p className="text-[15px] font-semibold tabular-nums text-[#c4a35a]">
+                {money(statement.hst_cents, cur)}
+              </p>
             </div>
-            <p className="text-[15px] font-semibold tabular-nums text-[#9a9590]">
-              − {money(statement.hst_cents, cur)}
-            </p>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
+              <div>
+                <p className="text-sm text-[#f5f5f5]">HST / cohost</p>
+                <p className="text-xs text-[#6f6a65]">Base × {rateLabel(hstUsed)}</p>
+              </div>
+              <p className="text-[15px] font-semibold tabular-nums text-[#9a9590]">
+                − {money(statement.hst_cents, cur)}
+              </p>
+            </div>
+          )}
           <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
             <div>
               <p className="text-sm text-[#f5f5f5]">Cleaning</p>
@@ -331,12 +352,36 @@ export function EarningsPanel({
               − {money(statement.expense_cents, cur)}
             </p>
           </div>
-          <div className="flex items-center justify-between border-t border-white/10 bg-[#0e0e0e] px-4 py-4 lg:rounded-lg lg:border lg:border-white/8 lg:px-4">
-            <p className="text-[15px] font-bold">Net to host</p>
+          <div className="flex items-center justify-between border-t border-white/10 bg-[#0e0e0e] px-4 py-4 lg:rounded-t-lg lg:border lg:border-b-0 lg:border-white/8 lg:px-4">
+            <div>
+              <p className="text-[15px] font-bold">
+                {invoiceMode ? "Net from stays" : "Net to host"}
+              </p>
+              {invoiceMode ? (
+                <p className="text-xs text-[#6f6a65]">Before QuickBooks HST invoice</p>
+              ) : null}
+            </div>
             <p className="text-[22px] font-bold tracking-tight tabular-nums">
               {money(statement.net_to_host_cents, cur)}
             </p>
           </div>
+          {invoiceMode ? (
+            <div className="flex items-center justify-between border-t border-white/10 bg-[#141414] px-4 py-3.5 lg:rounded-b-lg lg:border lg:border-t-0 lg:border-white/8 lg:px-4">
+              <div>
+                <p className="text-sm font-semibold text-[#f5f5f5]">After HST invoice</p>
+                <p className="text-xs text-[#6f6a65]">
+                  Net − {money(statement.hst_cents, cur)} QB
+                </p>
+              </div>
+              <p className="text-lg font-bold tabular-nums text-[#f5f5f5]">
+                {money(
+                  statement.net_after_hst_invoice_cents ??
+                    statement.net_to_host_cents - statement.hst_cents,
+                  cur,
+                )}
+              </p>
+            </div>
+          ) : null}
 
           <div className="flex items-center gap-3 px-4 py-3 lg:px-0">
             <button

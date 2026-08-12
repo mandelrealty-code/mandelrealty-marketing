@@ -24,6 +24,8 @@ export type PmProperty = {
   currency: string;
   active: boolean;
   cleaning_fee_keeper: "mrg" | "host";
+  /** cohost = % of commission base; invoice = % of nightly billed via QuickBooks */
+  hst_mode: "cohost" | "invoice";
   hst_bps: number;
 };
 
