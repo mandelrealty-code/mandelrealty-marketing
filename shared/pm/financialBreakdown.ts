@@ -228,34 +228,48 @@ export function breakdownFromFinancials(
     accommodation = Math.round(Number(fin.accommodation) * 100);
   }
 
-  // Airbnb identity: You earn ≈ room fee + guest fees − host fee ± adjustments.
-  // If stored accommodation doesn't rebuild revenue, derive room fee from payout
-  // (fixes Hospitable rows where accommodation is understated vs Airbnb).
+  // Airbnb "You earn" identity: room fee + cleaning − host fee (± adjustments).
+  // Prefer this over a full guestFees rebuild — extra Hospitable guest-fee lines
+  // can make an understated room fee look consistent (e.g. $2,371 + $450 fees).
   if (hostRevenue) {
-    const errStored = Math.abs(rebuild(accommodation, false) - hostRevenue);
-    const errStoredTax = Math.abs(rebuild(accommodation, true) - hostRevenue);
-    const bestStored = Math.min(errStored, errStoredTax);
-    if (bestStored > 1) {
+    const rebuildAirbnb = (accom: number) =>
+      accom + cleaning + hostFeesSigned + adjustmentsSigned;
+    const errAirbnb = Math.abs(rebuildAirbnb(accommodation) - hostRevenue);
+    if (errAirbnb > 1) {
       const derived = Math.max(
         0,
-        hostRevenue - guestFeesSigned - hostFeesSigned - adjustmentsSigned,
+        hostRevenue - cleaning - hostFeesSigned - adjustmentsSigned,
       );
-      const derivedTax = Math.max(
-        0,
-        hostRevenue -
-          guestFeesSigned -
-          hostFeesSigned -
-          adjustmentsSigned -
-          taxesSigned,
-      );
-      const errDerived = Math.abs(rebuild(derived, false) - hostRevenue);
-      const errDerivedTax = Math.abs(rebuild(derivedTax, true) - hostRevenue);
-      if (errDerived <= 1 && errDerived < bestStored) {
+      if (Math.abs(rebuildAirbnb(derived) - hostRevenue) <= 1) {
         accommodation = derived;
-      } else if (errDerivedTax <= 1 && errDerivedTax < bestStored) {
-        accommodation = derivedTax;
-      } else if (errDerived < bestStored) {
-        accommodation = derived;
+      } else {
+        // Fall back to full guest-fee reconstruction when cleaning-only fails.
+        const errStored = Math.abs(rebuild(accommodation, false) - hostRevenue);
+        const errStoredTax = Math.abs(rebuild(accommodation, true) - hostRevenue);
+        const bestStored = Math.min(errStored, errStoredTax);
+        if (bestStored > 1) {
+          const derivedFull = Math.max(
+            0,
+            hostRevenue - guestFeesSigned - hostFeesSigned - adjustmentsSigned,
+          );
+          const derivedTax = Math.max(
+            0,
+            hostRevenue -
+              guestFeesSigned -
+              hostFeesSigned -
+              adjustmentsSigned -
+              taxesSigned,
+          );
+          const errDerived = Math.abs(rebuild(derivedFull, false) - hostRevenue);
+          const errDerivedTax = Math.abs(rebuild(derivedTax, true) - hostRevenue);
+          if (errDerived <= 1 && errDerived < bestStored) {
+            accommodation = derivedFull;
+          } else if (errDerivedTax <= 1 && errDerivedTax < bestStored) {
+            accommodation = derivedTax;
+          } else if (errDerived < bestStored) {
+            accommodation = derivedFull;
+          }
+        }
       }
     }
   }
