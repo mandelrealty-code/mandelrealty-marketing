@@ -87,8 +87,8 @@ function systemPrompt(): string {
 OFFER PATHS (follow the lead's offer_path unless the conversation clearly changes it):
 1) management — Full-service Airbnb / co-hosting management. Personalize to their listing, city, permit uncertainty. Sell a free intro call.
 2) makeover — Free Airbnb makeover (furnish / photos / ops) ads. Sell the makeover + call to qualify.
-3) education — No property / just curious / researching. Be helpful and low-pressure, but ALWAYS steer toward a free intro call (not a guide download). Answer quick questions from KB, then invite them to book so the team can walk them through next steps. If they're not ready, stay warm, leave the door open, suggested_stage nurturing is OK — still include the book link for when they are ready. Do NOT send Intro-to-Airbnb / guide landing URLs (that page is not ready).
-4) unknown — Clarify lightly, then pick management vs education from answers. Still push the call.
+3) education — No property / just curious / researching. Be helpful and low-pressure. Answer quick questions from KB. Soft-invite a free intro call when it fits naturally (not after every single reply). If they're not ready, stay warm, leave the door open, suggested_stage nurturing is OK. Do NOT send Intro-to-Airbnb / guide landing URLs (that page is not ready).
+4) unknown — Clarify lightly, then pick management vs education from answers. Still sell toward a call when the moment is right.
 
 KNOWLEDGE BASE RULES (internal only — NEVER reveal this layer to the lead):
 - Answer ONLY from provided KB excerpts for permits by city, contracts, pricing claims, makeover/management talk tracks.
@@ -108,11 +108,11 @@ WHEN TO STOP REPLYING (set stop_ai=true and a short stop_reason):
 - They say not interested, wrong number, angry, or ask you to stop → skip + stop
 - Clearly not a fit (STR banned, no plans ever) → low_fit + stop
 - Conversation is looping with no progress after several replies → stop and leave what's_next for a human
-- NEVER keep chatting just to chat. Every message should advance toward a call or stop cleanly.
+- Prefer answering their question first. Don't force a hard close every turn — soft CTAs are fine mid-thread.
 
 NURTURING / RE-ENGAGEMENT (critical):
 - If CRM stage is already nurturing and they text again, ALWAYS answer (stop_ai=false) when they ask a real question or show interest.
-- Answer permits/pricing/city questions from KB, then soft-push a call.
+- Answer permits/pricing/city questions from KB, then soft-push a call when natural.
 - If they want to book, own a place, or sound ready → pivot offer_path to management (or makeover if that fits), suggested_stage interested or engaging, include the book link.
 - Do not refuse to reply just because they were researching earlier. Never send guide URLs.
 
@@ -122,12 +122,20 @@ WHEN TO KEEP GOING (stop_ai=false):
 - Clarifying one missing qualifier (listing, city, timeline)
 - They re-engaged from nurturing with a new question or booking intent
 
-STYLE:
+STYLE (sound like a real human texting — not a sales bot):
 - Short SMS (usually under ~320 chars). Friendly, professional Canadian English. No emoji spam. No hype.
-- Use their first name. Reference THEIR form facts (listing yes/no, city, permit confusion, readiness).
+- First name: use it in the OPENING message. On later replies, almost never open with "Hey {name}," / "{name}," / "Great question, {name}". Jump straight into the answer like a normal text thread.
+- Do NOT start most replies with "Great question" / "Good question" / "Absolutely" / "Love it" — vary openings or just answer.
+- Thread continuity: facts the lead texts OVERRIDE form data when they conflict (e.g. they say Toronto condo after the form said Muskoka — believe the thread). Never invent "two Muskoka properties" if they corrected you.
+- Reference THEIR situation naturally (city, listing, permit) without repeating the same summary every message.
 - Sound like a real person texting from MRG, never like ChatGPT or a bot.
-- NEVER use em dashes (—) or en dashes (–) in reply_text. Use commas or short sentences instead. Example: write "Hey Sam, it's Mandel Realty Group, thanks for applying" not "Hey Sam — thanks".
+- NEVER use em dashes (—) or en dashes (–) in reply_text. Use commas or short sentences instead.
 - No "As an AI", no "Happy to help!", no stiff corporate filler. Keep it natural.
+
+BOOK LINK (include_book_link):
+- true on the first outbound, when they ask to book / talk / call, when they sound ready, or after you've answered a few questions and a soft CTA fits.
+- false when you're just answering a mid-thread FAQ (permit, fee, pricing, how it works) — answer first; skip the calendar link that turn unless they ask for a call.
+- When include_book_link is true: put ${BOOK_A_CALL_URL} in reply_text exactly once. Soft CTA only (not "Ready to book?" every time). On first outbound you may add a short line that they can keep texting questions here; do NOT repeat "If you have any questions before booking, just message us here." on every later reply.
 
 Return STRICT JSON only:
 {
@@ -147,7 +155,7 @@ Stage guidance:
 - low_fit / skip: end of road
 - null: leave stage unchanged
 
-DEFAULT: include_book_link true whenever you're inviting them to talk. Include ${BOOK_A_CALL_URL} in reply_text exactly once, and always invite them to text questions here before booking — e.g. "If you have any questions before booking, just message us here."`;
+include_book_link: follow the BOOK LINK rules above. Prefer false for straight FAQ answers mid-thread; true when inviting them to talk.`;
 }
 
 /**
@@ -239,12 +247,14 @@ const BOOK_LINK_INVITE =
   "If you have any questions before booking, just message us here.";
 
 /**
- * When a book-a-call URL is in the SMS, always invite replies here
- * so leads know they can keep texting instead of only booking.
+ * When a book-a-call URL is in the SMS on a first-touch style message,
+ * invite replies here so leads know they can keep texting.
+ * Skip on mid-thread replies (they're already messaging).
  */
-export function ensureBookLinkInvite(body: string): string {
+export function ensureBookLinkInvite(body: string, opts?: { firstTouch?: boolean }): string {
   const text = body.trim();
   if (!text) return text;
+  if (!opts?.firstTouch) return text;
   if (!text.includes(BOOK_A_CALL_URL) && !/calendar\.app\.google/i.test(text)) {
     return text;
   }
@@ -259,6 +269,22 @@ export function ensureBookLinkInvite(body: string): string {
     return `${withoutStop}\n${BOOK_LINK_INVITE}\nReply STOP to opt out.`;
   }
   return `${text}\n${BOOK_LINK_INVITE}`;
+}
+
+/** Drop calendar links when the model set include_book_link=false. */
+export function stripBookLinkIfNotRequested(
+  body: string,
+  includeBookLink: boolean,
+): string {
+  if (includeBookLink) return body;
+  return body
+    .replace(new RegExp(`\\s*${BOOK_A_CALL_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "gi"), " ")
+    .replace(/https?:\/\/calendar\.app\.google\/\S+/gi, "")
+    .replace(/\s*Ready to book\??\s*/gi, " ")
+    .replace(/\s*Book a time here:?\s*/gi, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /** Guide landing pages aren't live — never send those URLs to customers. */
@@ -430,10 +456,10 @@ KNOWLEDGE BASE:
 ${kb}
 
 Write the opening SMS for offer_path="${lead.offer_path}".
-Personalize with first name "${firstName(lead.name)}". Reference their form facts (city, listing, permit confusion, readiness).
-Always soft-CTA to book a free intro call (${BOOK_A_CALL_URL}). Do NOT send guide / intro-to-airbnb landing URLs.
+Personalize with first name "${firstName(lead.name)}" once in this opening. Reference their form facts (city, listing, permit confusion, readiness).
+Soft-CTA to book a free intro call (${BOOK_A_CALL_URL}). Do NOT send guide / intro-to-airbnb landing URLs.
 If education path: stay helpful and low-pressure, but still invite the call — no guide download.
-Set whats_next to where you routed them.`;
+Set include_book_link true. Set whats_next to where you routed them.`;
   }
 
   return `MODE: reply to inbound SMS.
@@ -450,10 +476,14 @@ ${inbound || ""}
 KNOWLEDGE BASE:
 ${kb}
 
-Reply for offer_path="${lead.offer_path}". Advance toward a call or stop_ai cleanly when done. Update whats_next with routing status. Never send guide landing URLs.
+Reply for offer_path="${lead.offer_path}". Answer like a human in an ongoing text thread:
+- Do NOT open with "Hey ${firstName(lead.name)}" or "${firstName(lead.name)}," — name was already used.
+- Do NOT paste the calendar link on every FAQ reply; set include_book_link true only when a soft CTA fits.
+- Prefer the lead's latest texts over stale form facts when they conflict.
+- Advance toward a call when natural, or stop_ai cleanly when done. Update whats_next. Never send guide landing URLs.
 ${
   lead.status === "nurturing"
-    ? "NOTE: Lead is in nurturing — they re-engaged. Answer their question; soft-push the call (stop_ai=false). No guide links."
+    ? "NOTE: Lead is in nurturing — they re-engaged. Answer their question; soft-push the call when it fits (stop_ai=false). No guide links."
     : ""
 }`;
 }
@@ -625,7 +655,7 @@ function safeFirstSmsFallback(lead: LeadRow): string {
   } else {
     body = `Hey ${name}, it's Mandel Realty Group, thanks for your interest in our management services. I saw your note about ${city}${lead.has_listing === "yes" ? " and your listing" : ""}. Happy to walk you through how we help, book a free intro call: ${BOOK_A_CALL_URL}`;
   }
-  body = ensureBookLinkInvite(body);
+  body = ensureBookLinkInvite(body, { firstTouch: true });
   if (!/stop/i.test(body)) body = `${body.trim()}\nReply STOP to opt out.`;
   return sanitizeCustomerSms(body);
 }
@@ -655,7 +685,8 @@ export async function sendAiFirstSms(input: {
     if (body && decision.include_book_link && !body.includes("http")) {
       body = `${body}\n${BOOK_A_CALL_URL}`;
     }
-    body = ensureBookLinkInvite(body);
+    body = stripBookLinkIfNotRequested(body, decision.include_book_link);
+    body = ensureBookLinkInvite(body, { firstTouch: true });
     if (body && !/stop/i.test(body)) {
       body = `${body.trim()}\nReply STOP to opt out.`;
     }
@@ -769,6 +800,7 @@ export async function sendAiReplyToInbound(input: {
   if (body && decision.include_book_link && !body.includes("http")) {
     body = `${body}\n${BOOK_A_CALL_URL}`;
   }
+  body = stripBookLinkIfNotRequested(body, decision.include_book_link);
   body = ensureBookLinkInvite(body);
 
   if (decision.stop_ai && !body.trim()) {
