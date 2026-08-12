@@ -43,6 +43,9 @@ export type MonthStatement = {
   nights_total: number;
   commission_base_cents: number;
   nightly_total_cents?: number;
+  airbnb_payout_cents?: number;
+  airbnb_accommodation_cents?: number;
+  airbnb_host_fees_cents?: number;
   expense_cents: number;
   expense_count: number;
   mrg_commission_cents: number;
@@ -63,6 +66,11 @@ export type MonthStatement = {
     base_cents: number;
     mrg_cents: number;
     hst_cents: number;
+    accommodation_cents?: number;
+    host_fees_cents?: number;
+    airbnb_payout_cents?: number;
+    cleaning_cents?: number;
+    platform_id?: string;
   }[];
   expenses: {
     id: string;
@@ -347,8 +355,31 @@ export function EarningsPanel({
         <>
           <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
             <div>
+              <p className="text-sm text-[#f5f5f5]">Airbnb payout</p>
+              <p className="text-xs text-[#6f6a65]">
+                You earned · match Transaction History
+              </p>
+            </div>
+            <p className="text-[15px] font-semibold tabular-nums text-[#4ea882]">
+              {money(statement.airbnb_payout_cents ?? 0, cur)}
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
+            <div>
+              <p className="text-sm text-[#f5f5f5]">Airbnb accommodation</p>
+              <p className="text-xs text-[#6f6a65]">
+                Nightly after discounts · fees −
+                {money(statement.airbnb_host_fees_cents ?? 0, cur)}
+              </p>
+            </div>
+            <p className="text-[15px] font-semibold tabular-nums">
+              {money(statement.airbnb_accommodation_cents ?? statement.nightly_total_cents ?? 0, cur)}
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/8 px-4 py-3 lg:px-0">
+            <div>
               <p className="text-sm text-[#f5f5f5]">Commission base</p>
-              <p className="text-xs text-[#6f6a65]">Nightly − platform host fees</p>
+              <p className="text-xs text-[#6f6a65]">Accommodation − platform host fees</p>
             </div>
             <p className="text-[15px] font-semibold tabular-nums">
               {money(statement.commission_base_cents, cur)}
@@ -691,20 +722,25 @@ export function EarningsPanel({
           ) : null}
 
           <p className="border-t border-white/8 px-4 pb-2.5 pt-5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65] lg:px-0">
-            Stays
+            Stays · reconcile to Airbnb
           </p>
           {visibleStays.map((s, i) => (
             <div
               key={`${s.label}-${i}`}
-              className="flex items-center justify-between gap-3 border-t border-white/8 px-4 py-3 lg:px-0"
+              className="flex items-start justify-between gap-3 border-t border-white/8 px-4 py-3 lg:px-0"
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-[#f5f5f5]">{s.label}</p>
                 <p className="text-xs text-[#6f6a65]">{s.meta}</p>
               </div>
-              <span className="shrink-0 text-sm font-semibold tabular-nums">
-                {money(s.net_cents, cur)}
-              </span>
+              <div className="shrink-0 text-right">
+                <p className="text-sm font-semibold tabular-nums text-[#4ea882]">
+                  {money(s.airbnb_payout_cents ?? s.net_cents, cur)}
+                </p>
+                <p className="text-[11px] tabular-nums text-[#6f6a65]">
+                  Host net {money(s.net_cents, cur)}
+                </p>
+              </div>
             </div>
           ))}
           {stays.length > 4 ? (

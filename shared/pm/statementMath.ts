@@ -1,5 +1,8 @@
 import { getSupabaseAdmin } from "../supabase.js";
-import { breakdownFromFinancials } from "./financialBreakdown.js";
+import {
+  breakdownFromFinancials,
+  isExcludedReservationStatus,
+} from "./financialBreakdown.js";
 import { getPmPropertyDetail, listPmProperties } from "./propertyStore.js";
 import {
   listReservationsForPropertyMonth,
@@ -35,6 +38,13 @@ export type StayStatementLine = {
   check_in: string | null;
   check_out: string | null;
   nights: number;
+  platform_id: string;
+  status: string;
+  /** Airbnb accommodation fare (after discounts). */
+  accommodation_cents: number;
+  host_fees_cents: number;
+  /** Airbnb “You earned” for this reservation. */
+  airbnb_payout_cents: number;
   base_cents: number;
   mrg_cents: number;
   hst_cents: number;
@@ -60,6 +70,12 @@ export type MonthStatement = {
   nightly_total_cents: number;
   gross_cents: number;
   host_payout_cents: number;
+  /** Sum of Airbnb host payouts (host.revenue) for included stays. */
+  airbnb_payout_cents: number;
+  /** Sum of Airbnb accommodation fares for included stays. */
+  airbnb_accommodation_cents: number;
+  /** Sum of Airbnb host service fees for included stays. */
+  airbnb_host_fees_cents: number;
   expense_cents: number;
   expense_count: number;
   mrg_commission_cents: number;
@@ -269,11 +285,15 @@ export async function buildMonthStatement(
   let cleaningTurnovers = 0;
   let nightsTotal = 0;
   let gross = 0;
-  let hostPayoutLegacy = 0;
+  let airbnbPayoutTotal = 0;
+  let airbnbAccomTotal = 0;
+  let airbnbHostFeesTotal = 0;
   let lastRate: number | null = detail.current_term?.rate_bps ?? null;
   let lastSynced: string | null = null;
 
   for (const r of reservations) {
+    if (isExcludedReservationStatus(r.status || "")) continue;
+
     const fin =
       r.financials_json && typeof r.financials_json === "object"
         ? (r.financials_json as Record<string, unknown>)
@@ -303,6 +323,7 @@ export async function buildMonthStatement(
     // Stay-level net never subtracts invoice HST (billed separately via QB).
     const cohostHst = hstMode === "cohost" ? hst : 0;
     const net = base - mrg - cohostHst + hostCleaning;
+    const airbnbPayout = bd.host_revenue_cents || Number(r.host_payout_cents) || 0;
 
     baseTotal += base;
     nightlyTotal += nightly;
@@ -311,23 +332,39 @@ export async function buildMonthStatement(
     cleaningTotal += cleaning;
     nightsTotal += Number(r.nights) || 0;
     gross += bd.guest_total_cents || Number(r.gross_cents) || base + cleaning;
-    hostPayoutLegacy += Number(r.host_payout_cents) || 0;
+    airbnbPayoutTotal += airbnbPayout;
+    airbnbAccomTotal += nightly;
+    airbnbHostFeesTotal += bd.host_fees_cents;
     if (r.synced_at && (!lastSynced || r.synced_at > lastSynced)) {
       lastSynced = r.synced_at;
     }
 
-    const guest = r.platform_id || r.platform || "Stay";
-    const label = `${shortStayRange(r.check_in, r.check_out)} · ${guest}`;
-    const meta =
+    const code = r.platform_id || r.platform || "Stay";
+    const label = `${shortStayRange(r.check_in, r.check_out)} · ${code}`;
+    const meta = [
+      `Airbnb ${moneyLabel(airbnbPayout)}`,
+      `Accom ${moneyLabel(nightly)}`,
+      `Fee −${moneyLabel(bd.host_fees_cents)}`,
+      cleaning ? `Clean ${moneyLabel(cleaning)}` : null,
+      `Base ${moneyLabel(base)}`,
+      `MRG ${moneyLabel(mrg)}`,
       hstMode === "invoice"
-        ? `Base ${moneyLabel(base)} · MRG ${moneyLabel(mrg)} · HST inv ${moneyLabel(hst)}`
-        : `Base ${moneyLabel(base)} · MRG ${moneyLabel(mrg)} · HST ${moneyLabel(hst)}`;
+        ? `HST inv ${moneyLabel(hst)}`
+        : `HST ${moneyLabel(hst)}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
     const stay: StayStatementLine = {
       kind: "stay",
       label,
       check_in: r.check_in,
       check_out: r.check_out,
       nights: Number(r.nights) || 0,
+      platform_id: r.platform_id || "",
+      status: r.status || "",
+      accommodation_cents: nightly,
+      host_fees_cents: bd.host_fees_cents,
+      airbnb_payout_cents: airbnbPayout,
       base_cents: base,
       mrg_cents: mrg,
       hst_cents: hst,
@@ -359,18 +396,24 @@ export async function buildMonthStatement(
     hstMode === "invoice" ? netToHost - hstTotal : netToHost;
 
   const currency =
-    reservations[0]?.currency || detail.currency || "CAD";
+    reservations.find((r) => !isExcludedReservationStatus(r.status || ""))
+      ?.currency ||
+    detail.currency ||
+    "CAD";
 
   return {
     year_month: yearMonth,
     property_id: propertyId,
     currency,
-    reservation_count: reservations.length,
+    reservation_count: stays.length,
     nights_total: nightsTotal,
     commission_base_cents: baseTotal,
     nightly_total_cents: nightlyTotal,
     gross_cents: gross,
-    host_payout_cents: hostPayoutLegacy || baseTotal + hostCleaningTotal,
+    host_payout_cents: airbnbPayoutTotal || baseTotal + hostCleaningTotal,
+    airbnb_payout_cents: airbnbPayoutTotal,
+    airbnb_accommodation_cents: airbnbAccomTotal,
+    airbnb_host_fees_cents: airbnbHostFeesTotal,
     expense_cents: expenseTotal,
     expense_count: expenses.length,
     mrg_commission_cents: mrgTotal,

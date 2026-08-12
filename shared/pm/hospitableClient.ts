@@ -1,3 +1,5 @@
+import { breakdownFromFinancials } from "./financialBreakdown.js";
+
 const HOSPITABLE_BASE = "https://public.api.hospitable.com/v2";
 
 export type HospitablePropertySummary = {
@@ -184,6 +186,7 @@ export type HospitableReservationNormalized = {
   raw: Record<string, unknown>;
 };
 
+/** Hospitable include=financials line item: { amount (minor units), formatted, label }. */
 function moneyToCents(v: unknown, alreadyMinor = false): number {
   if (typeof v === "number" && Number.isFinite(v)) {
     return alreadyMinor ? Math.round(v) : Math.round(v * 100);
@@ -200,25 +203,16 @@ function moneyToCents(v: unknown, alreadyMinor = false): number {
   return 0;
 }
 
-/** Hospitable include=financials line item: { amount (minor units), formatted, label }. */
-function lineItemCents(item: unknown): number {
-  const o = asRecord(item);
-  if (typeof o.amount === "number" && Number.isFinite(o.amount)) {
-    return Math.round(o.amount);
-  }
-  if (typeof o.formatted === "string" && o.formatted.trim()) {
-    return moneyToCents(o.formatted, false);
-  }
-  return moneyToCents(item, false);
-}
-
 function pickFinancials(raw: Record<string, unknown>): Record<string, unknown> {
   const fin = asRecord(raw.financials);
-  if (Object.keys(fin).length) return fin;
+  if (Object.keys(fin).length && (asRecord(fin.host).revenue || asRecord(fin.host).accommodation)) {
+    return fin;
+  }
   const fin2 = asRecord(raw.financials_v2);
   if (Object.keys(fin2).length) return fin2;
   const fin2c = asRecord(raw.financialsV2);
   if (Object.keys(fin2c).length) return fin2c;
+  if (Object.keys(fin).length) return fin;
   return {};
 }
 
@@ -227,35 +221,23 @@ function extractMoneyFromFinancials(financials: Record<string, unknown>): {
   gross_cents: number;
   host_payout_cents: number;
 } {
-  const currency = str(financials.currency) || "CAD";
-  const host = asRecord(financials.host);
-  const guest = asRecord(financials.guest);
-
-  // Current Hospitable read shape (nested line items, amounts in cents)
-  const hostRevenue =
-    lineItemCents(host.revenue) ||
-    lineItemCents(host.host_revenue) ||
-    lineItemCents(host.payout) ||
-    lineItemCents(host.total);
-  const guestTotal =
-    lineItemCents(guest.totalPrice) ||
-    lineItemCents(guest.total_price) ||
-    lineItemCents(guest.total);
-
-  if (hostRevenue || guestTotal) {
+  const bd = breakdownFromFinancials(financials);
+  if (bd.host_revenue_cents || bd.guest_total_cents || bd.accommodation_cents) {
     return {
-      currency,
-      gross_cents: guestTotal || hostRevenue,
-      host_payout_cents: hostRevenue || guestTotal,
+      currency: bd.currency,
+      gross_cents: bd.guest_total_cents || bd.host_revenue_cents,
+      host_payout_cents: bd.host_revenue_cents || bd.guest_total_cents,
     };
   }
 
+  const currency = str(financials.currency) || "CAD";
   // Legacy / flat shapes (major units)
   const gross =
     moneyToCents(financials.total) ||
     moneyToCents(financials.guest_total) ||
     moneyToCents(financials.accommodation) +
       moneyToCents(financials.cleaning_fee);
+  const host = asRecord(financials.host);
   const hostPayout =
     moneyToCents(financials.host_payout) ||
     moneyToCents(financials.host_total) ||
@@ -345,7 +327,7 @@ export async function listHospitableReservations(input: {
     const json = (await hospitableFetch(input.pat, "/reservations", {
       page: String(page),
       per_page: "100",
-      include: "financials,properties",
+      include: "financials,financialsV2,properties",
       start_date: input.startDate,
       end_date: input.endDate,
       date_query: "checkout",
