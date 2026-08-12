@@ -278,6 +278,23 @@ export async function listReviewsForPropertiesSince(
   return (data ?? []).map((r) => mapReviewRow(r as Record<string, unknown>));
 }
 
+/** All cached reviews for these properties (for flexible client-side windows). */
+export async function listAllReviewsForProperties(
+  propertyIds: string[],
+): Promise<PmReviewRow[]> {
+  if (!propertyIds.length) return [];
+  const { data, error } = await db()
+    .from("pm_reviews")
+    .select("*")
+    .in("property_id", propertyIds)
+    .order("reviewed_at", { ascending: true });
+  if (error) {
+    if (/pm_reviews|relation/i.test(error.message || "")) return [];
+    throw error;
+  }
+  return (data ?? []).map((r) => mapReviewRow(r as Record<string, unknown>));
+}
+
 /** Reservation UUIDs that checked out in [start, end] for these properties. */
 export async function listCheckoutReservationIds(
   propertyIds: string[],

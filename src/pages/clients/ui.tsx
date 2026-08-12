@@ -9,14 +9,42 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 
-export function MrgMark({ size = 22 }: { size?: number }) {
+export function MrgMark({
+  size = 22,
+  className = "",
+}: {
+  size?: number;
+  className?: string;
+}) {
   return (
-    <div
-      className="grid shrink-0 place-items-center rounded-md bg-[#f5f5f5] font-bold tracking-wide text-[#0a0a0a]"
-      style={{ width: size, height: size, fontSize: Math.max(8, size * 0.38) }}
+    <img
+      src="/mrg-logo.png"
+      alt=""
       aria-hidden
-    >
-      MRG
+      width={size}
+      height={size}
+      className={`shrink-0 rounded-[3px] object-contain ${className}`}
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+/** Logo + “Mandel Realty Group” — use on statements and branded headers. */
+export function MrgBrand({
+  size = 28,
+  nameClassName = "text-[13px] font-semibold tracking-[0.06em] text-[#f5f5f5]",
+  className = "",
+}: {
+  size?: number;
+  nameClassName?: string;
+  className?: string;
+}) {
+  return (
+    <div className={`flex min-w-0 items-center gap-2.5 ${className}`}>
+      <MrgMark size={size} />
+      <span className={`min-w-0 leading-tight ${nameClassName}`}>
+        Mandel Realty Group
+      </span>
     </div>
   );
 }

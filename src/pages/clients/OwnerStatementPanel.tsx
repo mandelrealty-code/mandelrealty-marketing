@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { pmGet } from "./api";
-import { GoldButton, MonthPicker } from "./ui";
+import { GoldButton, MonthPicker, MrgBrand, MrgMark } from "./ui";
 
 function escapeHtml(s: string): string {
   return s
@@ -34,6 +34,7 @@ function openOwnerStatementPdf(opts: {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<base href="${escapeHtml(window.location.origin)}/" />
 <title>${escapeHtml(title)}</title>
 ${styleTags}
 <style>
@@ -237,6 +238,7 @@ type OwnerStatement = {
       property_name: string;
       tone: "positive" | "critical" | "neutral";
     }>;
+    sync_note?: string;
   };
   actions: Array<{
     issue: string;
@@ -701,7 +703,10 @@ export function OwnerStatementPanel({
           {/* Cover */}
           <section className="os-page rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-12">
             <div className="flex items-start justify-between gap-4">
-              <p className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</p>
+              <MrgBrand
+                size={36}
+                nameClassName="text-[14px] font-semibold tracking-[0.04em] text-[#f5f5f5]"
+              />
               <div className="text-right">
                 <MetaLabel>Statement</MetaLabel>
                 <p className="mt-1 text-[13px] tabular-nums text-[#9a9590]">
@@ -824,10 +829,13 @@ export function OwnerStatementPanel({
           {/* Earnings */}
           <section className="os-page os-page--flow mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
             <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/10 pb-3.5">
-              <div className="flex items-baseline gap-3.5">
-                <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                <MrgBrand
+                  size={22}
+                  nameClassName="text-[12px] font-semibold tracking-[0.04em] text-[#f5f5f5]"
+                />
                 <span className="text-[13px] uppercase tracking-[0.14em] text-[#6f6a65]">
-                  Earnings summary
+                  · Earnings summary
                 </span>
               </div>
               <p className="text-[12px] tabular-nums text-[#6f6a65]">
@@ -1094,10 +1102,13 @@ export function OwnerStatementPanel({
           {/* Stay ledger */}
           <section className="os-page os-page--flow mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
             <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/10 pb-3.5">
-              <div className="flex items-baseline gap-3.5">
-                <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                <MrgBrand
+                  size={22}
+                  nameClassName="text-[12px] font-semibold tracking-[0.04em] text-[#f5f5f5]"
+                />
                 <span className="text-[13px] uppercase tracking-[0.14em] text-[#6f6a65]">
-                  Stay-by-stay ledger
+                  · Stay-by-stay ledger
                 </span>
               </div>
               <p className="text-[12px] tabular-nums text-[#6f6a65]">
@@ -1250,10 +1261,13 @@ export function OwnerStatementPanel({
           {/* Expenses */}
           <section className="os-page mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
             <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/10 pb-3.5">
-              <div className="flex items-baseline gap-3.5">
-                <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                <MrgBrand
+                  size={22}
+                  nameClassName="text-[12px] font-semibold tracking-[0.04em] text-[#f5f5f5]"
+                />
                 <span className="text-[13px] uppercase tracking-[0.14em] text-[#6f6a65]">
-                  Supplies &amp; expenses
+                  · Supplies &amp; expenses
                 </span>
               </div>
               <p className="text-[12px] tabular-nums text-[#6f6a65]">
@@ -1317,16 +1331,26 @@ export function OwnerStatementPanel({
           {/* Guest experience & action plan */}
           <section className="os-page os-page--flow mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
             <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/10 pb-3.5">
-              <div className="flex items-baseline gap-3.5">
-                <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                <MrgBrand
+                  size={22}
+                  nameClassName="text-[12px] font-semibold tracking-[0.04em] text-[#f5f5f5]"
+                />
                 <span className="text-[13px] uppercase tracking-[0.14em] text-[#6f6a65]">
-                  Guest experience &amp; action plan
+                  · Guest experience &amp; action plan
                 </span>
               </div>
               <p className="text-[12px] tabular-nums text-[#6f6a65]">
                 {statement.client_name} · {statement.month_title} · {currency}
               </p>
             </div>
+
+            {!statement.guest_experience.available &&
+            statement.guest_experience.sync_note ? (
+              <p className="mt-4 rounded-[2px] border border-[#c4a35a]/35 bg-[#c4a35a]/10 px-4 py-3 text-[12px] leading-relaxed text-[#e8d9b0]">
+                {statement.guest_experience.sync_note}
+              </p>
+            ) : null}
 
             <div className="mt-5 grid gap-px overflow-hidden border border-white/[0.09] bg-white/[0.09] sm:grid-cols-3">
               <div className="bg-[#141414] px-5 py-5">
@@ -1549,10 +1573,13 @@ export function OwnerStatementPanel({
           {/* Market & outlook */}
           <section className="os-page os-page--flow mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
             <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/10 pb-3.5">
-              <div className="flex items-baseline gap-3.5">
-                <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                <MrgBrand
+                  size={22}
+                  nameClassName="text-[12px] font-semibold tracking-[0.04em] text-[#f5f5f5]"
+                />
                 <span className="text-[13px] uppercase tracking-[0.14em] text-[#6f6a65]">
-                  Market &amp; outlook
+                  · Market &amp; outlook
                 </span>
               </div>
               <p className="text-[12px] tabular-nums text-[#6f6a65]">
@@ -1795,8 +1822,11 @@ export function OwnerStatementPanel({
             ) : null}
           </section>
 
-          <p className="os-page px-1 py-6 text-center text-[11px] text-[#6f6a65]">
-            Mandel Realty Group · Owner statement · {statement.statement_id}
+          <p className="os-page flex items-center justify-center gap-2 px-1 py-6 text-center text-[11px] text-[#6f6a65]">
+            <MrgMark size={16} />
+            <span>
+              Mandel Realty Group · Owner statement · {statement.statement_id}
+            </span>
           </p>
         </div>
       ) : null}

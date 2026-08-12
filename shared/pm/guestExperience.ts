@@ -23,6 +23,8 @@ export type GuestExperienceBundle = {
   categories: Array<{ label: string; score: number; dipped: boolean }>;
   insight: string;
   quotes: GuestExperienceQuote[];
+  /** Ops-facing note when sync failed or returned zero rows. */
+  sync_note: string;
 };
 
 const CATEGORY_ORDER = [
@@ -191,9 +193,13 @@ export function buildGuestExperienceFromReviews(input: {
   trailing12Reviews: PmReviewRow[];
   reservationCount: number;
   propertyNameById: Map<string, string>;
+  sync_note?: string;
 }): GuestExperienceBundle {
   const month = input.monthReviews.filter(
-    (r) => r.rating != null || (r.public_review || "").trim(),
+    (r) =>
+      (r.rating != null && r.rating >= 1 && r.rating <= 5) ||
+      (r.public_review || "").trim() ||
+      (r.category_ratings_json || []).length > 0,
   );
   const rated = month.filter((r) => r.rating != null && r.rating >= 1 && r.rating <= 5);
   const priorRated = input.priorMonthReviews.filter(
@@ -228,11 +234,11 @@ export function buildGuestExperienceFromReviews(input: {
     trailing_12mo_rating: trailing,
     reviews_received: month.length,
     reviews_pending: Math.max(0, input.reservationCount - month.length),
-    // Message response times are not in the reviews API — leave unset (strict).
     avg_response_minutes: null,
     response_within_1h_bps: null,
     categories,
     insight: insightLine(categories, month.length),
     quotes,
+    sync_note: (input.sync_note || "").trim(),
   };
 }

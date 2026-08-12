@@ -377,6 +377,32 @@ export type HospitableReviewNormalized = {
   raw: Record<string, unknown>;
 };
 
+function coerceStarRating(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    if (v >= 1 && v <= 5) return Math.round(v * 100) / 100;
+    // Rare: 0–100 style scores
+    if (v > 5 && v <= 100) return Math.round((v / 20) * 100) / 100;
+    return null;
+  }
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v.replace(/[^0-9.]/g, ""));
+    if (!Number.isFinite(n)) return null;
+    if (n >= 1 && n <= 5) return Math.round(n * 100) / 100;
+    if (n > 5 && n <= 100) return Math.round((n / 20) * 100) / 100;
+    return null;
+  }
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const o = v as Record<string, unknown>;
+    return (
+      coerceStarRating(o.rating) ??
+      coerceStarRating(o.value) ??
+      coerceStarRating(o.amount) ??
+      coerceStarRating(o.score)
+    );
+  }
+  return null;
+}
+
 function parseOverallRating(pub: Record<string, unknown>): {
   rating: number | null;
   rating_raw: string;
@@ -386,22 +412,11 @@ function parseOverallRating(pub: Record<string, unknown>): {
     str(pub.ratingPlatformOriginal) ||
     (pub.rating != null ? String(pub.rating) : "");
   const n =
-    typeof pub.rating === "number"
-      ? pub.rating
-      : typeof pub.rating === "string"
-        ? Number(pub.rating)
-        : Number.NaN;
-  if (!Number.isFinite(n) || n < 1 || n > 5) {
-    return { rating: null, rating_raw: raw };
-  }
-  const fromRaw = Number(String(raw).replace(/[^0-9.]/g, ""));
-  if (Number.isFinite(fromRaw) && fromRaw >= 1 && fromRaw <= 5) {
-    return {
-      rating: Math.round(fromRaw * 100) / 100,
-      rating_raw: raw || String(n),
-    };
-  }
-  return { rating: Math.round(n * 100) / 100, rating_raw: raw || String(n) };
+    coerceStarRating(pub.rating) ??
+    coerceStarRating(pub.rating_platform_original) ??
+    coerceStarRating(pub.ratingPlatformOriginal);
+  if (n == null) return { rating: null, rating_raw: raw };
+  return { rating: n, rating_raw: raw || String(n) };
 }
 
 function normalizeCategoryRatings(raw: unknown): HospitableCategoryRating[] {
@@ -409,12 +424,10 @@ function normalizeCategoryRatings(raw: unknown): HospitableCategoryRating[] {
   if (!Array.isArray(raw)) return out;
   for (const item of raw) {
     const row = asRecord(item);
-    const type = str(row.type).toLowerCase();
-    const rating =
-      typeof row.rating === "number" ? row.rating : Number(row.rating);
-    if (!type) continue;
-    if (!Number.isFinite(rating) || rating < 1 || rating > 5) continue;
-    out.push({ type, rating: Math.round(rating * 100) / 100 });
+    const type = str(row.type).toLowerCase() || str(row.category).toLowerCase();
+    const rating = coerceStarRating(row.rating ?? row.value ?? row.score);
+    if (!type || rating == null) continue;
+    out.push({ type, rating });
   }
   return out;
 }
@@ -436,27 +449,28 @@ function normalizeReview(raw: unknown): HospitableReviewNormalized | null {
   const property = asRecord(r.property);
 
   const { rating, rating_raw } = parseOverallRating(pub);
-  // Some payloads put the overall score on the review root.
-  const rootRating =
-    typeof r.rating === "number"
-      ? r.rating
-      : typeof r.rating === "string"
-        ? Number(r.rating)
-        : Number.NaN;
+  // Some payloads put the overall score on the review root or under private.
   const resolvedRating =
-    rating != null
-      ? rating
-      : Number.isFinite(rootRating) && rootRating >= 1 && rootRating <= 5
-        ? Math.round(rootRating * 100) / 100
-        : null;
-  const publicReview = str(pub.review) || str(pub.public_review) || "";
-  const publicResponse = str(pub.response) || "";
+    rating ??
+    coerceStarRating(r.rating) ??
+    coerceStarRating(priv.rating) ??
+    coerceStarRating(r.overall_rating) ??
+    coerceStarRating(r.overallRating);
+  const publicReview =
+    str(pub.review) ||
+    str(pub.public_review) ||
+    str(pub.comments) ||
+    str(r.public_review) ||
+    "";
+  const publicResponse = str(pub.response) || str(pub.public_response) || "";
 
   const categories = normalizeCategoryRatings(
     priv.detailed_ratings ??
       priv.detailedRatings ??
       pub.detailed_ratings ??
-      pub.detailedRatings,
+      pub.detailedRatings ??
+      r.detailed_ratings ??
+      r.category_ratings,
   );
 
   const propertyId = str(property.id) || str(r.property_id) || "";
@@ -511,28 +525,85 @@ export async function listHospitableReviews(input: {
   const propertyId = input.propertyId.trim();
   if (!propertyId) return [];
 
+  // include must be a comma-separated string — NOT include[]= (that form is for properties[]).
+  const include = "guest,reservation,property";
+
+  const byId = new Map<string, HospitableReviewNormalized>();
+  const errors: Error[] = [];
+
+  const merge = (rows: HospitableReviewNormalized[]) => {
+    for (const r of rows) {
+      if (!byId.has(r.id)) byId.set(r.id, r);
+    }
+  };
+
+  // Always try both endpoints. Property-scoped can return 200 [] while
+  // account-level /reviews?properties[]= still has rows (and vice versa).
+  try {
+    merge(
+      await fetchReviewPages(
+        input.pat,
+        `/properties/${encodeURIComponent(propertyId)}/reviews`,
+        { include },
+        propertyId,
+      ),
+    );
+  } catch (err) {
+    errors.push(err instanceof Error ? err : new Error(String(err)));
+  }
+
+  try {
+    merge(
+      await fetchReviewPages(
+        input.pat,
+        "/reviews",
+        { include, properties: [propertyId] },
+        propertyId,
+      ),
+    );
+  } catch (err) {
+    errors.push(err instanceof Error ? err : new Error(String(err)));
+  }
+
+  if (byId.size === 0 && errors.length === 2) {
+    throw errors[0]!;
+  }
+
+  return [...byId.values()];
+}
+
+async function fetchReviewPages(
+  pat: string,
+  path: string,
+  query: HospitableQuery,
+  fallbackPropertyId: string,
+): Promise<HospitableReviewNormalized[]> {
   const out: HospitableReviewNormalized[] = [];
   let page = 1;
   let lastPage = 1;
 
   do {
-    const json = (await hospitableFetch(
-      input.pat,
-      `/properties/${encodeURIComponent(propertyId)}/reviews`,
-      {
-        page: String(page),
-        per_page: "100",
-        include: ["guest", "reservation", "property"],
-      },
-    )) as HospitableListResponse;
+    const json = (await hospitableFetch(pat, path, {
+      ...query,
+      page: String(page),
+      per_page: "100",
+    })) as HospitableListResponse;
 
     const rows = Array.isArray(json?.data) ? json.data : [];
     for (const row of rows) {
       const n = normalizeReview(row);
       if (!n) continue;
-      if (!n.property_id) n.property_id = propertyId;
-      // Strict: need a valid public rating or public review text.
-      if (n.rating == null && !n.public_review) continue;
+      if (!n.property_id) n.property_id = fallbackPropertyId;
+      // Keep if we have overall rating, public text, or category scores.
+      const hasCats = n.category_ratings.length > 0;
+      if (n.rating == null && !n.public_review && !hasCats) continue;
+      if (n.rating == null && hasCats) {
+        const avgCat =
+          n.category_ratings.reduce((s, c) => s + c.rating, 0) /
+          n.category_ratings.length;
+        n.rating = Math.round(avgCat * 100) / 100;
+        n.rating_raw = n.rating_raw || String(n.rating);
+      }
       out.push(n);
     }
 

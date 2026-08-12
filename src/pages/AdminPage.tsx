@@ -20,7 +20,7 @@ import {
   writeStoredAdminMode,
   type AdminProductMode,
 } from "./clients/mode";
-import { ModeSwitcher } from "./clients/ui";
+import { ModeSwitcher, MrgMark } from "./clients/ui";
 
 const ClientsApp = lazy(() => import("./clients/ClientsApp"));
 
@@ -137,21 +137,7 @@ function leadActivityTime(lead: Lead): string {
 }
 
 function CrmMark({ size = 24 }: { size?: number }) {
-  const radius = size >= 56 ? 14 : size >= 40 ? 12 : 7;
-  return (
-    <div
-      className="grid shrink-0 place-items-center border border-white/14 font-bold tracking-wide text-[#f5f5f5]"
-      style={{
-        width: size,
-        height: size,
-        fontSize: Math.round(size * 0.46),
-        borderRadius: radius,
-      }}
-      aria-hidden
-    >
-      M
-    </div>
-  );
+  return <MrgMark size={size} />;
 }
 
 const TAB_TITLE: Record<Tab, string> = {
@@ -1312,12 +1298,14 @@ export function AdminPage() {
           transition={{ duration: 0.4, ease: easeOut }}
           className="flex w-full max-w-[380px] flex-col items-center gap-6"
         >
-          <CrmMark size={56} />
-          <div className="flex flex-col gap-2 text-center">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#c4a35a]">
-              Mandel Realty Group
-            </p>
-            <h1 className="text-[27px] font-semibold leading-tight text-[#f5f5f5]">CRM</h1>
+          <div className="flex flex-col items-center gap-3">
+            <CrmMark size={56} />
+            <div className="flex flex-col gap-2 text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#c4a35a]">
+                Mandel Realty Group
+              </p>
+              <h1 className="text-[27px] font-semibold leading-tight text-[#f5f5f5]">CRM</h1>
+            </div>
           </div>
           <div className="flex w-full flex-col gap-3">
             <input
@@ -2115,7 +2103,10 @@ export function AdminPage() {
       <header className="shrink-0 border-b border-white/8 px-4 pb-3 pt-[max(0.65rem,env(safe-area-inset-top))] lg:px-8">
         <div className="mx-auto flex max-w-[1000px] items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <CrmMark size={24} />
+            <CrmMark size={28} />
+            <span className="hidden truncate text-[12px] font-semibold tracking-[0.08em] text-[#f5f5f5] sm:inline">
+              Mandel Realty Group
+            </span>
             <ModeSwitcher
               mode="crm"
               onChange={(mode) => {
@@ -2123,7 +2114,7 @@ export function AdminPage() {
                 setProductMode(mode);
               }}
             />
-            <h1 className="hidden truncate text-base font-semibold text-[#f5f5f5] sm:block">
+            <h1 className="hidden truncate text-base font-semibold text-[#f5f5f5] lg:block">
               {TAB_TITLE[tab]}
             </h1>
           </div>

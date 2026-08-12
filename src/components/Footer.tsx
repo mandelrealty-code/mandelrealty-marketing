@@ -12,7 +12,7 @@ export function Footer() {
     <footer className="border-t border-mrg-border/40 py-14">
       <div className="mx-auto flex max-w-4xl flex-col items-center gap-6 px-5 text-center">
         <a href="/" className="flex items-center gap-2.5">
-          <img src="/mrg-logo-white.png" alt="" aria-hidden className="h-7 w-auto" />
+          <img src="/mrg-logo.png" alt="" aria-hidden className="h-7 w-7 rounded-[3px] object-contain" />
           <span className="text-sm font-semibold uppercase tracking-[0.12em] text-mrg-text">
             Mandel Realty Group
           </span>

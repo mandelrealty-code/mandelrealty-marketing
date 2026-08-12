@@ -11,6 +11,7 @@ import {
 } from "./reservationStore.js";
 import {
   backfillReviewStayDates,
+  listAllReviewsForProperties,
   listCheckoutReservationIds,
   listReviewsForPropertiesInRange,
   listReviewsForPropertiesSince,
@@ -232,6 +233,7 @@ export type OwnerStatement = {
     categories: Array<{ label: string; score: number; dipped: boolean }>;
     insight: string;
     quotes: OwnerGuestQuote[];
+    sync_note: string;
   };
   actions: OwnerActionItem[];
   recommendations: OwnerRecommendation[];
@@ -305,14 +307,18 @@ export async function buildOwnerStatement(
   const propById = new Map(props.map((p) => [p.id, p]));
   const linked = portfolio.units.filter((u) => u.linked && u.active !== false);
 
-  // Always refresh reviews when building the host packet (reviews API is light;
-  // stale cache was leaving July stays without month attribution).
+  // Always refresh reviews when building the host packet.
+  let reviewsSynced = 0;
+  const syncErrors: string[] = [];
   await Promise.all(
     linked.map(async (u) => {
       try {
-        await syncHospitableReviews({ propertyId: u.property_id });
-      } catch {
-        /* keep going with cached reviews */
+        const result = await syncHospitableReviews({ propertyId: u.property_id });
+        reviewsSynced += result.synced;
+      } catch (err) {
+        syncErrors.push(
+          err instanceof Error ? err.message : "Review sync failed.",
+        );
       }
     }),
   );
@@ -462,26 +468,61 @@ export async function buildOwnerStatement(
     return [...map.values()];
   };
 
-  const [byDate, byRes, priorReviews, trailReviews] = await Promise.all([
-    listReviewsForPropertiesInRange(
-      propertyIds,
-      monthStart,
-      monthEndForReviews,
-      monthReservationIds,
-    ),
-    listReviewsForReservationIds(propertyIds, monthReservationIds),
-    listReviewsForPropertiesInRange(
-      propertyIds,
-      priorBounds.start,
-      priorBounds.end,
-    ),
-    listReviewsForPropertiesSince(
-      propertyIds,
-      `${trailStart}T00:00:00.000Z`,
-      trailEnd,
-    ),
-  ]);
+  const [byDate, byRes, priorReviews, trailByReviewed, allCached] =
+    await Promise.all([
+      listReviewsForPropertiesInRange(
+        propertyIds,
+        monthStart,
+        monthEndForReviews,
+        monthReservationIds,
+      ),
+      listReviewsForReservationIds(propertyIds, monthReservationIds),
+      listReviewsForPropertiesInRange(
+        propertyIds,
+        priorBounds.start,
+        priorBounds.end,
+      ),
+      listReviewsForPropertiesSince(
+        propertyIds,
+        `${trailStart}T00:00:00.000Z`,
+        trailEnd,
+      ),
+      listAllReviewsForProperties(propertyIds),
+    ]);
   const monthReviews = mergeById([...byDate, ...byRes]);
+  // Trailing: reviewed_at in window OR checkout in window OR undated (still count).
+  const trailReviews = mergeById([
+    ...trailByReviewed,
+    ...allCached.filter((r) => {
+      const out = (r.check_out || "").slice(0, 10);
+      if (out && out >= trailStart && out <= monthEndForReviews) return true;
+      if (r.reviewed_at) {
+        const day = r.reviewed_at.slice(0, 10);
+        if (day >= trailStart && day <= monthEndForReviews) return true;
+      }
+      // Undated cached reviews still belong in the trailing reputation pool.
+      return !r.check_out && !r.reviewed_at;
+    }),
+  ]);
+
+  // Operator-facing diagnostic (shown only when the month has no reviews).
+  // Never name the channel partner on the host packet.
+  let sync_note = "";
+  if (syncErrors.length) {
+    const msg = syncErrors[0]!;
+    sync_note = /pm_reviews|Reviews table missing/i.test(msg)
+      ? "Reviews sync blocked: run supabase/pm_reviews_v1.sql in Supabase, then reopen this statement."
+      : `Reviews sync error: ${msg}`;
+  } else if (
+    reviewsSynced === 0 &&
+    monthReviews.length === 0 &&
+    trailReviews.length === 0
+  ) {
+    sync_note =
+      "No public guest reviews on file for these units. Confirm each unit is linked and the channel token can read reviews, then use Sync revenue (or reopen this statement).";
+  } else if (monthReviews.length === 0 && trailReviews.length > 0) {
+    sync_note = `${trailReviews.length} review(s) on file in the last 12 months — none attributed to this month’s stays yet.`;
+  }
 
   const guest_experience = buildGuestExperienceFromReviews({
     monthReviews,
@@ -489,6 +530,7 @@ export async function buildOwnerStatement(
     trailing12Reviews: trailReviews,
     reservationCount: reservations,
     propertyNameById: nameById,
+    sync_note,
   });
 
   let prior: OwnerStatementCompare | null = null;

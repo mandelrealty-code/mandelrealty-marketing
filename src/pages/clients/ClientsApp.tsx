@@ -780,7 +780,12 @@ export default function ClientsApp({ onModeChange }: Props) {
 
   const header = (
     <header className="flex h-[54px] shrink-0 items-center gap-3 border-b border-white/8 bg-[#0e0e0e] px-3.5 pt-[max(0px,env(safe-area-inset-top))] lg:h-14 lg:px-5">
-      <MrgMark size={desktop ? 24 : 22} />
+      <div className="flex min-w-0 items-center gap-2.5">
+        <MrgMark size={desktop ? 28 : 26} />
+        <span className="hidden truncate text-[12px] font-semibold tracking-[0.08em] text-[#f5f5f5] sm:inline">
+          Mandel Realty Group
+        </span>
+      </div>
       <ModeSwitcher mode="clients" onChange={switchMode} />
       <div className="flex-1" />
     </header>

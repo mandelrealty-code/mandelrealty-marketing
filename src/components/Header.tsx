@@ -6,10 +6,10 @@ export function Header() {
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4">
         <a href="/" className="flex items-center gap-2.5 sm:gap-3">
           <img
-            src="/mrg-logo-white.png"
+            src="/mrg-logo.png"
             alt=""
             aria-hidden
-            className="h-7 w-auto shrink-0 sm:h-8"
+            className="h-7 w-7 shrink-0 rounded-[3px] object-contain sm:h-8 sm:w-8"
           />
           <span className="text-xs font-semibold uppercase tracking-[0.12em] text-mrg-text sm:text-sm">
             Mandel Realty Group
