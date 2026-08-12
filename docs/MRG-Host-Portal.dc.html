@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+  body { margin:0; background:#070707; font-family:'Manrope',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#c4a35a; text-decoration:none; }
+  a:hover { color:#dcc084; }
+</style>
+</helmet>
+
+<section style="display:flex;flex-direction:column;gap:40px;padding:56px 48px 96px;background:#070707;font-family:'Manrope',sans-serif">
+
+  <div id="1a" style="display:flex;flex-direction:column;gap:40px">
+
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="border:1px solid #c4a35a;color:#c4a35a;font-size:12px;font-weight:700;letter-spacing:.16em;padding:5px 10px">1a</div>
+      <div style="color:#f5f5f5;font-size:20px;font-weight:600;letter-spacing:-0.01em">Host Portal — login &amp; dashboard</div>
+      <div style="color:#6f6a65;font-size:13px">20 Blue Jays Way · Unit 318 · Toronto · Khamraj · July 2026</div>
+    </div>
+
+    <!-- ===================== ROW 1 · LOGIN ===================== -->
+    <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start">
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="color:#6f6a65;font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase">Login · desktop 1280</div>
+        <div data-screen-label="Login desktop" style="width:1280px;height:800px;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);background:#0a0a0a;color:#f5f5f5;border:1px solid rgba(255,255,255,0.09);overflow:hidden">
+          <div style="position:relative;min-width:0;overflow:hidden">
+            <image-slot id="mrg-login-hero" src="./uploads/12f06b43-a0fc-478c-9a57-4ff28044cae8%20(1).avif" shape="rect" fit="cover" placeholder="Unit 318 — living room"></image-slot>
+          </div>
+          <div style="padding:64px 72px;display:flex;flex-direction:column;background:#0c0c0c">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="width:22px;height:22px;border:1.5px solid #c4a35a;transform:rotate(45deg)"></div>
+              <div style="font-size:19px;font-weight:700;letter-spacing:.28em;color:#c4a35a">MRG</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:36px">
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <div style="font-size:44px;font-weight:600;line-height:1.05;letter-spacing:-0.03em">Welcome back,<br>Khamraj</div>
+                <div style="font-size:16px;color:#9a9590">Your Mandel Realty owner portal</div>
+                <div style="display:flex;align-items:center;gap:12px;margin-top:6px">
+                  <div style="width:24px;height:1px;background:rgba(255,255,255,0.18)"></div>
+                  <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">20 Blue Jays Way · Unit 318</div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:22px">
+                <label style="display:flex;flex-direction:column;gap:9px">
+                  <span style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Email</span>
+                  <input type="text" value="khamraj@" placeholder="you@email.com" style="background:transparent;border:0;border-bottom:1px solid rgba(255,255,255,0.16);padding:10px 2px;color:#f5f5f5;font-family:'Manrope',sans-serif;font-size:16px;outline:none" style-focus="border-bottom-color:#c4a35a">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:9px">
+                  <span style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Password</span>
+                  <input type="password" value="passwordvalue" style="background:transparent;border:0;border-bottom:1px solid rgba(255,255,255,0.16);padding:10px 2px;color:#f5f5f5;font-family:'Manrope',sans-serif;font-size:16px;letter-spacing:.3em;outline:none" style-focus="border-bottom-color:#c4a35a">
+                </label>
+                <button style="margin-top:10px;background:#c4a35a;color:#0a0a0a;border:0;padding:16px;font-family:'Manrope',sans-serif;font-size:15px;font-weight:700;letter-spacing:.04em;cursor:pointer" style-hover="background:#dcc084">Sign in</button>
+                <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#9a9590">
+                  <a href="#1a">Forgot password</a>
+                  <span style="color:#3a3733">·</span>
+                  <a href="#1a">Need help?</a>
+                </div>
+              </div>
+            </div>
+            <div style="font-size:11px;color:#4a4744;letter-spacing:.14em;text-transform:uppercase">Mandel Realty Group · Short-term rental management</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="color:#6f6a65;font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase">Login · mobile 390</div>
+        <div data-screen-label="Login mobile" style="width:390px;height:844px;display:flex;flex-direction:column;background:#0c0c0c;color:#f5f5f5;border:1px solid rgba(255,255,255,0.09);overflow:hidden">
+          <div style="position:relative;height:368px;flex:none">
+            <image-slot id="mrg-login-hero-m" src="./uploads/12f06b43-a0fc-478c-9a57-4ff28044cae8%20(1).avif" shape="rect" fit="cover" placeholder="Unit 318 — living room"></image-slot>
+            <div style="position:absolute;inset:auto 0 0 0;height:120px;background:linear-gradient(to bottom,rgba(12,12,12,0),#0c0c0c);pointer-events:none"></div>
+            <div style="position:absolute;top:24px;left:24px;display:flex;align-items:center;gap:10px;pointer-events:none">
+              <div style="width:18px;height:18px;border:1.5px solid #dcc084;transform:rotate(45deg)"></div>
+              <div style="font-size:15px;font-weight:700;letter-spacing:.28em;color:#dcc084">MRG</div>
+            </div>
+          </div>
+          <div style="flex:1;padding:8px 28px 32px;display:flex;flex-direction:column;gap:28px">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="font-size:30px;font-weight:600;line-height:1.08;letter-spacing:-0.02em">Welcome back,<br>Khamraj</div>
+              <div style="font-size:14px;color:#9a9590">Your Mandel Realty owner portal</div>
+              <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600;margin-top:2px">20 Blue Jays Way · Unit 318</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:20px">
+              <label style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Email</span>
+                <input type="text" value="khamraj@" style="background:transparent;border:0;border-bottom:1px solid rgba(255,255,255,0.16);padding:10px 2px;color:#f5f5f5;font-family:'Manrope',sans-serif;font-size:16px;outline:none">
+              </label>
+              <label style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Password</span>
+                <input type="password" value="passwordvalue" style="background:transparent;border:0;border-bottom:1px solid rgba(255,255,255,0.16);padding:10px 2px;color:#f5f5f5;font-family:'Manrope',sans-serif;font-size:16px;letter-spacing:.3em;outline:none">
+              </label>
+              <button style="margin-top:6px;background:#c4a35a;color:#0a0a0a;border:0;padding:17px;font-family:'Manrope',sans-serif;font-size:15px;font-weight:700;cursor:pointer" style-hover="background:#dcc084">Sign in</button>
+              <div style="display:flex;justify-content:center;gap:14px;font-size:13px;color:#9a9590">
+                <a href="#1a">Forgot password</a>
+                <span style="color:#3a3733">·</span>
+                <a href="#1a">Need help?</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== ROW 2 · DASHBOARD EMPTY ===================== -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="color:#6f6a65;font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase">Dashboard + Ask MRG · desktop 1280 · empty chat</div>
+      <div data-screen-label="Dashboard desktop empty" style="width:1280px;height:1000px;display:grid;grid-template-columns:1fr 452px;background:#0a0a0a;color:#f5f5f5;border:1px solid rgba(255,255,255,0.09);overflow:hidden">
+
+        <div style="display:flex;flex-direction:column;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 36px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;align-items:center;gap:11px">
+              <div style="width:17px;height:17px;border:1.5px solid #c4a35a;transform:rotate(45deg)"></div>
+              <div style="font-size:14px;font-weight:700;letter-spacing:.28em;color:#c4a35a">MRG</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:20px;font-size:13px;color:#9a9590">
+              <span>Khamraj</span>
+              <div style="width:30px;height:30px;border-radius:50%;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#c4a35a">K</div>
+            </div>
+          </div>
+
+          <div style="position:relative;height:248px;flex:none">
+            <image-slot id="mrg-dash-hero" src="./uploads/12f06b43-a0fc-478c-9a57-4ff28044cae8%20(1).avif" shape="rect" fit="cover" placeholder="Unit 318 — second angle"></image-slot>
+            <div style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(10,10,10,0.94) 0%,rgba(10,10,10,0.86) 45%,rgba(10,10,10,0.55) 72%,rgba(10,10,10,0.15) 100%);pointer-events:none"></div>
+            <div style="position:absolute;left:36px;bottom:26px;display:flex;flex-direction:column;gap:9px;pointer-events:none">
+              <div style="font-size:34px;font-weight:600;letter-spacing:-0.025em">20 Blue Jays Way · 318</div>
+              <div style="display:flex;flex-direction:column;gap:5px"><div style="font-size:13px;color:#cfc9c2">Spacious 2BR · 2BTH · Sleeps 8 · Toronto, ON</div><div style="font-size:13px;color:#cfc9c2">Khamraj · <span style="color:#c4a35a">Managed by Mandel Realty</span></div></div>
+            </div>
+          </div>
+
+          <div style="flex:1;padding:32px 36px;display:flex;flex-direction:column;gap:30px;overflow:hidden">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <div style="font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#6f6a65;font-weight:600">This month</div>
+              <div style="font-size:13px;color:#9a9590">July 2026</div>
+            </div>
+
+            <div style="display:flex;align-items:flex-end;gap:44px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Net to host</div>
+                <div style="font-size:62px;font-weight:600;letter-spacing:-0.035em;line-height:1;font-variant-numeric:tabular-nums">$3,553</div>
+                <div style="font-size:13px;color:#4ea882;font-weight:600;font-variant-numeric:tabular-nums">↑ 12.4% vs June</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:10px;padding-bottom:6px">
+                <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Net · last 6 months</div>
+                <svg viewBox="0 0 320 56" preserveAspectRatio="none" style="width:100%;height:56px;overflow:visible">
+                  <polyline points="0,44 64,38 128,41 192,26 256,22 320,10" fill="none" stroke="#c4a35a" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline>
+                  <circle cx="320" cy="10" r="3" fill="#dcc084"></circle>
+                </svg>
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:#4a4744;letter-spacing:.1em">
+                  <span>FEB</span><span>MAR</span><span>APR</span><span>MAY</span><span>JUN</span><span>JUL</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,0.09);border-top:1px solid rgba(255,255,255,0.09);border-bottom:1px solid rgba(255,255,255,0.09)">
+              <div style="background:#0a0a0a;padding:20px 22px;display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Bookings</div>
+                <div style="font-size:26px;font-weight:600;font-variant-numeric:tabular-nums">6</div>
+                <div style="font-size:12px;color:#9a9590">18 nights</div>
+              </div>
+              <div style="background:#0a0a0a;padding:20px 22px;display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Occupancy</div>
+                <div style="font-size:26px;font-weight:600;font-variant-numeric:tabular-nums">78%</div>
+                <div style="font-size:12px;color:#9a9590">of available nights</div>
+              </div>
+              <div style="background:#0a0a0a;padding:20px 22px;display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Projected 2026</div>
+                <div style="font-size:26px;font-weight:600;font-variant-numeric:tabular-nums">$42,000</div>
+                <div style="font-size:12px;color:#9a9590">net, full year</div>
+              </div>
+              <div style="background:#0a0a0a;padding:20px 22px;display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Next payout</div>
+                <div style="font-size:26px;font-weight:600">Aug 5</div>
+                <div style="font-size:12px;color:#9a9590">EFT · direct deposit</div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:44px">
+              <div style="display:flex;flex-direction:column;gap:16px">
+                <div style="font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#6f6a65;font-weight:600">Upcoming stays</div>
+                <div style="display:flex;flex-direction:column">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;padding:13px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <div style="font-size:15px;font-weight:500">Aug 3 → Aug 7</div>
+                      <div style="font-size:12px;color:#6f6a65">4 nights · 2 guests · Airbnb</div>
+                    </div>
+                    <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$742</div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;padding:13px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <div style="font-size:15px;font-weight:500">Aug 9 → Aug 14</div>
+                      <div style="font-size:12px;color:#6f6a65">5 nights · 3 guests · Direct</div>
+                    </div>
+                    <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$1,015</div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;padding:13px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <div style="font-size:15px;font-weight:500">Aug 20 → Aug 23</div>
+                      <div style="font-size:12px;color:#6f6a65">3 nights · 2 guests · Vrbo</div>
+                    </div>
+                    <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$588</div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:16px">
+                <div style="font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#6f6a65;font-weight:600">Statement</div>
+                <div style="border-left:1px solid #c4a35a;padding:4px 0 4px 18px;display:flex;flex-direction:column;gap:8px">
+                  <div style="font-size:16px;font-weight:500">July statement ready</div>
+                  <div style="font-size:13px;color:#9a9590;line-height:1.5">Full breakdown of gross, fees and net for 20 Blue Jays Way · 318.</div>
+                  <a href="#1a" style="font-size:13px;font-weight:600;margin-top:2px">View statement →</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="border-left:1px solid rgba(255,255,255,0.09);background:#141414;display:flex;flex-direction:column">
+          <div style="padding:26px 28px 22px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:19px;font-weight:600;letter-spacing:-0.01em">Ask MRG</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#9a9590;letter-spacing:.12em;text-transform:uppercase;font-weight:600">
+              <div style="width:6px;height:6px;border-radius:50%;background:#4ea882"></div>Live
+            </div>
+          </div>
+          <div style="flex:1;padding:28px;display:flex;flex-direction:column;justify-content:flex-end;gap:26px">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="width:26px;height:26px;border:1px solid #c4a35a;transform:rotate(45deg);margin-bottom:8px"></div>
+              <div style="font-size:22px;font-weight:500;line-height:1.35;letter-spacing:-0.01em">Ask anything about Unit 318.</div>
+              <div style="font-size:14px;color:#9a9590;line-height:1.6">Answers use MRG knowledge for this unit — bookings, payouts, statements and projections.</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600;margin-bottom:3px">Try asking</div>
+              <div style="border:1px solid rgba(255,255,255,0.10);padding:12px 15px;font-size:13.5px;color:#e6e2dd;cursor:pointer" style-hover="border-color:#c4a35a;color:#ffffff">How many bookings do I have this month?</div>
+              <div style="border:1px solid rgba(255,255,255,0.10);padding:12px 15px;font-size:13.5px;color:#e6e2dd;cursor:pointer" style-hover="border-color:#c4a35a;color:#ffffff">What's my projected revenue for 2026?</div>
+              <div style="border:1px solid rgba(255,255,255,0.10);padding:12px 15px;font-size:13.5px;color:#e6e2dd;cursor:pointer" style-hover="border-color:#c4a35a;color:#ffffff">When is my next payout?</div>
+              <div style="border:1px solid rgba(255,255,255,0.10);padding:12px 15px;font-size:13.5px;color:#e6e2dd;cursor:pointer" style-hover="border-color:#c4a35a;color:#ffffff">How did July compare to last year?</div>
+            </div>
+          </div>
+          <div style="padding:20px 28px 26px;border-top:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;gap:12px;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);padding:12px 12px 12px 16px">
+              <input type="text" placeholder="Ask about your property…" style="flex:1;background:transparent;border:0;outline:none;color:#f5f5f5;font-family:'Manrope',sans-serif;font-size:14px">
+              <button style="background:#c4a35a;color:#0a0a0a;border:0;width:34px;height:34px;font-size:15px;font-weight:700;cursor:pointer;flex:none" style-hover="background:#dcc084">↑</button>
+            </div>
+            <div style="font-size:11px;color:#6f6a65">Based on your Mandel Realty data for 20 Blue Jays Way · 318</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== ROW 3 · DASHBOARD FILLED CHAT ===================== -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="color:#6f6a65;font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase">Dashboard + Ask MRG · desktop 1280 · sample thread</div>
+      <div data-screen-label="Dashboard desktop chat" style="width:1280px;height:1000px;display:grid;grid-template-columns:1fr 452px;background:#0a0a0a;color:#f5f5f5;border:1px solid rgba(255,255,255,0.09);overflow:hidden">
+
+        <div style="display:flex;flex-direction:column;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 36px;border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex;align-items:center;gap:11px">
+              <div style="width:17px;height:17px;border:1.5px solid #c4a35a;transform:rotate(45deg)"></div>
+              <div style="font-size:14px;font-weight:700;letter-spacing:.28em;color:#c4a35a">MRG</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:20px;font-size:13px;color:#9a9590">
+              <span>Khamraj</span>
+              <div style="width:30px;height:30px;border-radius:50%;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#c4a35a">K</div>
+            </div>
+          </div>
+
+          <div style="position:relative;height:248px;flex:none">
+            <image-slot id="mrg-dash-hero-2" src="./uploads/12f06b43-a0fc-478c-9a57-4ff28044cae8%20(1).avif" shape="rect" fit="cover" placeholder="Unit 318 — living room"></image-slot>
+            <div style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(10,10,10,0.94) 0%,rgba(10,10,10,0.86) 45%,rgba(10,10,10,0.55) 72%,rgba(10,10,10,0.15) 100%);pointer-events:none"></div>
+            <div style="position:absolute;left:36px;bottom:26px;display:flex;flex-direction:column;gap:9px;pointer-events:none">
+              <div style="font-size:34px;font-weight:600;letter-spacing:-0.025em">20 Blue Jays Way · 318</div>
+              <div style="display:flex;flex-direction:column;gap:5px"><div style="font-size:13px;color:#cfc9c2">Spacious 2BR · 2BTH · Sleeps 8 · Toronto, ON</div><div style="font-size:13px;color:#cfc9c2">Khamraj · <span style="color:#c4a35a">Managed by Mandel Realty</span></div></div>
+            </div>
+          </div>
+
+          <div style="flex:1;padding:32px 36px;display:flex;flex-direction:column;gap:30px;overflow:hidden">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <div style="font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#6f6a65;font-weight:600">This month</div>
+              <div style="font-size:13px;color:#9a9590">July 2026</div>
+            </div>
+
+            <div style="display:flex;align-items:flex-end;gap:44px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Net to host</div>
+                <div style="font-size:62px;font-weight:600;letter-spacing:-0.035em;line-height:1;font-variant-numeric:tabular-nums">$3,553</div>
+                <div style="font-size:13px;color:#4ea882;font-weight:600;font-variant-numeric:tabular-nums">↑ 12.4% vs June</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:10px;padding-bottom:6px">
+                <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Net · last 6 months</div>
+                <svg viewBox="0 0 320 56" preserveAspectRatio="none" style="width:100%;height:56px;overflow:visible">
+                  <polyline points="0,44 64,38 128,41 192,26 256,22 320,10" fill="none" stroke="#c4a35a" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline>
+                  <circle cx="320" cy="10" r="3" fill="#dcc084"></circle>
+                </svg>
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:#4a4744;letter-spacing:.1em">
+                  <span>FEB</span><span>MAR</span><span>APR</span><span>MAY</span><span>JUN</span><span>JUL</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,0.09);border-top:1px solid rgba(255,255,255,0.09);border-bottom:1px solid rgba(255,255,255,0.09)">
+              <div style="background:#0a0a0a;padding:20px 22px;display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Bookings</div>
+                <div style="font-size:26px;font-weight:600;font-variant-numeric:tabular-nums">6</div>
+                <div style="font-size:12px;color:#9a9590">18 nights</div>
+              </div>
+              <div style="background:#0a0a0a;padding:20px 22px;display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Occupancy</div>
+                <div style="font-size:26px;font-weight:600;font-variant-numeric:tabular-nums">78%</div>
+                <div style="font-size:12px;color:#9a9590">of available nights</div>
+              </div>
+              <div style="background:#0a0a0a;padding:20px 22px;display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Projected 2026</div>
+                <div style="font-size:26px;font-weight:600;font-variant-numeric:tabular-nums">$42,000</div>
+                <div style="font-size:12px;color:#9a9590">net, full year</div>
+              </div>
+              <div style="background:#0a0a0a;padding:20px 22px;display:flex;flex-direction:column;gap:7px">
+                <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Next payout</div>
+                <div style="font-size:26px;font-weight:600">Aug 5</div>
+                <div style="font-size:12px;color:#9a9590">EFT · direct deposit</div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:44px">
+              <div style="display:flex;flex-direction:column;gap:16px">
+                <div style="font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#6f6a65;font-weight:600">Upcoming stays</div>
+                <div style="display:flex;flex-direction:column">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;padding:13px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <div style="font-size:15px;font-weight:500">Aug 3 → Aug 7</div>
+                      <div style="font-size:12px;color:#6f6a65">4 nights · 2 guests · Airbnb</div>
+                    </div>
+                    <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$742</div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;padding:13px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <div style="font-size:15px;font-weight:500">Aug 9 → Aug 14</div>
+                      <div style="font-size:12px;color:#6f6a65">5 nights · 3 guests · Direct</div>
+                    </div>
+                    <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$1,015</div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;padding:13px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                      <div style="font-size:15px;font-weight:500">Aug 20 → Aug 23</div>
+                      <div style="font-size:12px;color:#6f6a65">3 nights · 2 guests · Vrbo</div>
+                    </div>
+                    <div style="font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">$588</div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:16px">
+                <div style="font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#6f6a65;font-weight:600">Statement</div>
+                <div style="border-left:1px solid #c4a35a;padding:4px 0 4px 18px;display:flex;flex-direction:column;gap:8px">
+                  <div style="font-size:16px;font-weight:500">July statement ready</div>
+                  <div style="font-size:13px;color:#9a9590;line-height:1.5">Full breakdown of gross, fees and net for 20 Blue Jays Way · 318.</div>
+                  <a href="#1a" style="font-size:13px;font-weight:600;margin-top:2px">View statement →</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="border-left:1px solid rgba(255,255,255,0.09);background:#141414;display:flex;flex-direction:column;overflow:hidden">
+          <div style="padding:26px 28px 22px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:19px;font-weight:600;letter-spacing:-0.01em">Ask MRG</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#9a9590;letter-spacing:.12em;text-transform:uppercase;font-weight:600">
+              <div style="width:6px;height:6px;border-radius:50%;background:#4ea882"></div>Live
+            </div>
+          </div>
+          <div style="flex:1;padding:26px 28px;display:flex;flex-direction:column;justify-content:flex-end;gap:22px;overflow:hidden">
+            <div style="align-self:flex-end;max-width:80%;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);padding:13px 16px;font-size:14px;line-height:1.5">How many bookings do I have this month?</div>
+            <div style="display:flex;flex-direction:column;gap:9px;max-width:92%">
+              <div style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#c4a35a;font-weight:700">MRG</div>
+              <div style="font-size:14px;line-height:1.65;color:#e6e2dd">July had <span style="font-weight:600;color:#f5f5f5">6 reservations across 18 nights</span> — 78% occupancy. Two came direct, which saved about $180 in platform fees.</div>
+            </div>
+            <div style="align-self:flex-end;max-width:80%;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);padding:13px 16px;font-size:14px;line-height:1.5">And how did July compare to last year?</div>
+            <div style="display:flex;flex-direction:column;gap:9px;max-width:92%">
+              <div style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#c4a35a;font-weight:700">MRG</div>
+              <div style="font-size:14px;line-height:1.65;color:#e6e2dd">Net to you was <span style="font-weight:600;color:#f5f5f5">$3,553 CAD</span> versus $2,980 in July 2025 — <span style="color:#4ea882;font-weight:600">up 19.2%</span>. Nightly rate rose from $164 to $187 while occupancy held at 78%.</div>
+              <div style="display:flex;flex-direction:column;gap:1px;background:rgba(255,255,255,0.09);border:1px solid rgba(255,255,255,0.09);margin-top:6px">
+                <div style="display:flex;justify-content:space-between;background:#181818;padding:10px 14px;font-size:12.5px"><span style="color:#9a9590">July 2026 net</span><span style="font-weight:600;font-variant-numeric:tabular-nums">$3,553</span></div>
+                <div style="display:flex;justify-content:space-between;background:#181818;padding:10px 14px;font-size:12.5px"><span style="color:#9a9590">July 2025 net</span><span style="font-weight:600;font-variant-numeric:tabular-nums">$2,980</span></div>
+              </div>
+            </div>
+            <div style="align-self:flex-end;max-width:80%;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);padding:13px 16px;font-size:14px;line-height:1.5">When is my next payout?</div>
+            <div style="display:flex;flex-direction:column;gap:9px;max-width:92%">
+              <div style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#c4a35a;font-weight:700">MRG</div>
+              <div style="font-size:14px;line-height:1.65;color:#e6e2dd"><span style="font-weight:600;color:#f5f5f5">Wednesday, Aug 5</span> — $3,553 by EFT to your account ending 4417, alongside your July statement.</div>
+            </div>
+          </div>
+          <div style="padding:20px 28px 26px;border-top:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;gap:12px;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);padding:12px 12px 12px 16px">
+              <input type="text" placeholder="Ask about your property…" style="flex:1;background:transparent;border:0;outline:none;color:#f5f5f5;font-family:'Manrope',sans-serif;font-size:14px">
+              <button style="background:#c4a35a;color:#0a0a0a;border:0;width:34px;height:34px;font-size:15px;font-weight:700;cursor:pointer;flex:none" style-hover="background:#dcc084">↑</button>
+            </div>
+            <div style="font-size:11px;color:#6f6a65">Based on your Mandel Realty data for 20 Blue Jays Way · 318</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== ROW 4 · MOBILE DASHBOARD + CHAT ===================== -->
+    <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start">
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="color:#6f6a65;font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase">Dashboard · mobile 390</div>
+        <div data-screen-label="Dashboard mobile" style="width:390px;height:844px;background:#0a0a0a;color:#f5f5f5;border:1px solid rgba(255,255,255,0.09);overflow:hidden;display:flex;flex-direction:column;position:relative">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid rgba(255,255,255,0.08);flex:none">
+            <div style="display:flex;align-items:center;gap:9px">
+              <div style="width:15px;height:15px;border:1.5px solid #c4a35a;transform:rotate(45deg)"></div>
+              <div style="font-size:13px;font-weight:700;letter-spacing:.26em;color:#c4a35a">MRG</div>
+            </div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#c4a35a">K</div>
+          </div>
+          <div style="position:relative;height:158px;flex:none">
+            <image-slot id="mrg-dash-hero-m" src="./uploads/12f06b43-a0fc-478c-9a57-4ff28044cae8%20(1).avif" shape="rect" fit="cover" placeholder="Unit 318 — living room"></image-slot>
+            <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,10,0.94) 0%,rgba(10,10,10,0.25) 60%,rgba(10,10,10,0.05) 100%);pointer-events:none"></div>
+            <div style="position:absolute;left:22px;bottom:18px;display:flex;flex-direction:column;gap:6px;pointer-events:none">
+              <div style="font-size:26px;font-weight:600;letter-spacing:-0.02em">20 Blue Jays Way · 318</div>
+              <div style="font-size:12px;color:#cfc9c2">2BR · 2BTH · Toronto · <span style="color:#c4a35a">Managed by Mandel Realty</span></div>
+            </div>
+          </div>
+          <div style="flex:1;padding:20px 22px 108px;display:flex;flex-direction:column;gap:18px;overflow:hidden">
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Net to host</div>
+                <div style="font-size:12px;color:#9a9590">July 2026</div>
+              </div>
+              <div style="font-size:46px;font-weight:600;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">$3,553</div>
+              <div style="font-size:13px;color:#4ea882;font-weight:600">↑ 12.4% vs June</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,0.09);border-top:1px solid rgba(255,255,255,0.09);border-bottom:1px solid rgba(255,255,255,0.09)">
+              <div style="background:#0a0a0a;padding:13px 16px;display:flex;flex-direction:column;gap:4px">
+                <div style="font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6f6a65;font-weight:600">Bookings</div>
+                <div style="font-size:21px;font-weight:600">6 <span style="font-size:12px;color:#9a9590;font-weight:400">· 18 nights</span></div>
+              </div>
+              <div style="background:#0a0a0a;padding:13px 16px;display:flex;flex-direction:column;gap:4px">
+                <div style="font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6f6a65;font-weight:600">Occupancy</div>
+                <div style="font-size:21px;font-weight:600">78%</div>
+              </div>
+              <div style="background:#0a0a0a;padding:13px 16px;display:flex;flex-direction:column;gap:4px">
+                <div style="font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6f6a65;font-weight:600">Projected 2026</div>
+                <div style="font-size:21px;font-weight:600">$42,000</div>
+              </div>
+              <div style="background:#0a0a0a;padding:13px 16px;display:flex;flex-direction:column;gap:4px">
+                <div style="font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6f6a65;font-weight:600">Next payout</div>
+                <div style="font-size:21px;font-weight:600">Aug 5 <span style="font-size:12px;color:#9a9590;font-weight:400">· EFT</span></div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6f6a65;font-weight:600">Upcoming stays</div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:1px solid rgba(255,255,255,0.08)">
+                <div style="display:flex;flex-direction:column;gap:3px"><div style="font-size:14px;font-weight:500">Aug 3 → Aug 7</div><div style="font-size:11.5px;color:#6f6a65">4 nights · Airbnb</div></div>
+                <div style="font-size:14px;font-weight:600">$742</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:1px solid rgba(255,255,255,0.08)">
+                <div style="display:flex;flex-direction:column;gap:3px"><div style="font-size:14px;font-weight:500">Aug 9 → Aug 14</div><div style="font-size:11.5px;color:#6f6a65">5 nights · Direct</div></div>
+                <div style="font-size:14px;font-weight:600">$1,015</div>
+              </div>
+            </div>
+            <div style="border-left:1px solid #c4a35a;padding-left:14px;display:flex;flex-direction:column;gap:5px">
+              <div style="font-size:14px;font-weight:500">July statement ready</div>
+              <a href="#1a" style="font-size:12.5px;font-weight:600">View statement →</a>
+            </div>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;padding:16px 22px 26px;background:linear-gradient(to top,#0a0a0a 60%,rgba(10,10,10,0));display:flex;align-items:center;gap:12px">
+            <div style="flex:1;display:flex;align-items:center;gap:10px;background:#1c1c1c;border:1px solid rgba(255,255,255,0.12);padding:13px 16px;font-size:14px;color:#9a9590">
+              <div style="width:6px;height:6px;border-radius:50%;background:#4ea882;flex:none"></div>Ask MRG about Unit 318
+            </div>
+            <button style="background:#c4a35a;color:#0a0a0a;border:0;width:44px;height:44px;font-size:16px;font-weight:700;cursor:pointer;flex:none" style-hover="background:#dcc084">↑</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="color:#6f6a65;font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase">Ask MRG · mobile sheet 390</div>
+        <div data-screen-label="Ask MRG mobile" style="width:390px;height:844px;background:#141414;color:#f5f5f5;border:1px solid rgba(255,255,255,0.09);overflow:hidden;display:flex;flex-direction:column">
+          <div style="padding:16px 22px 14px;display:flex;flex-direction:column;gap:14px;border-bottom:1px solid rgba(255,255,255,0.08);flex:none">
+            <div style="width:38px;height:3px;background:rgba(255,255,255,0.18);align-self:center"></div>
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="font-size:18px;font-weight:600">Ask MRG</div>
+                <div style="width:6px;height:6px;border-radius:50%;background:#4ea882"></div>
+              </div>
+              <div style="font-size:12px;color:#9a9590">Unit 318</div>
+            </div>
+          </div>
+          <div style="flex:1;padding:22px;display:flex;flex-direction:column;justify-content:flex-end;gap:20px;overflow:hidden">
+            <div style="align-self:flex-end;max-width:82%;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);padding:12px 15px;font-size:14px;line-height:1.5">How many bookings do I have this month?</div>
+            <div style="display:flex;flex-direction:column;gap:8px;max-width:94%">
+              <div style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#c4a35a;font-weight:700">MRG</div>
+              <div style="font-size:14px;line-height:1.65;color:#e6e2dd">July had <span style="font-weight:600;color:#f5f5f5">6 reservations across 18 nights</span> — 78% occupancy. Two came direct, saving about $180 in platform fees.</div>
+            </div>
+            <div style="align-self:flex-end;max-width:82%;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);padding:12px 15px;font-size:14px;line-height:1.5">When is my next payout?</div>
+            <div style="display:flex;flex-direction:column;gap:8px;max-width:94%">
+              <div style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#c4a35a;font-weight:700">MRG</div>
+              <div style="font-size:14px;line-height:1.65;color:#e6e2dd"><span style="font-weight:600;color:#f5f5f5">Wednesday, Aug 5</span> — $3,553 by EFT to your account ending 4417, with your July statement.</div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+              <div style="border:1px solid rgba(255,255,255,0.10);padding:9px 13px;font-size:12.5px;color:#e6e2dd" style-hover="border-color:#c4a35a">Projected revenue for 2026?</div>
+              <div style="border:1px solid rgba(255,255,255,0.10);padding:9px 13px;font-size:12.5px;color:#e6e2dd" style-hover="border-color:#c4a35a">July vs last year?</div>
+            </div>
+          </div>
+          <div style="padding:16px 22px 26px;border-top:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;gap:12px;flex:none">
+            <div style="display:flex;align-items:center;gap:10px;background:#1c1c1c;border:1px solid rgba(255,255,255,0.10);padding:10px 10px 10px 16px">
+              <input type="text" placeholder="Ask about your property…" style="flex:1;background:transparent;border:0;outline:none;color:#f5f5f5;font-family:'Manrope',sans-serif;font-size:14px">
+              <button style="background:#c4a35a;color:#0a0a0a;border:0;width:40px;height:40px;font-size:16px;font-weight:700;cursor:pointer;flex:none" style-hover="background:#dcc084">↑</button>
+            </div>
+            <div style="font-size:11px;color:#6f6a65">Based on your Mandel Realty data for 20 Blue Jays Way · 318</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</x-dc>
+</body>
+</html>
