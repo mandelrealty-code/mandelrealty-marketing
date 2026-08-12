@@ -10,8 +10,11 @@ import {
   type PmReservationRow,
 } from "./reservationStore.js";
 import {
+  backfillReviewStayDates,
   listReviewsForPropertiesInRange,
   listReviewsForPropertiesSince,
+  propertyNeedsReviewSync,
+  syncHospitableReviews,
 } from "./reviewStore.js";
 import { loadMatComplianceForProperty, MAT_OWNER_NOTE } from "./matCompliance.js";
 import { loadStrComplianceForProperty } from "./strCompliance.js";
@@ -300,8 +303,19 @@ export async function buildOwnerStatement(
   const propById = new Map(props.map((p) => [p.id, p]));
   const linked = portfolio.units.filter((u) => u.linked && u.active !== false);
 
-  // Reviews: use cache only here. Syncing Hospitable per unit blocks statement builds
-  // for 30–60s+; earnings sync / Preview refresh already pull reviews when stale.
+  // Stale-gated review refresh in parallel (does not re-pull when fresh).
+  await Promise.all(
+    linked.map(async (u) => {
+      try {
+        const need = await propertyNeedsReviewSync(u.property_id);
+        if (need.needed) {
+          await syncHospitableReviews({ propertyId: u.property_id });
+        }
+      } catch {
+        /* keep going with cached reviews */
+      }
+    }),
+  );
 
   const built = await Promise.all(
     linked.map(async (u) => {
@@ -407,6 +421,11 @@ export async function buildOwnerStatement(
 
   const propertyIds = units.map((u) => u.property_id);
   const nameById = new Map(units.map((u) => [u.property_id, u.property_name]));
+  const monthReservationIds = new Set(
+    stays
+      .map((s) => (s.hospitable_reservation_id || "").trim())
+      .filter(Boolean),
+  );
 
   const priorMonthKey = shiftYearMonth(yearMonth, -1);
   const { start: monthStart, end: monthEndForReviews } = monthBounds(yearMonth);
@@ -414,8 +433,20 @@ export async function buildOwnerStatement(
   const trailStart = shiftYearMonth(yearMonth, -11) + "-01";
   const trailEnd = `${monthEndForReviews}T23:59:59.999Z`;
 
-  const [monthReviews, priorReviews, trailReviews] = await Promise.all([
-    listReviewsForPropertiesInRange(propertyIds, monthStart, monthEndForReviews),
+  // Repair missing stay dates on cached reviews from reservation rows (fast, no API).
+  try {
+    await backfillReviewStayDates(propertyIds);
+  } catch {
+    /* optional */
+  }
+
+  let [monthReviews, priorReviews, trailReviews] = await Promise.all([
+    listReviewsForPropertiesInRange(
+      propertyIds,
+      monthStart,
+      monthEndForReviews,
+      monthReservationIds,
+    ),
     listReviewsForPropertiesInRange(
       propertyIds,
       priorBounds.start,
@@ -427,6 +458,43 @@ export async function buildOwnerStatement(
       trailEnd,
     ),
   ]);
+
+  // If trailing ratings exist but the month is empty, force one re-sync to repair
+  // missing reservation dates on older cached review rows.
+  if (monthReviews.length === 0 && trailReviews.length > 0 && linked.length) {
+    await Promise.all(
+      linked.map(async (u) => {
+        try {
+          await syncHospitableReviews({ propertyId: u.property_id });
+        } catch {
+          /* ignore */
+        }
+      }),
+    );
+    try {
+      await backfillReviewStayDates(propertyIds);
+    } catch {
+      /* ignore */
+    }
+    [monthReviews, priorReviews, trailReviews] = await Promise.all([
+      listReviewsForPropertiesInRange(
+        propertyIds,
+        monthStart,
+        monthEndForReviews,
+        monthReservationIds,
+      ),
+      listReviewsForPropertiesInRange(
+        propertyIds,
+        priorBounds.start,
+        priorBounds.end,
+      ),
+      listReviewsForPropertiesSince(
+        propertyIds,
+        `${trailStart}T00:00:00.000Z`,
+        trailEnd,
+      ),
+    ]);
+  }
 
   const guest_experience = buildGuestExperienceFromReviews({
     monthReviews,

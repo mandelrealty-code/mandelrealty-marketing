@@ -38,6 +38,26 @@ async function upsertReview(
   propertyId: string,
   r: HospitableReviewNormalized,
 ): Promise<void> {
+  let checkIn = r.check_in;
+  let checkOut = r.check_out;
+  // Backfill stay dates from cached reservations when the review include omits them.
+  if ((!checkIn || !checkOut) && r.reservation_id) {
+    try {
+      const { data } = await db()
+        .from("pm_reservations")
+        .select("check_in, check_out")
+        .eq("hospitable_reservation_id", r.reservation_id)
+        .maybeSingle();
+      if (data) {
+        const row = data as { check_in?: string | null; check_out?: string | null };
+        if (!checkIn && row.check_in) checkIn = String(row.check_in).slice(0, 10);
+        if (!checkOut && row.check_out) checkOut = String(row.check_out).slice(0, 10);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   const { error } = await db().from("pm_reviews").upsert(
     {
       property_id: propertyId,
@@ -49,8 +69,8 @@ async function upsertReview(
       public_review: r.public_review,
       public_response: r.public_response,
       guest_first_name: r.guest_first_name,
-      check_in: r.check_in,
-      check_out: r.check_out,
+      check_in: checkIn,
+      check_out: checkOut,
       reviewed_at: r.reviewed_at,
       responded_at: r.responded_at,
       category_ratings_json: r.category_ratings,
@@ -177,14 +197,40 @@ export async function listReviewsForPropertyMonth(
   }
   return (data ?? [])
     .map((r) => mapReviewRow(r as Record<string, unknown>))
-    .filter((r) => reviewInMonth(r, start, end));
+    .filter((r) => reviewMatchesMonth(r, start, end));
 }
 
+/** Reviews attributed to a calendar month.
+ * Match if the stay checked out in-month OR the guest left the review in-month.
+ * (Checkout-only missed reviews posted after month-end; reviewed_at-only missed
+ * when reservation dates were missing from the Hospitable include.)
+ */
 function reviewInMonth(r: PmReviewRow, start: string, end: string): boolean {
-  if (r.check_out && r.check_out >= start && r.check_out <= end) return true;
-  if (!r.check_out && r.reviewed_at) {
+  if (r.check_out) {
+    const out = r.check_out.slice(0, 10);
+    if (out >= start && out <= end) return true;
+  }
+  if (r.reviewed_at) {
     const day = r.reviewed_at.slice(0, 10);
-    return day >= start && day <= end;
+    if (day >= start && day <= end) return true;
+  }
+  return false;
+}
+
+/** Also keep reviews whose reservation id matches a stay in the month. */
+export function reviewMatchesMonth(
+  r: PmReviewRow,
+  start: string,
+  end: string,
+  monthReservationIds?: Set<string>,
+): boolean {
+  if (reviewInMonth(r, start, end)) return true;
+  if (
+    monthReservationIds &&
+    r.hospitable_reservation_id &&
+    monthReservationIds.has(r.hospitable_reservation_id)
+  ) {
+    return true;
   }
   return false;
 }
@@ -193,6 +239,7 @@ export async function listReviewsForPropertiesInRange(
   propertyIds: string[],
   startDate: string,
   endDate: string,
+  monthReservationIds?: Set<string>,
 ): Promise<PmReviewRow[]> {
   if (!propertyIds.length) return [];
   const { data, error } = await db()
@@ -206,7 +253,9 @@ export async function listReviewsForPropertiesInRange(
   }
   return (data ?? [])
     .map((r) => mapReviewRow(r as Record<string, unknown>))
-    .filter((r) => reviewInMonth(r, startDate, endDate));
+    .filter((r) =>
+      reviewMatchesMonth(r, startDate, endDate, monthReservationIds),
+    );
 }
 
 export async function listReviewsForPropertiesSince(
@@ -227,4 +276,75 @@ export async function listReviewsForPropertiesSince(
     throw error;
   }
   return (data ?? []).map((r) => mapReviewRow(r as Record<string, unknown>));
+}
+
+/** Fill missing check_in/out on reviews from pm_reservations (no Hospitable call). */
+export async function backfillReviewStayDates(
+  propertyIds: string[],
+): Promise<number> {
+  if (!propertyIds.length) return 0;
+  const { data: reviews, error } = await db()
+    .from("pm_reviews")
+    .select("id, hospitable_reservation_id, check_in, check_out")
+    .in("property_id", propertyIds)
+    .neq("hospitable_reservation_id", "");
+  if (error) {
+    if (/pm_reviews|relation/i.test(error.message || "")) return 0;
+    throw error;
+  }
+  const needing = (reviews ?? []).filter((row) => {
+    const r = row as {
+      check_in?: string | null;
+      check_out?: string | null;
+      hospitable_reservation_id?: string;
+    };
+    return Boolean(r.hospitable_reservation_id) && (!r.check_in || !r.check_out);
+  });
+  if (!needing.length) return 0;
+
+  const resIds = [
+    ...new Set(
+      needing.map((r) =>
+        String((r as { hospitable_reservation_id: string }).hospitable_reservation_id),
+      ),
+    ),
+  ];
+  const { data: resRows, error: resErr } = await db()
+    .from("pm_reservations")
+    .select("hospitable_reservation_id, check_in, check_out")
+    .in("hospitable_reservation_id", resIds);
+  if (resErr) throw resErr;
+  const byRes = new Map(
+    (resRows ?? []).map((row) => {
+      const r = row as {
+        hospitable_reservation_id: string;
+        check_in: string | null;
+        check_out: string | null;
+      };
+      return [r.hospitable_reservation_id, r] as const;
+    }),
+  );
+
+  let updated = 0;
+  await Promise.all(
+    needing.map(async (row) => {
+      const r = row as {
+        id: string;
+        hospitable_reservation_id: string;
+        check_in: string | null;
+        check_out: string | null;
+      };
+      const match = byRes.get(r.hospitable_reservation_id);
+      if (!match) return;
+      const check_in = r.check_in || match.check_in;
+      const check_out = r.check_out || match.check_out;
+      if (check_in === r.check_in && check_out === r.check_out) return;
+      const { error: upErr } = await db()
+        .from("pm_reviews")
+        .update({ check_in, check_out })
+        .eq("id", r.id);
+      if (!upErr) updated += 1;
+    }),
+  );
+  return updated;
 }

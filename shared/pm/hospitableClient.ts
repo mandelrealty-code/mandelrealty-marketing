@@ -443,11 +443,16 @@ function normalizeReview(raw: unknown): HospitableReviewNormalized | null {
 
   const propertyId = str(property.id) || str(r.property_id) || "";
 
+  // Nested reservation uses the same fields as /reservations (arrival/departure preferred).
   const checkIn =
+    str(reservation.arrival_date)?.slice(0, 10) ||
+    str(reservation.arrivalDate)?.slice(0, 10) ||
     str(reservation.check_in)?.slice(0, 10) ||
     str(reservation.checkIn)?.slice(0, 10) ||
     null;
   const checkOut =
+    str(reservation.departure_date)?.slice(0, 10) ||
+    str(reservation.departureDate)?.slice(0, 10) ||
     str(reservation.check_out)?.slice(0, 10) ||
     str(reservation.checkOut)?.slice(0, 10) ||
     null;

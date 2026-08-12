@@ -42,6 +42,7 @@ export type StayStatementLine = {
   nights: number;
   platform: string;
   platform_id: string;
+  hospitable_reservation_id?: string;
   status: string;
   /** Airbnb accommodation fare (after discounts). */
   accommodation_cents: number;
@@ -373,6 +374,7 @@ export async function buildMonthStatement(
       nights: Number(r.nights) || 0,
       platform: (r.platform || "").trim(),
       platform_id: r.platform_id || "",
+      hospitable_reservation_id: r.hospitable_reservation_id || "",
       status: r.status || "",
       accommodation_cents: nightly,
       host_fees_cents: bd.host_fees_cents,
