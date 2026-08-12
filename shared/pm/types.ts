@@ -24,7 +24,12 @@ export type PmProperty = {
   currency: string;
   active: boolean;
   cleaning_fee_keeper: "mrg" | "host";
-  /** cohost = % of commission base; invoice = % of nightly billed via QuickBooks */
+  /**
+   * nightly = room fee × commission % (bill gross bookings);
+   * nightly_minus_host_fee = (room fee − Airbnb host fee) × commission %.
+   */
+  commission_base_mode: "nightly" | "nightly_minus_host_fee";
+  /** cohost = HST % on commission base; invoice = HST % of MRG fee via QuickBooks */
   hst_mode: "cohost" | "invoice";
   hst_bps: number;
 };

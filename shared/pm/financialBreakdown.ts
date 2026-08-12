@@ -1,5 +1,7 @@
 /** Parse Hospitable financials_json into Airbnb-aligned commission inputs. */
 
+export type CommissionBaseMode = "nightly" | "nightly_minus_host_fee";
+
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
@@ -84,7 +86,7 @@ function firstGuestFeeSplit(
 
 export type StayFinancialBreakdown = {
   currency: string;
-  /** Airbnb accommodation fare (nightly after promotions/discounts). */
+  /** Airbnb room fee (nights × rate), matching “You earn” breakdown. */
   accommodation_cents: number;
   /** Absolute platform host service fee. */
   host_fees_cents: number;
@@ -93,21 +95,45 @@ export type StayFinancialBreakdown = {
   other_guest_fees_cents: number;
   discounts_cents: number;
   adjustments_cents: number;
-  /** max(0, accommodation − host fees) — MRG commission base. */
+  /**
+   * Commission base for this stay given property mode.
+   * nightly → accommodation; nightly_minus_host_fee → accommodation − host fees.
+   */
   commission_base_cents: number;
   /** Airbnb “You earned” / host take-home for the reservation. */
   host_revenue_cents: number;
   guest_total_cents: number;
 };
 
+export function normalizeCommissionBaseMode(
+  v: unknown,
+): CommissionBaseMode {
+  return v === "nightly" ? "nightly" : "nightly_minus_host_fee";
+}
+
+export function commissionBaseFromParts(
+  accommodationCents: number,
+  hostFeesCents: number,
+  mode: CommissionBaseMode,
+): number {
+  if (mode === "nightly") return Math.max(0, accommodationCents);
+  return Math.max(0, accommodationCents - hostFeesCents);
+}
+
 export function breakdownFromFinancials(
   financials: Record<string, unknown> | null | undefined,
-  fallback?: { host_payout_cents?: number; gross_cents?: number; currency?: string },
+  fallback?: {
+    host_payout_cents?: number;
+    gross_cents?: number;
+    currency?: string;
+    commission_base_mode?: CommissionBaseMode;
+  },
 ): StayFinancialBreakdown {
   const fin = financials && typeof financials === "object" ? financials : {};
   const host = asRecord(fin.host);
   const guest = asRecord(fin.guest);
   const currency = str(fin.currency) || fallback?.currency || "CAD";
+  const baseMode = normalizeCommissionBaseMode(fallback?.commission_base_mode);
 
   const accommodationGross =
     lineItemCentsSigned(host.accommodation) ||
@@ -187,13 +213,12 @@ export function breakdownFromFinancials(
       }
       accommodation = Math.max(0, best);
     } else {
-      // Default: Airbnb fare is net of promotions.
       accommodation = Math.max(0, accommodationGross + discountsSigned);
     }
   } else if (!accommodationGross && hostRevenue) {
     accommodation = Math.max(
       0,
-      hostRevenue - cleaning - otherGuestFees + hostFees - adjustmentsSigned,
+      hostRevenue - guestFeesSigned - hostFeesSigned - adjustmentsSigned,
     );
   } else if (!accommodationGross && guestTotal) {
     accommodation = Math.max(0, guestTotal - cleaning);
@@ -203,7 +228,39 @@ export function breakdownFromFinancials(
     accommodation = Math.round(Number(fin.accommodation) * 100);
   }
 
-  const base = Math.max(0, accommodation - hostFees);
+  // Airbnb identity: You earn ≈ room fee + guest fees − host fee ± adjustments.
+  // If stored accommodation doesn't rebuild revenue, derive room fee from payout
+  // (fixes Hospitable rows where accommodation is understated vs Airbnb).
+  if (hostRevenue) {
+    const errStored = Math.abs(rebuild(accommodation, false) - hostRevenue);
+    const errStoredTax = Math.abs(rebuild(accommodation, true) - hostRevenue);
+    const bestStored = Math.min(errStored, errStoredTax);
+    if (bestStored > 1) {
+      const derived = Math.max(
+        0,
+        hostRevenue - guestFeesSigned - hostFeesSigned - adjustmentsSigned,
+      );
+      const derivedTax = Math.max(
+        0,
+        hostRevenue -
+          guestFeesSigned -
+          hostFeesSigned -
+          adjustmentsSigned -
+          taxesSigned,
+      );
+      const errDerived = Math.abs(rebuild(derived, false) - hostRevenue);
+      const errDerivedTax = Math.abs(rebuild(derivedTax, true) - hostRevenue);
+      if (errDerived <= 1 && errDerived < bestStored) {
+        accommodation = derived;
+      } else if (errDerivedTax <= 1 && errDerivedTax < bestStored) {
+        accommodation = derivedTax;
+      } else if (errDerived < bestStored) {
+        accommodation = derived;
+      }
+    }
+  }
+
+  const base = commissionBaseFromParts(accommodation, hostFees, baseMode);
 
   return {
     currency,
@@ -215,7 +272,8 @@ export function breakdownFromFinancials(
     adjustments_cents: adjustmentsSigned,
     commission_base_cents: base,
     host_revenue_cents:
-      hostRevenue || base + cleaning + otherGuestFees + adjustmentsSigned,
+      hostRevenue ||
+      accommodation + cleaning + otherGuestFees - hostFees + adjustmentsSigned,
     guest_total_cents: guestTotal,
   };
 }

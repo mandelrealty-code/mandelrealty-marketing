@@ -42,6 +42,7 @@ export type MonthStatement = {
   reservation_count: number;
   nights_total: number;
   commission_base_cents: number;
+  commission_base_mode?: "nightly" | "nightly_minus_host_fee";
   nightly_total_cents?: number;
   airbnb_payout_cents?: number;
   airbnb_accommodation_cents?: number;
@@ -381,7 +382,9 @@ export function EarningsPanel({
             <div>
               <p className="text-sm text-[#f5f5f5]">Commission base</p>
               <p className="text-xs text-[#6f6a65]">
-                Accommodation − promotions − Airbnb host fee
+                {statement.commission_base_mode === "nightly"
+                  ? "Airbnb room fee (nightly)"
+                  : "Room fee − Airbnb host fee"}
               </p>
             </div>
             <p className="text-[15px] font-semibold tabular-nums">

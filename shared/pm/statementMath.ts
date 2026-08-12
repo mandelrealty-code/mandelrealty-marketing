@@ -2,6 +2,8 @@ import { getSupabaseAdmin } from "../supabase.js";
 import {
   breakdownFromFinancials,
   isExcludedReservationStatus,
+  normalizeCommissionBaseMode,
+  type CommissionBaseMode,
 } from "./financialBreakdown.js";
 import { getPmPropertyDetail, listPmProperties } from "./propertyStore.js";
 import {
@@ -66,6 +68,7 @@ export type MonthStatement = {
   reservation_count: number;
   nights_total: number;
   commission_base_cents: number;
+  commission_base_mode: CommissionBaseMode;
   /** Sum of nightly/accommodation (reference; invoice HST is on MRG fee). */
   nightly_total_cents: number;
   gross_cents: number;
@@ -271,6 +274,7 @@ export async function buildMonthStatement(
   const keeper = detail.cleaning_fee_keeper === "host" ? "host" : "mrg";
   const hstMode = detail.hst_mode === "invoice" ? "invoice" : "cohost";
   const hstBps = Number.isFinite(detail.hst_bps) ? detail.hst_bps : 300;
+  const baseMode = normalizeCommissionBaseMode(detail.commission_base_mode);
 
   const [reservations, expenses] = await Promise.all([
     listReservationsForPropertyMonth(propertyId, yearMonth),
@@ -304,6 +308,7 @@ export async function buildMonthStatement(
       host_payout_cents: Number(r.host_payout_cents) || 0,
       gross_cents: Number(r.gross_cents) || 0,
       currency: r.currency,
+      commission_base_mode: baseMode,
     });
 
     const on = r.check_out || r.check_in || `${yearMonth}-01`;
@@ -343,12 +348,16 @@ export async function buildMonthStatement(
 
     const code = r.platform_id || r.platform || "Stay";
     const label = `${shortStayRange(r.check_in, r.check_out)} · ${code}`;
+    const baseHint =
+      baseMode === "nightly"
+        ? `Nightly ${moneyLabel(nightly)}`
+        : `Base ${moneyLabel(base)} (nightly − fee)`;
     const meta = [
       `Airbnb ${moneyLabel(airbnbPayout)}`,
       `Accom ${moneyLabel(nightly)}`,
       `Fee −${moneyLabel(bd.host_fees_cents)}`,
       cleaning ? `Clean ${moneyLabel(cleaning)}` : null,
-      `Base ${moneyLabel(base)}`,
+      baseHint,
       hstMode === "invoice"
         ? `MRG ${moneyLabel(mrg)} · HST inv ${moneyLabel(hst)} (${hstBps / 100}% of fee)`
         : `Take ${moneyLabel(mrg + hst)} (${rate / 100}%+${hstBps / 100}%)`,
@@ -410,6 +419,7 @@ export async function buildMonthStatement(
     reservation_count: stays.length,
     nights_total: nightsTotal,
     commission_base_cents: baseTotal,
+    commission_base_mode: baseMode,
     nightly_total_cents: nightlyTotal,
     gross_cents: gross,
     host_payout_cents: airbnbPayoutTotal || baseTotal + hostCleaningTotal,

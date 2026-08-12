@@ -16,6 +16,7 @@ export type PropertyRow = {
   client_name: string;
   current_rate_bps: number | null;
   cleaning_fee_keeper?: "mrg" | "host";
+  commission_base_mode?: "nightly" | "nightly_minus_host_fee";
   hst_mode?: "cohost" | "invoice";
   hst_bps?: number;
   active?: boolean;
@@ -31,6 +32,7 @@ export type CommissionTerm = {
 
 export type PropertyDetail = PropertyRow & {
   cleaning_fee_keeper: "mrg" | "host";
+  commission_base_mode: "nightly" | "nightly_minus_host_fee";
   hst_mode: "cohost" | "invoice";
   hst_bps: number;
   active?: boolean;

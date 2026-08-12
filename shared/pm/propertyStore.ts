@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { getPmSettings } from "./clientStore.js";
+import { normalizeCommissionBaseMode } from "./financialBreakdown.js";
 import type {
   PmCommissionTerm,
   PmProperty,
@@ -15,6 +16,18 @@ function db() {
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function normalizePropertyRow(p: PmProperty): PmProperty {
+  return {
+    ...p,
+    cleaning_fee_keeper: p.cleaning_fee_keeper === "host" ? "host" : "mrg",
+    commission_base_mode: normalizeCommissionBaseMode(
+      (p as { commission_base_mode?: string }).commission_base_mode,
+    ),
+    hst_mode: p.hst_mode === "invoice" ? "invoice" : "cohost",
+    hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
+  };
 }
 
 function pickCurrentTerm(
@@ -50,10 +63,7 @@ export async function listPmProperties(clientId?: string): Promise<PmPropertyLis
     const { pm_clients, pm_commission_terms: _t, ...prop } = r;
     const p = prop as PmProperty;
     return {
-      ...p,
-      cleaning_fee_keeper: p.cleaning_fee_keeper === "host" ? "host" : "mrg",
-      hst_mode: p.hst_mode === "invoice" ? "invoice" : "cohost",
-      hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
+      ...normalizePropertyRow(p),
       client_name: pm_clients?.name ?? "—",
       current_rate_bps: current?.rate_bps ?? null,
     };
@@ -79,10 +89,7 @@ export async function getPmPropertyDetail(id: string): Promise<PmPropertyDetail 
   const { pm_clients, pm_commission_terms: _t, ...prop } = r;
   const p = prop as PmProperty;
   return {
-    ...p,
-    cleaning_fee_keeper: p.cleaning_fee_keeper === "host" ? "host" : "mrg",
-    hst_mode: p.hst_mode === "invoice" ? "invoice" : "cohost",
-    hst_bps: Number.isFinite(p.hst_bps) ? p.hst_bps : 300,
+    ...normalizePropertyRow(p),
     client_name: pm_clients?.name ?? "—",
     current_term: pickCurrentTerm(terms),
     terms,
@@ -95,6 +102,7 @@ export async function createPmProperty(input: {
   address?: string;
   hospitable_property_id?: string;
   cleaning_fee_keeper?: "mrg" | "host";
+  commission_base_mode?: "nightly" | "nightly_minus_host_fee";
   hst_mode?: "cohost" | "invoice";
   hst_bps?: number;
 }): Promise<PmPropertyDetail> {
@@ -112,6 +120,13 @@ export async function createPmProperty(input: {
     throw new Error("HST must be between 0% and 20%.");
   }
   const keeper = input.cleaning_fee_keeper === "host" ? "host" : "mrg";
+  // Invoice / bill-monthly clients usually take % of room fee; cohost usually nets host fee first.
+  const baseMode =
+    input.commission_base_mode != null
+      ? normalizeCommissionBaseMode(input.commission_base_mode)
+      : hstMode === "invoice"
+        ? "nightly"
+        : "nightly_minus_host_fee";
 
   const { data: prop, error } = await db()
     .from("pm_properties")
@@ -121,6 +136,7 @@ export async function createPmProperty(input: {
       address: (input.address ?? "").trim(),
       hospitable_property_id: hospitable,
       cleaning_fee_keeper: keeper,
+      commission_base_mode: baseMode,
       hst_mode: hstMode,
       hst_bps: hstBps,
     })
@@ -150,6 +166,7 @@ export async function updatePmProperty(
     hospitable_property_id?: string;
     active?: boolean;
     cleaning_fee_keeper?: "mrg" | "host";
+    commission_base_mode?: "nightly" | "nightly_minus_host_fee";
     hst_mode?: "cohost" | "invoice";
     hst_bps?: number;
   },
@@ -174,6 +191,15 @@ export async function updatePmProperty(
       throw new Error("cleaning_fee_keeper must be mrg or host.");
     }
     updates.cleaning_fee_keeper = patch.cleaning_fee_keeper;
+  }
+  if (patch.commission_base_mode != null) {
+    if (
+      patch.commission_base_mode !== "nightly" &&
+      patch.commission_base_mode !== "nightly_minus_host_fee"
+    ) {
+      throw new Error("commission_base_mode must be nightly or nightly_minus_host_fee.");
+    }
+    updates.commission_base_mode = patch.commission_base_mode;
   }
   if (patch.hst_mode != null) {
     if (patch.hst_mode !== "cohost" && patch.hst_mode !== "invoice") {
@@ -269,6 +295,7 @@ export async function importHospitableProperty(input: {
   name: string;
   address?: string;
   cleaning_fee_keeper?: "mrg" | "host";
+  commission_base_mode?: "nightly" | "nightly_minus_host_fee";
   hst_mode?: "cohost" | "invoice";
   hst_bps?: number;
 }): Promise<PmPropertyDetail> {
@@ -287,6 +314,7 @@ export async function importHospitableProperty(input: {
     address: input.address,
     hospitable_property_id: hid,
     cleaning_fee_keeper: input.cleaning_fee_keeper,
+    commission_base_mode: input.commission_base_mode,
     hst_mode: input.hst_mode,
     hst_bps: input.hst_bps,
   });

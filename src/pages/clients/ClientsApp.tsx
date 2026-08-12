@@ -521,6 +521,7 @@ export default function ClientsApp({ onModeChange }: Props) {
 
   const savePropertyTerms = async (patch: {
     cleaning_fee_keeper?: "mrg" | "host";
+    commission_base_mode?: "nightly" | "nightly_minus_host_fee";
     hst_mode?: "cohost" | "invoice";
     hst_percent?: number;
   }) => {
@@ -944,6 +945,32 @@ export default function ClientsApp({ onModeChange }: Props) {
                 Change
               </button>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2.5 border-t border-white/8 px-4 py-3.5 lg:px-0">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-[15px] font-semibold text-[#f5f5f5]">Fee base</p>
+            </div>
+            <SegmentedControl<"nightly" | "nightly_minus_host_fee">
+              value={
+                propertyDetail.commission_base_mode === "nightly"
+                  ? "nightly"
+                  : "nightly_minus_host_fee"
+              }
+              disabled={busy}
+              onChange={(v) => {
+                void savePropertyTerms({ commission_base_mode: v }).catch(() => undefined);
+              }}
+              options={[
+                { value: "nightly", label: "Nightly" },
+                { value: "nightly_minus_host_fee", label: "Nightly − fee" },
+              ]}
+            />
+            <p className="text-[13px] text-[#6f6a65] text-pretty">
+              {propertyDetail.commission_base_mode === "nightly"
+                ? "Bill on Airbnb room fee (nightly × commission %). Host service fee is not deducted."
+                : "Commission on room fee minus Airbnb host service fee (3% or 15%)."}
+            </p>
           </div>
 
           <div className="flex flex-col gap-2.5 border-t border-white/8 px-4 py-3.5 lg:px-0">

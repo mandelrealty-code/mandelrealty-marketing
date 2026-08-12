@@ -97,8 +97,8 @@ async function settingsPayload(extra: Record<string, unknown> = {}) {
 function apiErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) {
     const m = err.message;
-    if (/pm_reservations|pm_manual_expenses|pm_contracts|cleaning_fee_keeper|hst_bps|default_hst_bps/i.test(m) && /does not exist|schema cache|column/i.test(m)) {
-      return "Database columns missing. Run supabase/pm_earnings_contracts_v1.sql and supabase/pm_property_payout_v1.sql in Supabase, then retry.";
+    if (/pm_reservations|pm_manual_expenses|pm_contracts|cleaning_fee_keeper|hst_bps|default_hst_bps|commission_base_mode|hst_mode/i.test(m) && /does not exist|schema cache|column/i.test(m)) {
+      return "Database columns missing. Run supabase/pm_property_payout_v2.sql and supabase/pm_commission_base_v1.sql in Supabase, then retry.";
     }
     return m;
   }
@@ -298,6 +298,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               body.cleaning_fee_keeper === "host" || body.cleaning_fee_keeper === "mrg"
                 ? body.cleaning_fee_keeper
                 : undefined,
+            commission_base_mode:
+              body.commission_base_mode === "nightly" ||
+              body.commission_base_mode === "nightly_minus_host_fee"
+                ? body.commission_base_mode
+                : undefined,
             hst_mode:
               body.hst_mode === "invoice" || body.hst_mode === "cohost"
                 ? body.hst_mode
@@ -321,6 +326,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               body.cleaning_fee_keeper === "host" || body.cleaning_fee_keeper === "mrg"
                 ? body.cleaning_fee_keeper
                 : undefined,
+            commission_base_mode:
+              body.commission_base_mode === "nightly" ||
+              body.commission_base_mode === "nightly_minus_host_fee"
+                ? body.commission_base_mode
+                : undefined,
             hst_mode:
               body.hst_mode === "invoice" || body.hst_mode === "cohost"
                 ? body.hst_mode
@@ -341,6 +351,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body.cleaning_fee_keeper === "host" || body.cleaning_fee_keeper === "mrg"
               ? body.cleaning_fee_keeper
               : undefined;
+          const baseMode =
+            body.commission_base_mode === "nightly" ||
+            body.commission_base_mode === "nightly_minus_host_fee"
+              ? body.commission_base_mode
+              : undefined;
           const hstMode =
             body.hst_mode === "invoice" || body.hst_mode === "cohost"
               ? body.hst_mode
@@ -355,6 +370,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 : undefined,
             active: typeof body.active === "boolean" ? body.active : undefined,
             cleaning_fee_keeper: keeper,
+            commission_base_mode: baseMode,
             hst_mode: hstMode,
             hst_bps: hstBps,
           });
