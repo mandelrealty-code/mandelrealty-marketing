@@ -140,13 +140,6 @@ function CrmMark({ size = 24 }: { size?: number }) {
   return <MrgMark size={size} />;
 }
 
-const TAB_TITLE: Record<Tab, string> = {
-  contacts: "Contacts",
-  pipeline: "Pipeline",
-  knowledge: "Knowledge",
-  settings: "Settings",
-};
-
 const filterSelectClass =
   "h-8 shrink-0 rounded-[9px] border border-white/10 bg-[#141414] px-2.5 text-[12.5px] font-medium text-[#cfcac4] outline-none hover:border-[#c4a35a]/40 focus:border-[#c4a35a]/40";
 
@@ -2114,9 +2107,6 @@ export function AdminPage() {
                 setProductMode(mode);
               }}
             />
-            <h1 className="hidden truncate text-base font-semibold text-[#f5f5f5] lg:block">
-              {TAB_TITLE[tab]}
-            </h1>
           </div>
           <div className="flex items-center gap-2">
             {tab === "contacts" && (
