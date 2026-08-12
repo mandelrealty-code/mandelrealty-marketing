@@ -3,7 +3,9 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { getHospitablePat } from "./clientStore.js";
 import {
+  hospitableFetch,
   listHospitableReviews,
+  normalizeReviewForStore,
   type HospitableReviewNormalized,
 } from "./hospitableClient.js";
 import { listPmProperties } from "./propertyStore.js";
@@ -13,6 +15,16 @@ function db() {
   const sb = getSupabaseAdmin();
   if (!sb) throw new Error("Supabase is not configured.");
   return sb;
+}
+
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : {};
+}
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
 }
 
 export type PmReviewRow = {
@@ -111,10 +123,20 @@ export async function syncHospitableReviews(input?: {
 
   let synced = 0;
   for (const target of targets) {
-    const rows = await listHospitableReviews({
+    let rows = await listHospitableReviews({
       pat,
       propertyId: target.hospitable_property_id,
     });
+
+    // Last resort: pull review off each cached reservation (GET …/reservations/{id}?include=review).
+    if (!rows.length) {
+      rows = await listReviewsFromCachedReservations(
+        pat,
+        target.id,
+        target.hospitable_property_id,
+      );
+    }
+
     for (const r of rows) {
       await upsertReview(target.id, r);
       synced += 1;
@@ -122,6 +144,60 @@ export async function syncHospitableReviews(input?: {
   }
 
   return { synced, properties: targets.length };
+}
+
+/** GET /reservations/{id}?include=review for recent cached stays. */
+async function listReviewsFromCachedReservations(
+  pat: string,
+  propertyId: string,
+  hospitablePropertyId: string,
+): Promise<HospitableReviewNormalized[]> {
+  const { data, error } = await db()
+    .from("pm_reservations")
+    .select("hospitable_reservation_id, check_in, check_out, platform")
+    .eq("property_id", propertyId)
+    .order("check_out", { ascending: false })
+    .limit(80);
+  if (error) {
+    if (/pm_reservations|relation/i.test(error.message || "")) return [];
+    throw error;
+  }
+
+  const out: HospitableReviewNormalized[] = [];
+  const seen = new Set<string>();
+
+  for (const row of data ?? []) {
+    const resId = str(
+      (row as { hospitable_reservation_id?: string }).hospitable_reservation_id,
+    );
+    if (!resId || seen.has(resId)) continue;
+    seen.add(resId);
+
+    try {
+      const json = (await hospitableFetch(
+        pat,
+        `/reservations/${encodeURIComponent(resId)}`,
+        { include: "review,guest" },
+      )) as { data?: unknown };
+      const payload = asRecord(json?.data ?? json);
+      const reviewRaw = payload.review;
+      if (!reviewRaw || typeof reviewRaw !== "object") continue;
+
+      const n = normalizeReviewForStore(reviewRaw, {
+        propertyId: hospitablePropertyId,
+        reservationId: resId,
+        checkIn: str((row as { check_in?: string }).check_in).slice(0, 10) || null,
+        checkOut: str((row as { check_out?: string }).check_out).slice(0, 10) || null,
+        platform: str((row as { platform?: string }).platform),
+        guest: asRecord(payload.guest),
+      });
+      if (n) out.push(n);
+    } catch {
+      /* skip one reservation */
+    }
+  }
+
+  return out;
 }
 
 export async function latestReviewSyncAt(

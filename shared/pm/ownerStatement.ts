@@ -519,7 +519,7 @@ export async function buildOwnerStatement(
     trailReviews.length === 0
   ) {
     sync_note =
-      "No public guest reviews on file for these units. Confirm each unit is linked and the channel token can read reviews, then use Sync revenue (or reopen this statement).";
+      "Channel API returned no reviews (property list, account list, reservation include=review, and per-stay lookup all empty). Confirm the linked Hospitable property UUID and that the PAT can read reviews.";
   } else if (monthReviews.length === 0 && trailReviews.length > 0) {
     sync_note = `${trailReviews.length} review(s) on file in the last 12 months — none attributed to this month’s stays yet.`;
   }

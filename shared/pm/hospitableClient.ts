@@ -517,7 +517,59 @@ function normalizeReview(raw: unknown): HospitableReviewNormalized | null {
   };
 }
 
-/** List reviews for one Hospitable property UUID. */
+function keepNormalizedReview(
+  n: HospitableReviewNormalized,
+  fallbackPropertyId: string,
+): HospitableReviewNormalized | null {
+  if (!n.property_id) n.property_id = fallbackPropertyId;
+  const hasCats = n.category_ratings.length > 0;
+  // Keep rows with any usable public signal (rating, quote, or categories).
+  if (n.rating == null && !n.public_review && !hasCats) return null;
+  if (n.rating == null && hasCats) {
+    const avgCat =
+      n.category_ratings.reduce((s, c) => s + c.rating, 0) /
+      n.category_ratings.length;
+    n.rating = Math.round(avgCat * 100) / 100;
+    n.rating_raw = n.rating_raw || String(n.rating);
+  }
+  return n;
+}
+
+/** Normalize a raw review payload, optionally filling stay/guest context. */
+export function normalizeReviewForStore(
+  raw: unknown,
+  ctx?: {
+    propertyId?: string;
+    reservationId?: string;
+    checkIn?: string | null;
+    checkOut?: string | null;
+    platform?: string;
+    guest?: Record<string, unknown>;
+  },
+): HospitableReviewNormalized | null {
+  const n = normalizeReview(raw);
+  if (!n) return null;
+  if (ctx?.reservationId && !n.reservation_id) n.reservation_id = ctx.reservationId;
+  if (ctx?.checkIn && !n.check_in) n.check_in = ctx.checkIn;
+  if (ctx?.checkOut && !n.check_out) n.check_out = ctx.checkOut;
+  if (ctx?.platform && !n.platform) n.platform = ctx.platform;
+  if (ctx?.guest && !n.guest_first_name) {
+    n.guest_first_name =
+      str(ctx.guest.first_name) || str(ctx.guest.firstName) || "";
+  }
+  return keepNormalizedReview(n, ctx?.propertyId || n.property_id || "");
+}
+
+/**
+ * List reviews for one Hospitable property UUID.
+ *
+ * Per Hospitable public API + official SDK:
+ *   GET /v2/properties/{id}/reviews?include=guest,reservation,property
+ * Also try account-level /reviews (community clients) and reservation
+ * include=review as fallbacks — some accounts return [] on one path only.
+ *
+ * @see https://developer.hospitable.com/docs/public-api-docs/d862b3ee512e6-introduction
+ */
 export async function listHospitableReviews(input: {
   pat: string;
   propertyId: string;
@@ -525,7 +577,7 @@ export async function listHospitableReviews(input: {
   const propertyId = input.propertyId.trim();
   if (!propertyId) return [];
 
-  // include must be a comma-separated string — NOT include[]= (that form is for properties[]).
+  // Singular includes only — unknown values are silently ignored by the API.
   const include = "guest,reservation,property";
 
   const byId = new Map<string, HospitableReviewNormalized>();
@@ -537,8 +589,7 @@ export async function listHospitableReviews(input: {
     }
   };
 
-  // Always try both endpoints. Property-scoped can return 200 [] while
-  // account-level /reviews?properties[]= still has rows (and vice versa).
+  // 1) Official property-scoped endpoint (hospitable npm SDK).
   try {
     merge(
       await fetchReviewPages(
@@ -552,24 +603,110 @@ export async function listHospitableReviews(input: {
     errors.push(err instanceof Error ? err : new Error(String(err)));
   }
 
-  try {
-    merge(
-      await fetchReviewPages(
-        input.pat,
-        "/reviews",
-        { include, properties: [propertyId] },
-        propertyId,
-      ),
-    );
-  } catch (err) {
-    errors.push(err instanceof Error ? err : new Error(String(err)));
+  // 2) Account-level /reviews with several property filters (community clients).
+  if (byId.size === 0) {
+    for (const query of [
+      { include, properties: [propertyId] },
+      { include, property_id: propertyId },
+      { include, property: propertyId },
+    ] as HospitableQuery[]) {
+      try {
+        merge(
+          await fetchReviewPages(input.pat, "/reviews", query, propertyId),
+        );
+        if (byId.size > 0) break;
+      } catch (err) {
+        errors.push(err instanceof Error ? err : new Error(String(err)));
+      }
+    }
   }
 
-  if (byId.size === 0 && errors.length === 2) {
-    throw errors[0]!;
+  // 3) Reservation include=review — documented side-load for review audits.
+  if (byId.size === 0) {
+    try {
+      merge(await fetchReviewsViaReservations(input.pat, propertyId));
+    } catch (err) {
+      errors.push(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  if (byId.size === 0 && errors.length > 0) {
+    // Only throw when every path failed hard (not merely empty).
+    const hardFails = errors.length;
+    if (hardFails >= 2) throw errors[0]!;
   }
 
   return [...byId.values()];
+}
+
+/** Pull reviews nested on reservations (`include=review`). */
+async function fetchReviewsViaReservations(
+  pat: string,
+  propertyId: string,
+): Promise<HospitableReviewNormalized[]> {
+  const end = new Date();
+  const start = new Date(end);
+  start.setUTCMonth(start.getUTCMonth() - 18);
+  const startDate = start.toISOString().slice(0, 10);
+  const endDate = new Date(end.getTime() + 86400000).toISOString().slice(0, 10);
+
+  const out: HospitableReviewNormalized[] = [];
+  let page = 1;
+  let lastPage = 1;
+
+  do {
+    const json = (await hospitableFetch(pat, "/reservations", {
+      page: String(page),
+      per_page: "100",
+      include: "review,guest,properties",
+      start_date: startDate,
+      end_date: endDate,
+      date_query: "checkout",
+      properties: [propertyId],
+    })) as HospitableListResponse;
+
+    const rows = Array.isArray(json?.data) ? json.data : [];
+    for (const row of rows) {
+      const res = asRecord(row);
+      const reviewRaw = res.review;
+      if (!reviewRaw || typeof reviewRaw !== "object") continue;
+
+      const n = normalizeReview(reviewRaw);
+      if (!n) continue;
+
+      // Fill stay context from the parent reservation when include omitted it.
+      if (!n.reservation_id) {
+        n.reservation_id = str(res.id) || str(res.uuid) || "";
+      }
+      if (!n.check_in) {
+        n.check_in =
+          str(res.arrival_date)?.slice(0, 10) ||
+          str(res.check_in)?.slice(0, 10) ||
+          null;
+      }
+      if (!n.check_out) {
+        n.check_out =
+          str(res.departure_date)?.slice(0, 10) ||
+          str(res.check_out)?.slice(0, 10) ||
+          null;
+      }
+      if (!n.guest_first_name) {
+        const guest = asRecord(res.guest);
+        n.guest_first_name =
+          str(guest.first_name) || str(guest.firstName) || "";
+      }
+      if (!n.platform) n.platform = str(res.platform);
+
+      const kept = keepNormalizedReview(n, propertyId);
+      if (kept) out.push(kept);
+    }
+
+    const meta = asRecord(json?.meta);
+    lastPage = Number(meta.last_page) || page;
+    page += 1;
+  } while (page <= lastPage && page <= 30);
+
+  return out;
 }
 
 async function fetchReviewPages(
@@ -587,28 +724,26 @@ async function fetchReviewPages(
       ...query,
       page: String(page),
       per_page: "100",
-    })) as HospitableListResponse;
+    })) as HospitableListResponse & { links?: { next?: string | null } };
 
     const rows = Array.isArray(json?.data) ? json.data : [];
     for (const row of rows) {
       const n = normalizeReview(row);
       if (!n) continue;
-      if (!n.property_id) n.property_id = fallbackPropertyId;
-      // Keep if we have overall rating, public text, or category scores.
-      const hasCats = n.category_ratings.length > 0;
-      if (n.rating == null && !n.public_review && !hasCats) continue;
-      if (n.rating == null && hasCats) {
-        const avgCat =
-          n.category_ratings.reduce((s, c) => s + c.rating, 0) /
-          n.category_ratings.length;
-        n.rating = Math.round(avgCat * 100) / 100;
-        n.rating_raw = n.rating_raw || String(n.rating);
-      }
-      out.push(n);
+      const kept = keepNormalizedReview(n, fallbackPropertyId);
+      if (kept) out.push(kept);
     }
 
     const meta = asRecord(json?.meta);
-    lastPage = Number(meta.last_page) || page;
+    const metaLast = Number(meta.last_page);
+    const next = str(asRecord(json.links).next);
+    if (Number.isFinite(metaLast) && metaLast > 0) {
+      lastPage = metaLast;
+    } else if (next) {
+      lastPage = page + 1;
+    } else {
+      lastPage = page;
+    }
     page += 1;
   } while (page <= lastPage && page <= 30);
 
