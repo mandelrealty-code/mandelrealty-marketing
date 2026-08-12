@@ -89,6 +89,10 @@ export default function ClientsApp({ onModeChange }: Props) {
   const [ownerStatement, setOwnerStatement] = useState<{
     client: ClientRow;
     month: string;
+    /** Where Back should return — property earnings vs client month. */
+    returnTo: "property" | "clientMonth";
+    propertyId?: string;
+    backLabel?: string;
   } | null>(null);
   const [monthHstClientId, setMonthHstClientId] = useState<string | null>(null);
   const [propertyFilterClientId, setPropertyFilterClientId] = useState<string>("");
@@ -1529,9 +1533,13 @@ export default function ClientsApp({ onModeChange }: Props) {
                   phone: "",
                   status: "active" as const,
                 } as ClientRow);
-              setSelectedPropertyId(null);
-              setPropertyDetail(null);
-              setOwnerStatement({ client, month });
+              setOwnerStatement({
+                client,
+                month,
+                returnTo: "property",
+                propertyId: propertyDetail.id,
+                backLabel: propertyDetail.name,
+              });
             }}
             onError={setLoadError}
           />
@@ -1632,9 +1640,29 @@ export default function ClientsApp({ onModeChange }: Props) {
         clientId={ownerStatement.client.id}
         clientName={ownerStatement.client.name}
         initialMonth={ownerStatement.month}
+        backLabel={
+          ownerStatement.backLabel ||
+          (ownerStatement.returnTo === "property"
+            ? "Property"
+            : `${ownerStatement.client.name} month`)
+        }
         onBack={() => {
-          setClientMonth(ownerStatement.client);
+          const ret = ownerStatement.returnTo;
+          const propertyId = ownerStatement.propertyId;
+          const client = ownerStatement.client;
           setOwnerStatement(null);
+          if (ret === "property" && propertyId) {
+            setTab("properties");
+            if (selectedPropertyId !== propertyId || !propertyDetail) {
+              void loadProperty(propertyId).catch((e) =>
+                setLoadError(
+                  e instanceof Error ? e.message : "Could not open property.",
+                ),
+              );
+            }
+          } else {
+            setClientMonth(client);
+          }
         }}
         onError={setLoadError}
       />
@@ -1664,7 +1692,12 @@ export default function ClientsApp({ onModeChange }: Props) {
           setTab("month");
         }}
         onOpenStatement={(id, month) => {
-          setOwnerStatement({ client: clientMonth, month });
+          setOwnerStatement({
+            client: clientMonth,
+            month,
+            returnTo: "clientMonth",
+            backLabel: `${clientMonth.name} month`,
+          });
           setClientMonth(null);
           void id;
         }}
@@ -2045,6 +2078,7 @@ export default function ClientsApp({ onModeChange }: Props) {
                     <p className="text-[12px] text-[#6f6a65]">Included in Month close</p>
                   </div>
                   <SegmentedControl
+                    size="lg"
                     value={editPropertyForm.active ? "active" : "paused"}
                     onChange={(v) =>
                       setEditPropertyForm((f) => ({ ...f, active: v === "active" }))

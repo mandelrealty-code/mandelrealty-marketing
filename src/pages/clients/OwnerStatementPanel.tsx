@@ -1,6 +1,127 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { pmGet } from "./api";
 import { GoldButton, MonthPicker } from "./ui";
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Open a letter-sized print window that matches on-screen statement styling. */
+function openOwnerStatementPdf(opts: {
+  source: HTMLElement;
+  title: string;
+  onBlocked: () => void;
+}): void {
+  const { source, title, onBlocked } = opts;
+  const win = window.open("", "_blank");
+  if (!win) {
+    onBlocked();
+    return;
+  }
+
+  const styleTags = Array.from(
+    document.querySelectorAll('link[rel="stylesheet"], style'),
+  )
+    .map((el) => el.outerHTML)
+    .join("\n");
+
+  win.document.open();
+  win.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${escapeHtml(title)}</title>
+${styleTags}
+<style>
+  @page { size: letter portrait; margin: 0.4in; }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #0c0c0c !important;
+    color: #f5f5f5 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    font-family: Manrope, ui-sans-serif, system-ui, sans-serif !important;
+  }
+  .owner-statement-print {
+    max-width: 7.6in;
+    margin: 0 auto;
+    padding: 0 !important;
+    background: #0c0c0c !important;
+    color: #f5f5f5 !important;
+  }
+  .os-page {
+    background: #0c0c0c !important;
+    color: #f5f5f5 !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 0 !important;
+    margin: 0 0 16px 0 !important;
+    padding: 32px 36px !important;
+    box-shadow: none !important;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .os-page--flow {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+  .os-page:last-of-type {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .os-keep, .os-keep * {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* Keep desktop composition in the PDF (ignore narrow print viewport). */
+  .sm\\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .sm\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .lg\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .lg\\:grid { display: grid !important; }
+  .hidden.lg\\:grid { display: grid !important; }
+  .lg\\:text-\\[68px\\] { font-size: 56px !important; }
+  .lg\\:text-\\[40px\\] { font-size: 36px !important; }
+  .lg\\:px-12 { padding-left: 36px !important; padding-right: 36px !important; }
+  .overflow-x-auto { overflow: visible !important; }
+  .no-print { display: none !important; }
+  @media print {
+    .os-page {
+      margin: 0 !important;
+      border: none !important;
+      padding: 0 !important;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="owner-statement-print">${source.innerHTML}</div>
+<script>
+(async function () {
+  var imgs = Array.prototype.slice.call(document.images || []);
+  await Promise.all(imgs.map(function (img) {
+    if (img.complete) return Promise.resolve();
+    return new Promise(function (resolve) {
+      img.onload = img.onerror = resolve;
+    });
+  }));
+  document.title = ${JSON.stringify(title)};
+  setTimeout(function () {
+    window.focus();
+    window.print();
+  }, 300);
+})();
+</script>
+</body>
+</html>`);
+  win.document.close();
+}
 
 type OwnerStatement = {
   statement_id: string;
@@ -445,18 +566,21 @@ export function OwnerStatementPanel({
   clientId,
   clientName,
   initialMonth,
+  backLabel,
   onBack,
   onError,
 }: {
   clientId: string;
   clientName: string;
   initialMonth: string;
+  backLabel?: string;
   onBack: () => void;
   onError: (msg: string) => void;
 }) {
   const [month, setMonth] = useState(initialMonth);
   const [statement, setStatement] = useState<OwnerStatement | null>(null);
   const [loading, setLoading] = useState(true);
+  const printRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -513,8 +637,18 @@ export function OwnerStatementPanel({
     statement!.hst_invoice_cents > 0 &&
     statement!.units.every((u) => u.statement.hst_mode === "invoice");
 
-  const print = () => {
-    window.print();
+  const downloadPdf = () => {
+    if (!statement || !printRef.current) return;
+    const title = `MRG Owner Statement — ${statement.client_name} — ${statement.month_title}`;
+    openOwnerStatementPdf({
+      source: printRef.current,
+      title,
+      onBlocked: () => {
+        onError(
+          "Allow pop-ups for this site, then click Download PDF again. In the print dialog choose “Save as PDF” and turn on background graphics.",
+        );
+      },
+    });
   };
 
   return (
@@ -525,7 +659,7 @@ export function OwnerStatementPanel({
           onClick={onBack}
           className="self-start text-[15px] font-semibold text-[#9a9590]"
         >
-          ‹ {clientName} month
+          ‹ {backLabel || `${clientName} month`}
         </button>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -533,7 +667,7 @@ export function OwnerStatementPanel({
               Owner statement
             </h1>
             <p className="mt-1 text-[13px] text-[#9a9590]">
-              Preview of what the host receives — print or save as PDF.
+              Preview of what the host receives — download as a dark, letter-sized PDF.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
@@ -542,10 +676,10 @@ export function OwnerStatementPanel({
               type="button"
               size="sm"
               className="!rounded-[10px] !px-[18px] !py-2.5 !text-[13.5px]"
-              onClick={print}
+              onClick={downloadPdf}
               disabled={loading || !statement}
             >
-              Print / PDF
+              Download PDF
             </GoldButton>
           </div>
         </div>
@@ -560,9 +694,12 @@ export function OwnerStatementPanel({
       ) : null}
 
       {statement ? (
-        <div className="owner-statement-print space-y-0 px-4 py-6 lg:px-6 lg:py-8">
+        <div
+          ref={printRef}
+          className="owner-statement-print space-y-0 px-4 py-6 lg:px-6 lg:py-8"
+        >
           {/* Cover */}
-          <section className="rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-12">
+          <section className="os-page rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-12">
             <div className="flex items-start justify-between gap-4">
               <p className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</p>
               <div className="text-right">
@@ -685,7 +822,7 @@ export function OwnerStatementPanel({
           </section>
 
           {/* Earnings */}
-          <section className="mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
+          <section className="os-page os-page--flow mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
             <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/10 pb-3.5">
               <div className="flex items-baseline gap-3.5">
                 <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
@@ -955,7 +1092,7 @@ export function OwnerStatementPanel({
           </section>
 
           {/* Stay ledger */}
-          <section className="mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
+          <section className="os-page os-page--flow mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
             <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/10 pb-3.5">
               <div className="flex items-baseline gap-3.5">
                 <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
@@ -989,7 +1126,7 @@ export function OwnerStatementPanel({
                 {statement.stays.map((stay, idx) => (
                   <div
                     key={`${stay.platform_id}-${idx}`}
-                    className="border-b border-white/[0.06] py-3.5 lg:grid lg:min-w-[720px] lg:grid-cols-[1.4fr_0.7fr_0.9fr_0.8fr_0.7fr_0.7fr_0.9fr] lg:items-center"
+                    className="os-keep border-b border-white/[0.06] py-3.5 lg:grid lg:min-w-[720px] lg:grid-cols-[1.4fr_0.7fr_0.9fr_0.8fr_0.7fr_0.7fr_0.9fr] lg:items-center"
                   >
                     <div className="min-w-0">
                       <p className="text-[14px] font-medium">{stay.label}</p>
@@ -1111,7 +1248,7 @@ export function OwnerStatementPanel({
           </section>
 
           {/* Expenses */}
-          <section className="mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
+          <section className="os-page mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
             <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/10 pb-3.5">
               <div className="flex items-baseline gap-3.5">
                 <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
@@ -1178,7 +1315,7 @@ export function OwnerStatementPanel({
           </section>
 
           {/* Guest experience & action plan */}
-          <section className="mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
+          <section className="os-page os-page--flow mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
             <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/10 pb-3.5">
               <div className="flex items-baseline gap-3.5">
                 <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
@@ -1410,7 +1547,7 @@ export function OwnerStatementPanel({
           </section>
 
           {/* Market & outlook */}
-          <section className="mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
+          <section className="os-page os-page--flow mt-6 rounded-[4px] border border-white/[0.06] bg-[#0c0c0c] px-5 py-8 lg:px-12 lg:py-10">
             <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-white/10 pb-3.5">
               <div className="flex items-baseline gap-3.5">
                 <span className="text-[13px] font-bold tracking-[0.22em] text-[#c4a35a]">MRG</span>
@@ -1658,7 +1795,7 @@ export function OwnerStatementPanel({
             ) : null}
           </section>
 
-          <p className="px-1 py-6 text-center text-[11px] text-[#6f6a65]">
+          <p className="os-page px-1 py-6 text-center text-[11px] text-[#6f6a65]">
             Mandel Realty Group · Owner statement · {statement.statement_id}
           </p>
         </div>
@@ -1666,23 +1803,36 @@ export function OwnerStatementPanel({
 
       <style>{`
         @media print {
-          body * { visibility: hidden !important; }
-          .owner-statement-print, .owner-statement-print * { visibility: visible !important; }
+          @page { size: letter portrait; margin: 0.4in; }
+          html, body {
+            background: #0c0c0c !important;
+            color: #f5f5f5 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print { display: none !important; }
           .owner-statement-print {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
             background: #0c0c0c !important;
             color: #f5f5f5 !important;
             padding: 0 !important;
+            max-width: none !important;
           }
-          .no-print { display: none !important; }
-          .owner-statement-print section {
+          .os-page {
+            break-after: page;
+            page-break-after: always;
             break-inside: avoid;
             page-break-inside: avoid;
-            margin-top: 24px !important;
-            border-color: rgba(255,255,255,0.12) !important;
+            margin-top: 0 !important;
+            border: none !important;
+            background: #0c0c0c !important;
+          }
+          .os-page--flow {
+            break-inside: auto !important;
+            page-break-inside: auto !important;
+          }
+          .os-page:last-of-type {
+            break-after: auto;
+            page-break-after: auto;
           }
         }
       `}</style>

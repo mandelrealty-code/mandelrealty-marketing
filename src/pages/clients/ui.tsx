@@ -343,20 +343,29 @@ export function MonthPicker({
   );
 }
 
-/** Compact two-option segmented control (Active/Paused, MRG/Host). */
+/** Two-option segmented control (Active On/Off, MRG/Host, etc.). */
 export function SegmentedControl<T extends string>({
   value,
   options,
   onChange,
   disabled,
+  size = "md",
+  className = "",
 }: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
   disabled?: boolean;
+  size?: "md" | "lg";
+  className?: string;
 }) {
+  const large = size === "lg";
   return (
-    <div className="flex gap-0.5 rounded-[9px] border border-white/10 bg-[#1a1a1a] p-0.5">
+    <div
+      className={`flex shrink-0 gap-0.5 rounded-[10px] border border-white/10 bg-[#1a1a1a] p-1 ${
+        large ? "min-w-[168px]" : "min-w-[118px]"
+      } ${className}`}
+    >
       {options.map((opt) => {
         const active = opt.value === value;
         return (
@@ -365,7 +374,11 @@ export function SegmentedControl<T extends string>({
             type="button"
             disabled={disabled}
             onClick={() => onChange(opt.value)}
-            className={`flex-1 rounded-[7px] py-2 text-center text-[13px] ${
+            className={`flex-1 rounded-[8px] text-center ${
+              large
+                ? "min-h-[40px] px-4 py-2.5 text-[14.5px]"
+                : "min-h-[34px] px-3 py-2 text-[13px]"
+            } ${
               active
                 ? "bg-[#c4a35a] font-semibold text-[#0a0a0a]"
                 : "font-medium text-[#9a9590] hover:text-[#f5f5f5]"
