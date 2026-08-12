@@ -1463,6 +1463,9 @@ export default function ClientsApp({ onModeChange }: Props) {
         clientName={clientMonth.name}
         onBack={() => {
           setClientMonth(null);
+        }}
+        onOpenClientDetails={() => {
+          setClientMonth(null);
           setClientSheet(clientMonth);
         }}
         onOpenProperty={(id) => {

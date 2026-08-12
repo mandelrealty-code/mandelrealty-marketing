@@ -119,8 +119,8 @@ export function Sheet({
   if (desktop) {
     return (
       <div className="fixed inset-0 z-50 grid place-items-center bg-black/66 p-4">
-        <div className="w-full max-w-[460px] rounded-[14px] border border-white/10 bg-[#141414] p-6">
-          <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex max-h-[min(92vh,880px)] w-full max-w-[460px] flex-col overflow-hidden rounded-[14px] border border-white/10 bg-[#141414]">
+          <div className="flex shrink-0 items-center justify-between gap-3 px-6 pb-3 pt-6">
             <h2 className="text-[17px] font-bold text-[#f5f5f5]">{title}</h2>
             <button
               type="button"
@@ -130,7 +130,9 @@ export function Sheet({
               Cancel
             </button>
           </div>
-          {children}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-6">
+            {children}
+          </div>
         </div>
       </div>
     );
@@ -139,16 +141,20 @@ export function Sheet({
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/66">
       <button type="button" className="flex-1" aria-label="Dismiss" onClick={onCancel} />
-      <div className="rounded-t-2xl border-t border-white/10 bg-[#141414] px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2.5">
-        <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-white/14" />
-        <div className="mb-4 flex items-center justify-between">
-          <button type="button" onClick={onCancel} className="text-[13px] text-[#9a9590]">
-            Cancel
-          </button>
-          <h2 className="text-[15px] font-bold text-[#f5f5f5]">{title}</h2>
-          <span className="w-11" />
+      <div className="flex max-h-[min(92vh,880px)] flex-col overflow-hidden rounded-t-2xl border-t border-white/10 bg-[#141414]">
+        <div className="shrink-0 px-4 pt-2.5">
+          <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-white/14" />
+          <div className="mb-4 flex items-center justify-between">
+            <button type="button" onClick={onCancel} className="text-[13px] text-[#9a9590]">
+              Cancel
+            </button>
+            <h2 className="text-[15px] font-bold text-[#f5f5f5]">{title}</h2>
+            <span className="w-11" />
+          </div>
         </div>
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          {children}
+        </div>
       </div>
     </div>
   );

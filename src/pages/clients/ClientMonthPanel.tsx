@@ -132,6 +132,7 @@ export function ClientMonthPanel({
   clientId,
   clientName,
   onBack,
+  onOpenClientDetails,
   onOpenProperty,
   onOpenHstWorklist,
   onOpenStatement,
@@ -141,6 +142,7 @@ export function ClientMonthPanel({
   clientId: string;
   clientName: string;
   onBack: () => void;
+  onOpenClientDetails: () => void;
   onOpenProperty: (propertyId: string) => void;
   onOpenHstWorklist: (clientId: string) => void;
   onOpenStatement: (clientId: string, month: string) => void;
@@ -220,7 +222,7 @@ export function ClientMonthPanel({
           <div className="hidden gap-2.5 lg:flex">
             <button
               type="button"
-              onClick={onBack}
+              onClick={onOpenClientDetails}
               className="rounded-[10px] border border-white/12 px-3.5 py-2.5 text-[13.5px] font-semibold text-[#f5f5f5]"
             >
               Client details
@@ -418,9 +420,9 @@ export function ClientMonthPanel({
 
       {units.length > 0 ? (
         <p className="px-5 py-4 text-[12px] leading-relaxed text-[#6f6a65] lg:border-t lg:border-white/8 lg:px-8 lg:text-[12.5px]">
-          <span className="lg:hidden">Tap a unit for its earnings waterfall and expenses.</span>
+          <span className="lg:hidden">Tap a unit for earnings and expenses.</span>
           <span className="hidden lg:flex lg:justify-between">
-            <span>Same row language as Month close — this view is just scoped to one client.</span>
+            <span>Open a unit for stay-by-stay earnings and expenses.</span>
             <span>
               {title} · {currency}
             </span>
