@@ -279,6 +279,7 @@ export function TasksPanel({
   );
   const [dueOpen, setDueOpen] = useState(false);
   const [form, setForm] = useState<FormState>(() => emptyForm());
+  const [completedOpen, setCompletedOpen] = useState(true);
 
   const loadMembers = useCallback(async () => {
     try {
@@ -292,9 +293,10 @@ export function TasksPanel({
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Open view includes completed so they can sit below and be reopened.
       const statusParam =
         statusFilter === "open"
-          ? "openish"
+          ? "all"
           : statusFilter === "blocked"
             ? "blocked"
             : "done";
@@ -400,6 +402,17 @@ export function TasksPanel({
     return list;
   }, [tasks, statusFilter]);
 
+  const completedTasks = useMemo(() => {
+    if (statusFilter !== "open") return [];
+    return tasks
+      .filter((t) => t.status === "done")
+      .sort((a, b) => {
+        const tb = Date.parse(b.updated_at) || 0;
+        const ta = Date.parse(a.updated_at) || 0;
+        return tb - ta;
+      });
+  }, [tasks, statusFilter]);
+
   const openCount = useMemo(
     () =>
       tasks.filter(
@@ -417,7 +430,7 @@ export function TasksPanel({
 
   const sections = useMemo(() => {
     if (statusFilter === "done") {
-      return [{ key: "done", label: "Done", color: "#4ea882", items: filtered }];
+      return [{ key: "done", label: "Done", color: "#c4a35a", items: filtered }];
     }
     if (statusFilter === "blocked") {
       return [
@@ -544,6 +557,16 @@ export function TasksPanel({
     onToast("Marked done");
   };
 
+  const reopenTask = async (id: string) => {
+    await patchTask(id, { status: "open" });
+    onToast("Reopened");
+  };
+
+  const toggleDone = async (id: string, currentlyDone: boolean) => {
+    if (currentlyDone) await reopenTask(id);
+    else await markDone(id);
+  };
+
   const markBlocked = async (id: string) => {
     await patchTask(id, { status: "blocked" });
     onToast("Marked blocked");
@@ -572,6 +595,91 @@ export function TasksPanel({
     const p = properties.find((x) => x.id === propertyId);
     if (!p) return null;
     return clients.find((c) => c.id === p.client_id) || null;
+  };
+
+  const renderTaskRow = (task: TaskRow) => {
+    const meta = dueMeta(task, today);
+    const done = task.status === "done";
+    const context =
+      task.property_name ||
+      task.client_name ||
+      (task.status === "blocked" ? "Blocked" : "—");
+    return (
+      <button
+        key={task.id}
+        type="button"
+        onClick={() => setSelectedId(task.id)}
+        className={`flex w-full items-start gap-3 border-t border-white/8 px-4 py-3.5 text-left hover:bg-white/[0.02] lg:px-10 ${
+          done ? "opacity-70" : ""
+        }`}
+      >
+        <span
+          role="checkbox"
+          aria-checked={done}
+          aria-label={done ? "Reopen task" : "Mark done"}
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation();
+            void toggleDone(task.id, done);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              void toggleDone(task.id, done);
+            }
+          }}
+          className={`relative mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px] ${
+            done
+              ? "border-transparent bg-[#c4a35a] text-[11px] font-bold text-[#0a0a0a]"
+              : "border-white/22"
+          }`}
+        >
+          {done ? "✓" : null}
+          {task.status === "blocked" ? (
+            <span className="absolute inset-1 rounded-[2px] bg-[#c99a4b]" />
+          ) : null}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            {task.priority === "high" && !done ? (
+              <span className="h-[5px] w-[5px] shrink-0 rounded-full bg-[#c4a35a]" />
+            ) : null}
+            <span
+              className={`truncate text-[15px] font-semibold tracking-[-0.01em] ${
+                done
+                  ? "text-[#f5f5f5]/55 line-through decoration-white/35"
+                  : ""
+              }`}
+            >
+              {task.title}
+            </span>
+          </span>
+          <span className="mt-1 block truncate text-[12.5px] text-[#9a9590]">
+            {context}
+            {" · "}
+            <span
+              className={
+                meta.kind === "overdue"
+                  ? "font-semibold text-[#cf7f7b]"
+                  : meta.kind === "soon" || meta.kind === "blocked"
+                    ? "text-[#c99a4b]"
+                    : done
+                      ? "text-[#6f6a65]"
+                      : ""
+              }
+            >
+              {meta.label}
+            </span>
+            {" · "}
+            {task.assignee || "Unassigned"}
+          </span>
+        </span>
+        <span className="mt-0.5 shrink-0 font-mono text-[10px] text-[#6f6a65]">
+          {TYPE_SHORT[task.task_type]}
+        </span>
+      </button>
+    );
   };
 
   const formSheet = sheet ? (
@@ -843,7 +951,15 @@ export function TasksPanel({
         ) : null}
 
         <div className="mb-8 flex flex-col gap-2.5">
-          {selected.status !== "done" ? (
+          {selected.status === "done" ? (
+            <GoldButton
+              type="button"
+              disabled={busy}
+              onClick={() => void reopenTask(selected.id)}
+            >
+              Reopen task
+            </GoldButton>
+          ) : (
             <GoldButton
               type="button"
               disabled={busy}
@@ -851,11 +967,11 @@ export function TasksPanel({
             >
               Mark done
             </GoldButton>
-          ) : null}
+          )}
           <div className="grid grid-cols-3 gap-2.5">
             <button
               type="button"
-              disabled={busy || selected.status === "blocked"}
+              disabled={busy || selected.status === "blocked" || selected.status === "done"}
               onClick={() => void markBlocked(selected.id)}
               className="rounded-[10px] border border-white/10 bg-[#141414] py-3 text-[13px] font-semibold text-[#c99a4b] disabled:opacity-50"
             >
@@ -1027,7 +1143,7 @@ export function TasksPanel({
           <p className="px-4 py-10 text-center text-sm text-[#6f6a65] lg:px-10">
             Loading…
           </p>
-        ) : filtered.length === 0 ? (
+        ) : filtered.length === 0 && completedTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 px-10 py-16 text-center">
             <div className="h-11 w-11 rounded-xl border border-dashed border-white/16" />
             <div className="flex flex-col gap-1.5">
@@ -1049,94 +1165,43 @@ export function TasksPanel({
             </GoldButton>
           </div>
         ) : (
-          sections.map((sec) => (
-            <div key={sec.key}>
-              <div
-                className="border-t border-white/8 px-4 pb-1.5 pt-2.5 font-mono text-[10px] uppercase tracking-[0.1em] lg:px-10"
-                style={{ color: sec.color }}
-              >
-                {sec.label}
+          <>
+            {filtered.length === 0 && statusFilter === "open" ? (
+              <p className="px-4 py-8 text-center text-sm text-[#6f6a65] lg:px-10">
+                No open tasks
+              </p>
+            ) : null}
+            {sections.map((sec) => (
+              <div key={sec.key}>
+                <div
+                  className="border-t border-white/8 px-4 pb-1.5 pt-2.5 font-mono text-[10px] uppercase tracking-[0.1em] lg:px-10"
+                  style={{ color: sec.color }}
+                >
+                  {sec.label}
+                </div>
+                {sec.items.map((task) => renderTaskRow(task))}
               </div>
-              {sec.items.map((task) => {
-                const meta = dueMeta(task, today);
-                const context =
-                  task.property_name ||
-                  task.client_name ||
-                  (task.status === "blocked" ? "Blocked" : "—");
-                return (
-                  <button
-                    key={task.id}
-                    type="button"
-                    onClick={() => setSelectedId(task.id)}
-                    className="flex w-full items-start gap-3 border-t border-white/8 px-4 py-3.5 text-left hover:bg-white/[0.02] lg:px-10"
-                  >
-                    <span
-                      role="checkbox"
-                      aria-checked={task.status === "done"}
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (task.status !== "done") void markDone(task.id);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (task.status !== "done") void markDone(task.id);
-                        }
-                      }}
-                      className={`relative mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px] ${
-                        task.status === "done"
-                          ? "border-transparent bg-[#4ea882] text-[11px] font-bold text-[#0a0a0a]"
-                          : "border-white/22"
-                      }`}
-                    >
-                      {task.status === "done" ? "✓" : null}
-                      {task.status === "blocked" ? (
-                        <span className="absolute inset-1 rounded-[2px] bg-[#c99a4b]" />
-                      ) : null}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        {task.priority === "high" ? (
-                          <span className="h-[5px] w-[5px] shrink-0 rounded-full bg-[#c4a35a]" />
-                        ) : null}
-                        <span
-                          className={`truncate text-[15px] font-semibold tracking-[-0.01em] ${
-                            task.status === "done"
-                              ? "text-[#f5f5f5]/55 line-through decoration-white/35"
-                              : ""
-                          }`}
-                        >
-                          {task.title}
-                        </span>
-                      </span>
-                      <span className="mt-1 block truncate text-[12.5px] text-[#9a9590]">
-                        {context}
-                        {" · "}
-                        <span
-                          className={
-                            meta.kind === "overdue"
-                              ? "font-semibold text-[#cf7f7b]"
-                              : meta.kind === "soon" || meta.kind === "blocked"
-                                ? "text-[#c99a4b]"
-                                : ""
-                          }
-                        >
-                          {meta.label}
-                        </span>
-                        {" · "}
-                        {task.assignee || "Unassigned"}
-                      </span>
-                    </span>
-                    <span className="mt-0.5 shrink-0 font-mono text-[10px] text-[#6f6a65]">
-                      {TYPE_SHORT[task.task_type]}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          ))
+            ))}
+            {statusFilter === "open" && completedTasks.length > 0 ? (
+              <div className="border-t border-white/8">
+                <button
+                  type="button"
+                  onClick={() => setCompletedOpen((o) => !o)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left lg:px-10"
+                >
+                  <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#c4a35a]">
+                    Completed · {completedTasks.length}
+                  </span>
+                  <span className="text-[12px] text-[#6f6a65]">
+                    {completedOpen ? "Hide" : "Show"}
+                  </span>
+                </button>
+                {completedOpen
+                  ? completedTasks.map((task) => renderTaskRow(task))
+                  : null}
+              </div>
+            ) : null}
+          </>
         )}
       </div>
 
