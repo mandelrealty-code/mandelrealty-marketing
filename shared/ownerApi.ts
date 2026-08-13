@@ -16,7 +16,7 @@ import {
   downloadContractBuffer,
 } from "./pm/contractStore.js";
 import { listPmProperties } from "./pm/propertyStore.js";
-import { buildMonthPortfolio } from "./pm/statementMath.js";
+import { buildOwnerDashboard } from "./pm/ownerDashboard.js";
 import { getPmClient } from "./pm/clientStore.js";
 import {
   getPortalUserById,
@@ -27,6 +27,7 @@ import {
 } from "./pm/portalUserStore.js";
 import { sendSignedAgreementEmail } from "./ownerEmails.js";
 import { isSupabaseConfigured } from "./supabase.js";
+import { normalizeSignFields } from "./pm/signFields.js";
 
 function readBody(req: VercelRequest): Record<string, unknown> {
   const raw = req.body;
@@ -74,29 +75,7 @@ async function ownerBootstrap(slug: string) {
   const primary = props[0] ?? null;
   const awaiting = await getAwaitingContractForClient(user.pm_client_id);
   const signed = await listSignedContractsForClient(user.pm_client_id);
-  const now = new Date();
-  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  let earnings: {
-    year_month: string;
-    net_to_host_cents: number;
-    reservation_count: number;
-    linked: boolean;
-  } | null = null;
-  try {
-    const portfolio = await buildMonthPortfolio(yearMonth, {
-      clientId: user.pm_client_id,
-    });
-    if (portfolio.linked_count > 0) {
-      earnings = {
-        year_month: portfolio.year_month,
-        net_to_host_cents: portfolio.net_to_host_cents,
-        reservation_count: portfolio.reservation_count,
-        linked: true,
-      };
-    }
-  } catch {
-    earnings = null;
-  }
+  const dashboard = await buildOwnerDashboard(user.pm_client_id).catch(() => null);
   return {
     user: publicPortalUser(user),
     client: client
@@ -127,7 +106,7 @@ async function ownerBootstrap(slug: string) {
       signed_at: c.signed_at,
       signature_name: c.signature_name || "",
     })),
-    earnings,
+    dashboard,
   };
 }
 
@@ -263,6 +242,7 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
         id: contractId,
         signature_name: signatureName,
         signature_image_base64: signatureImage || null,
+        fields: Array.isArray(body.fields) ? normalizeSignFields(body.fields) : undefined,
       });
 
       const client = await getPmClient(user.pm_client_id);
@@ -290,6 +270,17 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
       if (client && client.status !== "active") {
         const { updatePmClient } = await import("./pm/clientStore.js");
         await updatePmClient(client.id, { status: "active" }).catch(() => undefined);
+      }
+
+      try {
+        const { createOnboardingTasks } = await import("./pm/onboardingTasks.js");
+        await createOnboardingTasks({
+          clientId: user.pm_client_id,
+          clientName: client?.name || user.first_name || "host",
+          propertyId: props[0]?.id ?? null,
+        });
+      } catch {
+        // Signing succeeded even if OPS tasks fail
       }
 
       // If linked lead, mark won + pause AI

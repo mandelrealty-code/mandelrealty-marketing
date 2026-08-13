@@ -248,6 +248,7 @@ export async function markContractSigned(input: {
   id: string;
   signature_name: string;
   signature_image_base64?: string | null;
+  fields?: SignField[];
 }): Promise<PmContract> {
   const name = input.signature_name.trim();
   if (!name) throw new Error("Typed legal name is required.");
@@ -283,7 +284,18 @@ export async function markContractSigned(input: {
     }
   }
 
-  const fields = normalizeSignFields(contract.sign_fields);
+  const stored = normalizeSignFields(contract.sign_fields);
+  const incoming = normalizeSignFields(input.fields);
+  const byId = new Map(incoming.map((f) => [f.id, f]));
+  const fields = stored.map((f) => {
+    const next = byId.get(f.id);
+    if (!next) return f;
+    return {
+      ...f,
+      value: next.value || f.value,
+      signature_png: next.signature_png || f.signature_png,
+    };
+  });
   const today = new Date().toISOString().slice(0, 10);
   const stamped = await stampSignedPdf({
     pdfBuffer,

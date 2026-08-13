@@ -4,7 +4,8 @@ import { pmGet, pmPost } from "./api";
 import { FieldLabel, GoldButton, TextInput } from "./ui";
 import { SignFieldPlacer } from "./SignFieldPlacer";
 import {
-  hasSignatureField,
+  hasHostSignature,
+  mrgFields,
   normalizeSignFields,
   type SignField,
 } from "../../../shared/pm/signFields";
@@ -145,8 +146,12 @@ export function PortalInviteControls({
   };
 
   const send = async () => {
-    if (!hasSignatureField(fields)) {
-      onError("Place at least one Sign here box on the PDF.");
+    if (!hasHostSignature(fields)) {
+      onError("Place at least one Host signature box — that’s where the client signs.");
+      return;
+    }
+    if (mrgFields(fields).some((f) => f.type === "signature" && !f.signature_png)) {
+      onError("Click each MRG signature box and draw your signature before sending.");
       return;
     }
     setBusy(true);
@@ -264,7 +269,7 @@ export function PortalInviteControls({
           <p className="text-[13px] text-[#9a9590]">
             {kind === "existing"
               ? "Already signed offline. Sends portal login only — they will not be asked to sign again. Optionally attach their signed PDF for Documents."
-              : "New client. Place signature boxes on the PDF, then they sign in the portal."}
+              : "New client. Place Host boxes for them, and MRG boxes for you to sign/type before sending."}
           </p>
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Name</FieldLabel>
@@ -344,7 +349,7 @@ export function PortalInviteControls({
             disabled={busy || !email.trim() || (!templateId && !oneOff)}
             onClick={() => void startPlace()}
           >
-            {busy ? "Opening PDF…" : "Next: place signature boxes"}
+            {busy ? "Opening PDF…" : "Next: place fields & sign"}
           </GoldButton>
             </>
           ) : null}
@@ -358,9 +363,10 @@ export function PortalInviteControls({
         <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0a0a] text-[#f5f5f5]">
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
             <div>
-              <div className="text-[15px] font-semibold">Assign where they sign</div>
+              <div className="text-[15px] font-semibold">Prepare agreement</div>
               <div className="text-[12.5px] text-[#6f6a65]">
-                Click the PDF to drop Sign here / Printed name / Date
+                Host boxes = they fill later. MRG boxes = you sign and type now. Drag corners to
+                resize.
               </div>
             </div>
             <div className="flex gap-3">
@@ -373,7 +379,7 @@ export function PortalInviteControls({
               </button>
               <button
                 type="button"
-                disabled={busy || !hasSignatureField(fields)}
+                disabled={busy || !hasHostSignature(fields)}
                 onClick={() => void send()}
                 className="rounded-lg bg-[#c4a35a] px-4 py-2 text-[13px] font-bold text-[#0a0a0a] disabled:opacity-40"
               >
@@ -382,7 +388,12 @@ export function PortalInviteControls({
             </div>
           </div>
           <div className="flex-1 overflow-auto p-4">
-            <SignFieldPlacer pdfUrl={pdfUrl} fields={fields} onChange={setFields} />
+            <SignFieldPlacer
+              pdfUrl={pdfUrl}
+              fields={fields}
+              onChange={setFields}
+              mrgNameHint="Mandel Realty Group"
+            />
           </div>
         </div>
       ) : null}

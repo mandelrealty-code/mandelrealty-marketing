@@ -21,7 +21,15 @@ import {
   listContractTemplates,
   updateTemplateSignFields,
 } from "../pm/contractTemplateStore.js";
-import { hasSignatureField, normalizeSignFields } from "../pm/signFields.js";
+import {
+  fieldsForTemplate,
+  hasHostSignature,
+  hostFields,
+  mrgFields,
+  normalizeSignFields,
+  todayIsoDate,
+} from "../pm/signFields.js";
+import { stampSignedPdf } from "../pm/stampSignedPdf.js";
 import {
   createOrRefreshPortalInvite,
   getPortalUserByClientId,
@@ -969,9 +977,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
 
           const signFields = normalizeSignFields(body.sign_fields);
-          if (!hasSignatureField(signFields)) {
+          if (!hasHostSignature(signFields)) {
             return res.status(400).json({
-              error: "Place at least one signature box on the PDF before sending.",
+              error: "Place at least one Host signature box on the PDF before sending.",
+            });
+          }
+          const ours = mrgFields(signFields).map((f) =>
+            f.type === "date" && !f.value?.trim() ? { ...f, value: todayIsoDate() } : f,
+          );
+          const missingMrgSign = ours.some(
+            (f) => f.type === "signature" && !f.signature_png,
+          );
+          if (missingMrgSign) {
+            return res.status(400).json({
+              error: "Sign the MRG signature boxes before sending.",
             });
           }
 
@@ -984,7 +1003,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }).catch(() => undefined);
           }
           if (templateId) {
-            await updateTemplateSignFields(templateId, signFields).catch(() => undefined);
+            await updateTemplateSignFields(templateId, fieldsForTemplate(signFields)).catch(
+              () => undefined,
+            );
+          }
+
+          let buffer = pdf.buffer;
+          if (ours.length) {
+            buffer = await stampSignedPdf({
+              pdfBuffer: buffer,
+              fields: ours,
+              signerName: ours.find((f) => f.type === "name" && f.value)?.value || "Mandel Realty Group",
+              signedOnLabel: todayIsoDate(),
+            });
           }
 
           const contract = await assignAwaitingContract({
@@ -993,9 +1024,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             title: pdf.title,
             filename: pdf.filename,
             mime: pdf.mime,
-            buffer: pdf.buffer,
+            buffer,
             template_id: pdf.template_id,
-            sign_fields: signFields,
+            sign_fields: hostFields(signFields),
           });
 
           const mail = await sendOwnerInviteEmail({
