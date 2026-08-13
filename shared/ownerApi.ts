@@ -16,6 +16,7 @@ import {
   downloadContractBuffer,
 } from "./pm/contractStore.js";
 import { listPmProperties } from "./pm/propertyStore.js";
+import { buildMonthPortfolio } from "./pm/statementMath.js";
 import { getPmClient } from "./pm/clientStore.js";
 import {
   getPortalUserById,
@@ -73,6 +74,29 @@ async function ownerBootstrap(slug: string) {
   const primary = props[0] ?? null;
   const awaiting = await getAwaitingContractForClient(user.pm_client_id);
   const signed = await listSignedContractsForClient(user.pm_client_id);
+  const now = new Date();
+  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  let earnings: {
+    year_month: string;
+    net_to_host_cents: number;
+    reservation_count: number;
+    linked: boolean;
+  } | null = null;
+  try {
+    const portfolio = await buildMonthPortfolio(yearMonth, {
+      clientId: user.pm_client_id,
+    });
+    if (portfolio.linked_count > 0) {
+      earnings = {
+        year_month: portfolio.year_month,
+        net_to_host_cents: portfolio.net_to_host_cents,
+        reservation_count: portfolio.reservation_count,
+        linked: true,
+      };
+    }
+  } catch {
+    earnings = null;
+  }
   return {
     user: publicPortalUser(user),
     client: client
@@ -92,6 +116,7 @@ async function ownerBootstrap(slug: string) {
           title: awaiting.title,
           filename: awaiting.filename,
           status: awaiting.status,
+          sign_fields: awaiting.sign_fields ?? [],
         }
       : null,
     signed_contracts: signed.map((c) => ({
@@ -102,6 +127,7 @@ async function ownerBootstrap(slug: string) {
       signed_at: c.signed_at,
       signature_name: c.signature_name || "",
     })),
+    earnings,
   };
 }
 

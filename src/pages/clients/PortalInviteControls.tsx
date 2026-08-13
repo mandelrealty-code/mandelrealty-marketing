@@ -2,8 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import type { ClientRow } from "./api";
 import { pmGet, pmPost } from "./api";
 import { FieldLabel, GoldButton, TextInput } from "./ui";
+import { SignFieldPlacer } from "./SignFieldPlacer";
+import {
+  hasSignatureField,
+  normalizeSignFields,
+  type SignField,
+} from "../../../shared/pm/signFields";
 
-type Template = { id: string; label: string; filename: string };
+type Template = {
+  id: string;
+  label: string;
+  filename: string;
+  sign_fields?: SignField[];
+};
 
 type PortalStatus = {
   portal_user: {
@@ -43,6 +54,7 @@ export function PortalInviteControls({
 }) {
   const [status, setStatus] = useState<PortalStatus | null>(null);
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<"form" | "place">("form");
   const [busy, setBusy] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateId, setTemplateId] = useState("");
@@ -51,6 +63,10 @@ export function PortalInviteControls({
   const [email, setEmail] = useState(client.email);
   const [phone, setPhone] = useState(client.phone);
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [fields, setFields] = useState<SignField[]>([]);
+  const [kind, setKind] = useState<"existing" | "new">("existing");
+  const [signedFile, setSignedFile] = useState<File | null>(null);
 
   const loadStatus = useCallback(async () => {
     const data = await pmGet<PortalStatus>("portal_user", { client_id: client.id });
@@ -71,7 +87,68 @@ export function PortalInviteControls({
       .catch((e) => onError(e instanceof Error ? e.message : "Could not load templates."));
   }, [open, onError, templateId]);
 
+  const startPlace = async () => {
+    setBusy(true);
+    try {
+      if (oneOff) {
+        setPdfUrl(URL.createObjectURL(oneOff));
+        setFields([]);
+      } else if (templateId) {
+        const data = await pmGet<{ url: string }>("contract_template_url", { id: templateId });
+        if (!data.url) throw new Error("Could not open template PDF.");
+        setPdfUrl(data.url);
+        const t = templates.find((x) => x.id === templateId);
+        setFields(normalizeSignFields(t?.sign_fields));
+      } else {
+        throw new Error("Pick a template or upload a PDF.");
+      }
+      setStep("place");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not open PDF.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendExisting = async () => {
+    setBusy(true);
+    try {
+      const body: Record<string, unknown> = {
+        op: "send",
+        existing_host: true,
+        client_id: client.id,
+        name,
+        email,
+        phone,
+      };
+      if (signedFile) {
+        body.signed_filename = signedFile.name;
+        body.signed_mime = signedFile.type || "application/pdf";
+        body.signed_contentBase64 = await fileToBase64(signedFile);
+        body.signed_title = signedFile.name.replace(/\.pdf$/i, "");
+      }
+      const res = await pmPost<{
+        owner_url: string;
+        email_sent: boolean;
+        email_error?: string | null;
+      }>("portal_invite", body);
+      setOpen(false);
+      setSignedFile(null);
+      await loadStatus();
+      if (res.email_sent) onToast?.(`Portal access sent · ${res.owner_url}`);
+      else onToast?.(`Portal ready · email failed: ${res.email_error || "check Resend"}`);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Invite failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const send = async () => {
+    if (!hasSignatureField(fields)) {
+      onError("Place at least one Sign here box on the PDF.");
+      return;
+    }
     setBusy(true);
     try {
       const body: Record<string, unknown> = {
@@ -80,6 +157,7 @@ export function PortalInviteControls({
         name,
         email,
         phone,
+        sign_fields: fields,
       };
       if (oneOff) {
         body.filename = oneOff.name;
@@ -98,7 +176,9 @@ export function PortalInviteControls({
         email_error?: string | null;
       }>("portal_invite", body);
       setOpen(false);
+      setStep("form");
       setOneOff(null);
+      setFields([]);
       await loadStatus();
       if (res.email_sent) onToast?.(`Invite sent · ${res.owner_url}`);
       else onToast?.(`Portal ready · email failed: ${res.email_error || "check Resend"}`);
@@ -145,17 +225,46 @@ export function PortalInviteControls({
         </div>
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            setOpen((v) => !v);
+            setStep("form");
+          }}
           className="shrink-0 rounded-[10px] bg-[#c4a35a] px-3.5 py-2.5 text-[13px] font-bold text-[#0a0a0a]"
         >
           {portal ? "Resend invite" : "Send portal invite"}
         </button>
       </div>
 
-      {open ? (
+      {open && step === "form" ? (
         <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-[#141414] p-4">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setKind("existing")}
+              className={`flex-1 rounded-lg py-2.5 text-[13px] font-semibold ${
+                kind === "existing"
+                  ? "bg-[#c4a35a] text-[#0a0a0a]"
+                  : "border border-white/12 text-[#9a9590]"
+              }`}
+            >
+              Existing host
+            </button>
+            <button
+              type="button"
+              onClick={() => setKind("new")}
+              className={`flex-1 rounded-lg py-2.5 text-[13px] font-semibold ${
+                kind === "new"
+                  ? "bg-[#c4a35a] text-[#0a0a0a]"
+                  : "border border-white/12 text-[#9a9590]"
+              }`}
+            >
+              New — sign contract
+            </button>
+          </div>
           <p className="text-[13px] text-[#9a9590]">
-            Creates portal login, emails temp password, host signs the PDF after login.
+            {kind === "existing"
+              ? "Already signed offline. Sends portal login only — they will not be asked to sign again. Optionally attach their signed PDF for Documents."
+              : "New client. Place signature boxes on the PDF, then they sign in the portal."}
           </p>
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Name</FieldLabel>
@@ -163,16 +272,38 @@ export function PortalInviteControls({
           </div>
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Email</FieldLabel>
-            <TextInput
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Phone</FieldLabel>
             <TextInput value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
+          {kind === "existing" ? (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <FieldLabel optional>Signed contract PDF</FieldLabel>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setSignedFile(e.target.files?.[0] ?? null)}
+                  className="text-sm text-[#9a9590]"
+                />
+                <p className="text-[12px] text-[#6f6a65]">
+                  Optional — also available under Contracts on this client. They’ll see it in
+                  Documents.
+                </p>
+              </div>
+              <GoldButton
+                type="button"
+                disabled={busy || !email.trim()}
+                onClick={() => void sendExisting()}
+              >
+                {busy ? "Sending…" : "Send portal access"}
+              </GoldButton>
+            </>
+          ) : null}
+          {kind === "new" ? (
+            <>
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Agreement template</FieldLabel>
             <select
@@ -211,17 +342,48 @@ export function PortalInviteControls({
           <GoldButton
             type="button"
             disabled={busy || !email.trim() || (!templateId && !oneOff)}
-            onClick={send}
+            onClick={() => void startPlace()}
           >
-            {busy ? "Sending…" : "Send invite"}
+            {busy ? "Opening PDF…" : "Next: place signature boxes"}
           </GoldButton>
-          <button
-            type="button"
-            className="text-[13px] text-[#9a9590]"
-            onClick={() => setOpen(false)}
-          >
+            </>
+          ) : null}
+          <button type="button" className="text-[13px] text-[#9a9590]" onClick={() => setOpen(false)}>
             Cancel
           </button>
+        </div>
+      ) : null}
+
+      {open && step === "place" && pdfUrl ? (
+        <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0a0a] text-[#f5f5f5]">
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+            <div>
+              <div className="text-[15px] font-semibold">Assign where they sign</div>
+              <div className="text-[12.5px] text-[#6f6a65]">
+                Click the PDF to drop Sign here / Printed name / Date
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="text-[13px] text-[#9a9590]"
+                onClick={() => setStep("form")}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={busy || !hasSignatureField(fields)}
+                onClick={() => void send()}
+                className="rounded-lg bg-[#c4a35a] px-4 py-2 text-[13px] font-bold text-[#0a0a0a] disabled:opacity-40"
+              >
+                {busy ? "Sending…" : "Send invite"}
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto p-4">
+            <SignFieldPlacer pdfUrl={pdfUrl} fields={fields} onChange={setFields} />
+          </div>
         </div>
       ) : null}
     </div>

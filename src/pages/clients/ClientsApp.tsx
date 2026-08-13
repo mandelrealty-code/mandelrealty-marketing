@@ -244,6 +244,29 @@ export default function ClientsApp({ onModeChange }: Props) {
     }
   };
 
+  const deleteClient = async () => {
+    if (!clientSheet || clientSheet === "create") return;
+    const name = clientSheet.name || "this client";
+    if (
+      !window.confirm(
+        `Delete ${name}? This removes their portal login, contracts, and properties so you can invite this email again.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setLoadError("");
+    try {
+      await pmPost("clients", { op: "delete", id: clientSheet.id });
+      setClientSheet(null);
+      await loadLists();
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Could not delete client.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const openAddProperty = (prefillClientId?: string) => {
     setPropertyForm({
       name: "",
@@ -1857,6 +1880,16 @@ export default function ClientsApp({ onModeChange }: Props) {
             <GoldButton type="button" disabled={busy || !clientForm.name.trim()} onClick={saveClient}>
               {busy ? "Saving…" : "Save"}
             </GoldButton>
+            {clientSheet !== "create" && typeof clientSheet === "object" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void deleteClient()}
+                className="h-[46px] rounded-xl border border-[rgba(200,90,86,0.28)] bg-transparent text-sm font-semibold text-[#cf7f7b] hover:bg-[rgba(200,90,86,0.12)]"
+              >
+                Delete client
+              </button>
+            ) : null}
           </div>
         </Sheet>
       ) : null}

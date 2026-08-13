@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { InPdfSigner } from "./InPdfSigner";
+import type { SignField } from "../../../shared/pm/signFields";
 
 type Bootstrap = {
   user: {
@@ -21,6 +23,7 @@ type Bootstrap = {
     title: string;
     filename: string;
     status: string;
+    sign_fields?: SignField[];
   } | null;
   signed_contracts: Array<{
     id: string;
@@ -30,10 +33,16 @@ type Bootstrap = {
     signed_at: string | null;
     signature_name: string;
   }>;
+  earnings: {
+    year_month: string;
+    net_to_host_cents: number;
+    reservation_count: number;
+    linked: boolean;
+  } | null;
   session: { authenticated: boolean; must_change_password: boolean };
 };
 
-type Screen = "login" | "password" | "contract" | "sign" | "dashboard" | "documents";
+type Screen = "login" | "password" | "contract" | "dashboard" | "documents";
 
 async function ownerApi<T>(
   op: string,
@@ -101,14 +110,15 @@ function UnderlineInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
-function MrgMark({ light = false }: { light?: boolean }) {
-  const c = light ? "#dcc084" : "#c4a35a";
+function MrgMark() {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="h-[18px] w-[18px] rotate-45 border-[1.5px]" style={{ borderColor: c }} />
-      <div className="text-[15px] font-bold tracking-[0.28em]" style={{ color: c }}>
-        MRG
-      </div>
+      <img
+        src="/mrg-logo.png"
+        alt="Mandel Realty Group"
+        className="h-8 w-8 rounded-[3px] object-contain"
+      />
+      <div className="text-[15px] font-bold tracking-[0.18em] text-[#c4a35a]">MRG</div>
     </div>
   );
 }
@@ -129,11 +139,7 @@ export function OwnerApp() {
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [agreed, setAgreed] = useState(false);
-  const [signatureName, setSignatureName] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const drawing = useRef(false);
 
   const go = useCallback((next: Screen, rest?: string) => {
     setScreen(next);
@@ -141,7 +147,6 @@ export function OwnerApp() {
       login: "",
       password: "",
       contract: "contracts",
-      sign: "contracts",
       dashboard: "",
       documents: "documents",
     };
@@ -163,12 +168,12 @@ export function OwnerApp() {
       setScreen("password");
       return data;
     }
-    if (initialRest === "documents" || data.signed_contracts.length) {
-      if (initialRest === "documents") setScreen("documents");
-      else if (data.awaiting_contract) setScreen("contract");
-      else setScreen("dashboard");
-    } else if (data.awaiting_contract) {
-      setScreen(initialRest === "contracts" ? "contract" : "contract");
+    if (initialRest === "documents") {
+      setScreen("documents");
+    } else if (initialRest === "contracts" && data.awaiting_contract) {
+      setScreen("contract");
+    } else if (data.awaiting_contract && !data.signed_contracts.length) {
+      setScreen("contract");
     } else {
       setScreen("dashboard");
     }
@@ -203,33 +208,6 @@ export function OwnerApp() {
       }
     })();
   }, [screen, boot, slug]);
-
-  const paintStart = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    drawing.current = true;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    ctx.strokeStyle = "#f5f5f5";
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-  };
-  const paintMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawing.current) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-    ctx.stroke();
-  };
-  const paintEnd = () => {
-    drawing.current = false;
-  };
 
   if (!slug) {
     return (
@@ -279,8 +257,12 @@ export function OwnerApp() {
       });
       setBoot(data.bootstrap);
       if (data.must_change_password) go("password");
-      else if (data.bootstrap.awaiting_contract) go("contract");
-      else go("dashboard");
+      else if (
+        data.bootstrap.awaiting_contract &&
+        !data.bootstrap.signed_contracts?.length
+      ) {
+        go("contract");
+      } else go("dashboard");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed.");
     } finally {
@@ -297,7 +279,7 @@ export function OwnerApp() {
         body: { password: newPassword, confirm: confirmPassword },
       });
       const data = await refresh();
-      if (data?.awaiting_contract) go("contract");
+      if (data?.awaiting_contract && !data.signed_contracts.length) go("contract");
       else go("dashboard");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save password.");
@@ -306,27 +288,17 @@ export function OwnerApp() {
     }
   };
 
-  const sign = async () => {
+  const sign = async (input: { signatureName: string; signaturePng: string }) => {
     if (!boot?.awaiting_contract) return;
     setBusy(true);
     setError("");
     try {
-      let signature_image_base64: string | undefined;
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const blank = document.createElement("canvas");
-        blank.width = canvas.width;
-        blank.height = canvas.height;
-        if (canvas.toDataURL() !== blank.toDataURL()) {
-          signature_image_base64 = canvas.toDataURL("image/png");
-        }
-      }
       const data = await ownerApi<{ bootstrap: Bootstrap }>("sign", {
         method: "POST",
         body: {
           contract_id: boot.awaiting_contract.id,
-          signature_name: signatureName,
-          signature_image_base64,
+          signature_name: input.signatureName,
+          signature_image_base64: input.signaturePng,
         },
       });
       setBoot(data.bootstrap);
@@ -364,7 +336,7 @@ export function OwnerApp() {
           )}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[120px] bg-gradient-to-b from-transparent to-[#0c0c0c] lg:hidden" />
           <div className="absolute left-6 top-6 lg:hidden">
-            <MrgMark light />
+            <MrgMark />
           </div>
         </div>
         <div className="flex flex-col bg-[#0c0c0c] px-7 pb-8 pt-3 lg:px-[68px] lg:py-16">
@@ -379,7 +351,9 @@ export function OwnerApp() {
                 {firstName}
               </h1>
               <p className="max-w-[34ch] text-[14px] text-[#9a9590] lg:text-base">
-                Your owner portal — sign in to review and sign your agreement
+                {boot?.awaiting_contract
+                  ? "Your owner portal — sign in to review and sign your agreement"
+                  : "Your owner portal — sign in to view your property"}
               </p>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f6a65]">
                 {propertyLabel}
@@ -492,107 +466,22 @@ export function OwnerApp() {
           <div className="text-xs text-[#6f6a65] lg:text-sm">{boot.awaiting_contract.filename}</div>
         </header>
         <div className="flex-1 overflow-auto p-4 lg:p-8">
-          <div className="mx-auto min-h-[60vh] max-w-3xl overflow-hidden rounded-sm bg-[#f5f2ea] text-[#1a1a19] shadow-lg">
+          <div className="mx-auto max-w-[820px]">
             {pdfUrl ? (
-              <iframe title="Agreement" src={pdfUrl} className="h-[70vh] w-full border-0" />
+              <InPdfSigner
+                pdfUrl={pdfUrl}
+                fields={boot.awaiting_contract.sign_fields ?? []}
+                signerHint={boot.client?.name || firstName}
+                busy={busy}
+                error={error}
+                onFinish={sign}
+              />
             ) : (
-              <div className="flex h-[50vh] items-center justify-center p-8 text-center text-sm text-[#6b6862]">
+              <div className="flex h-[40vh] items-center justify-center text-sm text-[#6f6a65]">
                 Loading agreement PDF…
               </div>
             )}
           </div>
-        </div>
-        <footer className="border-t border-white/9 bg-[#0c0c0c] px-5 py-4 lg:px-10">
-          <div className="mx-auto flex max-w-3xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <label className="flex items-start gap-3 text-sm text-[#f5f5f5]">
-              <input
-                type="checkbox"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
-                className="mt-1"
-              />
-              <span>I have read and agree to this agreement</span>
-            </label>
-            <div className="flex items-center gap-4">
-              {pdfUrl ? (
-                <a href={pdfUrl} target="_blank" rel="noreferrer" className="text-[13px] text-[#9a9590]">
-                  Download PDF
-                </a>
-              ) : null}
-              <GoldButton
-                className="w-auto px-8"
-                disabled={!agreed}
-                onClick={() => {
-                  setAgreed(true);
-                  go("sign");
-                }}
-              >
-                Continue to sign
-              </GoldButton>
-            </div>
-          </div>
-          {error ? <p className="mx-auto mt-2 max-w-3xl text-sm text-[#cf7f7b]">{error}</p> : null}
-        </footer>
-      </div>
-    );
-  }
-
-  if (screen === "sign" && boot?.awaiting_contract) {
-    return (
-      <div className="flex min-h-screen flex-col bg-[#0c0c0c] px-5 py-6 text-[#f5f5f5]">
-        <button
-          type="button"
-          className="mb-4 text-left text-sm text-[#9a9590]"
-          onClick={() => go("contract")}
-        >
-          ← Back
-        </button>
-        <h1 className="mb-6 text-[18px] font-semibold">Sign agreement</h1>
-        <div className="mx-auto flex w-full max-w-md flex-col gap-5">
-          <div className="flex justify-between border-b border-white/8 py-3 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#6f6a65]">
-              Signer
-            </span>
-            <span>{boot.client?.name || firstName}</span>
-          </div>
-          <div className="flex justify-between border-b border-white/8 py-3 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#6f6a65]">
-              Property
-            </span>
-            <span className="text-right">{propertyLabel}</span>
-          </div>
-          <p className="text-[13.5px] text-[#f5f5f5]">{boot.awaiting_contract.filename}</p>
-          <Field label="Full legal name">
-            <UnderlineInput
-              value={signatureName}
-              onChange={(e) => setSignatureName(e.target.value)}
-              placeholder="Type your full name"
-            />
-          </Field>
-          <div className="flex flex-col gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f6a65]">
-              Signature
-            </span>
-            <canvas
-              ref={canvasRef}
-              width={360}
-              height={140}
-              className="w-full touch-none rounded-md border border-dashed border-white/20 bg-[#141414]"
-              onPointerDown={paintStart}
-              onPointerMove={paintMove}
-              onPointerUp={paintEnd}
-              onPointerLeave={paintEnd}
-            />
-            <span className="text-[13px] text-[#6f6a65]">Draw your signature here</span>
-          </div>
-          <p className="text-xs leading-relaxed text-[#6f6a65]">
-            By signing, you agree to the PDF above. A signed copy will be emailed to you and saved
-            in Documents.
-          </p>
-          {error ? <p className="text-sm text-[#cf7f7b]">{error}</p> : null}
-          <GoldButton disabled={busy || !signatureName.trim()} onClick={sign}>
-            {busy ? "Signing…" : "Sign agreement"}
-          </GoldButton>
         </div>
       </div>
     );
@@ -691,9 +580,35 @@ export function OwnerApp() {
         <h1 className="text-[30px] font-semibold leading-tight tracking-tight lg:text-[42px]">
           You’re in, {firstName}
         </h1>
-        <p className="mt-3 max-w-[46ch] text-[15px] leading-relaxed text-[#9a9590] lg:text-base">
-          Our team is finishing setup — full earnings appear here once your listing is connected.
-        </p>
+        {boot?.property ? (
+          <p className="mt-2 text-[15px] text-[#9a9590]">
+            {boot.property.name}
+            {boot.property.address ? ` · ${boot.property.address}` : ""}
+          </p>
+        ) : null}
+        {boot?.earnings ? (
+          <div className="mt-8 border-t border-white/8 pt-6">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6f6a65]">
+              This month
+            </div>
+            <div className="mt-2 text-[36px] font-semibold tracking-tight">
+              ${(boot.earnings.net_to_host_cents / 100).toLocaleString("en-CA", {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              })}
+            </div>
+            <div className="mt-1 text-[14px] text-[#9a9590]">
+              Net to you · {boot.earnings.reservation_count} booking
+              {boot.earnings.reservation_count === 1 ? "" : "s"}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 max-w-[46ch] text-[15px] leading-relaxed text-[#9a9590] lg:text-base">
+            {boot?.signed_contracts?.length
+              ? "Your listing details and documents are here. Earnings show once this month’s bookings are connected."
+              : "Our team is finishing setup — full earnings appear here once your listing is connected."}
+          </p>
+        )}
         {boot?.awaiting_contract ? (
           <button
             type="button"
@@ -711,24 +626,26 @@ export function OwnerApp() {
             View signed agreement →
           </button>
         ) : null}
-        <div className="mt-10 flex flex-col gap-0 border-t border-white/8">
-          {[
-            "Connect Airbnb",
-            "Link your calendar",
-            "Earnings unlock when live",
-          ].map((step, i) => (
-            <div
-              key={step}
-              className="flex items-center gap-4 border-b border-white/8 py-4 text-[15px]"
-            >
-              <span className="font-mono text-xs text-[#6f6a65]">{i + 1}</span>
-              <span>{step}</span>
+        {!boot?.earnings && !boot?.signed_contracts?.length ? (
+          <>
+            <div className="mt-10 flex flex-col gap-0 border-t border-white/8">
+              {["Connect Airbnb", "Link your calendar", "Earnings unlock when live"].map(
+                (step, i) => (
+                  <div
+                    key={step}
+                    className="flex items-center gap-4 border-b border-white/8 py-4 text-[15px]"
+                  >
+                    <span className="font-mono text-xs text-[#6f6a65]">{i + 1}</span>
+                    <span>{step}</span>
+                  </div>
+                ),
+              )}
             </div>
-          ))}
-        </div>
-        <p className="mt-6 text-[13px] text-[#6f6a65]">
-          You’ll get an email the day your listing goes live.
-        </p>
+            <p className="mt-6 text-[13px] text-[#6f6a65]">
+              You’ll get an email the day your listing goes live.
+            </p>
+          </>
+        ) : null}
         {error ? <p className="mt-4 text-sm text-[#cf7f7b]">{error}</p> : null}
       </div>
     </div>

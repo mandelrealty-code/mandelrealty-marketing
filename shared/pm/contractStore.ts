@@ -1,4 +1,6 @@
 import { getSupabaseAdmin } from "../supabase.js";
+import { normalizeSignFields, type SignField } from "./signFields.js";
+import { stampSignedPdf } from "./stampSignedPdf.js";
 
 function db() {
   const sb = getSupabaseAdmin();
@@ -27,6 +29,7 @@ export type PmContract = {
   signature_image_path?: string;
   signed_storage_path?: string;
   signed_at?: string | null;
+  sign_fields?: import("./signFields.js").SignField[];
 };
 
 export async function listContracts(input: {
@@ -54,6 +57,7 @@ export async function createContract(input: {
   status?: PmContractStatus;
   note?: string;
   template_id?: string | null;
+  sign_fields?: SignField[];
 }): Promise<PmContract> {
   const title = input.title.trim() || input.filename.trim() || "Contract";
   if (!input.client_id && !input.property_id) {
@@ -76,6 +80,7 @@ export async function createContract(input: {
       status: input.status || "signed",
       note: (input.note ?? "").trim(),
       template_id: input.template_id || null,
+      sign_fields: normalizeSignFields(input.sign_fields),
       storage_path: "",
     })
     .select("*")
@@ -173,6 +178,18 @@ export async function downloadContractBuffer(id: string): Promise<{
   };
 }
 
+export async function cancelAwaitingContracts(clientId: string, note?: string): Promise<void> {
+  const { error } = await db()
+    .from("pm_contracts")
+    .update({
+      status: "draft",
+      note: note || "Superseded",
+    })
+    .eq("client_id", clientId)
+    .eq("status", "awaiting_signature");
+  if (error) throw error;
+}
+
 /** Cancel prior awaiting_signature rows for a client, then create a new pending PDF. */
 export async function assignAwaitingContract(input: {
   client_id: string;
@@ -182,13 +199,9 @@ export async function assignAwaitingContract(input: {
   mime: string;
   buffer: Buffer;
   template_id?: string | null;
+  sign_fields?: SignField[];
 }): Promise<PmContract> {
-  const { error: cancelErr } = await db()
-    .from("pm_contracts")
-    .update({ status: "draft", note: "Superseded by newer invite" })
-    .eq("client_id", input.client_id)
-    .eq("status", "awaiting_signature");
-  if (cancelErr) throw cancelErr;
+  await cancelAwaitingContracts(input.client_id, "Superseded by newer invite");
 
   return createContract({
     client_id: input.client_id,
@@ -199,6 +212,7 @@ export async function assignAwaitingContract(input: {
     buffer: input.buffer,
     status: "awaiting_signature",
     template_id: input.template_id || null,
+    sign_fields: input.sign_fields,
   });
 }
 
@@ -251,11 +265,13 @@ export async function markContractSigned(input: {
   if (dlErr || !pdfBlob) throw new Error(dlErr?.message || "Could not load agreement PDF.");
   const pdfBuffer = Buffer.from(await pdfBlob.arrayBuffer());
 
+  let signaturePng: Buffer | null = null;
   let signatureImagePath = "";
   if (input.signature_image_base64?.trim()) {
     const raw = input.signature_image_base64.trim().replace(/^data:image\/\w+;base64,/, "");
     const img = Buffer.from(raw, "base64");
     if (img.length > 0 && img.length < 2_000_000) {
+      signaturePng = img;
       signatureImagePath = `${contract.id}/signature.png`;
       const { error: imgErr } = await db()
         .storage.from("pm-contracts")
@@ -267,16 +283,25 @@ export async function markContractSigned(input: {
     }
   }
 
+  const fields = normalizeSignFields(contract.sign_fields);
+  const today = new Date().toISOString().slice(0, 10);
+  const stamped = await stampSignedPdf({
+    pdfBuffer,
+    fields,
+    signerName: name,
+    signedOnLabel: today,
+    signaturePng,
+  });
+
   const signedPath = `${contract.id}/signed-${contract.filename || "agreement.pdf"}`;
   const { error: upErr } = await db()
     .storage.from("pm-contracts")
-    .upload(signedPath, pdfBuffer, {
+    .upload(signedPath, stamped, {
       contentType: contract.mime || "application/pdf",
       upsert: true,
     });
   if (upErr) throw new Error(`Signed PDF save failed: ${upErr.message}`);
 
-  const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();
   const { data: updated, error } = await db()
     .from("pm_contracts")

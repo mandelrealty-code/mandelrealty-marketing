@@ -10,14 +10,18 @@ import {
   getContractDownloadUrl,
   listContracts,
   assignAwaitingContract,
+  cancelAwaitingContracts,
 } from "../pm/contractStore.js";
 import {
   archiveContractTemplate,
+  deleteContractTemplate,
   createContractTemplate,
   downloadTemplateBuffer,
   getTemplateDownloadUrl,
   listContractTemplates,
+  updateTemplateSignFields,
 } from "../pm/contractTemplateStore.js";
+import { hasSignatureField, normalizeSignFields } from "../pm/signFields.js";
 import {
   createOrRefreshPortalInvite,
   getPortalUserByClientId,
@@ -26,6 +30,7 @@ import {
 import { ownerPortalUrl, sendOwnerInviteEmail } from "../ownerEmails.js";
 import {
   createPmClient,
+  deletePmClient,
   getHospitablePat,
   getPmClient,
   getPmSettings,
@@ -464,6 +469,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return res.status(200).json({ client });
         }
+        if (op === "delete") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await deletePmClient(id);
+          return res.status(200).json({ ok: true });
+        }
       }
 
       if (resource === "properties") {
@@ -843,6 +854,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await archiveContractTemplate(id);
           return res.status(200).json({ ok: true });
         }
+        if (op === "delete") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await deleteContractTemplate(id);
+          return res.status(200).json({ ok: true });
+        }
       }
 
       if (resource === "portal_invite") {
@@ -864,6 +881,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           if (str(body.name) && str(body.name) !== client.name) {
             await updatePmClient(clientId, { name: str(body.name) });
+          }
+
+          const existingHost =
+            body.existing_host === true || str(body.kind) === "existing";
+
+          const { user, tempPassword } = await createOrRefreshPortalInvite({
+            pm_client_id: clientId,
+            email,
+            fullName: name,
+            slug: str(body.slug) || undefined,
+          });
+
+          const props = await listPmProperties(clientId).catch(() => []);
+          const propertyId = str(body.property_id) || props[0]?.id || null;
+          const propertyLabel = props.find((p) => p.id === propertyId)
+            ? `${props.find((p) => p.id === propertyId)!.name}`
+            : props[0]?.name;
+
+          if (existingHost) {
+            await cancelAwaitingContracts(
+              clientId,
+              "Superseded — existing host access (no new signature)",
+            );
+
+            const signedName = str(body.signed_filename);
+            const signedB64 = str(body.signed_contentBase64);
+            if (signedName && signedB64) {
+              await createContract({
+                client_id: clientId,
+                property_id: propertyId,
+                title: str(body.signed_title) || "Management agreement",
+                filename: signedName,
+                mime: str(body.signed_mime) || "application/pdf",
+                buffer: Buffer.from(signedB64, "base64"),
+                signed_on: str(body.signed_on) || new Date().toISOString().slice(0, 10),
+                status: "signed",
+                note: "Uploaded signed copy for existing host",
+              });
+            }
+
+            const mail = await sendOwnerInviteEmail({
+              to: email,
+              firstName: user.first_name || "there",
+              propertyLabel,
+              slug: user.slug,
+              tempPassword,
+              kind: "existing",
+            });
+
+            return res.status(200).json({
+              ok: true,
+              kind: "existing",
+              portal_user: publicPortalUser(user),
+              owner_url: ownerPortalUrl(user.slug),
+              email_sent: mail.ok,
+              email_error: mail.ok ? null : mail.message || "Email failed",
+            });
           }
 
           const templateId = str(body.template_id);
@@ -894,6 +968,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
           }
 
+          const signFields = normalizeSignFields(body.sign_fields);
+          if (!hasSignatureField(signFields)) {
+            return res.status(400).json({
+              error: "Place at least one signature box on the PDF before sending.",
+            });
+          }
+
           if (body.save_as_template === true && !templateId && oneOffName && oneOffB64) {
             await createContractTemplate({
               label: str(body.template_label) || str(body.title) || oneOffName,
@@ -902,19 +983,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               buffer: pdf.buffer,
             }).catch(() => undefined);
           }
-
-          const { user, tempPassword } = await createOrRefreshPortalInvite({
-            pm_client_id: clientId,
-            email,
-            fullName: name,
-            slug: str(body.slug) || undefined,
-          });
-
-          const props = await listPmProperties(clientId).catch(() => []);
-          const propertyId = str(body.property_id) || props[0]?.id || null;
-          const propertyLabel = props.find((p) => p.id === propertyId)
-            ? `${props.find((p) => p.id === propertyId)!.name}`
-            : props[0]?.name;
+          if (templateId) {
+            await updateTemplateSignFields(templateId, signFields).catch(() => undefined);
+          }
 
           const contract = await assignAwaitingContract({
             client_id: clientId,
@@ -924,6 +995,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             mime: pdf.mime,
             buffer: pdf.buffer,
             template_id: pdf.template_id,
+            sign_fields: signFields,
           });
 
           const mail = await sendOwnerInviteEmail({
@@ -932,6 +1004,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             propertyLabel,
             slug: user.slug,
             tempPassword,
+            kind: "new",
           });
 
           return res.status(200).json({

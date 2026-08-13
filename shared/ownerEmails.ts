@@ -111,6 +111,8 @@ export async function sendOwnerInviteEmail(input: {
   propertyLabel?: string;
   slug: string;
   tempPassword: string;
+  /** existing = already signed; new = must sign in portal */
+  kind?: "new" | "existing";
 }): Promise<{ ok: boolean; message?: string }> {
   const apiKey = process.env.RESEND_API_KEY?.trim() || "";
   if (!apiKey) return { ok: false, message: "RESEND_API_KEY not configured." };
@@ -118,15 +120,20 @@ export async function sendOwnerInviteEmail(input: {
     process.env.RESEND_FROM?.trim() ||
     "Mandel Realty Group <onboarding@resend.dev>";
   const portal = ownerPortalUrl(input.slug);
-  const contracts = ownerPortalUrl(input.slug, "contracts");
+  const cta = input.kind === "existing" ? portal : ownerPortalUrl(input.slug, "contracts");
   const prop = input.propertyLabel?.trim();
+  const existing = input.kind === "existing";
   const html = emailShell(`
     <div style="font-family:Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;line-height:1.2;color:#f5f5f5;padding-bottom:12px;">
       Welcome to MRG, ${esc(input.firstName)}
     </div>
     <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 20px;">
       Your owner portal${prop ? ` for <strong style="color:#f5f5f5;font-weight:600">${esc(prop)}</strong>` : ""} is ready.
-      Sign in, set your password, then sign your management agreement.
+      ${
+        existing
+          ? "Sign in, set your password, then you can view your documents and property details."
+          : "Sign in, set your password, then sign your management agreement."
+      }
     </p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       ${row(
@@ -136,7 +143,7 @@ export async function sendOwnerInviteEmail(input: {
       ${row("Email", esc(input.to))}
       ${row("Temporary password", `<span style="letter-spacing:0.04em;">${esc(input.tempPassword)}</span>`)}
     </table>
-    ${goldButton(contracts, "Open owner portal")}
+    ${goldButton(cta, "Open owner portal")}
     <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0;">
       You’ll be asked to choose your own password on first sign-in. Questions? Reply to this email.
     </p>

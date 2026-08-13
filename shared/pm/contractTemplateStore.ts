@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
+import { normalizeSignFields, type SignField } from "./signFields.js";
 
 function db() {
   const sb = getSupabaseAdmin();
@@ -15,6 +16,7 @@ export type ContractTemplate = {
   mime: string;
   storage_path: string;
   archived: boolean;
+  sign_fields?: SignField[];
 };
 
 export async function listContractTemplates(includeArchived = false): Promise<ContractTemplate[]> {
@@ -93,6 +95,18 @@ export async function archiveContractTemplate(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function deleteContractTemplate(id: string): Promise<void> {
+  const template = await getContractTemplate(id);
+  if (template?.storage_path) {
+    await db()
+      .storage.from("pm-contracts")
+      .remove([template.storage_path])
+      .catch(() => undefined);
+  }
+  const { error } = await db().from("pm_contract_templates").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function downloadTemplateBuffer(id: string): Promise<{
   buffer: Buffer;
   filename: string;
@@ -124,4 +138,18 @@ export async function getTemplateDownloadUrl(id: string): Promise<string> {
     throw new Error(error?.message || "Could not create download link.");
   }
   return signed.signedUrl;
+}
+
+export async function updateTemplateSignFields(
+  id: string,
+  fields: SignField[],
+): Promise<void> {
+  const { error } = await db()
+    .from("pm_contract_templates")
+    .update({
+      sign_fields: normalizeSignFields(fields),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
 }

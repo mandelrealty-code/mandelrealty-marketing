@@ -78,6 +78,19 @@ export function ContractTemplatesPanel({
     }
   };
 
+  const remove = async (id: string, label: string) => {
+    if (!window.confirm(`Delete “${label}”? This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      await pmPost("contract_templates", { op: "delete", id });
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not delete.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const openFile = async (id: string) => {
     try {
       const data = await pmGet<{ url: string }>("contract_template_url", { id });
@@ -157,6 +170,14 @@ export function ContractTemplatesPanel({
                   onClick={() => archive(t.id)}
                 >
                   Archive
+                </button>
+                <button
+                  type="button"
+                  className="text-[13px] font-semibold text-[#cf7f7b]"
+                  disabled={busy}
+                  onClick={() => remove(t.id, t.label)}
+                >
+                  Delete
                 </button>
               </div>
             </div>
