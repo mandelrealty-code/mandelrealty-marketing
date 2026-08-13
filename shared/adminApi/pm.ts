@@ -51,8 +51,53 @@ import {
   updatePmProperty,
   uploadPropertyCover,
 } from "../pm/propertyStore.js";
+import {
+  createPmTask,
+  deletePmTask,
+  getPmTask,
+  listPmTasks,
+  updatePmTask,
+  type TaskPriority,
+  type TaskRepeat,
+  type TaskStatus,
+  type TaskType,
+} from "../pm/taskStore.js";
 import { percentToRateBps } from "../pm/types.js";
 import { isSupabaseConfigured } from "../supabase.js";
+
+const TASK_STATUSES = new Set<TaskStatus>([
+  "open",
+  "in_progress",
+  "blocked",
+  "done",
+]);
+const TASK_PRIORITIES = new Set<TaskPriority>(["normal", "high"]);
+const TASK_TYPES = new Set<TaskType>([
+  "cleaning",
+  "maintenance",
+  "owner",
+  "compliance",
+  "statement",
+  "other",
+]);
+const TASK_REPEATS = new Set<TaskRepeat>(["off", "weekly", "monthly"]);
+
+function asTaskStatus(v: unknown): TaskStatus | undefined {
+  const s = str(v) as TaskStatus;
+  return TASK_STATUSES.has(s) ? s : undefined;
+}
+function asTaskPriority(v: unknown): TaskPriority | undefined {
+  const s = str(v) as TaskPriority;
+  return TASK_PRIORITIES.has(s) ? s : undefined;
+}
+function asTaskType(v: unknown): TaskType | undefined {
+  const s = str(v) as TaskType;
+  return TASK_TYPES.has(s) ? s : undefined;
+}
+function asTaskRepeat(v: unknown): TaskRepeat | undefined {
+  const s = str(v) as TaskRepeat;
+  return TASK_REPEATS.has(s) ? s : undefined;
+}
 
 function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Unauthorized" });
@@ -103,8 +148,8 @@ async function settingsPayload(extra: Record<string, unknown> = {}) {
 function apiErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) {
     const m = err.message;
-    if (/pm_reservations|pm_manual_expenses|pm_contracts|cleaning_fee_keeper|hst_bps|default_hst_bps|commission_base_mode|hst_mode/i.test(m) && /does not exist|schema cache|column/i.test(m)) {
-      return "Database columns missing. Run supabase/pm_property_payout_v2.sql and supabase/pm_commission_base_v1.sql in Supabase, then retry.";
+    if (/pm_reservations|pm_manual_expenses|pm_contracts|pm_tasks|cleaning_fee_keeper|hst_bps|default_hst_bps|commission_base_mode|hst_mode/i.test(m) && /does not exist|schema cache|column/i.test(m)) {
+      return "Database columns missing. Run the latest supabase/*.sql migrations in Supabase, then retry.";
     }
     return m;
   }
@@ -280,6 +325,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!id) return res.status(400).json({ error: "id required." });
         const url = await getContractDownloadUrl(id);
         return res.status(200).json({ url });
+      }
+      if (resource === "tasks") {
+        const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+        if (id) {
+          const task = await getPmTask(id);
+          if (!task) return res.status(404).json({ error: "Task not found." });
+          return res.status(200).json({ task });
+        }
+        const statusRaw =
+          typeof req.query.status === "string" ? req.query.status.trim() : "openish";
+        const status =
+          statusRaw === "all" || statusRaw === "openish"
+            ? statusRaw
+            : asTaskStatus(statusRaw) || "openish";
+        const assignee =
+          typeof req.query.assignee === "string" ? req.query.assignee.trim() : "";
+        const taskTypeRaw =
+          typeof req.query.task_type === "string" ? req.query.task_type.trim() : "";
+        const task_type = asTaskType(taskTypeRaw) || "";
+        const tasks = await listPmTasks({
+          status,
+          assignee: assignee || undefined,
+          task_type: task_type || undefined,
+        });
+        return res.status(200).json({ tasks });
       }
       return res.status(400).json({ error: "Unknown resource." });
     }
@@ -707,6 +777,81 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             settings,
             hospitable_connected: await isHospitableConfigured(),
           });
+        }
+      }
+
+      if (resource === "tasks") {
+        if (op === "create") {
+          const task = await createPmTask({
+            title: str(body.title),
+            detail: str(body.detail),
+            status: asTaskStatus(body.status),
+            priority: asTaskPriority(body.priority),
+            assignee: str(body.assignee),
+            due_on: body.due_on == null || body.due_on === "" ? null : str(body.due_on),
+            property_id:
+              body.property_id == null || body.property_id === ""
+                ? null
+                : str(body.property_id),
+            client_id:
+              body.client_id == null || body.client_id === ""
+                ? null
+                : str(body.client_id),
+            year_month: str(body.year_month),
+            task_type: asTaskType(body.task_type),
+            created_by: str(body.created_by),
+            repeat_rule: asTaskRepeat(body.repeat_rule),
+          });
+          return res.status(200).json({ task });
+        }
+        if (op === "update") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          const patch: Parameters<typeof updatePmTask>[1] = {};
+          if (body.title != null) patch.title = str(body.title);
+          if (body.detail != null) patch.detail = str(body.detail);
+          if (body.status != null) {
+            const s = asTaskStatus(body.status);
+            if (s) patch.status = s;
+          }
+          if (body.priority != null) {
+            const p = asTaskPriority(body.priority);
+            if (p) patch.priority = p;
+          }
+          if (body.assignee != null) patch.assignee = str(body.assignee);
+          if (body.due_on !== undefined) {
+            patch.due_on =
+              body.due_on == null || body.due_on === "" ? null : str(body.due_on);
+          }
+          if (body.property_id !== undefined) {
+            patch.property_id =
+              body.property_id == null || body.property_id === ""
+                ? null
+                : str(body.property_id);
+          }
+          if (body.client_id !== undefined) {
+            patch.client_id =
+              body.client_id == null || body.client_id === ""
+                ? null
+                : str(body.client_id);
+          }
+          if (body.year_month != null) patch.year_month = str(body.year_month);
+          if (body.task_type != null) {
+            const t = asTaskType(body.task_type);
+            if (t) patch.task_type = t;
+          }
+          if (body.repeat_rule != null) {
+            const r = asTaskRepeat(body.repeat_rule);
+            if (r) patch.repeat_rule = r;
+          }
+          const task = await updatePmTask(id, patch);
+          return res.status(200).json({ task });
+        }
+        if (op === "delete") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await deletePmTask(id);
+          return res.status(200).json({ ok: true });
         }
       }
 

@@ -18,6 +18,7 @@ import { ContractsPanel } from "./ContractsPanel";
 import { EarningsPanel } from "./EarningsPanel";
 import { MonthClosePanel } from "./MonthClosePanel";
 import { OwnerStatementPanel } from "./OwnerStatementPanel";
+import { TasksPanel } from "./TasksPanel";
 import {
   formatRateHistoryRange,
   todayInputValue,
@@ -38,7 +39,7 @@ import {
   TextInput,
 } from "./ui";
 
-type Tab = "clients" | "properties" | "month" | "settings";
+type Tab = "tasks" | "clients" | "properties" | "month" | "settings";
 
 type Props = {
   onModeChange: (mode: AdminProductMode) => void;
@@ -72,7 +73,7 @@ function fileToBase64(file: File): Promise<string> {
 
 export default function ClientsApp({ onModeChange }: Props) {
   const desktop = useIsDesktop();
-  const [tab, setTab] = useState<Tab>("clients");
+  const [tab, setTab] = useState<Tab>("tasks");
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [properties, setProperties] = useState<PropertyRow[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
@@ -786,33 +787,39 @@ export default function ClientsApp({ onModeChange }: Props) {
           Mandel Realty Group
         </span>
       </div>
-      <ModeSwitcher mode="clients" onChange={switchMode} />
+      <ModeSwitcher mode="ops" onChange={switchMode} />
       <div className="flex-1" />
     </header>
   );
 
+  const navItems = [
+    ["tasks", "Tasks"],
+    ["clients", "Clients"],
+    ["properties", "Properties"],
+    ["month", "Month close"],
+    ["settings", "Settings"],
+  ] as const;
+
+  const goTab = (id: Tab) => {
+    setTab(id);
+    setClientMonth(null);
+    setOwnerStatement(null);
+    if (id !== "month") setMonthHstClientId(null);
+    if (id !== "properties") setSelectedPropertyId(null);
+  };
+
+  const tabActive = (id: Tab) =>
+    clientMonth || ownerStatement ? id === "clients" : tab === id;
+
   const desktopNav = (
     <aside className="hidden w-[212px] shrink-0 flex-col gap-0.5 border-r border-white/8 bg-[#0e0e0e] p-4 lg:flex">
-      {(
-        [
-          ["clients", "Clients"],
-          ["properties", "Properties"],
-          ["month", "Month close"],
-          ["settings", "Settings"],
-        ] as const
-      ).map(([id, label]) => (
+      {navItems.map(([id, label]) => (
         <button
           key={id}
           type="button"
-          onClick={() => {
-            setTab(id);
-            setClientMonth(null);
-            setOwnerStatement(null);
-            if (id !== "month") setMonthHstClientId(null);
-            if (id !== "properties") setSelectedPropertyId(null);
-          }}
+          onClick={() => goTab(id)}
           className={`rounded-md px-3 py-2 text-left text-sm font-medium ${
-            (clientMonth || ownerStatement ? id === "clients" : tab === id)
+            tabActive(id)
               ? "bg-[#1a1a1a] font-semibold text-[#c4a35a]"
               : "text-[#9a9590] hover:text-[#f5f5f5]"
           }`}
@@ -824,32 +831,19 @@ export default function ClientsApp({ onModeChange }: Props) {
   );
 
   const mobileNav = (
-    <nav className="flex h-[62px] shrink-0 items-center border-t border-white/8 bg-[#0e0e0e] pb-[max(0px,env(safe-area-inset-bottom))] lg:hidden">
-      {(
-        [
-          ["clients", "Clients"],
-          ["properties", "Properties"],
-          ["month", "Month"],
-          ["settings", "Settings"],
-        ] as const
-      ).map(([id, label]) => (
+    <nav className="flex h-[62px] shrink-0 items-center border-t border-white/8 bg-[#0c0c0c] pb-[max(0px,env(safe-area-inset-bottom))] lg:hidden">
+      {navItems.map(([id, label]) => (
         <button
           key={id}
           type="button"
-          onClick={() => {
-            setTab(id);
-            setClientMonth(null);
-            setOwnerStatement(null);
-            if (id !== "month") setMonthHstClientId(null);
-            if (id !== "properties") setSelectedPropertyId(null);
-          }}
-          className={`grid flex-1 place-items-center text-xs ${
-            (clientMonth || ownerStatement ? id === "clients" : tab === id)
-              ? "font-semibold text-[#c4a35a]"
+          onClick={() => goTab(id)}
+          className={`grid flex-1 place-items-center text-[10.5px] ${
+            tabActive(id)
+              ? "font-bold text-[#c4a35a]"
               : "font-medium text-[#6f6a65]"
           }`}
         >
-          {label}
+          {id === "month" ? "Month" : label}
         </button>
       ))}
     </nav>
@@ -1710,6 +1704,22 @@ export default function ClientsApp({ onModeChange }: Props) {
         onError={setLoadError}
       />
     );
+  } else if (tab === "tasks") {
+    main = (
+      <TasksPanel
+        clients={clients}
+        properties={properties}
+        desktop={desktop}
+        onOpenProperty={(id) => {
+          setTab("properties");
+          void loadProperty(id).catch((e) =>
+            setLoadError(e instanceof Error ? e.message : "Could not open property."),
+          );
+        }}
+        onToast={setToast}
+        onError={setLoadError}
+      />
+    );
   } else if (tab === "settings") main = settingsView;
   else if (tab === "month") {
     main = (
@@ -1743,6 +1753,14 @@ export default function ClientsApp({ onModeChange }: Props) {
         </main>
       </div>
       {mobileNav}
+
+      {toast && tab === "tasks" ? (
+        <div className="pointer-events-none fixed bottom-[78px] left-1/2 z-40 -translate-x-1/2 lg:bottom-8">
+          <div className="rounded-lg border border-white/10 bg-[#1a1a1a] px-4 py-2.5 text-[13px] text-[#f5f5f5] shadow-lg">
+            {toast}
+          </div>
+        </div>
+      ) : null}
 
       {clientSheet ? (
         <Sheet

@@ -1324,12 +1324,12 @@ export function AdminPage() {
     );
   }
 
-  if (productMode === "clients") {
+  if (productMode === "ops") {
     return (
       <Suspense
         fallback={
           <div className="flex min-h-dvh items-center justify-center bg-[#0a0a0a] text-[#9a9590]">
-            Loading Clients…
+            Loading OPS…
           </div>
         }
       >

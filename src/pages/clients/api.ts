@@ -7,6 +7,37 @@ export type ClientRow = {
   property_count?: number;
 };
 
+export type TaskStatus = "open" | "in_progress" | "blocked" | "done";
+export type TaskPriority = "normal" | "high";
+export type TaskType =
+  | "cleaning"
+  | "maintenance"
+  | "owner"
+  | "compliance"
+  | "statement"
+  | "other";
+export type TaskRepeat = "off" | "weekly" | "monthly";
+
+export type TaskRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  title: string;
+  detail: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignee: string;
+  due_on: string | null;
+  property_id: string | null;
+  client_id: string | null;
+  year_month: string;
+  task_type: TaskType;
+  created_by: string;
+  repeat_rule: TaskRepeat;
+  property_name?: string;
+  client_name?: string;
+};
+
 export type PropertyRow = {
   id: string;
   client_id: string;
