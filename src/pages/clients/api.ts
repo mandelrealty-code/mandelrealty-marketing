@@ -15,6 +15,7 @@ export type TaskType =
   | "owner"
   | "compliance"
   | "statement"
+  | "supplies"
   | "other";
 export type TaskRepeat = "off" | "weekly" | "monthly";
 

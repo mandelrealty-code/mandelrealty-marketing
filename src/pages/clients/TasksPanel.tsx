@@ -28,6 +28,7 @@ const TYPE_CHIPS: { value: TaskType | "overdue" | ""; label: string }[] = [
   { value: "owner", label: "Owner" },
   { value: "compliance", label: "Comp" },
   { value: "statement", label: "Stmt" },
+  { value: "supplies", label: "Supplies" },
 ];
 
 const TYPE_SHORT: Record<TaskType, string> = {
@@ -36,6 +37,7 @@ const TYPE_SHORT: Record<TaskType, string> = {
   owner: "owner",
   compliance: "comp",
   statement: "stmt",
+  supplies: "supply",
   other: "other",
 };
 
@@ -45,6 +47,7 @@ const TYPE_LABEL: Record<TaskType, string> = {
   owner: "Owner",
   compliance: "Compliance",
   statement: "Statement",
+  supplies: "Supplies",
   other: "Other",
 };
 
@@ -723,6 +726,7 @@ export function TasksPanel({
               "owner",
               "compliance",
               "statement",
+              "supplies",
               "other",
             ] as TaskType[]
           ).map((t) => {

@@ -83,6 +83,7 @@ const TASK_TYPES = new Set<TaskType>([
   "owner",
   "compliance",
   "statement",
+  "supplies",
   "other",
 ]);
 const TASK_REPEATS = new Set<TaskRepeat>(["off", "weekly", "monthly"]);
