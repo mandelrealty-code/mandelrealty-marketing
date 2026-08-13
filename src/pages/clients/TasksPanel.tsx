@@ -108,14 +108,14 @@ function formatMonthLabel(ym: string): string {
 function dueMeta(
   task: TaskRow,
   today: Date,
-): { kind: "overdue" | "soon" | "blocked" | "done" | "plain"; label: string } {
+): { kind: "overdue" | "soon" | "blocked" | "done" | "plain"; label: string; days?: number } {
   if (task.status === "done") {
     return { kind: "done", label: "Done" };
   }
   if (task.status === "blocked") {
     return { kind: "blocked", label: "Blocked" };
   }
-  if (!task.due_on) return { kind: "plain", label: "No due" };
+  if (!task.due_on) return { kind: "plain", label: "No due date" };
   const due = parseYmd(task.due_on);
   if (!due) return { kind: "plain", label: task.due_on };
   const diff = Math.round(
@@ -126,15 +126,77 @@ function dueMeta(
     return {
       kind: "overdue",
       label: days === 1 ? "1d overdue" : `${days}d overdue`,
+      days,
     };
   }
-  if (diff === 0) return { kind: "soon", label: "due today" };
-  if (diff === 1) return { kind: "soon", label: "due tomorrow" };
+  if (diff === 0) return { kind: "soon", label: "due today", days: 0 };
+  if (diff === 1) return { kind: "soon", label: "due tomorrow", days: 1 };
   if (diff <= 6) {
     const wd = due.toLocaleDateString("en-US", { weekday: "short" });
-    return { kind: "soon", label: `due ${wd}` };
+    return { kind: "soon", label: `due ${wd}`, days: diff };
   }
-  return { kind: "plain", label: formatDueLong(task.due_on) };
+  return { kind: "plain", label: formatDueLong(task.due_on), days: diff };
+}
+
+/** Desktop due cell — matches Claude table (Aug 11 · 2d / Thu, Aug 14). */
+function dueDesktopLabel(
+  task: TaskRow,
+  today: Date,
+  meta: ReturnType<typeof dueMeta>,
+): string {
+  if (meta.kind === "blocked") return "Blocked";
+  if (meta.kind === "done") return "Done";
+  if (!task.due_on) return "No due date";
+  const due = parseYmd(task.due_on);
+  if (!due) return task.due_on;
+  if (meta.kind === "overdue" && meta.days != null) {
+    const short = due.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    return `${short} · ${meta.days}d`;
+  }
+  if (meta.kind === "soon") {
+    return due.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  }
+  return due.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function placeLabel(task: TaskRow): string {
+  if (task.property_name && task.client_name) {
+    return task.property_name;
+  }
+  return task.property_name || task.client_name || "—";
+}
+
+function placeDesktopLabel(task: TaskRow): string {
+  const base = task.property_name || task.client_name || "";
+  if (!base) return "—";
+  if (task.year_month && /^\d{4}-\d{2}$/.test(task.year_month)) {
+    const [y, m] = task.year_month.split("-").map(Number);
+    const d = new Date(y, m - 1, 1);
+    const month = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    if (!task.property_name && task.client_name) {
+      return `${task.client_name} · ${month}`;
+    }
+  }
+  return base;
+}
+
+function dueColorClass(
+  kind: ReturnType<typeof dueMeta>["kind"],
+): string {
+  if (kind === "overdue") return "font-semibold text-[#cf7f7b]";
+  if (kind === "soon" || kind === "blocked") return "font-semibold text-[#c99a4b]";
+  if (kind === "done") return "text-[#6f6a65]";
+  return "text-[#9a9590]";
 }
 
 function isOverdue(task: TaskRow, today: Date): boolean {
@@ -292,9 +354,37 @@ function PersonChip({
   );
 }
 
-function AssigneeChips({ names }: { names: string[] }) {
+function AssigneeChips({
+  names,
+  compact = false,
+}: {
+  names: string[];
+  compact?: boolean;
+}) {
   if (!names.length) {
     return <span className="text-[#6f6a65]">Unassigned</span>;
+  }
+  if (compact) {
+    return (
+      <span className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-0.5">
+        {names.map((name) => {
+          const c = personColor(name);
+          return (
+            <span
+              key={name}
+              className="inline-flex items-center gap-1 text-[12.5px] font-medium lg:text-[13px]"
+              style={{ color: c.fg }}
+            >
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                style={{ backgroundColor: c.fg }}
+              />
+              {name}
+            </span>
+          );
+        })}
+      </span>
+    );
   }
   return (
     <span className="inline-flex max-w-full flex-wrap items-center gap-1">
@@ -762,53 +852,113 @@ export function TasksPanel({
   const renderTaskRow = (task: TaskRow) => {
     const meta = dueMeta(task, today);
     const done = task.status === "done";
-    const context =
-      task.property_name ||
-      task.client_name ||
-      (task.status === "blocked" ? "Blocked" : "—");
+    const blocked = task.status === "blocked";
+    const assignees = taskAssignees(task);
+    const place = placeLabel(task);
+    const placeDesktop = placeDesktopLabel(task);
+    const dueDesktop = dueDesktopLabel(task, today, meta);
+    const dueClass = dueColorClass(meta.kind);
+
+    const checkbox = (
+      <span
+        role="checkbox"
+        aria-checked={done}
+        aria-label={done ? "Reopen task" : "Mark done"}
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          void toggleDone(task.id, done);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            void toggleDone(task.id, done);
+          }
+        }}
+        className={`relative flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px] ${
+          done
+            ? "border-transparent bg-[#c4a35a] text-[11px] font-bold text-[#0a0a0a]"
+            : "border-white/22"
+        }`}
+      >
+        {done ? "✓" : null}
+        {blocked && !done ? (
+          <span className="absolute inset-1 rounded-[2px] bg-[#c99a4b]" />
+        ) : null}
+      </span>
+    );
+
+    const priorityDot =
+      task.priority === "high" && !done ? (
+        <span className="h-[5px] w-[5px] shrink-0 rounded-full bg-[#c4a35a]" />
+      ) : (
+        <span className="hidden h-[5px] w-[5px] shrink-0 lg:block lg:invisible" />
+      );
+
     return (
       <button
         key={task.id}
         type="button"
         onClick={() => setSelectedId(task.id)}
-        className={`flex w-full items-start gap-3 border-t border-white/8 px-4 py-3.5 text-left hover:bg-white/[0.02] lg:px-10 ${
+        className={`w-full border-t border-white/8 text-left hover:bg-white/[0.02] ${
           done ? "opacity-70" : ""
         }`}
       >
-        <span
-          role="checkbox"
-          aria-checked={done}
-          aria-label={done ? "Reopen task" : "Mark done"}
-          tabIndex={0}
-          onClick={(e) => {
-            e.stopPropagation();
-            void toggleDone(task.id, done);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              e.stopPropagation();
-              void toggleDone(task.id, done);
-            }
-          }}
-          className={`relative mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px] ${
-            done
-              ? "border-transparent bg-[#c4a35a] text-[11px] font-bold text-[#0a0a0a]"
-              : "border-white/22"
-          }`}
-        >
-          {done ? "✓" : null}
-          {task.status === "blocked" ? (
-            <span className="absolute inset-1 rounded-[2px] bg-[#c99a4b]" />
-          ) : null}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            {task.priority === "high" && !done ? (
-              <span className="h-[5px] w-[5px] shrink-0 rounded-full bg-[#c4a35a]" />
-            ) : null}
+        {/* Mobile — Claude T1 stacked row */}
+        <div className="flex items-start gap-3 px-4 py-[13px] lg:hidden">
+          <span className="mt-0.5">{checkbox}</span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-[7px]">
+              {task.priority === "high" && !done ? (
+                <span className="h-[5px] w-[5px] shrink-0 rounded-full bg-[#c4a35a]" />
+              ) : null}
+              <span
+                className={`min-w-0 text-[15px] font-semibold tracking-[-0.01em] text-[#f5f5f5] ${
+                  done
+                    ? "text-[#f5f5f5]/55 line-through decoration-white/35"
+                    : ""
+                }`}
+              >
+                {task.title}
+              </span>
+            </span>
+            <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-[#9a9590]">
+              {blocked ? (
+                <>
+                  <span className="font-semibold text-[#c99a4b]">Blocked</span>
+                  {place !== "—" ? (
+                    <>
+                      <span className="text-[#6f6a65]">·</span>
+                      <span className="truncate">{place}</span>
+                    </>
+                  ) : null}
+                </>
+              ) : done ? (
+                <span className="text-[#6f6a65]">{meta.label}</span>
+              ) : (
+                <>
+                  <span className="truncate">{place}</span>
+                  <span className="text-[#6f6a65]">·</span>
+                  <span className={dueClass}>{meta.label}</span>
+                </>
+              )}
+              <span className="text-[#6f6a65]">·</span>
+              <AssigneeChips names={assignees} compact />
+            </span>
+          </span>
+          <span className="mt-0.5 shrink-0 font-mono text-[10px] text-[#6f6a65]">
+            {TYPE_SHORT[task.task_type]}
+          </span>
+        </div>
+
+        {/* Desktop — Claude T5 table row */}
+        <div className="hidden grid-cols-[minmax(0,1fr)_minmax(160px,260px)_130px_minmax(100px,140px)_90px] items-center gap-4 px-6 py-[15px] lg:grid lg:px-10">
+          <span className="flex min-w-0 items-center gap-[11px]">
+            {checkbox}
+            {priorityDot}
             <span
-              className={`truncate text-[15px] font-semibold tracking-[-0.01em] ${
+              className={`min-w-0 truncate text-[14.5px] font-semibold text-[#f5f5f5] ${
                 done
                   ? "text-[#f5f5f5]/55 line-through decoration-white/35"
                   : ""
@@ -817,29 +967,17 @@ export function TasksPanel({
               {task.title}
             </span>
           </span>
-          <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-[#9a9590]">
-            <span className="truncate">{context}</span>
-            <span className="text-[#6f6a65]">·</span>
-            <span
-              className={
-                meta.kind === "overdue"
-                  ? "font-semibold text-[#cf7f7b]"
-                  : meta.kind === "soon" || meta.kind === "blocked"
-                    ? "text-[#c99a4b]"
-                    : done
-                      ? "text-[#6f6a65]"
-                      : ""
-              }
-            >
-              {meta.label}
-            </span>
-            <span className="text-[#6f6a65]">·</span>
-            <AssigneeChips names={taskAssignees(task)} />
+          <span className="truncate text-[13px] text-[#9a9590]">
+            {placeDesktop}
           </span>
-        </span>
-        <span className="mt-0.5 shrink-0 font-mono text-[10px] text-[#6f6a65]">
-          {TYPE_SHORT[task.task_type]}
-        </span>
+          <span className={`text-[13px] ${dueClass}`}>{dueDesktop}</span>
+          <span className="min-w-0">
+            <AssigneeChips names={assignees} compact />
+          </span>
+          <span className="font-mono text-[10.5px] text-[#6f6a65]">
+            {TYPE_SHORT[task.task_type]}
+          </span>
+        </div>
       </button>
     );
   };
@@ -1326,10 +1464,19 @@ export function TasksPanel({
                 No open tasks
               </p>
             ) : null}
+            {filtered.length > 0 ? (
+              <div className="hidden grid-cols-[minmax(0,1fr)_minmax(160px,260px)_130px_minmax(100px,140px)_90px] gap-4 border-b border-white/8 px-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[#6f6a65] lg:grid lg:px-10">
+                <div>Task</div>
+                <div>Property / client</div>
+                <div>Due</div>
+                <div>Assignee</div>
+                <div>Type</div>
+              </div>
+            ) : null}
             {sections.map((sec) => (
               <div key={sec.key}>
                 <div
-                  className="border-t border-white/8 px-4 pb-1.5 pt-2.5 font-mono text-[10px] uppercase tracking-[0.1em] lg:px-10"
+                  className="border-t border-white/8 px-4 pb-1 pt-2.5 font-mono text-[10px] uppercase tracking-[0.1em] lg:px-10 lg:pb-1 lg:pt-2"
                   style={{ color: sec.color }}
                 >
                   {sec.label}
