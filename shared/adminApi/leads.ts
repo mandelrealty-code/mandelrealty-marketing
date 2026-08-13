@@ -251,6 +251,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else if (body.aiSendMode === "autopilot" || body.ai_send_mode === "autopilot") {
       patch.aiSendMode = "autopilot";
     }
+    if (Array.isArray(body.playbookSteps) || Array.isArray(body.playbook_steps)) {
+      const { normalizePlaybook } = await import("../playbook.js");
+      patch.playbookSteps = normalizePlaybook(body.playbookSteps ?? body.playbook_steps);
+    }
 
     const twilioEnv = {
       TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,

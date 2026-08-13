@@ -1,5 +1,11 @@
+import { useState } from "react";
 import type { PlaybookStep } from "../../../shared/playbookTypes";
-import { ownerForStepTitle } from "../../../shared/playbookTypes";
+import {
+  addPlaybookStep,
+  COMMON_PLAYBOOK_STEPS,
+  ownerForStepTitle,
+  setCurrentPlaybookStep,
+} from "../../../shared/playbookTypes";
 
 export function PlaybookBlock({
   steps,
@@ -8,6 +14,7 @@ export function PlaybookBlock({
   draftMode,
   onComplete,
   onSkip,
+  onChange,
 }: {
   steps: PlaybookStep[];
   busy: boolean;
@@ -15,8 +22,10 @@ export function PlaybookBlock({
   draftMode?: boolean;
   onComplete: () => void;
   onSkip?: () => void;
+  onChange?: (steps: PlaybookStep[]) => void;
 }) {
   const host = hostFirstName?.trim() || "Host";
+  const [adding, setAdding] = useState("");
   const currentIdx = steps.findIndex((s) => s.status === "current");
   const doneCount = steps.filter((s) => s.status === "done").length;
   const ownerLabel = (step: PlaybookStep) =>
@@ -24,11 +33,30 @@ export function PlaybookBlock({
 
   if (!steps.length) {
     return (
-      <div className="mb-5 rounded-xl border border-dashed border-white/14 px-[18px] py-[22px]">
-        <p className="text-[15.5px] font-semibold">Nothing to chase yet</p>
-        <p className="mt-2.5 text-[13px] leading-relaxed text-[#9a9590]">
-          Next steps appear here once this lead has a path. AI won’t chase a specific step until one is current.
-        </p>
+      <div className="mb-5">
+        <p className="mb-3 text-[15px] font-bold tracking-[-0.02em]">Next steps</p>
+        <div className="rounded-xl border border-dashed border-white/14 px-[18px] py-[18px]">
+          <p className="text-[15px] font-semibold">Nothing to chase yet</p>
+          <p className="mt-2 text-[13px] leading-relaxed text-[#9a9590]">
+            Add what they have to do next. AI will chase the current step by SMS.
+          </p>
+          {onChange ? (
+            <div className="mt-3 flex flex-col gap-1 overflow-hidden rounded-[10px] border border-white/8">
+              {COMMON_PLAYBOOK_STEPS.map((title) => (
+                <button
+                  key={title}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onChange(addPlaybookStep(steps, title))}
+                  className="flex items-center justify-between bg-[#141414] px-3.5 py-3 text-left text-[14px] hover:bg-[#1a1a1a]"
+                >
+                  {title}
+                  <span className="text-[#c4a35a]">+</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -55,7 +83,17 @@ export function PlaybookBlock({
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border border-[rgba(78,168,130,0.5)] bg-[rgba(78,168,130,0.2)] text-[9px] font-bold text-[#4ea882]">
                   ✓
                 </span>
-                <p className="crm-mono text-[10.5px] text-[#6f6a65]">{step.title} — done</p>
+                <p className="crm-mono min-w-0 flex-1 text-[10.5px] text-[#6f6a65]">{step.title} — done</p>
+                {onChange ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onChange(setCurrentPlaybookStep(steps, step.id))}
+                    className="shrink-0 text-[11px] text-[#6f6a65]"
+                  >
+                    Reopen
+                  </button>
+                ) : null}
               </div>
             );
           }
@@ -116,12 +154,42 @@ export function PlaybookBlock({
                       </button>
                     ) : null}
                   </div>
+                ) : onChange ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onChange(setCurrentPlaybookStep(steps, step.id))}
+                    className="pt-1.5 text-[12px] text-[#c4a35a]"
+                  >
+                    Chase this
+                  </button>
                 ) : null}
               </div>
             </div>
           );
         })}
       </div>
+      {onChange ? (
+        <form
+          className="mt-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const next = addPlaybookStep(steps, adding);
+            if (next !== steps) {
+              onChange(next);
+              setAdding("");
+            }
+          }}
+        >
+          <input
+            value={adding}
+            onChange={(e) => setAdding(e.target.value)}
+            placeholder="Add a step…"
+            disabled={busy}
+            className="h-10 w-full rounded-[9px] border border-white/10 bg-[#141414] px-3 text-[13.5px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+          />
+        </form>
+      ) : null}
       {currentIdx < 0 && doneCount === steps.length ? (
         <p className="mt-3 text-[12.5px] text-[#4ea882]">All steps done — ready to send the contract.</p>
       ) : (
@@ -130,7 +198,7 @@ export function PlaybookBlock({
           <p className="text-[12px] leading-relaxed text-[#9a9590]">
             {draftMode
               ? "AI follows up on the current step via SMS — drafts land in this thread for your OK."
-              : "AI follows up on the current step via SMS."}
+              : "AI follows up on the current step via SMS. Update the current step so it knows where they are."}
           </p>
         </div>
       )}

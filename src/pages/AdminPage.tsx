@@ -1901,6 +1901,7 @@ export function AdminPage() {
                   draftMode={selected.ai_send_mode === "draft"}
                   onComplete={() => void patchLead({ playbookAction: "complete" })}
                   onSkip={() => void patchLead({ playbookAction: "skip" })}
+                  onChange={(playbookSteps) => void patchLead({ playbookSteps })}
                 />
                 <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
                   Internal note
@@ -2200,7 +2201,35 @@ export function AdminPage() {
             </p>
           </div>
         </div>
-        <p className="crm-mono shrink-0 text-[11px] text-[#6f6a65]">{selected.phone}</p>
+        <p className="crm-mono hidden shrink-0 text-[11px] text-[#6f6a65] xl:block">{selected.phone}</p>
+        {selLive ? (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void patchLead({ aiPaused: true })}
+            className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#e4dcd0] hover:border-[#c4a35a]/55 hover:text-[#dcc084]"
+          >
+            Take over
+          </button>
+        ) : selPaused ? (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void patchLead({ aiPaused: false })}
+            className="shrink-0 rounded-lg border border-[#c4a35a]/35 bg-[#c4a35a]/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#dcc084]"
+          >
+            Resume AI
+          </button>
+        ) : !aiEnvKill ? (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void patchLead({ aiForceOn: true })}
+            className="shrink-0 rounded-lg border border-[#c4a35a]/35 bg-[#c4a35a]/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#dcc084]"
+          >
+            Enable AI
+          </button>
+        ) : null}
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-[15px] overflow-y-auto px-[22px] py-5">
         {smsMessages.length === 0 ? (
@@ -2306,7 +2335,7 @@ export function AdminPage() {
   );
 
   const desktopDetails = selected ? (
-    <aside className="hidden w-[330px] shrink-0 flex-col overflow-y-auto border-l border-white/8 bg-[#0c0c0c] lg:flex">
+    <aside className="hidden w-[360px] shrink-0 flex-col overflow-y-auto border-l border-white/8 bg-[#0c0c0c] lg:flex">
       <div className="flex flex-col gap-2.5 border-b border-white/8 px-5 pb-4 pt-5">
         <p className="text-[18px] font-bold tracking-[-0.02em]">{selected.name || "Contact"}</p>
         <p className="crm-mono text-[11px] text-[#6f6a65]">
@@ -2322,9 +2351,48 @@ export function AdminPage() {
             <span className="rounded-md border border-[rgba(78,168,130,0.45)] px-2.5 py-1 text-[11px] font-bold text-[#4ea882]">
               AI live
             </span>
+          ) : selPaused ? (
+            <span className="rounded-md border border-[rgba(201,154,75,0.45)] px-2.5 py-1 text-[11px] font-bold text-[#c99a4b]">
+              AI paused
+            </span>
           ) : null}
         </div>
       </div>
+
+      <div className="flex items-center justify-between gap-3 border-b border-white/8 px-5 py-3.5">
+        <div className="min-w-0">
+          <p className="text-[10.5px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
+            AI this chat
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-[#f0eeea]">
+            {selLive
+              ? aiEffective
+                ? "Live — replies for you"
+                : "Live on this lead only"
+              : selPaused
+                ? "Paused — you own this chat"
+                : "Off"}
+          </p>
+        </div>
+        <MotionToggle
+          on={selLive}
+          disabled={saving || aiBusy || aiEnvKill}
+          size="sm"
+          label={selLive ? "Pause AI" : selPaused ? "Resume AI" : "Enable AI"}
+          onToggle={() => {
+            if (selLive) {
+              void patchLead({ aiPaused: true });
+              return;
+            }
+            if (selPaused) {
+              void patchLead({ aiPaused: false });
+              return;
+            }
+            void patchLead({ aiForceOn: true });
+          }}
+        />
+      </div>
+
       <div className="flex flex-col gap-2.5 border-b border-white/8 px-5 py-4">
         <p className="crm-mono text-[10px] uppercase tracking-[0.12em] text-[#6f6a65]">How AI sends</p>
         <div className="flex gap-0.5 rounded-[9px] border border-white/9 bg-[#141414] p-[3px]">
@@ -2359,7 +2427,8 @@ export function AdminPage() {
             : "Autopilot sends AI replies immediately, no review."}
         </p>
       </div>
-      <div className="px-5 py-4">
+
+      <div className="border-b border-white/8 px-5 py-4">
         <PlaybookBlock
           steps={selected.playbook_steps ?? []}
           busy={saving}
@@ -2367,7 +2436,111 @@ export function AdminPage() {
           draftMode={selected.ai_send_mode === "draft"}
           onComplete={() => void patchLead({ playbookAction: "complete" })}
           onSkip={() => void patchLead({ playbookAction: "skip" })}
+          onChange={(playbookSteps) => void patchLead({ playbookSteps })}
         />
+      </div>
+
+      {selected.phone ? (
+        <div className="flex flex-col gap-px border-b border-white/8">
+          <button
+            type="button"
+            disabled={callBusy || !operatorCallbackPhone}
+            onClick={() => startCrmCall(selected.id).catch(() => undefined)}
+            className="px-5 py-3.5 text-left hover:bg-[#141414] disabled:opacity-50"
+          >
+            <span className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium">
+                {callBusy ? "Starting…" : selectedPreCallDone ? "CRM call again" : "CRM call"}
+              </span>
+              <span className="text-[12.5px] font-semibold text-[#dcc084]">
+                You {operatorCallbackPhone || "—"}
+              </span>
+            </span>
+            <span className="mt-1 block text-[12px] leading-snug text-[#7d7873]">
+              {selectedPreCallDone
+                ? "Rings you, then connects them. No new text."
+                : "Texts once, rings you, then connects. Recorded."}
+            </span>
+          </button>
+          <a
+            href={telHref(selected.phone) || undefined}
+            className="px-5 py-3.5 text-left hover:bg-[#141414]"
+          >
+            <span className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium">Dial from this phone</span>
+              <span className="text-[12.5px] text-[#9a9590]">{selected.phone}</span>
+            </span>
+          </a>
+          {callMsg ? (
+            <p className="px-5 py-2.5 text-[12.5px] text-[#9a9590]">{callMsg}</p>
+          ) : null}
+          {!operatorCallbackPhone ? (
+            <p className="px-5 py-2.5 text-[12.5px] text-[#d9ac63]">
+              Set your callback phone in Settings first.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="px-5 py-4">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+          Internal note
+        </p>
+        <textarea
+          value={whatsNext}
+          onChange={(e) => setWhatsNext(e.target.value)}
+          onBlur={() => {
+            if (whatsNext !== (selected.whats_next || "")) patchLead({ whatsNext });
+          }}
+          rows={2}
+          placeholder="What the team should do next…"
+          className="mb-4 w-full rounded-[12px] border border-white/8 bg-[#1a1a1a] px-3 py-2.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+        />
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+          Call notes
+        </p>
+        <textarea
+          value={callNotes}
+          onChange={(e) => setCallNotes(e.target.value)}
+          onBlur={() => {
+            if (callNotes !== (selected.call_notes || "")) patchLead({ callNotes });
+          }}
+          rows={4}
+          placeholder="Conversation summary…"
+          className="mb-4 w-full rounded-[12px] border border-white/8 bg-[#1a1a1a] px-3 py-2.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+        />
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+          Other notes
+        </p>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={() => {
+            if (notes !== (selected.notes || "")) patchLead({ notes });
+          }}
+          rows={3}
+          placeholder="General notes…"
+          className="mb-4 w-full rounded-[12px] border border-white/8 bg-[#1a1a1a] px-3 py-2.5 text-sm leading-relaxed text-[#9a9590] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+        />
+        {saveMsg ? <p className="mb-3 text-xs text-[#9a9590]">{saveMsg}</p> : null}
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void patchLead({ markBooked: true })}
+            className="h-11 rounded-xl border border-[rgba(122,167,201,0.35)] bg-[rgba(122,167,201,0.12)] text-sm font-semibold text-[#a9cfe8]"
+          >
+            Mark booked
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => deleteSelectedLead().catch(() => undefined)}
+            className="h-11 rounded-xl border border-[rgba(200,90,86,0.28)] text-sm font-semibold text-[#cf7f7b]"
+          >
+            Delete contact
+          </button>
+        </div>
       </div>
     </aside>
   ) : null;
@@ -2493,16 +2666,6 @@ export function AdminPage() {
               </button>
             );
           })}
-          <button
-            type="button"
-            onClick={() => {
-              writeStoredAdminMode("ops");
-              setProductMode("ops");
-            }}
-            className="rounded-lg px-3 py-2.5 text-left text-[13.5px] font-medium text-[#9a9590] hover:bg-white/[0.04] hover:text-[#f5f5f5]"
-          >
-            Clients
-          </button>
         </aside>
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:pb-0">

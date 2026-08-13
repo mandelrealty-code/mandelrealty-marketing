@@ -654,6 +654,10 @@ export async function handleDevApi(
       } else if (body.aiSendMode === "autopilot" || body.ai_send_mode === "autopilot") {
         patch.aiSendMode = "autopilot";
       }
+      if (Array.isArray(body.playbookSteps) || Array.isArray(body.playbook_steps)) {
+        const { normalizePlaybook } = await import("./playbook.js");
+        patch.playbookSteps = normalizePlaybook(body.playbookSteps ?? body.playbook_steps);
+      }
       if (
         body.playbookAction === "complete" ||
         body.playbook_action === "complete" ||
