@@ -676,10 +676,7 @@ export function TasksPanel({
     let list = tasks;
     if (statusFilter === "open") {
       list = list.filter(
-        (t) =>
-          t.status === "open" ||
-          t.status === "in_progress" ||
-          t.status === "blocked",
+        (t) => t.status === "open" || t.status === "in_progress",
       );
     }
     return list.filter(taskMatchesSearch);
@@ -700,10 +697,7 @@ export function TasksPanel({
   const openCount = useMemo(
     () =>
       tasks.filter(
-        (t) =>
-          t.status === "open" ||
-          t.status === "in_progress" ||
-          t.status === "blocked",
+        (t) => t.status === "open" || t.status === "in_progress",
       ).length,
     [tasks],
   );
@@ -846,6 +840,11 @@ export function TasksPanel({
     onToast("Reopened");
   };
 
+  const unblockTask = async (id: string) => {
+    await patchTask(id, { status: "open" });
+    onToast("Unblocked");
+  };
+
   const toggleDone = async (id: string, currentlyDone: boolean) => {
     if (currentlyDone) await reopenTask(id);
     else await markDone(id);
@@ -895,29 +894,32 @@ export function TasksPanel({
       <span
         role="checkbox"
         aria-checked={done}
-        aria-label={done ? "Reopen task" : "Mark done"}
+        aria-label={
+          blocked ? "Unblock task" : done ? "Reopen task" : "Mark done"
+        }
         tabIndex={0}
         onClick={(e) => {
           e.stopPropagation();
-          void toggleDone(task.id, done);
+          if (blocked) void unblockTask(task.id);
+          else void toggleDone(task.id, done);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             e.stopPropagation();
-            void toggleDone(task.id, done);
+            if (blocked) void unblockTask(task.id);
+            else void toggleDone(task.id, done);
           }
         }}
         className={`relative flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px] ${
           done
             ? "border-transparent bg-[#c4a35a] text-[11px] font-bold text-[#0a0a0a]"
-            : "border-white/22"
+            : blocked
+              ? "border-[#c99a4b]/70 text-[11px] font-bold leading-none text-[#c99a4b]"
+              : "border-white/22"
         }`}
       >
-        {done ? "✓" : null}
-        {blocked && !done ? (
-          <span className="absolute inset-1 rounded-[2px] bg-[#c99a4b]" />
-        ) : null}
+        {done ? "✓" : blocked ? "×" : null}
       </span>
     );
 
@@ -1434,6 +1436,13 @@ export function TasksPanel({
                 ? `${filtered.length} done`
                 : `${openCount} open${overdueCount ? ` · ${overdueCount} overdue` : ""}`}
             </span>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="rounded-lg bg-[#c4a35a] px-3.5 py-1.5 text-[13px] font-bold text-[#0a0a0a] hover:bg-[#dcc084]"
+            >
+              + Task
+            </button>
           </div>
         </div>
 
@@ -1472,7 +1481,7 @@ export function TasksPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 pb-24">
+      <div className="min-h-0 flex-1 pb-6">
         {loading ? (
           <p className="px-4 py-10 text-center text-sm text-[#6f6a65] lg:px-10">
             Loading…
@@ -1561,18 +1570,6 @@ export function TasksPanel({
           </>
         )}
       </div>
-
-      {filtered.length > 0 || !loading ? (
-        <div className="pointer-events-none absolute bottom-4 right-4 lg:bottom-6 lg:right-10">
-          <button
-            type="button"
-            onClick={openCreate}
-            className="pointer-events-auto rounded-xl bg-[#c4a35a] px-5 py-3.5 text-[14px] font-bold text-[#0a0a0a] shadow-[0_6px_20px_rgba(0,0,0,0.5)] hover:bg-[#dcc084]"
-          >
-            + Task
-          </button>
-        </div>
-      ) : null}
 
       {formSheet}
       {addMemberSheet}
