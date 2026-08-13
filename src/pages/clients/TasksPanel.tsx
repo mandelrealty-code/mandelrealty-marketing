@@ -645,6 +645,33 @@ export function TasksPanel({
 
   const today = useMemo(() => startOfDay(new Date()), []);
 
+  const searchNeedle = deferredSearch.trim().toLowerCase();
+
+  const taskMatchesSearch = useCallback(
+    (t: TaskRow) => {
+      if (!searchNeedle) return true;
+      const hay = [
+        t.title,
+        t.detail,
+        t.assignee,
+        ...(t.assignees ?? []),
+        t.property_name,
+        t.client_name,
+        t.task_type,
+        TYPE_LABEL[t.task_type],
+        TYPE_SHORT[t.task_type],
+        t.year_month,
+        t.status,
+        STATUS_LABEL[t.status],
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(searchNeedle);
+    },
+    [searchNeedle],
+  );
+
   const filtered = useMemo(() => {
     let list = tasks;
     if (statusFilter === "open") {
@@ -655,19 +682,20 @@ export function TasksPanel({
           t.status === "blocked",
       );
     }
-    return list;
-  }, [tasks, statusFilter]);
+    return list.filter(taskMatchesSearch);
+  }, [tasks, statusFilter, taskMatchesSearch]);
 
   const completedTasks = useMemo(() => {
     if (statusFilter !== "open") return [];
     return tasks
       .filter((t) => t.status === "done")
+      .filter(taskMatchesSearch)
       .sort((a, b) => {
         const tb = Date.parse(b.updated_at) || 0;
         const ta = Date.parse(a.updated_at) || 0;
         return tb - ta;
       });
-  }, [tasks, statusFilter]);
+  }, [tasks, statusFilter, taskMatchesSearch]);
 
   const openCount = useMemo(
     () =>
