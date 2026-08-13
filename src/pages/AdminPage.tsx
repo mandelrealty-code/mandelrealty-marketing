@@ -58,10 +58,12 @@ type Lead = {
     body: string;
     direction: "inbound" | "outbound";
     created_at: string;
+    meta?: Record<string, unknown>;
   } | null;
   unread?: boolean;
   needs_you?: NeedsYouReason[];
   last_activity_at?: string;
+  pending_draft?: PendingDraft | null;
 };
 
 type KnowledgeDoc = {
@@ -139,6 +141,22 @@ function leadActivityTime(lead: Lead): string {
   if (diff < 86_400_000) return `${Math.max(1, Math.floor(diff / 3_600_000))}h`;
   if (diff < 7 * 86_400_000) return `${Math.max(1, Math.floor(diff / 86_400_000))}d`;
   return d.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const a = parts[0]?.[0] || "";
+  const b = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (a + b).toUpperCase() || "?";
+}
+
+function cityFromAddress(address: string): string {
+  const parts = address
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length >= 2) return parts[parts.length - 2] || parts[parts.length - 1] || "";
+  return parts[0] || "";
 }
 
 function CrmMark({ size = 24 }: { size?: number }) {
@@ -236,6 +254,7 @@ export function AdminPage() {
   const [filterStage, setFilterStage] = useState<LeadStatus | "all">("all");
   const [filterAi, setFilterAi] = useState<"all" | "live" | "paused">("all");
   const [filterBookedWeek, setFilterBookedWeek] = useState(false);
+  const [inboxChip, setInboxChip] = useState<"all" | "review">("all");
   const [sortBy, setSortBy] = useState<"inbox" | "newest" | "oldest">("inbox");
   const [pipelineStage, setPipelineStage] = useState<LeadStatus | "all">("all");
   const [actionLeadId, setActionLeadId] = useState<string | null>(null);
@@ -467,6 +486,7 @@ export function AdminPage() {
         unread: Boolean(l.unread),
         needs_you: Array.isArray(l.needs_you) ? l.needs_you : [],
         last_sms: l.last_sms ?? null,
+        pending_draft: l.pending_draft ?? null,
         last_activity_at: l.last_activity_at,
         sms_last_read_at: l.sms_last_read_at ?? null,
       })),
@@ -533,6 +553,7 @@ export function AdminPage() {
       if (filterAi === "live" && !aiLive) return false;
       if (filterAi === "paused" && aiLive) return false;
       if (filterBookedWeek && !isBookedThisWeek(l)) return false;
+      if (inboxChip === "review" && !l.pending_draft) return false;
       return true;
     });
 
@@ -548,11 +569,15 @@ export function AdminPage() {
     }
     // inbox: keep API order (needs you → unread → last activity)
     return list;
-  }, [leads, filterPath, filterStage, filterAi, filterBookedWeek, aiEffective, sortBy]);
+  }, [leads, filterPath, filterStage, filterAi, filterBookedWeek, inboxChip, aiEffective, sortBy]);
 
   const needsYouLeads = useMemo(
     () => filteredLeads.filter((l) => (l.needs_you?.length ?? 0) > 0),
     [filteredLeads],
+  );
+  const draftLeads = useMemo(
+    () => leads.filter((l) => Boolean(l.pending_draft)),
+    [leads],
   );
 
   const pipelineLeads = useMemo(() => {
@@ -1399,146 +1424,58 @@ export function AdminPage() {
         style={{ overscrollBehaviorY: "none", touchAction: "pan-y" }}
       >
         {/* Compact header */}
-        <header className="shrink-0 border-b border-white/8 bg-[#0c0c0c] px-4 pb-3 pt-[max(0.65rem,env(safe-area-inset-top))]">
-          <div className="mx-auto grid max-w-3xl grid-cols-[32px_1fr_32px] items-center gap-2">
+        <header className="shrink-0 border-b border-white/8 bg-[#0c0c0c] px-4 pt-[max(0.65rem,env(safe-area-inset-top))]">
+          <div className="mx-auto flex h-[52px] max-w-3xl items-center gap-2.5 sm:h-[60px]">
             <button
               type="button"
               onClick={closeLead}
-              className="grid h-8 w-8 place-items-center rounded-lg text-[19px] text-[#f5f5f5] hover:bg-white/[0.06]"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[17px] text-[#9a9590] hover:bg-white/[0.06] hover:text-[#f5f5f5]"
               aria-label="Back"
             >
-              ←
+              ‹
             </button>
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <h1 className="truncate text-[17.5px] font-semibold leading-tight">
-                  {selected.name || "Contact"}
-                </h1>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[rgba(196,163,90,0.4)] text-[11px] font-bold text-[#c4a35a]">
+              {initials(selected.name || "Contact")}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-[14.5px] font-semibold leading-tight sm:text-[15px]">
+                {selected.name || "Contact"}
+              </h1>
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
                 <span
                   className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                     aiLiveHere
                       ? "bg-[#4ea882]"
                       : aiPausedHere
                         ? "bg-[#c99a4b]"
-                        : "bg-[#c4a35a]"
+                        : "bg-[#6f6a65]"
                   }`}
                 />
+                <p className="crm-mono truncate text-[10px] text-[#9a9590]">
+                  {aiLiveHere
+                    ? selected.ai_send_mode === "draft"
+                      ? "AI live · draft mode"
+                      : "AI live"
+                    : aiPausedHere
+                      ? "AI paused"
+                      : aiEnvKill
+                        ? "CRM AI off"
+                        : "AI off"}
+                  {pendingDraft ? " · 1 draft" : ""}
+                </p>
               </div>
-              <p className="truncate text-[13px] leading-snug text-[#9a9590]">
-                {headerMeta}
-              </p>
             </div>
+            <p className="crm-mono hidden shrink-0 text-[11px] text-[#6f6a65] sm:block">
+              {selected.phone || headerMeta}
+            </p>
             <button
               type="button"
               onClick={() => setDetailsOpen(true)}
-              className="grid h-8 w-8 place-items-center rounded-lg text-[17px] font-bold tracking-wider text-[#9a9590] hover:bg-white/[0.06] hover:text-[#f5f5f5]"
-              aria-label="Details"
+              className="crm-mono shrink-0 text-[11px] text-[#c4a35a] hover:text-[#dcc084]"
             >
-              ···
+              Details
             </button>
           </div>
-
-          {/* Slim AI strip — global on, per-lead test override, or enable this lead */}
-          {aiLiveHere || aiPausedHere ? (
-            <div className="mx-auto mt-2.5 flex h-[40px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] py-0 pl-3 pr-1.5">
-              {aiLiveHere ? (
-                <>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#4ea882]" />
-                    <span className="text-[12.5px] font-semibold text-[#8fcbb0]">
-                      {aiEffective ? "AI live" : "AI live · this lead"}
-                    </span>
-                    <span className="hidden truncate text-[12.5px] text-[#6f6a65] sm:inline">
-                      this chat
-                      {selected.ai_send_mode === "draft" ? " · draft mode" : ""}
-                    </span>
-                    {pendingDraft ? (
-                      <span className="rounded-md border border-[#c99a4b]/45 px-2 py-0.5 text-[11px] font-bold text-[#c99a4b]">
-                        1 draft waiting
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <MotionToggle
-                      on
-                      disabled={saving}
-                      size="sm"
-                      label="Pause AI on this chat"
-                      onToggle={() =>
-                        patchLead({ aiPaused: true }).catch(() => undefined)
-                      }
-                    />
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() =>
-                        patchLead({ aiPaused: true }).catch(() => undefined)
-                      }
-                      className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#e4dcd0] hover:border-[#c4a35a]/55 hover:text-[#dcc084]"
-                    >
-                      Take over
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#c99a4b]" />
-                    <span className="text-[12.5px] font-semibold text-[#d9ac63]">Paused</span>
-                    <span className="hidden truncate text-[12.5px] text-[#6f6a65] sm:inline">
-                      this chat
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <MotionToggle
-                      on={false}
-                      disabled={saving}
-                      size="sm"
-                      label="Resume AI on this chat"
-                      onToggle={() =>
-                        patchLead({ aiPaused: false }).catch(() => undefined)
-                      }
-                    />
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() =>
-                        patchLead({ aiPaused: false }).catch(() => undefined)
-                      }
-                      className="shrink-0 rounded-lg border border-[#c4a35a]/35 bg-[#c4a35a]/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#dcc084] hover:bg-[#c4a35a]/18"
-                    >
-                      Resume
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="mx-auto mt-2.5 flex h-[40px] max-w-3xl items-center justify-between gap-2 rounded-[10px] border border-white/8 bg-[#111] py-0 pl-3 pr-1.5">
-              <div className="min-w-0">
-                <p className="text-[12.5px] font-semibold text-[#9a9590]">
-                  {aiEnvKill ? "CRM AI off" : "AI off"}
-                </p>
-                <p className="truncate text-[11px] text-[#6f6a65]">
-                  {aiEnvKill
-                    ? "Disabled by env kill switch"
-                    : "Enable just this lead to test"}
-                </p>
-              </div>
-              {!aiEnvKill && (
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() =>
-                    patchLead({ aiForceOn: true }).catch(() => undefined)
-                  }
-                  className="shrink-0 rounded-lg border border-[#c4a35a]/35 bg-[#c4a35a]/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#dcc084] hover:bg-[#c4a35a]/18"
-                >
-                  Enable AI
-                </button>
-              )}
-            </div>
-          )}
         </header>
 
         {/* Thread — only this scrolls */}
@@ -1569,26 +1506,30 @@ export function AdminPage() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.28, ease: easeOut }}
-                  className={`flex max-w-[78%] flex-col gap-1 ${
+                  className={`flex max-w-[76%] flex-col gap-1.5 sm:max-w-[66%] ${
                     outbound ? "ml-auto items-end" : "mr-auto items-start"
                   }`}
                 >
                   <div
-                    className={`px-3.5 py-2.5 text-[15px] leading-relaxed ${
+                    className={`px-[14px] py-[11px] text-[14px] leading-[1.5] sm:px-[15px] sm:py-3 ${
                       outbound
-                        ? "rounded-[16px_16px_5px_16px] border border-[#c4a35a]/28 bg-[#c4a35a]/16 text-[#f6efe2]"
-                        : "rounded-[16px_16px_16px_5px] border border-white/[0.06] bg-white/[0.07] text-[#f0eeea]"
+                        ? "rounded-[14px_14px_4px_14px] bg-[#242424] text-[#f5f5f5]"
+                        : "rounded-[14px_14px_14px_4px] bg-[#1c1c1c] text-[#e6e2dd]"
                     }`}
                   >
                     <p className="whitespace-pre-wrap">{m.body}</p>
                   </div>
-                  <p
-                    className={`flex gap-1.5 px-1 text-[10.5px] text-[#5e5a56] ${
-                      outbound ? "justify-end" : ""
-                    }`}
-                  >
-                    <span>{time}</span>
-                    {by && <span className="text-[#8a7c5f]">{by}</span>}
+                  <p className="crm-mono flex items-center gap-1.5 px-1 text-[9.5px] text-[#6f6a65]">
+                    {outbound && m.meta?.ai_generated ? (
+                      <span className="h-[5px] w-[5px] rounded-full bg-[#4ea882]" />
+                    ) : null}
+                    <span>
+                      {outbound && m.meta?.ai_generated
+                        ? `Sent by AI · ${time} · delivered`
+                        : outbound
+                          ? `${by || "You"} · ${time}`
+                          : `${firstName} · ${time}`}
+                    </span>
                   </p>
                 </motion.div>
               );
@@ -1598,6 +1539,10 @@ export function AdminPage() {
             <DraftCard
               draft={pendingDraft}
               busy={saving}
+              stepIndex={
+                (selected.playbook_steps ?? []).findIndex((s) => s.status === "current") + 1 ||
+                undefined
+              }
               onApprove={(body) =>
                 void patchLead({
                   draftAction: "approve",
@@ -1624,8 +1569,8 @@ export function AdminPage() {
         </div>
 
         {/* Composer */}
-        <div className="shrink-0 border-t border-white/8 bg-[#0c0c0c] px-3.5 pb-[max(0.85rem,env(safe-area-inset-bottom))] pt-2.5">
-          <div className="mx-auto flex max-w-3xl items-end gap-2.5">
+        <div className="shrink-0 border-t border-white/8 bg-[#0c0c0c] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          <div className="mx-auto flex max-w-3xl items-center gap-3">
             <input
               value={smsDraft}
               onChange={(e) => setSmsDraft(e.target.value)}
@@ -1635,16 +1580,17 @@ export function AdminPage() {
                   sendSmsReply().catch(() => undefined);
                 }
               }}
-              placeholder={`Message ${firstName}…`}
-              className="h-11 min-w-0 flex-1 rounded-[22px] border border-white/10 bg-[#1a1a1a] px-4 text-base text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+              placeholder={`Write to ${firstName} yourself…`}
+              className="h-[42px] min-w-0 flex-1 rounded-[22px] border border-white/10 bg-[#141414] px-4 text-[13.5px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
             />
             <button
               type="button"
               disabled={smsSending || !smsDraft.trim()}
               onClick={() => sendSmsReply().catch(() => undefined)}
-              className="h-11 shrink-0 rounded-[22px] bg-[#c4a35a] px-5 text-sm font-bold text-[#14100a] hover:bg-[#dcc084] disabled:opacity-40"
+              className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full bg-[#c4a35a] text-[15px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] disabled:opacity-40"
+              aria-label="Send"
             >
-              Send
+              ↑
             </button>
           </div>
         </div>
@@ -1683,7 +1629,7 @@ export function AdminPage() {
                 >
                   <div className="mx-auto mb-3 h-1 w-[38px] rounded-full bg-white/18" />
                   <div className="mb-2 flex items-baseline justify-between">
-                    <h2 className="text-[17px] font-semibold">Details</h2>
+                    <h2 className="text-[17px] font-semibold">{selected.name || "Details"}</h2>
                     <button
                       type="button"
                       onClick={closeDetailsSheet}
@@ -1691,6 +1637,26 @@ export function AdminPage() {
                     >
                       Done
                     </button>
+                  </div>
+                  <p className="crm-mono text-[11px] text-[#6f6a65]">
+                    {[cityFromAddress(selected.address), OFFER_PATH_LABEL[selected.offer_path]]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    <span className="rounded-md border border-[rgba(196,163,90,0.45)] px-2.5 py-1 text-[11px] font-bold text-[#c4a35a]">
+                      {STATUS_LABEL[selected.status]}
+                    </span>
+                    {aiLiveHere ? (
+                      <span className="rounded-md border border-[rgba(78,168,130,0.45)] px-2.5 py-1 text-[11px] font-bold text-[#4ea882]">
+                        AI live
+                      </span>
+                    ) : null}
+                    {pendingDraft ? (
+                      <span className="rounded-md border border-[rgba(201,154,75,0.45)] px-2.5 py-1 text-[11px] font-bold text-[#c99a4b]">
+                        1 draft waiting
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
@@ -1881,17 +1847,17 @@ export function AdminPage() {
                   })}
                 </div>
 
-                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+                <p className="crm-mono mb-2.5 text-[10px] uppercase tracking-[0.12em] text-[#6f6a65]">
                   How AI sends
                 </p>
-                <div className="mb-5 flex gap-0.5 rounded-[10px] border border-white/9 bg-[#141414] p-0.5">
+                <div className="mb-2.5 flex gap-0.5 rounded-[9px] border border-white/9 bg-[#141414] p-[3px]">
                   <button
                     type="button"
                     disabled={saving}
                     onClick={() => void patchLead({ aiSendMode: "autopilot" })}
-                    className={`flex-1 rounded-lg py-2.5 text-[13.5px] font-semibold ${
+                    className={`flex-1 rounded-[7px] py-2.5 text-[12.5px] font-semibold ${
                       (selected.ai_send_mode || "autopilot") === "autopilot"
-                        ? "border border-[rgba(78,168,130,0.5)] bg-[rgba(78,168,130,0.16)] text-[#4ea882]"
+                        ? "border border-[rgba(78,168,130,0.5)] bg-[rgba(78,168,130,0.16)] font-bold text-[#4ea882]"
                         : "text-[#9a9590]"
                     }`}
                   >
@@ -1901,24 +1867,27 @@ export function AdminPage() {
                     type="button"
                     disabled={saving}
                     onClick={() => void patchLead({ aiSendMode: "draft" })}
-                    className={`flex-1 rounded-lg py-2.5 text-[13.5px] font-semibold ${
+                    className={`flex-1 rounded-[7px] py-2.5 text-[12.5px] font-semibold ${
                       selected.ai_send_mode === "draft"
-                        ? "border border-[rgba(201,154,75,0.55)] bg-[rgba(201,154,75,0.16)] text-[#c99a4b]"
+                        ? "border border-[rgba(201,154,75,0.55)] bg-[rgba(201,154,75,0.16)] font-bold text-[#c99a4b]"
                         : "text-[#9a9590]"
                     }`}
                   >
                     Draft for review
                   </button>
                 </div>
-                <p className="mb-5 text-[12.5px] leading-relaxed text-[#9a9590]">
+                <p className="mb-5 text-[12px] leading-relaxed text-[#9a9590]">
                   {selected.ai_send_mode === "draft"
-                    ? "Draft for review waits for your OK — nothing reaches them until you approve."
-                    : "Autopilot sends immediately."}
+                    ? "Draft waits for your OK before anything sends."
+                    : "Autopilot sends AI replies immediately, no review."}
                 </p>
                 <PlaybookBlock
                   steps={selected.playbook_steps ?? []}
                   busy={saving}
+                  hostFirstName={firstName}
+                  draftMode={selected.ai_send_mode === "draft"}
                   onComplete={() => void patchLead({ playbookAction: "complete" })}
+                  onSkip={() => void patchLead({ playbookAction: "skip" })}
                 />
                 <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
                   Internal note
@@ -2011,14 +1980,36 @@ export function AdminPage() {
     setFilterStage("all");
     setFilterAi("all");
     setFilterBookedWeek(false);
+    setInboxChip("all");
     setSearch("");
     setSortBy("inbox");
   };
 
   const contactsList = (
     <>
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
-        All leads · {filteredLeads.length}
+      <div className="mb-2.5 flex gap-2">
+        <button
+          type="button"
+          onClick={() => setInboxChip("all")}
+          className={`rounded-[7px] border px-3 py-1.5 text-[11.5px] ${
+            inboxChip === "all"
+              ? "border-[rgba(201,154,75,0.55)] bg-[rgba(201,154,75,0.16)] font-bold text-[#c99a4b]"
+              : "border-white/12 text-[#9a9590]"
+          }`}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          onClick={() => setInboxChip("review")}
+          className={`rounded-[7px] border px-3 py-1.5 text-[11.5px] ${
+            inboxChip === "review"
+              ? "border-[rgba(201,154,75,0.55)] bg-[rgba(201,154,75,0.16)] font-bold text-[#c99a4b]"
+              : "border-white/12 text-[#9a9590]"
+          }`}
+        >
+          Needs review{draftLeads.length ? ` ${draftLeads.length}` : ""}
+        </button>
       </div>
       <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#111]">
         {filteredLeads.length === 0 ? (
@@ -2049,25 +2040,26 @@ export function AdminPage() {
           </div>
         ) : (
           filteredLeads.map((lead, i) => {
-            const subtitle =
-              lead.whats_next?.trim() ||
-              (lead.last_sms
-                ? `${lead.last_sms.direction === "inbound" ? "" : ""}${previewSms(lead.last_sms.body, 64)}`
-                : STATUS_JOURNEY[lead.status]);
-            const meta = [
-              OFFER_PATH_LABEL[lead.offer_path],
-              STATUS_LABEL[lead.status],
-              lead.address || null,
-            ]
-              .filter(Boolean)
-              .join(" · ");
+            const draft = lead.pending_draft;
+            const subtitle = draft
+              ? `AI wants to send: “${previewSms(draft.body, 42)}”`
+              : lead.last_sms?.meta?.ai_generated
+                ? `AI sent: “${previewSms(lead.last_sms.body, 42)}”`
+                : lead.whats_next?.trim() ||
+                  (lead.last_sms
+                    ? previewSms(lead.last_sms.body, 64)
+                    : STATUS_JOURNEY[lead.status]);
             return (
               <motion.div
                 key={lead.id}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.22, delay: Math.min(i * 0.03, 0.24), ease: easeOut }}
-                className="flex items-center gap-2.5 border-b border-white/[0.06] px-3 py-3 last:border-b-0 hover:bg-[#161616]"
+                className={`flex items-start gap-2.5 border-b border-white/[0.07] px-4 py-3.5 last:border-b-0 hover:bg-[#161616] ${
+                  draft
+                    ? "border-l-2 border-l-[#c99a4b] bg-[rgba(201,154,75,0.07)]"
+                    : ""
+                }`}
               >
                 <button
                   type="button"
@@ -2076,39 +2068,36 @@ export function AdminPage() {
                     e.preventDefault();
                     setActionLeadId(lead.id);
                   }}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                  className="flex min-w-0 flex-1 items-start gap-3 text-left"
                 >
-                  {lead.unread ? (
-                    <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-[#c4a35a]" />
-                  ) : (
-                    <span className="h-[7px] w-[7px] shrink-0" />
-                  )}
+                  <span
+                    className={`mt-0.5 flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border text-[11.5px] font-bold ${
+                      draft
+                        ? "border-[rgba(196,163,90,0.4)] text-[#c4a35a]"
+                        : "border-white/14 text-[#9a9590]"
+                    }`}
+                  >
+                    {initials(lead.name || "?")}
+                  </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p
-                        className={`truncate text-[15px] leading-snug ${
-                          lead.unread
-                            ? "font-bold text-white"
-                            : "font-medium text-[#e8e4de]"
-                        }`}
-                      >
+                    <div className="flex items-center gap-2">
+                      {lead.unread && !draft ? (
+                        <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-[#c4a35a]" />
+                      ) : null}
+                      <p className="truncate text-[14px] font-semibold leading-snug text-[#f5f5f5]">
                         {lead.name || "Unnamed"}
                       </p>
-                      <span className="shrink-0 text-[11.5px] text-[#5e5a56]">
-                        {leadActivityTime(lead)}
-                      </span>
+                      {draft ? (
+                        <span className="crm-mono shrink-0 rounded border border-[rgba(201,154,75,0.5)] px-1.5 py-0.5 text-[8.5px] uppercase tracking-[0.1em] text-[#c99a4b]">
+                          Draft
+                        </span>
+                      ) : null}
                     </div>
-                    <p className="truncate text-[13.5px] leading-snug text-[#9a9590]">{subtitle}</p>
-                    <p
-                      className={`truncate text-[11.5px] ${
-                        lead.status === "nurturing"
-                          ? "text-[#8eb4d4]"
-                          : "text-[#6f6a65]"
-                      }`}
-                    >
-                      {meta}
-                    </p>
+                    <p className="mt-1 truncate text-[12.5px] leading-snug text-[#9a9590]">{subtitle}</p>
                   </div>
+                  <span className="crm-mono mt-0.5 shrink-0 text-[9.5px] text-[#6f6a65]">
+                    {leadActivityTime(draft ? { ...lead, last_activity_at: draft.created_at } : lead)}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -2209,6 +2198,18 @@ export function AdminPage() {
             />
           </div>
           <div className="flex items-center gap-2">
+            {tab === "contacts" && draftLeads.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setInboxChip("review");
+                  setTab("contacts");
+                }}
+                className="hidden rounded-[7px] border border-[rgba(201,154,75,0.5)] px-3 py-1.5 text-[12px] font-bold text-[#c99a4b] sm:inline"
+              >
+                {draftLeads.length} drafts to review
+              </button>
+            ) : null}
             {tab === "contacts" && (
               <div
                 className={`flex h-[26px] items-center gap-1.5 rounded-lg border px-2.5 ${

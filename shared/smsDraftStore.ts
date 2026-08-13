@@ -31,6 +31,23 @@ function db() {
   return sb;
 }
 
+export async function listPendingDrafts(): Promise<SmsDraft[]> {
+  try {
+    const { data, error } = await db()
+      .from("sms_drafts")
+      .select("*")
+      .eq("status", "pending")
+      .order("updated_at", { ascending: false });
+    if (error) {
+      if (/sms_drafts|relation/i.test(error.message || "")) return [];
+      throw error;
+    }
+    return (data ?? []).map((row) => mapDraft(row as Record<string, unknown>));
+  } catch {
+    return [];
+  }
+}
+
 export async function getPendingDraft(leadId: string): Promise<SmsDraft | null> {
   const { data, error } = await db()
     .from("sms_drafts")

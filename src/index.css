@@ -4,6 +4,7 @@
   --font-display: "DM Sans", system-ui, sans-serif;
   --font-sans: "DM Sans", system-ui, sans-serif;
   --font-crm: "Manrope", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-crm-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --color-mrg-bg: #0a0a0a;
   --color-mrg-surface: #141414;
   --color-mrg-surface-elevated: #1c1c1c;
@@ -48,6 +49,10 @@ body {
 
 .font-display {
   font-family: var(--font-display);
+}
+
+.crm-mono {
+  font-family: var(--font-crm-mono);
 }
 
 .crm-shell {

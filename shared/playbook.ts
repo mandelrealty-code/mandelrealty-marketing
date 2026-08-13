@@ -1,7 +1,9 @@
 import type { LeadRow } from "./leadStore.js";
 import type { PlaybookStep } from "./playbookTypes.js";
+import { ownerForStepTitle } from "./playbookTypes.js";
 
-export type { PlaybookStep, PlaybookStepStatus } from "./playbookTypes.js";
+export type { PlaybookStep, PlaybookStepStatus, PlaybookOwner } from "./playbookTypes.js";
+export { ownerForStepTitle } from "./playbookTypes.js";
 
 function stepId(title: string): string {
   return title
@@ -27,6 +29,7 @@ export function normalizePlaybook(raw: unknown): PlaybookStep[] {
       id: typeof r.id === "string" && r.id ? r.id : stepId(title),
       title,
       status,
+      owner: r.owner === "mrg" || r.owner === "host" ? r.owner : ownerForStepTitle(title),
     });
   }
   return out;
@@ -47,7 +50,7 @@ function titlesForLead(lead: Pick<LeadRow, "permit_status" | "str_allowed" | "ca
   const str = (lead.str_allowed || "").toLowerCase();
   if (str !== "yes") titles.push("Confirm building allows STR");
   if (!lead.call_start_iso) titles.push("Book intro call");
-  titles.push("Ready for management agreement");
+  titles.push("Send portal contract");
   return [...new Set(titles)];
 }
 
@@ -59,6 +62,7 @@ export function seedPlaybook(
     id: stepId(title),
     title,
     status: i === 0 ? "current" : "pending",
+    owner: ownerForStepTitle(title),
   }));
 }
 

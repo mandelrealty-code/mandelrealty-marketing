@@ -16,12 +16,20 @@ export type SmsPreview = {
   meta?: Record<string, unknown>;
 };
 
+export type PendingDraftPreview = {
+  id: string;
+  created_at: string;
+  body: string;
+  step_title: string;
+};
+
 export type LeadInboxRow = LeadRow & {
   sms_last_read_at: string | null;
   last_sms: SmsPreview | null;
   unread: boolean;
   needs_you: NeedsYouReason[];
   last_activity_at: string;
+  pending_draft: PendingDraftPreview | null;
 };
 
 const HIGH_INTENT_RE =
@@ -142,21 +150,49 @@ export function enrichLeadInbox(
     unread,
     needs_you,
     last_activity_at,
+    pending_draft: null,
   };
 }
 
 export async function listLeadsInbox(limit = 200, q?: string): Promise<LeadInboxRow[]> {
   const { listLeads } = await import("./leadStore.js");
+  const { listPendingDrafts } = await import("./smsDraftStore.js");
   const leads = await listLeads(limit, q);
   const aiGlobalOn = await isGlobalAiEnabled();
-  const latest = await fetchLatestSmsByLeadIds(leads.map((l) => l.id));
+  const [latest, drafts] = await Promise.all([
+    fetchLatestSmsByLeadIds(leads.map((l) => l.id)),
+    listPendingDrafts().catch(() => []),
+  ]);
+  const draftByLead = new Map(drafts.map((d) => [d.lead_id, d]));
 
   const enriched = leads.map((lead) => {
     const withRead = lead as LeadRow & { sms_last_read_at?: string | null };
-    return enrichLeadInbox(withRead, latest.get(lead.id) ?? null, aiGlobalOn);
+    const row = enrichLeadInbox(withRead, latest.get(lead.id) ?? null, aiGlobalOn);
+    const draft = draftByLead.get(lead.id);
+    if (!draft) return row;
+    const pending_draft = {
+      id: draft.id,
+      created_at: draft.created_at,
+      body: draft.body,
+      step_title: draft.step_title,
+    };
+    return {
+      ...row,
+      pending_draft,
+      needs_you: row.needs_you.includes("draft_review")
+        ? row.needs_you
+        : (["draft_review", ...row.needs_you] as NeedsYouReason[]),
+      last_activity_at:
+        new Date(draft.created_at).getTime() > new Date(row.last_activity_at).getTime()
+          ? draft.created_at
+          : row.last_activity_at,
+    };
   });
 
   enriched.sort((a, b) => {
+    const aDraft = a.pending_draft ? 1 : 0;
+    const bDraft = b.pending_draft ? 1 : 0;
+    if (aDraft !== bDraft) return bDraft - aDraft;
     const aNeed = a.needs_you.length > 0 ? 1 : 0;
     const bNeed = b.needs_you.length > 0 ? 1 : 0;
     if (aNeed !== bNeed) return bNeed - aNeed;

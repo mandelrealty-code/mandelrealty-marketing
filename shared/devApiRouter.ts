@@ -654,7 +654,12 @@ export async function handleDevApi(
       } else if (body.aiSendMode === "autopilot" || body.ai_send_mode === "autopilot") {
         patch.aiSendMode = "autopilot";
       }
-      if (body.playbookAction === "complete" || body.playbook_action === "complete") {
+      if (
+        body.playbookAction === "complete" ||
+        body.playbook_action === "complete" ||
+        body.playbookAction === "skip" ||
+        body.playbook_action === "skip"
+      ) {
         const { getLeadById } = await import("./leadStore.js");
         const { advancePlaybook, ensurePlaybook } = await import("./playbook.js");
         const lead = await getLeadById(id);

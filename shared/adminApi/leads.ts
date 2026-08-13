@@ -289,7 +289,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, pending_draft });
     }
 
-    if (body.playbookAction === "complete" || body.playbook_action === "complete") {
+    if (
+      body.playbookAction === "complete" ||
+      body.playbook_action === "complete" ||
+      body.playbookAction === "skip" ||
+      body.playbook_action === "skip"
+    ) {
       const { getLeadById } = await import("../leadStore.js");
       const lead = await getLeadById(id);
       if (!lead) return res.status(404).json({ error: "Lead not found." });
