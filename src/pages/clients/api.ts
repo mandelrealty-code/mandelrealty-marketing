@@ -156,6 +156,16 @@ export async function pmGet<T extends Record<string, unknown>>(
   return data as T;
 }
 
+/** Open this client’s host portal as they would see it (admin preview token). */
+export async function openHostPortalPreview(clientId: string): Promise<void> {
+  const data = await pmGet<{ slug: string; preview_token: string }>("portal_preview", {
+    client_id: clientId,
+  });
+  const url = `${window.location.origin}/owner/${encodeURIComponent(data.slug)}?preview=${encodeURIComponent(data.preview_token)}`;
+  const w = window.open(url, "_blank", "noopener,noreferrer");
+  if (!w) throw new Error("Allow pop-ups to preview the host portal.");
+}
+
 export async function pmPost<T extends Record<string, unknown>>(
   resource: string,
   body: Record<string, unknown>,

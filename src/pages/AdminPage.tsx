@@ -1894,6 +1894,22 @@ export function AdminPage() {
                     ? "Draft waits for your OK before anything sends."
                     : "Autopilot sends AI replies immediately, no review."}
                 </p>
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+                  Tell the AI
+                </p>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  onBlur={() => {
+                    if (notes !== (selected.notes || "")) patchLead({ notes });
+                  }}
+                  rows={4}
+                  placeholder="Old lead we spoke about Muskoka only — not full management. Remind them we already talked and pick up from there…"
+                  className="mb-2 w-full rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+                />
+                <p className="mb-5 text-[12px] leading-relaxed text-[#9a9590]">
+                  Paste what you remember. AI uses this on the next SMS — not a to-do list.
+                </p>
                 <PlaybookBlock
                   steps={selected.playbook_steps ?? []}
                   busy={saving}
@@ -1904,7 +1920,7 @@ export function AdminPage() {
                   onChange={(playbookSteps) => void patchLead({ playbookSteps })}
                 />
                 <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
-                  Internal note
+                  Team next
                 </p>
                 <textarea
                   value={whatsNext}
@@ -1931,20 +1947,7 @@ export function AdminPage() {
                   }}
                   rows={4}
                   placeholder="Claude fills this after a CRM call — conversation summary…"
-                  className="mb-3 w-full rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
-                />
-                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
-                  Other notes
-                </p>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  onBlur={() => {
-                    if (notes !== (selected.notes || "")) patchLead({ notes });
-                  }}
-                  rows={3}
-                  placeholder="General notes (imports, manual)…"
-                  className="mb-5 w-full rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-sm leading-relaxed text-[#9a9590] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+                  className="mb-5 w-full rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
                 />
                 {saveMsg && (
                   <p className="mb-3 text-xs text-[#9a9590]">{saveMsg}</p>
@@ -2429,6 +2432,22 @@ export function AdminPage() {
       </div>
 
       <div className="border-b border-white/8 px-5 py-4">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+          Tell the AI
+        </p>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={() => {
+            if (notes !== (selected.notes || "")) patchLead({ notes });
+          }}
+          rows={4}
+          placeholder="Old lead — we spoke about Muskoka only. Remind them and pick up from there…"
+          className="mb-2 w-full rounded-[12px] border border-white/8 bg-[#1a1a1a] px-3 py-2.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+        />
+        <p className="mb-4 text-[12px] leading-relaxed text-[#9a9590]">
+          Paste what you remember. AI uses this on the next SMS.
+        </p>
         <PlaybookBlock
           steps={selected.playbook_steps ?? []}
           busy={saving}
@@ -2484,7 +2503,7 @@ export function AdminPage() {
 
       <div className="px-5 py-4">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
-          Internal note
+          Team next
         </p>
         <textarea
           value={whatsNext}
@@ -2508,19 +2527,6 @@ export function AdminPage() {
           rows={4}
           placeholder="Conversation summary…"
           className="mb-4 w-full rounded-[12px] border border-white/8 bg-[#1a1a1a] px-3 py-2.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
-        />
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
-          Other notes
-        </p>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          onBlur={() => {
-            if (notes !== (selected.notes || "")) patchLead({ notes });
-          }}
-          rows={3}
-          placeholder="General notes…"
-          className="mb-4 w-full rounded-[12px] border border-white/8 bg-[#1a1a1a] px-3 py-2.5 text-sm leading-relaxed text-[#9a9590] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
         />
         {saveMsg ? <p className="mb-3 text-xs text-[#9a9590]">{saveMsg}</p> : null}
         <div className="flex flex-col gap-2">

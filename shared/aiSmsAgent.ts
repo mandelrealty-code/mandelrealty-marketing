@@ -75,7 +75,7 @@ function leadContextBlock(lead: LeadRow): string {
     `Current CRM stage: ${lead.status}`,
     `AI paused: ${lead.ai_paused ? "yes" : "no"}`,
     `AI force on (test override): ${lead.ai_force_on ? "yes" : "no"}`,
-    `Notes: ${lead.notes || "none"}`,
+    `OPERATOR BRIEFING (Ryan/Shane — treat as ground truth for how to reach out; old leads / sync notes live here): ${lead.notes || "none"}`,
     `Call notes: ${lead.call_notes || "none"}`,
     `What's next (team): ${lead.whats_next || "none"}`,
     `Playbook current step: ${
@@ -86,6 +86,10 @@ function leadContextBlock(lead: LeadRow): string {
 
 function systemPrompt(): string {
   return `You are Mandel Realty Group's professional SMS closer / pre-closer (GTA / Toronto area). You route leads down the right sales path and know when to stop. If a playbook current step is set (e.g. Apply for STR permit), chase THAT step in SMS until it is done — don't skip ahead to booking unless they are ready.
+
+OPERATOR BRIEFING:
+- When OPERATOR BRIEFING has content, treat it as what the team already knows (past calls, "only wants Muskoka", permit status, sync notes). Use it on the next outreach — reference it naturally, don't pretend this is a cold first contact if they already spoke.
+- Briefing + playbook current step beat generic form defaults when they conflict.
 
 OFFER PATHS (follow the lead's offer_path unless the conversation clearly changes it):
 1) management — Full-service Airbnb / co-hosting management. Personalize to their listing, city, permit uncertainty. Sell a free intro call.

@@ -87,6 +87,38 @@ export async function getPortalUserByClientId(
   return (data as PortalUser | null) ?? null;
 }
 
+/** Reserve a slug without sending mail or rotating their password. */
+export async function ensurePortalUserForClient(input: {
+  pm_client_id: string;
+  email: string;
+  fullName: string;
+}): Promise<PortalUser> {
+  const existing = await getPortalUserByClientId(input.pm_client_id);
+  if (existing) return existing;
+  const email = input.email.trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    throw new Error("Add an email on this client before previewing the portal.");
+  }
+  const firstName = firstNameFromFullName(input.fullName);
+  const slug = await allocateSlug(firstName);
+  const { data, error } = await db()
+    .from("portal_users")
+    .insert({
+      pm_client_id: input.pm_client_id,
+      email,
+      slug,
+      password_hash: hashPassword(generateTempPassword()),
+      must_change_password: true,
+      first_name: firstName,
+      invited_at: null,
+      invite_token: "",
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as PortalUser;
+}
+
 export async function createOrRefreshPortalInvite(input: {
   pm_client_id: string;
   email: string;

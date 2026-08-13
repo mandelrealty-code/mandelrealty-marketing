@@ -4,7 +4,7 @@ import type {
   OwnerSparkPoint,
 } from "../../../shared/pm/ownerDashboardTypes";
 import { AskMrgPanel } from "./AskMrgPanel";
-import { moneyCad, MrgMark } from "./OwnerChrome";
+import { moneyCad, MrgMark, PreviewBanner } from "./OwnerChrome";
 
 function stayRange(checkIn: string, checkOut: string): string {
   const fmt = (iso: string) => {
@@ -101,6 +101,7 @@ export function OwnerDashboard({
   signedOn,
   dashboard,
   awaiting,
+  preview,
   onDocuments,
   onSign,
 }: {
@@ -111,6 +112,7 @@ export function OwnerDashboard({
   signedOn?: string | null;
   dashboard: OwnerDashboardPayload | null;
   awaiting: boolean;
+  preview?: boolean;
   onDocuments: () => void;
   onSign: () => void;
 }) {
@@ -119,7 +121,9 @@ export function OwnerDashboard({
   const setup = dashboard?.setup ?? [];
 
   return (
-    <div className="flex min-h-screen bg-[#0a0a0a] text-[#f5f5f5]">
+    <div className="flex min-h-screen flex-col bg-[#0a0a0a] text-[#f5f5f5]">
+      {preview ? <PreviewBanner /> : null}
+      <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
       <header className="flex items-center justify-between border-b border-white/9 bg-[#0c0c0c] px-5 py-4 lg:px-9">
         <div className="flex items-center gap-8">
@@ -345,7 +349,8 @@ export function OwnerDashboard({
         </div>
       )}
       </div>
-      <AskMrgPanel propertyLabel={propertyLabel} dashboard={dashboard} />
+      <AskMrgPanel propertyLabel={propertyLabel} dashboard={dashboard} preview={preview} />
+      </div>
     </div>
   );
 }

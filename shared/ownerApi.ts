@@ -5,6 +5,7 @@ import {
   createOwnerSessionToken,
   getOwnerSessionFromRequest,
   ownerSessionCookie,
+  verifyOwnerPreviewToken,
   verifyOwnerSessionToken,
   verifyPassword,
 } from "./portalAuth.js";
@@ -52,7 +53,26 @@ function opOf(req: VercelRequest, body: Record<string, unknown>): string {
   return "";
 }
 
-async function requireOwner(req: VercelRequest, res: VercelResponse) {
+function previewFromReq(req: VercelRequest, body: Record<string, unknown> = {}): string {
+  const q = str(req.query.preview);
+  if (q) return q;
+  return str(body.preview);
+}
+
+async function requireOwner(
+  req: VercelRequest,
+  res: VercelResponse,
+  opts?: { allowPreview?: boolean; body?: Record<string, unknown> },
+) {
+  const preview = verifyOwnerPreviewToken(previewFromReq(req, opts?.body));
+  if (preview && opts?.allowPreview) {
+    const user = await getPortalUserBySlug(preview.slug);
+    if (!user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return null;
+    }
+    return user;
+  }
   const token = getOwnerSessionFromRequest(req.headers.cookie);
   const session = verifyOwnerSessionToken(token);
   if (!session) {
@@ -132,8 +152,10 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
 
         const token = getOwnerSessionFromRequest(req.headers.cookie);
         const session = verifyOwnerSessionToken(token);
+        const preview = verifyOwnerPreviewToken(str(req.query.preview));
+        const previewOk = Boolean(preview && preview.slug === payload.user.slug);
         const authed =
-          session && session.userId === payload.user.id
+          previewOk || (session && session.userId === payload.user.id)
             ? payload.user
             : null;
 
@@ -142,20 +164,23 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
           session: authed
             ? {
                 authenticated: true,
-                must_change_password: payload.user.must_change_password,
+                preview: previewOk,
+                must_change_password: previewOk
+                  ? false
+                  : payload.user.must_change_password,
               }
-            : { authenticated: false, must_change_password: false },
+            : { authenticated: false, preview: false, must_change_password: false },
         });
       }
 
       if (op === "me") {
-        const user = await requireOwner(req, res);
+        const user = await requireOwner(req, res, { allowPreview: true });
         if (!user) return;
         return res.status(200).json({ user: publicPortalUser(user) });
       }
 
       if (op === "contract_url") {
-        const user = await requireOwner(req, res);
+        const user = await requireOwner(req, res, { allowPreview: true });
         if (!user) return;
         const id = str(req.query.id);
         if (!id) return res.status(400).json({ error: "id required." });
@@ -169,7 +194,7 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
       }
 
       if (op === "ask_history") {
-        const user = await requireOwner(req, res);
+        const user = await requireOwner(req, res, { allowPreview: true });
         if (!user) return;
         const { listAskMessages, isAskTableMissing } = await import("./pm/askMrgStore.js");
         try {
@@ -230,6 +255,9 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
     }
 
     if (op === "set_password") {
+      if (verifyOwnerPreviewToken(previewFromReq(req, body))) {
+        return res.status(403).json({ error: "Preview only — password is off." });
+      }
       const user = await requireOwner(req, res);
       if (!user) return;
       const password = typeof body.password === "string" ? body.password : "";
@@ -242,6 +270,9 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
     }
 
     if (op === "sign") {
+      if (verifyOwnerPreviewToken(previewFromReq(req, body))) {
+        return res.status(403).json({ error: "Preview only — signing is off." });
+      }
       const user = await requireOwner(req, res);
       if (!user) return;
       if (user.must_change_password) {
@@ -327,6 +358,9 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
     }
 
     if (op === "ask") {
+      if (verifyOwnerPreviewToken(previewFromReq(req, body))) {
+        return res.status(403).json({ error: "Preview only — Ask MRG sending is off." });
+      }
       const user = await requireOwner(req, res);
       if (!user) return;
       if (user.must_change_password) {

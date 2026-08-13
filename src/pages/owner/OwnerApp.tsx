@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { InPdfSigner } from "./InPdfSigner";
-import { MrgMark } from "./OwnerChrome";
+import { MrgMark, PreviewBanner } from "./OwnerChrome";
 import { OwnerDashboard } from "./OwnerDashboard";
 import type { OwnerDashboardPayload } from "../../../shared/pm/ownerDashboardTypes";
 import type { SignField } from "../../../shared/pm/signFields";
@@ -37,10 +37,14 @@ type Bootstrap = {
     signature_name: string;
   }>;
   dashboard: OwnerDashboardPayload | null;
-  session: { authenticated: boolean; must_change_password: boolean };
+  session: { authenticated: boolean; must_change_password: boolean; preview?: boolean };
 };
 
 type Screen = "login" | "password" | "contract" | "dashboard" | "documents";
+
+function previewTokenFromUrl(): string {
+  return new URLSearchParams(window.location.search).get("preview")?.trim() || "";
+}
 
 async function ownerApi<T>(
   op: string,
@@ -49,6 +53,8 @@ async function ownerApi<T>(
   const method = opts?.method ?? "GET";
   const params = new URLSearchParams({ op });
   if (opts?.slug) params.set("slug", opts.slug);
+  const preview = previewTokenFromUrl();
+  if (preview) params.set("preview", preview);
   const res = await fetch(`/api/owner?${params.toString()}`, {
     method,
     credentials: "include",
@@ -115,6 +121,8 @@ export function OwnerApp() {
   );
   const slug = pathInfo?.slug ?? "";
   const initialRest = pathInfo?.rest ?? "";
+  const previewToken = useMemo(() => previewTokenFromUrl(), []);
+  const isPreview = Boolean(previewToken);
 
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [screen, setScreen] = useState<Screen>("login");
@@ -137,8 +145,9 @@ export function OwnerApp() {
     };
     const pathRest = rest ?? map[next];
     const url = pathRest ? `/owner/${slug}/${pathRest}` : `/owner/${slug}`;
-    window.history.replaceState({}, "", url);
-  }, [slug]);
+    const qs = previewToken ? `?preview=${encodeURIComponent(previewToken)}` : "";
+    window.history.replaceState({}, "", `${url}${qs}`);
+  }, [slug, previewToken]);
 
   const refresh = useCallback(async () => {
     const data = await ownerApi<Bootstrap>("bootstrap", { slug });
@@ -147,6 +156,10 @@ export function OwnerApp() {
 
     if (!data.session.authenticated) {
       setScreen("login");
+      return data;
+    }
+    if (data.session.preview) {
+      setScreen(initialRest === "documents" ? "documents" : "dashboard");
       return data;
     }
     if (data.user.must_change_password) {
@@ -182,10 +195,14 @@ export function OwnerApp() {
       .catch(() => null);
     void (async () => {
       try {
-        const res = await fetch(
-          `/api/owner?op=contract_url&id=${encodeURIComponent(boot.awaiting_contract!.id)}`,
-          { credentials: "include" },
-        );
+        const params = new URLSearchParams({
+          op: "contract_url",
+          id: boot.awaiting_contract!.id,
+        });
+        if (previewToken) params.set("preview", previewToken);
+        const res = await fetch(`/api/owner?${params.toString()}`, {
+          credentials: "include",
+        });
         const data = (await res.json()) as { url?: string; error?: string };
         if (res.ok && data.url) setPdfUrl(data.url);
       } catch {
@@ -302,7 +319,9 @@ export function OwnerApp() {
 
   const openDoc = async (id: string) => {
     try {
-      const res = await fetch(`/api/owner?op=contract_url&id=${encodeURIComponent(id)}`, {
+      const params = new URLSearchParams({ op: "contract_url", id });
+      if (previewToken) params.set("preview", previewToken);
+      const res = await fetch(`/api/owner?${params.toString()}`, {
         credentials: "include",
       });
       const data = (await res.json()) as { url?: string; error?: string };
@@ -446,6 +465,7 @@ export function OwnerApp() {
   if (screen === "contract" && boot?.awaiting_contract) {
     return (
       <div className="flex min-h-screen flex-col bg-[#0a0a0a] text-[#f5f5f5]">
+        {isPreview ? <PreviewBanner /> : null}
         <header className="flex items-center justify-between border-b border-white/9 bg-[#0c0c0c] px-5 py-4 lg:px-10">
           <div className="flex items-center gap-6">
             <MrgMark />
@@ -464,7 +484,11 @@ export function OwnerApp() {
                 signerHint={boot.client?.name || firstName}
                 busy={busy}
                 error={error}
-                onFinish={sign}
+                onFinish={
+                  isPreview
+                    ? () => setError("Preview only — signing is off.")
+                    : sign
+                }
               />
             ) : (
               <div className="flex h-[40vh] items-center justify-center text-sm text-[#6f6a65]">
@@ -480,6 +504,7 @@ export function OwnerApp() {
   if (screen === "documents") {
     return (
       <div className="min-h-screen bg-[#0c0c0c] text-[#f5f5f5]">
+        {isPreview ? <PreviewBanner /> : null}
         <header className="flex items-center justify-between border-b border-white/9 px-5 py-4 lg:px-10">
           <MrgMark />
           <nav className="flex gap-5 text-sm">
@@ -564,6 +589,7 @@ export function OwnerApp() {
         signedOn={boot?.signed_contracts?.[0]?.signed_on}
         dashboard={boot?.dashboard ?? null}
         awaiting={Boolean(boot?.awaiting_contract)}
+        preview={isPreview}
         onDocuments={() => go("documents")}
         onSign={() => go("contract")}
       />

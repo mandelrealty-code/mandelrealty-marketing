@@ -102,6 +102,39 @@ export function clearOwnerSessionCookie(opts?: { secure?: boolean }): string {
     .join("; ");
 }
 
+/** Admin-only host-portal preview. Format: slug.exp.nonce.sig — 2 hours. */
+const PREVIEW_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+export function createOwnerPreviewToken(slug: string): string {
+  const clean = slug.trim().toLowerCase();
+  const exp = Date.now() + PREVIEW_MAX_AGE_MS;
+  const nonce = randomBytes(8).toString("base64url");
+  const payload = `${clean}.${exp}.${nonce}`;
+  return `${payload}.${sign(payload)}`;
+}
+
+export function verifyOwnerPreviewToken(
+  token: string | undefined | null,
+): { slug: string } | null {
+  if (!token || !sessionSecret()) return null;
+  const parts = token.split(".");
+  if (parts.length !== 4) return null;
+  const [slug, expStr, nonce, sig] = parts;
+  if (!slug || !expStr || !nonce || !sig) return null;
+  const payload = `${slug}.${expStr}.${nonce}`;
+  const expected = sign(payload);
+  try {
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  } catch {
+    return null;
+  }
+  const exp = Number(expStr);
+  if (!Number.isFinite(exp) || Date.now() > exp) return null;
+  return { slug };
+}
+
 export function cookieShouldBeSecure(req: {
   headers?: { [key: string]: string | string[] | undefined };
 }): boolean {

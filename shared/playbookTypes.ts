@@ -52,3 +52,23 @@ export function setCurrentPlaybookStep(steps: PlaybookStep[], id: string): Playb
     return s;
   });
 }
+
+/** Remove a step. If it was current, promote the next pending (or reopen last done). */
+export function removePlaybookStep(steps: PlaybookStep[], id: string): PlaybookStep[] {
+  const target = steps.find((s) => s.id === id);
+  if (!target) return steps;
+  const next = steps.filter((s) => s.id !== id);
+  if (!next.length) return next;
+  if (target.status !== "current") return next;
+  if (next.some((s) => s.status === "current")) return next;
+  const pendingIdx = next.findIndex((s) => s.status === "pending");
+  if (pendingIdx >= 0) {
+    return next.map((s, i) => (i === pendingIdx ? { ...s, status: "current" as const } : s));
+  }
+  for (let i = next.length - 1; i >= 0; i--) {
+    if (next[i]!.status === "done") {
+      return next.map((s, j) => (j === i ? { ...s, status: "current" as const } : s));
+    }
+  }
+  return next;
+}

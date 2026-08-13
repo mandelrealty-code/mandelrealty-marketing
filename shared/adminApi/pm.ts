@@ -32,9 +32,11 @@ import {
 import { stampSignedPdf } from "../pm/stampSignedPdf.js";
 import {
   createOrRefreshPortalInvite,
+  ensurePortalUserForClient,
   getPortalUserByClientId,
   publicPortalUser,
 } from "../pm/portalUserStore.js";
+import { createOwnerPreviewToken } from "../portalAuth.js";
 import { ownerPortalUrl, sendOwnerInviteEmail } from "../ownerEmails.js";
 import {
   createPmClient,
@@ -393,6 +395,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!id) return res.status(400).json({ error: "id required." });
         const url = await getTemplateDownloadUrl(id);
         return res.status(200).json({ url });
+      }
+      if (resource === "portal_preview") {
+        const clientId =
+          typeof req.query.client_id === "string" ? req.query.client_id.trim() : "";
+        if (!clientId) return res.status(400).json({ error: "client_id required." });
+        const client = await getPmClient(clientId);
+        if (!client) return res.status(404).json({ error: "Client not found." });
+        const user = await ensurePortalUserForClient({
+          pm_client_id: clientId,
+          email: client.email,
+          fullName: client.name,
+        });
+        return res.status(200).json({
+          slug: user.slug,
+          preview_token: createOwnerPreviewToken(user.slug),
+          owner_url: ownerPortalUrl(user.slug),
+        });
       }
       if (resource === "portal_user") {
         const clientId =

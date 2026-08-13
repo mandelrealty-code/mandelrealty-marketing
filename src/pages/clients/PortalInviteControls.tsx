@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ClientRow } from "./api";
-import { pmGet, pmPost } from "./api";
+import { openHostPortalPreview, pmGet, pmPost } from "./api";
 import { FieldLabel, GoldButton, TextInput } from "./ui";
 import { SignFieldPlacer } from "./SignFieldPlacer";
 import {
@@ -68,6 +68,7 @@ export function PortalInviteControls({
   const [fields, setFields] = useState<SignField[]>([]);
   const [kind, setKind] = useState<"existing" | "new">("existing");
   const [signedFile, setSignedFile] = useState<File | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   const loadStatus = useCallback(async () => {
     const data = await pmGet<PortalStatus>("portal_user", { client_id: client.id });
@@ -194,6 +195,18 @@ export function PortalInviteControls({
     }
   };
 
+  const previewAsHost = async () => {
+    setPreviewBusy(true);
+    try {
+      await openHostPortalPreview(client.id);
+      await loadStatus();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not open preview.");
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
+
   const portal = status?.portal_user;
   let statusLabel = "Not invited";
   let statusMeta = "Send a portal invite with their agreement PDF";
@@ -206,9 +219,12 @@ export function PortalInviteControls({
   } else if (portal?.invited_at && status?.awaiting_contract) {
     statusLabel = "Invited";
     statusMeta = `Sent ${new Date(portal.invited_at).toLocaleDateString()} · awaiting login`;
-  } else if (portal && !status?.awaiting_contract) {
+  } else if (portal?.invited_at) {
     statusLabel = "Portal live";
     statusMeta = status?.owner_url || "";
+  } else if (portal) {
+    statusLabel = "Not invited";
+    statusMeta = `Slug ready · ${status?.owner_url?.replace(/^https?:\/\//, "") || portal.slug}`;
   }
 
   return (
@@ -228,16 +244,26 @@ export function PortalInviteControls({
             </a>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setOpen((v) => !v);
-            setStep("form");
-          }}
-          className="shrink-0 rounded-[10px] bg-[#c4a35a] px-3.5 py-2.5 text-[13px] font-bold text-[#0a0a0a]"
-        >
-          {portal ? "Resend invite" : "Send portal invite"}
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen((v) => !v);
+              setStep("form");
+            }}
+            className="rounded-[10px] bg-[#c4a35a] px-3.5 py-2.5 text-[13px] font-bold text-[#0a0a0a]"
+          >
+            {portal?.invited_at ? "Resend invite" : "Send portal invite"}
+          </button>
+          <button
+            type="button"
+            disabled={previewBusy}
+            onClick={() => void previewAsHost()}
+            className="text-[12.5px] font-semibold text-[#c4a35a] disabled:opacity-50"
+          >
+            {previewBusy ? "Opening…" : "Preview as host"}
+          </button>
+        </div>
       </div>
 
       {open && step === "form" ? (

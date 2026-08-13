@@ -4,6 +4,7 @@ import {
   addPlaybookStep,
   COMMON_PLAYBOOK_STEPS,
   ownerForStepTitle,
+  removePlaybookStep,
   setCurrentPlaybookStep,
 } from "../../../shared/playbookTypes";
 
@@ -38,6 +39,11 @@ export function PlaybookBlock({
     if (next === steps) return;
     onChange(next);
     setAdding("");
+  };
+
+  const deleteStep = (id: string) => {
+    if (!onChange) return;
+    onChange(removePlaybookStep(steps, id));
   };
 
   const addRow = onChange ? (
@@ -120,16 +126,28 @@ export function PlaybookBlock({
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border border-[rgba(78,168,130,0.5)] bg-[rgba(78,168,130,0.2)] text-[9px] font-bold text-[#4ea882]">
                   ✓
                 </span>
-                <p className="crm-mono min-w-0 flex-1 text-[10.5px] text-[#6f6a65]">{step.title} — done</p>
+                <p className="crm-mono min-w-0 flex-1 text-[10.5px] text-[#6f6a65]">
+                  {step.title} — done
+                </p>
                 {onChange ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onChange(setCurrentPlaybookStep(steps, step.id))}
-                    className="shrink-0 text-[11px] text-[#6f6a65]"
-                  >
-                    Reopen
-                  </button>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onChange(setCurrentPlaybookStep(steps, step.id))}
+                      className="text-[11px] text-[#6f6a65]"
+                    >
+                      Reopen
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => deleteStep(step.id)}
+                      className="text-[11px] text-[#cf7f7b]"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 ) : null}
               </div>
             );
@@ -170,37 +188,49 @@ export function PlaybookBlock({
                     ownerLabel(step)
                   )}
                 </p>
-                {current ? (
-                  <div className="flex gap-3.5 pt-1.5 text-[12px]">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={onComplete}
-                      className="font-medium text-[#c4a35a]"
-                    >
-                      Mark done
-                    </button>
-                    {onSkip ? (
+                <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 pt-1.5 text-[12px]">
+                  {current ? (
+                    <>
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={onSkip}
-                        className="text-[#6f6a65]"
+                        onClick={onComplete}
+                        className="font-medium text-[#c4a35a]"
                       >
-                        Skip
+                        Mark done
                       </button>
-                    ) : null}
-                  </div>
-                ) : onChange ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onChange(setCurrentPlaybookStep(steps, step.id))}
-                    className="pt-1.5 text-[12px] text-[#c4a35a]"
-                  >
-                    Chase this
-                  </button>
-                ) : null}
+                      {onSkip ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={onSkip}
+                          className="text-[#6f6a65]"
+                        >
+                          Skip
+                        </button>
+                      ) : null}
+                    </>
+                  ) : onChange ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onChange(setCurrentPlaybookStep(steps, step.id))}
+                      className="text-[#c4a35a]"
+                    >
+                      Chase this
+                    </button>
+                  ) : null}
+                  {onChange ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => deleteStep(step.id)}
+                      className="text-[#cf7f7b]"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           );

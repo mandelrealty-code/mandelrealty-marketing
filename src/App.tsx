@@ -55,8 +55,13 @@ export default function App() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   const adminHost = isAdminHostname(window.location.hostname);
 
-  // Admin subdomain only — never expose inbox on the marketing site
+  // Admin subdomain only — never expose inbox on the marketing site.
+  // Preview tokens let operators open /owner/{slug} on admin to see the host UI.
   if (adminHost) {
+    const preview = new URLSearchParams(window.location.search).get("preview");
+    if ((path === "/owner" || path.startsWith("/owner/")) && preview) {
+      return <OwnerApp />;
+    }
     return <AdminPage />;
   }
 

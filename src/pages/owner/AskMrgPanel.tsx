@@ -93,6 +93,7 @@ function ChatUi({
   error,
   draft,
   propertyLabel,
+  preview,
   onChip,
   onDraft,
   onSend,
@@ -105,6 +106,7 @@ function ChatUi({
   error: string;
   draft: string;
   propertyLabel: string;
+  preview?: boolean;
   onChip: (q: string) => void;
   onDraft: (v: string) => void;
   onSend: () => void;
@@ -124,9 +126,11 @@ function ChatUi({
       </div>
       <div className="flex flex-col gap-3.5 border-t border-white/8 px-7 pb-6 pt-5">
         {error ? <p className="text-xs text-[#cf7f7b]">{error}</p> : null}
-        <Composer value={draft} busy={busy} onChange={onDraft} onSend={onSend} />
+        <Composer value={draft} busy={busy || Boolean(preview)} onChange={onDraft} onSend={onSend} />
         <div className="text-[11px] text-[#6f6a65]">
-          Based on your Mandel Realty data for {propertyLabel}
+          {preview
+            ? "Preview — Ask MRG sending is off."
+            : `Based on your Mandel Realty data for ${propertyLabel}`}
         </div>
       </div>
     </>
@@ -215,9 +219,11 @@ function Thread({
 export function AskMrgPanel({
   propertyLabel,
   dashboard,
+  preview,
 }: {
   propertyLabel: string;
   dashboard: OwnerDashboardPayload | null;
+  preview?: boolean;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [draft, setDraft] = useState("");
@@ -237,6 +243,7 @@ export function AskMrgPanel({
   }, []);
 
   useEffect(() => {
+    if (preview) return;
     let cancelled = false;
     ownerAsk<{ messages: ChatMsg[] }>("ask_history")
       .then((data) => {
@@ -246,13 +253,14 @@ export function AskMrgPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [preview]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages, busy, sheet]);
 
   const send = useCallback(async (raw?: string) => {
+    if (preview) return;
     const text = (raw ?? draft).trim();
     if (!text || busy) return;
     setDraft("");
@@ -274,7 +282,7 @@ export function AskMrgPanel({
     } finally {
       setBusy(false);
     }
-  }, [busy, draft]);
+  }, [busy, draft, preview]);
 
   const ui = (
     <ChatUi
@@ -289,6 +297,7 @@ export function AskMrgPanel({
       onDraft={setDraft}
       onSend={() => void send()}
       bottomRef={bottomRef}
+      preview={preview}
     />
   );
 
