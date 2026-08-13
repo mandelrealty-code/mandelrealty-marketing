@@ -9,6 +9,7 @@ import {
   type TaskRow,
   type TaskStatus,
   type TaskType,
+  type TeamMemberRow,
 } from "./api";
 import {
   FieldLabel,
@@ -19,9 +20,6 @@ import {
   TextArea,
   TextInput,
 } from "./ui";
-
-const ASSIGNEES = ["Shane", "Alex", "Unassigned"] as const;
-const OPS_IDENTITY_KEY = "mrg_ops_assignee";
 
 const TYPE_CHIPS: { value: TaskType | "overdue" | ""; label: string }[] = [
   { value: "overdue", label: "Overdue" },
@@ -56,24 +54,6 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   blocked: "Blocked",
   done: "Done",
 };
-
-function readOpsIdentity(): string {
-  try {
-    const v = localStorage.getItem(OPS_IDENTITY_KEY);
-    if (v && v.trim()) return v.trim();
-  } catch {
-    /* ignore */
-  }
-  return "Shane";
-}
-
-function writeOpsIdentity(name: string) {
-  try {
-    localStorage.setItem(OPS_IDENTITY_KEY, name);
-  } catch {
-    /* ignore */
-  }
-}
 
 function todayYmd(): string {
   const d = new Date();
@@ -183,7 +163,6 @@ function relativeUpdated(iso: string): string {
   return `${days}d ago`;
 }
 
-type Scope = "mine" | "all";
 type StatusFilter = "open" | "blocked" | "done";
 type TypeFilter = TaskType | "overdue" | "";
 
@@ -201,13 +180,13 @@ type FormState = {
   repeat_rule: TaskRepeat;
 };
 
-function emptyForm(identity: string): FormState {
+function emptyForm(): FormState {
   return {
     title: "",
     detail: "",
     status: "open",
     priority: "normal",
-    assignee: identity === "Unassigned" ? "" : identity,
+    assignee: "",
     due_on: todayYmd(),
     property_id: "",
     client_id: "",
@@ -223,7 +202,7 @@ function formFromTask(t: TaskRow): FormState {
     detail: t.detail,
     status: t.status,
     priority: t.priority,
-    assignee: t.assignee || "Unassigned",
+    assignee: t.assignee || "",
     due_on: t.due_on || "",
     property_id: t.property_id || "",
     client_id: t.client_id || "",
@@ -231,6 +210,48 @@ function formFromTask(t: TaskRow): FormState {
     task_type: t.task_type,
     repeat_rule: t.repeat_rule || "off",
   };
+}
+
+function AssigneeSelect({
+  value,
+  members,
+  onChange,
+  onAddMember,
+  disabled,
+}: {
+  value: string;
+  members: TeamMemberRow[];
+  onChange: (name: string) => void;
+  onAddMember: () => void;
+  disabled?: boolean;
+}) {
+  const known = members.some(
+    (m) => m.name.toLowerCase() === value.trim().toLowerCase(),
+  );
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (v === "__add__") {
+          onAddMember();
+          return;
+        }
+        onChange(v);
+      }}
+      className="h-[42px] w-full rounded-[9px] border border-white/10 bg-[#1c1c1c] px-3 text-[13px] font-semibold text-[#f5f5f5] outline-none disabled:opacity-50"
+    >
+      <option value="">Unassigned</option>
+      {value && !known ? <option value={value}>{value}</option> : null}
+      {members.map((m) => (
+        <option key={m.id} value={m.name}>
+          {m.name}
+        </option>
+      ))}
+      <option value="__add__">+ Add member…</option>
+    </select>
+  );
 }
 
 type Props = {
@@ -250,18 +271,32 @@ export function TasksPanel({
   onToast,
   onError,
 }: Props) {
-  const [identity, setIdentity] = useState(readOpsIdentity);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [members, setMembers] = useState<TeamMemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [scope, setScope] = useState<Scope>("mine");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | "create" | "edit">(null);
   const [reassignOpen, setReassignOpen] = useState(false);
+  const [reassignName, setReassignName] = useState("");
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [addMemberName, setAddMemberName] = useState("");
+  const [addMemberTarget, setAddMemberTarget] = useState<"form" | "reassign">(
+    "form",
+  );
   const [dueOpen, setDueOpen] = useState(false);
-  const [form, setForm] = useState<FormState>(() => emptyForm(readOpsIdentity()));
+  const [form, setForm] = useState<FormState>(() => emptyForm());
+
+  const loadMembers = useCallback(async () => {
+    try {
+      const data = await pmGet<{ members: TeamMemberRow[] }>("team_members");
+      setMembers(data.members ?? []);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not load team members.");
+    }
+  }, [onError]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -287,14 +322,82 @@ export function TasksPanel({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    void loadMembers();
+  }, [loadMembers]);
+
+  const saveNewMember = async () => {
+    const name = addMemberName.trim();
+    if (!name) {
+      onError("Name is required.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const data = await pmPost<{ member: TeamMemberRow }>("team_members", {
+        op: "create",
+        name,
+      });
+      const member = data.member;
+      await loadMembers();
+      if (addMemberTarget === "reassign") {
+        setReassignName(member.name);
+      } else {
+        setForm((f) => ({ ...f, assignee: member.name }));
+      }
+      setAddMemberOpen(false);
+      setAddMemberName("");
+      onToast(`Added ${member.name}`);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not add member.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openAddMember = (target: "form" | "reassign") => {
+    setAddMemberTarget(target);
+    setAddMemberName("");
+    setAddMemberOpen(true);
+  };
+
+  const addMemberSheet = addMemberOpen ? (
+    <Sheet
+      title="Add member"
+      onCancel={() => setAddMemberOpen(false)}
+      desktop={desktop}
+    >
+      <div className="flex flex-col gap-3">
+        <p className="text-[13px] text-[#6f6a65]">
+          Add a name to the team list. You can assign them on any task after.
+        </p>
+        <TextInput
+          value={addMemberName}
+          onChange={(e) => setAddMemberName(e.target.value)}
+          placeholder="Name"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void saveNewMember();
+            }
+          }}
+        />
+        <GoldButton
+          type="button"
+          disabled={busy || !addMemberName.trim()}
+          onClick={() => void saveNewMember()}
+        >
+          Save member
+        </GoldButton>
+      </div>
+    </Sheet>
+  ) : null;
+
   const today = useMemo(() => startOfDay(new Date()), []);
 
   const filtered = useMemo(() => {
     let list = tasks;
-    if (scope === "mine") {
-      const me = identity === "Unassigned" ? "" : identity;
-      list = list.filter((t) => (t.assignee || "") === me);
-    }
     if (statusFilter === "open") {
       list = list.filter(
         (t) =>
@@ -309,7 +412,7 @@ export function TasksPanel({
       list = list.filter((t) => t.task_type === typeFilter);
     }
     return list;
-  }, [tasks, scope, identity, statusFilter, typeFilter, today]);
+  }, [tasks, statusFilter, typeFilter, today]);
 
   const openCount = useMemo(
     () =>
@@ -377,7 +480,7 @@ export function TasksPanel({
   );
 
   const openCreate = () => {
-    setForm(emptyForm(identity));
+    setForm(emptyForm());
     setSheet("create");
   };
 
@@ -393,8 +496,7 @@ export function TasksPanel({
     }
     setBusy(true);
     try {
-      const assignee =
-        form.assignee === "Unassigned" ? "" : form.assignee.trim();
+      const assignee = form.assignee.trim();
       if (sheet === "create") {
         await pmPost("tasks", {
           op: "create",
@@ -408,7 +510,7 @@ export function TasksPanel({
           client_id: form.client_id || null,
           year_month: form.year_month,
           task_type: form.task_type,
-          created_by: identity === "Unassigned" ? "" : identity,
+          created_by: "",
           repeat_rule: form.repeat_rule,
         });
         onToast("Task created");
@@ -533,25 +635,14 @@ export function TasksPanel({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <FieldLabel>Assignee</FieldLabel>
-            <select
-              value={form.assignee || "Unassigned"}
-              onChange={(e) => {
-                const v = e.target.value;
-                setForm((f) => ({ ...f, assignee: v }));
-                if (v !== "Unassigned") {
-                  writeOpsIdentity(v);
-                  setIdentity(v);
-                }
-              }}
-              className="h-[42px] rounded-[9px] border border-white/10 bg-[#1c1c1c] px-3 text-[13px] font-semibold text-[#f5f5f5]"
-            >
-              {ASSIGNEES.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
+            <FieldLabel optional>Assignee</FieldLabel>
+            <AssigneeSelect
+              value={form.assignee}
+              members={members}
+              disabled={busy}
+              onChange={(assignee) => setForm((f) => ({ ...f, assignee }))}
+              onAddMember={() => openAddMember("form")}
+            />
           </div>
         </div>
 
@@ -786,7 +877,10 @@ export function TasksPanel({
             <button
               type="button"
               disabled={busy}
-              onClick={() => setReassignOpen(true)}
+              onClick={() => {
+                setReassignName(selected.assignee || "");
+                setReassignOpen(true);
+              }}
               className="rounded-[10px] border border-white/10 bg-[#141414] py-3 text-[13px] font-semibold text-[#f5f5f5]"
             >
               Reassign
@@ -829,25 +923,27 @@ export function TasksPanel({
             onCancel={() => setReassignOpen(false)}
             desktop={desktop}
           >
-            <div className="flex flex-col gap-2">
-              {ASSIGNEES.map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    void patchTask(selected.id, {
-                      assignee: a === "Unassigned" ? "" : a,
-                    }).then(() => {
-                      setReassignOpen(false);
-                      onToast(`Assigned to ${a}`);
-                    });
-                  }}
-                  className="rounded-[10px] border border-white/10 bg-[#1c1c1c] px-4 py-3 text-left text-[14px] font-semibold"
-                >
-                  {a}
-                </button>
-              ))}
+            <div className="flex flex-col gap-3">
+              <AssigneeSelect
+                value={reassignName}
+                members={members}
+                disabled={busy}
+                onChange={setReassignName}
+                onAddMember={() => openAddMember("reassign")}
+              />
+              <GoldButton
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  const name = reassignName.trim();
+                  void patchTask(selected.id, { assignee: name }).then(() => {
+                    setReassignOpen(false);
+                    onToast(name ? `Assigned to ${name}` : "Unassigned");
+                  });
+                }}
+              >
+                Save assignee
+              </GoldButton>
             </div>
           </Sheet>
         ) : null}
@@ -887,6 +983,7 @@ export function TasksPanel({
         ) : null}
 
         {formSheet}
+        {addMemberSheet}
       </div>
     );
   }
@@ -913,27 +1010,6 @@ export function TasksPanel({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <div className="flex gap-0.5 rounded-lg border border-white/8 bg-[#141414] p-0.5">
-            {(
-              [
-                ["mine", "Mine"],
-                ["all", "All"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setScope(id)}
-                className={`rounded-md px-3 py-1.5 text-[12px] font-semibold ${
-                  scope === id
-                    ? "bg-[#1c1c1c] text-[#f5f5f5]"
-                    : "font-medium text-[#9a9590]"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
           <div className="flex gap-0.5 rounded-lg border border-white/8 bg-[#141414] p-0.5">
             {(
               [
@@ -982,24 +1058,6 @@ export function TasksPanel({
               );
             })}
           </div>
-        ) : null}
-
-        {scope === "mine" ? (
-          <p className="text-[11px] text-[#6f6a65]">
-            Showing {identity}
-            {" · "}
-            <button
-              type="button"
-              className="text-[#9a9590] underline-offset-2 hover:underline"
-              onClick={() => {
-                const next = identity === "Shane" ? "Alex" : "Shane";
-                writeOpsIdentity(next);
-                setIdentity(next);
-              }}
-            >
-              switch to {identity === "Shane" ? "Alex" : "Shane"}
-            </button>
-          </p>
         ) : null}
       </div>
 
@@ -1134,6 +1192,7 @@ export function TasksPanel({
       ) : null}
 
       {formSheet}
+      {addMemberSheet}
     </div>
   );
 }

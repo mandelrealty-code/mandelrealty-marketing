@@ -62,6 +62,11 @@ import {
   type TaskStatus,
   type TaskType,
 } from "../pm/taskStore.js";
+import {
+  createPmTeamMember,
+  deletePmTeamMember,
+  listPmTeamMembers,
+} from "../pm/teamStore.js";
 import { percentToRateBps } from "../pm/types.js";
 import { isSupabaseConfigured } from "../supabase.js";
 
@@ -350,6 +355,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           task_type: task_type || undefined,
         });
         return res.status(200).json({ tasks });
+      }
+      if (resource === "team_members") {
+        const members = await listPmTeamMembers();
+        return res.status(200).json({ members });
       }
       return res.status(400).json({ error: "Unknown resource." });
     }
@@ -851,6 +860,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const id = str(body.id);
           if (!id) return res.status(400).json({ error: "id required." });
           await deletePmTask(id);
+          return res.status(200).json({ ok: true });
+        }
+      }
+
+      if (resource === "team_members") {
+        if (op === "create") {
+          const member = await createPmTeamMember({ name: str(body.name) });
+          return res.status(200).json({ member });
+        }
+        if (op === "delete") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await deletePmTeamMember(id);
           return res.status(200).json({ ok: true });
         }
       }

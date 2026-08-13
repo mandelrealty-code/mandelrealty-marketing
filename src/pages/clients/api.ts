@@ -38,6 +38,12 @@ export type TaskRow = {
   client_name?: string;
 };
 
+export type TeamMemberRow = {
+  id: string;
+  created_at: string;
+  name: string;
+};
+
 export type PropertyRow = {
   id: string;
   client_id: string;
