@@ -214,6 +214,19 @@ function MotionToggle({
   );
 }
 
+function useIsLg() {
+  const [lg, setLg] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const on = () => setLg(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return lg;
+}
+
 function listingShort(hasListing: Lead["has_listing"]): string {
   if (hasListing === "yes") return "Has listing";
   if (hasListing === "no") return "No Airbnb yet";
@@ -234,6 +247,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export function AdminPage() {
+  const isLg = useIsLg();
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -260,7 +274,6 @@ export function AdminPage() {
   const [actionLeadId, setActionLeadId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [copyFlash, setCopyFlash] = useState<string | null>(null);
-  const pullStartY = useRef<number | null>(null);
   const sheetTouchStartY = useRef<number | null>(null);
   const sheetDragYRef = useRef(0);
   const [sheetDragY, setSheetDragY] = useState(0);
@@ -1397,8 +1410,8 @@ export function AdminPage() {
     );
   }
 
-  /* -------- Contact detail (Claude Design inbox) -------- */
-  if (selected) {
+  /* -------- Contact detail (Claude Design inbox) — mobile full-screen -------- */
+  if (selected && !isLg) {
     const firstName =
       (selected.name || "there").trim().split(/\s+/)[0] || "there";
     const aiLiveHere =
@@ -1987,7 +2000,7 @@ export function AdminPage() {
 
   const contactsList = (
     <>
-      <div className="mb-2.5 flex gap-2">
+      <div className="mb-2.5 flex gap-2 px-4 lg:mb-0 lg:border-b lg:border-white/8 lg:px-4 lg:py-3">
         <button
           type="button"
           onClick={() => setInboxChip("all")}
@@ -2011,7 +2024,7 @@ export function AdminPage() {
           Needs review{draftLeads.length ? ` ${draftLeads.length}` : ""}
         </button>
       </div>
-      <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#111]">
+      <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#111] lg:rounded-none lg:border-0 lg:bg-transparent">
         {filteredLeads.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3.5 px-6 py-16 text-center">
             <p className="max-w-[250px] text-[15px] font-medium leading-relaxed text-[#9a9590]">
@@ -2056,9 +2069,11 @@ export function AdminPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.22, delay: Math.min(i * 0.03, 0.24), ease: easeOut }}
                 className={`flex items-start gap-2.5 border-b border-white/[0.07] px-4 py-3.5 last:border-b-0 hover:bg-[#161616] ${
-                  draft
+                  selectedId === lead.id
                     ? "border-l-2 border-l-[#c99a4b] bg-[rgba(201,154,75,0.07)]"
-                    : ""
+                    : draft
+                      ? "border-l-2 border-l-[#c99a4b] bg-[rgba(201,154,75,0.05)]"
+                      : ""
                 }`}
               >
                 <button
@@ -2155,6 +2170,208 @@ export function AdminPage() {
     </div>
   );
 
+  const selFirst =
+    (selected?.name || "there").trim().split(/\s+/)[0] || "there";
+  const selLive = Boolean(
+    selected && !selected.ai_paused && (aiEffective || Boolean(selected.ai_force_on)),
+  );
+  const selPaused = Boolean(
+    selected && selected.ai_paused && (aiEffective || Boolean(selected.ai_force_on)),
+  );
+
+  const desktopThread = selected ? (
+    <div className="flex min-h-0 flex-1 flex-col bg-[#0a0a0a]">
+      <div className="flex h-[60px] shrink-0 items-center gap-3 border-b border-white/8 px-[22px]">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[rgba(196,163,90,0.4)] text-[11.5px] font-bold text-[#c4a35a]">
+          {initials(selected.name || "Contact")}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-semibold">{selected.name || "Contact"}</p>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <span className={`h-1.5 w-1.5 rounded-full ${selLive ? "bg-[#4ea882]" : selPaused ? "bg-[#c99a4b]" : "bg-[#6f6a65]"}`} />
+            <p className="crm-mono text-[10px] text-[#9a9590]">
+              {selLive
+                ? selected.ai_send_mode === "draft"
+                  ? "AI live · draft mode"
+                  : "AI live"
+                : selPaused
+                  ? "AI paused"
+                  : "AI off"}
+            </p>
+          </div>
+        </div>
+        <p className="crm-mono shrink-0 text-[11px] text-[#6f6a65]">{selected.phone}</p>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-[15px] overflow-y-auto px-[22px] py-5">
+        {smsMessages.length === 0 ? (
+          <p className="py-10 text-center text-sm text-[#5e5a56]">No messages yet.</p>
+        ) : null}
+        {smsMessages.map((m) => {
+          const outbound = m.direction === "outbound";
+          const time = new Date(m.created_at).toLocaleTimeString("en-CA", {
+            hour: "numeric",
+            minute: "2-digit",
+          });
+          return (
+            <div
+              key={m.id}
+              className={`flex max-w-[66%] flex-col gap-1.5 ${
+                outbound ? "ml-auto items-end" : "mr-auto items-start"
+              }`}
+            >
+              <div
+                className={`px-[15px] py-3 text-[14px] leading-[1.5] ${
+                  outbound
+                    ? "rounded-[14px_14px_4px_14px] bg-[#242424]"
+                    : "rounded-[14px_14px_14px_4px] bg-[#1c1c1c] text-[#e6e2dd]"
+                }`}
+              >
+                <p className="whitespace-pre-wrap">{m.body}</p>
+              </div>
+              <p className="crm-mono flex items-center gap-1.5 text-[9.5px] text-[#6f6a65]">
+                {outbound && m.meta?.ai_generated ? (
+                  <span className="h-[5px] w-[5px] rounded-full bg-[#4ea882]" />
+                ) : null}
+                {outbound && m.meta?.ai_generated
+                  ? `Sent by AI · ${time} · delivered`
+                  : outbound
+                    ? `You · ${time}`
+                    : `${selFirst} · ${time}`}
+              </p>
+            </div>
+          );
+        })}
+        {pendingDraft ? (
+          <DraftCard
+            draft={pendingDraft}
+            busy={saving}
+            stepIndex={
+              (selected.playbook_steps ?? []).findIndex((s) => s.status === "current") + 1 ||
+              undefined
+            }
+            onApprove={(body) =>
+              void patchLead({
+                draftAction: "approve",
+                draftId: pendingDraft.id,
+                draftBody: body,
+              })
+            }
+            onDiscard={() =>
+              void patchLead({
+                draftAction: "discard",
+                draftId: pendingDraft.id,
+              })
+            }
+            onSave={(body) =>
+              void patchLead({
+                draftAction: "save",
+                draftId: pendingDraft.id,
+                draftBody: body,
+              })
+            }
+          />
+        ) : null}
+        <div ref={threadEndRef} className="h-1" />
+      </div>
+      <div className="flex shrink-0 items-center gap-3 border-t border-white/8 px-[22px] py-4">
+        <input
+          value={smsDraft}
+          onChange={(e) => setSmsDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              sendSmsReply().catch(() => undefined);
+            }
+          }}
+          placeholder={`Write to ${selFirst} yourself…`}
+          className="h-[42px] min-w-0 flex-1 rounded-[22px] border border-white/10 bg-[#141414] px-4 text-[13.5px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+        />
+        <button
+          type="button"
+          disabled={smsSending || !smsDraft.trim()}
+          onClick={() => sendSmsReply().catch(() => undefined)}
+          className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full bg-[#c4a35a] text-[15px] font-bold text-[#0a0a0a] disabled:opacity-40"
+          aria-label="Send"
+        >
+          ↑
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div className="flex min-h-0 flex-1 items-center justify-center">
+      <p className="rounded-[18px] border border-dashed border-white/10 px-8 py-8 text-[13px] text-[#5e5a56]">
+        Select a contact to open the chat
+      </p>
+    </div>
+  );
+
+  const desktopDetails = selected ? (
+    <aside className="hidden w-[330px] shrink-0 flex-col overflow-y-auto border-l border-white/8 bg-[#0c0c0c] lg:flex">
+      <div className="flex flex-col gap-2.5 border-b border-white/8 px-5 pb-4 pt-5">
+        <p className="text-[18px] font-bold tracking-[-0.02em]">{selected.name || "Contact"}</p>
+        <p className="crm-mono text-[11px] text-[#6f6a65]">
+          {[cityFromAddress(selected.address), OFFER_PATH_LABEL[selected.offer_path]]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-md border border-[rgba(196,163,90,0.45)] px-2.5 py-1 text-[11px] font-bold text-[#c4a35a]">
+            {STATUS_LABEL[selected.status]}
+          </span>
+          {selLive ? (
+            <span className="rounded-md border border-[rgba(78,168,130,0.45)] px-2.5 py-1 text-[11px] font-bold text-[#4ea882]">
+              AI live
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2.5 border-b border-white/8 px-5 py-4">
+        <p className="crm-mono text-[10px] uppercase tracking-[0.12em] text-[#6f6a65]">How AI sends</p>
+        <div className="flex gap-0.5 rounded-[9px] border border-white/9 bg-[#141414] p-[3px]">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void patchLead({ aiSendMode: "autopilot" })}
+            className={`flex-1 rounded-[7px] py-2 text-[12.5px] ${
+              (selected.ai_send_mode || "autopilot") === "autopilot"
+                ? "border border-[rgba(78,168,130,0.5)] bg-[rgba(78,168,130,0.16)] font-bold text-[#4ea882]"
+                : "font-semibold text-[#9a9590]"
+            }`}
+          >
+            Autopilot
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void patchLead({ aiSendMode: "draft" })}
+            className={`flex-1 rounded-[7px] py-2 text-[12.5px] ${
+              selected.ai_send_mode === "draft"
+                ? "border border-[rgba(201,154,75,0.55)] bg-[rgba(201,154,75,0.16)] font-bold text-[#c99a4b]"
+                : "font-semibold text-[#9a9590]"
+            }`}
+          >
+            Draft for review
+          </button>
+        </div>
+        <p className="text-[12px] leading-relaxed text-[#9a9590]">
+          {selected.ai_send_mode === "draft"
+            ? "Draft waits for your OK before anything sends."
+            : "Autopilot sends AI replies immediately, no review."}
+        </p>
+      </div>
+      <div className="px-5 py-4">
+        <PlaybookBlock
+          steps={selected.playbook_steps ?? []}
+          busy={saving}
+          hostFirstName={selFirst}
+          draftMode={selected.ai_send_mode === "draft"}
+          onComplete={() => void patchLead({ playbookAction: "complete" })}
+          onSkip={() => void patchLead({ playbookAction: "skip" })}
+        />
+      </div>
+    </aside>
+  ) : null;
+
   const statsStrip = (
     <div className="grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
       {(
@@ -2180,13 +2397,13 @@ export function AdminPage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className="crm-shell flex min-h-dvh flex-col bg-[#0c0c0c] text-[#f5f5f5]"
+      className="crm-shell flex h-dvh flex-col overflow-hidden bg-[#0a0a0a] text-[#f5f5f5]"
     >
-      <header className="shrink-0 border-b border-white/8 px-4 pb-3 pt-[max(0.65rem,env(safe-area-inset-top))] lg:px-8">
-        <div className="mx-auto flex max-w-[1000px] items-center justify-between gap-3">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/8 px-4 pt-[env(safe-area-inset-top)] lg:h-14 lg:px-5">
+        <div className="flex min-w-0 items-center justify-between gap-3 w-full">
           <div className="flex min-w-0 items-center gap-2.5">
             <CrmMark size={28} />
-            <span className="hidden truncate text-[12px] font-semibold tracking-[0.08em] text-[#f5f5f5] sm:inline">
+            <span className="hidden truncate text-[14px] font-semibold tracking-[-0.01em] text-[#f5f5f5] sm:inline">
               Mandel Realty Group
             </span>
             <ModeSwitcher
@@ -2247,52 +2464,81 @@ export function AdminPage() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1000px] flex-1 px-4 pb-[calc(5.75rem+env(safe-area-inset-bottom))] pt-3.5 lg:px-0 lg:pt-7">
-        {loadError && <p className="mb-3 text-sm text-[#cf7f7b]">{loadError}</p>}
+      <div className="flex min-h-0 flex-1">
+        <aside className="hidden w-[210px] shrink-0 flex-col gap-0.5 border-r border-white/8 bg-[#0c0c0c] px-3 py-4 lg:flex">
+          {(
+            [
+              ["contacts", "Inbox"],
+              ["pipeline", "Pipeline"],
+              ["knowledge", "Knowledge"],
+              ["settings", "Settings"],
+            ] as const
+          ).map(([id, label]) => {
+            const active = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-[13.5px] ${
+                  active
+                    ? "bg-[#1c1c1c] font-bold text-[#c4a35a]"
+                    : "font-medium text-[#9a9590] hover:bg-white/[0.04] hover:text-[#f5f5f5]"
+                }`}
+              >
+                {label}
+                {id === "contacts" && draftLeads.length > 0 ? (
+                  <span className="crm-mono text-[10px] text-[#c99a4b]">{draftLeads.length}</span>
+                ) : null}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => {
+              writeStoredAdminMode("ops");
+              setProductMode("ops");
+            }}
+            className="rounded-lg px-3 py-2.5 text-left text-[13.5px] font-medium text-[#9a9590] hover:bg-white/[0.04] hover:text-[#f5f5f5]"
+          >
+            Clients
+          </button>
+        </aside>
+
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:pb-0">
+        {loadError && <p className="px-4 pt-3 text-sm text-[#cf7f7b]">{loadError}</p>}
 
         <AnimatePresence mode="wait">
           {tab === "contacts" && (
             <motion.div
               key="contacts"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.25, ease: easeOut }}
-              onTouchStart={(e) => {
-                pullStartY.current = e.touches[0]?.clientY ?? null;
-              }}
-              onTouchEnd={(e) => {
-                const start = pullStartY.current;
-                pullStartY.current = null;
-                if (start == null) return;
-                const dy = (e.changedTouches[0]?.clientY ?? 0) - start;
-                if (dy > 90 && window.scrollY < 8) softRefresh().catch(() => undefined);
-              }}
-              className="lg:flex lg:items-start lg:gap-7"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex min-h-0 flex-1 flex-col lg:flex-row"
             >
-              <div className="min-w-0 flex-1 space-y-4">
-                <div className="lg:hidden space-y-4">
+              <div className="flex min-h-0 w-full flex-col overflow-hidden lg:w-[296px] lg:shrink-0 lg:border-r lg:border-white/8">
+                <div className="space-y-3 px-4 pt-3 lg:hidden">
                   {statsStrip}
                   {needsYouBlock}
                 </div>
-
-                <div className="flex gap-2.5">
+                <div className="flex gap-2.5 px-4 pt-3 lg:px-4 lg:pt-3.5">
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search leads"
-                    className="h-[42px] min-w-0 flex-1 rounded-xl border border-white/10 bg-[#1a1a1a] px-3.5 text-base text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55 lg:h-11 lg:rounded-xl lg:px-4"
+                    className="h-[42px] min-w-0 flex-1 rounded-xl border border-white/10 bg-[#1a1a1a] px-3.5 text-base text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55 lg:h-9 lg:text-[13px]"
                   />
                   <button
                     type="button"
                     onClick={() => setTab("settings")}
-                    className="h-[42px] shrink-0 rounded-xl bg-[#c4a35a] px-4 text-sm font-bold text-[#14100a] hover:bg-[#dcc084] lg:h-11 lg:px-5"
+                    className="h-[42px] shrink-0 rounded-xl bg-[#c4a35a] px-4 text-sm font-bold text-[#14100a] hover:bg-[#dcc084] lg:h-9 lg:px-3 lg:text-[12.5px]"
                   >
                     + Lead
                   </button>
                 </div>
-
-                <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-wrap">
+                <div className="flex gap-2 overflow-x-auto px-4 pb-0 pt-2.5 lg:hidden">
                   <select
                     value={filterPath}
                     onChange={(e) => setFilterPath(e.target.value as OfferPath | "all")}
@@ -2329,42 +2575,13 @@ export function AdminPage() {
                     <option value="live">AI live</option>
                     <option value="paused">AI paused</option>
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => setFilterBookedWeek((v) => !v)}
-                    className={`flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] border px-2.5 text-[12.5px] font-medium ${
-                      filterBookedWeek
-                        ? "border-[#c4a35a]/40 bg-[#c4a35a]/10 text-[#dcc084]"
-                        : "border-white/10 bg-[#141414] text-[#cfcac4] hover:border-[#c4a35a]/40"
-                    }`}
-                  >
-                    Booked this week
-                    {filterBookedWeek && <span className="text-[#8a7c5f]">✕</span>}
-                  </button>
-                  <select
-                    value={sortBy}
-                    onChange={(e) =>
-                      setSortBy(e.target.value as "inbox" | "newest" | "oldest")
-                    }
-                    className={filterSelectClass}
-                    aria-label="Sort contacts"
-                  >
-                    <option value="inbox">Needs you</option>
-                    <option value="newest">Newest</option>
-                    <option value="oldest">Oldest</option>
-                  </select>
                 </div>
-
-                {contactsList}
+                <div className="min-h-0 flex-1 overflow-y-auto px-0 pt-2 lg:pt-0">
+                  <div className="lg:px-0">{contactsList}</div>
+                </div>
               </div>
-
-              <aside className="mt-6 hidden w-[300px] shrink-0 flex-col gap-[18px] lg:mt-0 lg:flex">
-                {statsStrip}
-                {needsYouBlock}
-                <div className="rounded-[18px] border border-dashed border-white/10 px-[18px] py-[26px] text-center text-[13px] leading-relaxed text-[#5e5a56]">
-                  Select a contact to open the chat
-                </div>
-              </aside>
+              <div className="hidden min-h-0 min-w-0 flex-1 flex-col lg:flex">{desktopThread}</div>
+              {desktopDetails}
             </motion.div>
           )}
 
@@ -2375,7 +2592,7 @@ export function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25, ease: easeOut }}
-              className="space-y-4"
+              className="space-y-4 overflow-y-auto px-4 py-4 lg:px-8"
             >
               <div className="-mx-4 flex gap-2 overflow-x-auto border-b border-white/[0.06] px-4 pb-2.5 lg:mx-0 lg:flex-wrap lg:border-0 lg:px-0 lg:pb-0">
                 <button
@@ -2459,7 +2676,7 @@ export function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25, ease: easeOut }}
-              className="mx-auto max-w-[820px] space-y-4"
+              className="mx-auto max-w-[820px] space-y-4 overflow-y-auto px-4 py-4 lg:px-8"
             >
               <p className="text-sm leading-relaxed text-[#9a9590]">
                 Paste talk tracks / markdown for Claude. Docs save and index without OpenAI —
@@ -2619,7 +2836,7 @@ export function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25, ease: easeOut }}
-              className="mx-auto max-w-[820px] space-y-[22px] lg:space-y-[30px]"
+              className="mx-auto max-w-[820px] space-y-[22px] overflow-y-auto px-4 py-4 lg:space-y-[30px] lg:px-8"
             >
               <section className="space-y-2.5">
                 <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
@@ -2910,6 +3127,7 @@ export function AdminPage() {
           )}
         </AnimatePresence>
       </main>
+      </div>
 
       {editDocId && (
         <div
@@ -3163,7 +3381,7 @@ export function AdminPage() {
         )}
       </AnimatePresence>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-white/8 bg-[rgba(12,12,12,0.94)] pb-[max(1.1rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-[12px]">
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-white/8 bg-[rgba(12,12,12,0.94)] pb-[max(1.1rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-[12px] lg:hidden">
         <div className="mx-auto grid max-w-[1000px] grid-cols-4 lg:flex lg:justify-center">
           {(
             [
