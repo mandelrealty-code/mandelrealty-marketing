@@ -14,6 +14,7 @@ import { FloatingCtas } from "./components/FloatingCtas";
 import { ThankYouPage } from "./pages/ThankYouPage";
 import { AdsLandingPage } from "./pages/AdsLandingPage";
 import { AdminPage } from "./pages/AdminPage";
+import { OwnerApp } from "./pages/owner/OwnerApp";
 import { useScrollToHash } from "./hooks/useScrollToHash";
 
 function isAdminHostname(hostname: string): boolean {
@@ -63,6 +64,11 @@ export default function App() {
   if (path === "/admin") {
     window.location.replace("/");
     return null;
+  }
+
+  // Owner portal on marketing host: /owner/{slug}/…
+  if (path === "/owner" || path.startsWith("/owner/")) {
+    return <OwnerApp />;
   }
 
   if (path === "/thank-you") {

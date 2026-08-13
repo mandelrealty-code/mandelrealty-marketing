@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#050505; color:#f5f5f5; font-family:'Manrope',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#c4a35a; text-decoration:none; }
+  a:hover { color:#dcc084; }
+  * { box-sizing:border-box; }
+</style>
+</helmet>
+
+<section style="padding:64px 64px 110px; display:flex; flex-direction:column; gap:44px">
+
+  <div style="display:flex; flex-direction:column; gap:12px">
+    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap">
+      <div style="border:1px solid #c4a35a; color:#c4a35a; font-size:12px; font-weight:700; letter-spacing:.16em; padding:5px 10px">1a</div>
+      <div style="font-size:13px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:#c4a35a">MRG Admin</div>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6f6a65">admin.mandelrealtygroup.com · Aug 13, 2026</div>
+    </div>
+    <h1 style="margin:0; font-size:34px; font-weight:700; letter-spacing:-0.02em">Contract templates + send portal invite</h1>
+    <p style="margin:0; max-width:700px; font-size:15px; line-height:1.6; color:#9a9590; text-wrap:pretty">Templates live in <strong style="color:#f5f5f5; font-weight:600">Settings → Contract templates</strong> — one home, reused everywhere. Inviting a host is one sheet: confirm four fields, pick the PDF, send. Custom deals upload a one-off without touching the library.</p>
+  </div>
+
+  <!-- ===================== ROW 1 · LIBRARY ===================== -->
+  <div style="display:flex; flex-wrap:wrap; gap:40px; align-items:flex-start">
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">F1 · Contract templates — desktop 1280</div>
+      <div data-screen-label="F1 Library desktop" style="width:1280px; height:800px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:16px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="height:56px; flex:none; padding:0 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:18px">
+            <div style="display:flex; align-items:center; gap:10px">
+              <div style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">M</div>
+              <div style="font-size:14px; font-weight:600; letter-spacing:-0.01em">Mandel Realty Group</div>
+            </div>
+            <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+              <div style="padding:5px 14px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600; letter-spacing:0.04em">CRM</div>
+              <div style="padding:5px 14px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700; letter-spacing:0.04em">OPS</div>
+            </div>
+          </div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">shane@mandelrealtygroup.com</div>
+        </div>
+
+        <div style="flex:1; display:flex; overflow:hidden">
+          <div style="width:232px; flex:none; border-right:1px solid rgba(255,255,255,0.08); background:#0c0c0c; padding:16px 12px; display:flex; flex-direction:column; gap:3px">
+            <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Tasks</div>
+            <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Clients</div>
+            <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Properties</div>
+            <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Month close</div>
+            <div style="padding:9px 12px; border-radius:8px; background:#1c1c1c; font-size:13.5px; font-weight:700; color:#c4a35a">Settings</div>
+            <div style="padding:4px 0 0 12px; display:flex; flex-direction:column; gap:1px; border-left:1px solid rgba(255,255,255,0.08); margin:6px 0 0 14px">
+              <div style="padding:7px 10px; font-size:12.5px; color:#9a9590">Team</div>
+              <div style="padding:7px 10px; font-size:12.5px; font-weight:600; color:#f5f5f5">Contract templates</div>
+              <div style="padding:7px 10px; font-size:12.5px; color:#9a9590">Fees &amp; splits</div>
+              <div style="padding:7px 10px; font-size:12.5px; color:#9a9590">Email</div>
+            </div>
+            <div style="margin-top:auto; padding:12px; border-top:1px solid rgba(255,255,255,0.08); font-family:'IBM Plex Mono',monospace; font-size:10.5px; line-height:1.6; color:#4f4b47">Signed in<br>shane@mandelrealtygroup.com</div>
+          </div>
+
+          <div style="flex:1; display:flex; flex-direction:column; overflow:hidden">
+            <div style="padding:26px 30px 20px; display:flex; align-items:flex-start; justify-content:space-between; gap:30px; border-bottom:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex; flex-direction:column; gap:8px">
+                <div style="font-size:26px; font-weight:700; letter-spacing:-0.02em">Contract templates</div>
+                <div style="max-width:60ch; font-size:13.5px; line-height:1.6; color:#9a9590; text-wrap:pretty">These are reusable agreements. Pick one when inviting a host, or upload a one-off for custom terms.</div>
+              </div>
+              <div style="flex:none; padding:11px 18px; border-radius:8px; background:#c4a35a; color:#0a0a0a; font-size:13px; font-weight:700">Upload PDF</div>
+            </div>
+
+            <div style="padding:10px 30px; display:grid; grid-template-columns:1fr 150px 130px 150px; gap:18px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#6f6a65; border-bottom:1px solid rgba(255,255,255,0.08)">
+              <div>Template</div><div>Last updated</div><div>Used</div><div></div>
+            </div>
+
+            <div style="padding:17px 30px; display:grid; grid-template-columns:1fr 150px 130px 150px; gap:18px; align-items:center; border-bottom:1px solid rgba(255,255,255,0.07); background:#0e0e0e">
+              <div style="display:flex; align-items:center; gap:13px">
+                <div style="width:30px; height:36px; flex:none; border:1px solid rgba(255,255,255,0.14); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:4px; font-family:'IBM Plex Mono',monospace; font-size:8px; color:#9a9590">PDF</div>
+                <div style="display:flex; flex-direction:column; gap:3px">
+                  <div style="font-size:14.5px; font-weight:600">Standard management 20%</div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Standard management 20%.pdf · 6 pages</div>
+                </div>
+              </div>
+              <div style="font-size:13px; color:#9a9590">Jul 28, 2026</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#9a9590">14 hosts</div>
+              <div style="display:flex; gap:16px; justify-content:flex-end; font-size:12.5px; color:#9a9590">
+                <a href="#1a">Replace</a><a href="#1a" style="color:#6f6a65">Archive</a>
+              </div>
+            </div>
+
+            <div style="padding:17px 30px; display:grid; grid-template-columns:1fr 150px 130px 150px; gap:18px; align-items:center; border-bottom:1px solid rgba(255,255,255,0.07)">
+              <div style="display:flex; align-items:center; gap:13px">
+                <div style="width:30px; height:36px; flex:none; border:1px solid rgba(255,255,255,0.14); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:4px; font-family:'IBM Plex Mono',monospace; font-size:8px; color:#9a9590">PDF</div>
+                <div style="display:flex; flex-direction:column; gap:3px">
+                  <div style="font-size:14.5px; font-weight:600">Makeover + management</div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Makeover + management.pdf · 9 pages</div>
+                </div>
+              </div>
+              <div style="font-size:13px; color:#9a9590">Aug 4, 2026</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#9a9590">3 hosts</div>
+              <div style="display:flex; gap:16px; justify-content:flex-end; font-size:12.5px; color:#9a9590">
+                <a href="#1a">Replace</a><a href="#1a" style="color:#6f6a65">Archive</a>
+              </div>
+            </div>
+
+            <div style="padding:17px 30px; display:grid; grid-template-columns:1fr 150px 130px 150px; gap:18px; align-items:center; border-bottom:1px solid rgba(255,255,255,0.07)">
+              <div style="display:flex; align-items:center; gap:13px">
+                <div style="width:30px; height:36px; flex:none; border:1px solid rgba(255,255,255,0.14); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:4px; font-family:'IBM Plex Mono',monospace; font-size:8px; color:#9a9590">PDF</div>
+                <div style="display:flex; flex-direction:column; gap:3px">
+                  <div style="font-size:14.5px; font-weight:600">Custom — Brampton permit terms</div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Custom — Brampton permit terms.pdf · 7 pages</div>
+                </div>
+              </div>
+              <div style="font-size:13px; color:#9a9590">Aug 11, 2026</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#9a9590">1 host</div>
+              <div style="display:flex; gap:16px; justify-content:flex-end; font-size:12.5px; color:#9a9590">
+                <a href="#1a">Replace</a><a href="#1a" style="color:#6f6a65">Archive</a>
+              </div>
+            </div>
+
+            <div style="margin-top:auto; padding:16px 30px; border-top:1px solid rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:space-between">
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#4f4b47">3 active · 1 archived</div>
+              <a href="#1a" style="font-size:12.5px; color:#6f6a65">View archived</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">F2 · Contract templates — mobile 390</div>
+      <div data-screen-label="F2 Library mobile" style="width:390px; height:844px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:14px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="height:52px; flex:none; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:9px">
+            <div style="width:22px; height:22px; border-radius:5px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700">M</div>
+            <div style="font-size:13px; font-weight:600">Settings</div>
+          </div>
+          <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+            <div style="padding:5px 13px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600">CRM</div>
+            <div style="padding:5px 13px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700">OPS</div>
+          </div>
+        </div>
+
+        <div style="flex:1; overflow:hidden; display:flex; flex-direction:column">
+          <div style="padding:22px 18px 16px; display:flex; flex-direction:column; gap:8px">
+            <a href="#1a" style="font-size:12.5px; color:#6f6a65">← Settings</a>
+            <div style="font-size:23px; font-weight:700; letter-spacing:-0.02em">Contract templates</div>
+            <sc-if value="{{ showHelper }}" hint-placeholder-val="{{ true }}">
+              <div style="font-size:13px; line-height:1.55; color:#9a9590; text-wrap:pretty">Reusable agreements. Pick one when inviting a host, or upload a one-off for custom terms.</div>
+            </sc-if>
+          </div>
+
+          <div style="padding:15px 18px; display:flex; align-items:center; gap:13px; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="width:28px; height:34px; flex:none; border:1px solid rgba(255,255,255,0.14); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:3px; font-family:'IBM Plex Mono',monospace; font-size:8px; color:#9a9590">PDF</div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:14.5px; font-weight:600">Standard management 20%</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">Updated Jul 28 · 14 hosts</div>
+            </div>
+            <div style="width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:#6f6a65; font-size:16px">⋯</div>
+          </div>
+
+          <div style="padding:15px 18px; display:flex; align-items:center; gap:13px; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="width:28px; height:34px; flex:none; border:1px solid rgba(255,255,255,0.14); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:3px; font-family:'IBM Plex Mono',monospace; font-size:8px; color:#9a9590">PDF</div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:14.5px; font-weight:600">Makeover + management</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">Updated Aug 4 · 3 hosts</div>
+            </div>
+            <div style="width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:#6f6a65; font-size:16px">⋯</div>
+          </div>
+
+          <div style="padding:15px 18px; display:flex; align-items:center; gap:13px; border-top:1px solid rgba(255,255,255,0.08); border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="width:28px; height:34px; flex:none; border:1px solid rgba(255,255,255,0.14); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:3px; font-family:'IBM Plex Mono',monospace; font-size:8px; color:#9a9590">PDF</div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:14.5px; font-weight:600">Custom — Brampton permit terms</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">Updated Aug 11 · 1 host</div>
+            </div>
+            <div style="width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:#6f6a65; font-size:16px">⋯</div>
+          </div>
+
+          <div style="padding:16px 18px; display:flex; flex-direction:column; gap:10px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#4f4b47">Row menu</div>
+            <div style="border:1px solid rgba(255,255,255,0.09); border-radius:10px; background:#141414; overflow:hidden">
+              <div style="padding:13px 16px; font-size:14px; font-weight:500">Replace PDF</div>
+              <div style="padding:13px 16px; font-size:14px; font-weight:500; color:#9a9590; border-top:1px solid rgba(255,255,255,0.07)">Download</div>
+              <div style="padding:13px 16px; font-size:14px; font-weight:500; color:#cf7f7b; border-top:1px solid rgba(255,255,255,0.07)">Archive</div>
+            </div>
+          </div>
+
+          <div style="margin-top:auto; padding:16px 18px 20px; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="padding:15px; border-radius:10px; background:#c4a35a; color:#0a0a0a; font-size:14.5px; font-weight:700; text-align:center">Upload PDF</div>
+          </div>
+        </div>
+
+        <div style="height:56px; flex:none; display:grid; grid-template-columns:repeat(5,1fr); align-items:center; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="text-align:center; font-size:10.5px; color:#6f6a65">Tasks</div>
+          <div style="text-align:center; font-size:10.5px; color:#6f6a65">Clients</div>
+          <div style="text-align:center; font-size:10.5px; color:#6f6a65">Properties</div>
+          <div style="text-align:center; font-size:10.5px; color:#6f6a65">Month close</div>
+          <div style="text-align:center; font-size:10.5px; font-weight:700; color:#c4a35a">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">F3 · Upload template sheet — mobile 390</div>
+      <div data-screen-label="F3 Upload template sheet" style="width:390px; height:844px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:14px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; position:relative">
+        <div style="position:absolute; inset:0; background:#0a0a0a; opacity:0.55"></div>
+        <div style="position:absolute; top:0; left:0; right:0; padding:22px 18px; display:flex; flex-direction:column; gap:8px; opacity:0.35">
+          <div style="font-size:23px; font-weight:700; letter-spacing:-0.02em">Contract templates</div>
+          <div style="font-size:13px; color:#9a9590">Reusable agreements.</div>
+        </div>
+        <div style="position:relative; background:#141414; border-top:1px solid rgba(255,255,255,0.1); border-radius:16px 16px 0 0; padding:10px 18px 22px; display:flex; flex-direction:column; gap:20px">
+          <div style="width:38px; height:4px; border-radius:2px; background:rgba(255,255,255,0.16); align-self:center"></div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between">
+            <div style="font-size:20px; font-weight:700; letter-spacing:-0.02em">Upload template</div>
+            <a href="#1a" style="font-size:13px; color:#9a9590">Cancel</a>
+          </div>
+
+          <div style="border:1px dashed rgba(196,163,90,0.45); border-radius:12px; padding:26px 18px; display:flex; flex-direction:column; align-items:center; gap:9px; background:#171717">
+            <div style="width:34px; height:42px; border:1px solid rgba(196,163,90,0.5); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:4px; font-family:'IBM Plex Mono',monospace; font-size:8px; color:#c4a35a">PDF</div>
+            <div style="font-size:14px; font-weight:600; color:#c4a35a">Choose PDF</div>
+            <div style="font-size:12px; color:#6f6a65">or drop a file here · max 20 MB</div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:12px; padding:13px 14px; border:1px solid rgba(255,255,255,0.09); border-radius:10px; background:#171717">
+            <div style="width:26px; height:32px; flex:none; border:1px solid rgba(255,255,255,0.16); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:3px; font-family:'IBM Plex Mono',monospace; font-size:7.5px; color:#9a9590">PDF</div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:2px">
+              <div style="font-size:13.5px; font-weight:600">Custom — Brampton permit terms.pdf</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#4ea882">Uploaded · 7 pages · 1.4 MB</div>
+            </div>
+            <a href="#1a" style="font-size:12px; color:#6f6a65">Remove</a>
+          </div>
+
+          <label style="display:flex; flex-direction:column; gap:9px">
+            <span style="font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:#6f6a65; font-weight:600">Label</span>
+            <input type="text" value="Custom — Brampton permit terms" style="background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,0.16); padding:10px 2px; color:#f5f5f5; font-family:'Manrope',sans-serif; font-size:16px; outline:none" style-focus="border-bottom-color:#c4a35a">
+            <span style="font-size:12px; color:#6f6a65">What operators will see in the invite picker</span>
+          </label>
+
+          <div style="display:flex; flex-direction:column; gap:12px">
+            <div style="padding:16px; border-radius:10px; background:#c4a35a; color:#0a0a0a; font-size:15px; font-weight:700; text-align:center">Save template</div>
+            <div style="font-size:12px; color:#6f6a65; text-align:center">Saved templates are available to the whole team</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">F2b · Empty library — mobile 390</div>
+      <div data-screen-label="F2b Library empty" style="width:390px; height:520px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:14px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="padding:22px 18px 0; display:flex; flex-direction:column; gap:8px">
+          <a href="#1a" style="font-size:12.5px; color:#6f6a65">← Settings</a>
+          <div style="font-size:23px; font-weight:700; letter-spacing:-0.02em">Contract templates</div>
+        </div>
+        <div style="flex:1; padding:0 26px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center">
+          <div style="width:38px; height:46px; border:1px solid rgba(255,255,255,0.14); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:5px; font-family:'IBM Plex Mono',monospace; font-size:8px; color:#4f4b47">PDF</div>
+          <div style="font-size:16px; font-weight:600">No templates yet</div>
+          <div style="font-size:13px; line-height:1.55; color:#9a9590; text-wrap:pretty">Upload your standard management agreement once — then every host invite can use it in one tap.</div>
+        </div>
+        <div style="padding:16px 18px 22px; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="padding:15px; border-radius:10px; background:#c4a35a; color:#0a0a0a; font-size:14.5px; font-weight:700; text-align:center">Upload PDF</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== ROW 2 · INVITE ===================== -->
+  <div style="display:flex; flex-wrap:wrap; gap:40px; align-items:flex-start">
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">F4 · CRM lead detail — mobile 390</div>
+      <div data-screen-label="F4 Lead detail" style="width:390px; height:844px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:14px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="height:52px; flex:none; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+          <a href="#1a" style="font-size:13px; color:#9a9590">← Leads</a>
+          <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+            <div style="padding:5px 13px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700">CRM</div>
+            <div style="padding:5px 13px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600">OPS</div>
+          </div>
+        </div>
+
+        <div style="flex:1; overflow:hidden; display:flex; flex-direction:column">
+          <div style="padding:22px 18px 18px; display:flex; flex-direction:column; gap:12px">
+            <div style="display:flex; align-items:center; gap:13px">
+              <div style="width:44px; height:44px; flex:none; border-radius:50%; border:1px solid rgba(196,163,90,0.4); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700">LK</div>
+              <div style="display:flex; flex-direction:column; gap:3px">
+                <div style="font-size:20px; font-weight:700; letter-spacing:-0.02em">Lubna Khalid</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">London · King St Condo</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+              <div style="padding:5px 11px; border-radius:6px; border:1px solid rgba(196,163,90,0.45); color:#c4a35a; font-size:11.5px; font-weight:700; letter-spacing:0.04em">Interested</div>
+              <div style="padding:5px 11px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); color:#9a9590; font-size:11.5px">No portal access</div>
+            </div>
+          </div>
+
+          <div style="padding:0 18px 18px; display:flex; flex-direction:column; gap:12px">
+            <div style="padding:16px; border-radius:10px; background:#c4a35a; color:#0a0a0a; font-size:15px; font-weight:700; text-align:center">Send portal invite</div>
+            <div style="display:flex; gap:10px">
+              <div style="flex:1; padding:13px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); font-size:13.5px; font-weight:600; text-align:center; color:#f5f5f5">Log call</div>
+              <div style="flex:1; padding:13px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); font-size:13.5px; font-weight:600; text-align:center; color:#f5f5f5">Add note</div>
+              <div style="width:46px; padding:13px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); font-size:15px; text-align:center; color:#9a9590">⋯</div>
+            </div>
+          </div>
+
+          <div style="padding:14px 18px; display:grid; grid-template-columns:96px 1fr; gap:10px 14px; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px">
+            <div style="color:#6f6a65">Email</div><div>khalid_lubna@yahoo.com</div>
+            <div style="color:#6f6a65">Phone</div><div>+1 647 963 7550</div>
+            <div style="color:#6f6a65">Property</div><div>King St Condo</div>
+            <div style="color:#6f6a65">Source</div><div style="color:#9a9590">Referral · Jul 30</div>
+          </div>
+
+          <div style="padding:16px 18px; border-top:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:12px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6f6a65">Activity</div>
+            <div style="display:flex; gap:12px">
+              <div style="width:7px; height:7px; margin-top:6px; flex:none; border-radius:50%; background:#c4a35a"></div>
+              <div style="display:flex; flex-direction:column; gap:2px"><div style="font-size:13.5px">Call — wants 20% terms, ready to sign</div><div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">Aug 12 · Shane</div></div>
+            </div>
+            <div style="display:flex; gap:12px">
+              <div style="width:7px; height:7px; margin-top:6px; flex:none; border-radius:50%; background:rgba(255,255,255,0.2)"></div>
+              <div style="display:flex; flex-direction:column; gap:2px"><div style="font-size:13.5px; color:#9a9590">Stage moved to Interested</div><div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">Aug 3 · Shane</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="height:56px; flex:none; display:grid; grid-template-columns:repeat(4,1fr); align-items:center; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="text-align:center; font-size:10.5px; font-weight:700; color:#c4a35a">Leads</div>
+          <div style="text-align:center; font-size:10.5px; color:#6f6a65">Pipeline</div>
+          <div style="text-align:center; font-size:10.5px; color:#6f6a65">Inbox</div>
+          <div style="text-align:center; font-size:10.5px; color:#6f6a65">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">F5 · Send portal invite sheet (library pick) — mobile 390</div>
+      <div data-screen-label="F5 Send invite sheet mobile" style="width:390px; height:844px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:14px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; position:relative">
+        <div style="position:absolute; top:0; left:0; right:0; padding:22px 18px; display:flex; align-items:center; gap:12px; opacity:0.3">
+          <div style="width:44px; height:44px; border-radius:50%; border:1px solid rgba(196,163,90,0.4); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700">LK</div>
+          <div style="font-size:20px; font-weight:700">Lubna Khalid</div>
+        </div>
+        <div style="position:relative; background:#141414; border-top:1px solid rgba(255,255,255,0.1); border-radius:16px 16px 0 0; padding:10px 18px 20px; display:flex; flex-direction:column; gap:18px; max-height:730px">
+          <div style="width:38px; height:4px; border-radius:2px; background:rgba(255,255,255,0.16); align-self:center"></div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between">
+            <div style="font-size:20px; font-weight:700; letter-spacing:-0.02em">Send portal invite</div>
+            <a href="#1a" style="font-size:13px; color:#9a9590">Cancel</a>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:14px">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px">
+              <label style="display:flex; flex-direction:column; gap:7px">
+                <span style="font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#6f6a65; font-weight:600">First name</span>
+                <input type="text" value="Lubna" style="background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,0.16); padding:8px 2px; color:#f5f5f5; font-family:'Manrope',sans-serif; font-size:15px; outline:none" style-focus="border-bottom-color:#c4a35a">
+              </label>
+              <label style="display:flex; flex-direction:column; gap:7px">
+                <span style="font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#6f6a65; font-weight:600">Property label</span>
+                <input type="text" value="King St Condo" style="background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,0.16); padding:8px 2px; color:#f5f5f5; font-family:'Manrope',sans-serif; font-size:15px; outline:none" style-focus="border-bottom-color:#c4a35a">
+              </label>
+            </div>
+            <label style="display:flex; flex-direction:column; gap:7px">
+              <span style="font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#6f6a65; font-weight:600">Email — portal login</span>
+              <input type="text" value="khalid_lubna@yahoo.com" style="background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,0.16); padding:8px 2px; color:#f5f5f5; font-family:'Manrope',sans-serif; font-size:15px; outline:none" style-focus="border-bottom-color:#c4a35a">
+            </label>
+            <label style="display:flex; flex-direction:column; gap:7px">
+              <span style="font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#6f6a65; font-weight:600">Phone</span>
+              <input type="text" value="+1 647 963 7550" style="background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,0.16); padding:8px 2px; color:#f5f5f5; font-family:'Manrope',sans-serif; font-size:15px; outline:none" style-focus="border-bottom-color:#c4a35a">
+            </label>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:10px; padding-top:4px; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#6f6a65; font-weight:600; padding-top:12px">Agreement to sign</div>
+            <div style="display:flex; align-items:center; gap:12px; padding:13px 14px; border:1px solid #c4a35a; border-radius:10px; background:#191712">
+              <div style="width:16px; height:16px; flex:none; border-radius:50%; border:5px solid #c4a35a"></div>
+              <div style="flex:1; display:flex; flex-direction:column; gap:2px">
+                <div style="font-size:14px; font-weight:600">Standard management 20%</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#9a9590">Standard management 20%.pdf</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; padding:13px 14px; border:1px solid rgba(255,255,255,0.09); border-radius:10px">
+              <div style="width:16px; height:16px; flex:none; border-radius:50%; border:1px solid rgba(255,255,255,0.25)"></div>
+              <div style="flex:1; font-size:14px; color:#f5f5f5">Makeover + management</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; padding:13px 14px; border:1px solid rgba(255,255,255,0.09); border-radius:10px">
+              <div style="width:16px; height:16px; flex:none; border-radius:50%; border:1px solid rgba(255,255,255,0.25)"></div>
+              <div style="flex:1; font-size:14px; color:#f5f5f5">Custom — Brampton permit terms</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; padding:13px 14px; border:1px dashed rgba(255,255,255,0.18); border-radius:10px">
+              <div style="width:16px; height:16px; flex:none; border-radius:50%; border:1px solid rgba(255,255,255,0.25)"></div>
+              <div style="flex:1; font-size:14px; color:#9a9590">Upload PDF for this deal only</div>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:12px">
+            <div style="font-size:12px; line-height:1.55; color:#6f6a65; text-wrap:pretty">Creates a portal login, emails a temporary password, and Lubna signs this PDF after login.</div>
+            <div style="padding:16px; border-radius:10px; background:#c4a35a; color:#0a0a0a; font-size:15px; font-weight:700; text-align:center">Send invite</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">F6 · Send invite — one-off upload · desktop 1280</div>
+      <div data-screen-label="F6 Send invite desktop" style="width:1280px; height:800px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:16px; overflow:hidden; display:flex; position:relative">
+        <div style="flex:1; display:flex; flex-direction:column; opacity:0.32">
+          <div style="height:56px; flex:none; padding:0 20px; display:flex; align-items:center; gap:18px; border-bottom:1px solid rgba(255,255,255,0.08)">
+            <div style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">M</div>
+            <div style="font-size:14px; font-weight:600">Mandel Realty Group</div>
+            <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+              <div style="padding:5px 14px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700">CRM</div>
+              <div style="padding:5px 14px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600">OPS</div>
+            </div>
+          </div>
+          <div style="padding:30px; display:flex; flex-direction:column; gap:14px">
+            <div style="font-size:26px; font-weight:700; letter-spacing:-0.02em">Lubna Khalid</div>
+            <div style="font-size:13px; color:#9a9590">Interested · London · King St Condo</div>
+          </div>
+        </div>
+
+        <div style="width:520px; flex:none; background:#141414; border-left:1px solid rgba(255,255,255,0.1); padding:28px 32px; display:flex; flex-direction:column; gap:22px; overflow:hidden">
+          <div style="display:flex; align-items:baseline; justify-content:space-between">
+            <div style="font-size:22px; font-weight:700; letter-spacing:-0.02em">Send portal invite</div>
+            <a href="#1a" style="font-size:13px; color:#9a9590">Cancel</a>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px">
+            <label style="display:flex; flex-direction:column; gap:7px">
+              <span style="font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#6f6a65; font-weight:600">First name</span>
+              <input type="text" value="Lubna" style="background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,0.16); padding:8px 2px; color:#f5f5f5; font-family:'Manrope',sans-serif; font-size:15px; outline:none" style-focus="border-bottom-color:#c4a35a">
+            </label>
+            <label style="display:flex; flex-direction:column; gap:7px">
+              <span style="font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#6f6a65; font-weight:600">Property label</span>
+              <input type="text" value="King St Condo" style="background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,0.16); padding:8px 2px; color:#f5f5f5; font-family:'Manrope',sans-serif; font-size:15px; outline:none" style-focus="border-bottom-color:#c4a35a">
+            </label>
+            <label style="display:flex; flex-direction:column; gap:7px">
+              <span style="font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#6f6a65; font-weight:600">Email — portal login</span>
+              <input type="text" value="khalid_lubna@yahoo.com" style="background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,0.16); padding:8px 2px; color:#f5f5f5; font-family:'Manrope',sans-serif; font-size:15px; outline:none" style-focus="border-bottom-color:#c4a35a">
+            </label>
+            <label style="display:flex; flex-direction:column; gap:7px">
+              <span style="font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#6f6a65; font-weight:600">Phone</span>
+              <input type="text" value="+1 647 963 7550" style="background:transparent; border:0; border-bottom:1px solid rgba(255,255,255,0.16); padding:8px 2px; color:#f5f5f5; font-family:'Manrope',sans-serif; font-size:15px; outline:none" style-focus="border-bottom-color:#c4a35a">
+            </label>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:12px; padding-top:18px; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex; align-items:center; justify-content:space-between">
+              <div style="font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#6f6a65; font-weight:600">Agreement to sign</div>
+              <a href="#1a" style="font-size:12px; color:#9a9590">Use a library template</a>
+            </div>
+            <div style="padding:13px 15px; border:1px solid rgba(255,255,255,0.09); border-radius:10px; display:flex; align-items:center; justify-content:space-between; color:#9a9590; font-size:14px">
+              <span>Standard management 20%</span><span style="font-size:12px">⌄</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; padding:14px 15px; border:1px solid #c4a35a; border-radius:10px; background:#191712">
+              <div style="width:28px; height:34px; flex:none; border:1px solid rgba(196,163,90,0.5); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:3px; font-family:'IBM Plex Mono',monospace; font-size:8px; color:#c4a35a">PDF</div>
+              <div style="flex:1; display:flex; flex-direction:column; gap:3px">
+                <div style="font-size:14px; font-weight:600">Khalid — King St 18% one-off.pdf</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#4ea882">One-off for this deal · 6 pages · uploaded just now</div>
+              </div>
+              <a href="#1a" style="font-size:12px; color:#6f6a65">Replace</a>
+            </div>
+            <label style="display:flex; align-items:center; gap:10px; font-size:13px; color:#9a9590">
+              <span style="width:15px; height:15px; border:1px solid rgba(255,255,255,0.22); border-radius:3px; flex:none"></span>
+              Also save to Contract templates
+            </label>
+          </div>
+
+          <div style="margin-top:auto; display:flex; flex-direction:column; gap:14px">
+            <div style="font-size:12.5px; line-height:1.55; color:#6f6a65; text-wrap:pretty">Creates a portal login, emails a temporary password to khalid_lubna@yahoo.com, and Lubna signs this PDF after login.</div>
+            <div style="display:flex; gap:12px">
+              <div style="flex:1; padding:15px; border-radius:10px; background:#c4a35a; color:#0a0a0a; font-size:14.5px; font-weight:700; text-align:center">Send invite</div>
+              <div style="padding:15px 22px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); font-size:14.5px; font-weight:600; color:#9a9590">Cancel</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== ROW 3 · STATUS ===================== -->
+  <div style="display:flex; flex-wrap:wrap; gap:40px; align-items:flex-start">
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">F7 · Profile status: Invited — mobile 390</div>
+      <div data-screen-label="F7 Status invited" style="width:390px; height:560px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:14px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="padding:22px 18px 16px; display:flex; flex-direction:column; gap:12px">
+          <div style="display:flex; align-items:center; gap:13px">
+            <div style="width:44px; height:44px; flex:none; border-radius:50%; border:1px solid rgba(196,163,90,0.4); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700">LK</div>
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:20px; font-weight:700; letter-spacing:-0.02em">Lubna Khalid</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">London · King St Condo</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <div style="padding:5px 11px; border-radius:6px; border:1px solid rgba(196,163,90,0.45); color:#c4a35a; font-size:11.5px; font-weight:700">Interested</div>
+          </div>
+        </div>
+
+        <div style="padding:16px 18px; border-top:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:10px">
+          <div style="display:flex; align-items:center; justify-content:space-between">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6f6a65">Portal</div>
+            <div style="width:30px; height:26px; display:flex; align-items:center; justify-content:center; color:#6f6a65; font-size:15px">⋯</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="width:8px; height:8px; border-radius:50%; background:#c4a35a"></div>
+            <div style="font-size:15px; font-weight:600">Invited</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#9a9590">sent Aug 13 · awaiting login</div>
+          </div>
+          <div style="font-size:13px; color:#9a9590">Standard management 20%.pdf · unsigned</div>
+        </div>
+
+        <div style="padding:16px 18px; border-top:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:14px">
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="width:8px; height:8px; border-radius:50%; background:#4ea882"></div>
+            <div style="font-size:14.5px; font-weight:600">Opened</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#9a9590">signed in Aug 13 · unsigned</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="width:8px; height:8px; border-radius:50%; background:#cf7f7b"></div>
+            <div style="font-size:14.5px; font-weight:600">Failed</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#9a9590">email bounced</div>
+            <a href="#1a" style="margin-left:auto; font-size:12.5px">Resend</a>
+          </div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#4f4b47; text-transform:uppercase; letter-spacing:0.08em">Other states of the same line</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">F8 · Profile status: Signed — mobile 390</div>
+      <div data-screen-label="F8 Status signed" style="width:390px; height:560px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:14px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="padding:22px 18px 16px; display:flex; flex-direction:column; gap:12px">
+          <div style="display:flex; align-items:center; gap:13px">
+            <div style="width:44px; height:44px; flex:none; border-radius:50%; border:1px solid rgba(78,168,130,0.45); color:#4ea882; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700">LK</div>
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:20px; font-weight:700; letter-spacing:-0.02em">Lubna Khalid</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">London · King St Condo</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <div style="padding:5px 11px; border-radius:6px; border:1px solid rgba(78,168,130,0.45); color:#4ea882; font-size:11.5px; font-weight:700">Client</div>
+            <div style="padding:5px 11px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); color:#9a9590; font-size:11.5px">Portal active</div>
+          </div>
+        </div>
+
+        <div style="padding:16px 18px; border-top:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:10px">
+          <div style="display:flex; align-items:center; justify-content:space-between">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6f6a65">Portal</div>
+            <div style="width:30px; height:26px; display:flex; align-items:center; justify-content:center; color:#6f6a65; font-size:15px">⋯</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="width:8px; height:8px; border-radius:50%; background:#4ea882"></div>
+            <div style="font-size:15px; font-weight:600">Signed</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#9a9590">Aug 13, 2026 · 4:12 PM</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; padding:13px 14px; border:1px solid rgba(255,255,255,0.09); border-radius:10px; background:#111">
+            <div style="width:26px; height:32px; flex:none; border:1px solid rgba(255,255,255,0.16); border-radius:3px; display:flex; align-items:flex-end; justify-content:center; padding-bottom:3px; font-family:'IBM Plex Mono',monospace; font-size:7.5px; color:#9a9590">PDF</div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:2px">
+              <div style="font-size:13.5px; font-weight:600">Standard management 20%.pdf</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">Signed copy · 1.2 MB</div>
+            </div>
+            <a href="#1a" style="font-size:12.5px">View</a>
+          </div>
+        </div>
+
+        <div style="padding:16px 18px; border-top:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:12px">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6f6a65">Next</div>
+          <div style="display:flex; gap:10px">
+            <div style="flex:1; padding:13px; border-radius:10px; background:#c4a35a; color:#0a0a0a; font-size:13.5px; font-weight:700; text-align:center">Start onboarding</div>
+            <div style="flex:1; padding:13px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); font-size:13.5px; font-weight:600; text-align:center">Add property</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">F9 · Resend / revoke confirm — mobile 390</div>
+      <div data-screen-label="F9 Resend confirm" style="width:390px; height:560px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:14px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; position:relative">
+        <div style="position:absolute; top:0; left:0; right:0; padding:22px 18px; display:flex; flex-direction:column; gap:10px; opacity:0.3">
+          <div style="font-size:20px; font-weight:700">Lubna Khalid</div>
+          <div style="font-size:13px; color:#9a9590">Invited · sent Aug 13</div>
+        </div>
+        <div style="position:relative; padding:0 14px 14px; display:flex; flex-direction:column; gap:10px">
+          <div style="border:1px solid rgba(255,255,255,0.09); border-radius:12px; background:#141414; overflow:hidden">
+            <div style="padding:14px 16px; font-size:14.5px; font-weight:600">Resend invite</div>
+            <div style="padding:14px 16px; font-size:14.5px; font-weight:600; border-top:1px solid rgba(255,255,255,0.07)">Change agreement PDF</div>
+            <div style="padding:14px 16px; font-size:14.5px; font-weight:600; color:#cf7f7b; border-top:1px solid rgba(255,255,255,0.07)">Revoke portal access</div>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.1); border-radius:12px; background:#141414; padding:18px 16px; display:flex; flex-direction:column; gap:12px">
+            <div style="font-size:16px; font-weight:700; letter-spacing:-0.01em">Resend invite to Lubna?</div>
+            <div style="font-size:13px; line-height:1.55; color:#9a9590; text-wrap:pretty">A new temporary password goes to khalid_lubna@yahoo.com. The old one stops working. Agreement stays Standard management 20%.pdf.</div>
+            <div style="display:flex; gap:10px; padding-top:2px">
+              <div style="flex:1; padding:14px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); font-size:14px; font-weight:600; text-align:center; color:#9a9590">Cancel</div>
+              <div style="flex:1; padding:14px; border-radius:10px; background:#c4a35a; color:#0a0a0a; font-size:14px; font-weight:700; text-align:center">Resend</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showHelper&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Contract library&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { showHelper: this.props.showHelper ?? true };
+  }
+}
+</script>
+</body>
+</html>

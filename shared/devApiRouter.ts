@@ -175,6 +175,12 @@ export async function handleDevApi(
     }
   }
 
+  // Owner portal API
+  if (url === "/api/owner" || url.startsWith("/api/owner?")) {
+    const { default: handleOwner } = await import("./ownerApi.js");
+    return runVercelAdminHandler(req, res, "", handleOwner);
+  }
+
   if (url === "/api/booked-slots" && method === "GET") {
     json(res, 200, { booked: await getBookedStartIsos() });
     return true;

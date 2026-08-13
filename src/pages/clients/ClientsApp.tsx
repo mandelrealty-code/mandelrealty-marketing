@@ -15,6 +15,8 @@ import {
 } from "./BillingTermsForm";
 import { ClientMonthPanel } from "./ClientMonthPanel";
 import { ContractsPanel } from "./ContractsPanel";
+import { ContractTemplatesPanel } from "./ContractTemplatesPanel";
+import { PortalInviteControls } from "./PortalInviteControls";
 import { EarningsPanel } from "./EarningsPanel";
 import { MonthClosePanel } from "./MonthClosePanel";
 import { OwnerStatementPanel } from "./OwnerStatementPanel";
@@ -1629,6 +1631,7 @@ export default function ClientsApp({ onModeChange }: Props) {
       <p className="px-4 py-[18px] text-[13px] text-[#6f6a65] lg:px-1">
         Reconnect if bookings stop appearing. Import only the units MRG manages.
       </p>
+      <ContractTemplatesPanel onError={setLoadError} />
     </div>
   );
 
@@ -1807,6 +1810,11 @@ export default function ClientsApp({ onModeChange }: Props) {
             </div>
             {clientSheet !== "create" && typeof clientSheet === "object" ? (
               <>
+                <PortalInviteControls
+                  client={clientSheet}
+                  onError={setLoadError}
+                  onToast={setToast}
+                />
                 <div className="mt-2 flex flex-col border-t border-white/8">
                   <button
                     type="button"

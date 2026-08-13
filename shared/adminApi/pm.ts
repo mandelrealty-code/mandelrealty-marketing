@@ -9,10 +9,25 @@ import {
   deleteContract,
   getContractDownloadUrl,
   listContracts,
+  assignAwaitingContract,
 } from "../pm/contractStore.js";
+import {
+  archiveContractTemplate,
+  createContractTemplate,
+  downloadTemplateBuffer,
+  getTemplateDownloadUrl,
+  listContractTemplates,
+} from "../pm/contractTemplateStore.js";
+import {
+  createOrRefreshPortalInvite,
+  getPortalUserByClientId,
+  publicPortalUser,
+} from "../pm/portalUserStore.js";
+import { ownerPortalUrl, sendOwnerInviteEmail } from "../ownerEmails.js";
 import {
   createPmClient,
   getHospitablePat,
+  getPmClient,
   getPmSettings,
   isHospitableConfigured,
   listPmClients,
@@ -353,6 +368,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!id) return res.status(400).json({ error: "id required." });
         const url = await getContractDownloadUrl(id);
         return res.status(200).json({ url });
+      }
+      if (resource === "contract_templates") {
+        const include =
+          req.query.include_archived === "1" || req.query.include_archived === "true";
+        const templates = await listContractTemplates(include);
+        return res.status(200).json({ templates });
+      }
+      if (resource === "contract_template_url") {
+        const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+        if (!id) return res.status(400).json({ error: "id required." });
+        const url = await getTemplateDownloadUrl(id);
+        return res.status(200).json({ url });
+      }
+      if (resource === "portal_user") {
+        const clientId =
+          typeof req.query.client_id === "string" ? req.query.client_id.trim() : "";
+        if (!clientId) return res.status(400).json({ error: "client_id required." });
+        const user = await getPortalUserByClientId(clientId);
+        const { getAwaitingContractForClient, listSignedContractsForClient } =
+          await import("../pm/contractStore.js");
+        const awaiting = user ? await getAwaitingContractForClient(clientId) : null;
+        const signed = user ? await listSignedContractsForClient(clientId) : [];
+        return res.status(200).json({
+          portal_user: user ? publicPortalUser(user) : null,
+          owner_url: user ? ownerPortalUrl(user.slug) : null,
+          awaiting_contract: awaiting
+            ? { id: awaiting.id, title: awaiting.title, status: awaiting.status }
+            : null,
+          signed_contracts: signed.map((c) => ({
+            id: c.id,
+            title: c.title,
+            signed_on: c.signed_on,
+            status: c.status,
+          })),
+        });
       }
       if (resource === "tasks") {
         const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
@@ -749,7 +799,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             effective_from: str(body.effective_from) || null,
             effective_to: str(body.effective_to) || null,
             status:
-              body.status === "draft" || body.status === "expired"
+              body.status === "draft" ||
+              body.status === "expired" ||
+              body.status === "awaiting_signature"
                 ? body.status
                 : "signed",
             note: str(body.note),
@@ -761,6 +813,137 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (!id) return res.status(400).json({ error: "id required." });
           await deleteContract(id);
           return res.status(200).json({ ok: true });
+        }
+      }
+
+      if (resource === "contract_templates") {
+        if (op === "create") {
+          const filename = str(body.filename);
+          const base64 = str(body.contentBase64);
+          if (!filename || !base64) {
+            return res.status(400).json({ error: "filename + contentBase64 required." });
+          }
+          let buffer: Buffer;
+          try {
+            buffer = Buffer.from(base64, "base64");
+          } catch {
+            return res.status(400).json({ error: "Invalid base64." });
+          }
+          const template = await createContractTemplate({
+            label: str(body.label) || filename,
+            filename,
+            mime: str(body.mime) || "application/pdf",
+            buffer,
+          });
+          return res.status(200).json({ template });
+        }
+        if (op === "archive") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await archiveContractTemplate(id);
+          return res.status(200).json({ ok: true });
+        }
+      }
+
+      if (resource === "portal_invite") {
+        if (op === "send") {
+          const clientId = str(body.client_id);
+          if (!clientId) return res.status(400).json({ error: "client_id required." });
+          const client = await getPmClient(clientId);
+          if (!client) return res.status(404).json({ error: "Client not found." });
+
+          const email = str(body.email) || client.email;
+          const name = str(body.name) || client.name;
+          if (!email) return res.status(400).json({ error: "Email required." });
+
+          if (str(body.email) && str(body.email) !== client.email) {
+            await updatePmClient(clientId, { email: str(body.email) });
+          }
+          if (str(body.phone)) {
+            await updatePmClient(clientId, { phone: str(body.phone) });
+          }
+          if (str(body.name) && str(body.name) !== client.name) {
+            await updatePmClient(clientId, { name: str(body.name) });
+          }
+
+          const templateId = str(body.template_id);
+          const oneOffName = str(body.filename);
+          const oneOffB64 = str(body.contentBase64);
+          let pdf: { buffer: Buffer; filename: string; mime: string; title: string; template_id: string | null };
+
+          if (templateId) {
+            const t = await downloadTemplateBuffer(templateId);
+            pdf = {
+              buffer: t.buffer,
+              filename: t.filename,
+              mime: t.mime,
+              title: t.label,
+              template_id: templateId,
+            };
+          } else if (oneOffName && oneOffB64) {
+            pdf = {
+              buffer: Buffer.from(oneOffB64, "base64"),
+              filename: oneOffName,
+              mime: str(body.mime) || "application/pdf",
+              title: str(body.title) || oneOffName,
+              template_id: null,
+            };
+          } else {
+            return res.status(400).json({
+              error: "Pick a contract template or upload a PDF for this deal.",
+            });
+          }
+
+          if (body.save_as_template === true && !templateId && oneOffName && oneOffB64) {
+            await createContractTemplate({
+              label: str(body.template_label) || str(body.title) || oneOffName,
+              filename: oneOffName,
+              mime: str(body.mime) || "application/pdf",
+              buffer: pdf.buffer,
+            }).catch(() => undefined);
+          }
+
+          const { user, tempPassword } = await createOrRefreshPortalInvite({
+            pm_client_id: clientId,
+            email,
+            fullName: name,
+            slug: str(body.slug) || undefined,
+          });
+
+          const props = await listPmProperties(clientId).catch(() => []);
+          const propertyId = str(body.property_id) || props[0]?.id || null;
+          const propertyLabel = props.find((p) => p.id === propertyId)
+            ? `${props.find((p) => p.id === propertyId)!.name}`
+            : props[0]?.name;
+
+          const contract = await assignAwaitingContract({
+            client_id: clientId,
+            property_id: propertyId,
+            title: pdf.title,
+            filename: pdf.filename,
+            mime: pdf.mime,
+            buffer: pdf.buffer,
+            template_id: pdf.template_id,
+          });
+
+          const mail = await sendOwnerInviteEmail({
+            to: email,
+            firstName: user.first_name || "there",
+            propertyLabel,
+            slug: user.slug,
+            tempPassword,
+          });
+
+          return res.status(200).json({
+            ok: true,
+            portal_user: publicPortalUser(user),
+            owner_url: ownerPortalUrl(user.slug),
+            contracts_url: ownerPortalUrl(user.slug, "contracts"),
+            contract,
+            email_sent: mail.ok,
+            email_error: mail.ok ? null : mail.message || "Email failed",
+            temp_password_preview: process.env.NODE_ENV === "production" ? undefined : tempPassword,
+          });
         }
       }
 
