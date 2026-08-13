@@ -365,8 +365,8 @@ export function PortalInviteControls({
             <div>
               <div className="text-[15px] font-semibold">Prepare agreement</div>
               <div className="text-[12.5px] text-[#6f6a65]">
-                Host boxes = they fill later. MRG boxes = you sign and type now. Drag corners to
-                resize.
+                Host boxes = they fill later. MRG boxes = you sign and type now. Click a box to
+                select · drag gold corners to resize · × or Delete to remove.
               </div>
             </div>
             <div className="flex gap-3">

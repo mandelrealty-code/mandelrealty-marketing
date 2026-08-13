@@ -429,9 +429,23 @@ export async function handleDevApi(
         const qs = new URL(req.url ?? "", "http://localhost").searchParams;
         const followupsFor = qs.get("followups")?.trim() || "";
         if (followupsFor) {
+          const { getPendingDraft } = await import("./smsDraftStore.js");
+          const { ensurePlaybook } = await import("./playbook.js");
+          const { getLeadById } = await import("./leadStore.js");
+          const [pendingDraft, lead] = await Promise.all([
+            getPendingDraft(followupsFor),
+            getLeadById(followupsFor),
+          ]);
+          let playbook = lead ? ensurePlaybook(lead) : [];
+          if (lead && (!lead.playbook_steps || lead.playbook_steps.length === 0) && playbook.length) {
+            await updateLeadCrm(lead.id, { playbookSteps: playbook }).catch(() => undefined);
+          }
           json(res, 200, {
             followups: await listFollowupsForLead(followupsFor),
             messages: await listSmsForLead(followupsFor),
+            pending_draft: pendingDraft,
+            playbook_steps: playbook,
+            ai_send_mode: lead?.ai_send_mode || "autopilot",
           });
           return true;
         }
@@ -555,6 +569,55 @@ export async function handleDevApi(
         });
         return true;
       }
+      const twilioEnv = {
+        TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+        TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+        TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
+      };
+      if (body.draftAction === "approve" || body.draft_action === "approve") {
+        const { approveDraft, getPendingDraft } = await import("./smsDraftStore.js");
+        const draftId = String(body.draftId || body.draft_id || "").trim();
+        if (!draftId) {
+          json(res, 400, { error: "draftId required." });
+          return true;
+        }
+        const result = await approveDraft(
+          draftId,
+          twilioEnv,
+          typeof body.draftBody === "string" ? body.draftBody : undefined,
+        );
+        if (!result.ok) {
+          json(res, 400, { error: result.error || "Could not send draft." });
+          return true;
+        }
+        json(res, 200, {
+          ok: true,
+          messages: await listSmsForLead(id),
+          pending_draft: await getPendingDraft(id),
+        });
+        return true;
+      }
+      if (body.draftAction === "discard" || body.draft_action === "discard") {
+        const { discardDraft } = await import("./smsDraftStore.js");
+        const draftId = String(body.draftId || body.draft_id || "").trim();
+        if (!draftId) {
+          json(res, 400, { error: "draftId required." });
+          return true;
+        }
+        await discardDraft(draftId);
+        json(res, 200, { ok: true, pending_draft: null });
+        return true;
+      }
+      if (body.draftAction === "save" || body.draft_action === "save") {
+        const { saveDraftBody } = await import("./smsDraftStore.js");
+        const draftId = String(body.draftId || body.draft_id || "").trim();
+        const pending_draft = await saveDraftBody(
+          draftId,
+          String(body.draftBody || body.draft_body || ""),
+        );
+        json(res, 200, { ok: true, pending_draft });
+        return true;
+      }
       const patch: {
         status?: LeadStatus;
         notes?: string;
@@ -562,6 +625,8 @@ export async function handleDevApi(
         callNotes?: string;
         aiPaused?: boolean;
         aiForceOn?: boolean;
+        aiSendMode?: "draft" | "autopilot";
+        playbookSteps?: import("./playbook.js").PlaybookStep[];
       } = {};
       if (body.status !== undefined) {
         const status = String(body.status).trim() as LeadStatus;
@@ -583,6 +648,17 @@ export async function handleDevApi(
       if (typeof body.ai_force_on === "boolean") {
         patch.aiForceOn = body.ai_force_on;
         if (body.ai_force_on) patch.aiPaused = false;
+      }
+      if (body.aiSendMode === "draft" || body.ai_send_mode === "draft") {
+        patch.aiSendMode = "draft";
+      } else if (body.aiSendMode === "autopilot" || body.ai_send_mode === "autopilot") {
+        patch.aiSendMode = "autopilot";
+      }
+      if (body.playbookAction === "complete" || body.playbook_action === "complete") {
+        const { getLeadById } = await import("./leadStore.js");
+        const { advancePlaybook, ensurePlaybook } = await import("./playbook.js");
+        const lead = await getLeadById(id);
+        if (lead) patch.playbookSteps = advancePlaybook(ensurePlaybook(lead));
       }
       if (Object.keys(patch).length === 0) {
         json(res, 400, { error: "Nothing to update." });

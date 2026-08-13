@@ -75,7 +75,7 @@ export function PdfPages({
       {canvases.map((c) => (
         <div
           key={c.page}
-          className="relative mx-auto w-full max-w-[820px] overflow-hidden bg-white shadow-lg"
+          className="relative mx-auto w-full max-w-[820px] overflow-visible bg-white shadow-lg"
           data-pdf-page={c.page}
         >
           <img src={c.dataUrl} alt={`Page ${c.page}`} className="block w-full h-auto" />

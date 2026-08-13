@@ -67,6 +67,10 @@ function mapLeadRow(row: Record<string, unknown>): LeadRow {
     qualified_at: (row.qualified_at as string | null) ?? null,
     ai_paused: Boolean(row.ai_paused),
     ai_force_on: Boolean(row.ai_force_on),
+    ai_send_mode: row.ai_send_mode === "draft" ? "draft" : "autopilot",
+    playbook_steps: Array.isArray(row.playbook_steps)
+      ? (row.playbook_steps as LeadRow["playbook_steps"])
+      : [],
     offer_path: (row.offer_path as LeadRow["offer_path"]) || "unknown",
     sms_last_read_at: (row.sms_last_read_at as string | null) ?? null,
   };
@@ -278,7 +282,7 @@ export async function processDueFollowups(env: {
   const { data, error } = await sb
     .from("lead_followups")
     .select(
-      "*, leads!inner(id, phone, name, status, call_start_iso, offer_path, whats_next, ai_paused, ai_force_on)",
+      "*, leads!inner(id, phone, name, status, call_start_iso, offer_path, whats_next, ai_paused, ai_force_on, ai_send_mode)",
     )
     .eq("status", "pending")
     .lte("send_at", nowIso)
@@ -302,6 +306,7 @@ export async function processDueFollowups(env: {
       offer_path?: string;
       whats_next?: string;
       ai_paused?: boolean;
+      ai_send_mode?: string;
     };
 
     // Stage / terminal gates — never text the wrong path
@@ -357,6 +362,26 @@ export async function processDueFollowups(env: {
         .update({ status: "failed", error: "Invalid phone for SMS" })
         .eq("id", followup.id);
       result.failed += 1;
+      continue;
+    }
+
+    if (lead.ai_send_mode === "draft") {
+      const { upsertPendingDraft, draftStepTitleForLead } = await import("./smsDraftStore.js");
+      const stepTitle = await draftStepTitleForLead(lead.id);
+      await upsertPendingDraft({
+        leadId: lead.id,
+        body: followup.body,
+        stepTitle,
+      });
+      await sb
+        .from("lead_followups")
+        .update({
+          status: "sent",
+          sent_at: new Date().toISOString(),
+          error: "queued_as_draft",
+        })
+        .eq("id", followup.id);
+      result.sent += 1;
       continue;
     }
 

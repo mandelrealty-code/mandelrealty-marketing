@@ -16,8 +16,13 @@ type Drag =
   | { kind: "move"; id: string; sx: number; sy: number; orig: SignField }
   | { kind: "resize"; id: string; handle: Handle; sx: number; sy: number; orig: SignField };
 
-const MIN_W = 0.04;
-const MIN_H = 0.02;
+const MIN_W = 0.05;
+const MIN_H = 0.028;
+const MOVE_THRESHOLD_PX = 4;
+
+function clamp01(n: number) {
+  return Math.min(1, Math.max(0, n));
+}
 
 function clampField(f: SignField): SignField {
   const w = Math.min(1, Math.max(MIN_W, f.w));
@@ -31,19 +36,35 @@ function clampField(f: SignField): SignField {
   };
 }
 
-function applyResize(orig: SignField, handle: Handle, dx: number, dy: number): SignField {
-  let { x, y, w, h } = orig;
-  if (handle.includes("e")) w = orig.w + dx;
-  if (handle.includes("s")) h = orig.h + dy;
-  if (handle.includes("w")) {
-    w = orig.w - dx;
-    x = orig.x + dx;
-  }
-  if (handle.includes("n")) {
-    h = orig.h - dy;
-    y = orig.y + dy;
-  }
-  return clampField({ ...orig, x, y, w, h });
+/** Delta resize so the grab point never jumps — opposite corner stays fixed. */
+function resizeByDelta(
+  orig: SignField,
+  handle: Handle,
+  dx: number,
+  dy: number,
+): SignField {
+  let left = orig.x;
+  let right = orig.x + orig.w;
+  let top = orig.y;
+  let bottom = orig.y + orig.h;
+
+  if (handle.includes("e")) right = orig.x + orig.w + dx;
+  if (handle.includes("w")) left = orig.x + dx;
+  if (handle.includes("s")) bottom = orig.y + orig.h + dy;
+  if (handle.includes("n")) top = orig.y + dy;
+
+  if (handle.includes("e")) right = Math.min(1, Math.max(left + MIN_W, right));
+  if (handle.includes("w")) left = Math.max(0, Math.min(right - MIN_W, left));
+  if (handle.includes("s")) bottom = Math.min(1, Math.max(top + MIN_H, bottom));
+  if (handle.includes("n")) top = Math.max(0, Math.min(bottom - MIN_H, top));
+
+  return {
+    ...orig,
+    x: left,
+    y: top,
+    w: right - left,
+    h: bottom - top,
+  };
 }
 
 export function SignFieldPlacer({
@@ -63,25 +84,41 @@ export function SignFieldPlacer({
   const [signingId, setSigningId] = useState<string | null>(null);
   const [padName, setPadName] = useState(mrgNameHint);
   const drag = useRef<Drag | null>(null);
-  const moved = useRef(false);
+  const dragging = useRef(false);
+  const pointerStart = useRef<{ x: number; y: number } | null>(null);
+  const fieldsRef = useRef(fields);
   const overlayByPage = useRef<Map<number, HTMLDivElement>>(new Map());
 
+  fieldsRef.current = fields;
+
+  const replace = (id: string, next: SignField) => {
+    onChange(fieldsRef.current.map((f) => (f.id === id ? next : f)));
+  };
+
   const patch = (id: string, next: Partial<SignField>) => {
-    onChange(fields.map((f) => (f.id === id ? { ...f, ...next } : f)));
+    onChange(fieldsRef.current.map((f) => (f.id === id ? { ...f, ...next } : f)));
+  };
+
+  const remove = (id: string) => {
+    onChange(fieldsRef.current.filter((f) => f.id !== id));
+    if (selected === id) setSelected(null);
+    if (signingId === id) setSigningId(null);
   };
 
   const pageFrac = (page: number, clientX: number, clientY: number) => {
     const el = overlayByPage.current.get(page);
     if (!el) return { x: 0, y: 0 };
     const rect = el.getBoundingClientRect();
+    const w = rect.width || 1;
+    const h = rect.height || 1;
     return {
-      x: (clientX - rect.left) / rect.width,
-      y: (clientY - rect.top) / rect.height,
+      x: clamp01((clientX - rect.left) / w),
+      y: clamp01((clientY - rect.top) / h),
     };
   };
 
   const place = (page: number, e: React.MouseEvent<HTMLDivElement>) => {
-    if (moved.current) return;
+    if (dragging.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const size = defaultFieldSize(tool);
     const x = (e.clientX - rect.left) / rect.width - size.w / 2;
@@ -98,7 +135,7 @@ export function SignFieldPlacer({
       ...(tool === "date" && party === "mrg" ? { value: todayIsoDate() } : {}),
       ...(tool === "name" && party === "mrg" && mrgNameHint ? { value: mrgNameHint } : {}),
     });
-    onChange([...fields, field]);
+    onChange([...fieldsRef.current, field]);
     setSelected(field.id);
     if (tool === "signature" && party === "mrg") {
       setPadName(mrgNameHint);
@@ -110,29 +147,44 @@ export function SignFieldPlacer({
     const onMove = (e: PointerEvent) => {
       const d = drag.current;
       if (!d) return;
-      moved.current = true;
+      if (d.kind === "move") {
+        const start = pointerStart.current;
+        if (!dragging.current && start) {
+          const dist = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+          if (dist < MOVE_THRESHOLD_PX) return;
+          dragging.current = true;
+        }
+        const p = pageFrac(d.orig.page, e.clientX, e.clientY);
+        replace(
+          d.id,
+          clampField({
+            ...d.orig,
+            x: d.orig.x + (p.x - d.sx),
+            y: d.orig.y + (p.y - d.sy),
+          }),
+        );
+        return;
+      }
+      dragging.current = true;
       const p = pageFrac(d.orig.page, e.clientX, e.clientY);
-      const dx = p.x - d.sx;
-      const dy = p.y - d.sy;
-      const next =
-        d.kind === "move"
-          ? clampField({ ...d.orig, x: d.orig.x + dx, y: d.orig.y + dy })
-          : applyResize(d.orig, d.handle, dx, dy);
-      onChange(fields.map((f) => (f.id === d.id ? next : f)));
+      replace(d.id, resizeByDelta(d.orig, d.handle, p.x - d.sx, p.y - d.sy));
     };
     const onUp = () => {
       drag.current = null;
+      pointerStart.current = null;
       window.setTimeout(() => {
-        moved.current = false;
+        dragging.current = false;
       }, 0);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     };
-  }, [fields, onChange]);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -141,28 +193,30 @@ export function SignFieldPlacer({
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       if (!selected) return;
       e.preventDefault();
-      onChange(fields.filter((f) => f.id !== selected));
-      setSelected(null);
+      remove(selected);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, fields, onChange]);
+  }, [selected]);
 
   const startMove = (f: SignField, e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest("input,textarea,button[data-handle]")) return;
-    e.preventDefault();
     e.stopPropagation();
     setSelected(f.id);
+    if ((e.target as HTMLElement).closest("input,textarea,[data-handle],[data-delete]")) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     const p = pageFrac(f.page, e.clientX, e.clientY);
-    drag.current = { kind: "move", id: f.id, sx: p.x, sy: p.y, orig: f };
+    pointerStart.current = { x: e.clientX, y: e.clientY };
+    drag.current = { kind: "move", id: f.id, sx: p.x, sy: p.y, orig: { ...f } };
   };
 
   const startResize = (f: SignField, handle: Handle, e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setSelected(f.id);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     const p = pageFrac(f.page, e.clientX, e.clientY);
-    drag.current = { kind: "resize", id: f.id, handle, sx: p.x, sy: p.y, orig: f };
+    drag.current = { kind: "resize", id: f.id, handle, sx: p.x, sy: p.y, orig: { ...f } };
   };
 
   const signing = fields.find((f) => f.id === signingId) ?? null;
@@ -203,8 +257,19 @@ export function SignFieldPlacer({
           </button>
         ))}
         <span className="text-[12px] text-[#6f6a65]">
-          Drop · drag corners to resize · click a box to type or sign · {fields.length} placed
+          {selected
+            ? "Selected · drag gold corners · × or Delete"
+            : `Click a box to select · ${fields.length} placed`}
         </span>
+        {selected ? (
+          <button
+            type="button"
+            className="rounded-md border border-[#cf7f7b]/40 px-3 py-1.5 text-[12.5px] font-semibold text-[#cf7f7b]"
+            onClick={() => remove(selected)}
+          >
+            Delete
+          </button>
+        ) : null}
       </div>
 
       <PdfPages url={pdfUrl}>
@@ -239,62 +304,85 @@ export function SignFieldPlacer({
                         setSigningId(f.id);
                       }
                     }}
-                    className={`flex items-center overflow-hidden rounded-[3px] border-2 ${
+                    className={`absolute touch-none select-none overflow-visible rounded-[3px] border-2 ${
                       active
-                        ? "border-[#c4a35a] bg-[#c4a35a]/20"
+                        ? "z-20 border-[#c4a35a] bg-[#c4a35a]/18 shadow-[0_0_0_3px_rgba(196,163,90,0.35)]"
                         : isMrg
                           ? "border-[#4ea882]/80 bg-[#4ea882]/12"
                           : "border-[#c4a35a]/80 bg-[#c4a35a]/12"
                     }`}
                   >
-                    <span className="pointer-events-none absolute left-1 top-0.5 text-[8px] font-bold uppercase tracking-wide text-[#5a4a28]">
+                    <div className="pointer-events-none absolute left-1 top-0.5 text-[8px] font-bold uppercase tracking-wide text-[#5a4a28]">
                       {isMrg ? "MRG" : "Host"}
-                    </span>
-                    {f.type === "signature" ? (
-                      f.signature_png ? (
-                        <img
-                          src={f.signature_png}
-                          alt=""
-                          className="h-full w-full object-contain p-0.5"
-                        />
-                      ) : (
-                        <span className="w-full px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5a4a28]">
-                          {isMrg ? "Click to sign" : "Host signs here"}
-                        </span>
-                      )
-                    ) : (
-                      <input
-                        value={f.value || ""}
-                        placeholder={
-                          f.type === "date"
-                            ? "YYYY-MM-DD"
-                            : f.type === "name"
-                              ? "Printed name"
-                              : "Type here"
-                        }
+                    </div>
+                    {active ? (
+                      <button
+                        type="button"
+                        data-delete
+                        title="Delete"
                         onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => patch(f.id, { value: e.target.value })}
-                        className="h-full w-full bg-transparent px-1.5 text-[11px] text-[#1a1408] outline-none placeholder:text-[#8a7a58]"
-                      />
-                    )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          remove(f.id);
+                        }}
+                        className="absolute left-1/2 z-40 flex h-5 -translate-x-1/2 -translate-y-[130%] items-center rounded-full bg-[#cf7f7b] px-2 text-[10px] font-bold leading-none text-[#0a0a0a] shadow"
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                    <div className="flex h-full items-center overflow-hidden rounded-[1px]">
+                      {f.type === "signature" ? (
+                        f.signature_png ? (
+                          <img
+                            src={f.signature_png}
+                            alt=""
+                            className="h-full w-full object-contain p-0.5"
+                          />
+                        ) : (
+                          <span className="w-full px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5a4a28]">
+                            {isMrg ? "Click to sign" : "Host signs here"}
+                          </span>
+                        )
+                      ) : (
+                        <input
+                          value={f.value || ""}
+                          placeholder={
+                            f.type === "date"
+                              ? "YYYY-MM-DD"
+                              : f.type === "name"
+                                ? "Printed name"
+                                : "Type here"
+                          }
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            setSelected(f.id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => patch(f.id, { value: e.target.value })}
+                          className="h-full w-full bg-transparent px-1.5 pt-2.5 text-[11px] text-[#1a1408] outline-none placeholder:text-[#8a7a58]"
+                        />
+                      )}
+                    </div>
                     {active
                       ? (["nw", "ne", "sw", "se"] as const).map((handle) => (
                           <button
                             key={handle}
                             type="button"
                             data-handle
+                            aria-label={`Resize ${handle}`}
                             onPointerDown={(e) => startResize(f, handle, e)}
-                            className={`absolute z-10 h-2.5 w-2.5 border border-[#0a0a0a] bg-[#c4a35a] ${
+                            className={`absolute z-30 flex h-5 w-5 items-center justify-center ${
                               handle === "nw"
-                                ? "-left-1 -top-1 cursor-nwse-resize"
+                                ? "-left-2.5 -top-2.5 cursor-nwse-resize"
                                 : handle === "ne"
-                                  ? "-right-1 -top-1 cursor-nesw-resize"
+                                  ? "-right-2.5 -top-2.5 cursor-nesw-resize"
                                   : handle === "sw"
-                                    ? "-left-1 -bottom-1 cursor-nesw-resize"
-                                    : "-right-1 -bottom-1 cursor-nwse-resize"
+                                    ? "-left-2.5 -bottom-2.5 cursor-nesw-resize"
+                                    : "-right-2.5 -bottom-2.5 cursor-nwse-resize"
                             }`}
-                          />
+                          >
+                            <span className="pointer-events-none block h-2.5 w-2.5 rounded-[1px] border border-[#0a0a0a] bg-[#c4a35a] shadow" />
+                          </button>
                         ))
                       : null}
                   </div>
@@ -303,35 +391,6 @@ export function SignFieldPlacer({
           </div>
         )}
       </PdfPages>
-
-      {selected ? (
-        <div className="flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            className="text-[13px] font-semibold text-[#cf7f7b]"
-            onClick={() => {
-              onChange(fields.filter((f) => f.id !== selected));
-              setSelected(null);
-            }}
-          >
-            Remove selected field
-          </button>
-          {fields.find((f) => f.id === selected)?.type === "signature" &&
-          fields.find((f) => f.id === selected)?.party === "mrg" ? (
-            <button
-              type="button"
-              className="text-[13px] font-semibold text-[#c4a35a]"
-              onClick={() => {
-                const f = fields.find((x) => x.id === selected);
-                setPadName(f?.value || mrgNameHint);
-                setSigningId(selected);
-              }}
-            >
-              Draw MRG signature
-            </button>
-          ) : null}
-        </div>
-      ) : null}
 
       {signing ? (
         <SignaturePad

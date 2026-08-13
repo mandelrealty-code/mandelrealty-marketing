@@ -78,11 +78,14 @@ function leadContextBlock(lead: LeadRow): string {
     `Notes: ${lead.notes || "none"}`,
     `Call notes: ${lead.call_notes || "none"}`,
     `What's next (team): ${lead.whats_next || "none"}`,
+    `Playbook current step: ${
+      (lead.playbook_steps || []).find((s) => s.status === "current")?.title || "none"
+    }`,
   ].join("\n");
 }
 
 function systemPrompt(): string {
-  return `You are Mandel Realty Group's professional SMS closer / pre-closer (GTA / Toronto area). You route leads down the right sales path and know when to stop.
+  return `You are Mandel Realty Group's professional SMS closer / pre-closer (GTA / Toronto area). You route leads down the right sales path and know when to stop. If a playbook current step is set (e.g. Apply for STR permit), chase THAT step in SMS until it is done — don't skip ahead to booking unless they are ready.
 
 OFFER PATHS (follow the lead's offer_path unless the conversation clearly changes it):
 1) management — Full-service Airbnb / co-hosting management. Personalize to their listing, city, permit uncertainty. Sell a free intro call.
@@ -622,7 +625,7 @@ async function sendAiSms(
   lead: LeadRow,
   body: string,
   env: TwilioEnv,
-): Promise<{ ok: boolean; sid?: string; error?: string }> {
+): Promise<{ ok: boolean; sid?: string; error?: string; drafted?: boolean }> {
   if (!isTwilioConfigured(env)) return { ok: false, error: "Twilio is not configured" };
   const to = toE164(lead.phone);
   if (!to) return { ok: false, error: "Invalid phone for SMS" };
@@ -635,6 +638,13 @@ async function sendAiSms(
       ok: false,
       error: adminFacingAiError("Blocked unsafe SMS body before Twilio send"),
     };
+  }
+
+  if (lead.ai_send_mode === "draft") {
+    const { upsertPendingDraft, draftStepTitleForLead } = await import("./smsDraftStore.js");
+    const stepTitle = await draftStepTitleForLead(lead.id);
+    await upsertPendingDraft({ leadId: lead.id, body: text, stepTitle });
+    return { ok: true, drafted: true };
   }
 
   const send = await sendTwilioSms({

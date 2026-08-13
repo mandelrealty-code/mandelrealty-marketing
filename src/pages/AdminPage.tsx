@@ -21,6 +21,9 @@ import {
   type AdminProductMode,
 } from "./clients/mode";
 import { ModeSwitcher, MrgMark } from "./clients/ui";
+import { DraftCard, type PendingDraft } from "./crm/DraftCard";
+import { PlaybookBlock } from "./crm/PlaybookBlock";
+import type { PlaybookStep } from "../../shared/playbookTypes";
 
 const ClientsApp = lazy(() => import("./clients/ClientsApp"));
 
@@ -47,6 +50,8 @@ type Lead = {
   notes_updated_at: string | null;
   ai_paused: boolean;
   ai_force_on: boolean;
+  ai_send_mode?: "draft" | "autopilot";
+  playbook_steps?: PlaybookStep[];
   offer_path: OfferPath;
   sms_last_read_at?: string | null;
   last_sms?: {
@@ -282,6 +287,7 @@ export function AdminPage() {
     }[]
   >([]);
   const [smsDraft, setSmsDraft] = useState("");
+  const [pendingDraft, setPendingDraft] = useState<PendingDraft | null>(null);
   const [smsSending, setSmsSending] = useState(false);
   const smsSendLock = useRef(false);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
@@ -334,17 +340,36 @@ export function AdminPage() {
       const data = (await res.json().catch(() => ({}))) as {
         followups?: typeof followups;
         messages?: typeof smsMessages;
+        pending_draft?: PendingDraft | null;
+        playbook_steps?: PlaybookStep[];
+        ai_send_mode?: "draft" | "autopilot";
       };
       if (res.ok) {
         setFollowups(data.followups ?? []);
         setSmsMessages(data.messages ?? []);
+        setPendingDraft(data.pending_draft ?? null);
+        if (data.playbook_steps || data.ai_send_mode) {
+          setLeads((prev) =>
+            prev.map((l) =>
+              l.id === leadId
+                ? {
+                    ...l,
+                    playbook_steps: data.playbook_steps ?? l.playbook_steps,
+                    ai_send_mode: data.ai_send_mode ?? l.ai_send_mode,
+                  }
+                : l,
+            ),
+          );
+        }
       } else {
         setFollowups([]);
         setSmsMessages([]);
+        setPendingDraft(null);
       }
     } catch {
       setFollowups([]);
       setSmsMessages([]);
+      setPendingDraft(null);
     }
   }, []);
 
@@ -436,6 +461,8 @@ export function AdminPage() {
         whats_next: l.whats_next ?? "",
         ai_paused: Boolean(l.ai_paused),
         ai_force_on: Boolean(l.ai_force_on),
+        ai_send_mode: l.ai_send_mode === "draft" ? "draft" : "autopilot",
+        playbook_steps: Array.isArray(l.playbook_steps) ? l.playbook_steps : [],
         offer_path: (l.offer_path as OfferPath) || "unknown",
         unread: Boolean(l.unread),
         needs_you: Array.isArray(l.needs_you) ? l.needs_you : [],
@@ -952,6 +979,7 @@ export function AdminPage() {
         error?: string;
         messages?: typeof smsMessages;
         followups?: typeof followups;
+        pending_draft?: PendingDraft | null;
       };
       if (!res.ok) throw new Error(data.error || "Save failed");
       if (data.lead) {
@@ -959,6 +987,7 @@ export function AdminPage() {
       }
       if (data.messages) setSmsMessages(data.messages);
       if (data.followups) setFollowups(data.followups);
+      if ("pending_draft" in data) setPendingDraft(data.pending_draft ?? null);
       setSaveMsg("Saved");
       setTimeout(() => setSaveMsg(null), 1500);
     } catch (err) {
@@ -1421,7 +1450,13 @@ export function AdminPage() {
                     </span>
                     <span className="hidden truncate text-[12.5px] text-[#6f6a65] sm:inline">
                       this chat
+                      {selected.ai_send_mode === "draft" ? " · draft mode" : ""}
                     </span>
+                    {pendingDraft ? (
+                      <span className="rounded-md border border-[#c99a4b]/45 px-2 py-0.5 text-[11px] font-bold text-[#c99a4b]">
+                        1 draft waiting
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <MotionToggle
@@ -1559,6 +1594,32 @@ export function AdminPage() {
               );
             })}
           </AnimatePresence>
+          {pendingDraft ? (
+            <DraftCard
+              draft={pendingDraft}
+              busy={saving}
+              onApprove={(body) =>
+                void patchLead({
+                  draftAction: "approve",
+                  draftId: pendingDraft.id,
+                  draftBody: body,
+                })
+              }
+              onDiscard={() =>
+                void patchLead({
+                  draftAction: "discard",
+                  draftId: pendingDraft.id,
+                })
+              }
+              onSave={(body) =>
+                void patchLead({
+                  draftAction: "save",
+                  draftId: pendingDraft.id,
+                  draftBody: body,
+                })
+              }
+            />
+          ) : null}
           <div ref={threadEndRef} className="h-1" />
         </div>
 
@@ -1821,7 +1882,46 @@ export function AdminPage() {
                 </div>
 
                 <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
-                  Next steps
+                  How AI sends
+                </p>
+                <div className="mb-5 flex gap-0.5 rounded-[10px] border border-white/9 bg-[#141414] p-0.5">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void patchLead({ aiSendMode: "autopilot" })}
+                    className={`flex-1 rounded-lg py-2.5 text-[13.5px] font-semibold ${
+                      (selected.ai_send_mode || "autopilot") === "autopilot"
+                        ? "border border-[rgba(78,168,130,0.5)] bg-[rgba(78,168,130,0.16)] text-[#4ea882]"
+                        : "text-[#9a9590]"
+                    }`}
+                  >
+                    Autopilot
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void patchLead({ aiSendMode: "draft" })}
+                    className={`flex-1 rounded-lg py-2.5 text-[13.5px] font-semibold ${
+                      selected.ai_send_mode === "draft"
+                        ? "border border-[rgba(201,154,75,0.55)] bg-[rgba(201,154,75,0.16)] text-[#c99a4b]"
+                        : "text-[#9a9590]"
+                    }`}
+                  >
+                    Draft for review
+                  </button>
+                </div>
+                <p className="mb-5 text-[12.5px] leading-relaxed text-[#9a9590]">
+                  {selected.ai_send_mode === "draft"
+                    ? "Draft for review waits for your OK — nothing reaches them until you approve."
+                    : "Autopilot sends immediately."}
+                </p>
+                <PlaybookBlock
+                  steps={selected.playbook_steps ?? []}
+                  busy={saving}
+                  onComplete={() => void patchLead({ playbookAction: "complete" })}
+                />
+                <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+                  Internal note
                 </p>
                 <textarea
                   value={whatsNext}

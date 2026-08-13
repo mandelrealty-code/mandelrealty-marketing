@@ -48,6 +48,9 @@ export type LeadRow = {
   ai_paused: boolean;
   /** When true, AI runs for this lead even if global AI is off (test override). */
   ai_force_on: boolean;
+  /** draft = queue SMS for approve; autopilot = send now */
+  ai_send_mode: "draft" | "autopilot";
+  playbook_steps: import("./playbookTypes.js").PlaybookStep[];
   offer_path: OfferPath;
   sms_last_read_at: string | null;
 };
@@ -89,6 +92,8 @@ export type LeadCrmUpdate = {
   whatsNext?: string;
   aiPaused?: boolean;
   aiForceOn?: boolean;
+  aiSendMode?: "draft" | "autopilot";
+  playbookSteps?: import("./playbookTypes.js").PlaybookStep[];
   offerPath?: OfferPath;
 };
 
@@ -119,6 +124,10 @@ function mapLead(row: Record<string, unknown>): LeadRow {
     qualified_at: (row.qualified_at as string | null) ?? null,
     ai_paused: Boolean(row.ai_paused),
     ai_force_on: Boolean(row.ai_force_on),
+    ai_send_mode: row.ai_send_mode === "draft" ? "draft" : "autopilot",
+    playbook_steps: Array.isArray(row.playbook_steps)
+      ? (row.playbook_steps as import("./playbookTypes.js").PlaybookStep[])
+      : [],
     offer_path: normalizeOfferPath(row.offer_path as string),
     sms_last_read_at: (row.sms_last_read_at as string | null) ?? null,
   };
@@ -329,6 +338,12 @@ export async function updateLeadCrm(
   if (patch.aiForceOn !== undefined) {
     update.ai_force_on = patch.aiForceOn;
   }
+  if (patch.aiSendMode !== undefined) {
+    update.ai_send_mode = patch.aiSendMode === "draft" ? "draft" : "autopilot";
+  }
+  if (patch.playbookSteps !== undefined) {
+    update.playbook_steps = patch.playbookSteps;
+  }
   if (patch.offerPath !== undefined) {
     update.offer_path = patch.offerPath;
   }
@@ -343,9 +358,13 @@ export async function updateLeadCrm(
     .single();
 
   if (error) {
-    // call_notes column missing until crm_call_notes_v1.sql is run
-    if (update.call_notes !== undefined && /call_notes/i.test(error.message)) {
-      delete update.call_notes;
+    const missing =
+      /call_notes|playbook_steps|ai_send_mode/i.test(error.message) &&
+      ["call_notes", "playbook_steps", "ai_send_mode"].filter(
+        (key) => update[key] !== undefined && new RegExp(key, "i").test(error.message),
+      );
+    if (missing && missing.length) {
+      for (const key of missing) delete update[key];
       if (Object.keys(update).length === 0) return null;
       const retry = await sb
         .from("leads")

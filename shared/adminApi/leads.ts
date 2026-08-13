@@ -13,6 +13,17 @@ import {
   sendManualBumpForLead,
 } from "../followUpStore.js";
 import { listSmsForLead } from "../smsStore.js";
+import {
+  approveDraft,
+  discardDraft,
+  getPendingDraft,
+  saveDraftBody,
+} from "../smsDraftStore.js";
+import {
+  advancePlaybook,
+  ensurePlaybook,
+  type PlaybookStep,
+} from "../playbook.js";
 import { listLeadsInbox, markLeadSmsRead } from "../crmInbox.js";
 import { startClickToCall } from "../clickToCall.js";
 import {
@@ -62,11 +73,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const followupsFor =
         typeof req.query.followups === "string" ? req.query.followups.trim() : "";
       if (followupsFor) {
-        const [followups, messages] = await Promise.all([
+        const [followups, messages, pendingDraft] = await Promise.all([
           listFollowupsForLead(followupsFor),
           listSmsForLead(followupsFor),
+          getPendingDraft(followupsFor),
         ]);
-        return res.status(200).json({ followups, messages });
+        const { getLeadById, updateLeadCrm } = await import("../leadStore.js");
+        const lead = await getLeadById(followupsFor);
+        let playbook = lead ? ensurePlaybook(lead) : [];
+        if (lead && (!lead.playbook_steps || lead.playbook_steps.length === 0) && playbook.length) {
+          await updateLeadCrm(lead.id, { playbookSteps: playbook }).catch(() => undefined);
+        }
+        return res.status(200).json({
+          followups,
+          messages,
+          pending_draft: pendingDraft,
+          playbook_steps: playbook,
+          ai_send_mode: lead?.ai_send_mode || "autopilot",
+        });
       }
       const q = typeof req.query.q === "string" ? req.query.q : "";
       const leads = await listLeadsInbox(200, q);
@@ -190,6 +214,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       callNotes?: string;
       aiPaused?: boolean;
       aiForceOn?: boolean;
+      aiSendMode?: "draft" | "autopilot";
+      playbookSteps?: PlaybookStep[];
       offerPath?: OfferPath;
     } = {};
 
@@ -219,6 +245,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (typeof body.offer_path === "string") {
       patch.offerPath = body.offer_path as OfferPath;
+    }
+    if (body.aiSendMode === "draft" || body.ai_send_mode === "draft") {
+      patch.aiSendMode = "draft";
+    } else if (body.aiSendMode === "autopilot" || body.ai_send_mode === "autopilot") {
+      patch.aiSendMode = "autopilot";
+    }
+
+    const twilioEnv = {
+      TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+      TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+      TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+    };
+
+    if (body.draftAction === "approve" || body.draft_action === "approve") {
+      const draftId = String(body.draftId || body.draft_id || "").trim();
+      if (!draftId) return res.status(400).json({ error: "draftId required." });
+      const result = await approveDraft(
+        draftId,
+        twilioEnv,
+        typeof body.draftBody === "string" ? body.draftBody : undefined,
+      );
+      if (!result.ok) return res.status(400).json({ error: result.error || "Could not send draft." });
+      const [messages, pending_draft] = await Promise.all([
+        listSmsForLead(id),
+        getPendingDraft(id),
+      ]);
+      return res.status(200).json({ ok: true, messages, pending_draft });
+    }
+    if (body.draftAction === "discard" || body.draft_action === "discard") {
+      const draftId = String(body.draftId || body.draft_id || "").trim();
+      if (!draftId) return res.status(400).json({ error: "draftId required." });
+      await discardDraft(draftId);
+      return res.status(200).json({ ok: true, pending_draft: null });
+    }
+    if (body.draftAction === "save" || body.draft_action === "save") {
+      const draftId = String(body.draftId || body.draft_id || "").trim();
+      if (!draftId) return res.status(400).json({ error: "draftId required." });
+      const pending_draft = await saveDraftBody(
+        draftId,
+        String(body.draftBody || body.draft_body || ""),
+      );
+      return res.status(200).json({ ok: true, pending_draft });
+    }
+
+    if (body.playbookAction === "complete" || body.playbook_action === "complete") {
+      const { getLeadById } = await import("../leadStore.js");
+      const lead = await getLeadById(id);
+      if (!lead) return res.status(404).json({ error: "Lead not found." });
+      patch.playbookSteps = advancePlaybook(ensurePlaybook(lead));
     }
 
     if (Object.keys(patch).length === 0) {
