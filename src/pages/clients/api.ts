@@ -16,6 +16,7 @@ export type TaskType =
   | "compliance"
   | "statement"
   | "supplies"
+  | "marketing"
   | "other";
 export type TaskRepeat = "off" | "weekly" | "monthly";
 
@@ -28,6 +29,7 @@ export type TaskRow = {
   status: TaskStatus;
   priority: TaskPriority;
   assignee: string;
+  assignees?: string[];
   due_on: string | null;
   property_id: string | null;
   client_id: string | null;

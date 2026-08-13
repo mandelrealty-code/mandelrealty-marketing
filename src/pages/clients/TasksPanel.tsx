@@ -28,6 +28,7 @@ const TYPE_SHORT: Record<TaskType, string> = {
   compliance: "comp",
   statement: "stmt",
   supplies: "supply",
+  marketing: "mktg",
   other: "other",
 };
 
@@ -38,8 +39,20 @@ const TYPE_LABEL: Record<TaskType, string> = {
   compliance: "Compliance",
   statement: "Statement",
   supplies: "Supplies",
+  marketing: "Marketing",
   other: "Other",
 };
+
+const TASK_TYPE_OPTIONS: TaskType[] = [
+  "cleaning",
+  "maintenance",
+  "owner",
+  "compliance",
+  "statement",
+  "supplies",
+  "marketing",
+  "other",
+];
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   open: "Open",
@@ -163,7 +176,7 @@ type FormState = {
   detail: string;
   status: TaskStatus;
   priority: TaskPriority;
-  assignee: string;
+  assignees: string[];
   due_on: string;
   property_id: string;
   client_id: string;
@@ -178,7 +191,7 @@ function emptyForm(): FormState {
     detail: "",
     status: "open",
     priority: "normal",
-    assignee: "",
+    assignees: [],
     due_on: todayYmd(),
     property_id: "",
     client_id: "",
@@ -188,13 +201,117 @@ function emptyForm(): FormState {
   };
 }
 
+function taskAssignees(t: TaskRow): string[] {
+  if (Array.isArray(t.assignees) && t.assignees.length) {
+    return [...new Set(t.assignees.map((n) => n.trim()).filter(Boolean))];
+  }
+  const raw = (t.assignee || "").trim();
+  if (!raw) return [];
+  return [
+    ...new Set(
+      raw
+        .split(/\s*·\s*|\s*,\s*/)
+        .map((n) => n.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function formatAssigneeLabel(names: string[]): string {
+  return names.length ? names.join(" · ") : "Unassigned";
+}
+
+/** Stable person colors for dark UI (no purple neon). */
+const PERSON_PALETTE = [
+  { fg: "#c4a35a", bg: "rgba(196,163,90,0.18)", border: "rgba(196,163,90,0.45)" },
+  { fg: "#6eb5a0", bg: "rgba(110,181,160,0.16)", border: "rgba(110,181,160,0.42)" },
+  { fg: "#7eb0d0", bg: "rgba(126,176,208,0.16)", border: "rgba(126,176,208,0.42)" },
+  { fg: "#d4a07a", bg: "rgba(212,160,122,0.16)", border: "rgba(212,160,122,0.42)" },
+  { fg: "#c99a4b", bg: "rgba(201,154,75,0.16)", border: "rgba(201,154,75,0.42)" },
+  { fg: "#a8b07a", bg: "rgba(168,176,122,0.16)", border: "rgba(168,176,122,0.42)" },
+  { fg: "#cf8a9a", bg: "rgba(207,138,154,0.16)", border: "rgba(207,138,154,0.42)" },
+  { fg: "#8a9bb5", bg: "rgba(138,155,181,0.16)", border: "rgba(138,155,181,0.42)" },
+] as const;
+
+function personColor(name: string): (typeof PERSON_PALETTE)[number] {
+  const key = name.trim().toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return PERSON_PALETTE[hash % PERSON_PALETTE.length];
+}
+
+function PersonChip({
+  name,
+  active = true,
+  onClick,
+  disabled,
+}: {
+  name: string;
+  active?: boolean;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  const c = personColor(name);
+  const className = `inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold ${
+    onClick ? "disabled:opacity-50" : ""
+  }`;
+  const style = active
+    ? { color: c.fg, backgroundColor: c.bg, borderColor: c.border }
+    : {
+        color: "#9a9590",
+        backgroundColor: "transparent",
+        borderColor: "rgba(255,255,255,0.09)",
+      };
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        className={className}
+        style={style}
+      >
+        <span
+          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ backgroundColor: active ? c.fg : "#6f6a65" }}
+        />
+        <span className="truncate">{name}</span>
+      </button>
+    );
+  }
+  return (
+    <span className={className} style={style}>
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{ backgroundColor: c.fg }}
+      />
+      <span className="truncate">{name}</span>
+    </span>
+  );
+}
+
+function AssigneeChips({ names }: { names: string[] }) {
+  if (!names.length) {
+    return <span className="text-[#6f6a65]">Unassigned</span>;
+  }
+  return (
+    <span className="inline-flex max-w-full flex-wrap items-center gap-1">
+      {names.map((name) => (
+        <PersonChip key={name} name={name} />
+      ))}
+    </span>
+  );
+}
+
 function formFromTask(t: TaskRow): FormState {
   return {
     title: t.title,
     detail: t.detail,
     status: t.status,
     priority: t.priority,
-    assignee: t.assignee || "",
+    assignees: taskAssignees(t),
     due_on: t.due_on || "",
     property_id: t.property_id || "",
     client_id: t.client_id || "",
@@ -204,45 +321,82 @@ function formFromTask(t: TaskRow): FormState {
   };
 }
 
-function AssigneeSelect({
+function AssigneeMultiSelect({
   value,
   members,
   onChange,
   onAddMember,
   disabled,
 }: {
-  value: string;
+  value: string[];
   members: TeamMemberRow[];
-  onChange: (name: string) => void;
+  onChange: (names: string[]) => void;
   onAddMember: () => void;
   disabled?: boolean;
 }) {
-  const known = members.some(
-    (m) => m.name.toLowerCase() === value.trim().toLowerCase(),
+  const selected = new Set(value.map((n) => n.toLowerCase()));
+  const extras = value.filter(
+    (n) => !members.some((m) => m.name.toLowerCase() === n.toLowerCase()),
   );
+  const toggle = (name: string) => {
+    const key = name.toLowerCase();
+    if (selected.has(key)) {
+      onChange(value.filter((n) => n.toLowerCase() !== key));
+    } else {
+      onChange([...value, name]);
+    }
+  };
   return (
-    <select
-      value={value}
-      disabled={disabled}
-      onChange={(e) => {
-        const v = e.target.value;
-        if (v === "__add__") {
-          onAddMember();
-          return;
-        }
-        onChange(v);
-      }}
-      className="h-[42px] w-full rounded-[9px] border border-white/10 bg-[#1c1c1c] px-3 text-[13px] font-semibold text-[#f5f5f5] outline-none disabled:opacity-50"
-    >
-      <option value="">Unassigned</option>
-      {value && !known ? <option value={value}>{value}</option> : null}
-      {members.map((m) => (
-        <option key={m.id} value={m.name}>
-          {m.name}
-        </option>
-      ))}
-      <option value="__add__">+ Add member…</option>
-    </select>
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange([])}
+          className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${
+            value.length === 0
+              ? "border border-[rgba(196,163,90,0.45)] bg-[rgba(196,163,90,0.16)] text-[#c4a35a]"
+              : "border border-white/9 text-[#9a9590]"
+          } disabled:opacity-50`}
+        >
+          Unassigned
+        </button>
+        {extras.map((name) => (
+          <PersonChip
+            key={name}
+            name={name}
+            active
+            disabled={disabled}
+            onClick={() => toggle(name)}
+          />
+        ))}
+        {members.map((m) => {
+          const active = selected.has(m.name.toLowerCase());
+          return (
+            <PersonChip
+              key={m.id}
+              name={m.name}
+              active={active}
+              disabled={disabled}
+              onClick={() => toggle(m.name)}
+            />
+          );
+        })}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onAddMember}
+          className="rounded-full border border-dashed border-white/16 px-3 py-1.5 text-[12px] font-semibold text-[#9a9590] hover:text-[#f5f5f5] disabled:opacity-50"
+        >
+          + Add member
+        </button>
+      </div>
+      {value.length > 1 ? (
+        <p className="text-[11px] text-[#6f6a65]">
+          {value.length} people assigned
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -271,7 +425,7 @@ export function TasksPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | "create" | "edit">(null);
   const [reassignOpen, setReassignOpen] = useState(false);
-  const [reassignName, setReassignName] = useState("");
+  const [reassignNames, setReassignNames] = useState<string[]>([]);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [addMemberName, setAddMemberName] = useState("");
   const [addMemberTarget, setAddMemberTarget] = useState<"form" | "reassign">(
@@ -334,9 +488,17 @@ export function TasksPanel({
       const member = data.member;
       await loadMembers();
       if (addMemberTarget === "reassign") {
-        setReassignName(member.name);
+        setReassignNames((prev) =>
+          prev.some((n) => n.toLowerCase() === member.name.toLowerCase())
+            ? prev
+            : [...prev, member.name],
+        );
       } else {
-        setForm((f) => ({ ...f, assignee: member.name }));
+        setForm((f) =>
+          f.assignees.some((n) => n.toLowerCase() === member.name.toLowerCase())
+            ? f
+            : { ...f, assignees: [...f.assignees, member.name] },
+        );
       }
       setAddMemberOpen(false);
       setAddMemberName("");
@@ -495,7 +657,7 @@ export function TasksPanel({
     }
     setBusy(true);
     try {
-      const assignee = form.assignee.trim();
+      const assignees = form.assignees;
       if (sheet === "create") {
         await pmPost("tasks", {
           op: "create",
@@ -503,7 +665,7 @@ export function TasksPanel({
           detail: form.detail.trim(),
           status: form.status,
           priority: form.priority,
-          assignee,
+          assignees,
           due_on: form.due_on || null,
           property_id: form.property_id || null,
           client_id: form.client_id || null,
@@ -521,7 +683,7 @@ export function TasksPanel({
           detail: form.detail.trim(),
           status: form.status,
           priority: form.priority,
-          assignee,
+          assignees,
           due_on: form.due_on || null,
           property_id: form.property_id || null,
           client_id: form.client_id || null,
@@ -655,9 +817,9 @@ export function TasksPanel({
               {task.title}
             </span>
           </span>
-          <span className="mt-1 block truncate text-[12.5px] text-[#9a9590]">
-            {context}
-            {" · "}
+          <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-[#9a9590]">
+            <span className="truncate">{context}</span>
+            <span className="text-[#6f6a65]">·</span>
             <span
               className={
                 meta.kind === "overdue"
@@ -671,8 +833,8 @@ export function TasksPanel({
             >
               {meta.label}
             </span>
-            {" · "}
-            {task.assignee || "Unassigned"}
+            <span className="text-[#6f6a65]">·</span>
+            <AssigneeChips names={taskAssignees(task)} />
           </span>
         </span>
         <span className="mt-0.5 shrink-0 font-mono text-[10px] text-[#6f6a65]">
@@ -716,28 +878,27 @@ export function TasksPanel({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel>Priority</FieldLabel>
-            <SegmentedControl
-              value={form.priority}
-              onChange={(priority) => setForm((f) => ({ ...f, priority }))}
-              options={[
-                { value: "normal", label: "Normal" },
-                { value: "high", label: "High" },
-              ]}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel optional>Assignee</FieldLabel>
-            <AssigneeSelect
-              value={form.assignee}
-              members={members}
-              disabled={busy}
-              onChange={(assignee) => setForm((f) => ({ ...f, assignee }))}
-              onAddMember={() => openAddMember("form")}
-            />
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel>Priority</FieldLabel>
+          <SegmentedControl
+            value={form.priority}
+            onChange={(priority) => setForm((f) => ({ ...f, priority }))}
+            options={[
+              { value: "normal", label: "Normal" },
+              { value: "high", label: "High" },
+            ]}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel optional>Assignees</FieldLabel>
+          <AssigneeMultiSelect
+            value={form.assignees}
+            members={members}
+            disabled={busy}
+            onChange={(assignees) => setForm((f) => ({ ...f, assignees }))}
+            onAddMember={() => openAddMember("form")}
+          />
         </div>
 
         <div className="overflow-hidden rounded-[10px] border border-white/8">
@@ -807,36 +968,25 @@ export function TasksPanel({
               <option value="monthly">Monthly</option>
             </select>
           </label>
-        </div>
-
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {(
-            [
-              "cleaning",
-              "maintenance",
-              "owner",
-              "compliance",
-              "statement",
-              "supplies",
-              "other",
-            ] as TaskType[]
-          ).map((t) => {
-            const active = form.task_type === t;
-            return (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setForm((f) => ({ ...f, task_type: t }))}
-                className={`shrink-0 rounded-full px-3 py-1.5 text-[11.5px] font-semibold ${
-                  active
-                    ? "border border-[rgba(196,163,90,0.45)] bg-[rgba(196,163,90,0.16)] text-[#c4a35a]"
-                    : "border border-white/9 text-[#9a9590]"
-                }`}
-              >
-                {TYPE_LABEL[t]}
-              </button>
-            );
-          })}
+          <label className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#1c1c1c] px-3.5 py-3 text-[13.5px]">
+            <span className="text-[#9a9590]">Type</span>
+            <select
+              value={form.task_type}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  task_type: e.target.value as TaskType,
+                }))
+              }
+              className="max-w-[60%] bg-transparent text-right font-semibold text-[#f5f5f5] outline-none"
+            >
+              {TASK_TYPE_OPTIONS.map((t) => (
+                <option key={t} value={t}>
+                  {TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <GoldButton type="button" disabled={busy} onClick={() => void saveTask()}>
@@ -896,32 +1046,32 @@ export function TasksPanel({
         ) : null}
 
         <div className="mb-4 overflow-hidden rounded-[10px] border border-white/8">
-          {(
-            [
-              ["Status", STATUS_LABEL[selected.status]],
-              ["Assignee", selected.assignee || "Unassigned"],
-              ["Due", formatDueLong(selected.due_on)],
-              ["Type", TYPE_LABEL[selected.task_type]],
-            ] as const
-          ).map(([k, v], i) => (
-            <div
-              key={k}
-              className={`flex items-center justify-between bg-[#141414] px-3.5 py-3 text-[13.5px] ${
-                i ? "border-t border-white/8" : ""
+          <div className="flex items-center justify-between bg-[#141414] px-3.5 py-3 text-[13.5px]">
+            <span className="text-[#6f6a65]">Status</span>
+            <span className="font-semibold text-[#f5f5f5]">
+              {STATUS_LABEL[selected.status]}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#141414] px-3.5 py-3 text-[13.5px]">
+            <span className="shrink-0 text-[#6f6a65]">Assignees</span>
+            <AssigneeChips names={taskAssignees(selected)} />
+          </div>
+          <div className="flex items-center justify-between border-t border-white/8 bg-[#141414] px-3.5 py-3 text-[13.5px]">
+            <span className="text-[#6f6a65]">Due</span>
+            <span
+              className={`font-semibold ${
+                meta.kind === "overdue" ? "text-[#cf7f7b]" : "text-[#f5f5f5]"
               }`}
             >
-              <span className="text-[#6f6a65]">{k}</span>
-              <span
-                className={`font-semibold ${
-                  k === "Due" && meta.kind === "overdue"
-                    ? "text-[#cf7f7b]"
-                    : "text-[#f5f5f5]"
-                }`}
-              >
-                {v}
-              </span>
-            </div>
-          ))}
+              {formatDueLong(selected.due_on)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between border-t border-white/8 bg-[#141414] px-3.5 py-3 text-[13.5px]">
+            <span className="text-[#6f6a65]">Type</span>
+            <span className="font-semibold text-[#f5f5f5]">
+              {TYPE_LABEL[selected.task_type]}
+            </span>
+          </div>
           <div className="flex items-center justify-between border-t border-white/8 bg-[#141414] px-3.5 py-3 text-[13.5px]">
             <span className="text-[#6f6a65]">Property</span>
             {selected.property_id ? (
@@ -981,7 +1131,7 @@ export function TasksPanel({
               type="button"
               disabled={busy}
               onClick={() => {
-                setReassignName(selected.assignee || "");
+                setReassignNames(taskAssignees(selected));
                 setReassignOpen(true);
               }}
               className="rounded-[10px] border border-white/10 bg-[#141414] py-3 text-[13px] font-semibold text-[#f5f5f5]"
@@ -1022,30 +1172,35 @@ export function TasksPanel({
 
         {reassignOpen ? (
           <Sheet
-            title="Reassign"
+            title="Assignees"
             onCancel={() => setReassignOpen(false)}
             desktop={desktop}
           >
             <div className="flex flex-col gap-3">
-              <AssigneeSelect
-                value={reassignName}
+              <AssigneeMultiSelect
+                value={reassignNames}
                 members={members}
                 disabled={busy}
-                onChange={setReassignName}
+                onChange={setReassignNames}
                 onAddMember={() => openAddMember("reassign")}
               />
               <GoldButton
                 type="button"
                 disabled={busy}
                 onClick={() => {
-                  const name = reassignName.trim();
-                  void patchTask(selected.id, { assignee: name }).then(() => {
+                  void patchTask(selected.id, {
+                    assignees: reassignNames,
+                  }).then(() => {
                     setReassignOpen(false);
-                    onToast(name ? `Assigned to ${name}` : "Unassigned");
+                    onToast(
+                      reassignNames.length
+                        ? `Assigned to ${formatAssigneeLabel(reassignNames)}`
+                        : "Unassigned",
+                    );
                   });
                 }}
               >
-                Save assignee
+                Save assignees
               </GoldButton>
             </div>
           </Sheet>

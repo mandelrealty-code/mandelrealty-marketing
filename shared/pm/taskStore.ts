@@ -17,6 +17,7 @@ export type TaskType =
   | "compliance"
   | "statement"
   | "supplies"
+  | "marketing"
   | "other";
 export type TaskRepeat = "off" | "weekly" | "monthly";
 
@@ -28,7 +29,10 @@ export type PmTask = {
   detail: string;
   status: TaskStatus;
   priority: TaskPriority;
+  /** Display string — names joined with " · " */
   assignee: string;
+  /** Parsed assignee names */
+  assignees: string[];
   due_on: string | null;
   property_id: string | null;
   client_id: string | null;
@@ -54,12 +58,48 @@ const TYPES = new Set<TaskType>([
   "compliance",
   "statement",
   "supplies",
+  "marketing",
   "other",
 ]);
 const REPEATS = new Set<TaskRepeat>(["off", "weekly", "monthly"]);
 
 function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
+}
+
+/** Parse assignee field — supports single name, "A · B", "A, B", or JSON array. */
+export function parseAssignees(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return [
+      ...new Set(
+        raw
+          .map((v) => str(v))
+          .filter(Boolean),
+      ),
+    ];
+  }
+  const s = str(raw);
+  if (!s) return [];
+  if (s.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(s) as unknown;
+      if (Array.isArray(parsed)) return parseAssignees(parsed);
+    } catch {
+      /* fall through */
+    }
+  }
+  return [
+    ...new Set(
+      s
+        .split(/\s*·\s*|\s*,\s*/)
+        .map((part) => part.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+export function formatAssignees(names: string[]): string {
+  return parseAssignees(names).join(" · ");
 }
 
 function asStatus(v: unknown): TaskStatus {
@@ -86,6 +126,7 @@ function mapTask(
   row: Record<string, unknown>,
   names?: { property_name?: string; client_name?: string },
 ): PmTask {
+  const assignees = parseAssignees(row.assignee);
   return {
     id: String(row.id),
     created_at: String(row.created_at || ""),
@@ -94,7 +135,8 @@ function mapTask(
     detail: str(row.detail),
     status: asStatus(row.status),
     priority: asPriority(row.priority),
-    assignee: str(row.assignee),
+    assignees,
+    assignee: formatAssignees(assignees),
     due_on: row.due_on ? String(row.due_on).slice(0, 10) : null,
     property_id: row.property_id ? String(row.property_id) : null,
     client_id: row.client_id ? String(row.client_id) : null,
@@ -178,7 +220,7 @@ export async function listPmTasks(input?: {
   }
 
   if (input?.assignee) {
-    q = q.eq("assignee", input.assignee);
+    q = q.ilike("assignee", `%${input.assignee}%`);
   }
   if (input?.task_type) {
     q = q.eq("task_type", input.task_type);
@@ -217,6 +259,7 @@ export async function createPmTask(input: {
   status?: TaskStatus;
   priority?: TaskPriority;
   assignee?: string;
+  assignees?: string[];
   due_on?: string | null;
   property_id?: string | null;
   client_id?: string | null;
@@ -244,6 +287,11 @@ export async function createPmTask(input: {
     throw new Error("Month must be YYYY-MM.");
   }
 
+  const assignees =
+    input.assignees !== undefined
+      ? parseAssignees(input.assignees)
+      : parseAssignees(input.assignee);
+
   const { data, error } = await db()
     .from("pm_tasks")
     .insert({
@@ -251,7 +299,7 @@ export async function createPmTask(input: {
       detail: str(input.detail),
       status: asStatus(input.status),
       priority: asPriority(input.priority),
-      assignee: str(input.assignee),
+      assignee: formatAssignees(assignees),
       due_on: input.due_on ? String(input.due_on).slice(0, 10) : null,
       property_id: propertyId,
       client_id: clientId,
@@ -285,6 +333,7 @@ export async function updatePmTask(
     status: TaskStatus;
     priority: TaskPriority;
     assignee: string;
+    assignees: string[];
     due_on: string | null;
     property_id: string | null;
     client_id: string | null;
@@ -304,7 +353,11 @@ export async function updatePmTask(
   if (patch.detail !== undefined) updates.detail = str(patch.detail);
   if (patch.status !== undefined) updates.status = asStatus(patch.status);
   if (patch.priority !== undefined) updates.priority = asPriority(patch.priority);
-  if (patch.assignee !== undefined) updates.assignee = str(patch.assignee);
+  if (patch.assignees !== undefined) {
+    updates.assignee = formatAssignees(patch.assignees);
+  } else if (patch.assignee !== undefined) {
+    updates.assignee = formatAssignees(parseAssignees(patch.assignee));
+  }
   if (patch.due_on !== undefined) {
     updates.due_on = patch.due_on ? String(patch.due_on).slice(0, 10) : null;
   }

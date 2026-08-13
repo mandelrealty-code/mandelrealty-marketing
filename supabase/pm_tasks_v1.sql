@@ -16,7 +16,7 @@ create table if not exists public.pm_tasks (
   client_id uuid null references public.pm_clients (id) on delete set null,
   year_month text not null default '',
   task_type text not null default 'other'
-    check (task_type in ('cleaning', 'maintenance', 'owner', 'compliance', 'statement', 'supplies', 'other')),
+    check (task_type in ('cleaning', 'maintenance', 'owner', 'compliance', 'statement', 'supplies', 'marketing', 'other')),
   created_by text not null default '',
   repeat_rule text not null default 'off'
     check (repeat_rule in ('off', 'weekly', 'monthly'))
@@ -32,4 +32,4 @@ create index if not exists pm_tasks_property_idx
   on public.pm_tasks (property_id);
 
 comment on table public.pm_tasks is
-  'OPS team tasks — cleaning, maintenance, owner, compliance, statement, supplies';
+  'OPS team tasks — cleaning, maintenance, owner, compliance, statement, supplies, marketing';

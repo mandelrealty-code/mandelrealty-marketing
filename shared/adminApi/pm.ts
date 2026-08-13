@@ -84,6 +84,7 @@ const TASK_TYPES = new Set<TaskType>([
   "compliance",
   "statement",
   "supplies",
+  "marketing",
   "other",
 ]);
 const TASK_REPEATS = new Set<TaskRepeat>(["off", "weekly", "monthly"]);
@@ -103,6 +104,26 @@ function asTaskType(v: unknown): TaskType | undefined {
 function asTaskRepeat(v: unknown): TaskRepeat | undefined {
   const s = str(v) as TaskRepeat;
   return TASK_REPEATS.has(s) ? s : undefined;
+}
+
+function asAssignees(v: unknown): string[] | undefined {
+  if (v === undefined) return undefined;
+  if (Array.isArray(v)) {
+    return [
+      ...new Set(
+        v
+          .map((x) => str(x))
+          .filter(Boolean),
+      ),
+    ];
+  }
+  if (typeof v === "string") {
+    return v
+      .split(/\s*·\s*|\s*,\s*/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+  return undefined;
 }
 
 function unauthorized(res: VercelResponse) {
@@ -792,12 +813,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (resource === "tasks") {
         if (op === "create") {
+          const assignees = asAssignees(body.assignees);
           const task = await createPmTask({
             title: str(body.title),
             detail: str(body.detail),
             status: asTaskStatus(body.status),
             priority: asTaskPriority(body.priority),
-            assignee: str(body.assignee),
+            assignees,
+            assignee: assignees ? undefined : str(body.assignee),
             due_on: body.due_on == null || body.due_on === "" ? null : str(body.due_on),
             property_id:
               body.property_id == null || body.property_id === ""
@@ -828,7 +851,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const p = asTaskPriority(body.priority);
             if (p) patch.priority = p;
           }
-          if (body.assignee != null) patch.assignee = str(body.assignee);
+          if (body.assignees !== undefined) {
+            patch.assignees = asAssignees(body.assignees) ?? [];
+          } else if (body.assignee != null) {
+            patch.assignee = str(body.assignee);
+          }
           if (body.due_on !== undefined) {
             patch.due_on =
               body.due_on == null || body.due_on === "" ? null : str(body.due_on);
