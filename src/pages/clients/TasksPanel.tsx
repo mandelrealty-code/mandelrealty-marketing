@@ -21,16 +21,6 @@ import {
   TextInput,
 } from "./ui";
 
-const TYPE_CHIPS: { value: TaskType | "overdue" | ""; label: string }[] = [
-  { value: "overdue", label: "Overdue" },
-  { value: "cleaning", label: "Cleaning" },
-  { value: "maintenance", label: "Maintenance" },
-  { value: "owner", label: "Owner" },
-  { value: "compliance", label: "Comp" },
-  { value: "statement", label: "Stmt" },
-  { value: "supplies", label: "Supplies" },
-];
-
 const TYPE_SHORT: Record<TaskType, string> = {
   cleaning: "cleaning",
   maintenance: "maint",
@@ -167,7 +157,6 @@ function relativeUpdated(iso: string): string {
 }
 
 type StatusFilter = "open" | "blocked" | "done";
-type TypeFilter = TaskType | "overdue" | "";
 
 type FormState = {
   title: string;
@@ -279,7 +268,6 @@ export function TasksPanel({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | "create" | "edit">(null);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -409,13 +397,8 @@ export function TasksPanel({
           t.status === "blocked",
       );
     }
-    if (typeFilter === "overdue") {
-      list = list.filter((t) => isOverdue(t, today));
-    } else if (typeFilter) {
-      list = list.filter((t) => t.task_type === typeFilter);
-    }
     return list;
-  }, [tasks, statusFilter, typeFilter, today]);
+  }, [tasks, statusFilter]);
 
   const openCount = useMemo(
     () =>
@@ -1037,32 +1020,6 @@ export function TasksPanel({
             ))}
           </div>
         </div>
-
-        {statusFilter === "open" ? (
-          <div className="flex gap-2 overflow-x-auto pb-0.5">
-            {TYPE_CHIPS.map((chip) => {
-              const active = typeFilter === chip.value;
-              return (
-                <button
-                  key={chip.value || "all-types"}
-                  type="button"
-                  onClick={() =>
-                    setTypeFilter((cur) =>
-                      cur === chip.value ? "" : chip.value,
-                    )
-                  }
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                    active
-                      ? "border border-[rgba(196,163,90,0.45)] text-[#c4a35a]"
-                      : "border border-white/9 font-medium text-[#9a9590]"
-                  }`}
-                >
-                  {chip.label}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 pb-24">
