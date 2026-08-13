@@ -30,6 +30,40 @@ export function PlaybookBlock({
   const doneCount = steps.filter((s) => s.status === "done").length;
   const ownerLabel = (step: PlaybookStep) =>
     (step.owner || ownerForStepTitle(step.title)) === "mrg" ? "MRG" : host;
+  const canAdd = Boolean(onChange && adding.trim() && !busy);
+
+  const submitAdd = () => {
+    if (!onChange) return;
+    const next = addPlaybookStep(steps, adding);
+    if (next === steps) return;
+    onChange(next);
+    setAdding("");
+  };
+
+  const addRow = onChange ? (
+    <form
+      className="flex items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submitAdd();
+      }}
+    >
+      <input
+        value={adding}
+        onChange={(e) => setAdding(e.target.value)}
+        placeholder="Add a step…"
+        disabled={busy}
+        className="h-10 min-w-0 flex-1 rounded-[9px] border border-white/10 bg-[#141414] px-3 text-[13.5px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+      />
+      <button
+        type="submit"
+        disabled={!canAdd}
+        className="h-10 shrink-0 rounded-[9px] bg-[#c4a35a] px-3.5 text-[13px] font-semibold text-[#0a0a0a] disabled:opacity-35 hover:bg-[#dcc084]"
+      >
+        Add
+      </button>
+    </form>
+  ) : null;
 
   if (!steps.length) {
     return (
@@ -41,20 +75,23 @@ export function PlaybookBlock({
             Add what they have to do next. AI will chase the current step by SMS.
           </p>
           {onChange ? (
-            <div className="mt-3 flex flex-col gap-1 overflow-hidden rounded-[10px] border border-white/8">
-              {COMMON_PLAYBOOK_STEPS.map((title) => (
-                <button
-                  key={title}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onChange(addPlaybookStep(steps, title))}
-                  className="flex items-center justify-between bg-[#141414] px-3.5 py-3 text-left text-[14px] hover:bg-[#1a1a1a]"
-                >
-                  {title}
-                  <span className="text-[#c4a35a]">+</span>
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="mt-3">{addRow}</div>
+              <div className="mt-3 flex flex-col gap-1 overflow-hidden rounded-[10px] border border-white/8">
+                {COMMON_PLAYBOOK_STEPS.map((title) => (
+                  <button
+                    key={title}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onChange(addPlaybookStep(steps, title))}
+                    className="flex items-center justify-between bg-[#141414] px-3.5 py-3 text-left text-[14px] hover:bg-[#1a1a1a]"
+                  >
+                    {title}
+                    <span className="text-[#c4a35a]">+</span>
+                  </button>
+                ))}
+              </div>
+            </>
           ) : null}
         </div>
       </div>
@@ -169,27 +206,7 @@ export function PlaybookBlock({
           );
         })}
       </div>
-      {onChange ? (
-        <form
-          className="mt-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const next = addPlaybookStep(steps, adding);
-            if (next !== steps) {
-              onChange(next);
-              setAdding("");
-            }
-          }}
-        >
-          <input
-            value={adding}
-            onChange={(e) => setAdding(e.target.value)}
-            placeholder="Add a step…"
-            disabled={busy}
-            className="h-10 w-full rounded-[9px] border border-white/10 bg-[#141414] px-3 text-[13.5px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
-          />
-        </form>
-      ) : null}
+      {addRow ? <div className="mt-3">{addRow}</div> : null}
       {currentIdx < 0 && doneCount === steps.length ? (
         <p className="mt-3 text-[12.5px] text-[#4ea882]">All steps done — ready to send the contract.</p>
       ) : (

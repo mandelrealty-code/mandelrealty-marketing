@@ -168,6 +168,29 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
         return res.status(200).json({ url });
       }
 
+      if (op === "ask_history") {
+        const user = await requireOwner(req, res);
+        if (!user) return;
+        const { listAskMessages, isAskTableMissing } = await import("./pm/askMrgStore.js");
+        try {
+          const messages = await listAskMessages(user.id);
+          return res.status(200).json({
+            messages: messages.map((m) => ({
+              id: m.id,
+              role: m.role,
+              body: m.body,
+              created_at: m.created_at,
+            })),
+            persist: true,
+          });
+        } catch (e) {
+          if (isAskTableMissing(e)) {
+            return res.status(200).json({ messages: [], persist: false });
+          }
+          throw e;
+        }
+      }
+
       return res.status(404).json({ error: "Unknown op." });
     }
 
@@ -303,9 +326,27 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
       return res.status(200).json({ ok: true, contract: signed, bootstrap: payload });
     }
 
+    if (op === "ask") {
+      const user = await requireOwner(req, res);
+      if (!user) return;
+      if (user.must_change_password) {
+        return res.status(400).json({ error: "Set your password first." });
+      }
+      const message = str(body.message);
+      if (!message) return res.status(400).json({ error: "message required." });
+      const { answerAskMrg } = await import("./pm/askMrg.js");
+      const result = await answerAskMrg({ user, message });
+      return res.status(200).json(result);
+    }
+
     return res.status(404).json({ error: "Unknown op." });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Owner API error.";
+    if (/portal_ask_messages/i.test(msg)) {
+      return res.status(503).json({
+        error: `${msg} Run supabase/portal_ask_mrg_v1.sql in Supabase.`,
+      });
+    }
     if (/portal_users|pm_contract|schema|column|relation/i.test(msg)) {
       return res.status(503).json({
         error: `${msg} Run supabase/portal_owner_v1.sql in Supabase.`,

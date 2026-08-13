@@ -40,6 +40,20 @@ export type OwnerEarningsSnapshot = {
     month_title: string;
     net_to_host_cents: number;
   } | null;
+  /** Same calendar month last year, when we have a linked close. */
+  prior_year: {
+    year_month: string;
+    month_title: string;
+    net_to_host_cents: number;
+  } | null;
+  /** Policy: EFT around the 5th for the prior calendar month. */
+  next_payout: {
+    on: string;
+    label: string;
+    amount_cents: number | null;
+    covers_year_month: string;
+    covers_title: string;
+  } | null;
 };
 
 export type OwnerDashboardPayload = {

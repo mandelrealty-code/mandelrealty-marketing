@@ -3,6 +3,7 @@ import type {
   OwnerSetupStep,
   OwnerSparkPoint,
 } from "../../../shared/pm/ownerDashboardTypes";
+import { AskMrgPanel } from "./AskMrgPanel";
 import { moneyCad, MrgMark } from "./OwnerChrome";
 
 function stayRange(checkIn: string, checkOut: string): string {
@@ -118,8 +119,9 @@ export function OwnerDashboard({
   const setup = dashboard?.setup ?? [];
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-[#f5f5f5]">
-      <header className="flex items-center justify-between border-b border-white/9 bg-[#0c0c0c] px-5 py-4 lg:px-10">
+    <div className="flex min-h-screen bg-[#0a0a0a] text-[#f5f5f5]">
+      <div className="flex min-w-0 flex-1 flex-col">
+      <header className="flex items-center justify-between border-b border-white/9 bg-[#0c0c0c] px-5 py-4 lg:px-9">
         <div className="flex items-center gap-8">
           <MrgMark />
           <nav className="hidden gap-7 text-sm lg:flex">
@@ -155,7 +157,7 @@ export function OwnerDashboard({
       ) : null}
 
       {linked && earnings ? (
-        <div className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-8 lg:px-9 lg:py-8">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-8 pb-28 lg:px-9 lg:py-8 lg:pb-8">
           <div className="flex items-baseline justify-between">
             <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6f6a65]">
               This month
@@ -210,9 +212,9 @@ export function OwnerDashboard({
                 hint: "net, full year",
               },
               {
-                label: "YTD net",
-                value: moneyCad(earnings.ytd_net_cents),
-                hint: "year to date",
+                label: "Next payout",
+                value: earnings.next_payout?.label ?? "—",
+                hint: earnings.next_payout ? "EFT · direct deposit" : "after month close",
               },
             ].map((tile) => (
               <div key={tile.label} className="bg-[#0a0a0a] px-5 py-5">
@@ -286,7 +288,7 @@ export function OwnerDashboard({
           </div>
         </div>
       ) : (
-        <div className="mx-auto grid max-w-6xl gap-12 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:px-16 lg:py-10">
+        <div className="mx-auto grid w-full max-w-6xl gap-12 px-5 py-8 pb-28 lg:grid-cols-[minmax(0,1fr)_400px] lg:px-9 lg:py-10 lg:pb-10">
           <div className="flex flex-col gap-5">
             <div className="flex items-center gap-2">
               <span className="h-1.5 w-1.5 rounded-full bg-[#4ea882]" />
@@ -342,6 +344,8 @@ export function OwnerDashboard({
           </div>
         </div>
       )}
+      </div>
+      <AskMrgPanel propertyLabel={propertyLabel} dashboard={dashboard} />
     </div>
   );
 }

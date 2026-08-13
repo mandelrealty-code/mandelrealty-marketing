@@ -54,6 +54,61 @@ function currentYearMonth(now = new Date()): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+function torontoYmd(now = new Date()): { y: number; m: number; d: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const num = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  return { y: num("year"), m: num("month"), d: num("day") };
+}
+
+/** EFT around the 5th of each month for the previous month's net. */
+export function buildNextPayout(prior: {
+  year_month: string;
+  month_title: string;
+  net_to_host_cents: number;
+} | null): {
+  on: string;
+  label: string;
+  amount_cents: number | null;
+  covers_year_month: string;
+  covers_title: string;
+} {
+  const { y, m, d } = torontoYmd();
+  let py = y;
+  let pm = m;
+  if (d > 5) {
+    pm += 1;
+    if (pm > 12) {
+      pm = 1;
+      py += 1;
+    }
+  }
+  const on = `${py}-${String(pm).padStart(2, "0")}-05`;
+  const label = new Date(`${on}T12:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  let coverY = py;
+  let coverM = pm - 1;
+  if (coverM < 1) {
+    coverM = 12;
+    coverY -= 1;
+  }
+  const covers = `${coverY}-${String(coverM).padStart(2, "0")}`;
+  return {
+    on,
+    label,
+    amount_cents: prior && prior.year_month === covers ? prior.net_to_host_cents : null,
+    covers_year_month: covers,
+    covers_title: monthTitle(covers),
+  };
+}
+
 function todayIso(now = new Date()): string {
   return now.toISOString().slice(0, 10);
 }
@@ -122,6 +177,7 @@ export async function buildOwnerDashboard(clientId: string): Promise<OwnerDashbo
   const linked = linkedProps.length > 0;
   const yearMonth = currentYearMonth();
   const priorMonth = shiftYearMonth(yearMonth, -1);
+  const priorYearMonth = `${Number(yearMonth.slice(0, 4)) - 1}-${yearMonth.slice(5)}`;
 
   let portfolio = null;
   try {
@@ -151,7 +207,7 @@ export async function buildOwnerDashboard(clientId: string): Promise<OwnerDashbo
     ytdKeys.push(cursor);
   }
 
-  const extraMonths = [...new Set([...sparkKeys, ...ytdKeys, priorMonth])].filter(
+  const extraMonths = [...new Set([...sparkKeys, ...ytdKeys, priorMonth, priorYearMonth])].filter(
     (m) => m !== yearMonth,
   );
   const extraPortfolios = await Promise.all(
@@ -239,6 +295,23 @@ export async function buildOwnerDashboard(clientId: string): Promise<OwnerDashbo
               net_to_host_cents: priorNet,
             }
           : null,
+      prior_year:
+        (extraByMonth.get(priorYearMonth)?.linked_count ?? 0) > 0
+          ? {
+              year_month: priorYearMonth,
+              month_title: monthTitle(priorYearMonth),
+              net_to_host_cents: extraByMonth.get(priorYearMonth)?.net_to_host_cents ?? 0,
+            }
+          : null,
+      next_payout: buildNextPayout(
+        (extraByMonth.get(priorMonth)?.linked_count ?? 0) > 0
+          ? {
+              year_month: priorMonth,
+              month_title: monthTitle(priorMonth),
+              net_to_host_cents: priorNet,
+            }
+          : null,
+      ),
     },
   };
 }
