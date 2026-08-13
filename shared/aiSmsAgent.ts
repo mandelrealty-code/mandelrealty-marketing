@@ -135,7 +135,8 @@ STYLE (sound like a real human texting — not a sales bot):
 BOOK LINK (include_book_link):
 - true on the first outbound, when they ask to book / talk / call, when they sound ready, or after you've answered a few questions and a soft CTA fits.
 - false when you're just answering a mid-thread FAQ (permit, fee, pricing, how it works) — answer first; skip the calendar link that turn unless they ask for a call.
-- When include_book_link is true: put ${BOOK_A_CALL_URL} in reply_text exactly once. Soft CTA only (not "Ready to book?" every time). On first outbound you may add a short line that they can keep texting questions here; do NOT repeat "If you have any questions before booking, just message us here." on every later reply.
+- When include_book_link is true: NEVER drop a naked calendar URL. Always introduce the booking in plain language first, then the URL once. Example: "Easiest next step is a free 15-min intro call with our team: ${BOOK_A_CALL_URL}"
+- Soft CTA only (not "Ready to book?" every time). On first outbound you may add a short line that they can keep texting questions here; do NOT repeat "If you have any questions before booking, just message us here." on every later reply.
 
 Return STRICT JSON only:
 {
@@ -245,6 +246,60 @@ export const DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5";
 
 const BOOK_LINK_INVITE =
   "If you have any questions before booking, just message us here.";
+
+const BOOK_LINK_CTA_LINE = `Easiest next step is a free 15-min intro call with our team: ${BOOK_A_CALL_URL}`;
+
+/** True if the SMS already names booking / intro call near the calendar invite. */
+function hasBookAppointmentFraming(text: string): boolean {
+  return /intro call|book a (free )?(call|time)|grab a (free )?intro|schedule (a |an )?(call|time|chat)|appointment|book here|book a time|15-?\s*min|calendar link|pick a time|book when you/i.test(
+    text,
+  );
+}
+
+/**
+ * Calendar links must be framed as a free intro-call booking — never a naked URL.
+ */
+export function ensureBookAppointmentFraming(body: string): string {
+  let text = body.trim();
+  if (!text) return text;
+  if (!text.includes(BOOK_A_CALL_URL) && !/calendar\.app\.google/i.test(text)) {
+    return text;
+  }
+  if (hasBookAppointmentFraming(text)) return text;
+
+  const stopMatch = text.match(/\nReply STOP to opt out\.?\s*$/i);
+  const stopLine = stopMatch ? stopMatch[0] : "";
+  if (stopMatch?.index != null) {
+    text = text.slice(0, stopMatch.index).trimEnd();
+  }
+
+  const inviteMatch = text.match(
+    /\nIf you have any questions before booking, just message us here\.?\s*$/i,
+  );
+  const inviteLine = inviteMatch ? inviteMatch[0].trim() : "";
+  if (inviteMatch?.index != null) {
+    text = text.slice(0, inviteMatch.index).trimEnd();
+  }
+
+  // Strip naked calendar URLs, then re-attach with framing
+  text = text
+    .replace(
+      new RegExp(
+        `\\s*${BOOK_A_CALL_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`,
+        "gi",
+      ),
+      " ",
+    )
+    .replace(/https?:\/\/calendar\.app\.google\/\S+/gi, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  const parts = [text, BOOK_LINK_CTA_LINE];
+  if (inviteLine) parts.push(inviteLine);
+  if (stopLine.trim()) parts.push(stopLine.trim());
+  return parts.filter(Boolean).join("\n");
+}
 
 /**
  * When a book-a-call URL is in the SMS on a first-touch style message,
@@ -457,8 +512,10 @@ ${kb}
 
 Write the opening SMS for offer_path="${lead.offer_path}".
 Personalize with first name "${firstName(lead.name)}" once in this opening. Reference their form facts (city, listing, permit confusion, readiness).
-Soft-CTA to book a free intro call (${BOOK_A_CALL_URL}). Do NOT send guide / intro-to-airbnb landing URLs.
+Invite a free 15-min intro call in plain words BEFORE the calendar URL (e.g. "grab a free intro call so we can see if it's a fit:" then ${BOOK_A_CALL_URL}). Do not dump a naked link with no booking mention.
+Do NOT send guide / intro-to-airbnb landing URLs.
 If education path: stay helpful and low-pressure, but still invite the call — no guide download.
+One light qualifying question is ok; do not interrogate then paste a bare URL.
 Set include_book_link true. Set whats_next to where you routed them.`;
   }
 
@@ -479,6 +536,7 @@ ${kb}
 Reply for offer_path="${lead.offer_path}". Answer like a human in an ongoing text thread:
 - Do NOT open with "Hey ${firstName(lead.name)}" or "${firstName(lead.name)}," — name was already used.
 - Do NOT paste the calendar link on every FAQ reply; set include_book_link true only when a soft CTA fits.
+- When you do include the book link, introduce the free intro call in words first — never a naked calendar URL alone.
 - Prefer the lead's latest texts over stale form facts when they conflict.
 - Advance toward a call when natural, or stop_ai cleanly when done. Update whats_next. Never send guide landing URLs.
 ${
@@ -683,9 +741,10 @@ export async function sendAiFirstSms(input: {
     decision = claude.decision;
     body = sanitizeCustomerSms(decision.reply_text);
     if (body && decision.include_book_link && !body.includes("http")) {
-      body = `${body}\n${BOOK_A_CALL_URL}`;
+      body = `${body}\n${BOOK_LINK_CTA_LINE}`;
     }
     body = stripBookLinkIfNotRequested(body, decision.include_book_link);
+    body = ensureBookAppointmentFraming(body);
     body = ensureBookLinkInvite(body, { firstTouch: true });
     if (body && !/stop/i.test(body)) {
       body = `${body.trim()}\nReply STOP to opt out.`;
@@ -798,9 +857,10 @@ export async function sendAiReplyToInbound(input: {
   const decision = claude.decision;
   let body = sanitizeCustomerSms(decision.reply_text);
   if (body && decision.include_book_link && !body.includes("http")) {
-    body = `${body}\n${BOOK_A_CALL_URL}`;
+    body = `${body}\n${BOOK_LINK_CTA_LINE}`;
   }
   body = stripBookLinkIfNotRequested(body, decision.include_book_link);
+  body = ensureBookAppointmentFraming(body);
   body = ensureBookLinkInvite(body);
 
   if (decision.stop_ai && !body.trim()) {
