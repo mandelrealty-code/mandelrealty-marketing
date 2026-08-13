@@ -13,5 +13,6 @@ alter table public.pm_tasks
     'statement',
     'supplies',
     'marketing',
+    'software',
     'other'
   ));

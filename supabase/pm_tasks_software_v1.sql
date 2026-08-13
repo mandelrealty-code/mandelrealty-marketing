@@ -1,4 +1,4 @@
--- Add marketing (+ refresh full task_type allow-list). Run if pm_tasks already exists.
+-- Add software task type (run if pm_tasks already exists).
 
 alter table public.pm_tasks
   drop constraint if exists pm_tasks_task_type_check;

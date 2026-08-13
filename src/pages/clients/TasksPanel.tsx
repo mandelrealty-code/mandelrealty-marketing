@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   pmGet,
   pmPost,
@@ -29,6 +29,7 @@ const TYPE_SHORT: Record<TaskType, string> = {
   statement: "stmt",
   supplies: "supply",
   marketing: "mktg",
+  software: "soft",
   other: "other",
 };
 
@@ -40,6 +41,7 @@ const TYPE_LABEL: Record<TaskType, string> = {
   statement: "Statement",
   supplies: "Supplies",
   marketing: "Marketing",
+  software: "Software",
   other: "Other",
 };
 
@@ -51,6 +53,7 @@ const TASK_TYPE_OPTIONS: TaskType[] = [
   "statement",
   "supplies",
   "marketing",
+  "software",
   "other",
 ];
 
@@ -141,7 +144,6 @@ function dueMeta(
 /** Desktop due cell — matches Claude table (Aug 11 · 2d / Thu, Aug 14). */
 function dueDesktopLabel(
   task: TaskRow,
-  today: Date,
   meta: ReturnType<typeof dueMeta>,
 ): string {
   if (meta.kind === "blocked") return "Blocked";
@@ -524,6 +526,8 @@ export function TasksPanel({
   const [dueOpen, setDueOpen] = useState(false);
   const [form, setForm] = useState<FormState>(() => emptyForm());
   const [completedOpen, setCompletedOpen] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearch = useDeferredValue(searchQuery);
 
   const loadMembers = useCallback(async () => {
     try {
@@ -856,7 +860,7 @@ export function TasksPanel({
     const assignees = taskAssignees(task);
     const place = placeLabel(task);
     const placeDesktop = placeDesktopLabel(task);
-    const dueDesktop = dueDesktopLabel(task, today, meta);
+    const dueDesktop = dueDesktopLabel(task, meta);
     const dueClass = dueColorClass(meta.kind);
 
     const checkbox = (
@@ -1405,7 +1409,7 @@ export function TasksPanel({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-0.5 rounded-lg border border-white/8 bg-[#141414] p-0.5">
             {(
               [
@@ -1428,6 +1432,15 @@ export function TasksPanel({
               </button>
             ))}
           </div>
+          <div className="relative min-w-[180px] flex-1 lg:max-w-[320px]">
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tasks…"
+              className="h-[34px] w-full rounded-lg border border-white/8 bg-[#141414] px-3 text-[13px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+            />
+          </div>
         </div>
       </div>
 
@@ -1441,21 +1454,35 @@ export function TasksPanel({
             <div className="h-11 w-11 rounded-xl border border-dashed border-white/16" />
             <div className="flex flex-col gap-1.5">
               <p className="text-[16px] font-semibold">
-                {statusFilter === "done"
-                  ? "No done tasks"
-                  : statusFilter === "blocked"
-                    ? "No blocked tasks"
-                    : "No open tasks"}
+                {searchNeedle
+                  ? "No matching tasks"
+                  : statusFilter === "done"
+                    ? "No done tasks"
+                    : statusFilter === "blocked"
+                      ? "No blocked tasks"
+                      : "No open tasks"}
               </p>
               <p className="max-w-xs text-[13.5px] leading-relaxed text-[#6f6a65]">
-                {statusFilter === "open"
-                  ? "Add one for the team — turnover QC, owner follow-ups, statement prep."
-                  : "Switch filters or create a new task."}
+                {searchNeedle
+                  ? "Try a different name, property, or type."
+                  : statusFilter === "open"
+                    ? "Add one for the team — turnover QC, owner follow-ups, statement prep."
+                    : "Switch filters or create a new task."}
               </p>
             </div>
-            <GoldButton type="button" size="sm" onClick={openCreate}>
-              + Task
-            </GoldButton>
+            {!searchNeedle ? (
+              <GoldButton type="button" size="sm" onClick={openCreate}>
+                + Task
+              </GoldButton>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="text-[13px] font-semibold text-[#c4a35a]"
+              >
+                Clear search
+              </button>
+            )}
           </div>
         ) : (
           <>

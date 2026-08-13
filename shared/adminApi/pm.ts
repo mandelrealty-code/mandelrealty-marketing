@@ -85,6 +85,7 @@ const TASK_TYPES = new Set<TaskType>([
   "statement",
   "supplies",
   "marketing",
+  "software",
   "other",
 ]);
 const TASK_REPEATS = new Set<TaskRepeat>(["off", "weekly", "monthly"]);

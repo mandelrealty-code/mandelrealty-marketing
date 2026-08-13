@@ -17,6 +17,7 @@ export type TaskType =
   | "statement"
   | "supplies"
   | "marketing"
+  | "software"
   | "other";
 export type TaskRepeat = "off" | "weekly" | "monthly";
 

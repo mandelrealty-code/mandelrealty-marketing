@@ -18,6 +18,7 @@ export type TaskType =
   | "statement"
   | "supplies"
   | "marketing"
+  | "software"
   | "other";
 export type TaskRepeat = "off" | "weekly" | "monthly";
 
@@ -59,6 +60,7 @@ const TYPES = new Set<TaskType>([
   "statement",
   "supplies",
   "marketing",
+  "software",
   "other",
 ]);
 const REPEATS = new Set<TaskRepeat>(["off", "weekly", "monthly"]);
