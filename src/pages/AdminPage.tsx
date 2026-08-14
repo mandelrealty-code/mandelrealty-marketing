@@ -693,7 +693,9 @@ export function AdminPage() {
       return;
     }
     const prevOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
 
     let handle: HTMLDivElement | null = null;
     let remove: (() => void) | undefined;
@@ -738,10 +740,21 @@ export function AdminPage() {
 
     return () => {
       document.body.style.overflow = prevOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
       window.cancelAnimationFrame(frame);
       remove?.();
     };
   }, [detailsOpen]);
+
+  useEffect(
+    () => () => {
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+      document.body.style.overscrollBehaviorY = "";
+      document.documentElement.style.overscrollBehaviorY = "";
+    },
+    [],
+  );
 
   const closeDetailsSheet = () => {
     setDetailsOpen(false);
@@ -1492,7 +1505,7 @@ export function AdminPage() {
         </header>
 
         {/* Thread — only this scrolls */}
-        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-2.5 overflow-y-auto overscroll-contain bg-[#0e0e0e] px-4 pb-2 pt-4">
+        <div className="crm-scroll-pane mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-2.5 overflow-y-auto bg-[#0e0e0e] px-4 pb-2 pt-4">
           {smsMessages.length === 0 && (
             <p className="py-10 text-center text-sm text-[#5e5a56]">No messages yet.</p>
           )}
@@ -1673,7 +1686,7 @@ export function AdminPage() {
                   </div>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[18px] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+                <div className="crm-scroll-pane min-h-0 flex-1 overflow-y-auto overscroll-contain px-[18px] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
                 <div className="mb-3.5 flex items-center justify-between gap-3 rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3">
                   <div className="min-w-0">
                     <p className="text-[10.5px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
@@ -2234,7 +2247,7 @@ export function AdminPage() {
           </button>
         ) : null}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-[15px] overflow-y-auto px-[22px] py-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-[15px] overflow-y-auto overscroll-contain px-[22px] py-5 crm-scroll-pane">
         {smsMessages.length === 0 ? (
           <p className="py-10 text-center text-sm text-[#5e5a56]">No messages yet.</p>
         ) : null}
@@ -2685,9 +2698,9 @@ export function AdminPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="flex min-h-0 flex-1 flex-col lg:flex-row"
+              className="flex min-h-0 flex-1 flex-col lg:min-h-0 lg:flex-row"
             >
-              <div className="flex min-h-0 w-full flex-col overflow-hidden lg:w-[296px] lg:shrink-0 lg:border-r lg:border-white/8">
+              <div className="crm-scroll-pane flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto lg:w-[296px] lg:shrink-0 lg:overflow-hidden lg:border-r lg:border-white/8">
                 <div className="space-y-3 px-4 pt-3 lg:hidden">
                   {statsStrip}
                   {needsYouBlock}
@@ -2745,7 +2758,7 @@ export function AdminPage() {
                     <option value="paused">AI paused</option>
                   </select>
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto px-0 pt-2 lg:pt-0">
+                <div className="min-h-0 flex-1 px-0 pt-2 lg:overflow-y-auto lg:pt-0">
                   <div className="lg:px-0">{contactsList}</div>
                 </div>
               </div>
@@ -2761,7 +2774,7 @@ export function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25, ease: easeOut }}
-              className="space-y-4 overflow-y-auto px-4 py-4 lg:px-8"
+              className="crm-scroll-pane flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto px-4 py-4 lg:px-8"
             >
               <div className="-mx-4 flex gap-2 overflow-x-auto border-b border-white/[0.06] px-4 pb-2.5 lg:mx-0 lg:flex-wrap lg:border-0 lg:px-0 lg:pb-0">
                 <button
@@ -2845,7 +2858,7 @@ export function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25, ease: easeOut }}
-              className="mx-auto max-w-[820px] space-y-4 overflow-y-auto px-4 py-4 lg:px-8"
+              className="crm-scroll-pane mx-auto flex min-h-0 w-full max-w-[820px] flex-1 flex-col space-y-4 overflow-y-auto px-4 py-4 lg:px-8"
             >
               <p className="text-sm leading-relaxed text-[#9a9590]">
                 Paste talk tracks / markdown for Claude. Docs save and index without OpenAI —
@@ -3005,7 +3018,7 @@ export function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25, ease: easeOut }}
-              className="mx-auto max-w-[820px] space-y-[22px] overflow-y-auto px-4 py-4 lg:space-y-[30px] lg:px-8"
+              className="crm-scroll-pane mx-auto flex min-h-0 w-full max-w-[820px] flex-1 flex-col space-y-[22px] overflow-y-auto px-4 py-4 lg:space-y-[30px] lg:px-8"
             >
               <section className="space-y-2.5">
                 <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">

@@ -77,6 +77,13 @@ body {
   height: 0;
 }
 
+/* iOS: nested scroll panes inside h-dvh CRM shell */
+.crm-scroll-pane {
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 @keyframes crm-live-pulse {
   0%,
   100% {
