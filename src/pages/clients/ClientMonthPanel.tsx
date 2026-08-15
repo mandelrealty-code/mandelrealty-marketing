@@ -264,9 +264,9 @@ export function ClientMonthPanel({
           {(
             [
               ["Net to host", portfolio?.net_to_host_cents, false, true],
-              ["MRG fees", portfolio?.mrg_take_cents ?? portfolio?.mrg_commission_cents, false, false],
+              ["Management fees", portfolio?.mrg_commission_cents ?? 0, false, false],
               ["HST to invoice", portfolio?.hst_invoice_cents, true, false],
-              ["Expenses", portfolio?.expense_cents, false, false],
+              ["Host charges", portfolio?.expense_cents, false, false],
             ] as const
           ).map(([label, cents, gold, mobileHero]) => (
             <div

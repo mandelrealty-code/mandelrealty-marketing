@@ -63,6 +63,15 @@ import { syncHospitableReviews } from "../pm/reviewStore.js";
 import { markMatFiling } from "../pm/matCompliance.js";
 import { buildOwnerStatement } from "../pm/ownerStatement.js";
 import {
+  buildCompanyMonthPnl,
+  createCompanyExpense,
+  deleteCompanyExpense,
+  deleteCompanySubscription,
+  emptyCompanyMonthPnl,
+  listCompanySubscriptions,
+  upsertCompanySubscription,
+} from "../pm/companyCostStore.js";
+import {
   buildMonthPortfolio,
   buildMonthStatement,
   createManualExpense,
@@ -206,7 +215,7 @@ async function settingsPayload(extra: Record<string, unknown> = {}) {
 function apiErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) {
     const m = err.message;
-    if (/pm_reservations|pm_manual_expenses|pm_contracts|pm_tasks|cleaning_fee_keeper|hst_bps|default_hst_bps|commission_base_mode|hst_mode/i.test(m) && /does not exist|schema cache|column/i.test(m)) {
+    if (/pm_reservations|pm_manual_expenses|pm_contracts|pm_tasks|pm_company_|cleaning_fee_keeper|hst_bps|default_hst_bps|commission_base_mode|hst_mode/i.test(m) && /does not exist|schema cache|column/i.test(m)) {
       return "Database columns missing. Run the latest supabase/*.sql migrations in Supabase, then retry.";
     }
     return m;
@@ -289,7 +298,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const portfolio = await buildMonthPortfolio(yearMonth, {
           clientId: clientId || undefined,
         });
-        return res.status(200).json({ portfolio });
+        const fees = {
+          management_fees_cents: portfolio.mrg_commission_cents,
+          hst_cohost_cents: portfolio.hst_cohost_cents ?? 0,
+          hst_invoice_cents: portfolio.hst_invoice_cents,
+        };
+        let company = emptyCompanyMonthPnl(yearMonth, fees);
+        try {
+          company = await buildCompanyMonthPnl(yearMonth, fees);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "";
+          if (!/pm_company_|does not exist|schema cache/i.test(msg)) throw err;
+        }
+        return res.status(200).json({ portfolio, company });
       }
       if (resource === "owner_statement") {
         const yearMonth =
@@ -464,6 +485,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resource === "team_members") {
         const members = await listPmTeamMembers();
         return res.status(200).json({ members });
+      }
+      if (resource === "company_subscriptions") {
+        const subscriptions = await listCompanySubscriptions();
+        return res.status(200).json({ subscriptions });
       }
       return res.status(400).json({ error: "Unknown resource." });
     }
@@ -1208,6 +1233,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const id = str(body.id);
           if (!id) return res.status(400).json({ error: "id required." });
           await deletePmTeamMember(id);
+          return res.status(200).json({ ok: true });
+        }
+      }
+
+      if (resource === "company_subscriptions") {
+        if (op === "upsert") {
+          const amountCents =
+            typeof body.amount_cents === "number"
+              ? Math.round(body.amount_cents)
+              : moneyToCents(body.amount);
+          if (!Number.isFinite(amountCents)) {
+            return res.status(400).json({ error: "amount required." });
+          }
+          const subscription = await upsertCompanySubscription({
+            id: str(body.id) || undefined,
+            name: str(body.name),
+            category: str(body.category),
+            amount_cents: amountCents,
+            cadence: str(body.cadence),
+            active: typeof body.active === "boolean" ? body.active : undefined,
+            start_year_month: str(body.start_year_month),
+          });
+          return res.status(200).json({ subscription });
+        }
+        if (op === "delete") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await deleteCompanySubscription(id);
+          return res.status(200).json({ ok: true });
+        }
+      }
+
+      if (resource === "company_expenses") {
+        if (op === "create") {
+          const amountCents =
+            typeof body.amount_cents === "number"
+              ? Math.round(body.amount_cents)
+              : moneyToCents(body.amount);
+          if (!Number.isFinite(amountCents)) {
+            return res.status(400).json({ error: "amount required." });
+          }
+          const expense = await createCompanyExpense({
+            year_month: str(body.year_month || body.month),
+            expense_date: str(body.expense_date) || undefined,
+            category: str(body.category),
+            label: str(body.label),
+            amount_cents: amountCents,
+            note: str(body.note),
+            override_subscription_id: str(body.override_subscription_id) || null,
+          });
+          return res.status(200).json({ expense });
+        }
+        if (op === "delete") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await deleteCompanyExpense(id);
           return res.status(200).json({ ok: true });
         }
       }

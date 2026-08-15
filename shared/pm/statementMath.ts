@@ -481,6 +481,8 @@ export type PortfolioUnitRow = {
   nightly_total_cents: number | null;
   /** Invoice-mode HST only (HST on MRG fee); null when cohost or unlinked. */
   hst_invoice_cents: number | null;
+  /** Cohost HST withheld in payout; null when invoice or unlinked. */
+  hst_cohost_cents: number | null;
   expense_cents: number | null;
   currency: string;
 };
@@ -496,6 +498,8 @@ export type MonthPortfolio = {
   /** Management + cohost HST across linked units. */
   mrg_take_cents: number;
   hst_invoice_cents: number;
+  /** Cohost HST withheld across linked units (not profit). */
+  hst_cohost_cents: number;
   expense_cents: number;
   reservation_count: number;
   fleet_last_synced_at: string | null;
@@ -534,6 +538,7 @@ export async function buildMonthPortfolio(
   let mrgTotal = 0;
   let mrgTakeTotal = 0;
   let hstInvoiceTotal = 0;
+  let hstCohostTotal = 0;
   let expenseTotal = 0;
   let reservationTotal = 0;
   let linkedCount = 0;
@@ -566,6 +571,7 @@ export async function buildMonthPortfolio(
         mrg_take_cents: null,
         nightly_total_cents: null,
         hst_invoice_cents: null,
+        hst_cohost_cents: null,
         expense_cents: null,
         currency: p.currency || "CAD",
       });
@@ -595,6 +601,9 @@ export async function buildMonthPortfolio(
     mrgTotal += statement.mrg_commission_cents;
     mrgTakeTotal += statement.mrg_take_cents;
     if (invoiceHst != null) hstInvoiceTotal += invoiceHst;
+    const cohostHst =
+      statement.hst_mode === "cohost" ? statement.hst_cents : null;
+    if (cohostHst != null) hstCohostTotal += cohostHst;
     expenseTotal += statement.expense_cents;
     reservationTotal += statement.reservation_count;
 
@@ -619,6 +628,7 @@ export async function buildMonthPortfolio(
       mrg_take_cents: statement.mrg_take_cents,
       nightly_total_cents: statement.nightly_total_cents ?? null,
       hst_invoice_cents: invoiceHst,
+      hst_cohost_cents: cohostHst,
       expense_cents: statement.expense_cents,
       currency: statement.currency,
     });
@@ -640,6 +650,7 @@ export async function buildMonthPortfolio(
     mrg_commission_cents: mrgTotal,
     mrg_take_cents: mrgTakeTotal,
     hst_invoice_cents: hstInvoiceTotal,
+    hst_cohost_cents: hstCohostTotal,
     expense_cents: expenseTotal,
     reservation_count: reservationTotal,
     fleet_last_synced_at: fleetLast,

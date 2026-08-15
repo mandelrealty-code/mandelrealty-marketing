@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { pmGet, pmPost, rateLabel } from "./api";
 import { dealSummaryLabel } from "./BillingTermsForm";
+import {
+  AddCompanyCostSheet,
+  CompanyPnlPanel,
+  CompanyStrip,
+  EditSubscriptionSheet,
+  emptyCompany,
+  SubscriptionsSheet,
+  type CompanyCategory,
+  type CompanyCostLine,
+  type CompanyMonthPnl,
+  type CompanySubscription,
+} from "./CompanyPnl";
 import { GoldButton, MonthPicker } from "./ui";
 
 export type PortfolioSyncStatus = "fresh" | "stale" | "empty" | "unlinked";
@@ -25,6 +37,7 @@ export type PortfolioUnit = {
   mrg_take_cents?: number | null;
   nightly_total_cents?: number | null;
   hst_invoice_cents: number | null;
+  hst_cohost_cents?: number | null;
   expense_cents: number | null;
   currency: string;
 };
@@ -39,6 +52,7 @@ export type MonthPortfolio = {
   mrg_commission_cents: number;
   mrg_take_cents?: number;
   hst_invoice_cents: number;
+  hst_cohost_cents?: number;
   expense_cents: number;
   reservation_count: number;
   fleet_last_synced_at: string | null;
@@ -198,10 +212,10 @@ function exportCsv(portfolio: MonthPortfolio) {
       "HST %",
       "Sync",
       "Net to host",
-      "MRG take",
+      "MRG fee",
       "Nightly",
       "HST to invoice",
-      "Expenses",
+      "Host charges",
       "Stays",
     ],
     ...portfolio.units.map((u) => [
@@ -287,6 +301,19 @@ function monthSummaryText(
   );
 }
 
+function useIsDesktop() {
+  const [desktop, setDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => setDesktop(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return desktop;
+}
+
 export function MonthClosePanel({
   onOpenProperty,
   onToast,
@@ -299,16 +326,24 @@ export function MonthClosePanel({
   /** When set, open HST worklist focused on this client. */
   hstClientId?: string | null;
 }) {
+  const desktop = useIsDesktop();
   const [month, setMonth] = useState(defaultMonth);
   const [view, setView] = useState<View>(hstClientId ? "hst" : "portfolio");
   const [filter, setFilter] = useState<SyncFilter>("all");
   const [portfolio, setPortfolio] = useState<MonthPortfolio | null>(null);
+  const [company, setCompany] = useState<CompanyMonthPnl>(() => emptyCompany(defaultMonth()));
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress>(null);
   const [syncFailures, setSyncFailures] = useState<SyncFailure[]>([]);
   const [syncingPropertyId, setSyncingPropertyId] = useState<string | null>(null);
   const [expandedClients, setExpandedClients] = useState<Record<string, boolean>>({});
+  const [sheet, setSheet] = useState<
+    null | "pnl" | "subs" | "sub-edit" | "add-cost"
+  >(null);
+  const [editSub, setEditSub] = useState<CompanySubscription | null>(null);
+  const [costCategory, setCostCategory] = useState<CompanyCategory>("other");
+  const [overrideSubId, setOverrideSubId] = useState<string | null>(null);
 
   useEffect(() => {
     if (hstClientId) {
@@ -321,10 +356,12 @@ export function MonthClosePanel({
     setLoading(true);
     onError("");
     try {
-      const data = await pmGet<{ portfolio: MonthPortfolio }>("month_close", {
-        month,
-      });
+      const data = await pmGet<{ portfolio: MonthPortfolio; company?: CompanyMonthPnl }>(
+        "month_close",
+        { month },
+      );
       setPortfolio(data.portfolio);
+      setCompany(data.company ?? emptyCompany(month));
     } catch (err) {
       onError(err instanceof Error ? err.message : "Could not load month close.");
       setPortfolio(null);
@@ -378,6 +415,44 @@ export function MonthClosePanel({
     const ok = await copyText(text);
     onToast(ok ? okMsg : "Could not copy — check browser permissions.");
   };
+
+  const openAddCost = (opts?: { category?: CompanyCategory; override?: string | null }) => {
+    setCostCategory(opts?.category ?? "other");
+    setOverrideSubId(opts?.override ?? null);
+    setSheet("add-cost");
+  };
+
+  const deleteCostLine = async (line: CompanyCostLine) => {
+    if (!line.expense_id) return;
+    try {
+      await pmPost("company_expenses", { op: "delete", id: line.expense_id });
+      await load();
+      onToast("Removed");
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Could not remove cost.");
+    }
+  };
+
+  const companyStrip = (
+    <CompanyStrip
+      company={company}
+      monthTitle={title}
+      currency={currency}
+      loading={loading}
+      onOpenPnl={() => setSheet("pnl")}
+      onOpenSubscriptions={() => setSheet("subs")}
+      onLogAds={() => openAddCost({ category: "ads" })}
+    />
+  );
+
+  const hostTiles = (
+    [
+      ["Net to hosts", portfolio?.net_to_host_cents],
+      ["Management fees", company.management_fees_cents ?? portfolio?.mrg_commission_cents],
+      ["HST to invoice", portfolio?.hst_invoice_cents, true],
+      ["Host charges", portfolio?.expense_cents],
+    ] as const
+  );
 
   const syncOne = async (propertyId: string, name: string) => {
     setSyncingPropertyId(propertyId);
@@ -910,15 +985,24 @@ export function MonthClosePanel({
           ) : null}
         </div>
 
+        {companyStrip}
+
+        <div className="flex items-center justify-between pt-0.5">
+          <p className="text-[11.5px] font-semibold uppercase tracking-[0.1em] text-[#6f6a65]">
+            Host close
+          </p>
+          <button
+            type="button"
+            disabled={!portfolio}
+            onClick={() => portfolio && exportCsv(portfolio)}
+            className="text-[12px] text-[#9a9590] disabled:opacity-40"
+          >
+            Export
+          </button>
+        </div>
+
         <div className="grid grid-cols-2 overflow-hidden rounded-[12px] border border-white/8 bg-white/8">
-          {(
-            [
-              ["Net to hosts", portfolio?.net_to_host_cents],
-              ["MRG fees", portfolio?.mrg_take_cents ?? portfolio?.mrg_commission_cents],
-              ["HST to invoice", portfolio?.hst_invoice_cents, true],
-              ["Expenses", portfolio?.expense_cents],
-            ] as const
-          ).map(([label, cents, gold]) => (
+          {hostTiles.map(([label, cents, gold]) => (
             <div key={label} className="flex flex-col gap-1 bg-[#0f0f0f] px-3.5 py-3.5">
               <p className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#9a9590]">
                 {label}
@@ -1115,15 +1199,21 @@ export function MonthClosePanel({
           ))}
         </div>
 
+        {companyStrip}
+
+        <div className="flex items-center justify-between">
+          <p className="text-[11.5px] font-semibold uppercase tracking-[0.1em] text-[#6f6a65]">
+            Host close
+          </p>
+          <p className="text-[12.5px] text-[#9a9590]">
+            {portfolio
+              ? `${portfolio.unit_count} units · ${invoiceGroups.length} on HST worklist`
+              : "—"}
+          </p>
+        </div>
+
         <div className="flex overflow-hidden rounded-[12px] border border-white/8 bg-white/8">
-          {(
-            [
-              ["Net to hosts", portfolio?.net_to_host_cents],
-              ["MRG fees", portfolio?.mrg_take_cents ?? portfolio?.mrg_commission_cents],
-              ["HST to invoice", portfolio?.hst_invoice_cents, true],
-              ["Expenses", portfolio?.expense_cents],
-            ] as const
-          ).map(([label, cents, gold]) => (
+          {hostTiles.map(([label, cents, gold]) => (
             <div key={label} className="flex flex-1 flex-col gap-1.5 bg-[#0f0f0f] px-5 py-4">
               <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#9a9590]">
                 {label}
@@ -1149,9 +1239,9 @@ export function MonthClosePanel({
           <div>Property</div>
           <div>Sync</div>
           <div className="text-right">Net to host</div>
-          <div className="text-right">MRG take</div>
+          <div className="text-right">MRG fee</div>
           <div className="text-right">HST to invoice</div>
-          <div className="text-right">Expenses</div>
+          <div className="text-right">Host charges</div>
         </div>
 
         {loading && !portfolio ? (
@@ -1294,7 +1384,7 @@ export function MonthClosePanel({
                     {moneyExact(unit.net_to_host_cents, currency)}
                   </p>
                   <p className="text-right text-[15px] tabular-nums text-[#9a9590]">
-                    {moneyExact(unitMrgTake(unit), currency)}
+                    {moneyExact(unit.mrg_commission_cents ?? unitMrgTake(unit), currency)}
                   </p>
                   <p
                     className={`text-right text-[15px] tabular-nums ${
@@ -1331,6 +1421,61 @@ export function MonthClosePanel({
           </div>
         ) : null}
       </div>
+
+      <CompanyPnlPanel
+        open={sheet === "pnl"}
+        desktop={desktop}
+        company={company}
+        monthTitle={title}
+        currency={currency}
+        onClose={() => setSheet(null)}
+        onAddCost={() => openAddCost()}
+        onSubscriptions={() => setSheet("subs")}
+        onOverrideAds={(id) =>
+          openAddCost({ category: "ads", override: id || null })
+        }
+        onDeleteLine={(line) => void deleteCostLine(line)}
+      />
+      {sheet === "subs" ? (
+        <SubscriptionsSheet
+          desktop={desktop}
+          onCancel={() => setSheet("pnl")}
+          onAdd={() => {
+            setEditSub(null);
+            setSheet("sub-edit");
+          }}
+          onEdit={(sub) => {
+            setEditSub(sub);
+            setSheet("sub-edit");
+          }}
+          onChanged={() => void load()}
+        />
+      ) : null}
+      {sheet === "sub-edit" ? (
+        <EditSubscriptionSheet
+          desktop={desktop}
+          initial={editSub}
+          onCancel={() => setSheet("subs")}
+          onSaved={() => {
+            void load();
+            setSheet("subs");
+          }}
+        />
+      ) : null}
+      {sheet === "add-cost" ? (
+        <AddCompanyCostSheet
+          desktop={desktop}
+          month={month}
+          monthTitle={title}
+          defaultCategory={costCategory}
+          overrideSubscriptionId={overrideSubId}
+          onCancel={() => setSheet("pnl")}
+          onSaved={() => {
+            void load();
+            setSheet("pnl");
+          }}
+        />
+      ) : null}
     </div>
   );
 }

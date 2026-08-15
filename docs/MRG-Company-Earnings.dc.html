@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#050505; color:#f5f5f5; font-family:'Manrope',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#c4a35a; text-decoration:none; }
+  a:hover { color:#dcc084; }
+  * { box-sizing:border-box; }
+</style>
+</helmet>
+
+<section style="padding:64px 64px 0; display:flex; flex-direction:column; gap:12px">
+  <div style="display:flex; align-items:baseline; gap:16px">
+    <div style="font-size:13px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:#c4a35a">Mandel Realty Group Admin</div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6f6a65">admin.mandelrealtygroup.com / ops / month-close</div>
+  </div>
+  <h1 style="margin:0; font-size:34px; font-weight:700; letter-spacing:-0.02em">Company earnings on Month close</h1>
+  <p style="margin:0; max-width:660px; font-size:15px; line-height:1.6; color:#9a9590; text-wrap:pretty">A company-net layer stacked above the existing host close. Top of the screen answers “what did MRG make in July”; the host payout tiles stay untouched underneath. Recurring costs — ad budget and software — post themselves every month; HST sits aside to remit.</p>
+  <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:10px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">
+    <span style="padding:4px 8px; border:1px solid rgba(255,255,255,0.10); border-radius:5px">July 2026 · CAD</span>
+    <span style="padding:4px 8px; border:1px solid rgba(255,255,255,0.10); border-radius:5px">Net = management fees − company costs</span>
+    <span style="padding:4px 8px; border:1px solid rgba(255,255,255,0.10); border-radius:5px">HST collected ≠ profit</span>
+    <span style="padding:4px 8px; border:1px solid rgba(255,255,255,0.10); border-radius:5px">No Books tab</span>
+  </div>
+</section>
+
+<section id="1a" style="padding:56px 64px; display:flex; flex-direction:column; gap:20px">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+    <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1a · F1c</span>
+    <span style="font-size:15px; font-weight:600">Mobile Month close with company strip · 390 × 844</span>
+    <span style="font-size:13px; color:#6f6a65">Default · $0 month · no ad spend entered</span>
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:28px">
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Default — July closed out</div>
+      <div style="width:390px; height:844px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:22px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="height:52px; padding:0 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08); flex:none">
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">M</div>
+            <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+              <div style="padding:5px 13px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600; letter-spacing:0.04em">CRM</div>
+              <div style="padding:5px 13px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700; letter-spacing:0.04em">OPS</div>
+            </div>
+          </div>
+          <div style="font-size:12px; font-weight:600; color:#c4a35a">Sync all</div>
+        </div>
+
+        <div style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:14px; padding:14px">
+          <div style="display:flex; align-items:center; justify-content:space-between">
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; justify-content:center; font-size:12px; color:#9a9590">‹</div>
+              <div style="font-size:17px; font-weight:700; letter-spacing:-0.01em">{{ month }}</div>
+              <div style="width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; justify-content:center; font-size:12px; color:#9a9590">›</div>
+            </div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Synced 6:02 AM</div>
+          </div>
+
+          <div style="background:#141414; border:1px solid rgba(255,255,255,0.10); border-radius:14px; padding:16px; display:flex; flex-direction:column; gap:14px">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between">
+              <div style="display:flex; flex-direction:column; gap:6px">
+                <div style="font-size:11.5px; font-weight:600; letter-spacing:0.10em; text-transform:uppercase; color:#9a9590">{{ netLabel }}</div>
+                <div style="font-size:38px; font-weight:700; letter-spacing:-0.03em; line-height:1; color:{{ netColor }}">{{ netAmount }}</div>
+                <div style="font-size:12px; color:#6f6a65">Fees − ads − software − overhead</div>
+              </div>
+              <div style="font-size:18px; color:#6f6a65; padding-top:14px">›</div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+              <div style="background:#1c1c1c; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:11px 12px; display:flex; flex-direction:column; gap:5px">
+                <div style="font-size:11px; color:#9a9590">Management fees</div>
+                <div style="font-size:19px; font-weight:700; letter-spacing:-0.02em">$18,420.00</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">ex HST</div>
+              </div>
+              <div style="background:#1c1c1c; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:11px 12px; display:flex; flex-direction:column; gap:5px">
+                <div style="display:flex; align-items:center; justify-content:space-between">
+                  <div style="font-size:11px; color:#9a9590">Company costs</div>
+                  <div style="font-size:12px; color:#6f6a65">›</div>
+                </div>
+                <div style="font-size:19px; font-weight:700; letter-spacing:-0.02em">{{ costsAmount }}</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">ads · software · other</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; padding-top:2px; border-top:1px solid rgba(255,255,255,0.08); padding-top:11px">
+              <div style="width:5px; height:5px; border-radius:3px; background:#c4a35a"></div>
+              <div style="font-size:12px; color:#9a9590">HST not included · <span style="color:#dcc084; font-weight:600">$2,828.40</span> to remit</div>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; padding-top:2px">
+            <div style="font-size:11.5px; font-weight:600; letter-spacing:0.10em; text-transform:uppercase; color:#6f6a65">Host close</div>
+            <div style="font-size:12px; color:#9a9590">Export</div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">Net to hosts</div>
+              <div style="font-size:20px; font-weight:700; letter-spacing:-0.02em">$61,842.15</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">9 EFTs ready</div>
+            </div>
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">Management fees</div>
+              <div style="font-size:20px; font-weight:700; letter-spacing:-0.02em">$18,420.00</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">ex HST</div>
+            </div>
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">HST to invoice</div>
+              <div style="font-size:20px; font-weight:700; letter-spacing:-0.02em; color:#dcc084">$986.40</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">4 invoices</div>
+            </div>
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">Host charges</div>
+              <div style="font-size:20px; font-weight:700; letter-spacing:-0.02em">$3,742.88</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">was “Expenses”</div>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0">
+              <div style="font-size:11.5px; font-weight:600; letter-spacing:0.10em; text-transform:uppercase; color:#6f6a65">Units · 9</div>
+              <div style="font-size:12px; color:#9a9590">HST worklist 4</div>
+            </div>
+            <div style="display:flex; flex-direction:column">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-top:1px solid rgba(255,255,255,0.08)">
+                <div style="display:flex; flex-direction:column; gap:3px">
+                  <div style="font-size:13.5px; font-weight:600">Bala · Lakeside A</div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">fee $3,180 · HST $413.40</div>
+                </div>
+                <div style="font-size:13.5px; font-weight:600">$9,412.60</div>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-top:1px solid rgba(255,255,255,0.08)">
+                <div style="display:flex; flex-direction:column; gap:3px">
+                  <div style="font-size:13.5px; font-weight:600">Port Carling · Birch</div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">fee $2,740 · HST $356.20</div>
+                </div>
+                <div style="font-size:13.5px; font-weight:600">$8,006.10</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="height:60px; flex:none; display:grid; grid-template-columns:repeat(5,1fr); align-items:center; padding:0 4px 6px; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="text-align:center; font-size:11px; font-weight:500; color:#6f6a65">Tasks</div>
+          <div style="text-align:center; font-size:11px; font-weight:500; color:#6f6a65">Clients</div>
+          <div style="text-align:center; font-size:11px; font-weight:500; color:#6f6a65">Properties</div>
+          <div style="text-align:center; font-size:11px; font-weight:700; color:#c4a35a">Month close</div>
+          <div style="text-align:center; font-size:11px; font-weight:500; color:#6f6a65">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">$0 fees month — August, nothing closed yet</div>
+      <div style="width:390px; height:844px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:22px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="height:52px; padding:0 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08); flex:none">
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">M</div>
+            <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+              <div style="padding:5px 13px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600; letter-spacing:0.04em">CRM</div>
+              <div style="padding:5px 13px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700; letter-spacing:0.04em">OPS</div>
+            </div>
+          </div>
+          <div style="font-size:12px; font-weight:600; color:#c4a35a">Sync all</div>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:14px; padding:14px">
+          <div style="display:flex; align-items:center; justify-content:space-between">
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; justify-content:center; font-size:12px; color:#9a9590">‹</div>
+              <div style="font-size:17px; font-weight:700; letter-spacing:-0.01em">August 2026</div>
+              <div style="width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center; font-size:12px; color:#3a3835">›</div>
+            </div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">In progress</div>
+          </div>
+          <div style="background:#141414; border:1px solid rgba(255,255,255,0.10); border-radius:14px; padding:16px; display:flex; flex-direction:column; gap:14px">
+            <div style="display:flex; flex-direction:column; gap:6px">
+              <div style="font-size:11.5px; font-weight:600; letter-spacing:0.10em; text-transform:uppercase; color:#9a9590">Net earnings</div>
+              <div style="font-size:38px; font-weight:700; letter-spacing:-0.03em; line-height:1; color:#cf7f7b">−$2,571.24</div>
+              <div style="font-size:12px; color:#6f6a65">No fees posted yet · recurring costs already accruing</div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+              <div style="background:#1c1c1c; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:11px 12px; display:flex; flex-direction:column; gap:5px">
+                <div style="font-size:11px; color:#9a9590">Management fees</div>
+                <div style="font-size:19px; font-weight:700; letter-spacing:-0.02em; color:#6f6a65">$0.00</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">ex HST</div>
+              </div>
+              <div style="background:#1c1c1c; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:11px 12px; display:flex; flex-direction:column; gap:5px">
+                <div style="font-size:11px; color:#9a9590">Company costs</div>
+                <div style="font-size:19px; font-weight:700; letter-spacing:-0.02em">$2,571.24</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#c99a4b">recurring only</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; border-top:1px solid rgba(255,255,255,0.08); padding-top:11px">
+              <div style="width:5px; height:5px; border-radius:3px; background:#6f6a65"></div>
+              <div style="font-size:12px; color:#9a9590">HST not included · $0.00 to remit</div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding-top:2px">
+            <div style="font-size:11.5px; font-weight:600; letter-spacing:0.10em; text-transform:uppercase; color:#6f6a65">Host close</div>
+            <div style="font-size:12px; color:#3a3835">Export</div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">Net to hosts</div>
+              <div style="font-size:20px; font-weight:700; color:#6f6a65">$0.00</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">no EFTs</div>
+            </div>
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">Management fees</div>
+              <div style="font-size:20px; font-weight:700; color:#6f6a65">$0.00</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">ex HST</div>
+            </div>
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">HST to invoice</div>
+              <div style="font-size:20px; font-weight:700; color:#6f6a65">$0.00</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">—</div>
+            </div>
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">Host charges</div>
+              <div style="font-size:20px; font-weight:700; color:#6f6a65">$0.00</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">—</div>
+            </div>
+          </div>
+          <div style="margin-top:6px; border:1px dashed rgba(255,255,255,0.10); border-radius:12px; padding:18px 16px; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:13.5px; font-weight:600">Nothing to close yet</div>
+            <div style="font-size:12.5px; line-height:1.5; color:#9a9590">Payouts land after the month ends. Recurring company costs are already counted.</div>
+            <div style="margin-top:6px; font-size:12.5px; font-weight:600; color:#c4a35a">Manage subscriptions</div>
+          </div>
+        </div>
+        <div style="height:60px; flex:none; display:grid; grid-template-columns:repeat(5,1fr); align-items:center; padding:0 4px 6px; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="text-align:center; font-size:11px; color:#6f6a65">Tasks</div>
+          <div style="text-align:center; font-size:11px; color:#6f6a65">Clients</div>
+          <div style="text-align:center; font-size:11px; color:#6f6a65">Properties</div>
+          <div style="text-align:center; font-size:11px; font-weight:700; color:#c4a35a">Month close</div>
+          <div style="text-align:center; font-size:11px; color:#6f6a65">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">No ad spend entered + no subscriptions set up</div>
+      <div style="width:390px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:22px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="height:52px; padding:0 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">M</div>
+            <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+              <div style="padding:5px 13px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600">CRM</div>
+              <div style="padding:5px 13px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700">OPS</div>
+            </div>
+          </div>
+          <div style="font-size:12px; font-weight:600; color:#c4a35a">Sync all</div>
+        </div>
+        <div style="padding:14px; display:flex; flex-direction:column; gap:14px">
+          <div style="display:flex; align-items:center; gap:12px">
+            <div style="width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; justify-content:center; font-size:12px; color:#9a9590">‹</div>
+            <div style="font-size:17px; font-weight:700">July 2026</div>
+            <div style="width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; justify-content:center; font-size:12px; color:#9a9590">›</div>
+          </div>
+          <div style="background:#141414; border:1px solid rgba(255,255,255,0.10); border-radius:14px; padding:16px; display:flex; flex-direction:column; gap:14px">
+            <div style="display:flex; flex-direction:column; gap:6px">
+              <div style="font-size:11.5px; font-weight:600; letter-spacing:0.10em; text-transform:uppercase; color:#9a9590">Net earnings</div>
+              <div style="font-size:38px; font-weight:700; letter-spacing:-0.03em; line-height:1; color:#4ea882">$17,670.00</div>
+              <div style="font-size:12px; color:#c99a4b">Ad spend + software not entered yet</div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+              <div style="background:#1c1c1c; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:11px 12px; display:flex; flex-direction:column; gap:5px">
+                <div style="font-size:11px; color:#9a9590">Management fees</div>
+                <div style="font-size:19px; font-weight:700">$18,420.00</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">ex HST</div>
+              </div>
+              <div style="background:#1c1c1c; border:1px solid rgba(196,163,90,0.28); border-radius:10px; padding:11px 12px; display:flex; flex-direction:column; gap:5px">
+                <div style="font-size:11px; color:#9a9590">Company costs</div>
+                <div style="font-size:19px; font-weight:700">$750.00</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#c99a4b">one-offs only</div>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0; border-top:1px solid rgba(255,255,255,0.08); padding-top:10px">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0">
+                <div style="display:flex; flex-direction:column; gap:2px">
+                  <div style="font-size:12.5px; color:#9a9590">Meta ads</div>
+                  <div style="font-size:10.5px; color:#6f6a65">Paste this month’s spend from Ads Manager</div>
+                </div>
+                <div style="font-size:12.5px; font-weight:600; color:#6f6a65">$0.00</div>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-top:1px solid rgba(255,255,255,0.06)">
+                <div style="font-size:12.5px; color:#9a9590">Software</div>
+                <div style="font-size:12.5px; font-weight:600; color:#c4a35a">Add subscriptions</div>
+              </div>
+            </div>
+          </div>
+          <div style="font-size:11.5px; font-weight:600; letter-spacing:0.10em; text-transform:uppercase; color:#6f6a65">Host close</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">Net to hosts</div>
+              <div style="font-size:20px; font-weight:700">$61,842.15</div>
+            </div>
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">Management fees</div>
+              <div style="font-size:20px; font-weight:700">$18,420.00</div>
+            </div>
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">HST to invoice</div>
+              <div style="font-size:20px; font-weight:700; color:#dcc084">$986.40</div>
+            </div>
+            <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:5px">
+              <div style="font-size:11px; color:#9a9590">Host charges</div>
+              <div style="font-size:20px; font-weight:700">$3,742.88</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width:860px; padding:16px 18px; background:#0c0c0c; border:1px solid rgba(255,255,255,0.08); border-radius:12px; display:flex; flex-direction:column; gap:7px">
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:#c4a35a">Tile math</div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; line-height:1.8; color:#9a9590">Management fees = Σ mrg_commission_cents (linked units), HST excluded → $18,420.00<br>Company costs = Meta ads $1,240.18 (Manual, overrides $1,200 recurring) + software $761.24 + other $750.00 → $2,751.42<br>Net earnings = 18,420.00 − 2,751.42 → $15,668.58<br>HST to remit = cohost withheld $1,842.00 + invoice $986.40 → $2,828.40 (not profit)<br>Host charges = pm_manual_expenses $3,742.88 — reduces host payout only, never company net</div>
+  </div>
+</section>
+
+<section id="1b" style="padding:0 64px 56px; display:flex; flex-direction:column; gap:20px">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+    <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1b · F1d</span>
+    <span style="font-size:15px; font-weight:600">Desktop Month close · 1280</span>
+    <span style="font-size:13px; color:#6f6a65">Company strip spans full width above host tiles</span>
+  </div>
+
+  <div style="width:1280px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:16px; overflow:hidden; display:flex; flex-direction:column">
+    <div style="height:56px; padding:0 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+      <div style="display:flex; align-items:center; gap:16px">
+        <div style="display:flex; align-items:center; gap:10px">
+          <div style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">M</div>
+          <div style="font-size:14px; font-weight:600">Mandel Realty Group</div>
+        </div>
+        <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+          <div style="padding:5px 14px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600">CRM</div>
+          <div style="padding:5px 14px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700">OPS</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:14px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Synced 6:02 AM</div>
+        <div style="padding:7px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.12); font-size:12px; font-weight:600; color:#f5f5f5">Export</div>
+        <div style="padding:7px 14px; border-radius:8px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700">Sync all</div>
+      </div>
+    </div>
+
+    <div style="display:flex">
+      <div style="width:212px; flex:none; padding:16px 12px; border-right:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; gap:1px">
+        <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Tasks</div>
+        <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Clients</div>
+        <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Properties</div>
+        <div style="padding:9px 12px; border-radius:8px; background:#1c1c1c; font-size:13.5px; font-weight:700; color:#c4a35a">Month close</div>
+        <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Settings</div>
+        <div style="padding:4px 0 0 12px; display:flex; flex-direction:column; gap:1px; border-left:1px solid rgba(255,255,255,0.08); margin:6px 0 0 14px">
+          <div style="padding:7px 10px; font-size:12.5px; color:#6f6a65">Company costs</div>
+          <div style="padding:7px 10px; font-size:12.5px; color:#6f6a65">Integrations</div>
+        </div>
+      </div>
+
+      <div style="flex:1; padding:22px 24px 28px; display:flex; flex-direction:column; gap:20px">
+        <div style="display:flex; align-items:center; justify-content:space-between">
+          <div style="display:flex; align-items:center; gap:14px">
+            <div style="width:30px; height:30px; border-radius:8px; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; justify-content:center; font-size:12px; color:#9a9590">‹</div>
+            <div style="font-size:22px; font-weight:700; letter-spacing:-0.02em">July 2026</div>
+            <div style="width:30px; height:30px; border-radius:8px; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; justify-content:center; font-size:12px; color:#9a9590">›</div>
+            <div style="padding:4px 9px; border-radius:6px; border:1px solid rgba(78,168,130,0.35); font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#4ea882">CLOSED</div>
+          </div>
+          <div style="font-size:12.5px; color:#9a9590">CAD · tap any amount to copy</div>
+        </div>
+
+        <div style="background:#141414; border:1px solid rgba(255,255,255,0.10); border-radius:14px; padding:20px 22px; display:flex; align-items:stretch; gap:26px">
+          <div style="flex:none; min-width:300px; display:flex; flex-direction:column; gap:8px">
+            <div style="font-size:11.5px; font-weight:600; letter-spacing:0.10em; text-transform:uppercase; color:#9a9590">Net earnings</div>
+            <div style="font-size:52px; font-weight:700; letter-spacing:-0.035em; line-height:1; color:#4ea882">$15,668.58</div>
+            <div style="font-size:12.5px; color:#6f6a65">Fees − ads − software − overhead</div>
+            <div style="margin-top:auto; display:flex; align-items:center; gap:8px">
+              <div style="width:5px; height:5px; border-radius:3px; background:#c4a35a"></div>
+              <div style="font-size:12.5px; color:#9a9590">HST not included · <span style="color:#dcc084; font-weight:600">$2,828.40</span> to remit</div>
+            </div>
+          </div>
+          <div style="width:1px; background:rgba(255,255,255,0.08)"></div>
+          <div style="flex:1; display:grid; grid-template-columns:1fr 1fr; gap:12px">
+            <div style="background:#1c1c1c; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+              <div style="font-size:11.5px; color:#9a9590">Management fees</div>
+              <div style="font-size:26px; font-weight:700; letter-spacing:-0.02em">$18,420.00</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">ex HST · 9 units</div>
+            </div>
+            <div style="background:#1c1c1c; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+              <div style="display:flex; align-items:center; justify-content:space-between">
+                <div style="font-size:11.5px; color:#9a9590">Company costs</div>
+                <div style="font-size:11.5px; font-weight:600; color:#c4a35a">Breakdown ›</div>
+              </div>
+              <div style="font-size:26px; font-weight:700; letter-spacing:-0.02em">$2,751.42</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">ads $1,240.18 · sw $761.24 · other $750.00</div>
+            </div>
+            <div style="grid-column:1 / -1; display:flex; gap:12px">
+              <div style="flex:1; padding:11px 14px; border:1px solid rgba(255,255,255,0.08); border-radius:10px; display:flex; align-items:center; justify-content:space-between">
+                <div style="font-size:12px; color:#9a9590">Cleaning in</div>
+                <div style="font-size:14px; font-weight:600">$4,310.00</div>
+              </div>
+              <div style="flex:1; padding:11px 14px; border:1px solid rgba(255,255,255,0.08); border-radius:10px; display:flex; align-items:center; justify-content:space-between">
+                <div style="font-size:12px; color:#9a9590">HST cohost</div>
+                <div style="font-size:14px; font-weight:600; color:#dcc084">$1,842.00</div>
+              </div>
+              <div style="flex:1; padding:11px 14px; border:1px solid rgba(255,255,255,0.08); border-radius:10px; display:flex; align-items:center; justify-content:space-between">
+                <div style="font-size:12px; color:#9a9590">HST to invoice</div>
+                <div style="font-size:14px; font-weight:600; color:#dcc084">$986.40</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:space-between">
+          <div style="font-size:11.5px; font-weight:600; letter-spacing:0.10em; text-transform:uppercase; color:#6f6a65">Host close</div>
+          <div style="font-size:12.5px; color:#9a9590">9 units · 4 on HST worklist</div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px">
+          <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:11.5px; color:#9a9590">Net to hosts</div>
+            <div style="font-size:24px; font-weight:700; letter-spacing:-0.02em">$61,842.15</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">9 EFTs ready</div>
+          </div>
+          <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:11.5px; color:#9a9590">Management fees</div>
+            <div style="font-size:24px; font-weight:700; letter-spacing:-0.02em">$18,420.00</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">ex HST</div>
+          </div>
+          <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:11.5px; color:#9a9590">HST to invoice</div>
+            <div style="font-size:24px; font-weight:700; letter-spacing:-0.02em; color:#dcc084">$986.40</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">4 invoices · QuickBooks</div>
+          </div>
+          <div style="background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:11.5px; color:#9a9590">Host charges</div>
+            <div style="font-size:24px; font-weight:700; letter-spacing:-0.02em">$3,742.88</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">charged to hosts</div>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column">
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:12px; padding:0 4px 10px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">
+            <div>Unit</div><div style="text-align:right">Gross</div><div style="text-align:right">MRG fee</div><div style="text-align:right">HST</div><div style="text-align:right">Net to host</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:12px; padding:12px 4px; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px">
+            <div style="font-weight:600">Bala · Lakeside A</div>
+            <div style="text-align:right; color:#9a9590">$12,180.00</div>
+            <div style="text-align:right">$3,180.00</div>
+            <div style="text-align:right; color:#dcc084">$413.40</div>
+            <div style="text-align:right; font-weight:600">$9,412.60</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:12px; padding:12px 4px; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px">
+            <div style="font-weight:600">Port Carling · Birch</div>
+            <div style="text-align:right; color:#9a9590">$10,746.00</div>
+            <div style="text-align:right">$2,740.00</div>
+            <div style="text-align:right; color:#dcc084">$356.20</div>
+            <div style="text-align:right; font-weight:600">$8,006.10</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:12px; padding:12px 4px; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px">
+            <div style="font-weight:600">Toronto · King W 1204</div>
+            <div style="text-align:right; color:#9a9590">$7,020.00</div>
+            <div style="text-align:right">$1,900.00</div>
+            <div style="text-align:right; color:#dcc084">$246.60 <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#6f6a65">inv</span></div>
+            <div style="text-align:right; font-weight:600">$5,120.00</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:12px; padding:12px 4px; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px">
+            <div style="font-weight:600">Gravenhurst · Pine 2</div>
+            <div style="text-align:right; color:#9a9590">$8,940.00</div>
+            <div style="text-align:right">$2,280.00</div>
+            <div style="text-align:right; color:#dcc084">$296.40</div>
+            <div style="text-align:right; font-weight:600">$6,363.60</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="1c" style="padding:0 64px 56px; display:flex; flex-direction:column; gap:20px">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+    <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1c · F2</span>
+    <span style="font-size:15px; font-weight:600">Month P&amp;L breakdown sheet · mobile</span>
+    <span style="font-size:13px; color:#6f6a65">Rises from Net earnings tap · ad spend entered like any other cost</span>
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:28px">
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Sheet over dimmed Month close — ad spend {{ adsBadge }}</div>
+      <div style="width:390px; height:844px; border:1px solid rgba(255,255,255,0.09); border-radius:22px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end; background:#0a0a0a">
+        <div style="flex:none; height:96px; padding:14px; background:#080808; opacity:0.45; display:flex; flex-direction:column; gap:8px">
+          <div style="font-size:17px; font-weight:700">{{ month }}</div>
+          <div style="height:40px; border-radius:10px; background:#1c1c1c"></div>
+        </div>
+        <div style="flex:1; background:#141414; border-top:1px solid rgba(255,255,255,0.12); border-radius:20px 20px 0 0; padding:12px 16px 16px; display:flex; flex-direction:column; gap:14px">
+          <div style="width:36px; height:4px; border-radius:2px; background:rgba(255,255,255,0.16); margin:0 auto"></div>
+          <div style="display:flex; align-items:baseline; justify-content:space-between">
+            <div style="font-size:17px; font-weight:700; letter-spacing:-0.01em">{{ month }} P&amp;L</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">company only</div>
+          </div>
+
+          <div style="display:flex; flex-direction:column">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0">
+              <div style="font-size:13.5px; font-weight:600">Management fees</div>
+              <div style="font-size:15px; font-weight:700">$18,420.00</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-top:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex; align-items:center; gap:8px">
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6f6a65">−</div>
+                <div style="font-size:13.5px">Meta ads</div>
+              </div>
+              <div style="font-size:15px; font-weight:600; color:{{ adsColor }}">{{ adsAmount }}</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-top:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex; align-items:center; gap:8px">
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6f6a65">−</div>
+                <div style="font-size:13.5px">Software</div>
+              </div>
+              <div style="font-size:15px; font-weight:600">$761.24</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-top:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex; align-items:center; gap:8px">
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6f6a65">−</div>
+                <div style="font-size:13.5px">Other overhead</div>
+              </div>
+              <div style="font-size:15px; font-weight:600">$750.00</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 0 4px; border-top:1px solid rgba(255,255,255,0.16)">
+              <div style="font-size:13.5px; font-weight:700">= {{ netLabel }}</div>
+              <div style="font-size:24px; font-weight:700; letter-spacing:-0.02em; color:{{ netColor }}">{{ netAmount }}</div>
+            </div>
+          </div>
+
+          <div style="background:#1c1c1c; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:9px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6f6a65">Not in the net</div>
+            <div style="display:flex; align-items:center; justify-content:space-between">
+              <div style="font-size:12.5px; color:#9a9590">Cleaning in</div>
+              <div style="font-size:13px; font-weight:600">$4,310.00</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between">
+              <div style="font-size:12.5px; color:#9a9590">HST cohost (withheld)</div>
+              <div style="font-size:13px; font-weight:600; color:#dcc084">$1,842.00</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between">
+              <div style="font-size:12.5px; color:#9a9590">HST to invoice</div>
+              <div style="font-size:13px; font-weight:600; color:#dcc084">$986.40</div>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:0">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:8px">
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6f6a65">Cost lines · 7</div>
+              <div style="font-size:12px; font-weight:600; color:#c4a35a">Add cost</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex; flex-direction:column; gap:3px">
+                <div style="font-size:13px; font-weight:600; color:{{ adsColor }}">Meta ads</div>
+                <div style="display:flex; align-items:center; gap:7px">
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid {{ adsBadgeBorder }}; color:{{ adsBadgeColor }}">{{ adsBadge }}</span>
+                  <span style="font-size:10.5px; color:#6f6a65">{{ adsMeta }}</span>
+                </div>
+              </div>
+              <div style="font-size:13.5px; font-weight:600; color:{{ adsColor }}">{{ adsAmount }}</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex; flex-direction:column; gap:3px">
+                <div style="font-size:13px; font-weight:600">Hospitable</div>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); color:#9a9590; width:fit-content">Auto · recurring</span>
+              </div>
+              <div style="font-size:13.5px; font-weight:600">$189.00</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex; flex-direction:column; gap:3px">
+                <div style="font-size:13px; font-weight:600">Anthropic</div>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); color:#9a9590; width:fit-content">Auto · recurring</span>
+              </div>
+              <div style="font-size:13.5px; font-weight:600">$240.00</div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08)">
+              <div style="display:flex; flex-direction:column; gap:3px">
+                <div style="font-size:13px; font-weight:600">Commercial insurance</div>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); color:#9a9590; width:fit-content">Manual</span>
+              </div>
+              <div style="font-size:13.5px; font-weight:600">$610.00</div>
+            </div>
+          </div>
+
+          <div style="margin-top:auto; display:flex; gap:10px">
+            <div style="flex:1; height:44px; border-radius:10px; background:#c4a35a; color:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:13.5px; font-weight:700">Add cost</div>
+            <div style="flex:1; height:44px; border-radius:10px; border:1px solid rgba(255,255,255,0.14); display:flex; align-items:center; justify-content:center; font-size:13.5px; font-weight:600">Subscriptions</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:14px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Meta ads row · three states (no integration)</div>
+      <div style="width:390px; background:#141414; border:1px solid rgba(255,255,255,0.10); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:10px">
+        <div style="display:flex; align-items:center; justify-content:space-between">
+          <div style="display:flex; flex-direction:column; gap:4px">
+            <div style="font-size:13.5px; font-weight:600">Meta ads</div>
+            <div style="display:flex; align-items:center; gap:7px">
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); color:#9a9590">Auto · recurring</span>
+              <span style="font-size:10.5px; color:#6f6a65">Monthly budget line</span>
+            </div>
+          </div>
+          <div style="font-size:15px; font-weight:700">$1,200.00</div>
+        </div>
+        <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:10px; display:flex; align-items:center; justify-content:space-between">
+          <div style="font-size:12px; color:#9a9590">Override for July</div>
+          <div style="font-size:12.5px; font-weight:600; color:#c4a35a">Edit amount</div>
+        </div>
+      </div>
+
+      <div style="width:390px; background:#141414; border:1px solid rgba(255,255,255,0.10); border-radius:14px; padding:14px 16px; display:flex; align-items:center; justify-content:space-between">
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <div style="font-size:13.5px; font-weight:600">Meta ads · July actual</div>
+          <div style="display:flex; align-items:center; gap:7px">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); color:#9a9590">Manual</span>
+            <span style="font-size:10.5px; color:#6f6a65">Overrides the recurring $1,200.00</span>
+          </div>
+        </div>
+        <div style="font-size:15px; font-weight:700">$1,240.18</div>
+      </div>
+
+      <div style="width:390px; background:#141414; border:1px solid rgba(255,255,255,0.10); border-radius:14px; padding:14px 16px; display:flex; align-items:center; justify-content:space-between">
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <div style="font-size:13.5px; font-weight:600; color:#9a9590">Meta ads</div>
+          <div style="font-size:10.5px; color:#6f6a65">Paste this month’s spend from Ads Manager</div>
+        </div>
+        <div style="font-size:15px; font-weight:700; color:#6f6a65">$0.00</div>
+      </div>
+
+      <div style="width:390px; padding:14px 16px; border:1px solid rgba(255,255,255,0.08); border-radius:12px; background:#0c0c0c; display:flex; flex-direction:column; gap:6px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#c4a35a">Sheet motion</div>
+        <div style="font-size:12.5px; line-height:1.55; color:#9a9590">Rise 240ms cubic-bezier(0.2,0.8,0.2,1) from 24px below · lines fade in 120ms stagger 20ms · backdrop dims to 45%. Nothing else animates.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="1d" style="padding:0 64px 56px; display:flex; flex-direction:column; gap:20px">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+    <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1d · F2b</span>
+    <span style="font-size:15px; font-weight:600">Desktop breakdown · right panel, 480 wide</span>
+    <span style="font-size:13px; color:#6f6a65">Month close stays behind; no route change</span>
+  </div>
+
+  <div style="width:1280px; height:740px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:16px; overflow:hidden; display:flex">
+    <div style="flex:1; padding:22px 24px; display:flex; flex-direction:column; gap:16px; opacity:0.5">
+      <div style="font-size:22px; font-weight:700">July 2026</div>
+      <div style="height:120px; border-radius:14px; background:#141414; border:1px solid rgba(255,255,255,0.08)"></div>
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px">
+        <div style="height:86px; border-radius:10px; background:#141414; border:1px solid rgba(255,255,255,0.08)"></div>
+        <div style="height:86px; border-radius:10px; background:#141414; border:1px solid rgba(255,255,255,0.08)"></div>
+        <div style="height:86px; border-radius:10px; background:#141414; border:1px solid rgba(255,255,255,0.08)"></div>
+        <div style="height:86px; border-radius:10px; background:#141414; border:1px solid rgba(255,255,255,0.08)"></div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:1px">
+        <div style="height:44px; border-top:1px solid rgba(255,255,255,0.08)"></div>
+        <div style="height:44px; border-top:1px solid rgba(255,255,255,0.08)"></div>
+        <div style="height:44px; border-top:1px solid rgba(255,255,255,0.08)"></div>
+        <div style="height:44px; border-top:1px solid rgba(255,255,255,0.08)"></div>
+      </div>
+    </div>
+
+    <div style="width:480px; flex:none; background:#141414; border-left:1px solid rgba(255,255,255,0.12); padding:22px 24px; display:flex; flex-direction:column; gap:18px">
+      <div style="display:flex; align-items:baseline; justify-content:space-between">
+        <div style="font-size:18px; font-weight:700; letter-spacing:-0.01em">July 2026 P&amp;L</div>
+        <div style="font-size:13px; color:#9a9590">Close</div>
+      </div>
+
+      <div style="display:flex; flex-direction:column">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0">
+          <div style="font-size:14px; font-weight:600">Management fees</div>
+          <div style="font-size:16px; font-weight:700">$18,420.00</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="font-size:14px; color:#f5f5f5">− Meta ads</div>
+          <div style="font-size:15px; font-weight:600">$1,240.18</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="font-size:14px">− Software</div>
+          <div style="font-size:15px; font-weight:600">$761.24</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="font-size:14px">− Other overhead</div>
+          <div style="font-size:15px; font-weight:600">$750.00</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 0 6px; border-top:1px solid rgba(255,255,255,0.16)">
+          <div style="font-size:14px; font-weight:700">= Net earnings</div>
+          <div style="font-size:30px; font-weight:700; letter-spacing:-0.025em; color:#4ea882">$15,668.58</div>
+        </div>
+      </div>
+
+      <div style="background:#1c1c1c; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:13px 15px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px">
+        <div style="display:flex; flex-direction:column; gap:4px"><div style="font-size:11.5px; color:#9a9590">Cleaning in</div><div style="font-size:14px; font-weight:600">$4,310.00</div></div>
+        <div style="display:flex; flex-direction:column; gap:4px"><div style="font-size:11.5px; color:#9a9590">HST cohost</div><div style="font-size:14px; font-weight:600; color:#dcc084">$1,842.00</div></div>
+        <div style="display:flex; flex-direction:column; gap:4px"><div style="font-size:11.5px; color:#9a9590">HST to invoice</div><div style="font-size:14px; font-weight:600; color:#dcc084">$986.40</div></div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; flex:1; overflow:hidden">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:8px">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#6f6a65">Cost lines</div>
+          <div style="font-size:12.5px; font-weight:600; color:#c4a35a">Manage subscriptions</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:10px">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); color:#9a9590">Manual</span>
+            <div style="font-size:13.5px; font-weight:600">Meta ads · July actual</div>
+          </div>
+          <div style="font-size:14px; font-weight:600">$1,240.18</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:10px">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); color:#9a9590">Auto · recurring</span>
+            <div style="font-size:13.5px; font-weight:600">Hospitable</div>
+          </div>
+          <div style="font-size:14px; font-weight:600">$189.00</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:10px">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); color:#9a9590">Auto · recurring</span>
+            <div style="font-size:13.5px; font-weight:600">Twilio</div>
+          </div>
+          <div style="font-size:14px; font-weight:600">$62.40</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:10px">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); color:#9a9590">Manual</span>
+            <div style="font-size:13.5px; font-weight:600">Commercial insurance</div>
+          </div>
+          <div style="font-size:14px; font-weight:600">$610.00</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:10px">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); color:#9a9590">Manual</span>
+            <div style="font-size:13.5px; font-weight:600">Photographer · Bala shoot</div>
+          </div>
+          <div style="font-size:14px; font-weight:600">$140.00</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px">
+        <div style="flex:1; height:42px; border-radius:10px; background:#c4a35a; color:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:13.5px; font-weight:700">Add cost</div>
+        <div style="flex:1; height:42px; border-radius:10px; border:1px solid rgba(255,255,255,0.14); display:flex; align-items:center; justify-content:center; font-size:13.5px; font-weight:600">Manage subscriptions</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="1e" style="padding:0 64px 56px; display:flex; flex-direction:column; gap:20px">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+    <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1e · F3</span>
+    <span style="font-size:15px; font-weight:600">Recurring company costs</span>
+    <span style="font-size:13px; color:#6f6a65">Sheet from Month close · mirrored as Settings → Company costs</span>
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start">
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Catalog · mobile sheet</div>
+      <div style="width:390px; background:#141414; border:1px solid rgba(255,255,255,0.10); border-radius:20px 20px 22px 22px; padding:12px 16px 16px; display:flex; flex-direction:column; gap:14px">
+        <div style="width:36px; height:4px; border-radius:2px; background:rgba(255,255,255,0.16); margin:0 auto"></div>
+        <div style="display:flex; align-items:baseline; justify-content:space-between">
+          <div style="font-size:17px; font-weight:700">Subscriptions</div>
+          <div style="font-size:12.5px; font-weight:600; color:#c4a35a">+ Add</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 14px; background:#1c1c1c; border-radius:10px">
+          <div style="font-size:12.5px; color:#9a9590">Applies every month</div>
+          <div style="font-size:14px; font-weight:700">$2,571.24 / mo</div>
+        </div>
+        <div style="display:flex; flex-direction:column">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:13.5px; font-weight:600">Hospitable</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">software · monthly</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="font-size:13.5px; font-weight:600">$189.00</div>
+              <div style="width:34px; height:20px; border-radius:10px; background:#c4a35a; display:flex; align-items:center; justify-content:flex-end; padding:2px"><div style="width:16px; height:16px; border-radius:8px; background:#0a0a0a"></div></div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:13.5px; font-weight:600">Twilio</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">software · monthly</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="font-size:13.5px; font-weight:600">$62.40</div>
+              <div style="width:34px; height:20px; border-radius:10px; background:#c4a35a; display:flex; align-items:center; justify-content:flex-end; padding:2px"><div style="width:16px; height:16px; border-radius:8px; background:#0a0a0a"></div></div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:13.5px; font-weight:600">Anthropic</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">software · monthly</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="font-size:13.5px; font-weight:600">$240.00</div>
+              <div style="width:34px; height:20px; border-radius:10px; background:#c4a35a; display:flex; align-items:center; justify-content:flex-end; padding:2px"><div style="width:16px; height:16px; border-radius:8px; background:#0a0a0a"></div></div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:13.5px; font-weight:600">Cursor</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">software · monthly</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="font-size:13.5px; font-weight:600">$40.00</div>
+              <div style="width:34px; height:20px; border-radius:10px; background:#c4a35a; display:flex; align-items:center; justify-content:flex-end; padding:2px"><div style="width:16px; height:16px; border-radius:8px; background:#0a0a0a"></div></div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:13.5px; font-weight:600">Domain + email</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">software · yearly $658.08 → $54.84 / mo</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="font-size:13.5px; font-weight:600">$54.84</div>
+              <div style="width:34px; height:20px; border-radius:10px; background:#c4a35a; display:flex; align-items:center; justify-content:flex-end; padding:2px"><div style="width:16px; height:16px; border-radius:8px; background:#0a0a0a"></div></div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); opacity:0.55">
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:13.5px; font-weight:600">Hostaway trial</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">software · paused since Jun</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="font-size:13.5px; font-weight:600">$0.00</div>
+              <div style="width:34px; height:20px; border-radius:10px; background:#2a2a2a; display:flex; align-items:center; padding:2px"><div style="width:16px; height:16px; border-radius:8px; background:#6f6a65"></div></div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:13.5px; font-weight:600">Meta ads</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">ads · monthly budget · override per month</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="font-size:13.5px; font-weight:600">$1,200.00</div>
+              <div style="width:34px; height:20px; border-radius:10px; background:#c4a35a; display:flex; align-items:center; justify-content:flex-end; padding:2px"><div style="width:16px; height:16px; border-radius:8px; background:#0a0a0a"></div></div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08)">
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <div style="font-size:13.5px; font-weight:600">Commercial insurance</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">insurance · monthly · from Apr 2026</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="font-size:13.5px; font-weight:600">$610.00</div>
+              <div style="width:34px; height:20px; border-radius:10px; background:#c4a35a; display:flex; align-items:center; justify-content:flex-end; padding:2px"><div style="width:16px; height:16px; border-radius:8px; background:#0a0a0a"></div></div>
+            </div>
+          </div>
+        </div>
+        <div style="height:44px; border-radius:10px; border:1px dashed rgba(255,255,255,0.14); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; color:#c4a35a">+ Add subscription</div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Add / edit subscription · mobile</div>
+      <div style="width:390px; background:#141414; border:1px solid rgba(255,255,255,0.10); border-radius:20px; padding:12px 16px 18px; display:flex; flex-direction:column; gap:16px">
+        <div style="width:36px; height:4px; border-radius:2px; background:rgba(255,255,255,0.16); margin:0 auto"></div>
+        <div style="display:flex; align-items:baseline; justify-content:space-between">
+          <div style="font-size:17px; font-weight:700">Edit subscription</div>
+          <div style="font-size:12.5px; color:#cf7f7b">Delete</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Name</div>
+          <div style="height:46px; padding:0 14px; border-radius:10px; background:#1c1c1c; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; font-size:14.5px">Hospitable</div>
+        </div>
+        <div style="display:flex; gap:12px">
+          <div style="flex:1; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Amount</div>
+            <div style="height:46px; padding:0 14px; border-radius:10px; background:#1c1c1c; border:1px solid rgba(196,163,90,0.45); display:flex; align-items:center; font-size:16px; font-weight:600">$189.00</div>
+          </div>
+          <div style="flex:1; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Cadence</div>
+            <div style="height:46px; padding:3px; border-radius:10px; background:#1c1c1c; border:1px solid rgba(255,255,255,0.10); display:grid; grid-template-columns:1fr 1fr; gap:3px">
+              <div style="border-radius:8px; background:#c4a35a; color:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">Monthly</div>
+              <div style="border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; color:#9a9590">Yearly</div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Category</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px">
+            <div style="padding:9px 13px; border-radius:9px; background:#c4a35a; color:#0a0a0a; font-size:12.5px; font-weight:700">Software</div>
+            <div style="padding:9px 13px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; font-weight:500; color:#9a9590">Ads</div>
+            <div style="padding:9px 13px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; font-weight:500; color:#9a9590">Insurance</div>
+            <div style="padding:9px 13px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; font-weight:500; color:#9a9590">Contractor</div>
+            <div style="padding:9px 13px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; font-weight:500; color:#9a9590">Other</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-radius:10px; background:#1c1c1c">
+          <div style="display:flex; flex-direction:column; gap:3px">
+            <div style="font-size:13.5px; font-weight:600">Active</div>
+            <div style="font-size:11.5px; color:#6f6a65">Pause to stop future months</div>
+          </div>
+          <div style="width:40px; height:24px; border-radius:12px; background:#c4a35a; display:flex; align-items:center; justify-content:flex-end; padding:2px"><div style="width:20px; height:20px; border-radius:10px; background:#0a0a0a"></div></div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.10)">
+          <div style="font-size:13.5px; color:#9a9590">Start month</div>
+          <div style="font-size:13.5px; font-weight:600">Jan 2026</div>
+        </div>
+        <div style="height:46px; border-radius:10px; background:#c4a35a; color:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700">Save · applies every month</div>
+        <div style="text-align:center; font-size:12px; color:#6f6a65">Only this month? <span style="color:#c4a35a; font-weight:600">Add as one-off</span></div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Desktop · Settings → Company costs (same catalog)</div>
+      <div style="width:720px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:14px; overflow:hidden">
+        <div style="padding:18px 22px; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:space-between">
+          <div style="display:flex; flex-direction:column; gap:4px">
+            <div style="font-size:16px; font-weight:700">Company costs</div>
+            <div style="font-size:12.5px; color:#9a9590">Recurring lines auto-post to every Month close</div>
+          </div>
+          <div style="padding:8px 14px; border-radius:9px; background:#c4a35a; color:#0a0a0a; font-size:12.5px; font-weight:700">+ Add</div>
+        </div>
+        <div style="padding:6px 22px 18px">
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 0.8fr 0.6fr; gap:14px; padding:12px 0; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">
+            <div>Name</div><div>Category</div><div>Cadence</div><div style="text-align:right">Per month</div><div style="text-align:right">Status</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 0.8fr 0.6fr; gap:14px; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px; align-items:center">
+            <div style="font-weight:600">Hospitable</div><div style="color:#9a9590">Software</div><div style="color:#9a9590">Monthly</div><div style="text-align:right; font-weight:600">$189.00</div><div style="text-align:right; color:#4ea882; font-size:12px">Active</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 0.8fr 0.6fr; gap:14px; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px; align-items:center">
+            <div style="font-weight:600">Twilio</div><div style="color:#9a9590">Software</div><div style="color:#9a9590">Monthly</div><div style="text-align:right; font-weight:600">$62.40</div><div style="text-align:right; color:#4ea882; font-size:12px">Active</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 0.8fr 0.6fr; gap:14px; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px; align-items:center">
+            <div style="font-weight:600">Anthropic</div><div style="color:#9a9590">Software</div><div style="color:#9a9590">Monthly</div><div style="text-align:right; font-weight:600">$240.00</div><div style="text-align:right; color:#4ea882; font-size:12px">Active</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 0.8fr 0.6fr; gap:14px; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px; align-items:center">
+            <div style="font-weight:600">Domain + email</div><div style="color:#9a9590">Software</div><div style="color:#9a9590">Yearly $658.08</div><div style="text-align:right; font-weight:600">$54.84</div><div style="text-align:right; color:#4ea882; font-size:12px">Active</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 0.8fr 0.6fr; gap:14px; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px; align-items:center">
+            <div style="font-weight:600">Meta ads</div><div style="color:#9a9590">Ads</div><div style="color:#9a9590">Monthly</div><div style="text-align:right; font-weight:600">$1,200.00</div><div style="text-align:right; color:#4ea882; font-size:12px">Active</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 0.8fr 0.6fr; gap:14px; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px; align-items:center">
+            <div style="font-weight:600">Commercial insurance</div><div style="color:#9a9590">Insurance</div><div style="color:#9a9590">Monthly</div><div style="text-align:right; font-weight:600">$610.00</div><div style="text-align:right; color:#4ea882; font-size:12px">Active</div>
+          </div>
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 0.8fr 0.6fr; gap:14px; padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); font-size:13.5px; align-items:center; opacity:0.55">
+            <div style="font-weight:600">Hostaway trial</div><div style="color:#9a9590">Software</div><div style="color:#9a9590">Monthly</div><div style="text-align:right; font-weight:600">$0.00</div><div style="text-align:right; color:#9a9590; font-size:12px">Paused</div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 0 0; border-top:1px solid rgba(255,255,255,0.16); font-size:13.5px">
+            <div style="color:#9a9590">Auto-posted each month</div>
+            <div style="font-weight:700">$2,571.24 / mo</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="1f" style="padding:0 64px 96px; display:flex; flex-direction:column; gap:20px">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+    <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1f · F5</span>
+    <span style="font-size:15px; font-weight:600">One-off company expense</span>
+    <span style="font-size:13px; color:#6f6a65">Company spend — never the property receipt sheet</span>
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start">
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Add cost · compact sheet</div>
+      <div style="width:390px; background:#141414; border:1px solid rgba(255,255,255,0.10); border-radius:20px; padding:12px 16px 18px; display:flex; flex-direction:column; gap:16px">
+        <div style="width:36px; height:4px; border-radius:2px; background:rgba(255,255,255,0.16); margin:0 auto"></div>
+        <div style="display:flex; align-items:baseline; justify-content:space-between">
+          <div style="font-size:17px; font-weight:700">Add company cost</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">July 2026</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Amount</div>
+          <div style="height:62px; padding:0 16px; border-radius:12px; background:#1c1c1c; border:1px solid rgba(196,163,90,0.45); display:flex; align-items:center; font-size:30px; font-weight:700; letter-spacing:-0.02em">$140.00</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Label</div>
+          <div style="height:46px; padding:0 14px; border-radius:10px; background:#1c1c1c; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; font-size:14.5px">Photographer · Bala shoot</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Category</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px">
+            <div style="padding:9px 13px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; color:#9a9590">Software</div>
+            <div style="padding:9px 13px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; color:#9a9590">Ads</div>
+            <div style="padding:9px 13px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; color:#9a9590">Insurance</div>
+            <div style="padding:9px 13px; border-radius:9px; background:#c4a35a; color:#0a0a0a; font-size:12.5px; font-weight:700">Contractor</div>
+            <div style="padding:9px 13px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; color:#9a9590">Other</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:12px">
+          <div style="flex:1; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Date</div>
+            <div style="height:46px; padding:0 14px; border-radius:10px; background:#1c1c1c; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; font-size:14px">Jul 22, 2026</div>
+          </div>
+          <div style="flex:1; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Note</div>
+            <div style="height:46px; padding:0 14px; border-radius:10px; background:#1c1c1c; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; font-size:14px; color:#6f6a65">Optional</div>
+          </div>
+        </div>
+        <div style="padding:11px 14px; border-radius:10px; background:#1c1c1c; display:flex; align-items:center; gap:10px">
+          <div style="width:5px; height:5px; border-radius:3px; background:#c4a35a"></div>
+          <div style="font-size:12px; line-height:1.45; color:#9a9590">Company spend. Does not touch any host payout or statement.</div>
+        </div>
+        <div style="height:46px; border-radius:10px; background:#c4a35a; color:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700">Add to July</div>
+        <div style="text-align:center; font-size:12px; color:#6f6a65">Repeats monthly? <span style="color:#c4a35a; font-weight:600">Make it a subscription</span></div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Desktop modal · 460</div>
+      <div style="width:460px; background:#141414; border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:20px 22px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; align-items:baseline; justify-content:space-between">
+          <div style="font-size:16px; font-weight:700">Add company cost</div>
+          <div style="font-size:13px; color:#9a9590">Esc</div>
+        </div>
+        <div style="display:flex; gap:12px">
+          <div style="flex:1; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Amount</div>
+            <div style="height:52px; padding:0 14px; border-radius:10px; background:#1c1c1c; border:1px solid rgba(196,163,90,0.45); display:flex; align-items:center; font-size:24px; font-weight:700">$140.00</div>
+          </div>
+          <div style="flex:1; display:flex; flex-direction:column; gap:6px">
+            <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Date</div>
+            <div style="height:52px; padding:0 14px; border-radius:10px; background:#1c1c1c; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; font-size:14px">Jul 22, 2026</div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px">
+          <div style="font-size:11.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:#6f6a65">Label</div>
+          <div style="height:44px; padding:0 14px; border-radius:10px; background:#1c1c1c; border:1px solid rgba(255,255,255,0.10); display:flex; align-items:center; font-size:14px">Photographer · Bala shoot</div>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px">
+          <div style="padding:8px 12px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; color:#9a9590">Software</div>
+          <div style="padding:8px 12px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; color:#9a9590">Ads</div>
+          <div style="padding:8px 12px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; color:#9a9590">Insurance</div>
+          <div style="padding:8px 12px; border-radius:9px; background:#c4a35a; color:#0a0a0a; font-size:12.5px; font-weight:700">Contractor</div>
+          <div style="padding:8px 12px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); font-size:12.5px; color:#9a9590">Other</div>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px">
+          <div style="padding:10px 16px; border-radius:9px; border:1px solid rgba(255,255,255,0.14); font-size:13px; font-weight:600">Cancel</div>
+          <div style="padding:10px 16px; border-radius:9px; background:#c4a35a; color:#0a0a0a; font-size:13px; font-weight:700">Add to July</div>
+        </div>
+      </div>
+
+      <div style="width:460px; margin-top:6px; padding:16px 18px; background:#0c0c0c; border:1px solid rgba(255,255,255,0.08); border-radius:12px; display:flex; flex-direction:column; gap:7px">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:#c4a35a">IA note</div>
+        <div style="font-size:12.5px; line-height:1.6; color:#9a9590">Everything lives on Month close. No Books tab. Settings gets one quiet row — Company costs — pointing at the same catalog as the sheet.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;netState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;positive&quot;,&quot;loss&quot;],&quot;default&quot;:&quot;positive&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;States&quot;},&quot;adsEntry&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;manual&quot;,&quot;recurring&quot;,&quot;none&quot;],&quot;default&quot;:&quot;manual&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;States&quot;},&quot;monthLabel&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;July 2026&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;States&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const loss = (this.props.netState ?? 'positive') === 'loss';
+    const ads = this.props.adsEntry ?? 'manual';
+    const adsMap = {
+      manual: { amount: '$1,240.18', badge: 'Manual', meta: 'July actual · overrides recurring', color: '#f5f5f5', badgeColor: '#9a9590', badgeBorder: 'rgba(255,255,255,0.12)' },
+      recurring: { amount: '$1,200.00', badge: 'Auto · recurring', meta: 'Monthly budget line', color: '#f5f5f5', badgeColor: '#9a9590', badgeBorder: 'rgba(255,255,255,0.12)' },
+      none: { amount: '$0.00', badge: 'Not entered', meta: 'Paste this month’s spend from Ads Manager', color: '#6f6a65', badgeColor: '#6f6a65', badgeBorder: 'rgba(255,255,255,0.10)' }
+    };
+    const a = adsMap[ads];
+    return {
+      month: this.props.monthLabel ?? 'July 2026',
+      netAmount: loss ? '−$1,284.20' : '$15,668.58',
+      netColor: loss ? '#cf7f7b' : '#4ea882',
+      netLabel: loss ? 'Net loss' : 'Net earnings',
+      costsAmount: loss ? '$19,704.20' : '$2,751.42',
+      adsAmount: a.amount,
+      adsColor: a.color,
+      adsBadge: a.badge,
+      adsBadgeColor: a.badgeColor,
+      adsBadgeBorder: a.badgeBorder,
+      adsMeta: a.meta
+    };
+  }
+}
+</script>
+</body>
+</html>

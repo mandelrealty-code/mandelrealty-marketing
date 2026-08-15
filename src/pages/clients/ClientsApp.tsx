@@ -23,6 +23,10 @@ import { MonthClosePanel } from "./MonthClosePanel";
 import { OwnerStatementPanel } from "./OwnerStatementPanel";
 import { TasksPanel } from "./TasksPanel";
 import {
+  EditSubscriptionSheet,
+  SubscriptionsSheet,
+} from "./CompanyPnl";
+import {
   formatRateHistoryRange,
   todayInputValue,
 } from "./format";
@@ -124,6 +128,8 @@ export default function ClientsApp({ onModeChange }: Props) {
   const [hstSheet, setHstSheet] = useState(false);
   const [linkSheet, setLinkSheet] = useState(false);
   const [patSheet, setPatSheet] = useState(false);
+  const [settingsSheet, setSettingsSheet] = useState<null | "list" | "edit">(null);
+  const [settingsEditSub, setSettingsEditSub] = useState<import("./CompanyPnl").CompanySubscription | null>(null);
 
   const [clientForm, setClientForm] = useState({
     name: "",
@@ -1668,6 +1674,22 @@ export default function ClientsApp({ onModeChange }: Props) {
       <p className="px-4 py-[18px] text-[13px] text-[#6f6a65] lg:px-1">
         Reconnect if bookings stop appearing. Import only the units MRG manages.
       </p>
+      <div className="flex items-center justify-between gap-4 border-t border-white/8 px-4 py-4 lg:px-1">
+        <div>
+          <p className="text-[15px] font-semibold text-[#f5f5f5]">Company costs</p>
+          <p className="text-[13px] text-[#9a9590]">Recurring ads, software, and overhead</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setSettingsEditSub(null);
+            setSettingsSheet("list");
+          }}
+          className="text-[13px] font-semibold text-[#c4a35a]"
+        >
+          Manage
+        </button>
+      </div>
       <ContractTemplatesPanel onError={setLoadError} />
     </div>
   );
@@ -2075,6 +2097,33 @@ export default function ClientsApp({ onModeChange }: Props) {
             {busy ? "Verifying…" : "Save & connect"}
           </GoldButton>
         </Sheet>
+      ) : null}
+
+      {settingsSheet === "list" ? (
+        <SubscriptionsSheet
+          desktop={desktop}
+          onCancel={() => setSettingsSheet(null)}
+          onAdd={() => {
+            setSettingsEditSub(null);
+            setSettingsSheet("edit");
+          }}
+          onEdit={(sub) => {
+            setSettingsEditSub(sub);
+            setSettingsSheet("edit");
+          }}
+          onChanged={() => undefined}
+        />
+      ) : null}
+      {settingsSheet === "edit" ? (
+        <EditSubscriptionSheet
+          desktop={desktop}
+          initial={settingsEditSub}
+          onCancel={() => setSettingsSheet("list")}
+          onSaved={() => {
+            setSettingsEditSub(null);
+            setSettingsSheet("list");
+          }}
+        />
       ) : null}
 
       {editPropertySheet && propertyDetail ? (
