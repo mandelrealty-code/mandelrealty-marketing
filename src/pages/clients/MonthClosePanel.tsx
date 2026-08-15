@@ -894,7 +894,7 @@ export function MonthClosePanel({
   /* —— Portfolio view (F1 + F3) —— */
   return (
     <div className="mx-auto w-full max-w-[1100px]">
-      <div className="flex flex-col gap-4 px-4 pb-3 pt-[22px] lg:hidden">
+      <div className="flex flex-col gap-4 px-4 pb-[max(5.5rem,env(safe-area-inset-bottom))] pt-[max(14px,env(safe-area-inset-top))] lg:hidden">
         <div className="flex items-center justify-between">
           <h1 className="text-[26px] font-bold tracking-tight">Month close</h1>
           <button
@@ -1212,14 +1212,14 @@ export function MonthClosePanel({
           </p>
         </div>
 
-        <div className="flex overflow-hidden rounded-[12px] border border-white/8 bg-white/8">
+        <div className="flex gap-1.5 overflow-hidden rounded-[12px] border border-white/8 bg-white/8 lg:gap-0">
           {hostTiles.map(([label, cents, gold]) => (
-            <div key={label} className="flex flex-1 flex-col gap-1.5 bg-[#0f0f0f] px-5 py-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#9a9590]">
+            <div key={label} className="flex min-w-0 flex-1 flex-col gap-1.5 bg-[#0f0f0f] px-5 py-4">
+              <p className="text-[11px] font-semibold uppercase leading-tight tracking-[0.08em] text-[#9a9590]">
                 {label}
               </p>
               <p
-                className={`text-[28px] font-bold tabular-nums tracking-tight ${
+                className={`text-[22px] font-bold tabular-nums tracking-tight lg:text-[24px] ${
                   gold ? "text-[#dcc084]" : "text-[#f5f5f5]"
                 }`}
               >
@@ -1230,12 +1230,12 @@ export function MonthClosePanel({
         </div>
       </div>
 
-      <div>
+      <div className="pb-[max(5.5rem,env(safe-area-inset-bottom))] lg:pb-8">
         <p className="border-t border-white/8 bg-[#0c0c0c] px-5 py-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6f6a65] lg:hidden">
           Units · {title.replace(/ \d{4}$/, "")}
         </p>
 
-        <div className="hidden grid-cols-[1.4fr_1fr_1fr_1fr_1fr_0.9fr] border-b border-white/8 px-8 py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#6f6a65] lg:grid">
+        <div className="hidden grid-cols-[minmax(160px,1.8fr)_minmax(72px,0.7fr)_repeat(4,minmax(88px,1fr))] gap-3 border-b border-white/8 px-8 py-3 text-[11px] font-semibold uppercase leading-tight tracking-[0.08em] text-[#6f6a65] lg:grid">
           <div>Property</div>
           <div>Sync</div>
           <div className="text-right">Net to host</div>
@@ -1320,7 +1320,7 @@ export function MonthClosePanel({
                   </div>
                 </div>
 
-                <div className="hidden grid-cols-[1.4fr_1fr_1fr_1fr_1fr_0.9fr] items-center px-8 py-4 lg:grid">
+                <div className="hidden grid-cols-[minmax(160px,1.8fr)_minmax(72px,0.7fr)_repeat(4,minmax(88px,1fr))] items-center gap-3 px-8 py-4 lg:grid">
                   <button
                     type="button"
                     onClick={() => onOpenProperty(unit.property_id)}

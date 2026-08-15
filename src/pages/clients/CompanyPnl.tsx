@@ -172,35 +172,35 @@ export function CompanyStrip({
   const net = company.net_earnings_cents;
   const loss = net < 0;
   const hint = costsHint(company);
-  const missingSetup = !company.has_ads_line || !company.has_software_line;
+
+  const netHint =
+    company.management_fees_cents === 0 && company.costs_cents > 0
+      ? "No fees posted yet · recurring costs already accruing"
+      : !company.has_ads_line && !company.has_software_line
+        ? "Ad spend + software not entered yet"
+        : "Fees − ads − software − overhead";
 
   return (
-    <div className="rounded-[14px] border border-white/10 bg-[#141414] p-4 lg:flex lg:items-stretch lg:gap-7 lg:p-5">
+    <div className="flex flex-col gap-3.5 rounded-[14px] border border-white/10 bg-[#141414] p-4 lg:flex-row lg:items-stretch lg:gap-6 lg:p-5">
       <button
         type="button"
         onClick={onOpenPnl}
-        className="flex w-full flex-col gap-1.5 text-left lg:min-w-[280px] lg:flex-none lg:justify-between"
+        className="flex min-w-0 flex-col gap-1.5 text-left lg:w-[38%] lg:max-w-[420px] lg:shrink-0 lg:justify-between"
       >
         <p className="text-[11.5px] font-semibold uppercase tracking-[0.1em] text-[#9a9590]">
           {loss ? "Net loss" : "Net earnings"}
         </p>
         <p
-          className={`text-[38px] font-bold leading-none tracking-tight lg:text-[52px] ${
+          className={`text-[34px] font-bold leading-none tracking-tight sm:text-[38px] lg:text-[44px] ${
             loss ? "text-[#cf7f7b]" : "text-[#4ea882]"
           }`}
         >
           {loading ? "…" : moneyExact(net, currency)}
         </p>
-        <p className="text-[12px] text-[#6f6a65]">
-          {company.management_fees_cents === 0 && company.costs_cents > 0
-            ? "No fees posted yet · recurring costs already accruing"
-            : missingSetup && company.has_ads_line === false && !company.has_software_line
-              ? "Ad spend + software not entered yet"
-              : "Fees − ads − software − overhead"}
-        </p>
-        <div className="mt-2 hidden items-center gap-2 lg:mt-auto lg:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#c4a35a]" />
-          <p className="text-[12.5px] text-[#9a9590]">
+        <p className="text-[12px] leading-snug text-[#6f6a65]">{netHint}</p>
+        <div className="mt-1 hidden items-center gap-2 lg:mt-3 lg:flex">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#c4a35a]" />
+          <p className="text-[12.5px] leading-snug text-[#9a9590]">
             HST not included ·{" "}
             <span className="font-semibold text-[#dcc084]">
               {moneyExact(company.hst_to_remit_cents, currency)}
@@ -210,49 +210,46 @@ export function CompanyStrip({
         </div>
       </button>
 
-      <div className="my-3.5 hidden w-px bg-white/8 lg:block" />
+      <div className="hidden w-px shrink-0 bg-white/8 lg:block" />
 
-      <div className="mt-3.5 grid grid-cols-2 gap-2.5 lg:mt-0 lg:flex-1">
-        <div className="flex flex-col gap-1 rounded-[10px] border border-white/8 bg-[#1c1c1c] px-3 py-2.5 lg:px-4 lg:py-3.5">
+      <div className="grid min-w-0 grid-cols-2 gap-2.5 lg:flex-1">
+        <div className="flex min-w-0 flex-col gap-1 rounded-[10px] border border-white/8 bg-[#1c1c1c] px-3 py-2.5 lg:px-4 lg:py-3.5">
           <p className="text-[11px] text-[#9a9590]">Management fees</p>
-          <p className="text-[19px] font-bold tracking-tight lg:text-[26px]">
+          <p className="truncate text-[18px] font-bold tracking-tight tabular-nums lg:text-[24px]">
             {loading ? "…" : moneyExact(company.management_fees_cents, currency)}
           </p>
-          <p className="font-mono text-[10px] text-[#6f6a65] lg:text-[10.5px]">ex HST</p>
+          <p className="text-[10px] text-[#6f6a65] lg:text-[10.5px]">ex HST</p>
         </div>
         <button
           type="button"
           onClick={onOpenPnl}
-          className={`flex flex-col gap-1 rounded-[10px] border bg-[#1c1c1c] px-3 py-2.5 text-left lg:px-4 lg:py-3.5 ${
+          className={`flex min-w-0 flex-col gap-1 rounded-[10px] border bg-[#1c1c1c] px-3 py-2.5 text-left lg:px-4 lg:py-3.5 ${
             hint.warn ? "border-[#c4a35a]/28" : "border-white/8"
           }`}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <p className="text-[11px] text-[#9a9590]">Company costs</p>
-            <span className="text-[11.5px] font-semibold text-[#c4a35a] max-lg:text-[#6f6a65]">
+            <span className="shrink-0 text-[11.5px] font-semibold text-[#c4a35a]">
               <span className="lg:hidden">›</span>
               <span className="hidden lg:inline">Breakdown ›</span>
             </span>
           </div>
-          <p className="text-[19px] font-bold tracking-tight lg:text-[26px]">
+          <p className="truncate text-[18px] font-bold tracking-tight tabular-nums lg:text-[24px]">
             {loading ? "…" : moneyExact(company.costs_cents, currency)}
           </p>
           <p
-            className={`font-mono text-[10px] lg:hidden ${
+            className={`truncate text-[10px] leading-snug lg:text-[10.5px] ${
               hint.warn ? "text-[#c99a4b]" : "text-[#6f6a65]"
             }`}
           >
             {hint.warn ? hint.text : "ads · software · other"}
           </p>
-          <p className="hidden font-mono text-[10.5px] text-[#6f6a65] lg:block">
-            {hint.warn ? hint.text : hint.text}
-          </p>
         </button>
       </div>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-white/8 pt-2.5 lg:hidden">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#c4a35a]" />
-        <p className="text-[12px] text-[#9a9590]">
+      <div className="flex items-start gap-2 border-t border-white/8 pt-2.5 lg:hidden">
+        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#c4a35a]" />
+        <p className="text-[12px] leading-snug text-[#9a9590]">
           HST not included ·{" "}
           <span className="font-semibold text-[#dcc084]">
             {moneyExact(company.hst_to_remit_cents, currency)}
@@ -263,30 +260,30 @@ export function CompanyStrip({
 
       {(!company.has_ads_line || !company.has_software_line) &&
       company.management_fees_cents > 0 ? (
-        <div className="mt-2.5 border-t border-white/8 pt-2.5 lg:hidden">
+        <div className="border-t border-white/8 pt-1 lg:hidden">
           {!company.has_ads_line ? (
             <button
               type="button"
               onClick={onLogAds}
-              className="flex w-full items-center justify-between py-2"
+              className="flex w-full items-center justify-between gap-3 py-2.5 text-left"
             >
-              <span>
+              <span className="min-w-0">
                 <span className="block text-[12.5px] text-[#9a9590]">Meta ads</span>
-                <span className="block text-[10.5px] text-[#6f6a65]">
+                <span className="block text-[10.5px] leading-snug text-[#6f6a65]">
                   Paste this month’s spend from Ads Manager
                 </span>
               </span>
-              <span className="text-[12.5px] font-semibold text-[#6f6a65]">$0.00</span>
+              <span className="shrink-0 text-[12.5px] font-semibold text-[#6f6a65]">$0.00</span>
             </button>
           ) : null}
           {!company.has_software_line ? (
             <button
               type="button"
               onClick={onOpenSubscriptions}
-              className="flex w-full items-center justify-between border-t border-white/6 py-2"
+              className="flex w-full items-center justify-between gap-3 border-t border-white/6 py-2.5 text-left"
             >
               <span className="text-[12.5px] text-[#9a9590]">Software</span>
-              <span className="text-[12.5px] font-semibold text-[#c4a35a]">
+              <span className="shrink-0 text-[12.5px] font-semibold text-[#c4a35a]">
                 Add subscriptions
               </span>
             </button>
