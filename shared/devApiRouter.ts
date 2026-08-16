@@ -618,6 +618,31 @@ export async function handleDevApi(
         json(res, 200, { ok: true, pending_draft });
         return true;
       }
+      if (body.aiNudge === true || body.ai_nudge === true) {
+        const { getLeadById } = await import("./leadStore.js");
+        const { getPendingDraft } = await import("./smsDraftStore.js");
+        if (Array.isArray(body.playbookSteps) || Array.isArray(body.playbook_steps)) {
+          const { normalizePlaybook } = await import("./playbook.js");
+          await updateLeadCrm(id, {
+            playbookSteps: normalizePlaybook(body.playbookSteps ?? body.playbook_steps),
+          });
+        }
+        const { sendAiNudgeOnSilence } = await import("./aiSmsAgent.js");
+        const result = await sendAiNudgeOnSilence({ leadId: id, env: twilioEnv });
+        if (!result.ok) {
+          json(res, 400, {
+            error: result.error || result.reason || "Could not follow up.",
+          });
+          return true;
+        }
+        json(res, 200, {
+          ok: true,
+          lead: await getLeadById(id),
+          messages: await listSmsForLead(id),
+          pending_draft: await getPendingDraft(id),
+        });
+        return true;
+      }
       const patch: {
         status?: LeadStatus;
         notes?: string;

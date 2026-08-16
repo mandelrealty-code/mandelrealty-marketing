@@ -27,6 +27,7 @@ export type AiReplyResult = {
   suggestedStage?: LeadStatus | null;
   sid?: string;
   error?: string;
+  drafted?: boolean;
 };
 
 type ClaudeDecision = {
@@ -476,7 +477,11 @@ async function callClaude(input: {
   }
 }
 
-async function buildUserPrompt(lead: LeadRow, mode: "first" | "reply", inbound?: string) {
+async function buildUserPrompt(
+  lead: LeadRow,
+  mode: "first" | "reply" | "nudge",
+  inbound?: string,
+) {
   const retrievalQuery = [
     lead.offer_path,
     OFFER_PATH_LABEL[lead.offer_path],
@@ -507,6 +512,32 @@ async function buildUserPrompt(lead: LeadRow, mode: "first" | "reply", inbound?:
     .slice(-12)
     .map((m) => `${m.direction === "inbound" ? "Lead" : "MRG"}: ${m.body}`)
     .join("\n");
+
+  if (mode === "nudge") {
+    const lastOutbound = [...thread].reverse().find((m) => m.direction === "outbound");
+    return `MODE: operator follow-up. The lead never replied to our last outbound SMS. Write a short bump now.
+
+LEAD:
+${leadContextBlock(lead)}
+
+RECENT THREAD:
+${recent || "(empty)"}
+
+LAST UNANSWERED MRG MESSAGE:
+${lastOutbound?.body || "(missing)"}
+
+KNOWLEDGE BASE:
+${kb}
+
+Write a 1-2 sentence bump for offer_path="${lead.offer_path}". Rules:
+- Do NOT open with "Hey ${firstName(lead.name)}" or "${firstName(lead.name)},"
+- Do NOT copy the last outbound verbatim. Nudge the same point in fresh words.
+- If a playbook current step is set, the bump should help that step along (without sounding like a task list).
+- Keep it light. One question max. No emoji spam.
+- include_book_link true only if a soft intro-call CTA still fits; otherwise false.
+- stop_ai=false unless the thread already shows they booked, opted out, or are not a fit.
+- Update whats_next. Never send guide landing URLs.`;
+  }
 
   if (mode === "first") {
     return `MODE: first outbound SMS after Meta/website lead form.
@@ -673,12 +704,17 @@ async function sendAiSms(
   return { ok: true, sid: send.sid };
 }
 
-export async function canAiTextLead(lead: LeadRow): Promise<{ ok: boolean; reason?: string }> {
+export async function canAiTextLead(
+  lead: LeadRow,
+  opts?: { ignorePause?: boolean },
+): Promise<{ ok: boolean; reason?: string }> {
   const globalOn = await isGlobalAiEnabled();
   const forceOn = Boolean(lead.ai_force_on);
 
-  // Per-lead pause always wins
-  if (lead.ai_paused) return { ok: false, reason: "AI paused for this lead" };
+  // Per-lead pause always wins unless the operator explicitly asked to follow up
+  if (lead.ai_paused && !opts?.ignorePause) {
+    return { ok: false, reason: "AI paused for this lead" };
+  }
 
   // Global off → only leads with explicit force-on (test one chat)
   if (!globalOn && !forceOn) {
@@ -914,5 +950,96 @@ export async function sendAiReplyToInbound(input: {
     reply: body,
     suggestedStage: decision.suggested_stage,
     sid: sent.sid,
+  };
+}
+
+/** Operator click: bump the last outbound SMS the lead never answered. */
+export async function sendAiNudgeOnSilence(input: {
+  leadId: string;
+  env: TwilioEnv;
+}): Promise<AiReplyResult> {
+  const lead = await getLeadById(input.leadId);
+  if (!lead) return { ok: false, error: "Lead not found" };
+
+  const thread = await listSmsForLead(lead.id);
+  const last = thread[thread.length - 1];
+  if (!last || last.direction !== "outbound") {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "They already replied, or there is no last message to follow up on.",
+      error: "They already replied, or there is no last message to follow up on.",
+    };
+  }
+
+  const { getPendingDraft } = await import("./smsDraftStore.js");
+  const existingDraft = await getPendingDraft(lead.id);
+  if (existingDraft) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "A draft is already waiting for review.",
+      error: "A draft is already waiting for review.",
+    };
+  }
+
+  const gate = await canAiTextLead(lead, { ignorePause: true });
+  if (!gate.ok) return { ok: false, skipped: true, reason: gate.reason, error: gate.reason };
+
+  const claude = await callClaude({
+    system: systemPrompt(),
+    user: await buildUserPrompt(lead, "nudge"),
+  });
+
+  if (claude.ok === false) {
+    const err = claudeErrorMessage(claude) || "AI call failed";
+    await noteAiFailure(lead.id, err);
+    return { ok: false, skipped: true, reason: err, error: err };
+  }
+
+  const decision = claude.decision;
+  let body = sanitizeCustomerSms(decision.reply_text);
+  if (body && decision.include_book_link && !body.includes("http")) {
+    body = `${body}\n${BOOK_LINK_CTA_LINE}`;
+  }
+  body = stripBookLinkIfNotRequested(body, decision.include_book_link);
+  body = ensureBookAppointmentFraming(body);
+  body = ensureBookLinkInvite(body);
+
+  if (decision.stop_ai && !body.trim()) {
+    await applyDecision(lead, decision);
+    return {
+      ok: false,
+      skipped: true,
+      reason: decision.stop_reason || "AI had nothing to send",
+      error: decision.stop_reason || "AI had nothing to send",
+    };
+  }
+
+  if (!body.trim()) {
+    await noteAiFailure(lead.id, "Empty follow-up SMS");
+    return { ok: false, skipped: true, reason: "Empty follow-up SMS", error: "Empty follow-up SMS" };
+  }
+
+  if (isUnsafeCustomerSms(body)) {
+    const blocked = adminFacingAiError("AI draft looked like a system/billing error — blocked");
+    await noteAiFailure(lead.id, blocked);
+    return { ok: false, skipped: true, reason: blocked, error: blocked };
+  }
+
+  const sent = await sendAiSms(lead, body, input.env);
+  if (!sent.ok) {
+    if (sent.error) await noteAiFailure(lead.id, sent.error);
+    return { ok: false, error: sent.error };
+  }
+
+  await applyDecision(lead, decision);
+
+  return {
+    ok: true,
+    reply: body,
+    suggestedStage: decision.suggested_stage,
+    sid: sent.sid,
+    drafted: sent.drafted,
   };
 }

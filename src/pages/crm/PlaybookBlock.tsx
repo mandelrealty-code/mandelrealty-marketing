@@ -13,17 +13,21 @@ export function PlaybookBlock({
   busy,
   hostFirstName,
   draftMode,
+  canFollowUp,
   onComplete,
   onSkip,
   onChange,
+  onFollowUp,
 }: {
   steps: PlaybookStep[];
   busy: boolean;
   hostFirstName?: string;
   draftMode?: boolean;
+  canFollowUp?: boolean;
   onComplete: () => void;
   onSkip?: () => void;
   onChange?: (steps: PlaybookStep[]) => void;
+  onFollowUp?: (stepId?: string) => void;
 }) {
   const host = hostFirstName?.trim() || "Host";
   const [adding, setAdding] = useState("");
@@ -80,6 +84,16 @@ export function PlaybookBlock({
           <p className="mt-2 text-[13px] leading-relaxed text-[#9a9590]">
             Add what they have to do next. AI will chase the current step by SMS.
           </p>
+          {canFollowUp && onFollowUp ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onFollowUp()}
+              className="mt-3 h-10 rounded-[9px] bg-[#c4a35a] px-3.5 text-[13px] font-semibold text-[#0a0a0a] disabled:opacity-35 hover:bg-[#dcc084]"
+            >
+              Follow up
+            </button>
+          ) : null}
           {onChange ? (
             <>
               <div className="mt-3">{addRow}</div>
@@ -191,6 +205,16 @@ export function PlaybookBlock({
                 <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 pt-1.5 text-[12px]">
                   {current ? (
                     <>
+                      {canFollowUp && onFollowUp ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onFollowUp()}
+                          className="h-7 rounded-[8px] bg-[#c4a35a] px-2.5 text-[12px] font-semibold text-[#0a0a0a] disabled:opacity-35 hover:bg-[#dcc084]"
+                        >
+                          Follow up
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         disabled={busy}
@@ -210,14 +234,23 @@ export function PlaybookBlock({
                         </button>
                       ) : null}
                     </>
+                  ) : canFollowUp && onFollowUp ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onFollowUp(step.id)}
+                      className="h-7 rounded-[8px] bg-[#c4a35a] px-2.5 text-[12px] font-semibold text-[#0a0a0a] disabled:opacity-35 hover:bg-[#dcc084]"
+                    >
+                      Follow up
+                    </button>
                   ) : onChange ? (
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => onChange(setCurrentPlaybookStep(steps, step.id))}
-                      className="text-[#c4a35a]"
+                      className="text-[#6f6a65]"
                     >
-                      Chase this
+                      Make current
                     </button>
                   ) : null}
                   {onChange ? (
@@ -244,8 +277,8 @@ export function PlaybookBlock({
           <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#4ea882]" />
           <p className="text-[12px] leading-relaxed text-[#9a9590]">
             {draftMode
-              ? "AI follows up on the current step via SMS — drafts land in this thread for your OK."
-              : "AI follows up on the current step via SMS. Update the current step so it knows where they are."}
+              ? "Follow up drafts a bump on the last unanswered SMS. AI also uses the current step on inbound."
+              : "Follow up texts a bump if they haven’t replied. Update the current step so AI knows where they are."}
           </p>
         </div>
       )}

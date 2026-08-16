@@ -23,7 +23,7 @@ import {
 import { ModeSwitcher, MrgMark } from "./clients/ui";
 import { DraftCard, type PendingDraft } from "./crm/DraftCard";
 import { PlaybookBlock } from "./crm/PlaybookBlock";
-import type { PlaybookStep } from "../../shared/playbookTypes";
+import { setCurrentPlaybookStep, type PlaybookStep } from "../../shared/playbookTypes";
 
 const ClientsApp = lazy(() => import("./clients/ClientsApp"));
 
@@ -1032,20 +1032,48 @@ export function AdminPage() {
         followups?: typeof followups;
         pending_draft?: PendingDraft | null;
       };
-      if (!res.ok) throw new Error(data.error || "Save failed");
-      if (data.lead) {
-        setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
+      if (res.ok) {
+        if (data.lead) {
+          setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
+        }
+        if (data.messages) setSmsMessages(data.messages);
+        if (data.followups) setFollowups(data.followups);
+        if ("pending_draft" in data) setPendingDraft(data.pending_draft ?? null);
+        setSaveMsg(
+          body.aiNudge
+            ? data.pending_draft
+              ? "Follow-up drafted"
+              : "Follow-up sent"
+            : "Saved",
+        );
+        setTimeout(() => setSaveMsg(null), 1500);
+      } else {
+        throw new Error(data.error || "Save failed");
       }
-      if (data.messages) setSmsMessages(data.messages);
-      if (data.followups) setFollowups(data.followups);
-      if ("pending_draft" in data) setPendingDraft(data.pending_draft ?? null);
-      setSaveMsg("Saved");
-      setTimeout(() => setSaveMsg(null), 1500);
     } catch (err) {
       setSaveMsg(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
+  };
+
+  const canFollowUpLastSms = Boolean(
+    smsMessages.length &&
+      smsMessages[smsMessages.length - 1]?.direction === "outbound" &&
+      !pendingDraft,
+  );
+
+  const followUpOnLastSms = (stepId?: string) => {
+    if (!selected) return;
+    const steps = selected.playbook_steps ?? [];
+    const playbookSteps =
+      stepId && steps.some((s) => s.id === stepId && s.status !== "current")
+        ? setCurrentPlaybookStep(steps, stepId)
+        : undefined;
+    void patchLead({
+      aiNudge: true,
+      ...(playbookSteps ? { playbookSteps } : {}),
+    });
   };
 
   const deleteSelectedLead = async () => {
@@ -1596,7 +1624,23 @@ export function AdminPage() {
 
         {/* Composer */}
         <div className="shrink-0 border-t border-white/8 bg-[#0c0c0c] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-          <div className="mx-auto flex max-w-3xl items-center gap-3">
+          <div className="mx-auto max-w-3xl">
+            {canFollowUpLastSms ? (
+              <div className="mb-2.5 flex items-center justify-between gap-3">
+                <p className="text-[12px] leading-snug text-[#9a9590]">
+                  They haven’t replied to the last message.
+                </p>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => followUpOnLastSms()}
+                  className="h-8 shrink-0 rounded-[9px] bg-[#c4a35a] px-3 text-[12.5px] font-semibold text-[#0a0a0a] disabled:opacity-40 hover:bg-[#dcc084]"
+                >
+                  Follow up
+                </button>
+              </div>
+            ) : null}
+            <div className="flex items-center gap-3">
             <input
               value={smsDraft}
               onChange={(e) => setSmsDraft(e.target.value)}
@@ -1618,6 +1662,7 @@ export function AdminPage() {
             >
               ↑
             </button>
+            </div>
           </div>
         </div>
 
@@ -1928,9 +1973,11 @@ export function AdminPage() {
                   busy={saving}
                   hostFirstName={firstName}
                   draftMode={selected.ai_send_mode === "draft"}
+                  canFollowUp={canFollowUpLastSms}
                   onComplete={() => void patchLead({ playbookAction: "complete" })}
                   onSkip={() => void patchLead({ playbookAction: "skip" })}
                   onChange={(playbookSteps) => void patchLead({ playbookSteps })}
+                  onFollowUp={followUpOnLastSms}
                 />
                 <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
                   Team next
@@ -2318,7 +2365,23 @@ export function AdminPage() {
         ) : null}
         <div ref={threadEndRef} className="h-1" />
       </div>
-      <div className="flex shrink-0 items-center gap-3 border-t border-white/8 px-[22px] py-4">
+      <div className="shrink-0 border-t border-white/8 px-[22px] py-4">
+        {canFollowUpLastSms ? (
+          <div className="mb-2.5 flex items-center justify-between gap-3">
+            <p className="text-[12px] leading-snug text-[#9a9590]">
+              They haven’t replied to the last message.
+            </p>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => followUpOnLastSms()}
+              className="h-8 shrink-0 rounded-[9px] bg-[#c4a35a] px-3 text-[12.5px] font-semibold text-[#0a0a0a] disabled:opacity-40 hover:bg-[#dcc084]"
+            >
+              Follow up
+            </button>
+          </div>
+        ) : null}
+        <div className="flex items-center gap-3">
         <input
           value={smsDraft}
           onChange={(e) => setSmsDraft(e.target.value)}
@@ -2340,6 +2403,7 @@ export function AdminPage() {
         >
           ↑
         </button>
+        </div>
       </div>
     </div>
   ) : (
@@ -2466,9 +2530,11 @@ export function AdminPage() {
           busy={saving}
           hostFirstName={selFirst}
           draftMode={selected.ai_send_mode === "draft"}
+          canFollowUp={canFollowUpLastSms}
           onComplete={() => void patchLead({ playbookAction: "complete" })}
           onSkip={() => void patchLead({ playbookAction: "skip" })}
           onChange={(playbookSteps) => void patchLead({ playbookSteps })}
+          onFollowUp={followUpOnLastSms}
         />
       </div>
 

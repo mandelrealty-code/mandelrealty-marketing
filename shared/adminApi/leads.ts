@@ -293,6 +293,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, pending_draft });
     }
 
+    if (body.aiNudge === true || body.ai_nudge === true) {
+      if (Array.isArray(body.playbookSteps) || Array.isArray(body.playbook_steps)) {
+        const { normalizePlaybook } = await import("../playbook.js");
+        await updateLeadCrm(id, {
+          playbookSteps: normalizePlaybook(body.playbookSteps ?? body.playbook_steps),
+        });
+      }
+      const { sendAiNudgeOnSilence } = await import("../../shared/aiSmsAgent.js");
+      const { getLeadById } = await import("../leadStore.js");
+      const result = await sendAiNudgeOnSilence({ leadId: id, env: twilioEnv });
+      if (!result.ok) {
+        return res.status(400).json({
+          error: result.error || result.reason || "Could not follow up.",
+        });
+      }
+      const [messages, pending_draft, lead] = await Promise.all([
+        listSmsForLead(id),
+        getPendingDraft(id),
+        getLeadById(id),
+      ]);
+      return res.status(200).json({ ok: true, lead, messages, pending_draft });
+    }
+
     if (
       body.playbookAction === "complete" ||
       body.playbook_action === "complete" ||
