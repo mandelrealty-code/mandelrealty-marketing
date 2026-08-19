@@ -146,6 +146,12 @@ export function PortalInviteControls({
     }
   };
 
+  const sendBlocked = !hasHostSignature(fields)
+    ? "Place a Host “Sign here” box — that’s where they sign. Date and name boxes aren’t enough."
+    : mrgFields(fields).some((f) => f.type === "signature" && !f.signature_png)
+      ? "Click each green MRG Sign here box and draw your signature first."
+      : null;
+
   const send = async () => {
     if (!hasHostSignature(fields)) {
       onError("Place at least one Host signature box — that’s where the client signs.");
@@ -395,7 +401,8 @@ export function PortalInviteControls({
                 select · drag gold corners to resize · × or Delete to remove.
               </div>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex gap-3">
               <button
                 type="button"
                 className="text-[13px] text-[#9a9590]"
@@ -405,15 +412,21 @@ export function PortalInviteControls({
               </button>
               <button
                 type="button"
-                disabled={busy || !hasHostSignature(fields)}
+                disabled={busy}
                 onClick={() => void send()}
                 className="rounded-lg bg-[#c4a35a] px-4 py-2 text-[13px] font-bold text-[#0a0a0a] disabled:opacity-40"
               >
                 {busy ? "Sending…" : "Send invite"}
               </button>
+              </div>
+              {sendBlocked ? (
+                <p className="max-w-[280px] text-right text-[12px] leading-snug text-[#dcc084]">
+                  {sendBlocked}
+                </p>
+              ) : null}
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-4">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <SignFieldPlacer
               pdfUrl={pdfUrl}
               fields={fields}

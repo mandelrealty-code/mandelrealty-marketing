@@ -222,7 +222,8 @@ export function SignFieldPlacer({
   const signing = fields.find((f) => f.id === signingId) ?? null;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="z-20 shrink-0 border-b border-white/8 bg-[#0a0a0a] px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f6a65]">
           Who
@@ -259,7 +260,9 @@ export function SignFieldPlacer({
         <span className="text-[12px] text-[#6f6a65]">
           {selected
             ? "Selected · drag gold corners · × or Delete"
-            : `Click a box to select · ${fields.length} placed`}
+            : fields.some((f) => f.type === "signature" && f.party !== "mrg")
+              ? `Click a box to select · ${fields.length} placed`
+              : "Still need a Host Sign here box to send"}
         </span>
         {selected ? (
           <button
@@ -271,7 +274,9 @@ export function SignFieldPlacer({
           </button>
         ) : null}
       </div>
+      </div>
 
+      <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
       <PdfPages url={pdfUrl}>
         {(page) => (
           <div
@@ -391,6 +396,7 @@ export function SignFieldPlacer({
           </div>
         )}
       </PdfPages>
+      </div>
 
       {signing ? (
         <SignaturePad
