@@ -925,31 +925,59 @@ function Overlay({
   goldAction?: { label: string; onClick: () => void };
   dangerAction?: { label: string; onClick: () => void };
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
   const head = (
     <div className="mb-4 flex items-baseline justify-between gap-3">
-      <h2 className="text-[17px] font-bold lg:text-base">{title}</h2>
-      {goldAction ? (
-        <button type="button" onClick={goldAction.onClick} className="text-[12.5px] font-semibold text-[#c4a35a]">
-          {goldAction.label}
-        </button>
-      ) : dangerAction ? (
-        <button type="button" onClick={dangerAction.onClick} className="text-[12.5px] text-[#cf7f7b]">
-          {dangerAction.label}
-        </button>
-      ) : aside ? (
-        <span className="font-mono text-[11px] text-[#6f6a65]">{aside}</span>
-      ) : (
+      <h2 id="overlay-title" className="text-[17px] font-bold lg:text-base">
+        {title}
+      </h2>
+      <div className="flex shrink-0 items-center gap-3">
+        {aside ? <span className="font-mono text-[11px] text-[#6f6a65]">{aside}</span> : null}
+        {goldAction ? (
+          <button
+            type="button"
+            onClick={goldAction.onClick}
+            className="text-[12.5px] font-semibold text-[#c4a35a]"
+          >
+            {goldAction.label}
+          </button>
+        ) : null}
+        {dangerAction ? (
+          <button
+            type="button"
+            onClick={dangerAction.onClick}
+            className="text-[12.5px] text-[#cf7f7b]"
+          >
+            {dangerAction.label}
+          </button>
+        ) : null}
         <button type="button" onClick={onCancel} className="text-[13px] text-[#9a9590]">
-          {desktop ? "Esc" : "Close"}
+          {desktop ? "Done" : "Close"}
         </button>
-      )}
+      </div>
     </div>
   );
 
   if (desktop) {
     return (
-      <div className="fixed inset-0 z-50 grid place-items-center bg-black/66 p-4">
-        <div className="max-h-[min(92vh,880px)] w-full max-w-[460px] overflow-y-auto rounded-[14px] border border-white/12 bg-[#141414] px-5 py-5">
+      <div
+        className="fixed inset-0 z-50 grid place-items-center bg-black/66 p-4"
+        onClick={onCancel}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="overlay-title"
+          className="max-h-[min(92vh,880px)] w-full max-w-[460px] overflow-y-auto rounded-[14px] border border-white/12 bg-[#141414] px-5 py-5"
+          onClick={(e) => e.stopPropagation()}
+        >
           {head}
           {children}
         </div>

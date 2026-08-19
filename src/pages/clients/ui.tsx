@@ -144,10 +144,26 @@ export function Sheet({
   children: ReactNode;
   desktop?: boolean;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
   if (desktop) {
     return (
-      <div className="fixed inset-0 z-50 grid place-items-center bg-black/66 p-4">
-        <div className="flex max-h-[min(92vh,880px)] w-full max-w-[460px] flex-col overflow-hidden rounded-[14px] border border-white/10 bg-[#141414]">
+      <div
+        className="fixed inset-0 z-50 grid place-items-center bg-black/66 p-4"
+        onClick={onCancel}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="flex max-h-[min(92vh,880px)] w-full max-w-[460px] flex-col overflow-hidden rounded-[14px] border border-white/10 bg-[#141414]"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="flex shrink-0 items-center justify-between gap-3 px-6 pb-3 pt-6">
             <h2 className="text-[17px] font-bold text-[#f5f5f5]">{title}</h2>
             <button

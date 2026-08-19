@@ -1600,7 +1600,7 @@ export default function ClientsApp({ onModeChange }: Props) {
   );
 
   const settingsView = (
-    <div className="mx-auto w-full max-w-[680px]">
+    <div className="mx-auto w-full max-w-[680px] pb-10">
       <h1 className="px-4 pb-4 pt-[22px] text-2xl font-bold tracking-tight text-[#f5f5f5] lg:px-0 lg:pb-[18px] lg:pt-9 lg:text-[28px]">
         Settings
       </h1>
@@ -1805,9 +1805,9 @@ export default function ClientsApp({ onModeChange }: Props) {
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[#0a0a0a] text-[#f5f5f5]">
       {header}
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {desktopNav}
-        <main className="min-w-0 flex-1 overflow-y-auto pb-4">
+        <main className="crm-scroll-pane min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain pb-8 lg:pb-4">
           {loadError ? (
             <p className="px-4 pt-3 text-sm text-[#cf7f7b] lg:px-10">{loadError}</p>
           ) : null}
