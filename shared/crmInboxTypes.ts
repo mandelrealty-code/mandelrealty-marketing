@@ -6,7 +6,8 @@ export type NeedsYouReason =
   | "review_ai"
   | "kb_miss"
   | "high_intent"
-  | "draft_review";
+  | "draft_review"
+  | "send_contract";
 
 export const NEEDS_YOU_LABEL: Record<NeedsYouReason, string> = {
   ai_stuck: "AI stuck",
@@ -15,6 +16,7 @@ export const NEEDS_YOU_LABEL: Record<NeedsYouReason, string> = {
   kb_miss: "KB miss",
   high_intent: "High intent",
   draft_review: "Draft",
+  send_contract: "Send contract",
 };
 
 export function isBookedThisWeek(lead: {

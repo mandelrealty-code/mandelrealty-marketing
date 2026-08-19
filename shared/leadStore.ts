@@ -95,6 +95,8 @@ export type LeadCrmUpdate = {
   aiSendMode?: "draft" | "autopilot";
   playbookSteps?: import("./playbookTypes.js").PlaybookStep[];
   offerPath?: OfferPath;
+  address?: string;
+  listingTitle?: string;
 };
 
 function mapLead(row: Record<string, unknown>): LeadRow {
@@ -346,6 +348,12 @@ export async function updateLeadCrm(
   }
   if (patch.offerPath !== undefined) {
     update.offer_path = patch.offerPath;
+  }
+  if (patch.address !== undefined) {
+    update.address = patch.address;
+  }
+  if (patch.listingTitle !== undefined) {
+    update.listing_title = patch.listingTitle;
   }
 
   if (Object.keys(update).length === 0) return null;

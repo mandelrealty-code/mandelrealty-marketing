@@ -277,8 +277,8 @@ export function PlaybookBlock({
           <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#4ea882]" />
           <p className="text-[12px] leading-relaxed text-[#9a9590]">
             {draftMode
-              ? "Follow up drafts a bump on the last unanswered SMS. AI also uses the current step on inbound."
-              : "Follow up texts a bump if they haven’t replied. Update the current step so AI knows where they are."}
+              ? "Follow up drafts a bump if they go quiet. AI sells in the thread from your knowledge base."
+              : "AI texts them, follows up if they go quiet, and sells in-thread. Update the current step so it knows where they are."}
           </p>
         </div>
       )}

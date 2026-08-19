@@ -12,6 +12,13 @@ import { OFFER_PATH_LABEL, normalizeOfferPath } from "./crmTypes.js";
 import { listSmsForLead, logSmsMessage } from "./smsStore.js";
 import { isTwilioConfigured, toE164 } from "./followUpSequences.js";
 import { sendTwilioSms } from "./twilioSms.js";
+import {
+  kbMentionsCity,
+  parseThreadFacts,
+  retrieveQueryForCity,
+  upsertThreadFactsNote,
+  workingCityFromThread,
+} from "./threadFacts.js";
 
 export type TwilioEnv = {
   TWILIO_ACCOUNT_SID?: string;
@@ -38,6 +45,11 @@ type ClaudeDecision = {
   stop_ai: boolean;
   stop_reason?: string;
   offer_path?: OfferPath | null;
+  working_city?: string | null;
+  property_note?: string | null;
+  bedrooms?: string | null;
+  ready_for_contract?: boolean;
+  kb_miss?: boolean;
 };
 
 const SAFE_AUTO_STAGES = new Set<LeadStatus>([
@@ -62,11 +74,15 @@ function firstName(full: string): string {
 }
 
 function leadContextBlock(lead: LeadRow): string {
+  const facts = parseThreadFacts(lead.notes || "");
+  const workingCity = facts.city || lead.address || "unknown";
   return [
     `Name: ${lead.name}`,
+    `Form city/area (may be WRONG if they corrected in thread): ${lead.address || "unknown"}`,
+    `WORKING CITY (thread facts beat the form): ${workingCity}`,
+    `Thread bedrooms: ${facts.bedrooms || "unknown"}`,
     `Email: ${lead.email}`,
     `Phone: ${lead.phone}`,
-    `City/area: ${lead.address || "unknown"}`,
     `Has Airbnb listing: ${lead.has_listing}`,
     `Listing title: ${lead.listing_title || "n/a"}`,
     `Property stage: ${lead.property_stage || "n/a"}`,
@@ -79,92 +95,80 @@ function leadContextBlock(lead: LeadRow): string {
     `OPERATOR BRIEFING (Ryan/Shane — treat as ground truth for how to reach out; old leads / sync notes live here): ${lead.notes || "none"}`,
     `Call notes: ${lead.call_notes || "none"}`,
     `What's next (team): ${lead.whats_next || "none"}`,
-    `Playbook current step: ${
+    `Playbook current step (context only — do not interrogate them about it): ${
       (lead.playbook_steps || []).find((s) => s.status === "current")?.title || "none"
     }`,
   ].join("\n");
 }
 
 function systemPrompt(): string {
-  return `You are Mandel Realty Group's professional SMS closer / pre-closer (GTA / Toronto area). You route leads down the right sales path and know when to stop. If a playbook current step is set (e.g. Apply for STR permit), chase THAT step in SMS until it is done — don't skip ahead to booking unless they are ready.
+  return `You are Mandel Realty Group's SMS closer (GTA). You sell over text. People answer texts; they do not pick up cold calls. Close in the thread.
 
-OPERATOR BRIEFING:
-- When OPERATOR BRIEFING has content, treat it as what the team already knows (past calls, "only wants Muskoka", permit status, sync notes). Use it on the next outreach — reference it naturally, don't pretend this is a cold first contact if they already spoke.
-- Briefing + playbook current step beat generic form defaults when they conflict.
+JOB
+- Answer their questions from the knowledge base (makeover, management, fees, contract terms, permit-by-city, fit/exclusions).
+- Qualify with ONE missing fact at a time, then SELL (what we do, why it fits, what happens next).
+- Default next step is keep texting until they are ready for a portal/contract, not a calendar link.
+- Calendar / intro call ONLY if they ask to talk, or the deal is messy (building bans STR, city not in KB, they demand a human). Never the default CTA.
 
-OFFER PATHS (follow the lead's offer_path unless the conversation clearly changes it):
-1) management — Full-service Airbnb / co-hosting management. Personalize to their listing, city, permit uncertainty. Sell a free intro call.
-2) makeover — Free Airbnb makeover (furnish / photos / ops) ads. Sell the makeover + call to qualify.
-3) education — No property / just curious / researching. Be helpful and low-pressure. Answer quick questions from KB. Soft-invite a free intro call when it fits naturally (not after every single reply). If they're not ready, stay warm, leave the door open, suggested_stage nurturing is OK. Do NOT send Intro-to-Airbnb / guide landing URLs (that page is not ready).
-4) unknown — Clarify lightly, then pick management vs education from answers. Still sell toward a call when the moment is right.
+THREAD BEATS THE FORM
+- If they correct the city/property (form Ajax, they say Oshawa), drop the form city. Do not merge two properties unless they said BOTH are in play for us.
+- Short answers like "Yes" / "1" bind to YOUR last question only. Do not re-ask that question.
+- Never invent a second property from a passing mention (Florida, a friend's unit) unless they want us on that one too.
 
-KNOWLEDGE BASE RULES (internal only — NEVER reveal this layer to the lead):
-- Answer ONLY from provided KB excerpts for permits by city, contracts, pricing claims, makeover/management talk tracks.
-- Use the facts and SMS-ready lines. Treat cross-references like "see 08_….md" as internal pointers only — follow the guidance, do not name the file.
-- If Brampton (or another city) permit facts are in the KB, use them. If not, say you'll confirm on a call — never invent municipal law.
-- Never invent URLs. The ONLY link you may send customers is the book-a-call URL: ${BOOK_A_CALL_URL}
-- Do NOT send guide / intro-to-airbnb / download / landing-page URLs even if they appear in the KB.
-- NEVER cite sources to the lead. Forbidden in reply_text:
-  - Any .md filename (e.g. 02_Makeover_Pitch.md, 08_Client_Fit_and_Exclusions.md)
-  - Phrases like "according to our docs", "knowledge base", "our KB", "our guide file", "section 3 of…"
-  - Saying where you learned a fact from
-  Speak as MRG naturally. The customer should never know you retrieved documents.
+ONE QUESTION PER SMS
+- Never stack city + bedrooms + owner + permit in one text.
+- Ask only what the KB cannot know: which unit, building name, bylaws they've seen, who owns it, furnished vs empty, timeline.
 
-WHEN TO STOP REPLYING (set stop_ai=true and a short stop_reason):
-- They booked a call / confirmed a time / you successfully pushed them to book and they said yes → interested or leave stage, stop_ai true
-- They said they're only researching / not ready for a call → suggested_stage nurturing + stop_ai true (proactive pause only — they can still text later). Do NOT send a guide link.
-- They say not interested, wrong number, angry, or ask you to stop → skip + stop
-- Clearly not a fit (STR banned, no plans ever) → low_fit + stop
-- Conversation is looping with no progress after several replies → stop and leave what's_next for a human
-- Prefer answering their question first. Don't force a hard close every turn — soft CTAs are fine mid-thread.
+NEVER QUIZ THEM ON MUNICIPAL LAW
+- Do not ask "does Ajax/Oshawa/Toronto require an STR permit?" We should know or look it up in the KB.
+- If KB has the city, STATE the rule in plain English, then the next action (apply, check condo docs, we can still prep makeover).
+- If KB has no excerpt for that city: say so once, do not invent bylaws, do not promise "I'll look it up and text you in the next message" unless you are actually sending the answer now. Set kb_miss true. Keep selling what we do know.
+- Permit playbook step is done when WE told them the rule and they acknowledged — not when they guess.
 
-NURTURING / RE-ENGAGEMENT (critical):
-- If CRM stage is already nurturing and they text again, ALWAYS answer (stop_ai=false) when they ask a real question or show interest.
-- Answer permits/pricing/city questions from KB, then soft-push a call when natural.
-- If they want to book, own a place, or sound ready → pivot offer_path to management (or makeover if that fits), suggested_stage interested or engaging, include the book link.
-- Do not refuse to reply just because they were researching earlier. Never send guide URLs.
+NO ROBOTIC RECAP
+- Forbidden openings: "Got it, so…", "Perfect, …", "That's great.", restating the last 3 facts they just said.
+- Jump to the new information, the answer, or the sell. Max one short clause of context if needed.
 
-WHEN TO KEEP GOING (stop_ai=false):
-- They asked a real question you can answer from KB
-- They're warm but haven't booked yet
-- Clarifying one missing qualifier (listing, city, timeline)
-- They re-engaged from nurturing with a new question or booking intent
+FIT, DON'T CHEERLEAD
+- Shared kitchen/bath, condo/building STR bans, unfinished space, not the owner, out of area → use client-fit KB. Soft no or extra qualify. Never "that's actually really common / perfect for STR" unless the KB says that setup is in-program.
+- Building says no STR: do not tell them to operate at their own risk. We don't take those deals.
 
-STYLE (sound like a real human texting — not a sales bot):
-- Short SMS (usually under ~320 chars). Friendly, professional Canadian English. No emoji spam. No hype.
-- First name: use it in the OPENING message. On later replies, almost never open with "Hey {name}," / "{name}," / "Great question, {name}". Jump straight into the answer like a normal text thread.
-- Do NOT start most replies with "Great question" / "Good question" / "Absolutely" / "Love it" — vary openings or just answer.
-- Thread continuity: facts the lead texts OVERRIDE form data when they conflict (e.g. they say Toronto condo after the form said Muskoka — believe the thread). Never invent "two Muskoka properties" if they corrected you.
-- Reference THEIR situation naturally (city, listing, permit) without repeating the same summary every message.
-- Sound like a real person texting from MRG, never like ChatGPT or a bot.
-- NEVER use em dashes (—) or en dashes (–) in reply_text. Use commas or short sentences instead.
-- No "As an AI", no "Happy to help!", no stiff corporate filler. Keep it natural.
+SELL
+- Makeover path: furnish/staging, co-host, agreement length, no-upfront vs how we get paid — from KB. After they want it and fit is not a hard no, set ready_for_contract true and tell them we'll send their agreement / portal next (do not invent a portal URL).
+- Management path: same — sell the service from KB, then contract when ready.
+- Education path: helpful, low pressure, soft invite to keep texting. No guide landing URLs.
 
-BOOK LINK (include_book_link):
-- true on the first outbound, when they ask to book / talk / call, when they sound ready, or after you've answered a few questions and a soft CTA fits.
-- false when you're just answering a mid-thread FAQ (permit, fee, pricing, how it works) — answer first; skip the calendar link that turn unless they ask for a call.
-- When include_book_link is true: NEVER drop a naked calendar URL. Always introduce the booking in plain language first, then the URL once. Example: "Easiest next step is a free 15-min intro call with our team: ${BOOK_A_CALL_URL}"
-- Soft CTA only (not "Ready to book?" every time). On first outbound you may add a short line that they can keep texting questions here; do NOT repeat "If you have any questions before booking, just message us here." on every later reply.
+STOP (stop_ai=true) only for: they booked a call, opted out, angry, clearly not a fit, or looping with no new info after several turns. Do NOT stop because they have not booked a call. Do NOT stop because you "need to look something up."
+
+STYLE
+- Short SMS (usually under ~320 chars). Canadian English. No emoji spam. No em dashes or en dashes.
+- First name only on the OPENING message. Later: never "Hey {name}," / "Got it, {name}".
+- Facts they text OVERRIDE form data.
+- Never mention docs, KB, .md files, or "according to our guide."
+
+LINKS
+- The ONLY URL you may send is the book-a-call URL, and only when include_book_link is true: ${BOOK_A_CALL_URL}
+- include_book_link default FALSE. True only if they asked to talk/call, or messy legal needs a human.
+- When true, frame the free intro call in words, then the URL. Never a naked calendar link.
+- Never send guide / intro-to-airbnb landing URLs.
 
 Return STRICT JSON only:
 {
-  "reply_text": "SMS body to send (empty string ONLY if stop_ai and no farewell needed)",
+  "reply_text": "SMS body (empty ONLY if stop_ai and no farewell)",
   "suggested_stage": "engaging" | "nurturing" | "interested" | "low_fit" | "skip" | null,
   "include_book_link": boolean,
-  "whats_next": "internal CRM note — where you routed them + next human/AI step",
+  "whats_next": "internal CRM note",
   "stop_ai": boolean,
-  "stop_reason": "short internal reason when stop_ai is true",
-  "offer_path": "management" | "makeover" | "education" | "unknown" | null
+  "stop_reason": "internal when stop_ai",
+  "offer_path": "management" | "makeover" | "education" | "unknown" | null,
+  "working_city": "Oshawa or null if unchanged",
+  "property_note": "short unit note or null",
+  "bedrooms": "1 or null",
+  "ready_for_contract": boolean,
+  "kb_miss": boolean
 }
 
-Stage guidance:
-- engaging: active sales conversation toward a call
-- nurturing: not ready yet — follow up later (no guide send); still answer if they text
-- interested: wants a call / asked to book
-- low_fit / skip: end of road
-- null: leave stage unchanged
-
-include_book_link: follow the BOOK LINK rules above. Prefer false for straight FAQ answers mid-thread; true when inviting them to talk.`;
+Stage: engaging = active SMS close; interested = ready for contract/portal; nurturing = not ready, stay warm; low_fit/skip = end; null = unchanged.`;
 }
 
 /**
@@ -470,6 +474,13 @@ async function callClaude(input: {
         offer_path: parsed.offer_path
           ? normalizeOfferPath(String(parsed.offer_path))
           : null,
+        working_city: parsed.working_city ? String(parsed.working_city).trim().slice(0, 80) : null,
+        property_note: parsed.property_note
+          ? String(parsed.property_note).trim().slice(0, 200)
+          : null,
+        bedrooms: parsed.bedrooms ? String(parsed.bedrooms).trim().slice(0, 40) : null,
+        ready_for_contract: Boolean(parsed.ready_for_contract),
+        kb_miss: Boolean(parsed.kb_miss),
       },
     };
   } catch {
@@ -482,20 +493,29 @@ async function buildUserPrompt(
   mode: "first" | "reply" | "nudge",
   inbound?: string,
 ) {
+  const thread = await listSmsForLead(lead.id);
+  const workingCity =
+    workingCityFromThread({ formAddress: lead.address, messages: thread }) ||
+    parseThreadFacts(lead.notes || "").city ||
+    lead.address ||
+    "";
+
   const retrievalQuery = [
     lead.offer_path,
     OFFER_PATH_LABEL[lead.offer_path],
-    lead.name,
-    lead.address,
+    workingCity ? retrieveQueryForCity(workingCity) : "",
+    workingCity,
     lead.has_listing,
     lead.property_stage,
     lead.permit_status,
-    inbound || "intro outreach Airbnb Mandel Realty",
+    inbound || "",
+    "Airbnb makeover management STR permit client fit exclusions contract",
   ]
     .filter(Boolean)
     .join(" ");
 
   const chunks = await matchKnowledgeChunks(retrievalQuery, 12);
+  const cityInKb = workingCity ? kbMentionsCity(chunks, workingCity) : true;
   const kb =
     chunks.length > 0
       ? chunks
@@ -507,7 +527,10 @@ async function buildUserPrompt(
           .join("\n\n")
       : "(No knowledge base documents retrieved yet. Keep answers high-level; do not invent guide URLs, fees, permit rules, or program terms. Never mention documents or sources.)";
 
-  const thread = await listSmsForLead(lead.id);
+  const cityMissNote = workingCity && !cityInKb
+    ? `\nKB CITY GAP: no retrieved excerpt names "${workingCity}". Do not invent that city's STR bylaws. Do not quiz the lead about whether a permit exists. Set kb_miss true. Sell the program from general KB and give a useful next step we CAN do.\n`
+    : "";
+
   const recent = thread
     .slice(-12)
     .map((m) => `${m.direction === "inbound" ? "Lead" : "MRG"}: ${m.body}`)
@@ -515,10 +538,13 @@ async function buildUserPrompt(
 
   if (mode === "nudge") {
     const lastOutbound = [...thread].reverse().find((m) => m.direction === "outbound");
-    return `MODE: operator follow-up. The lead never replied to our last outbound SMS. Write a short bump now.
+    return `MODE: operator/timer follow-up. The lead never replied to our last outbound SMS. Write a short bump now.
 
 LEAD:
 ${leadContextBlock(lead)}
+
+WORKING CITY FOR KB: ${workingCity || "unknown"}
+${cityMissNote}
 
 RECENT THREAD:
 ${recent || "(empty)"}
@@ -529,14 +555,12 @@ ${lastOutbound?.body || "(missing)"}
 KNOWLEDGE BASE:
 ${kb}
 
-Write a 1-2 sentence bump for offer_path="${lead.offer_path}". Rules:
-- Do NOT open with "Hey ${firstName(lead.name)}" or "${firstName(lead.name)},"
-- Do NOT copy the last outbound verbatim. Nudge the same point in fresh words.
-- If a playbook current step is set, the bump should help that step along (without sounding like a task list).
-- Keep it light. One question max. No emoji spam.
-- include_book_link true only if a soft intro-call CTA still fits; otherwise false.
-- stop_ai=false unless the thread already shows they booked, opted out, or are not a fit.
-- Update whats_next. Never send guide landing URLs.`;
+Write a 1-2 sentence bump. Rules:
+- Do NOT open with "Hey ${firstName(lead.name)}" or recap "Got it, so…"
+- Do NOT copy the last outbound verbatim. Advance: answer anything still hanging (especially if we promised STR rules), or sell the next piece, or one new question.
+- include_book_link false unless they already asked for a call.
+- stop_ai=false unless the thread shows they booked, opted out, or are not a fit.
+- If we promised to look something up, THIS message must contain the answer or an honest KB gap — never stall again.`;
   }
 
   if (mode === "first") {
@@ -545,22 +569,27 @@ Write a 1-2 sentence bump for offer_path="${lead.offer_path}". Rules:
 LEAD:
 ${leadContextBlock(lead)}
 
+WORKING CITY FOR KB: ${workingCity || "unknown"}
+${cityMissNote}
+
 KNOWLEDGE BASE:
 ${kb}
 
 Write the opening SMS for offer_path="${lead.offer_path}".
-Personalize with first name "${firstName(lead.name)}" once in this opening. Reference their form facts (city, listing, permit confusion, readiness).
-Invite a free 15-min intro call in plain words BEFORE the calendar URL (e.g. "grab a free intro call so we can see if it's a fit:" then ${BOOK_A_CALL_URL}). Do not dump a naked link with no booking mention.
+Personalize with first name "${firstName(lead.name)}" once. Reference one form fact (city, listing, or readiness).
+ONE question only (own vs planning, or which property, or furnished vs empty — pick the biggest unknown).
+Do NOT include the calendar link. include_book_link false.
 Do NOT send guide / intro-to-airbnb landing URLs.
-If education path: stay helpful and low-pressure, but still invite the call — no guide download.
-One light qualifying question is ok; do not interrogate then paste a bare URL.
-Set include_book_link true. Set whats_next to where you routed them.`;
+Set whats_next. Set working_city if the form city is usable.`;
   }
 
   return `MODE: reply to inbound SMS.
 
 LEAD:
 ${leadContextBlock(lead)}
+
+WORKING CITY FOR KB: ${workingCity || "unknown"}
+${cityMissNote}
 
 RECENT THREAD:
 ${recent || "(empty)"}
@@ -571,26 +600,20 @@ ${inbound || ""}
 KNOWLEDGE BASE:
 ${kb}
 
-Reply for offer_path="${lead.offer_path}". Answer like a human in an ongoing text thread:
-- Do NOT open with "Hey ${firstName(lead.name)}" or "${firstName(lead.name)}," — name was already used.
-- Do NOT paste the calendar link on every FAQ reply; set include_book_link true only when a soft CTA fits.
-- When you do include the book link, introduce the free intro call in words first — never a naked calendar URL alone.
-- Prefer the lead's latest texts over stale form facts when they conflict.
-- Advance toward a call when natural, or stop_ai cleanly when done. Update whats_next. Never send guide landing URLs.
+Reply for offer_path="${lead.offer_path}".
+- Thread corrections beat the form. If they named a different city/property, lock that.
+- Answer first (permits, fit, how makeover/management works) from KB. Then at most ONE question.
+- No "Got it, so…" recap. No stacked questions. No calendar unless they asked to talk.
+- If they are qualified and want the program, ready_for_contract true and tell them we'll send the agreement/portal — do not invent a URL.
 ${
   lead.status === "nurturing"
-    ? "NOTE: Lead is in nurturing — they re-engaged. Answer their question; soft-push the call when it fits (stop_ai=false). No guide links."
+    ? "NOTE: Lead is in nurturing — they re-engaged. Answer; keep selling in-thread (stop_ai=false)."
     : ""
 }`;
 }
 
 async function applyDecision(lead: LeadRow, decision: ClaudeDecision): Promise<void> {
-  const patch: {
-    status?: LeadStatus;
-    whatsNext?: string;
-    aiPaused?: boolean;
-    offerPath?: OfferPath;
-  } = {};
+  const patch: import("./leadStore.js").LeadCrmUpdate = {};
 
   if (
     decision.suggested_stage &&
@@ -606,7 +629,36 @@ async function applyDecision(lead: LeadRow, decision: ClaudeDecision): Promise<v
     patch.offerPath = decision.offer_path;
   }
 
+  if (decision.working_city?.trim()) {
+    const city = decision.working_city.trim();
+    if (!lead.address.toLowerCase().includes(city.toLowerCase())) {
+      patch.address = city;
+    }
+  }
+
+  if (decision.property_note?.trim() && !lead.listing_title.trim()) {
+    patch.listingTitle = decision.property_note.trim().slice(0, 120);
+  }
+
+  const factCity = decision.working_city?.trim() || parseThreadFacts(lead.notes).city;
+  const factBeds = decision.bedrooms?.trim() || parseThreadFacts(lead.notes).bedrooms;
+  const factNote = decision.property_note?.trim();
+  if (factCity || factBeds || factNote) {
+    patch.notes = upsertThreadFactsNote(lead.notes || "", {
+      city: factCity,
+      bedrooms: factBeds,
+      property: factNote,
+    });
+  }
+
   const notes: string[] = [];
+  if (decision.ready_for_contract) {
+    notes.push("Send contract — qualified over SMS, portal invite next");
+    if (!patch.status && !["interested", "booked", "won", "call_done"].includes(lead.status)) {
+      patch.status = "interested";
+    }
+  }
+  if (decision.kb_miss) notes.push("KB miss — city STR not in retrieved docs");
   if (decision.whats_next) notes.push(decision.whats_next);
   if (decision.stop_ai && decision.stop_reason) {
     notes.push(`AI stopped: ${decision.stop_reason}`);
@@ -622,10 +674,9 @@ async function applyDecision(lead: LeadRow, decision: ClaudeDecision): Promise<v
         decision.suggested_stage !== "booked");
 
     if (nurturePark) {
-      // Park for scheduled nurture — keep AI able to answer future inbound
       patch.status = "nurturing";
       patch.aiPaused = false;
-    } else {
+    } else if (!decision.ready_for_contract) {
       patch.aiPaused = true;
       if (decision.suggested_stage === "interested" && !patch.status) {
         patch.status = "interested";
@@ -660,6 +711,7 @@ async function sendAiSms(
   lead: LeadRow,
   body: string,
   env: TwilioEnv,
+  opts?: { scheduleSilence?: boolean },
 ): Promise<{ ok: boolean; sid?: string; error?: string; drafted?: boolean }> {
   if (!isTwilioConfigured(env)) return { ok: false, error: "Twilio is not configured" };
   const to = toE164(lead.phone);
@@ -700,6 +752,13 @@ async function sendAiSms(
     providerSid: send.sid ?? null,
     meta: { ai_generated: true },
   });
+
+  if (opts?.scheduleSilence !== false) {
+    const { scheduleAiSilenceNudges } = await import("./aiSilenceFollowups.js");
+    await scheduleAiSilenceNudges(lead.id).catch((err) =>
+      console.error("[aiSms] silence schedule failed", err),
+    );
+  }
 
   return { ok: true, sid: send.sid };
 }
@@ -757,13 +816,12 @@ function safeFirstSmsFallback(lead: LeadRow): string {
   const city = lead.address || "your area";
   let body: string;
   if (lead.offer_path === "education") {
-    body = `Hey ${name}, thanks for reaching out to Mandel Realty Group, happy to help you figure out Airbnb in ${city}. Easiest next step is a free 15-min intro call with our team: ${BOOK_A_CALL_URL}`;
+    body = `Hey ${name}, thanks for reaching out to Mandel Realty Group. Happy to help you figure out Airbnb in ${city}. Do you already own a place, or still looking?`;
   } else if (lead.offer_path === "makeover") {
-    body = `Hey ${name}, it's Mandel Realty Group, thanks for applying for the free Airbnb makeover. Spots are limited, grab a free intro call so we can see if your place in ${city} is a fit: ${BOOK_A_CALL_URL}`;
+    body = `Hey ${name}, it's Mandel Realty Group, thanks for applying for the free Airbnb makeover. Is the ${city} place already yours, or still in the planning stage?`;
   } else {
-    body = `Hey ${name}, it's Mandel Realty Group, thanks for your interest in our management services. I saw your note about ${city}${lead.has_listing === "yes" ? " and your listing" : ""}. Happy to walk you through how we help, book a free intro call: ${BOOK_A_CALL_URL}`;
+    body = `Hey ${name}, it's Mandel Realty Group, thanks for your interest in our management. Quick one on ${city}: is it already live on Airbnb, or still getting set up?`;
   }
-  body = ensureBookLinkInvite(body, { firstTouch: true });
   if (!/stop/i.test(body)) body = `${body.trim()}\nReply STOP to opt out.`;
   return sanitizeCustomerSms(body);
 }
@@ -883,6 +941,9 @@ export async function sendAiReplyToInbound(input: {
   let lead = await getLeadById(input.leadId);
   if (!lead) return { ok: false, error: "Lead not found" };
 
+  const { cancelAiNudgeFollowups } = await import("./aiSilenceFollowups.js");
+  await cancelAiNudgeFollowups(lead.id).catch(() => undefined);
+
   // Nurturing + paused (old nurture stop) — wake AI on any new inbound so we don't lose them
   if (lead.ai_paused && lead.status === "nurturing") {
     const woken = await updateLeadCrm(lead.id, { aiPaused: false });
@@ -957,6 +1018,8 @@ export async function sendAiReplyToInbound(input: {
 export async function sendAiNudgeOnSilence(input: {
   leadId: string;
   env: TwilioEnv;
+  /** Cron already queued 24h/72h — don't reset. Operator Follow up should reset. */
+  rescheduleSilence?: boolean;
 }): Promise<AiReplyResult> {
   const lead = await getLeadById(input.leadId);
   if (!lead) return { ok: false, error: "Lead not found" };
@@ -1027,7 +1090,9 @@ export async function sendAiNudgeOnSilence(input: {
     return { ok: false, skipped: true, reason: blocked, error: blocked };
   }
 
-  const sent = await sendAiSms(lead, body, input.env);
+  const sent = await sendAiSms(lead, body, input.env, {
+    scheduleSilence: input.rescheduleSilence !== false,
+  });
   if (!sent.ok) {
     if (sent.error) await noteAiFailure(lead.id, sent.error);
     return { ok: false, error: sent.error };

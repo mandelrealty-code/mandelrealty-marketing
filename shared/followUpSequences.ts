@@ -1,7 +1,7 @@
 import { BOOK_A_CALL_URL } from "./auditEmails.js";
 import { normalizePhoneDigits } from "./leadStore.js";
 
-export type FollowUpSequence = "hot_sms" | "nurture_sms";
+export type FollowUpSequence = "hot_sms" | "nurture_sms" | "ai_nudge";
 
 export type FollowUpStepDef = {
   step: number;
@@ -66,7 +66,9 @@ function first(fullName: string): string {
 }
 
 export function stepsForSequence(sequence: FollowUpSequence): FollowUpStepDef[] {
-  return sequence === "hot_sms" ? HOT_SMS_STEPS : NURTURE_SMS_STEPS;
+  if (sequence === "hot_sms") return HOT_SMS_STEPS;
+  if (sequence === "nurture_sms") return NURTURE_SMS_STEPS;
+  return [];
 }
 
 export function bookUrlForLead(_leadId?: string | null): string {

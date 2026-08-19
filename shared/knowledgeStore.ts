@@ -307,6 +307,12 @@ function expandQueryTerms(query: string): string[] {
   if (/permit|licence|license|str|bylaw|zoning/.test(lower)) {
     extras.push("permit", "licence", "str", "toronto", "mississauga", "vaughan");
   }
+  if (/oshawa|ajax|pickering|whitby|durham|clarington/.test(lower)) {
+    extras.push("permit", "str", "oshawa", "ajax", "durham", "licensing");
+  }
+  if (/etobicoke|north york|scarborough/.test(lower)) {
+    extras.push("toronto", "permit", "str", "principal residence", "condo");
+  }
   if (/book|call|calendly|schedule|walkthrough/.test(lower)) {
     extras.push("booking", "call", "schedule", "promise");
   }

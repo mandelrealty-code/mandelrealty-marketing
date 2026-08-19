@@ -249,9 +249,7 @@ export async function listFollowupsForLead(leadId: string): Promise<FollowUpRow[
 }
 
 /**
- * Sends due follow-ups with stage gates:
- * - hot_sms: step 1 only (legacy); later hot bumps stay manual
- * - nurture_sms: only while lead.status is nurturing — body locked at schedule time (no AI rewrite)
+ * Sends due follow-ups. Vercel cron should run hourly so 3h AI nudges fire.
  */
 export async function processDueFollowups(env: {
   TWILIO_ACCOUNT_SID?: string;
@@ -265,7 +263,7 @@ export async function processDueFollowups(env: {
   const sb = getSupabaseAdmin();
   if (!sb) return result;
 
-  // Cancel leftover hot_sms bumps (step 2+) — those are manual / replaced by AI closer
+  // Cancel leftover hot_sms bumps (step 2–4 only). AI silence nudges use ai_nudge or hot_sms 10–12.
   await sb
     .from("lead_followups")
     .update({
@@ -274,7 +272,7 @@ export async function processDueFollowups(env: {
     })
     .eq("status", "pending")
     .eq("sequence", "hot_sms")
-    .gt("step", 1);
+    .in("step", [2, 3, 4]);
 
   const limit = env.limit ?? 20;
   const nowIso = new Date().toISOString();
@@ -325,11 +323,72 @@ export async function processDueFollowups(env: {
     }
 
     if (followup.sequence === "hot_sms" && followup.step !== 1) {
+      const { isAiNudgeRow } = await import("./aiSilenceFollowups.js");
+      if (!isAiNudgeRow(followup)) {
+        await sb
+          .from("lead_followups")
+          .update({ status: "cancelled", error: "Hot SMS step not auto-sent" })
+          .eq("id", followup.id);
+        result.skipped += 1;
+        continue;
+      }
+    }
+
+    const { isAiNudgeRow } = await import("./aiSilenceFollowups.js");
+    if (isAiNudgeRow(followup)) {
+      if (lead.ai_paused) {
+        await sb
+          .from("lead_followups")
+          .update({ status: "cancelled", error: "Cancelled — AI paused" })
+          .eq("id", followup.id);
+        result.skipped += 1;
+        continue;
+      }
+      const { sendAiNudgeOnSilence } = await import("./aiSmsAgent.js");
+      const nudged = await sendAiNudgeOnSilence({
+        leadId: lead.id,
+        env,
+        rescheduleSilence: false,
+      });
+      if (!nudged.ok) {
+        const alreadyReplied = /already replied|no last message/i.test(
+          nudged.error || nudged.reason || "",
+        );
+        await sb
+          .from("lead_followups")
+          .update({
+            status: alreadyReplied ? "cancelled" : "failed",
+            error: nudged.error || nudged.reason || "Nudge failed",
+            sent_at: alreadyReplied ? new Date().toISOString() : null,
+          })
+          .eq("id", followup.id);
+        if (alreadyReplied) {
+          const { cancelAiNudgeFollowups } = await import("./aiSilenceFollowups.js");
+          await cancelAiNudgeFollowups(lead.id);
+          result.skipped += 1;
+        } else {
+          result.failed += 1;
+        }
+        continue;
+      }
       await sb
         .from("lead_followups")
-        .update({ status: "cancelled", error: "Hot SMS step not auto-sent" })
+        .update({
+          status: "sent",
+          sent_at: new Date().toISOString(),
+          error: nudged.drafted ? "queued_as_draft" : null,
+        })
         .eq("id", followup.id);
-      result.skipped += 1;
+      const lastStep = followup.sequence === "ai_nudge" ? 3 : 12;
+      if (followup.step === lastStep && !nudged.drafted) {
+        const { updateLeadCrm } = await import("./leadStore.js");
+        const stamp = new Date().toLocaleString("en-CA", { timeZone: "America/Toronto" });
+        await updateLeadCrm(lead.id, {
+          status: "nurturing",
+          whatsNext: `[Nudge ${stamp}] Three bumps, no reply — parked nurturing`,
+        });
+      }
+      result.sent += 1;
       continue;
     }
 
@@ -500,6 +559,8 @@ export async function sendCustomSmsToLead(
   // Human takeover — pause AI for this lead
   const { updateLeadCrm } = await import("./leadStore.js");
   const updated = await updateLeadCrm(leadId, { aiPaused: true });
+  const { cancelAiNudgeFollowups } = await import("./aiSilenceFollowups.js");
+  await cancelAiNudgeFollowups(leadId).catch(() => undefined);
 
   return { ok: true, lead: updated ?? lead };
 }

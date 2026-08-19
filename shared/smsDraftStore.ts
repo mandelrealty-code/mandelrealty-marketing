@@ -170,6 +170,9 @@ export async function approveDraft(
     .update({ status: "sent", body, updated_at: new Date().toISOString() })
     .eq("id", id);
 
+  const { scheduleAiSilenceNudges } = await import("./aiSilenceFollowups.js");
+  await scheduleAiSilenceNudges(lead.id).catch(() => undefined);
+
   return { ok: true };
 }
 

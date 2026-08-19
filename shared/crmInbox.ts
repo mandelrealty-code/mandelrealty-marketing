@@ -62,6 +62,7 @@ export function detectNeedsYou(input: {
 
   if (AI_STUCK_RE.test(wn)) reasons.push("ai_stuck");
   if (KB_MISS_RE.test(wn)) reasons.push("kb_miss");
+  if (/send contract/i.test(wn)) reasons.push("send_contract");
 
   if (input.lastSms?.direction === "inbound") {
     const body = input.lastSms.body;
