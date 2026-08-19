@@ -454,8 +454,17 @@ async function appendCallNoteToLead(
   await updateLeadCrm(leadId, {
     callNotes: prevCallNotes ? `${block}\n\n${prevCallNotes}`.slice(0, 8000) : block,
     whatsNext: nextSteps.slice(0, 900),
-    ...(lead.status === "booked" || lead.status === "won" || lead.status === "call_done"
+    aiPaused: false,
+    ...(lead.status === "won" || lead.status === "skip" || lead.status === "low_fit"
       ? {}
       : { status: "call_done" as const }),
   });
+
+  const { scheduleAiSilenceNudges, AI_NUDGE_POST_CALL_DELAYS_MIN } = await import(
+    "./aiSilenceFollowups.js"
+  );
+  await scheduleAiSilenceNudges(leadId, {
+    delaysMin: AI_NUDGE_POST_CALL_DELAYS_MIN,
+    allowIfInbound: true,
+  }).catch((err) => console.error("[clickToCall] post-call follow-up schedule failed", err));
 }

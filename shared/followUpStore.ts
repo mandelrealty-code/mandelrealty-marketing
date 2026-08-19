@@ -308,9 +308,7 @@ export async function processDueFollowups(env: {
     };
 
     // Stage / terminal gates — never text the wrong path
-    const terminal =
-      lead.call_start_iso ||
-      ["skip", "won", "booked", "call_done", "low_fit"].includes(lead.status);
+    const terminal = ["skip", "won", "low_fit"].includes(lead.status);
 
     if (terminal) {
       await sb

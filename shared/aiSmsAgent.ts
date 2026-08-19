@@ -60,13 +60,7 @@ const SAFE_AUTO_STAGES = new Set<LeadStatus>([
   "skip",
 ]);
 
-const AI_STOP_STATUSES = new Set<LeadStatus>([
-  "booked",
-  "call_done",
-  "won",
-  "skip",
-  "low_fit",
-]);
+const AI_STOP_STATUSES = new Set<LeadStatus>(["won", "skip", "low_fit"]);
 
 function firstName(full: string): string {
   const part = full.trim().split(/\s+/)[0];
@@ -93,7 +87,7 @@ function leadContextBlock(lead: LeadRow): string {
     `AI paused: ${lead.ai_paused ? "yes" : "no"}`,
     `AI force on (test override): ${lead.ai_force_on ? "yes" : "no"}`,
     `OPERATOR BRIEFING (Ryan/Shane — treat as ground truth for how to reach out; old leads / sync notes live here): ${lead.notes || "none"}`,
-    `Call notes: ${lead.call_notes || "none"}`,
+    `Call notes (ground truth if a call already happened — pick up from these, do not re-ask): ${lead.call_notes || "none"}`,
     `What's next (team): ${lead.whats_next || "none"}`,
     `Playbook current step (context only — do not interrogate them about it): ${
       (lead.playbook_steps || []).find((s) => s.status === "current")?.title || "none"
@@ -109,6 +103,11 @@ JOB
 - Qualify with ONE missing fact at a time, then SELL (what we do, why it fits, what happens next).
 - Default next step is keep texting until they are ready for a portal/contract, not a calendar link.
 - Calendar / intro call ONLY if they ask to talk, or the deal is messy (building bans STR, city not in KB, they demand a human). Never the default CTA.
+- NEVER give up. If they are not ready to sign, keep the conversation going: answer the objection, then ONE new question to complete the picture (owner, which unit/city, building STR, furnished, timeline, who decides). include_book_link false. stop_ai false.
+- Do not send the booking link because they hesitated on a contract.
+
+CALL NOTES
+- If Call notes are present, that call already happened. Treat those notes as ground truth. Do not re-ask facts already in the notes. The next SMS should pick up from objections / next steps in the notes (e.g. they need to check the board, wait for tenants, compare fees). Follow up until the file is closed or they opt out.
 
 THREAD BEATS THE FORM
 - If they correct the city/property (form Ajax, they say Oshawa), drop the form city. Do not merge two properties unless they said BOTH are in play for us.
@@ -138,7 +137,9 @@ SELL
 - Management path: same — sell the service from KB, then contract when ready.
 - Education path: helpful, low pressure, soft invite to keep texting. No guide landing URLs.
 
-STOP (stop_ai=true) only for: they booked a call, opted out, angry, clearly not a fit, or looping with no new info after several turns. Do NOT stop because they have not booked a call. Do NOT stop because you "need to look something up."
+STOP (stop_ai=true) only for: they opted out / STOP, angry, wrong number, or clearly not a fit (STR banned, never going to list). 
+Do NOT stop because they have not booked a call, are not ready to sign, went quiet, or the thread feels long. Keep asking and selling.
+Do NOT stop because you "need to look something up."
 
 STYLE
 - Short SMS (usually under ~320 chars). Canadian English. No emoji spam. No em dashes or en dashes.
@@ -558,8 +559,9 @@ ${kb}
 Write a 1-2 sentence bump. Rules:
 - Do NOT open with "Hey ${firstName(lead.name)}" or recap "Got it, so…"
 - Do NOT copy the last outbound verbatim. Advance: answer anything still hanging (especially if we promised STR rules), or sell the next piece, or one new question.
+- If Call notes exist, the bump should continue the CALL (objections, next step they promised, missing fact) — not a generic check-in and not a calendar link.
 - include_book_link false unless they already asked for a call.
-- stop_ai=false unless the thread shows they booked, opted out, or are not a fit.
+- stop_ai=false unless they opted out or are clearly not a fit.
 - If we promised to look something up, THIS message must contain the answer or an honest KB gap — never stall again.`;
   }
 
@@ -604,7 +606,9 @@ Reply for offer_path="${lead.offer_path}".
 - Thread corrections beat the form. If they named a different city/property, lock that.
 - Answer first (permits, fit, how makeover/management works) from KB. Then at most ONE question.
 - No "Got it, so…" recap. No stacked questions. No calendar unless they asked to talk.
+- If they are not ready to sign, stay in-thread. Handle the objection from KB, then one question. include_book_link false. ready_for_contract false. stop_ai false.
 - If they are qualified and want the program, ready_for_contract true and tell them we'll send the agreement/portal — do not invent a URL.
+- If Call notes exist, pick up from the call. Do not restart the intake.
 ${
   lead.status === "nurturing"
     ? "NOTE: Lead is in nurturing — they re-engaged. Answer; keep selling in-thread (stop_ai=false)."
@@ -666,21 +670,23 @@ async function applyDecision(lead: LeadRow, decision: ClaudeDecision): Promise<v
   if (notes.length) patch.whatsNext = notes.join(" · ").slice(0, 900);
 
   if (decision.stop_ai) {
-    const nurturePark =
-      decision.suggested_stage === "nurturing" ||
-      (/nurtur|free guide|follow-?up|researching/i.test(decision.stop_reason || "") &&
-        decision.suggested_stage !== "low_fit" &&
-        decision.suggested_stage !== "skip" &&
-        decision.suggested_stage !== "booked");
+    const hardStop =
+      decision.suggested_stage === "skip" ||
+      decision.suggested_stage === "low_fit" ||
+      /opt.?out|\bstop\b|wrong number|angry|not interested|unsubscribe/i.test(
+        decision.stop_reason || "",
+      );
 
-    if (nurturePark) {
+    if (decision.suggested_stage === "nurturing") {
       patch.status = "nurturing";
       patch.aiPaused = false;
-    } else if (!decision.ready_for_contract) {
+    } else if (hardStop) {
       patch.aiPaused = true;
-      if (decision.suggested_stage === "interested" && !patch.status) {
-        patch.status = "interested";
+      if (decision.suggested_stage === "skip" || decision.suggested_stage === "low_fit") {
+        patch.status = decision.suggested_stage;
       }
+    } else {
+      patch.aiPaused = false;
     }
   }
 
@@ -782,10 +788,6 @@ export async function canAiTextLead(
 
   if (AI_STOP_STATUSES.has(lead.status)) {
     return { ok: false, reason: `Lead status is ${lead.status} — AI does not reply` };
-  }
-  // Nurturing is fine for inbound — we still answer questions / re-engage toward a call
-  if (lead.call_start_iso) {
-    return { ok: false, reason: "Lead already booked" };
   }
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
     return { ok: false, reason: "ANTHROPIC_API_KEY not configured" };
@@ -1026,7 +1028,16 @@ export async function sendAiNudgeOnSilence(input: {
 
   const thread = await listSmsForLead(lead.id);
   const last = thread[thread.length - 1];
-  if (!last || last.direction !== "outbound") {
+  const hasCallNotes = Boolean(lead.call_notes?.trim());
+  if (last?.direction === "inbound" && !hasCallNotes) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "They already replied, or there is no last message to follow up on.",
+      error: "They already replied, or there is no last message to follow up on.",
+    };
+  }
+  if (!last && !hasCallNotes) {
     return {
       ok: false,
       skipped: true,

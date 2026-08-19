@@ -8,7 +8,17 @@ export const AI_NUDGE_BODY = "[AI_NUDGE]";
 /** 3h, 24h, 72h after last unanswered outbound. */
 export const AI_NUDGE_DELAYS_MIN = [3 * 60, 24 * 60, 72 * 60] as const;
 
-const LIVE_STATUSES = new Set(["new", "engaging", "interested", "nurturing"]);
+const LIVE_STATUSES = new Set([
+  "new",
+  "engaging",
+  "interested",
+  "nurturing",
+  "booked",
+  "call_done",
+]);
+
+/** After a CRM call — first bump sooner so we pick up from call notes. */
+export const AI_NUDGE_POST_CALL_DELAYS_MIN = [60, 24 * 60, 72 * 60] as const;
 
 export async function cancelAiNudgeFollowups(leadId: string): Promise<void> {
   const sb = getSupabaseAdmin();
@@ -30,24 +40,28 @@ export async function cancelAiNudgeFollowups(leadId: string): Promise<void> {
     .lte("step", 12);
 }
 
-export async function scheduleAiSilenceNudges(leadId: string): Promise<void> {
+export async function scheduleAiSilenceNudges(
+  leadId: string,
+  opts?: { delaysMin?: readonly number[]; allowIfInbound?: boolean },
+): Promise<void> {
   const sb = getSupabaseAdmin();
   if (!sb) return;
 
   const lead = await getLeadById(leadId);
   if (!lead) return;
   if (lead.ai_paused) return;
-  if (lead.call_start_iso) return;
   if (!LIVE_STATUSES.has(lead.status)) return;
 
   const thread = await listSmsForLead(leadId);
   const last = thread[thread.length - 1];
-  if (!last || last.direction !== "outbound") return;
+  if (!last && !opts?.allowIfInbound) return;
+  if (last && last.direction !== "outbound" && !opts?.allowIfInbound) return;
 
   await cancelAiNudgeFollowups(leadId);
 
+  const delays = opts?.delaysMin?.length ? opts.delaysMin : AI_NUDGE_DELAYS_MIN;
   const start = Date.now();
-  const rows = AI_NUDGE_DELAYS_MIN.map((mins, i) => ({
+  const rows = delays.map((mins, i) => ({
     lead_id: leadId,
     sequence: AI_NUDGE_SEQUENCE,
     step: i + 1,
@@ -69,7 +83,7 @@ export async function scheduleAiSilenceNudges(leadId: string): Promise<void> {
   }
 
   // Constraint not migrated yet — stash on unused hot_sms steps 10–12
-  const fallback = AI_NUDGE_DELAYS_MIN.map((mins, i) => ({
+  const fallback = delays.map((mins, i) => ({
     lead_id: leadId,
     sequence: "hot_sms",
     step: 10 + i,
