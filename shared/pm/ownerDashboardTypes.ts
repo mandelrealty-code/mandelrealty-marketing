@@ -58,6 +58,10 @@ export type OwnerEarningsSnapshot = {
 
 export type OwnerDashboardPayload = {
   linked: boolean;
+  /** Hospitable listing is linked and calendar/reservation data has come through. */
+  synced: boolean;
+  /** Company knowledge docs are indexed so Ask MRG can answer. */
+  kb_ready: boolean;
   setup: OwnerSetupStep[];
   earnings: OwnerEarningsSnapshot | null;
 };

@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type InputHTMLAttributes, type ReactNode } from "react";
 import { getDocument, GlobalWorkerOptions, version } from "pdfjs-dist";
 import type { SignField } from "../../shared/pm/signFields";
 
@@ -71,7 +71,7 @@ export function PdfPages({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6 pt-4">
       {canvases.map((c) => (
         <div
           key={c.page}
@@ -94,4 +94,36 @@ export function fieldStyle(f: SignField): CSSProperties {
     width: `${f.w * 100}%`,
     height: `${f.h * 100}%`,
   };
+}
+
+export function PartyChip({
+  party,
+  locked,
+  hostLabel = "Host",
+}: {
+  party: SignField["party"];
+  locked?: boolean;
+  hostLabel?: string;
+}) {
+  const mrg = party === "mrg";
+  return (
+    <div
+      className={`pointer-events-none absolute -top-4 left-0 whitespace-nowrap text-[8px] font-bold uppercase tracking-wide ${
+        mrg ? "text-[#4ea882]" : "text-[#8a6a28]"
+      }`}
+    >
+      {mrg ? "MRG" : hostLabel}
+      {locked ? " · locked" : ""}
+    </div>
+  );
+}
+
+export function FittedFieldInput(props: InputHTMLAttributes<HTMLInputElement>) {
+  const { className = "", ...rest } = props;
+  return (
+    <input
+      {...rest}
+      className={`h-full w-full min-w-0 whitespace-nowrap bg-transparent px-1 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] [font-size:clamp(8px,42cqh,13px)] ${className}`}
+    />
+  );
 }

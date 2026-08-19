@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { PdfPages, fieldStyle } from "../../lib/pdfPages";
+import { FittedFieldInput, fieldStyle, PartyChip, PdfPages } from "../../lib/pdfPages";
 import { SignaturePad } from "../../lib/SignaturePad";
 import {
   fieldLabel,
-  hostFields,
+  firstNameOf,
   todayIsoDate,
   type SignField,
 } from "../../../shared/pm/signFields";
@@ -27,32 +27,41 @@ export function InPdfSigner({
     fields: SignField[];
   }) => void;
 }) {
-  const host = hostFields(fields);
   const [draft, setDraft] = useState<SignField[]>(() =>
-    host.map((f) => ({
-      ...f,
-      value:
-        f.value ||
-        (f.type === "date" ? todayIsoDate() : f.type === "name" ? signerHint : ""),
-    })),
+    fields.map((f) => {
+      if (f.party === "mrg") return { ...f };
+      return {
+        ...f,
+        value:
+          f.value ||
+          (f.type === "date" ? todayIsoDate() : f.type === "name" ? signerHint : ""),
+      };
+    }),
   );
   const [name, setName] = useState(signerHint);
   const [signingId, setSigningId] = useState<string | null>(null);
+  const hostFirst = firstNameOf(signerHint) || "Host";
 
-  const patch = (id: string, next: Partial<SignField>) => {
-    setDraft((prev) => prev.map((f) => (f.id === id ? { ...f, ...next } : f)));
+  const patchHost = (id: string, next: Partial<SignField>) => {
+    setDraft((prev) =>
+      prev.map((f) => (f.id === id && f.party !== "mrg" ? { ...f, ...next } : f)),
+    );
   };
 
-  const primarySig = draft.find((f) => f.type === "signature" && f.signature_png);
-  const namesReady = draft
+  const host = draft.filter((f) => f.party !== "mrg");
+  const primarySig = host.find((f) => f.type === "signature" && f.signature_png);
+  const namesReady = host
     .filter((f) => f.type === "name" || f.type === "text")
     .every((f) => (f.value || "").trim().length > 0);
-  const sigsReady = draft
+  const sigsReady = host
     .filter((f) => f.type === "signature")
     .every((f) => Boolean(f.signature_png));
-  const filled = sigsReady && namesReady && Boolean(primarySig || !draft.some((f) => f.type === "signature"));
+  const filled =
+    sigsReady &&
+    namesReady &&
+    Boolean(primarySig || !host.some((f) => f.type === "signature"));
   const signatureName =
-    draft.find((f) => f.type === "name" && f.value?.trim())?.value?.trim() || name.trim();
+    host.find((f) => f.type === "name" && f.value?.trim())?.value?.trim() || name.trim();
 
   return (
     <div className="flex flex-col gap-4">
@@ -60,53 +69,63 @@ export function InPdfSigner({
         {(page) => (
           <div className="absolute inset-0">
             {draft
-              .filter((f) => f.page === page)
+              .filter((f) => f.page === page && f.type !== "checkbox")
               .map((f) => {
+                const isMrg = f.party === "mrg";
                 const isSig = f.type === "signature";
                 return (
                   <div
                     key={f.id}
                     style={fieldStyle(f)}
-                    className={
-                      isSig
-                        ? "flex items-center overflow-hidden rounded-[2px] border-2 border-dashed border-[#c4a35a] bg-[#c4a35a]/12"
-                        : "flex items-center overflow-hidden rounded-[2px] border border-[#c4a35a]/70 bg-white/80"
-                    }
+                    className={`@container overflow-visible rounded-[2px] border [container-type:size] ${
+                      isMrg
+                        ? "pointer-events-none border-[#4ea882]/70 bg-transparent"
+                        : isSig
+                          ? "border-2 border-dashed border-[#c4a35a] bg-[#c4a35a]/12"
+                          : "border-[#c4a35a]/70 bg-white/80"
+                    }`}
                   >
-                    {isSig ? (
-                      <button
-                        type="button"
-                        className="h-full w-full cursor-pointer"
-                        onClick={() => {
-                          setName(signatureName || signerHint);
-                          setSigningId(f.id);
-                        }}
-                      >
-                        {f.signature_png ? (
-                          <img
-                            src={f.signature_png}
-                            alt="Signature"
-                            className="h-full w-full object-contain"
-                          />
-                        ) : (
-                          <span className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5a4a28]">
-                            Tap to sign
-                          </span>
-                        )}
-                      </button>
+                    <PartyChip party={f.party} locked={isMrg} hostLabel={hostFirst} />
+                    {isMrg ? (
+                      <div className="h-full w-full" />
                     ) : (
-                      <input
-                        value={f.value || ""}
-                        placeholder={fieldLabel(f.type)}
-                        onClick={(e) => e.stopPropagation()}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          patch(f.id, { value });
-                          if (f.type === "name") setName(value);
-                        }}
-                        className="h-full w-full cursor-text bg-transparent px-1.5 text-[12px] font-medium text-[#1a1a19] outline-none placeholder:text-[#8a7a58]"
-                      />
+                      <div className="flex h-full min-w-0 items-center overflow-hidden rounded-[1px]">
+                        {isSig ? (
+                          <button
+                            type="button"
+                            className="h-full w-full min-w-0 cursor-pointer"
+                            onClick={() => {
+                              setName(signatureName || signerHint);
+                              setSigningId(f.id);
+                            }}
+                          >
+                            {f.signature_png ? (
+                              <img
+                                src={f.signature_png}
+                                alt="Signature"
+                                className="h-full w-full object-contain"
+                              />
+                            ) : (
+                              <span className="block truncate px-1 text-center font-semibold uppercase tracking-wide text-[#5a4a28] [font-size:clamp(7px,38cqh,11px)]">
+                                Tap to sign
+                              </span>
+                            )}
+                          </button>
+                        ) : (
+                          <FittedFieldInput
+                            value={f.value || ""}
+                            placeholder={fieldLabel(f.type)}
+                            inputMode={f.type === "date" ? "numeric" : undefined}
+                            onClick={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              patchHost(f.id, { value });
+                              if (f.type === "name") setName(value);
+                            }}
+                          />
+                        )}
+                      </div>
                     )}
                   </div>
                 );
@@ -123,6 +142,7 @@ export function InPdfSigner({
           onApply={(png) => {
             setDraft((prev) =>
               prev.map((f) => {
+                if (f.party === "mrg") return f;
                 if (f.type !== "signature") {
                   if (f.type === "name" && !f.value?.trim()) {
                     return { ...f, value: name.trim() };
@@ -149,7 +169,7 @@ export function InPdfSigner({
           onFinish({
             signatureName,
             signaturePng: primarySig?.signature_png || "",
-            fields: draft,
+            fields: host,
           });
         }}
         className={`w-full py-[17px] text-[15px] font-bold ${
@@ -161,7 +181,7 @@ export function InPdfSigner({
         {busy ? "Signing…" : "Finish signing"}
       </button>
       <p className="text-center text-[12px] text-[#6f6a65]">
-        Only the dashed signature box opens the drawing pad. Name and date are typed, not signed.
+        Fill only {hostFirst}’s boxes. MRG signature, name, and date stay locked.
       </p>
     </div>
   );

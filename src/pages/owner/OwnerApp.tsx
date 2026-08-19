@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { InPdfSigner } from "./InPdfSigner";
-import { MrgMark, PreviewBanner } from "./OwnerChrome";
+import { MrgMark, PortalHeroPlaceholder, PreviewBanner } from "./OwnerChrome";
 import { OwnerDashboard } from "./OwnerDashboard";
 import type { OwnerDashboardPayload } from "../../../shared/pm/ownerDashboardTypes";
 import type { SignField } from "../../../shared/pm/signFields";
@@ -341,7 +341,7 @@ export function OwnerApp() {
           {cover ? (
             <img src={cover} alt="" className="h-full w-full object-cover" />
           ) : (
-            <div className="h-full w-full bg-gradient-to-br from-[#1c1c1c] to-[#0a0a0a]" />
+            <PortalHeroPlaceholder />
           )}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[120px] bg-gradient-to-b from-transparent to-[#0c0c0c] lg:hidden" />
           <div className="absolute left-6 top-6 lg:hidden">
@@ -466,7 +466,7 @@ export function OwnerApp() {
     return (
       <div className="flex min-h-screen flex-col bg-[#0a0a0a] text-[#f5f5f5]">
         {isPreview ? <PreviewBanner /> : null}
-        <header className="flex items-center justify-between border-b border-white/9 bg-[#0c0c0c] px-5 py-4 lg:px-10">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-white/9 bg-[#0c0c0c] px-4 py-3 sm:px-5 lg:px-10">
           <div className="flex items-center gap-6">
             <MrgMark />
             <div className="hidden text-sm text-[#9a9590] lg:block">
@@ -475,7 +475,7 @@ export function OwnerApp() {
           </div>
           <div className="text-xs text-[#6f6a65] lg:text-sm">{boot.awaiting_contract.filename}</div>
         </header>
-        <div className="flex-1 overflow-auto p-4 lg:p-8">
+        <div className="flex-1 overflow-auto px-3 py-6 sm:p-8">
           <div className="mx-auto max-w-[820px]">
             {pdfUrl ? (
               <InPdfSigner
@@ -587,6 +587,9 @@ export function OwnerApp() {
         propertyLabel={propertyLabel}
         cover={cover}
         signedOn={boot?.signed_contracts?.[0]?.signed_on}
+        portalSigned={Boolean(
+          boot?.signed_contracts?.some((c) => c.signature_name?.trim()),
+        )}
         dashboard={boot?.dashboard ?? null}
         awaiting={Boolean(boot?.awaiting_contract)}
         preview={isPreview}

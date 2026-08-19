@@ -1,5 +1,5 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import type { SignField } from "./signFields.js";
+import { PDFDocument, StandardFonts, rgb, LineCapStyle } from "pdf-lib";
+import { isCheckboxChecked, type SignField } from "./signFields.js";
 
 function decodePngDataUrl(raw: string | undefined | null): Buffer | null {
   if (!raw?.trim()) return null;
@@ -22,6 +22,7 @@ function textForField(
 ): string {
   if (field.value?.trim()) return field.value.trim();
   if (field.type === "date") return fallbacks.signedOnLabel;
+  if (field.type === "checkbox") return "";
   if (field.type === "name" || field.type === "text" || field.type === "signature") {
     return fallbacks.signerName.trim();
   }
@@ -60,9 +61,43 @@ export async function stampSignedPdf(input: {
     if (!page) continue;
     const { width, height } = page.getSize();
     const x = clamp(field.x, 0, 1) * width;
-    const boxH = clamp(field.h, 0.015, 1) * height;
-    const boxW = clamp(field.w, 0.03, 1) * width;
+    const minFrac = field.type === "checkbox" ? 0.012 : 0.015;
+    const boxH = clamp(field.h, minFrac, 1) * height;
+    const boxW = clamp(field.w, field.type === "checkbox" ? 0.012 : 0.03, 1) * width;
     const y = height - clamp(field.y, 0, 1) * height - boxH;
+
+    if (field.type === "checkbox") {
+      const size = Math.min(boxW, boxH);
+      const ox = x + (boxW - size) / 2;
+      const oy = y + (boxH - size) / 2;
+      const stroke = Math.max(0.7, size * 0.08);
+      page.drawRectangle({
+        x: ox,
+        y: oy,
+        width: size,
+        height: size,
+        borderColor: gold,
+        borderWidth: stroke,
+      });
+      if (isCheckboxChecked(field.value)) {
+        const t = Math.max(1.1, size * 0.12);
+        page.drawLine({
+          start: { x: ox + size * 0.18, y: oy + size * 0.48 },
+          end: { x: ox + size * 0.42, y: oy + size * 0.22 },
+          thickness: t,
+          color: gold,
+          lineCap: LineCapStyle.Round,
+        });
+        page.drawLine({
+          start: { x: ox + size * 0.4, y: oy + size * 0.24 },
+          end: { x: ox + size * 0.84, y: oy + size * 0.78 },
+          thickness: t,
+          color: gold,
+          lineCap: LineCapStyle.Round,
+        });
+      }
+      continue;
+    }
 
     if (field.type === "signature") {
       const own = await embedPng(decodePngDataUrl(field.signature_png));

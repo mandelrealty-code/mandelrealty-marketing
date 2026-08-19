@@ -1,5 +1,6 @@
 /** Host-facing dashboard: setup hold until listing is linked, then earnings. */
 
+import { knowledgeBaseReady } from "../knowledgeStore.js";
 import { isExcludedReservationStatus } from "./financialBreakdown.js";
 import { completeOnboardingTasks } from "./onboardingTasks.js";
 import { listPmProperties } from "./propertyStore.js";
@@ -187,6 +188,7 @@ export async function buildOwnerDashboard(clientId: string): Promise<OwnerDashbo
   }
 
   const synced = Boolean(linked && (portfolio?.fleet_last_synced_at || (portfolio?.reservation_count ?? 0) > 0));
+  const kbReady = await knowledgeBaseReady().catch(() => false);
   await completeOnboardingTasks({
     clientId,
     listingLinked: linked,
@@ -195,7 +197,7 @@ export async function buildOwnerDashboard(clientId: string): Promise<OwnerDashbo
 
   const setup = setupSteps(linked, synced);
   if (!linked || !portfolio) {
-    return { linked: false, setup, earnings: null };
+    return { linked: false, synced, kb_ready: kbReady, setup, earnings: null };
   }
 
   const unitCount = Math.max(linkedProps.length, 1);
@@ -272,6 +274,8 @@ export async function buildOwnerDashboard(clientId: string): Promise<OwnerDashbo
 
   return {
     linked: true,
+    synced,
+    kb_ready: kbReady,
     setup,
     earnings: {
       year_month: yearMonth,

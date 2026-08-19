@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { PdfPages, fieldStyle } from "../../lib/pdfPages";
+import { PdfPages, fieldStyle, FittedFieldInput, PartyChip } from "../../lib/pdfPages";
 import { SignaturePad } from "../../lib/SignaturePad";
 import {
   defaultFieldSize,
   fieldLabel,
+  firstNameOf,
+  isCheckboxChecked,
+  minFieldSize,
   newFieldId,
   todayIsoDate,
   type SignField,
@@ -16,8 +19,6 @@ type Drag =
   | { kind: "move"; id: string; sx: number; sy: number; orig: SignField }
   | { kind: "resize"; id: string; handle: Handle; sx: number; sy: number; orig: SignField };
 
-const MIN_W = 0.05;
-const MIN_H = 0.028;
 const MOVE_THRESHOLD_PX = 4;
 
 function clamp01(n: number) {
@@ -25,8 +26,9 @@ function clamp01(n: number) {
 }
 
 function clampField(f: SignField): SignField {
-  const w = Math.min(1, Math.max(MIN_W, f.w));
-  const h = Math.min(1, Math.max(MIN_H, f.h));
+  const min = minFieldSize(f.type);
+  const w = Math.min(1, Math.max(min.w, f.w));
+  const h = Math.min(1, Math.max(min.h, f.h));
   return {
     ...f,
     w,
@@ -48,15 +50,16 @@ function resizeByDelta(
   let top = orig.y;
   let bottom = orig.y + orig.h;
 
+  const min = minFieldSize(orig.type);
   if (handle.includes("e")) right = orig.x + orig.w + dx;
   if (handle.includes("w")) left = orig.x + dx;
   if (handle.includes("s")) bottom = orig.y + orig.h + dy;
   if (handle.includes("n")) top = orig.y + dy;
 
-  if (handle.includes("e")) right = Math.min(1, Math.max(left + MIN_W, right));
-  if (handle.includes("w")) left = Math.max(0, Math.min(right - MIN_W, left));
-  if (handle.includes("s")) bottom = Math.min(1, Math.max(top + MIN_H, bottom));
-  if (handle.includes("n")) top = Math.max(0, Math.min(bottom - MIN_H, top));
+  if (handle.includes("e")) right = Math.min(1, Math.max(left + min.w, right));
+  if (handle.includes("w")) left = Math.max(0, Math.min(right - min.w, left));
+  if (handle.includes("s")) bottom = Math.min(1, Math.max(top + min.h, bottom));
+  if (handle.includes("n")) top = Math.max(0, Math.min(bottom - min.h, top));
 
   return {
     ...orig,
@@ -72,11 +75,13 @@ export function SignFieldPlacer({
   fields,
   onChange,
   mrgNameHint = "",
+  hostNameHint = "",
 }: {
   pdfUrl: string;
   fields: SignField[];
   onChange: (next: SignField[]) => void;
   mrgNameHint?: string;
+  hostNameHint?: string;
 }) {
   const [tool, setTool] = useState<SignFieldType>("signature");
   const [party, setParty] = useState<SignParty>("host");
@@ -88,6 +93,7 @@ export function SignFieldPlacer({
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const fieldsRef = useRef(fields);
   const overlayByPage = useRef<Map<number, HTMLDivElement>>(new Map());
+  const hostFirst = firstNameOf(hostNameHint) || "Host";
 
   fieldsRef.current = fields;
 
@@ -126,7 +132,7 @@ export function SignFieldPlacer({
     const field = clampField({
       id: newFieldId(),
       type: tool,
-      party,
+      party: tool === "checkbox" ? "mrg" : party,
       page,
       x,
       y,
@@ -134,6 +140,7 @@ export function SignFieldPlacer({
       h: size.h,
       ...(tool === "date" && party === "mrg" ? { value: todayIsoDate() } : {}),
       ...(tool === "name" && party === "mrg" && mrgNameHint ? { value: mrgNameHint } : {}),
+      ...(tool === "checkbox" ? { value: "1" } : {}),
     });
     onChange([...fieldsRef.current, field]);
     setSelected(field.id);
@@ -223,7 +230,7 @@ export function SignFieldPlacer({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="z-20 shrink-0 border-b border-white/8 bg-[#0a0a0a] px-4 py-3">
+      <div className="z-20 shrink-0 border-b border-white/8 bg-[#0a0a0a] px-3 py-2.5 sm:px-4 sm:py-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f6a65]">
           Who
@@ -232,22 +239,28 @@ export function SignFieldPlacer({
           <button
             key={p}
             type="button"
-            onClick={() => setParty(p)}
+            onClick={() => {
+              if (p === "host" && tool === "checkbox") return;
+              setParty(p);
+            }}
             className={`rounded-md px-3 py-1.5 text-[12.5px] font-semibold ${
-              party === p
+              (tool === "checkbox" ? "mrg" : party) === p
                 ? "bg-[#c4a35a] text-[#0a0a0a]"
                 : "border border-white/12 text-[#9a9590]"
-            }`}
+            } ${p === "host" && tool === "checkbox" ? "cursor-not-allowed opacity-40" : ""}`}
           >
-            {p === "host" ? "Host fills later" : "MRG fills now"}
+            {p === "host" ? `${hostFirst} fills later` : "MRG fills now"}
           </button>
         ))}
         <span className="mx-1 h-4 w-px bg-white/12" />
-        {(["signature", "name", "date", "text"] as const).map((t) => (
+        {(["signature", "name", "date", "text", "checkbox"] as SignFieldType[]).map((t) => (
           <button
             key={t}
             type="button"
-            onClick={() => setTool(t)}
+            onClick={() => {
+              setTool(t);
+              if (t === "checkbox") setParty("mrg");
+            }}
             className={`rounded-md px-3 py-1.5 text-[12.5px] font-semibold ${
               tool === t
                 ? "bg-[#c4a35a] text-[#0a0a0a]"
@@ -258,11 +271,13 @@ export function SignFieldPlacer({
           </button>
         ))}
         <span className="text-[12px] text-[#6f6a65]">
-          {selected
+            {selected
             ? "Selected · drag gold corners · × or Delete"
+            : tool === "checkbox"
+              ? "Click the PDF to drop an MRG check · click a box to toggle"
             : fields.some((f) => f.type === "signature" && f.party !== "mrg")
               ? `Click a box to select · ${fields.length} placed`
-              : "Still need a Host Sign here box to send"}
+              : `Still need a Sign here box for ${hostFirst}`}
         </span>
         {selected ? (
           <button
@@ -276,7 +291,7 @@ export function SignFieldPlacer({
       </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+      <div className="min-h-0 flex-1 overflow-auto px-3 py-5 sm:px-4">
       <PdfPages url={pdfUrl}>
         {(page) => (
           <div
@@ -304,12 +319,19 @@ export function SignFieldPlacer({
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelected(f.id);
+                      if (dragging.current) return;
+                      if (f.type === "checkbox") {
+                        patch(f.id, {
+                          value: isCheckboxChecked(f.value) ? "" : "1",
+                        });
+                        return;
+                      }
                       if (f.type === "signature" && isMrg && !f.signature_png) {
                         setPadName(f.value || mrgNameHint);
                         setSigningId(f.id);
                       }
                     }}
-                    className={`absolute touch-none select-none overflow-visible rounded-[3px] border-2 ${
+                    className={`@container absolute touch-none select-none overflow-visible rounded-[3px] border-2 [container-type:size] ${
                       active
                         ? "z-20 border-[#c4a35a] bg-[#c4a35a]/18 shadow-[0_0_0_3px_rgba(196,163,90,0.35)]"
                         : isMrg
@@ -317,9 +339,7 @@ export function SignFieldPlacer({
                           : "border-[#c4a35a]/80 bg-[#c4a35a]/12"
                     }`}
                   >
-                    <div className="pointer-events-none absolute left-1 top-0.5 text-[8px] font-bold uppercase tracking-wide text-[#5a4a28]">
-                      {isMrg ? "MRG" : "Host"}
-                    </div>
+                    <PartyChip party={f.party} hostLabel={hostFirst} />
                     {active ? (
                       <button
                         type="button"
@@ -330,13 +350,28 @@ export function SignFieldPlacer({
                           e.stopPropagation();
                           remove(f.id);
                         }}
-                        className="absolute left-1/2 z-40 flex h-5 -translate-x-1/2 -translate-y-[130%] items-center rounded-full bg-[#cf7f7b] px-2 text-[10px] font-bold leading-none text-[#0a0a0a] shadow"
+                        className="absolute left-1/2 z-40 flex h-5 -translate-x-1/2 -translate-y-[165%] items-center rounded-full bg-[#cf7f7b] px-2 text-[10px] font-bold leading-none text-[#0a0a0a] shadow"
                       >
                         Delete
                       </button>
                     ) : null}
-                    <div className="flex h-full items-center overflow-hidden rounded-[1px]">
-                      {f.type === "signature" ? (
+                    <div className="flex h-full min-w-0 items-center overflow-hidden rounded-[1px]">
+                      {f.type === "checkbox" ? (
+                        <div className="mx-auto flex h-[88%] w-[88%] items-center justify-center rounded-[2px] border-2 border-[#1a1408] bg-white/90">
+                          {isCheckboxChecked(f.value) ? (
+                            <svg viewBox="0 0 16 16" className="h-[85%] w-[85%]" aria-hidden>
+                              <path
+                                d="M2.8 8.2 L6.3 11.6 L13.2 3.8"
+                                fill="none"
+                                stroke="#1a1408"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          ) : null}
+                        </div>
+                      ) : f.type === "signature" ? (
                         f.signature_png ? (
                           <img
                             src={f.signature_png}
@@ -344,12 +379,12 @@ export function SignFieldPlacer({
                             className="h-full w-full object-contain p-0.5"
                           />
                         ) : (
-                          <span className="w-full px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#5a4a28]">
-                            {isMrg ? "Click to sign" : "Host signs here"}
+                          <span className="w-full truncate px-1 text-center font-semibold uppercase tracking-wide text-[#5a4a28] [font-size:clamp(7px,38cqh,11px)]">
+                            {isMrg ? "Tap to sign" : `${hostFirst} signs later`}
                           </span>
                         )
-                      ) : (
-                        <input
+                      ) : isMrg ? (
+                        <FittedFieldInput
                           value={f.value || ""}
                           placeholder={
                             f.type === "date"
@@ -364,8 +399,16 @@ export function SignFieldPlacer({
                           }}
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => patch(f.id, { value: e.target.value })}
-                          className="h-full w-full bg-transparent px-1.5 pt-2.5 text-[11px] text-[#1a1408] outline-none placeholder:text-[#8a7a58]"
                         />
+                      ) : (
+                        <span className="w-full truncate px-1 text-[#5a4a28] [font-size:clamp(7px,38cqh,12px)]">
+                          {f.value ||
+                            (f.type === "date"
+                              ? `${hostFirst}'s date`
+                              : f.type === "name"
+                                ? `${hostFirst}'s name`
+                                : `${hostFirst} fills later`)}
+                        </span>
                       )}
                     </div>
                     {active

@@ -24,7 +24,6 @@ import {
 import {
   fieldsForTemplate,
   hasHostSignature,
-  hostFields,
   mrgFields,
   normalizeSignFields,
   todayIsoDate,
@@ -1070,7 +1069,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             mime: pdf.mime,
             buffer,
             template_id: pdf.template_id,
-            sign_fields: hostFields(signFields),
+            sign_fields: signFields,
           });
 
           const mail = await sendOwnerInviteEmail({

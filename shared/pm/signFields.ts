@@ -1,4 +1,4 @@
-export type SignFieldType = "signature" | "name" | "date" | "text";
+export type SignFieldType = "signature" | "name" | "date" | "text" | "checkbox";
 export type SignParty = "host" | "mrg";
 
 export type SignField = {
@@ -24,26 +24,42 @@ export function newFieldId(): string {
 }
 
 export function defaultFieldSize(type: SignFieldType): { w: number; h: number } {
-  if (type === "signature") return { w: 0.32, h: 0.07 };
-  if (type === "date") return { w: 0.18, h: 0.045 };
-  if (type === "text") return { w: 0.28, h: 0.042 };
-  return { w: 0.28, h: 0.045 };
+  if (type === "signature") return { w: 0.36, h: 0.08 };
+  if (type === "date") return { w: 0.3, h: 0.055 };
+  if (type === "text") return { w: 0.32, h: 0.05 };
+  if (type === "checkbox") return { w: 0.032, h: 0.032 };
+  return { w: 0.32, h: 0.05 };
+}
+
+export function minFieldSize(type: SignFieldType): { w: number; h: number } {
+  if (type === "checkbox") return { w: 0.02, h: 0.02 };
+  if (type === "date") return { w: 0.22, h: 0.042 };
+  if (type === "signature") return { w: 0.18, h: 0.05 };
+  return { w: 0.14, h: 0.036 };
 }
 
 export function fieldLabel(type: SignFieldType): string {
   if (type === "signature") return "Sign here";
   if (type === "name") return "Printed name";
   if (type === "date") return "Date";
+  if (type === "checkbox") return "Check";
   return "Text";
 }
 
+export function isCheckboxChecked(value: string | undefined): boolean {
+  const v = (value || "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "checked" || v === "x" || v === "yes";
+}
+
 function asType(v: unknown): SignFieldType | null {
-  if (v === "signature" || v === "name" || v === "date" || v === "text") return v;
+  if (v === "signature" || v === "name" || v === "date" || v === "text" || v === "checkbox") {
+    return v;
+  }
   return null;
 }
 
 function asParty(v: unknown): SignParty {
-  return v === "mrg" ? "mrg" : "host";
+  return String(v || "").trim().toLowerCase() === "mrg" ? "mrg" : "host";
 }
 
 export function normalizeSignFields(raw: unknown): SignField[] {
@@ -63,15 +79,19 @@ export function normalizeSignFields(raw: unknown): SignField[] {
     if (![x, y, w, h].every((n) => Number.isFinite(n))) continue;
     const value = typeof r.value === "string" ? r.value : "";
     const png = typeof r.signature_png === "string" ? r.signature_png : "";
+    const minW = type === "date" ? 0.2 : type === "checkbox" ? 0.018 : 0.03;
+    const minH = type === "date" ? 0.04 : type === "checkbox" ? 0.018 : 0.015;
+    const boxW = Math.min(1, Math.max(minW, w));
+    const boxH = Math.min(1, Math.max(minH, h));
     out.push({
       id: typeof r.id === "string" && r.id ? r.id : newFieldId(),
       type,
-      party: asParty(r.party),
+      party: type === "checkbox" ? "mrg" : asParty(r.party),
       page: Math.floor(page),
-      x: Math.min(1, Math.max(0, x)),
-      y: Math.min(1, Math.max(0, y)),
-      w: Math.min(1, Math.max(0.03, w)),
-      h: Math.min(1, Math.max(0.015, h)),
+      x: Math.min(1 - boxW, Math.max(0, x)),
+      y: Math.min(1 - boxH, Math.max(0, y)),
+      w: boxW,
+      h: boxH,
       ...(value ? { value } : {}),
       ...(png ? { signature_png: png } : {}),
     });
@@ -95,6 +115,21 @@ export function mrgFields(fields: SignField[]): SignField[] {
   return fields.filter((f) => f.party === "mrg");
 }
 
+/** Host may change only their own values — never geometry or MRG boxes. */
+export function mergeHostFieldValues(stored: SignField[], incoming: SignField[]): SignField[] {
+  const byId = new Map(incoming.map((f) => [f.id, f]));
+  return stored.map((f) => {
+    if (f.party === "mrg") return f;
+    const next = byId.get(f.id);
+    if (!next) return f;
+    return {
+      ...f,
+      value: next.value || f.value,
+      signature_png: next.signature_png || f.signature_png,
+    };
+  });
+}
+
 /** Positions only — do not persist drawn signatures on the template. */
 export function fieldsForTemplate(fields: SignField[]): SignField[] {
   return normalizeSignFields(fields).map((f) => ({
@@ -111,4 +146,10 @@ export function fieldsForTemplate(fields: SignField[]): SignField[] {
 
 export function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+export function firstNameOf(full: string | null | undefined): string {
+  const t = (full || "").trim();
+  if (!t) return "";
+  return t.split(/\s+/)[0] || "";
 }

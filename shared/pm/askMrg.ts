@@ -417,7 +417,7 @@ export async function answerAskMrg(input: {
     firstName: input.user.first_name || "there",
     signedOn: signed[0]?.signed_on ?? null,
     awaiting: Boolean(awaiting),
-    dashboard: dashboard ?? { linked: false, setup: [], earnings: null },
+    dashboard: dashboard ?? { linked: false, synced: false, kb_ready: false, setup: [], earnings: null },
   };
 
   await persist(

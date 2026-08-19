@@ -16,10 +16,10 @@ import {
   type NeedsYouReason,
 } from "../../shared/crmInboxTypes";
 import {
-  readStoredAdminMode,
   writeStoredAdminMode,
   type AdminProductMode,
 } from "./clients/mode";
+import { emptyAdminRoute, useAdminRoute } from "../lib/adminRoute";
 import { ModeSwitcher, MrgMark } from "./clients/ui";
 import { DraftCard, type PendingDraft } from "./crm/DraftCard";
 import { PlaybookBlock } from "./crm/PlaybookBlock";
@@ -248,21 +248,22 @@ function fileToBase64(file: File): Promise<string> {
 
 export function AdminPage() {
   const isLg = useIsLg();
+  const [route, setRoute] = useAdminRoute();
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
-  const [productMode, setProductMode] = useState<AdminProductMode>(() =>
-    typeof window !== "undefined" ? readStoredAdminMode() : "crm",
-  );
+  const [productMode, setProductMode] = useState<AdminProductMode>(() => route.mode);
 
-  const [tab, setTab] = useState<Tab>("contacts");
+  const [tab, setTab] = useState<Tab>(() => (route.mode === "crm" ? route.crmTab : "contacts"));
   const [leads, setLeads] = useState<Lead[]>([]);
   const [leadStats, setLeadStats] = useState({ total: 0, booked: 0, closed: 0 });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    route.mode === "crm" ? route.leadId : null,
+  );
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [filterPath, setFilterPath] = useState<OfferPath | "all">("all");
   const [filterStage, setFilterStage] = useState<LeadStatus | "all">("all");
@@ -346,7 +347,6 @@ export function AdminPage() {
   const [preCallSmsByLead, setPreCallSmsByLead] = useState<Record<string, true>>(
     {},
   );
-  const deepLinkConsumed = useRef(false);
 
   const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
   const [docsError, setDocsError] = useState<string | null>(null);
@@ -637,7 +637,11 @@ export function AdminPage() {
     setCallNotes(lead.call_notes || "");
     setWhatsNext(lead.whats_next || "");
     setSaveMsg(null);
-    setSmsDraft("");
+    try {
+      setSmsDraft(sessionStorage.getItem(`mrg_sms_${selectedId}`) || "");
+    } catch {
+      setSmsDraft("");
+    }
     loadFollowups(selectedId).catch(() => {
       setFollowups([]);
       setSmsMessages([]);
@@ -665,6 +669,21 @@ export function AdminPage() {
     // Only when opening a different lead
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: open once per id
   }, [selectedId, loadFollowups]);
+
+  const smsLeadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedId) return;
+    if (smsLeadRef.current !== selectedId) {
+      smsLeadRef.current = selectedId;
+      return;
+    }
+    try {
+      if (smsDraft) sessionStorage.setItem(`mrg_sms_${selectedId}`, smsDraft);
+      else sessionStorage.removeItem(`mrg_sms_${selectedId}`);
+    } catch {
+      /* ignore */
+    }
+  }, [selectedId, smsDraft]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -763,29 +782,44 @@ export function AdminPage() {
     sheetTouchStartY.current = null;
   };
 
+  useEffect(() => {
+    setProductMode(route.mode);
+    if (route.mode !== "crm") return;
+    setTab(route.crmTab);
+    setSelectedId(route.leadId);
+  }, [route]);
+
+  const goCrmTab = (id: Tab) => {
+    setRoute(
+      {
+        ...emptyAdminRoute("crm"),
+        crmTab: id,
+        leadId: id === "contacts" ? selectedId : null,
+      },
+      { push: true },
+    );
+  };
+
+  const switchProduct = (mode: AdminProductMode) => {
+    writeStoredAdminMode(mode);
+    setRoute(emptyAdminRoute(mode), { push: true });
+  };
+
   const openLead = (id: string) => {
     setDetailsOpen(false);
     setActionLeadId(null);
-    setSelectedId(id);
+    setRoute(
+      { ...emptyAdminRoute("crm"), crmTab: "contacts", leadId: id },
+      { push: true },
+    );
   };
   const closeLead = () => {
     setDetailsOpen(false);
-    setSelectedId(null);
+    setRoute(
+      { ...emptyAdminRoute("crm"), crmTab: "contacts", leadId: null },
+      { push: true },
+    );
   };
-
-  // Deep link: https://admin…/?lead=<uuid>
-  useEffect(() => {
-    if (!authed || deepLinkConsumed.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const leadParam = params.get("lead")?.trim();
-    if (!leadParam) return;
-    if (!leads.some((l) => l.id === leadParam)) return;
-    deepLinkConsumed.current = true;
-    openLead(leadParam);
-    params.delete("lead");
-    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
-    window.history.replaceState({}, "", next);
-  }, [authed, leads]);
 
   const saveOperatorCallbackPhone = async () => {
     setOperatorBusy(true);
@@ -1220,10 +1254,7 @@ export function AdminPage() {
       setPaste("");
       setPastePreview(null);
       await loadLeads(searchDebounced);
-      if (data.leadId) {
-        setSelectedId(data.leadId);
-        setTab("contacts");
-      }
+      if (data.leadId) openLead(data.leadId);
     } catch (err) {
       setPasteError(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -1442,10 +1473,9 @@ export function AdminPage() {
         }
       >
         <ClientsApp
-          onModeChange={(mode) => {
-            writeStoredAdminMode(mode);
-            setProductMode(mode);
-          }}
+          route={route}
+          setRoute={setRoute}
+          onModeChange={switchProduct}
         />
       </Suspense>
     );
@@ -2108,7 +2138,7 @@ export function AdminPage() {
             {leads.length === 0 && (
               <button
                 type="button"
-                onClick={() => setTab("settings")}
+                onClick={() => goCrmTab("settings")}
                 className="h-[42px] rounded-xl bg-[#c4a35a] px-[18px] text-[13.5px] font-bold text-[#14100a] hover:bg-[#dcc084]"
               >
                 Paste a lead
@@ -2666,10 +2696,7 @@ export function AdminPage() {
             </span>
             <ModeSwitcher
               mode="crm"
-              onChange={(mode) => {
-                writeStoredAdminMode(mode);
-                setProductMode(mode);
-              }}
+              onChange={switchProduct}
             />
           </div>
           <div className="flex items-center gap-2">
@@ -2678,7 +2705,7 @@ export function AdminPage() {
                 type="button"
                 onClick={() => {
                   setInboxChip("review");
-                  setTab("contacts");
+                  goCrmTab("contacts");
                 }}
                 className="hidden rounded-[7px] border border-[rgba(201,154,75,0.5)] px-3 py-1.5 text-[12px] font-bold text-[#c99a4b] sm:inline"
               >
@@ -2737,7 +2764,7 @@ export function AdminPage() {
               <button
                 key={id}
                 type="button"
-                onClick={() => setTab(id)}
+                onClick={() => goCrmTab(id)}
                 className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-[13.5px] ${
                   active
                     ? "bg-[#1c1c1c] font-bold text-[#c4a35a]"
@@ -2780,7 +2807,7 @@ export function AdminPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => setTab("settings")}
+                    onClick={() => goCrmTab("settings")}
                     className="h-[42px] shrink-0 rounded-xl bg-[#c4a35a] px-4 text-sm font-bold text-[#14100a] hover:bg-[#dcc084] lg:h-9 lg:px-3 lg:text-[12.5px]"
                   >
                     + Lead
@@ -3644,7 +3671,7 @@ export function AdminPage() {
               <button
                 key={id}
                 type="button"
-                onClick={() => setTab(id)}
+                onClick={() => goCrmTab(id)}
                 className="flex flex-col items-center gap-1.5 px-0 py-1.5 lg:w-[120px]"
               >
                 <span

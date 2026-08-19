@@ -4,6 +4,7 @@ import { openHostPortalPreview, pmGet, pmPost } from "./api";
 import { FieldLabel, GoldButton, TextInput } from "./ui";
 import { SignFieldPlacer } from "./SignFieldPlacer";
 import {
+  firstNameOf,
   hasHostSignature,
   mrgFields,
   normalizeSignFields,
@@ -44,6 +45,34 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function inviteDraftKey(clientId: string) {
+  return `mrg_invite_${clientId}`;
+}
+
+type InviteDraft = {
+  open: boolean;
+  step: "form" | "place";
+  templateId: string;
+  fields: SignField[];
+  name: string;
+  email: string;
+  phone: string;
+  kind: "existing" | "new";
+  saveAsTemplate: boolean;
+};
+
+function readInviteDraft(clientId: string): InviteDraft | null {
+  try {
+    const raw = sessionStorage.getItem(inviteDraftKey(clientId));
+    if (!raw) return null;
+    const d = JSON.parse(raw) as InviteDraft;
+    if (!d || typeof d !== "object") return null;
+    return d;
+  } catch {
+    return null;
+  }
+}
+
 export function PortalInviteControls({
   client,
   onError,
@@ -53,20 +82,27 @@ export function PortalInviteControls({
   onError: (msg: string) => void;
   onToast?: (msg: string) => void;
 }) {
+  const saved = readInviteDraft(client.id);
   const [status, setStatus] = useState<PortalStatus | null>(null);
-  const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<"form" | "place">("form");
+  const [open, setOpen] = useState(() => Boolean(saved?.open));
+  const [step, setStep] = useState<"form" | "place">(() =>
+    saved?.open && saved.step === "place" && saved.templateId ? "place" : "form",
+  );
   const [busy, setBusy] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [templateId, setTemplateId] = useState("");
+  const [templateId, setTemplateId] = useState(() => saved?.templateId || "");
   const [oneOff, setOneOff] = useState<File | null>(null);
-  const [name, setName] = useState(client.name);
-  const [email, setEmail] = useState(client.email);
-  const [phone, setPhone] = useState(client.phone);
-  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [name, setName] = useState(() => saved?.name || client.name);
+  const [email, setEmail] = useState(() => saved?.email || client.email);
+  const [phone, setPhone] = useState(() => saved?.phone || client.phone);
+  const [saveAsTemplate, setSaveAsTemplate] = useState(() => Boolean(saved?.saveAsTemplate));
   const [pdfUrl, setPdfUrl] = useState("");
-  const [fields, setFields] = useState<SignField[]>([]);
-  const [kind, setKind] = useState<"existing" | "new">("existing");
+  const [fields, setFields] = useState<SignField[]>(() =>
+    normalizeSignFields(saved?.fields),
+  );
+  const [kind, setKind] = useState<"existing" | "new">(() =>
+    saved?.kind === "new" ? "new" : "existing",
+  );
   const [signedFile, setSignedFile] = useState<File | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
 
@@ -78,6 +114,43 @@ export function PortalInviteControls({
   useEffect(() => {
     loadStatus().catch(() => setStatus(null));
   }, [loadStatus]);
+
+  useEffect(() => {
+    try {
+      const d: InviteDraft = {
+        open,
+        step,
+        templateId,
+        fields,
+        name,
+        email,
+        phone,
+        kind,
+        saveAsTemplate,
+      };
+      sessionStorage.setItem(inviteDraftKey(client.id), JSON.stringify(d));
+    } catch {
+      /* quota */
+    }
+  }, [open, step, templateId, fields, name, email, phone, kind, saveAsTemplate, client.id]);
+
+  useEffect(() => {
+    if (!open || step !== "place" || !templateId || pdfUrl) return;
+    let cancelled = false;
+    pmGet<{ url: string }>("contract_template_url", { id: templateId })
+      .then((data) => {
+        if (!cancelled && data.url) setPdfUrl(data.url);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setStep("form");
+          onError(e instanceof Error ? e.message : "Could not reopen the PDF.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, step, templateId, pdfUrl, onError]);
 
   useEffect(() => {
     if (!open) return;
@@ -136,6 +209,11 @@ export function PortalInviteControls({
       }>("portal_invite", body);
       setOpen(false);
       setSignedFile(null);
+      try {
+        sessionStorage.removeItem(inviteDraftKey(client.id));
+      } catch {
+        /* ignore */
+      }
       await loadStatus();
       if (res.email_sent) onToast?.(`Portal access sent · ${res.owner_url}`);
       else onToast?.(`Portal ready · email failed: ${res.email_error || "check Resend"}`);
@@ -146,15 +224,17 @@ export function PortalInviteControls({
     }
   };
 
+  const hostFirst = firstNameOf(name || client.name) || "the host";
+
   const sendBlocked = !hasHostSignature(fields)
-    ? "Place a Host “Sign here” box — that’s where they sign. Date and name boxes aren’t enough."
+    ? `Place a Sign here box for ${hostFirst} — that’s where they sign. Date and name boxes aren’t enough.`
     : mrgFields(fields).some((f) => f.type === "signature" && !f.signature_png)
       ? "Click each green MRG Sign here box and draw your signature first."
       : null;
 
   const send = async () => {
     if (!hasHostSignature(fields)) {
-      onError("Place at least one Host signature box — that’s where the client signs.");
+      onError(`Place at least one signature box for ${hostFirst} — that’s where they sign.`);
       return;
     }
     if (mrgFields(fields).some((f) => f.type === "signature" && !f.signature_png)) {
@@ -191,6 +271,11 @@ export function PortalInviteControls({
       setStep("form");
       setOneOff(null);
       setFields([]);
+      try {
+        sessionStorage.removeItem(inviteDraftKey(client.id));
+      } catch {
+        /* ignore */
+      }
       await loadStatus();
       if (res.email_sent) onToast?.(`Invite sent · ${res.owner_url}`);
       else onToast?.(`Portal ready · email failed: ${res.email_error || "check Resend"}`);
@@ -301,7 +386,7 @@ export function PortalInviteControls({
           <p className="text-[13px] text-[#9a9590]">
             {kind === "existing"
               ? "Already signed offline. Sends portal login only — they will not be asked to sign again. Optionally attach their signed PDF for Documents."
-              : "New client. Place Host boxes for them, and MRG boxes for you to sign/type before sending."}
+              : `New client. Place boxes for ${hostFirst} to fill later, and MRG boxes for you to sign/type before sending.`}
           </p>
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Name</FieldLabel>
@@ -393,16 +478,16 @@ export function PortalInviteControls({
 
       {open && step === "place" && pdfUrl ? (
         <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0a0a] text-[#f5f5f5]">
-          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-            <div>
+          <div className="flex flex-col gap-3 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
               <div className="text-[15px] font-semibold">Prepare agreement</div>
-              <div className="text-[12.5px] text-[#6f6a65]">
-                Host boxes = they fill later. MRG boxes = you sign and type now. Click a box to
+              <div className="hidden text-[12.5px] text-[#6f6a65] sm:block">
+                {hostFirst}’s boxes = they fill later. MRG boxes = you sign and type now. Click a box to
                 select · drag gold corners to resize · × or Delete to remove.
               </div>
             </div>
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex gap-3">
+            <div className="flex flex-col items-stretch gap-1 sm:items-end">
+              <div className="flex items-center justify-between gap-3 sm:justify-end">
               <button
                 type="button"
                 className="text-[13px] text-[#9a9590]"
@@ -432,6 +517,7 @@ export function PortalInviteControls({
               fields={fields}
               onChange={setFields}
               mrgNameHint="Mandel Realty Group"
+              hostNameHint={name.trim() || client.name}
             />
           </div>
         </div>

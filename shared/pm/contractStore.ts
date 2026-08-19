@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
-import { normalizeSignFields, type SignField } from "./signFields.js";
+import { mergeHostFieldValues, normalizeSignFields, type SignField } from "./signFields.js";
 import { stampSignedPdf } from "./stampSignedPdf.js";
 
 function db() {
@@ -286,20 +286,11 @@ export async function markContractSigned(input: {
 
   const stored = normalizeSignFields(contract.sign_fields);
   const incoming = normalizeSignFields(input.fields);
-  const byId = new Map(incoming.map((f) => [f.id, f]));
-  const fields = stored.map((f) => {
-    const next = byId.get(f.id);
-    if (!next) return f;
-    return {
-      ...f,
-      value: next.value || f.value,
-      signature_png: next.signature_png || f.signature_png,
-    };
-  });
+  const fields = mergeHostFieldValues(stored, incoming);
   const today = new Date().toISOString().slice(0, 10);
   const stamped = await stampSignedPdf({
     pdfBuffer,
-    fields,
+    fields: fields.filter((f) => f.party !== "mrg"),
     signerName: name,
     signedOnLabel: today,
     signaturePng,

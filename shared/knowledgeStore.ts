@@ -52,6 +52,23 @@ export async function listKnowledgeDocs(): Promise<KnowledgeDoc[]> {
   return (data ?? []).map((r) => mapDoc(r as Record<string, unknown>));
 }
 
+/** True when at least one indexed knowledge doc is ready for Ask MRG. */
+export async function knowledgeBaseReady(): Promise<boolean> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return false;
+  const { data, error } = await sb
+    .from("knowledge_docs")
+    .select("id, chunk_count")
+    .eq("active", true)
+    .eq("status", "ready")
+    .limit(20);
+  if (error) {
+    console.error("[knowledge] ready check failed", error.message);
+    return false;
+  }
+  return (data ?? []).some((row) => Number(row.chunk_count ?? 0) > 0);
+}
+
 export async function getKnowledgeDoc(id: string): Promise<KnowledgeDoc | null> {
   const sb = getSupabaseAdmin();
   if (!sb) return null;

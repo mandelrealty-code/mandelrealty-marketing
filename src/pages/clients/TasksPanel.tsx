@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   pmGet,
   pmPost,
@@ -499,6 +499,8 @@ type Props = {
   onOpenProperty: (id: string) => void;
   onToast: (msg: string) => void;
   onError: (msg: string) => void;
+  restoreTaskId?: string | null;
+  onTaskIdChange?: (id: string | null) => void;
 };
 
 export function TasksPanel({
@@ -508,13 +510,15 @@ export function TasksPanel({
   onOpenProperty,
   onToast,
   onError,
+  restoreTaskId = null,
+  onTaskIdChange,
 }: Props) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [members, setMembers] = useState<TeamMemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(restoreTaskId);
   const [sheet, setSheet] = useState<null | "create" | "edit">(null);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [reassignNames, setReassignNames] = useState<string[]>([]);
@@ -562,6 +566,17 @@ export function TasksPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (restoreTaskId && restoreTaskId !== selectedId) setSelectedId(restoreTaskId);
+  }, [restoreTaskId]);
+
+  const prevTaskId = useRef(selectedId);
+  useEffect(() => {
+    if (prevTaskId.current === selectedId) return;
+    prevTaskId.current = selectedId;
+    onTaskIdChange?.(selectedId);
+  }, [selectedId, onTaskIdChange]);
 
   useEffect(() => {
     void loadMembers();

@@ -4,7 +4,7 @@ import type {
   OwnerSparkPoint,
 } from "../../../shared/pm/ownerDashboardTypes";
 import { AskMrgPanel } from "./AskMrgPanel";
-import { moneyCad, MrgMark, PreviewBanner } from "./OwnerChrome";
+import { moneyCad, MrgMark, PortalHeroPlaceholder, PreviewBanner } from "./OwnerChrome";
 
 function stayRange(checkIn: string, checkOut: string): string {
   const fmt = (iso: string) => {
@@ -99,6 +99,7 @@ export function OwnerDashboard({
   propertyLabel,
   cover,
   signedOn,
+  portalSigned,
   dashboard,
   awaiting,
   preview,
@@ -110,6 +111,8 @@ export function OwnerDashboard({
   propertyLabel: string;
   cover: string | null | undefined;
   signedOn?: string | null;
+  /** Host signed the agreement in-portal (New — sign contract), not an uploaded existing copy. */
+  portalSigned?: boolean;
   dashboard: OwnerDashboardPayload | null;
   awaiting: boolean;
   preview?: boolean;
@@ -117,8 +120,13 @@ export function OwnerDashboard({
   onSign: () => void;
 }) {
   const earnings = dashboard?.earnings ?? null;
-  const linked = Boolean(dashboard?.linked && earnings);
+  const listingReady = Boolean(
+    dashboard?.linked && dashboard?.synced && dashboard?.kb_ready,
+  );
+  const showAllSetHold = Boolean(portalSigned) && !listingReady;
+  const live = Boolean(dashboard?.linked && earnings) && !showAllSetHold;
   const setup = dashboard?.setup ?? [];
+  const showAskMrg = live;
 
   return (
     <div className="flex min-h-screen flex-col bg-[#0a0a0a] text-[#f5f5f5]">
@@ -144,23 +152,25 @@ export function OwnerDashboard({
         <span className="text-sm text-[#9a9590]">{clientName}</span>
       </header>
 
-      {cover ? (
-        <div className="relative h-[180px] w-full overflow-hidden lg:h-[248px]">
+      <div className="relative h-[180px] w-full overflow-hidden lg:h-[248px]">
+        {cover ? (
           <img src={cover} alt="" className="h-full w-full object-cover" />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0a0a0a]/90 via-[#0a0a0a]/55 to-transparent lg:via-[#0a0a0a]/70" />
-          <div className="absolute bottom-6 left-5 hidden flex-col gap-1.5 lg:left-9 lg:flex">
-            <div className="text-[28px] font-semibold tracking-tight lg:text-[34px]">
-              {propertyLabel}
-            </div>
-            <div className="text-[13px] text-[#cfc9c2]">
-              {clientName ? `${clientName} · ` : null}
-              <span className="text-[#c4a35a]">Managed by Mandel Realty</span>
-            </div>
+        ) : (
+          <PortalHeroPlaceholder compact />
+        )}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0a0a0a]/90 via-[#0a0a0a]/55 to-transparent lg:via-[#0a0a0a]/70" />
+        <div className="absolute bottom-6 left-5 hidden flex-col gap-1.5 lg:left-9 lg:flex">
+          <div className="text-[28px] font-semibold tracking-tight lg:text-[34px]">
+            {propertyLabel}
+          </div>
+          <div className="text-[13px] text-[#cfc9c2]">
+            {clientName ? `${clientName} · ` : null}
+            <span className="text-[#c4a35a]">Managed by Mandel Realty</span>
           </div>
         </div>
-      ) : null}
+      </div>
 
-      {linked && earnings ? (
+      {live && earnings ? (
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-8 pb-28 lg:px-9 lg:py-8 lg:pb-8">
           <div className="flex items-baseline justify-between">
             <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6f6a65]">
@@ -292,7 +302,11 @@ export function OwnerDashboard({
           </div>
         </div>
       ) : (
-        <div className="mx-auto grid w-full max-w-6xl gap-12 px-5 py-8 pb-28 lg:grid-cols-[minmax(0,1fr)_400px] lg:px-9 lg:py-10 lg:pb-10">
+        <div
+          className={`mx-auto grid w-full max-w-6xl gap-12 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:px-9 lg:py-10 ${
+            showAskMrg ? "pb-28 lg:pb-10" : "pb-10"
+          }`}
+        >
           <div className="flex flex-col gap-5">
             <div className="flex items-center gap-2">
               <span className="h-1.5 w-1.5 rounded-full bg-[#4ea882]" />
@@ -305,16 +319,17 @@ export function OwnerDashboard({
               </span>
             </div>
             <h1 className="text-[30px] font-semibold leading-tight tracking-tight lg:text-[42px]">
-              You’re in, {firstName}
+              {showAllSetHold ? "You’re all set!" : `You’re in, ${firstName}`}
             </h1>
             <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#6f6a65]">
               {propertyLabel}
             </p>
             <p className="max-w-[46ch] text-[15px] leading-relaxed text-[#9a9590] lg:text-base">
-              Our team is finishing setup — full earnings appear here once your listing is
-              connected.
+              {showAllSetHold
+                ? "MRG is currently getting your property ready. You’ll be notified when your portal is ready."
+                : "Our team is finishing setup — full earnings appear here once your listing is connected."}
             </p>
-            {awaiting ? (
+            {awaiting && !showAllSetHold ? (
               <button
                 type="button"
                 className="self-start text-[15px] font-semibold text-[#c4a35a]"
@@ -343,13 +358,17 @@ export function OwnerDashboard({
               { id: "earnings", label: "Earnings unlock when live", state: "pending", status_label: "" },
             ]} />
             <p className="text-[13px] leading-relaxed text-[#6f6a65]">
-              You’ll get an email the day your listing goes live.
+              {showAllSetHold
+                ? "We’ll email you as soon as everything is live."
+                : "You’ll get an email the day your listing goes live."}
             </p>
           </div>
         </div>
       )}
       </div>
-      <AskMrgPanel propertyLabel={propertyLabel} dashboard={dashboard} preview={preview} />
+      {showAskMrg ? (
+        <AskMrgPanel propertyLabel={propertyLabel} dashboard={dashboard} preview={preview} />
+      ) : null}
       </div>
     </div>
   );

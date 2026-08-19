@@ -34,6 +34,7 @@ import {
   type AdminProductMode,
   writeStoredAdminMode,
 } from "./mode";
+import { adminPath, emptyAdminRoute, type AdminRoute } from "../../lib/adminRoute";
 import {
   FieldLabel,
   GoldButton,
@@ -50,6 +51,8 @@ type Tab = "tasks" | "clients" | "properties" | "month" | "settings";
 
 type Props = {
   onModeChange: (mode: AdminProductMode) => void;
+  route: AdminRoute;
+  setRoute: (next: AdminRoute, opts?: { push?: boolean }) => void;
 };
 
 function useIsDesktop() {
@@ -78,12 +81,14 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export default function ClientsApp({ onModeChange }: Props) {
+export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
   const desktop = useIsDesktop();
-  const [tab, setTab] = useState<Tab>("tasks");
+  const [tab, setTab] = useState<Tab>(() => route.opsTab);
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [properties, setProperties] = useState<PropertyRow[]>([]);
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(
+    () => route.propertyId,
+  );
   const [propertyDetail, setPropertyDetail] = useState<PropertyDetail | null>(null);
   const [defaultRatePercent, setDefaultRatePercent] = useState(15);
   const [defaultHstPercent, setDefaultHstPercent] = useState(3);
@@ -102,7 +107,9 @@ export default function ClientsApp({ onModeChange }: Props) {
     propertyId?: string;
     backLabel?: string;
   } | null>(null);
-  const [monthHstClientId, setMonthHstClientId] = useState<string | null>(null);
+  const [monthHstClientId, setMonthHstClientId] = useState<string | null>(
+    () => route.hstClientId,
+  );
   const [propertyFilterClientId, setPropertyFilterClientId] = useState<string>("");
   const [propertyActiveFilter, setPropertyActiveFilter] = useState<"all" | "active" | "paused">(
     "all",
@@ -166,6 +173,7 @@ export default function ClientsApp({ onModeChange }: Props) {
   const [termsBilling, setTermsBilling] = useState<BillingTermsValue | null>(null);
   const [hstSheetBilling, setHstSheetBilling] = useState<BillingTermsValue | null>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const appliedOpsKey = useRef("");
 
   const loadLists = useCallback(async () => {
     setLoadError("");
@@ -214,9 +222,90 @@ export default function ClientsApp({ onModeChange }: Props) {
     return () => window.clearTimeout(t);
   }, [toast]);
 
+  const navOps = useCallback(
+    (
+      patch: Partial<
+        Pick<
+          AdminRoute,
+          | "opsTab"
+          | "propertyId"
+          | "clientId"
+          | "clientEdit"
+          | "createClient"
+          | "hstClientId"
+          | "taskId"
+        >
+      >,
+      push = true,
+    ) => {
+      setRoute(
+        {
+          ...emptyAdminRoute("ops"),
+          opsTab: patch.opsTab ?? "tasks",
+          propertyId: patch.propertyId ?? null,
+          clientId: patch.clientId ?? null,
+          clientEdit: Boolean(patch.clientEdit),
+          createClient: Boolean(patch.createClient),
+          hstClientId: patch.hstClientId ?? null,
+          taskId: patch.taskId ?? null,
+        },
+        { push },
+      );
+    },
+    [setRoute],
+  );
+
+  useEffect(() => {
+    if (route.mode !== "ops") return;
+    if (route.clientId && !clients.length) return;
+    const key = adminPath(route);
+    if (appliedOpsKey.current === key) return;
+    appliedOpsKey.current = key;
+    setTab(route.opsTab);
+    setMonthHstClientId(route.hstClientId);
+    if (route.propertyId) {
+      void loadProperty(route.propertyId).catch((e) =>
+        setLoadError(e instanceof Error ? e.message : "Could not open property."),
+      );
+    } else {
+      setSelectedPropertyId(null);
+      setPropertyDetail(null);
+    }
+    if (route.createClient) {
+      setClientSheet("create");
+      setClientMonth(null);
+      return;
+    }
+    if (route.clientId) {
+      const c = clients.find((x) => x.id === route.clientId) ?? null;
+      if (route.clientEdit) {
+        if (c) {
+          setClientForm({
+            name: c.name,
+            email: c.email,
+            phone: c.phone,
+            status: c.status,
+          });
+          setClientSheet(c);
+        }
+        setClientMonth(null);
+      } else {
+        setClientMonth(c);
+        setClientSheet(null);
+      }
+      return;
+    }
+    setClientMonth(null);
+    setClientSheet(null);
+  }, [
+    route,
+    clients,
+    loadProperty,
+  ]);
+
   const openCreateClient = () => {
     setClientForm({ name: "", email: "", phone: "", status: "active" });
-    setClientSheet("create");
+    navOps({ opsTab: "clients", createClient: true });
   };
 
   const openEditClient = (c: ClientRow) => {
@@ -226,7 +315,7 @@ export default function ClientsApp({ onModeChange }: Props) {
       phone: c.phone,
       status: c.status,
     });
-    setClientSheet(c);
+    navOps({ opsTab: "clients", clientId: c.id, clientEdit: true });
   };
 
   const saveClient = async () => {
@@ -243,6 +332,7 @@ export default function ClientsApp({ onModeChange }: Props) {
         });
       }
       setClientSheet(null);
+      navOps({ opsTab: "clients" }, false);
       await loadLists();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Save failed.");
@@ -266,6 +356,7 @@ export default function ClientsApp({ onModeChange }: Props) {
     try {
       await pmPost("clients", { op: "delete", id: clientSheet.id });
       setClientSheet(null);
+      navOps({ opsTab: "clients" }, false);
       await loadLists();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Could not delete client.");
@@ -299,7 +390,7 @@ export default function ClientsApp({ onModeChange }: Props) {
     }
     if (clients.length === 0) {
       setLoadError("Add a client first, then import a unit.");
-      setTab("clients");
+      navOps({ opsTab: "clients" });
       return;
     }
     setImportClientId(prefillClientId || clients[0]?.id || "");
@@ -365,9 +456,7 @@ export default function ClientsApp({ onModeChange }: Props) {
       setImportSheet(false);
       setImportStep(1);
       await loadLists();
-      setTab("properties");
-      setPropertyDetail(data.property);
-      setSelectedPropertyId(data.property.id);
+      navOps({ opsTab: "properties", propertyId: data.property.id }, false);
       setToast("Hospitable unit added.");
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Import failed.");
@@ -442,9 +531,7 @@ export default function ClientsApp({ onModeChange }: Props) {
       });
       setPropertySheet(false);
       await loadLists();
-      setTab("properties");
-      setPropertyDetail(data.property);
-      setSelectedPropertyId(data.property.id);
+      navOps({ opsTab: "properties", propertyId: data.property.id }, false);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Save failed.");
     } finally {
@@ -833,11 +920,8 @@ export default function ClientsApp({ onModeChange }: Props) {
   ] as const;
 
   const goTab = (id: Tab) => {
-    setTab(id);
-    setClientMonth(null);
+    navOps({ opsTab: id });
     setOwnerStatement(null);
-    if (id !== "month") setMonthHstClientId(null);
-    if (id !== "properties") setSelectedPropertyId(null);
   };
 
   const tabActive = (id: Tab) =>
@@ -1054,7 +1138,7 @@ export default function ClientsApp({ onModeChange }: Props) {
               <button
                 key={p.id}
                 type="button"
-                onClick={() => loadProperty(p.id).catch((e) => setLoadError(String(e.message)))}
+                onClick={() => navOps({ opsTab: "properties", propertyId: p.id })}
                 className={`flex w-full items-center gap-3.5 border-t border-white/8 px-4 py-3.5 text-left last:border-b hover:bg-white/[0.02] lg:px-1 ${
                   active ? "" : "opacity-60"
                 }`}
@@ -1125,9 +1209,7 @@ export default function ClientsApp({ onModeChange }: Props) {
       <button
         type="button"
         onClick={() => {
-          setSelectedPropertyId(null);
-          setPropertyDetail(null);
-          setTab("properties");
+          navOps({ opsTab: "properties" });
         }}
         className="self-start px-4 pt-4 text-[15px] font-semibold text-[#9a9590] hover:text-[#f5f5f5] lg:px-0 lg:pt-8"
       >
@@ -1713,16 +1795,9 @@ export default function ClientsApp({ onModeChange }: Props) {
           const client = ownerStatement.client;
           setOwnerStatement(null);
           if (ret === "property" && propertyId) {
-            setTab("properties");
-            if (selectedPropertyId !== propertyId || !propertyDetail) {
-              void loadProperty(propertyId).catch((e) =>
-                setLoadError(
-                  e instanceof Error ? e.message : "Could not open property.",
-                ),
-              );
-            }
+            navOps({ opsTab: "properties", propertyId });
           } else {
-            setClientMonth(client);
+            navOps({ opsTab: "clients", clientId: client.id });
           }
         }}
         onError={setLoadError}
@@ -1734,23 +1809,16 @@ export default function ClientsApp({ onModeChange }: Props) {
         clientId={clientMonth.id}
         clientName={clientMonth.name}
         onBack={() => {
-          setClientMonth(null);
+          navOps({ opsTab: "clients" });
         }}
         onOpenClientDetails={() => {
-          setClientMonth(null);
-          setClientSheet(clientMonth);
+          navOps({ opsTab: "clients", clientId: clientMonth.id, clientEdit: true });
         }}
         onOpenProperty={(id) => {
-          setClientMonth(null);
-          setTab("properties");
-          void loadProperty(id).catch((e) =>
-            setLoadError(e instanceof Error ? e.message : "Could not open property."),
-          );
+          navOps({ opsTab: "properties", propertyId: id });
         }}
         onOpenHstWorklist={(id) => {
-          setClientMonth(null);
-          setMonthHstClientId(id);
-          setTab("month");
+          navOps({ opsTab: "month", hstClientId: id });
         }}
         onOpenStatement={(id, month) => {
           setOwnerStatement({
@@ -1773,13 +1841,15 @@ export default function ClientsApp({ onModeChange }: Props) {
         properties={properties}
         desktop={desktop}
         onOpenProperty={(id) => {
-          setTab("properties");
-          void loadProperty(id).catch((e) =>
-            setLoadError(e instanceof Error ? e.message : "Could not open property."),
-          );
+          navOps({ opsTab: "properties", propertyId: id });
         }}
         onToast={setToast}
         onError={setLoadError}
+        restoreTaskId={route.taskId}
+        onTaskIdChange={(id) => {
+          if (id === route.taskId) return;
+          navOps({ opsTab: "tasks", taskId: id || null });
+        }}
       />
     );
   } else if (tab === "settings") main = settingsView;
@@ -1788,11 +1858,7 @@ export default function ClientsApp({ onModeChange }: Props) {
       <MonthClosePanel
         hstClientId={monthHstClientId}
         onOpenProperty={(id) => {
-          setMonthHstClientId(null);
-          setTab("properties");
-          void loadProperty(id).catch((e) =>
-            setLoadError(e instanceof Error ? e.message : "Could not open property."),
-          );
+          navOps({ opsTab: "properties", propertyId: id });
         }}
         onToast={setToast}
         onError={setLoadError}
@@ -1827,7 +1893,7 @@ export default function ClientsApp({ onModeChange }: Props) {
       {clientSheet ? (
         <Sheet
           title={clientSheet === "create" ? "Add client" : "Edit client"}
-          onCancel={() => setClientSheet(null)}
+          onCancel={() => navOps({ opsTab: "clients" })}
           desktop={desktop}
         >
           <div className="flex flex-col gap-3">
@@ -1878,9 +1944,7 @@ export default function ClientsApp({ onModeChange }: Props) {
                   <button
                     type="button"
                     onClick={() => {
-                      setClientMonth(clientSheet);
-                      setClientSheet(null);
-                      setTab("clients");
+                      navOps({ opsTab: "clients", clientId: clientSheet.id });
                     }}
                     className="flex items-center justify-between py-3.5 text-sm font-medium text-[#f5f5f5]"
                   >
@@ -1891,10 +1955,7 @@ export default function ClientsApp({ onModeChange }: Props) {
                     type="button"
                     onClick={() => {
                       setPropertyFilterClientId(clientSheet.id);
-                      setClientSheet(null);
-                      setTab("properties");
-                      setSelectedPropertyId(null);
-                      setPropertyDetail(null);
+                      navOps({ opsTab: "properties" });
                     }}
                     className="flex items-center justify-between py-3.5 text-sm font-medium text-[#f5f5f5]"
                   >
