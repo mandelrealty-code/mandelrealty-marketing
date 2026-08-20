@@ -13,6 +13,8 @@ export type SignField = {
   y: number;
   w: number;
   h: number;
+  /** Optional host-facing label, e.g. "Email" or "Initials" */
+  label?: string;
   /** Typed name / date / text */
   value?: string;
   /** data:image/png;base64,… — MRG signature drawn before send */
@@ -79,6 +81,7 @@ export function normalizeSignFields(raw: unknown): SignField[] {
     if (![x, y, w, h].every((n) => Number.isFinite(n))) continue;
     const value = typeof r.value === "string" ? r.value : "";
     const png = typeof r.signature_png === "string" ? r.signature_png : "";
+    const label = typeof r.label === "string" ? r.label.trim().slice(0, 48) : "";
     const min = minFieldSize(type);
     const boxW = Math.min(1, Math.max(min.w, w));
     const boxH = Math.min(1, Math.max(min.h, h));
@@ -91,6 +94,7 @@ export function normalizeSignFields(raw: unknown): SignField[] {
       y: Math.min(1 - boxH, Math.max(0, y)),
       w: boxW,
       h: boxH,
+      ...(label ? { label } : {}),
       ...(value ? { value } : {}),
       ...(png ? { signature_png: png } : {}),
     });
@@ -152,6 +156,7 @@ export function fieldsForTemplate(fields: SignField[]): SignField[] {
     y: f.y,
     w: f.w,
     h: f.h,
+    ...(f.label ? { label: f.label } : {}),
   }));
 }
 

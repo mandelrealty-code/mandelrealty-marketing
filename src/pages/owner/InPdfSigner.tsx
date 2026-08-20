@@ -26,15 +26,28 @@ function fieldDone(f: SignField): boolean {
 }
 
 function stepTitle(f: SignField): string {
+  const custom = f.label?.trim();
+  if (custom) return custom;
   if (f.type === "signature") return "Your signature";
   if (f.type === "name") return "Your printed name";
-  return "This field";
+  return "Fill this line";
 }
 
 function stepHelp(f: SignField): string {
-  if (f.type === "signature") return "Draw your signature, then continue.";
-  if (f.type === "name") return "Type your full legal name as it should appear on the agreement.";
-  return "Type the information for this field, then continue.";
+  if (f.type === "signature") {
+    return "Draw your signature below — we’ll place it in the gold box on the agreement.";
+  }
+  if (f.type === "name") {
+    return "Type your full legal name. It appears in the gold highlighted box on the agreement.";
+  }
+  return "Type what’s needed for the gold highlighted box on the agreement, then continue.";
+}
+
+function activeBadge(f: SignField): string {
+  if (f.type === "signature") return "Sign here";
+  if (f.type === "name") return "Name here";
+  if (f.label?.trim()) return f.label.trim();
+  return "Fill here";
 }
 
 /** Scroll containers Safari may yank when focusing a fixed bottom input. */
@@ -169,11 +182,20 @@ export function InPdfSigner({
     jumpTo(first >= 0 ? first : 0);
   };
 
-  const showOnAgreement = () => {
-    if (!active) return;
-    const el = document.querySelector(`[data-sign-field="${active.id}"]`);
+  const showOnAgreement = (fieldId?: string) => {
+    const id = fieldId || active?.id;
+    if (!id) return;
+    const el = document.querySelector(`[data-sign-field="${id}"]`);
     el?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
   };
+
+  // Reveal the active box on the PDF when the step changes (not when typing — that stays locked).
+  useEffect(() => {
+    if (!started || !active || showingFinish) return;
+    const t = window.setTimeout(() => showOnAgreement(active.id), 80);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when step field changes
+  }, [started, active?.id, showingFinish]);
 
   // Sync draft text for the step — no auto-focus (that scrolls the PDF on mobile).
   useEffect(() => {
@@ -297,8 +319,8 @@ export function InPdfSigner({
             Sign your agreement
           </h2>
           <p className="mt-3 max-w-[42ch] text-[15px] leading-relaxed text-[#9a9590]">
-            Scroll the agreement to read it anytime. When you’re ready, fill each item in the
-            panel below — Continue never jumps the page, so you can keep reading at your own pace.
+            We’ll highlight each spot in gold on the agreement. Fill it in the panel below, then
+            Continue — you can scroll and read anytime.
           </p>
           <button
             type="button"
@@ -332,36 +354,60 @@ export function InPdfSigner({
                       ((isSig && Boolean(f.signature_png)) ||
                         (isDate && Boolean(f.value)) ||
                         ((f.type === "name" || f.type === "text") && Boolean(f.value?.trim())));
+                    const emptyHostSig = !isMrg && isSig && !f.signature_png;
+                    const emptyHostText =
+                      !isMrg &&
+                      !isSig &&
+                      !isDate &&
+                      !isComplete &&
+                      !(f.value || "").trim();
                     return (
                       <div
                         key={f.id}
                         data-sign-field={f.id}
                         style={fieldStyle(f)}
-                        className={`absolute overflow-hidden rounded-[1px] ${
+                        className={`absolute rounded-[2px] ${
                           isMrg
-                            ? "pointer-events-none border-0 bg-transparent"
+                            ? "pointer-events-none overflow-hidden border-0 bg-transparent"
                             : isActive
-                              ? "z-30 border border-[#c4a35a] bg-[#c4a35a]/20"
+                              ? "z-40 overflow-visible border-2 border-[#c4a35a] bg-[#c4a35a]/28 shadow-[0_0_0_4px_rgba(196,163,90,0.45)]"
                               : isComplete
-                                ? "pointer-events-none border border-[#4ea882]/50 bg-[#4ea882]/08"
+                                ? "pointer-events-none z-20 overflow-hidden border border-[#4ea882]/70 bg-white/85"
                                 : isDate
-                                  ? "pointer-events-none border border-[#c4a35a]/30 bg-[#c4a35a]/06"
-                                  : "pointer-events-none border border-[#c4a35a]/40 bg-white/70"
+                                  ? "pointer-events-none overflow-hidden border border-[#c4a35a]/30 bg-[#c4a35a]/06"
+                                  : "pointer-events-none overflow-hidden border border-[#c4a35a]/55 bg-[#c4a35a]/14"
                         }`}
                       >
+                        {isActive ? (
+                          <div className="pointer-events-none absolute left-0 top-0 z-50 -translate-y-[110%] whitespace-nowrap rounded-sm bg-[#c4a35a] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#0a0a0a] shadow">
+                            {activeBadge(f)}
+                          </div>
+                        ) : null}
                         {isMrg ? null : isSig && f.signature_png ? (
                           <img
                             src={f.signature_png}
                             alt=""
                             className="h-full w-full object-contain"
                           />
+                        ) : emptyHostSig ? (
+                          <div className="flex h-full w-full items-center justify-center px-0.5">
+                            <span className="truncate text-center text-[9px] font-bold uppercase tracking-wide text-[#8a6a28] sm:text-[10px]">
+                              Sign here
+                            </span>
+                          </div>
+                        ) : emptyHostText && isActive ? (
+                          <div className="flex h-full w-full items-center px-0.5">
+                            <span className="truncate text-[9px] font-semibold text-[#8a6a28]">
+                              Type below…
+                            </span>
+                          </div>
                         ) : (
                           <div className="flex h-full w-full items-center px-0.5">
                             <FittedFieldText
                               text={
                                 isDate
                                   ? f.value || today
-                                  : f.value || (isSig ? "" : "")
+                                  : f.value || ""
                               }
                             />
                           </div>
@@ -399,8 +445,11 @@ export function InPdfSigner({
               const q = hostActionOrder(next);
               const open = q.findIndex((f) => !fieldDone(f));
               window.setTimeout(() => {
-                if (open >= 0) setStepIdx(open);
-                else setStepIdx(q.length);
+                showOnAgreement(appliedId);
+                window.setTimeout(() => {
+                  if (open >= 0) setStepIdx(open);
+                  else setStepIdx(q.length);
+                }, 450);
               }, 0);
               return next;
             });
@@ -452,11 +501,11 @@ export function InPdfSigner({
               <>
                 <div className="flex items-baseline justify-between gap-3">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6f6a65]">
-                    Step {Math.min(stepIdx + 1, queue.length)} of {queue.length}
+                    Step {Math.min(stepIdx + 1, queue.length)} of {queue.length} · page {active.page}
                   </div>
                   <button
                     type="button"
-                    onClick={showOnAgreement}
+                    onClick={() => showOnAgreement()}
                     className="text-[12px] font-semibold text-[#c4a35a]"
                   >
                     Show on agreement →
@@ -467,7 +516,7 @@ export function InPdfSigner({
                 </div>
                 <p className="text-[14px] leading-snug text-[#9a9590]">
                   {active.type === "signature" && active.signature_png
-                    ? "Signature saved. Continue, or redraw if you need to change it."
+                    ? "Signature is on the agreement (gold box). Continue, or redraw if you need to change it."
                     : stepHelp(active)}
                 </p>
 
@@ -479,7 +528,12 @@ export function InPdfSigner({
                     autoComplete={active.type === "name" ? "name" : "off"}
                     autoCapitalize={active.type === "name" ? "words" : "off"}
                     value={draftValue}
-                    placeholder={active.type === "name" ? firstNameOf(signerHint) || "Full name" : "Type here"}
+                    placeholder={
+                      active.label?.trim() ||
+                      (active.type === "name"
+                        ? firstNameOf(signerHint) || "Full name"
+                        : "Type here")
+                    }
                     onFocus={holdScrollWhileTyping}
                     onBlur={releaseScrollHold}
                     onTouchStart={holdScrollWhileTyping}

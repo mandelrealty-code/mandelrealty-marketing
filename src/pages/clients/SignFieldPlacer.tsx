@@ -113,7 +113,17 @@ export function SignFieldPlacer({
   };
 
   const patch = (id: string, next: Partial<SignField>) => {
-    onChange(fieldsRef.current.map((f) => (f.id === id ? { ...f, ...next } : f)));
+    onChange(
+      fieldsRef.current.map((f) => {
+        if (f.id !== id) return f;
+        const merged = { ...f, ...next };
+        if ("label" in next && !next.label?.trim()) {
+          const { label: _drop, ...rest } = merged;
+          return rest;
+        }
+        return merged;
+      }),
+    );
   };
 
   const remove = (id: string) => {
@@ -307,13 +317,29 @@ export function SignFieldPlacer({
             : `Click the PDF to place ${fieldLabel(tool).toLowerCase()} · switches to Move after`}
         </span>
         {selected ? (
-          <button
-            type="button"
-            className="rounded-md border border-[#cf7f7b]/40 px-3 py-1.5 text-[12.5px] font-semibold text-[#cf7f7b]"
-            onClick={() => remove(selected)}
-          >
-            Delete
-          </button>
+          <>
+            <label className="flex items-center gap-2 text-[12px] text-[#9a9590]">
+              Host sees as
+              <input
+                type="text"
+                value={fields.find((f) => f.id === selected)?.label || ""}
+                placeholder={
+                  fieldLabel(fields.find((f) => f.id === selected)?.type || "text")
+                }
+                onChange={(e) =>
+                  patch(selected, { label: e.target.value.slice(0, 48) || undefined })
+                }
+                className="w-[140px] border border-white/14 bg-[#141414] px-2 py-1.5 text-[12.5px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]"
+              />
+            </label>
+            <button
+              type="button"
+              className="rounded-md border border-[#cf7f7b]/40 px-3 py-1.5 text-[12.5px] font-semibold text-[#cf7f7b]"
+              onClick={() => remove(selected)}
+            >
+              Delete
+            </button>
+          </>
         ) : null}
       </div>
       </div>
