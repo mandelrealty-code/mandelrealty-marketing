@@ -119,6 +119,31 @@ export function PartyChip({
   );
 }
 
+let measureCanvas: HTMLCanvasElement | null = null;
+
+function measureTextWidth(text: string, fontSizePx: number): number {
+  if (typeof document === "undefined" || !text) return 0;
+  if (!measureCanvas) measureCanvas = document.createElement("canvas");
+  const ctx = measureCanvas.getContext("2d");
+  if (!ctx) return text.length * fontSizePx * 0.55;
+  ctx.font = `${fontSizePx}px ui-sans-serif, system-ui, -apple-system, sans-serif`;
+  return ctx.measureText(text).width;
+}
+
+/** Readable size for a field box — never shrink to microscopic. */
+function fitFontSize(text: string, boxW: number, boxH: number): number {
+  const ideal = Math.min(13, Math.max(9, boxH * 0.72));
+  // Only nudge down a little for long values; then ellipsis keeps it readable.
+  const floor = Math.max(8.5, ideal * 0.88);
+  if (!text.trim()) return ideal;
+  const maxW = Math.max(8, boxW - 4);
+  let size = ideal;
+  while (size > floor + 0.05 && measureTextWidth(text, size) > maxW) {
+    size -= 0.35;
+  }
+  return Math.max(floor, size);
+}
+
 export const FittedFieldInput = forwardRef<
   HTMLInputElement,
   InputHTMLAttributes<HTMLInputElement>
@@ -135,15 +160,7 @@ export const FittedFieldInput = forwardRef<
     const el = innerRef.current;
     if (!el) return;
     const fit = () => {
-      const maxH = Math.max(4, el.clientHeight * 0.85);
-      const maxW = Math.max(8, el.clientWidth - 2);
-      let size = Math.min(12, maxH);
-      el.style.fontSize = `${size}px`;
-      // scrollWidth on inputs reflects content width in modern browsers
-      while (size > 4 && el.scrollWidth > maxW + 1) {
-        size -= 0.4;
-        el.style.fontSize = `${size}px`;
-      }
+      el.style.fontSize = `${fitFontSize(String(value ?? ""), el.clientWidth, el.clientHeight)}px`;
     };
     fit();
     const ro = new ResizeObserver(fit);
@@ -158,12 +175,12 @@ export const FittedFieldInput = forwardRef<
       value={value}
       onChange={onChange}
       style={style}
-      className={`h-full w-full min-w-0 whitespace-nowrap bg-transparent px-0.5 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] ${className}`}
+      className={`h-full w-full min-w-0 truncate whitespace-nowrap bg-transparent px-0.5 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] ${className}`}
     />
   );
 });
 
-/** Shrinks text so long values stay inside the placed field box (preview + placer). */
+/** Keeps field text readable; shrinks slightly for long values, then ellipsizes. */
 export function FittedFieldText({
   text,
   className = "",
@@ -172,7 +189,7 @@ export function FittedFieldText({
   className?: string;
 }) {
   const spanRef = useRef<HTMLSpanElement | null>(null);
-  const [sizePx, setSizePx] = useState(10);
+  const [sizePx, setSizePx] = useState(11);
 
   useEffect(() => {
     const span = spanRef.current;
@@ -180,15 +197,7 @@ export function FittedFieldText({
     if (!span || !box) return;
 
     const fit = () => {
-      const maxH = Math.max(4, box.clientHeight * 0.82);
-      const maxW = Math.max(8, box.clientWidth - 4);
-      let size = Math.min(12, maxH);
-      span.style.fontSize = `${size}px`;
-      while (size > 4 && span.scrollWidth > maxW) {
-        size -= 0.4;
-        span.style.fontSize = `${size}px`;
-      }
-      setSizePx(size);
+      setSizePx(fitFontSize(text, box.clientWidth, box.clientHeight));
     };
 
     fit();
