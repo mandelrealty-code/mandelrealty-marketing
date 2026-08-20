@@ -296,7 +296,10 @@ export async function sendResendEmail(input: {
   to: string[];
   subject: string;
   html: string;
+  /** Plain-text alternative — improves inbox placement. */
+  text?: string;
   replyTo?: string;
+  headers?: Record<string, string>;
   attachments?: ResendAttachment[];
 }): Promise<{ ok: boolean; message?: string }> {
   const response = await fetch("https://api.resend.com/emails", {
@@ -311,6 +314,10 @@ export async function sendResendEmail(input: {
       reply_to: input.replyTo,
       subject: input.subject,
       html: input.html,
+      ...(input.text ? { text: input.text } : {}),
+      ...(input.headers && Object.keys(input.headers).length
+        ? { headers: input.headers }
+        : {}),
       attachments: input.attachments,
     }),
   });

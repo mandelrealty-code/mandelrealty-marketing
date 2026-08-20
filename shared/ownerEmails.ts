@@ -105,6 +105,45 @@ function goldButton(href: string, label: string): string {
     </table>`;
 }
 
+/** Big, padded password block — easy to select / copy on mobile and desktop. */
+function passwordBlock(password: string): string {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0;">
+      <tr>
+        <td align="center" style="padding:8px 0 10px;font-family:Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#8a8580;">
+          Your temporary sign-in code
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="background:#141414;border:1px solid #3a3428;padding:36px 28px;">
+          <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:28px;font-weight:700;letter-spacing:0.18em;line-height:1.4;color:#f5f5f5;user-select:all;-webkit-user-select:all;">
+            ${esc(password)}
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:12px 8px 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#8a8580;">
+          Tap or triple-click the code above to copy it, then paste when you sign in.
+        </td>
+      </tr>
+    </table>`;
+}
+
+function inviteFrom(): string {
+  return (
+    process.env.RESEND_FROM?.trim() ||
+    "Mandel Realty Group <info@mandelrealtygroup.com>"
+  );
+}
+
+function deliverabilityHeaders(): Record<string, string> {
+  const reply = process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com";
+  return {
+    "List-Unsubscribe": `<mailto:${reply}?subject=unsubscribe>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+}
+
 export async function sendOwnerInviteEmail(input: {
   to: string;
   firstName: string;
@@ -116,46 +155,76 @@ export async function sendOwnerInviteEmail(input: {
 }): Promise<{ ok: boolean; message?: string }> {
   const apiKey = process.env.RESEND_API_KEY?.trim() || "";
   if (!apiKey) return { ok: false, message: "RESEND_API_KEY not configured." };
-  const from =
-    process.env.RESEND_FROM?.trim() ||
-    "Mandel Realty Group <onboarding@resend.dev>";
+  const from = inviteFrom();
   const portal = ownerPortalUrl(input.slug);
   const cta = input.kind === "existing" ? portal : ownerPortalUrl(input.slug, "contracts");
   const prop = input.propertyLabel?.trim();
   const existing = input.kind === "existing";
+  const replyTo = process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com";
+
   const html = emailShell(`
     <div style="font-family:Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;line-height:1.2;color:#f5f5f5;padding-bottom:12px;">
       Welcome to MRG, ${esc(input.firstName)}
     </div>
-    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 20px;">
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 8px;">
       Your owner portal${prop ? ` for <strong style="color:#f5f5f5;font-weight:600">${esc(prop)}</strong>` : ""} is ready.
       ${
         existing
-          ? "Sign in, set your password, then you can view your documents and property details."
-          : "Sign in, set your password, then sign your management agreement."
+          ? "Use the sign-in code below, then choose your own password."
+          : "Use the sign-in code below, choose your own password, then review and sign your management agreement."
       }
     </p>
+    ${passwordBlock(input.tempPassword)}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       ${row(
-        "Portal",
+        "Portal link",
         `<a href="${esc(portal)}" style="color:#c4a35a;text-decoration:none;">${esc(displayHostUrl(portal))}</a>`,
       )}
-      ${row("Email", esc(input.to))}
-      ${row("Temporary password", `<span style="letter-spacing:0.04em;">${esc(input.tempPassword)}</span>`)}
+      ${row("Email to sign in with", esc(input.to))}
     </table>
     ${goldButton(cta, "Open owner portal")}
     <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0;">
-      You’ll be asked to choose your own password on first sign-in. Questions? Reply to this email.
+      You’ll set a personal password on first sign-in. Questions? Reply to this email — it goes to our team at ${esc(replyTo)}.
     </p>
   `);
+
+  const text = [
+    `Welcome to MRG, ${input.firstName}`,
+    "",
+    prop
+      ? `Your owner portal for ${prop} is ready.`
+      : "Your owner portal is ready.",
+    existing
+      ? "Sign in with the code below, then choose your own password."
+      : "Sign in with the code below, choose your own password, then sign your management agreement.",
+    "",
+    "Your temporary sign-in code:",
+    "",
+    `    ${input.tempPassword}`,
+    "",
+    `(Copy the line above.)`,
+    "",
+    `Portal: ${portal}`,
+    `Email: ${input.to}`,
+    "",
+    `Open portal: ${cta}`,
+    "",
+    `Questions? Reply to this email (${replyTo}).`,
+    "— Mandel Realty Group",
+  ].join("\n");
 
   return sendResendEmail({
     apiKey,
     from,
     to: [input.to],
-    subject: "Welcome to MRG — your portal login",
+    // Avoid spammy “password / login” subject lines
+    subject: existing
+      ? `Your MRG owner portal${prop ? ` — ${prop}` : ""}`
+      : `Please review your MRG agreement${prop ? ` — ${prop}` : ""}`,
     html,
-    replyTo: process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com",
+    text,
+    replyTo,
+    headers: deliverabilityHeaders(),
   });
 }
 
@@ -170,11 +239,10 @@ export async function sendSignedAgreementEmail(input: {
 }): Promise<{ ok: boolean; message?: string }> {
   const apiKey = process.env.RESEND_API_KEY?.trim() || "";
   if (!apiKey) return { ok: false, message: "RESEND_API_KEY not configured." };
-  const from =
-    process.env.RESEND_FROM?.trim() ||
-    "Mandel Realty Group <onboarding@resend.dev>";
+  const from = inviteFrom();
   const docs = ownerPortalUrl(input.slug, "documents");
   const prop = input.propertyLabel?.trim();
+  const replyTo = process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com";
   const html = emailShell(`
     <div style="font-family:Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#4ea882;padding-bottom:10px;">
       Signed ${esc(input.signedOnLabel)}
@@ -192,13 +260,27 @@ export async function sendSignedAgreementEmail(input: {
     </p>
   `);
 
+  const text = [
+    `Thank you, ${input.firstName} — your agreement is signed (${input.signedOnLabel}).`,
+    prop ? `Property: ${prop}` : "",
+    "",
+    "A PDF copy is attached. You can also open Documents in your portal:",
+    docs,
+    "",
+    "— Mandel Realty Group",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   return sendResendEmail({
     apiKey,
     from,
     to: [input.to],
-    subject: "Your signed MRG agreement",
+    subject: `Your signed MRG agreement${prop ? ` — ${prop}` : ""}`,
     html,
-    replyTo: process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com",
+    text,
+    replyTo,
+    headers: deliverabilityHeaders(),
     attachments: [
       {
         filename: input.filename || "MRG-agreement.pdf",

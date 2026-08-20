@@ -114,18 +114,30 @@ export function mrgFields(fields: SignField[]): SignField[] {
   return fields.filter((f) => f.party === "mrg");
 }
 
-/** Host may change only their own values — never geometry or MRG boxes. */
+/** Host may change only their own name/text/signature — never geometry, MRG, or dates. */
 export function mergeHostFieldValues(stored: SignField[], incoming: SignField[]): SignField[] {
   const byId = new Map(incoming.map((f) => [f.id, f]));
+  const today = todayIsoDate();
   return stored.map((f) => {
     if (f.party === "mrg") return f;
+    if (f.type === "date") return { ...f, value: today };
+    if (f.type === "checkbox") return f;
     const next = byId.get(f.id);
-    if (!next) return f;
-    return {
-      ...f,
-      value: next.value || f.value,
-      signature_png: next.signature_png || f.signature_png,
-    };
+    if (!next) {
+      if (f.type === "name" || f.type === "text") return f;
+      return f;
+    }
+    if (f.type === "signature") {
+      return {
+        ...f,
+        value: next.value || f.value,
+        signature_png: next.signature_png || f.signature_png,
+      };
+    }
+    if (f.type === "name" || f.type === "text") {
+      return { ...f, value: next.value ?? f.value };
+    }
+    return f;
   });
 }
 

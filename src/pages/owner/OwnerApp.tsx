@@ -377,13 +377,14 @@ export function OwnerApp() {
                   autoComplete="username"
                 />
               </Field>
-              <Field label="Temporary password">
+              <Field label="Sign-in code">
                 <UnderlineInput
-                  type="password"
+                  type="text"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
-                  className="tracking-[0.3em]"
+                  spellCheck={false}
+                  className="tracking-[0.18em]"
                 />
               </Field>
               {error ? <p className="text-sm text-[#cf7f7b]">{error}</p> : null}

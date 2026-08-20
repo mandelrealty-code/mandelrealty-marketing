@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type InputHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useState, forwardRef, type CSSProperties, type InputHTMLAttributes, type ReactNode } from "react";
 import { getDocument, GlobalWorkerOptions, version } from "pdfjs-dist";
 import type { SignField } from "../../shared/pm/signFields";
 
@@ -119,12 +119,16 @@ export function PartyChip({
   );
 }
 
-export function FittedFieldInput(props: InputHTMLAttributes<HTMLInputElement>) {
+export const FittedFieldInput = forwardRef<
+  HTMLInputElement,
+  InputHTMLAttributes<HTMLInputElement>
+>(function FittedFieldInput(props, ref) {
   const { className = "", ...rest } = props;
   return (
     <input
+      ref={ref}
       {...rest}
       className={`h-full w-full min-w-0 whitespace-nowrap bg-transparent px-0.5 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] [font-size:clamp(5px,52cqh,13px)] ${className}`}
     />
   );
-}
+});
