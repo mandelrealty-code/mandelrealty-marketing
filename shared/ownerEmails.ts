@@ -166,14 +166,28 @@ export async function sendOwnerInviteEmail(input: {
     <div style="font-family:Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;line-height:1.2;color:#f5f5f5;padding-bottom:12px;">
       Welcome to MRG, ${esc(input.firstName)}
     </div>
-    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 8px;">
+    ${
+      existing
+        ? `<p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 8px;">
       Your owner portal${prop ? ` for <strong style="color:#f5f5f5;font-weight:600">${esc(prop)}</strong>` : ""} is ready.
-      ${
-        existing
-          ? "Use the sign-in code below, then choose your own password."
-          : "Use the sign-in code below, choose your own password, then review and sign your management agreement."
-      }
+      Use the sign-in code below, then choose your own password to view documents and property details.
+    </p>`
+        : `<p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 16px;">
+      We’ve set up your private owner portal${prop ? ` for <strong style="color:#f5f5f5;font-weight:600">${esc(prop)}</strong>` : ""}.
+      <strong style="color:#f5f5f5;font-weight:600">Your management agreement is inside</strong> — open the portal to review it on screen and sign electronically. There’s nothing to print or mail back.
     </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;background:#141414;border:1px solid #2a2a2a;">
+      <tr>
+        <td style="padding:18px 20px;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.7;color:#b4aea8;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#c4a35a;margin-bottom:10px;">What to do</div>
+          <div style="color:#f5f5f5;margin-bottom:6px;">1. Open your portal with the button below</div>
+          <div style="color:#f5f5f5;margin-bottom:6px;">2. Sign in with your email and the code in this message</div>
+          <div style="color:#f5f5f5;margin-bottom:6px;">3. Choose your own password</div>
+          <div style="color:#f5f5f5;">4. Review the agreement and sign where prompted</div>
+        </td>
+      </tr>
+    </table>`
+    }
     ${passwordBlock(input.tempPassword)}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       ${row(
@@ -182,36 +196,70 @@ export async function sendOwnerInviteEmail(input: {
       )}
       ${row("Email to sign in with", esc(input.to))}
     </table>
-    ${goldButton(cta, "Open owner portal")}
+    ${goldButton(cta, existing ? "Open owner portal" : "Open portal & review agreement")}
     <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0;">
-      You’ll set a personal password on first sign-in. Questions? Reply to this email — it goes to our team at ${esc(replyTo)}.
+      ${
+        existing
+          ? "You’ll set a personal password on first sign-in."
+          : "After you sign, a copy is saved in Documents and emailed to you."
+      }
+      Questions? Reply to this email — it goes to our team at ${esc(replyTo)}.
     </p>
   `);
 
-  const text = [
-    `Welcome to MRG, ${input.firstName}`,
-    "",
-    prop
-      ? `Your owner portal for ${prop} is ready.`
-      : "Your owner portal is ready.",
-    existing
-      ? "Sign in with the code below, then choose your own password."
-      : "Sign in with the code below, choose your own password, then sign your management agreement.",
-    "",
-    "Your temporary sign-in code:",
-    "",
-    `    ${input.tempPassword}`,
-    "",
-    `(Copy the line above.)`,
-    "",
-    `Portal: ${portal}`,
-    `Email: ${input.to}`,
-    "",
-    `Open portal: ${cta}`,
-    "",
-    `Questions? Reply to this email (${replyTo}).`,
-    "— Mandel Realty Group",
-  ].join("\n");
+  const text = existing
+    ? [
+        `Welcome to MRG, ${input.firstName}`,
+        "",
+        prop
+          ? `Your owner portal for ${prop} is ready.`
+          : "Your owner portal is ready.",
+        "Sign in with the code below, then choose your own password.",
+        "",
+        "Your temporary sign-in code:",
+        "",
+        `    ${input.tempPassword}`,
+        "",
+        `(Copy the line above.)`,
+        "",
+        `Portal: ${portal}`,
+        `Email: ${input.to}`,
+        "",
+        `Open portal: ${cta}`,
+        "",
+        `Questions? Reply to this email (${replyTo}).`,
+        "— Mandel Realty Group",
+      ].join("\n")
+    : [
+        `Welcome to MRG, ${input.firstName}`,
+        "",
+        prop
+          ? `We’ve set up your private owner portal for ${prop}.`
+          : "We’ve set up your private owner portal.",
+        "",
+        "Your management agreement is inside the portal — open it to review on screen and sign electronically. Nothing to print or mail back.",
+        "",
+        "What to do:",
+        "1. Open your portal with the link below",
+        "2. Sign in with your email and the code in this message",
+        "3. Choose your own password",
+        "4. Review the agreement and sign where prompted",
+        "",
+        "Your temporary sign-in code:",
+        "",
+        `    ${input.tempPassword}`,
+        "",
+        `(Copy the line above.)`,
+        "",
+        `Portal: ${portal}`,
+        `Email: ${input.to}`,
+        "",
+        `Open portal & review agreement: ${cta}`,
+        "",
+        "After you sign, a copy is saved in Documents and emailed to you.",
+        `Questions? Reply to this email (${replyTo}).`,
+        "— Mandel Realty Group",
+      ].join("\n");
 
   return sendResendEmail({
     apiKey,

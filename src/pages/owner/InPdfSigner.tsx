@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { FittedFieldInput, fieldStyle, PartyChip, PdfPages } from "../../lib/pdfPages";
 import { SignaturePad } from "../../lib/SignaturePad";
 import {
-  fieldLabel,
   firstNameOf,
   todayIsoDate,
   type SignField,
@@ -119,24 +118,27 @@ export function InPdfSigner({
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
     if (active.type === "signature" && !active.signature_png) {
       const t = window.setTimeout(() => {
-        setName(signatureName || signerHint);
         setSigningId(active.id);
       }, 280);
       return () => window.clearTimeout(t);
     }
     if (active.type === "name" || active.type === "text") {
       const t = window.setTimeout(() => {
-        inputRefs.current.get(active.id)?.focus();
-        inputRefs.current.get(active.id)?.select();
+        const input = inputRefs.current.get(active.id);
+        input?.focus({ preventScroll: true });
       }, 320);
       return () => window.clearTimeout(t);
     }
     return undefined;
-  }, [guided, active?.id, signatureName, signerHint]);
+    // Only when the guided step changes — not on every keystroke
+  }, [guided, active?.id, active?.type]);
 
-  const startGuided = () => {
-    const firstOpen = queue.findIndex((f) => !fieldDone(f));
-    setStepIdx(firstOpen >= 0 ? firstOpen : 0);
+  const startGuided = (focusId?: string) => {
+    const idx =
+      focusId != null
+        ? queue.findIndex((f) => f.id === focusId)
+        : queue.findIndex((f) => !fieldDone(f));
+    setStepIdx(idx >= 0 ? idx : 0);
     setGuided(true);
   };
 
@@ -166,7 +168,7 @@ export function InPdfSigner({
           </p>
           <button
             type="button"
-            onClick={startGuided}
+            onClick={() => startGuided()}
             className="w-full bg-[#c4a35a] py-[15px] text-[15px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] sm:w-auto sm:px-10"
           >
             Ready to sign
@@ -203,11 +205,9 @@ export function InPdfSigner({
                               : "border-[#c4a35a]/70 bg-white/80"
                     }`}
                   >
-                    <PartyChip
-                      party={f.party}
-                      locked={isMrg || lockedHost}
-                      hostLabel={hostFirst}
-                    />
+                    {isMrg || lockedHost ? null : (
+                      <PartyChip party={f.party} hostLabel={hostFirst} />
+                    )}
                     {isMrg ? (
                       <div className="h-full w-full" />
                     ) : (
@@ -217,7 +217,7 @@ export function InPdfSigner({
                             type="button"
                             className="h-full w-full min-w-0 cursor-pointer"
                             onClick={() => {
-                              if (!guided) startGuided();
+                              if (!guided) startGuided(f.id);
                               setName(signatureName || signerHint);
                               setSigningId(f.id);
                             }}
@@ -245,12 +245,15 @@ export function InPdfSigner({
                               else inputRefs.current.delete(f.id);
                             }}
                             value={f.value || ""}
-                            placeholder={fieldLabel(f.type)}
-                            readOnly={!guided}
+                            placeholder={
+                              f.type === "name" ? "Printed name" : "Type here"
+                            }
                             onFocus={() => {
-                              if (!guided) startGuided();
-                              const idx = queue.findIndex((q) => q.id === f.id);
-                              if (idx >= 0) setStepIdx(idx);
+                              if (!guided) startGuided(f.id);
+                              else {
+                                const idx = queue.findIndex((q) => q.id === f.id);
+                                if (idx >= 0 && idx !== stepIdx) setStepIdx(idx);
+                              }
                             }}
                             onClick={(e) => e.stopPropagation()}
                             onPointerDown={(e) => e.stopPropagation()}
