@@ -76,7 +76,9 @@ export function InPdfSigner({
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const queue = useMemo(() => hostActionOrder(draft), [draft]);
-  const active = started && !queue.every(fieldDone) ? queue[stepIdx] ?? null : null;
+  /** stepIdx === queue.length means the finish screen */
+  const showingFinish = started && stepIdx >= queue.length && queue.every(fieldDone);
+  const active = started && stepIdx < queue.length ? queue[stepIdx] ?? null : null;
   const doneCount = queue.filter(fieldDone).length;
   const allDone = queue.length > 0 && doneCount === queue.length;
 
@@ -118,11 +120,15 @@ export function InPdfSigner({
     jumpTo(first >= 0 ? first : 0);
   };
 
-  // Keep panel + PDF in sync with the active step
-  useEffect(() => {
-    if (!started || !active || allDone) return;
+  const showOnAgreement = () => {
+    if (!active) return;
     const el = document.querySelector(`[data-sign-field="${active.id}"]`);
     el?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+  };
+
+  // Focus the step panel input — do not yank the PDF scroll (so they can keep reading).
+  useEffect(() => {
+    if (!started || !active || showingFinish) return;
 
     if (active.type === "signature" && !active.signature_png) {
       const t = window.setTimeout(() => {
@@ -136,12 +142,37 @@ export function InPdfSigner({
       setDraftValue(active.value || "");
       const t = window.setTimeout(() => {
         inputRef.current?.focus({ preventScroll: true });
-        inputRef.current?.select();
+        if (!(active.value || "").trim()) inputRef.current?.select();
       }, 220);
       return () => window.clearTimeout(t);
     }
     return undefined;
-  }, [started, active?.id, active?.type, allDone, signerHint]);
+  }, [started, active?.id, active?.type, showingFinish, signerHint]);
+
+  const saveCurrentText = () => {
+    if (!active || (active.type !== "name" && active.type !== "text")) return;
+    const trimmed = draftValue.trim();
+    if (!trimmed) return;
+    patchHost(active.id, { value: trimmed });
+    if (active.type === "name") setName(trimmed);
+  };
+
+  const goBack = () => {
+    setLocalError("");
+    saveCurrentText();
+    if (showingFinish || stepIdx >= queue.length) {
+      jumpTo(Math.max(0, queue.length - 1));
+      return;
+    }
+    if (stepIdx > 0) jumpTo(stepIdx - 1);
+  };
+
+  const goToFinishOrNextOpen = (fromDraft: SignField[] = draft) => {
+    const q = hostActionOrder(fromDraft);
+    const nextOpen = q.findIndex((f) => !fieldDone(f));
+    if (nextOpen >= 0) jumpTo(nextOpen);
+    else setStepIdx(q.length);
+  };
 
   const applyValueAndAdvance = (value: string) => {
     if (!active) return;
@@ -160,14 +191,11 @@ export function InPdfSigner({
     const nextDraft = draft.map((f) =>
       f.id === active.id ? { ...f, value: trimmed } : f,
     );
-    const nextQueue = hostActionOrder(nextDraft);
-    const nextOpen = nextQueue.findIndex((f) => !fieldDone(f));
-    if (nextOpen >= 0) jumpTo(nextOpen);
-    else setStepIdx(Math.max(0, nextQueue.length - 1));
+    goToFinishOrNextOpen(nextDraft);
   };
 
   const continueStep = () => {
-    if (allDone) return;
+    if (showingFinish) return;
     if (!active) {
       start();
       return;
@@ -178,8 +206,7 @@ export function InPdfSigner({
         setSigningId(active.id);
         return;
       }
-      const nextOpen = queue.findIndex((f) => !fieldDone(f));
-      if (nextOpen >= 0) jumpTo(nextOpen);
+      goToFinishOrNextOpen();
       return;
     }
     applyValueAndAdvance(draftValue);
@@ -204,9 +231,9 @@ export function InPdfSigner({
           <h2 className="mt-2 text-[24px] font-semibold tracking-tight text-[#f5f5f5] sm:text-[28px]">
             Sign your agreement
           </h2>
-          <p className="mt-3 max-w-[40ch] text-[15px] leading-relaxed text-[#9a9590]">
-            We’ll take you through each required field one at a time. Just fill what’s asked,
-            then tap Continue — no zooming or hunting on the page.
+          <p className="mt-3 max-w-[42ch] text-[15px] leading-relaxed text-[#9a9590]">
+            Scroll the agreement to read it anytime. When you’re ready, fill each item in the
+            panel below — Continue never jumps the page, so you can keep reading at your own pace.
           </p>
           <button
             type="button"
@@ -304,7 +331,8 @@ export function InPdfSigner({
               const q = hostActionOrder(next);
               const open = q.findIndex((f) => !fieldDone(f));
               window.setTimeout(() => {
-                setStepIdx(open >= 0 ? open : Math.max(0, q.length - 1));
+                if (open >= 0) setStepIdx(open);
+                else setStepIdx(q.length);
               }, 0);
               return next;
             });
@@ -317,7 +345,7 @@ export function InPdfSigner({
       {started ? (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0c0c0c] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-4 sm:px-6">
           <div className="mx-auto flex max-w-[640px] flex-col gap-3">
-            {allDone ? (
+            {showingFinish ? (
               <>
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#4ea882]">
@@ -330,18 +358,27 @@ export function InPdfSigner({
                     Tap below to finish. We’ll email you a signed copy.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={busy || !canFinish}
-                  onClick={finish}
-                  className={`w-full py-4 text-[16px] font-bold ${
-                    busy || !canFinish
-                      ? "cursor-not-allowed bg-[#c4a35a]/25 text-[#6f6a65]"
-                      : "bg-[#c4a35a] text-[#0a0a0a] hover:bg-[#dcc084]"
-                  }`}
-                >
-                  {busy ? "Submitting…" : "Finish signing"}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    className="shrink-0 border border-white/16 px-5 py-4 text-[16px] font-semibold text-[#9a9590] hover:text-[#f5f5f5]"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !canFinish}
+                    onClick={finish}
+                    className={`min-w-0 flex-1 py-4 text-[16px] font-bold ${
+                      busy || !canFinish
+                        ? "cursor-not-allowed bg-[#c4a35a]/25 text-[#6f6a65]"
+                        : "bg-[#c4a35a] text-[#0a0a0a] hover:bg-[#dcc084]"
+                    }`}
+                  >
+                    {busy ? "Submitting…" : "Finish signing"}
+                  </button>
+                </div>
               </>
             ) : active ? (
               <>
@@ -349,14 +386,22 @@ export function InPdfSigner({
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6f6a65]">
                     Step {Math.min(stepIdx + 1, queue.length)} of {queue.length}
                   </div>
-                  <div className="text-[12px] text-[#6f6a65]">
-                    {doneCount} done
-                  </div>
+                  <button
+                    type="button"
+                    onClick={showOnAgreement}
+                    className="text-[12px] font-semibold text-[#c4a35a]"
+                  >
+                    Show on agreement →
+                  </button>
                 </div>
                 <div className="text-[18px] font-semibold text-[#f5f5f5]">
                   {stepTitle(active)}
                 </div>
-                <p className="text-[14px] leading-snug text-[#9a9590]">{stepHelp(active)}</p>
+                <p className="text-[14px] leading-snug text-[#9a9590]">
+                  {active.type === "signature" && active.signature_png
+                    ? "Signature saved. Continue, or redraw if you need to change it."
+                    : stepHelp(active)}
+                </p>
 
                 {active.type === "name" || active.type === "text" ? (
                   <input
@@ -385,15 +430,39 @@ export function InPdfSigner({
                   <p className="text-[13px] text-[#cf7f7b]">{localError}</p>
                 ) : null}
 
-                <button
-                  type="button"
-                  onClick={continueStep}
-                  className="w-full bg-[#c4a35a] py-4 text-[16px] font-bold text-[#0a0a0a] hover:bg-[#dcc084]"
-                >
-                  {active.type === "signature" && !active.signature_png
-                    ? "Open signature pad"
-                    : "Continue"}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={stepIdx <= 0}
+                    onClick={goBack}
+                    className="shrink-0 border border-white/16 px-5 py-4 text-[16px] font-semibold text-[#9a9590] hover:text-[#f5f5f5] disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={continueStep}
+                    className="min-w-0 flex-1 bg-[#c4a35a] py-4 text-[16px] font-bold text-[#0a0a0a] hover:bg-[#dcc084]"
+                  >
+                    {active.type === "signature" && !active.signature_png
+                      ? "Open signature pad"
+                      : active.type === "signature" && active.signature_png
+                        ? "Continue"
+                        : "Continue"}
+                  </button>
+                </div>
+                {active.type === "signature" && active.signature_png ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setName(signatureName || signerHint);
+                      setSigningId(active.id);
+                    }}
+                    className="text-center text-[13px] font-semibold text-[#c4a35a]"
+                  >
+                    Redraw signature
+                  </button>
+                ) : null}
               </>
             ) : null}
           </div>

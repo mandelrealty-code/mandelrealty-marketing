@@ -104,7 +104,6 @@ function copyAmount(cents: number): string {
 
 function defaultMonth(): string {
   const d = new Date();
-  d.setUTCMonth(d.getUTCMonth() - 1);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 

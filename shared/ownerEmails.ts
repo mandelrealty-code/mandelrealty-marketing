@@ -126,13 +126,13 @@ function passwordBlock(password: string, portalWithCode: string): string {
       <tr>
         <td align="center" style="padding:14px 8px 0;">
           <a href="${esc(portalWithCode)}" style="display:inline-block;padding:12px 22px;background:#c4a35a;font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;color:#0a0a0a;text-decoration:none;">
-            Copy &amp; open portal
+            Open portal with code
           </a>
         </td>
       </tr>
       <tr>
         <td align="center" style="padding:12px 8px 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#8a8580;">
-          That button opens your portal with the code ready. Or long-press the code above to copy it.
+          Opens your portal with the sign-in code already filled in. Or long-press the code above if you need it later.
         </td>
       </tr>
     </table>`;
@@ -192,7 +192,7 @@ export async function sendOwnerInviteEmail(input: {
       <tr>
         <td style="padding:18px 20px;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.7;color:#b4aea8;">
           <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#c4a35a;margin-bottom:10px;">What to do</div>
-          <div style="color:#f5f5f5;margin-bottom:6px;">1. Tap “Copy &amp; open portal” below</div>
+          <div style="color:#f5f5f5;margin-bottom:6px;">1. Tap “Open portal with code” below</div>
           <div style="color:#f5f5f5;margin-bottom:6px;">2. Sign in with your email — the code is already filled in</div>
           <div style="color:#f5f5f5;margin-bottom:6px;">3. Choose your own password</div>
           <div style="color:#f5f5f5;">4. Review the agreement and sign where prompted</div>
@@ -252,7 +252,7 @@ export async function sendOwnerInviteEmail(input: {
         "Your management agreement is inside the portal — open it to review on screen and sign electronically. Nothing to print or mail back.",
         "",
         "What to do:",
-        "1. Tap Copy & open portal in the email",
+        "1. Tap Open portal with code in the email",
         "2. Sign in with your email — the code is already filled in",
         "3. Choose your own password",
         "4. Review the agreement and sign where prompted",

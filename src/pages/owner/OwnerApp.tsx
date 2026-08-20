@@ -136,7 +136,6 @@ export function OwnerApp() {
       return "";
     }
   });
-  const [codeCopied, setCodeCopied] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -194,13 +193,6 @@ export function OwnerApp() {
     const code = new URLSearchParams(window.location.search).get("code")?.trim();
     if (!code) return;
     setPassword(code);
-    void navigator.clipboard?.writeText(code).then(
-      () => {
-        setCodeCopied(true);
-        window.setTimeout(() => setCodeCopied(false), 2500);
-      },
-      () => undefined,
-    );
     // Strip code from the URL so it isn't left in history after sign-in
     const url = new URL(window.location.href);
     url.searchParams.delete("code");
@@ -403,32 +395,14 @@ export function OwnerApp() {
                 />
               </Field>
               <Field label="Sign-in code">
-                <div className="flex items-end gap-2">
-                  <UnderlineInput
-                    type="text"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password"
-                    spellCheck={false}
-                    className="min-w-0 flex-1 tracking-[0.18em] text-[16px]"
-                  />
-                  <button
-                    type="button"
-                    disabled={!password}
-                    onClick={() => {
-                      void navigator.clipboard?.writeText(password).then(
-                        () => {
-                          setCodeCopied(true);
-                          window.setTimeout(() => setCodeCopied(false), 2000);
-                        },
-                        () => setError("Could not copy — long-press the code instead."),
-                      );
-                    }}
-                    className="shrink-0 border border-white/16 px-3 py-2.5 text-[13px] font-semibold text-[#c4a35a] disabled:opacity-40"
-                  >
-                    {codeCopied ? "Copied" : "Copy"}
-                  </button>
-                </div>
+                <UnderlineInput
+                  type="text"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  spellCheck={false}
+                  className="tracking-[0.18em] text-[16px]"
+                />
               </Field>
               {error ? <p className="text-sm text-[#cf7f7b]">{error}</p> : null}
               <GoldButton disabled={busy || !email || !password} onClick={login}>
