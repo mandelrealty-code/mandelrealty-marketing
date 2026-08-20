@@ -106,7 +106,7 @@ export function InPdfSigner({
                                 className="h-full w-full object-contain"
                               />
                             ) : (
-                              <span className="block truncate px-1 text-center font-semibold uppercase tracking-wide text-[#5a4a28] [font-size:clamp(7px,38cqh,11px)]">
+                              <span className="block truncate px-0.5 text-center font-semibold uppercase tracking-wide text-[#5a4a28] [font-size:clamp(5px,48cqh,11px)]">
                                 Tap to sign
                               </span>
                             )}

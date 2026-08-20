@@ -32,10 +32,10 @@ export function defaultFieldSize(type: SignFieldType): { w: number; h: number } 
 }
 
 export function minFieldSize(type: SignFieldType): { w: number; h: number } {
-  if (type === "checkbox") return { w: 0.02, h: 0.02 };
-  if (type === "date") return { w: 0.22, h: 0.042 };
-  if (type === "signature") return { w: 0.18, h: 0.05 };
-  return { w: 0.14, h: 0.036 };
+  if (type === "checkbox") return { w: 0.012, h: 0.012 };
+  if (type === "date") return { w: 0.08, h: 0.018 };
+  if (type === "signature") return { w: 0.08, h: 0.022 };
+  return { w: 0.06, h: 0.018 };
 }
 
 export function fieldLabel(type: SignFieldType): string {
@@ -79,10 +79,9 @@ export function normalizeSignFields(raw: unknown): SignField[] {
     if (![x, y, w, h].every((n) => Number.isFinite(n))) continue;
     const value = typeof r.value === "string" ? r.value : "";
     const png = typeof r.signature_png === "string" ? r.signature_png : "";
-    const minW = type === "date" ? 0.2 : type === "checkbox" ? 0.018 : 0.03;
-    const minH = type === "date" ? 0.04 : type === "checkbox" ? 0.018 : 0.015;
-    const boxW = Math.min(1, Math.max(minW, w));
-    const boxH = Math.min(1, Math.max(minH, h));
+    const min = minFieldSize(type);
+    const boxW = Math.min(1, Math.max(min.w, w));
+    const boxH = Math.min(1, Math.max(min.h, h));
     out.push({
       id: typeof r.id === "string" && r.id ? r.id : newFieldId(),
       type,

@@ -331,7 +331,7 @@ export function SignFieldPlacer({
                         setSigningId(f.id);
                       }
                     }}
-                    className={`@container absolute touch-none select-none overflow-visible rounded-[3px] border-2 [container-type:size] ${
+                    className={`@container absolute touch-none select-none overflow-visible rounded-[2px] border-2 [container-type:size] ${
                       active
                         ? "z-20 border-[#c4a35a] bg-[#c4a35a]/18 shadow-[0_0_0_3px_rgba(196,163,90,0.35)]"
                         : isMrg
@@ -379,7 +379,7 @@ export function SignFieldPlacer({
                             className="h-full w-full object-contain p-0.5"
                           />
                         ) : (
-                          <span className="w-full truncate px-1 text-center font-semibold uppercase tracking-wide text-[#5a4a28] [font-size:clamp(7px,38cqh,11px)]">
+                          <span className="w-full truncate px-0.5 text-center font-semibold uppercase tracking-wide text-[#5a4a28] [font-size:clamp(5px,48cqh,11px)]">
                             {isMrg ? "Tap to sign" : `${hostFirst} signs later`}
                           </span>
                         )
@@ -401,7 +401,7 @@ export function SignFieldPlacer({
                           onChange={(e) => patch(f.id, { value: e.target.value })}
                         />
                       ) : (
-                        <span className="w-full truncate px-1 text-[#5a4a28] [font-size:clamp(7px,38cqh,12px)]">
+                        <span className="w-full truncate px-0.5 text-[#5a4a28] [font-size:clamp(5px,48cqh,12px)] @max-h-[22px]:[font-size:clamp(4px,90cqh,8px)]">
                           {f.value ||
                             (f.type === "date"
                               ? `${hostFirst}'s date`
@@ -419,7 +419,7 @@ export function SignFieldPlacer({
                             data-handle
                             aria-label={`Resize ${handle}`}
                             onPointerDown={(e) => startResize(f, handle, e)}
-                            className={`absolute z-30 flex h-5 w-5 items-center justify-center ${
+                            className={`absolute z-30 flex h-6 w-6 items-center justify-center sm:h-5 sm:w-5 ${
                               handle === "nw"
                                 ? "-left-2.5 -top-2.5 cursor-nwse-resize"
                                 : handle === "ne"

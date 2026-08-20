@@ -108,7 +108,8 @@ export function PartyChip({
   const mrg = party === "mrg";
   return (
     <div
-      className={`pointer-events-none absolute -top-4 left-0 whitespace-nowrap text-[8px] font-bold uppercase tracking-wide ${
+      data-party-chip
+      className={`pointer-events-none absolute -top-4 left-0 whitespace-nowrap text-[8px] font-bold uppercase tracking-wide @max-h-[26px]:hidden ${
         mrg ? "text-[#4ea882]" : "text-[#8a6a28]"
       }`}
     >
@@ -123,7 +124,7 @@ export function FittedFieldInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...rest}
-      className={`h-full w-full min-w-0 whitespace-nowrap bg-transparent px-1 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] [font-size:clamp(8px,42cqh,13px)] ${className}`}
+      className={`h-full w-full min-w-0 whitespace-nowrap bg-transparent px-0.5 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] [font-size:clamp(5px,52cqh,13px)] ${className}`}
     />
   );
 }
