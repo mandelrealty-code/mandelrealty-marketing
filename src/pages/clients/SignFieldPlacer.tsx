@@ -83,6 +83,7 @@ export function SignFieldPlacer({
   mrgNameHint?: string;
   hostNameHint?: string;
 }) {
+  const [mode, setMode] = useState<"place" | "move">("move");
   const [tool, setTool] = useState<SignFieldType>("signature");
   const [party, setParty] = useState<SignParty>("host");
   const [selected, setSelected] = useState<string | null>(null);
@@ -96,6 +97,16 @@ export function SignFieldPlacer({
   const hostFirst = firstNameOf(hostNameHint) || "Host";
 
   fieldsRef.current = fields;
+
+  const enterPlace = (t: SignFieldType) => {
+    setTool(t);
+    setMode("place");
+    if (t === "checkbox") setParty("mrg");
+  };
+
+  const enterMove = () => {
+    setMode("move");
+  };
 
   const replace = (id: string, next: SignField) => {
     onChange(fieldsRef.current.map((f) => (f.id === id ? next : f)));
@@ -124,6 +135,7 @@ export function SignFieldPlacer({
   };
 
   const place = (page: number, e: React.MouseEvent<HTMLDivElement>) => {
+    if (mode !== "place") return;
     if (dragging.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const size = defaultFieldSize(tool);
@@ -144,6 +156,7 @@ export function SignFieldPlacer({
     });
     onChange([...fieldsRef.current, field]);
     setSelected(field.id);
+    setMode("move");
     if (tool === "signature" && party === "mrg") {
       setPadName(mrgNameHint);
       setSigningId(field.id);
@@ -195,9 +208,15 @@ export function SignFieldPlacer({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Backspace" && e.key !== "Delete") return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.key === "Escape" || e.key === "v" || e.key === "V") {
+        e.preventDefault();
+        enterMove();
+        if (e.key === "Escape") setSelected(null);
+        return;
+      }
+      if (e.key !== "Backspace" && e.key !== "Delete") return;
       if (!selected) return;
       e.preventDefault();
       remove(selected);
@@ -209,6 +228,7 @@ export function SignFieldPlacer({
   const startMove = (f: SignField, e: React.PointerEvent) => {
     e.stopPropagation();
     setSelected(f.id);
+    setMode("move");
     if ((e.target as HTMLElement).closest("input,textarea,[data-handle],[data-delete]")) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -232,6 +252,18 @@ export function SignFieldPlacer({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="z-20 shrink-0 border-b border-white/8 bg-[#0a0a0a] px-3 py-2.5 sm:px-4 sm:py-3">
       <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={enterMove}
+          className={`rounded-md px-3 py-1.5 text-[12.5px] font-semibold ${
+            mode === "move"
+              ? "bg-[#c4a35a] text-[#0a0a0a]"
+              : "border border-white/12 text-[#9a9590]"
+          }`}
+        >
+          Move
+        </button>
+        <span className="mx-1 h-4 w-px bg-white/12" />
         <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f6a65]">
           Who
         </span>
@@ -257,12 +289,9 @@ export function SignFieldPlacer({
           <button
             key={t}
             type="button"
-            onClick={() => {
-              setTool(t);
-              if (t === "checkbox") setParty("mrg");
-            }}
+            onClick={() => enterPlace(t)}
             className={`rounded-md px-3 py-1.5 text-[12.5px] font-semibold ${
-              tool === t
+              mode === "place" && tool === t
                 ? "bg-[#c4a35a] text-[#0a0a0a]"
                 : "border border-white/12 text-[#9a9590]"
             }`}
@@ -271,13 +300,11 @@ export function SignFieldPlacer({
           </button>
         ))}
         <span className="text-[12px] text-[#6f6a65]">
-            {selected
-            ? "Selected · drag gold corners · × or Delete"
-            : tool === "checkbox"
-              ? "Click the PDF to drop an MRG check · click a box to toggle"
-            : fields.some((f) => f.type === "signature" && f.party !== "mrg")
-              ? `Click a box to select · ${fields.length} placed`
-              : `Still need a Sign here box for ${hostFirst}`}
+          {mode === "move"
+            ? selected
+              ? "Drag to reposition · gold corners to resize · Delete to remove"
+              : "Click a box to grab it · V or Escape for Move"
+            : `Click the PDF to place ${fieldLabel(tool).toLowerCase()} · switches to Move after`}
         </span>
         {selected ? (
           <button
@@ -299,10 +326,14 @@ export function SignFieldPlacer({
               if (el) overlayByPage.current.set(page, el);
               else overlayByPage.current.delete(page);
             }}
-            className="absolute inset-0 cursor-crosshair"
+            className={`absolute inset-0 ${mode === "place" ? "cursor-crosshair" : "cursor-default"}`}
             onClick={(e) => {
               if ((e.target as HTMLElement).closest("[data-field]")) return;
-              place(page, e);
+              if (mode === "place") {
+                place(page, e);
+                return;
+              }
+              setSelected(null);
             }}
           >
             {fields
@@ -333,10 +364,10 @@ export function SignFieldPlacer({
                     }}
                     className={`@container absolute touch-none select-none overflow-visible rounded-[1px] border [container-type:size] ${
                       active
-                        ? "z-20 border-[#c4a35a] bg-[#c4a35a]/18 shadow-[0_0_0_2px_rgba(196,163,90,0.35)]"
+                        ? "z-20 cursor-grab border-[#c4a35a] bg-[#c4a35a]/18 shadow-[0_0_0_2px_rgba(196,163,90,0.35)] active:cursor-grabbing"
                         : isMrg
-                          ? "border-[#4ea882]/80 bg-[#4ea882]/12"
-                          : "border-[#c4a35a]/80 bg-[#c4a35a]/12"
+                          ? "cursor-grab border-[#4ea882]/80 bg-[#4ea882]/12 active:cursor-grabbing"
+                          : "cursor-grab border-[#c4a35a]/80 bg-[#c4a35a]/12 active:cursor-grabbing"
                     }`}
                   >
                     <PartyChip party={f.party} hostLabel={hostFirst} />

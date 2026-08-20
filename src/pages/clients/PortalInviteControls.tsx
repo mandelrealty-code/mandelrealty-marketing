@@ -482,8 +482,9 @@ export function PortalInviteControls({
             <div className="min-w-0">
               <div className="text-[15px] font-semibold">Prepare agreement</div>
               <div className="hidden text-[12.5px] text-[#6f6a65] sm:block">
-                {hostFirst}’s boxes = they fill later. MRG boxes = you sign and type now. Click a box to
-                select · drag gold corners to resize · × or Delete to remove.
+                {hostFirst}’s boxes = they fill later. MRG boxes = you sign and type now. Use{" "}
+                <span className="text-[#c4a35a]">Move</span> to grab and reposition · pick a field type
+                to place · Escape switches back to Move.
               </div>
             </div>
             <div className="flex flex-col items-stretch gap-1 sm:items-end">
