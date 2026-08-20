@@ -1,4 +1,4 @@
-import { useEffect, useState, forwardRef, type CSSProperties, type InputHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useState, forwardRef, useRef, type CSSProperties, type InputHTMLAttributes, type ReactNode } from "react";
 import { getDocument, GlobalWorkerOptions, version } from "pdfjs-dist";
 import type { SignField } from "../../shared/pm/signFields";
 
@@ -123,12 +123,88 @@ export const FittedFieldInput = forwardRef<
   HTMLInputElement,
   InputHTMLAttributes<HTMLInputElement>
 >(function FittedFieldInput(props, ref) {
-  const { className = "", ...rest } = props;
+  const { className = "", value, onChange, style, ...rest } = props;
+  const innerRef = useRef<HTMLInputElement | null>(null);
+  const setRefs = (node: HTMLInputElement | null) => {
+    innerRef.current = node;
+    if (typeof ref === "function") ref(node);
+    else if (ref) ref.current = node;
+  };
+
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const fit = () => {
+      const maxH = Math.max(4, el.clientHeight * 0.85);
+      const maxW = Math.max(8, el.clientWidth - 2);
+      let size = Math.min(12, maxH);
+      el.style.fontSize = `${size}px`;
+      // scrollWidth on inputs reflects content width in modern browsers
+      while (size > 4 && el.scrollWidth > maxW + 1) {
+        size -= 0.4;
+        el.style.fontSize = `${size}px`;
+      }
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [value]);
+
   return (
     <input
-      ref={ref}
+      ref={setRefs}
       {...rest}
-      className={`h-full w-full min-w-0 whitespace-nowrap bg-transparent px-0.5 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] [font-size:clamp(4px,78cqh,12px)] ${className}`}
+      value={value}
+      onChange={onChange}
+      style={style}
+      className={`h-full w-full min-w-0 whitespace-nowrap bg-transparent px-0.5 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] ${className}`}
     />
   );
 });
+
+/** Shrinks text so long values stay inside the placed field box (preview + placer). */
+export function FittedFieldText({
+  text,
+  className = "",
+}: {
+  text: string;
+  className?: string;
+}) {
+  const spanRef = useRef<HTMLSpanElement | null>(null);
+  const [sizePx, setSizePx] = useState(10);
+
+  useEffect(() => {
+    const span = spanRef.current;
+    const box = span?.parentElement;
+    if (!span || !box) return;
+
+    const fit = () => {
+      const maxH = Math.max(4, box.clientHeight * 0.82);
+      const maxW = Math.max(8, box.clientWidth - 4);
+      let size = Math.min(12, maxH);
+      span.style.fontSize = `${size}px`;
+      while (size > 4 && span.scrollWidth > maxW) {
+        size -= 0.4;
+        span.style.fontSize = `${size}px`;
+      }
+      setSizePx(size);
+    };
+
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [text]);
+
+  return (
+    <span
+      ref={spanRef}
+      style={{ fontSize: sizePx }}
+      className={`block w-full truncate leading-none text-[#1a1408] ${className}`}
+      title={text}
+    >
+      {text}
+    </span>
+  );
+}

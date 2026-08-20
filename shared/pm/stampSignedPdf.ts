@@ -120,9 +120,9 @@ export async function stampSignedPdf(input: {
     if (!text) continue;
     const useFont = field.type === "signature" ? italic : font;
     let size =
-      field.type === "signature" ? Math.min(16, boxH * 0.72) : Math.min(10, boxH * 0.78);
-    while (size > 4.5 && useFont.widthOfTextAtSize(text, size) > boxW - 2) {
-      size -= 0.35;
+      field.type === "signature" ? Math.min(16, boxH * 0.72) : Math.min(11, boxH * 0.78);
+    while (size > 3.2 && useFont.widthOfTextAtSize(text, size) > boxW - 2) {
+      size -= 0.25;
     }
     const textW = useFont.widthOfTextAtSize(text, size);
     const leftAlign = field.type === "text" || field.type === "name" || field.type === "date";

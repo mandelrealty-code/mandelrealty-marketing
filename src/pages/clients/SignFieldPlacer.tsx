@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PdfPages, fieldStyle, FittedFieldInput, PartyChip } from "../../lib/pdfPages";
+import { PdfPages, fieldStyle, FittedFieldInput, FittedFieldText, PartyChip } from "../../lib/pdfPages";
 import { SignaturePad } from "../../lib/SignaturePad";
 import {
   defaultFieldSize,
@@ -432,14 +432,19 @@ export function SignFieldPlacer({
                           onChange={(e) => patch(f.id, { value: e.target.value })}
                         />
                       ) : (
-                        <span className="w-full truncate px-0.5 leading-none text-[#5a4a28] [font-size:clamp(4px,78cqh,11px)]">
-                          {f.value ||
-                            (f.type === "date"
-                              ? `${hostFirst}'s date`
-                              : f.type === "name"
-                                ? `${hostFirst}'s name`
-                                : `${hostFirst} fills later`)}
-                        </span>
+                        <div className="flex h-full w-full min-w-0 items-center px-0.5">
+                          <FittedFieldText
+                            className="text-[#5a4a28]"
+                            text={
+                              f.value ||
+                              (f.type === "date"
+                                ? `${hostFirst}'s date`
+                                : f.type === "name"
+                                  ? `${hostFirst}'s name`
+                                  : `${hostFirst} fills later`)
+                            }
+                          />
+                        </div>
                       )}
                     </div>
                     {active

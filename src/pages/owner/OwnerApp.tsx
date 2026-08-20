@@ -482,9 +482,9 @@ export function OwnerApp() {
 
   if (screen === "contract" && boot?.awaiting_contract) {
     return (
-      <div className="flex min-h-screen flex-col bg-[#0a0a0a] text-[#f5f5f5]">
+      <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#0a0a0a] text-[#f5f5f5]">
         {isPreview ? <PreviewBanner /> : null}
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-white/9 bg-[#0c0c0c] px-4 py-3 sm:px-5 lg:px-10">
+        <header className="flex flex-none flex-wrap items-center justify-between gap-2 border-b border-white/9 bg-[#0c0c0c] px-4 py-3 sm:px-5 lg:px-10">
           <div className="flex items-center gap-6">
             <MrgMark />
             <div className="hidden text-sm text-[#9a9590] lg:block">
@@ -493,7 +493,7 @@ export function OwnerApp() {
           </div>
           <div className="text-xs text-[#6f6a65] lg:text-sm">{boot.awaiting_contract.filename}</div>
         </header>
-        <div className="flex-1 overflow-auto px-3 py-6 sm:p-8">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-6 sm:p-8">
           <div className="mx-auto max-w-[820px]">
             {pdfUrl ? (
               <InPdfSigner

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fieldStyle, PdfPages } from "../../lib/pdfPages";
+import { fieldStyle, FittedFieldText, PdfPages } from "../../lib/pdfPages";
 import { SignaturePad } from "../../lib/SignaturePad";
 import {
   firstNameOf,
@@ -35,6 +35,53 @@ function stepHelp(f: SignField): string {
   if (f.type === "signature") return "Draw your signature, then continue.";
   if (f.type === "name") return "Type your full legal name as it should appear on the agreement.";
   return "Type the information for this field, then continue.";
+}
+
+/** Scroll containers Safari may yank when focusing a fixed bottom input. */
+function scrollLockTargets(from: Element | null): Array<{ el: HTMLElement; top: number; left: number }> {
+  const targets: Array<{ el: HTMLElement; top: number; left: number }> = [];
+  let node: Element | null = from;
+  while (node) {
+    if (node instanceof HTMLElement) {
+      const oy = getComputedStyle(node).overflowY;
+      if (oy === "auto" || oy === "scroll" || oy === "overlay") {
+        targets.push({ el: node, top: node.scrollTop, left: node.scrollLeft });
+      }
+    }
+    node = node.parentElement;
+  }
+  return targets;
+}
+
+/** Keep PDF scroll put while the keyboard opens (iOS focus + visualViewport). */
+function freezeDocumentScroll(from: Element | null): () => void {
+  const parents = scrollLockTargets(from);
+  const winX = window.scrollX;
+  const winY = window.scrollY;
+  const restore = () => {
+    for (const p of parents) {
+      p.el.scrollTop = p.top;
+      p.el.scrollLeft = p.left;
+    }
+    if (window.scrollX !== winX || window.scrollY !== winY) {
+      window.scrollTo(winX, winY);
+    }
+  };
+  restore();
+  const raf = requestAnimationFrame(() => {
+    restore();
+    requestAnimationFrame(restore);
+  });
+  const timers = [0, 50, 120, 250, 400].map((ms) => window.setTimeout(restore, ms));
+  const vv = window.visualViewport;
+  vv?.addEventListener("resize", restore);
+  vv?.addEventListener("scroll", restore);
+  return () => {
+    cancelAnimationFrame(raf);
+    for (const t of timers) window.clearTimeout(t);
+    vv?.removeEventListener("resize", restore);
+    vv?.removeEventListener("scroll", restore);
+  };
 }
 
 export function InPdfSigner({
@@ -74,6 +121,8 @@ export function InPdfSigner({
   const [draftValue, setDraftValue] = useState("");
   const [localError, setLocalError] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const scrollFreezeRef = useRef<(() => void) | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   const queue = useMemo(() => hostActionOrder(draft), [draft]);
   /** stepIdx === queue.length means the finish screen */
@@ -126,7 +175,7 @@ export function InPdfSigner({
     el?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
   };
 
-  // Focus the step panel input — do not yank the PDF scroll (so they can keep reading).
+  // Sync draft text for the step — no auto-focus (that scrolls the PDF on mobile).
   useEffect(() => {
     if (!started || !active || showingFinish) return;
 
@@ -140,14 +189,27 @@ export function InPdfSigner({
 
     if (active.type === "name" || active.type === "text") {
       setDraftValue(active.value || "");
-      const t = window.setTimeout(() => {
-        inputRef.current?.focus({ preventScroll: true });
-        if (!(active.value || "").trim()) inputRef.current?.select();
-      }, 220);
-      return () => window.clearTimeout(t);
     }
     return undefined;
   }, [started, active?.id, active?.type, showingFinish, signerHint]);
+
+  useEffect(() => {
+    return () => {
+      scrollFreezeRef.current?.();
+      scrollFreezeRef.current = null;
+    };
+  }, []);
+
+  const holdScrollWhileTyping = () => {
+    // touchstart often fires first — keep that snapshot; don't re-lock after iOS already scrolled
+    if (scrollFreezeRef.current) return;
+    scrollFreezeRef.current = freezeDocumentScroll(rootRef.current);
+  };
+
+  const releaseScrollHold = () => {
+    scrollFreezeRef.current?.();
+    scrollFreezeRef.current = null;
+  };
 
   const saveCurrentText = () => {
     if (!active || (active.type !== "name" && active.type !== "text")) return;
@@ -181,7 +243,7 @@ export function InPdfSigner({
       setLocalError(
         active.type === "name" ? "Enter your printed name to continue." : "Fill this in to continue.",
       );
-      inputRef.current?.focus();
+      inputRef.current?.focus({ preventScroll: true });
       return;
     }
     patchHost(active.id, { value: trimmed });
@@ -222,7 +284,10 @@ export function InPdfSigner({
   };
 
   return (
-    <div className={`relative flex flex-col gap-5 ${started ? "pb-56" : "pb-8"}`}>
+    <div
+      ref={rootRef}
+      className={`relative flex flex-col gap-5 ${started ? "pb-56" : "pb-8"}`}
+    >
       {!started ? (
         <div className="rounded-none border border-white/10 bg-[#121212] px-5 py-6 sm:px-7">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c4a35a]">
@@ -291,12 +356,15 @@ export function InPdfSigner({
                             className="h-full w-full object-contain"
                           />
                         ) : (
-                          <span className="flex h-full items-center truncate px-1 text-[10px] text-[#1a1408] sm:text-[11px]">
-                            {isDate
-                              ? f.value || today
-                              : f.value ||
-                                (isSig ? "" : "")}
-                          </span>
+                          <div className="flex h-full w-full items-center px-0.5">
+                            <FittedFieldText
+                              text={
+                                isDate
+                                  ? f.value || today
+                                  : f.value || (isSig ? "" : "")
+                              }
+                            />
+                          </div>
                         )}
                       </div>
                     );
@@ -412,6 +480,9 @@ export function InPdfSigner({
                     autoCapitalize={active.type === "name" ? "words" : "off"}
                     value={draftValue}
                     placeholder={active.type === "name" ? firstNameOf(signerHint) || "Full name" : "Type here"}
+                    onFocus={holdScrollWhileTyping}
+                    onBlur={releaseScrollHold}
+                    onTouchStart={holdScrollWhileTyping}
                     onChange={(e) => {
                       setDraftValue(e.target.value);
                       if (localError) setLocalError("");
