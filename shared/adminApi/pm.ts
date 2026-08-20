@@ -19,10 +19,8 @@ import {
   downloadTemplateBuffer,
   getTemplateDownloadUrl,
   listContractTemplates,
-  updateTemplateSignFields,
 } from "../pm/contractTemplateStore.js";
 import {
-  fieldsForTemplate,
   hasHostSignature,
   mrgFields,
   normalizeSignFields,
@@ -1045,11 +1043,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               buffer: pdf.buffer,
             }).catch(() => undefined);
           }
-          if (templateId) {
-            await updateTemplateSignFields(templateId, fieldsForTemplate(signFields)).catch(
-              () => undefined,
-            );
-          }
+          // Do not write this deal's boxes onto the shared template — every customer
+          // starts from a blank PDF and gets their own field layout.
 
           let buffer = pdf.buffer;
           if (ours.length) {

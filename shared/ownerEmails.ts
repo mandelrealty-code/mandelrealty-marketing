@@ -105,8 +105,8 @@ function goldButton(href: string, label: string): string {
     </table>`;
 }
 
-/** Big, padded password block — easy to select / copy on mobile and desktop. */
-function passwordBlock(password: string): string {
+/** Big, padded password block — easy to select; link opens portal with code ready. */
+function passwordBlock(password: string, portalWithCode: string): string {
   return `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0;">
       <tr>
@@ -115,15 +115,24 @@ function passwordBlock(password: string): string {
         </td>
       </tr>
       <tr>
-        <td align="center" style="background:#141414;border:1px solid #3a3428;padding:36px 28px;">
-          <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:28px;font-weight:700;letter-spacing:0.18em;line-height:1.4;color:#f5f5f5;user-select:all;-webkit-user-select:all;">
-            ${esc(password)}
-          </div>
+        <td align="center" style="background:#141414;border:1px solid #3a3428;padding:32px 24px;">
+          <a href="${esc(portalWithCode)}" style="text-decoration:none;">
+            <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:26px;font-weight:700;letter-spacing:0.16em;line-height:1.45;color:#f5f5f5;-webkit-user-select:all;user-select:all;">
+              ${esc(password)}
+            </div>
+          </a>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="padding:14px 8px 0;">
+          <a href="${esc(portalWithCode)}" style="display:inline-block;padding:12px 22px;background:#c4a35a;font-family:Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;color:#0a0a0a;text-decoration:none;">
+            Copy &amp; open portal
+          </a>
         </td>
       </tr>
       <tr>
         <td align="center" style="padding:12px 8px 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#8a8580;">
-          Tap or triple-click the code above to copy it, then paste when you sign in.
+          That button opens your portal with the code ready. Or long-press the code above to copy it.
         </td>
       </tr>
     </table>`;
@@ -157,7 +166,10 @@ export async function sendOwnerInviteEmail(input: {
   if (!apiKey) return { ok: false, message: "RESEND_API_KEY not configured." };
   const from = inviteFrom();
   const portal = ownerPortalUrl(input.slug);
-  const cta = input.kind === "existing" ? portal : ownerPortalUrl(input.slug, "contracts");
+  const ctaBase = input.kind === "existing" ? portal : ownerPortalUrl(input.slug, "contracts");
+  const codeQs = `code=${encodeURIComponent(input.tempPassword)}`;
+  const portalWithCode = `${portal}${portal.includes("?") ? "&" : "?"}${codeQs}`;
+  const cta = `${ctaBase}${ctaBase.includes("?") ? "&" : "?"}${codeQs}`;
   const prop = input.propertyLabel?.trim();
   const existing = input.kind === "existing";
   const replyTo = process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com";
@@ -180,19 +192,19 @@ export async function sendOwnerInviteEmail(input: {
       <tr>
         <td style="padding:18px 20px;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.7;color:#b4aea8;">
           <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#c4a35a;margin-bottom:10px;">What to do</div>
-          <div style="color:#f5f5f5;margin-bottom:6px;">1. Open your portal with the button below</div>
-          <div style="color:#f5f5f5;margin-bottom:6px;">2. Sign in with your email and the code in this message</div>
+          <div style="color:#f5f5f5;margin-bottom:6px;">1. Tap “Copy &amp; open portal” below</div>
+          <div style="color:#f5f5f5;margin-bottom:6px;">2. Sign in with your email — the code is already filled in</div>
           <div style="color:#f5f5f5;margin-bottom:6px;">3. Choose your own password</div>
           <div style="color:#f5f5f5;">4. Review the agreement and sign where prompted</div>
         </td>
       </tr>
     </table>`
     }
-    ${passwordBlock(input.tempPassword)}
+    ${passwordBlock(input.tempPassword, portalWithCode)}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       ${row(
         "Portal link",
-        `<a href="${esc(portal)}" style="color:#c4a35a;text-decoration:none;">${esc(displayHostUrl(portal))}</a>`,
+        `<a href="${esc(portalWithCode)}" style="color:#c4a35a;text-decoration:none;">${esc(displayHostUrl(portal))}</a>`,
       )}
       ${row("Email to sign in with", esc(input.to))}
     </table>
@@ -225,7 +237,7 @@ export async function sendOwnerInviteEmail(input: {
         `Portal: ${portal}`,
         `Email: ${input.to}`,
         "",
-        `Open portal: ${cta}`,
+        `Open portal (code ready): ${cta}`,
         "",
         `Questions? Reply to this email (${replyTo}).`,
         "— Mandel Realty Group",
@@ -240,8 +252,8 @@ export async function sendOwnerInviteEmail(input: {
         "Your management agreement is inside the portal — open it to review on screen and sign electronically. Nothing to print or mail back.",
         "",
         "What to do:",
-        "1. Open your portal with the link below",
-        "2. Sign in with your email and the code in this message",
+        "1. Tap Copy & open portal in the email",
+        "2. Sign in with your email — the code is already filled in",
         "3. Choose your own password",
         "4. Review the agreement and sign where prompted",
         "",
@@ -249,12 +261,8 @@ export async function sendOwnerInviteEmail(input: {
         "",
         `    ${input.tempPassword}`,
         "",
-        `(Copy the line above.)`,
-        "",
-        `Portal: ${portal}`,
+        `Portal (code ready): ${cta}`,
         `Email: ${input.to}`,
-        "",
-        `Open portal & review agreement: ${cta}`,
         "",
         "After you sign, a copy is saved in Documents and emailed to you.",
         `Questions? Reply to this email (${replyTo}).`,

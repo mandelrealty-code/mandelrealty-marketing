@@ -115,6 +115,24 @@ export function PortalInviteControls({
     loadStatus().catch(() => setStatus(null));
   }, [loadStatus]);
 
+  // Remount-safe reset when switching clients so layouts never leak across deals.
+  useEffect(() => {
+    const draft = readInviteDraft(client.id);
+    setStatus(null);
+    setOpen(Boolean(draft?.open));
+    setStep(draft?.open && draft.step === "place" && draft.templateId ? "place" : "form");
+    setTemplateId(draft?.templateId || "");
+    setOneOff(null);
+    setName(draft?.name || client.name);
+    setEmail(draft?.email || client.email);
+    setPhone(draft?.phone || client.phone);
+    setSaveAsTemplate(Boolean(draft?.saveAsTemplate));
+    setPdfUrl("");
+    setFields(normalizeSignFields(draft?.fields));
+    setKind(draft?.kind === "new" ? "new" : "existing");
+    setSignedFile(null);
+  }, [client.id, client.name, client.email, client.phone]);
+
   useEffect(() => {
     try {
       const d: InviteDraft = {
@@ -167,16 +185,15 @@ export function PortalInviteControls({
     try {
       if (oneOff) {
         setPdfUrl(URL.createObjectURL(oneOff));
-        setFields([]);
       } else if (templateId) {
         const data = await pmGet<{ url: string }>("contract_template_url", { id: templateId });
         if (!data.url) throw new Error("Could not open template PDF.");
         setPdfUrl(data.url);
-        const t = templates.find((x) => x.id === templateId);
-        setFields(normalizeSignFields(t?.sign_fields));
       } else {
         throw new Error("Pick a template or upload a PDF.");
       }
+      // Always start blank — never reuse another customer's layout or template leftovers.
+      setFields([]);
       setStep("place");
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not open PDF.");

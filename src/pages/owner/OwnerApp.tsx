@@ -129,7 +129,14 @@ export function OwnerApp() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("code")?.trim() || "";
+    } catch {
+      return "";
+    }
+  });
+  const [codeCopied, setCodeCopied] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -182,6 +189,23 @@ export function OwnerApp() {
     if (!slug) return;
     refresh().catch((e) => setError(e instanceof Error ? e.message : "Could not load portal."));
   }, [slug, refresh]);
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("code")?.trim();
+    if (!code) return;
+    setPassword(code);
+    void navigator.clipboard?.writeText(code).then(
+      () => {
+        setCodeCopied(true);
+        window.setTimeout(() => setCodeCopied(false), 2500);
+      },
+      () => undefined,
+    );
+    // Strip code from the URL so it isn't left in history after sign-in
+    const url = new URL(window.location.href);
+    url.searchParams.delete("code");
+    window.history.replaceState({}, "", url.pathname + url.search);
+  }, []);
 
   useEffect(() => {
     if (screen !== "contract" || !boot?.awaiting_contract || !boot.session.authenticated) {
@@ -375,17 +399,36 @@ export function OwnerApp() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="username"
+                  className="text-[16px]"
                 />
               </Field>
               <Field label="Sign-in code">
-                <UnderlineInput
-                  type="text"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  spellCheck={false}
-                  className="tracking-[0.18em]"
-                />
+                <div className="flex items-end gap-2">
+                  <UnderlineInput
+                    type="text"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 tracking-[0.18em] text-[16px]"
+                  />
+                  <button
+                    type="button"
+                    disabled={!password}
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(password).then(
+                        () => {
+                          setCodeCopied(true);
+                          window.setTimeout(() => setCodeCopied(false), 2000);
+                        },
+                        () => setError("Could not copy — long-press the code instead."),
+                      );
+                    }}
+                    className="shrink-0 border border-white/16 px-3 py-2.5 text-[13px] font-semibold text-[#c4a35a] disabled:opacity-40"
+                  >
+                    {codeCopied ? "Copied" : "Copy"}
+                  </button>
+                </div>
               </Field>
               {error ? <p className="text-sm text-[#cf7f7b]">{error}</p> : null}
               <GoldButton disabled={busy || !email || !password} onClick={login}>
