@@ -331,9 +331,9 @@ export function SignFieldPlacer({
                         setSigningId(f.id);
                       }
                     }}
-                    className={`@container absolute touch-none select-none overflow-visible rounded-[2px] border-2 [container-type:size] ${
+                    className={`@container absolute touch-none select-none overflow-visible rounded-[1px] border [container-type:size] ${
                       active
-                        ? "z-20 border-[#c4a35a] bg-[#c4a35a]/18 shadow-[0_0_0_3px_rgba(196,163,90,0.35)]"
+                        ? "z-20 border-[#c4a35a] bg-[#c4a35a]/18 shadow-[0_0_0_2px_rgba(196,163,90,0.35)]"
                         : isMrg
                           ? "border-[#4ea882]/80 bg-[#4ea882]/12"
                           : "border-[#c4a35a]/80 bg-[#c4a35a]/12"
@@ -379,7 +379,7 @@ export function SignFieldPlacer({
                             className="h-full w-full object-contain p-0.5"
                           />
                         ) : (
-                          <span className="w-full truncate px-0.5 text-center font-semibold uppercase tracking-wide text-[#5a4a28] [font-size:clamp(5px,48cqh,11px)]">
+                          <span className="w-full truncate px-0.5 text-center font-semibold uppercase tracking-wide text-[#5a4a28] [font-size:clamp(4px,70cqh,10px)]">
                             {isMrg ? "Tap to sign" : `${hostFirst} signs later`}
                           </span>
                         )
@@ -401,7 +401,7 @@ export function SignFieldPlacer({
                           onChange={(e) => patch(f.id, { value: e.target.value })}
                         />
                       ) : (
-                        <span className="w-full truncate px-0.5 text-[#5a4a28] [font-size:clamp(5px,48cqh,12px)] @max-h-[22px]:[font-size:clamp(4px,90cqh,8px)]">
+                        <span className="w-full truncate px-0.5 leading-none text-[#5a4a28] [font-size:clamp(4px,78cqh,11px)]">
                           {f.value ||
                             (f.type === "date"
                               ? `${hostFirst}'s date`

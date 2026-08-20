@@ -61,9 +61,9 @@ export async function stampSignedPdf(input: {
     if (!page) continue;
     const { width, height } = page.getSize();
     const x = clamp(field.x, 0, 1) * width;
-    const minFrac = field.type === "checkbox" ? 0.012 : 0.015;
+    const minFrac = field.type === "checkbox" ? 0.008 : 0.008;
     const boxH = clamp(field.h, minFrac, 1) * height;
-    const boxW = clamp(field.w, field.type === "checkbox" ? 0.012 : 0.03, 1) * width;
+    const boxW = clamp(field.w, field.type === "checkbox" ? 0.008 : 0.02, 1) * width;
     const y = height - clamp(field.y, 0, 1) * height - boxH;
 
     if (field.type === "checkbox") {
@@ -120,9 +120,9 @@ export async function stampSignedPdf(input: {
     if (!text) continue;
     const useFont = field.type === "signature" ? italic : font;
     let size =
-      field.type === "signature" ? Math.min(18, boxH * 0.55) : Math.min(11, boxH * 0.62);
-    while (size > 6 && useFont.widthOfTextAtSize(text, size) > boxW - 4) {
-      size -= 0.4;
+      field.type === "signature" ? Math.min(16, boxH * 0.72) : Math.min(10, boxH * 0.78);
+    while (size > 4.5 && useFont.widthOfTextAtSize(text, size) > boxW - 2) {
+      size -= 0.35;
     }
     const textW = useFont.widthOfTextAtSize(text, size);
     const leftAlign = field.type === "text" || field.type === "name" || field.type === "date";

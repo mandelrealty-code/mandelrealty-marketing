@@ -24,18 +24,18 @@ export function newFieldId(): string {
 }
 
 export function defaultFieldSize(type: SignFieldType): { w: number; h: number } {
-  if (type === "signature") return { w: 0.36, h: 0.08 };
-  if (type === "date") return { w: 0.3, h: 0.055 };
-  if (type === "text") return { w: 0.32, h: 0.05 };
-  if (type === "checkbox") return { w: 0.032, h: 0.032 };
-  return { w: 0.32, h: 0.05 };
+  if (type === "signature") return { w: 0.28, h: 0.032 };
+  if (type === "date") return { w: 0.16, h: 0.018 };
+  if (type === "text") return { w: 0.28, h: 0.018 };
+  if (type === "checkbox") return { w: 0.02, h: 0.02 };
+  return { w: 0.26, h: 0.018 }; // name
 }
 
 export function minFieldSize(type: SignFieldType): { w: number; h: number } {
-  if (type === "checkbox") return { w: 0.012, h: 0.012 };
-  if (type === "date") return { w: 0.08, h: 0.018 };
-  if (type === "signature") return { w: 0.08, h: 0.022 };
-  return { w: 0.06, h: 0.018 };
+  if (type === "checkbox") return { w: 0.01, h: 0.01 };
+  if (type === "date") return { w: 0.05, h: 0.01 };
+  if (type === "signature") return { w: 0.06, h: 0.014 };
+  return { w: 0.04, h: 0.01 }; // name / text — ~line height on letter PDF
 }
 
 export function fieldLabel(type: SignFieldType): string {

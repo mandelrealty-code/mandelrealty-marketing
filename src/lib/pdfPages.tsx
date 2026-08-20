@@ -109,7 +109,7 @@ export function PartyChip({
   return (
     <div
       data-party-chip
-      className={`pointer-events-none absolute -top-4 left-0 whitespace-nowrap text-[8px] font-bold uppercase tracking-wide @max-h-[26px]:hidden ${
+      className={`pointer-events-none absolute -top-3.5 left-0 whitespace-nowrap text-[7px] font-bold uppercase tracking-wide @max-h-[18px]:hidden ${
         mrg ? "text-[#4ea882]" : "text-[#8a6a28]"
       }`}
     >
@@ -128,7 +128,7 @@ export const FittedFieldInput = forwardRef<
     <input
       ref={ref}
       {...rest}
-      className={`h-full w-full min-w-0 whitespace-nowrap bg-transparent px-0.5 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] [font-size:clamp(5px,52cqh,13px)] ${className}`}
+      className={`h-full w-full min-w-0 whitespace-nowrap bg-transparent px-0.5 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] [font-size:clamp(4px,78cqh,12px)] ${className}`}
     />
   );
 });
