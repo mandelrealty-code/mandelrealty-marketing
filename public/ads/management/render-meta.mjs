@@ -574,12 +574,114 @@ ${items}
 }
 
 /* ------------------------------------------------------------------ */
+/* v5 — Keep Your Income (growth program for hosts already earning)    */
+/* ------------------------------------------------------------------ */
+
+const GOLD = "#f5c518";
+
+const keepIncomeSizes = {
+  "4x5": {
+    brandTop: 48,
+    photoHeight: 640,
+    copyBottom: 56,
+    copyGap: 22,
+    qualifier: 18,
+    headline: 74,
+    subhead: 30,
+    cardPad: 28,
+    cardLabel: 15,
+    cardBody: 26,
+    cta: 24,
+    ctaY: 18,
+    ctaX: 40,
+    aside: 20,
+  },
+  "1x1": {
+    brandTop: 36,
+    photoHeight: 470,
+    copyBottom: 40,
+    copyGap: 14,
+    qualifier: 16,
+    headline: 58,
+    subhead: 24,
+    cardPad: 22,
+    cardLabel: 13,
+    cardBody: 22,
+    cta: 20,
+    ctaY: 14,
+    ctaX: 32,
+    aside: 17,
+  },
+  "9x16": {
+    brandTop: 120,
+    photoHeight: 980,
+    copyBottom: 176,
+    copyGap: 26,
+    qualifier: 20,
+    headline: 84,
+    subhead: 32,
+    cardPad: 32,
+    cardLabel: 16,
+    cardBody: 28,
+    cta: 26,
+    ctaY: 20,
+    ctaX: 44,
+    aside: 22,
+  },
+};
+
+function keepIncomeHtml(ratio) {
+  const { width, height } = RATIOS[ratio];
+  const s = keepIncomeSizes[ratio];
+
+  return page(
+    width,
+    height,
+    `  <img src="../condo-bedroom.png" alt="" style="position:absolute;top:0;left:0;width:${width}px;height:${s.photoHeight}px;object-fit:cover;object-position:center 42%;">
+  <div style="position:absolute;top:0;left:0;width:${width}px;height:${s.photoHeight}px;background:linear-gradient(to bottom,rgba(10,10,10,.28) 0%,rgba(10,10,10,.08) 38%,rgba(10,10,10,.55) 78%,${INK} 100%);"></div>
+
+  <header style="position:absolute;top:${s.brandTop}px;left:64px;right:64px;display:flex;align-items:center;justify-content:space-between;z-index:5;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:10px;height:10px;background:${GOLD};border-radius:50%;"></div>
+      <div style="font-size:21px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:#fff;text-shadow:0 1px 18px rgba(10,10,10,.55);">Mandel Realty Group</div>
+    </div>
+    <div style="font-size:19px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.7);text-shadow:0 1px 18px rgba(10,10,10,.55);">Toronto</div>
+  </header>
+
+  <section style="position:absolute;left:64px;right:64px;bottom:${s.copyBottom}px;display:flex;flex-direction:column;gap:${s.copyGap}px;">
+    <div style="font-size:${s.qualifier}px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:${GOLD};">Already making money on Airbnb?</div>
+    <h1 style="font-size:${s.headline}px;line-height:.92;font-weight:800;letter-spacing:-.04em;text-transform:uppercase;color:#fff;">Keep Your<br>Airbnb Income.</h1>
+    <p style="font-size:${s.subhead}px;line-height:1.28;font-weight:500;color:#c4c4c4;">We only get paid <span style="color:#fff;font-weight:700;">if we grow it.</span></p>
+
+    <div style="display:flex;background:#141414;border:1px solid #2a2a2a;border-radius:18px;overflow:hidden;">
+      <div style="flex:1;padding:${s.cardPad}px ${s.cardPad + 4}px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:${s.cardLabel}px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#6f6f6f;">Your current income</div>
+        <div style="font-size:${s.cardBody}px;line-height:1.2;font-weight:700;color:#fff;">Locked in. 100% yours.</div>
+      </div>
+      <div style="width:1px;background:#2a2a2a;margin:${Math.round(s.cardPad * 0.55)}px 0;"></div>
+      <div style="flex:1;padding:${s.cardPad}px ${s.cardPad + 4}px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:${s.cardLabel}px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:${GOLD};">Anything we add</div>
+        <div style="font-size:${s.cardBody}px;line-height:1.2;font-weight:700;color:${GOLD};">That's how we get paid.</div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:22px;margin-top:4px;">
+      <div style="background:${GOLD};color:${INK};font-size:${s.cta}px;font-weight:700;padding:${s.ctaY}px ${s.ctaX}px;border-radius:999px;white-space:nowrap;">Get My Growth Plan</div>
+      <div style="font-size:${s.aside}px;line-height:1.35;font-weight:400;color:#9a9a9a;">Full management.<br>You get your time back.</div>
+    </div>
+  </section>`,
+    INK
+  );
+}
+
+/* ------------------------------------------------------------------ */
 
 const creatives = [
   { slug: "v1-free-furnish", html: freeFurnishHtml },
   { slug: "v2-stop-self-managing", html: selfManagingHtml },
   { slug: "v3-making-you-more", html: makingMoreHtml },
   { slug: "v4-on-call", html: onCallHtml },
+  { slug: "v5-keep-your-income", html: keepIncomeHtml },
 ];
 
 const only = process.argv.slice(2);
