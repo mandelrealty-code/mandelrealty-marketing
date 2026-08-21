@@ -7,7 +7,10 @@ import {
 import {
   createContract,
   deleteContract,
+  getContract,
   getContractDownloadUrl,
+  getContractEditPdfUrl,
+  downloadContractSourceBuffer,
   listContracts,
   assignAwaitingContract,
   cancelAwaitingContracts,
@@ -399,7 +402,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resource === "contract_url") {
         const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
         if (!id) return res.status(400).json({ error: "id required." });
-        const url = await getContractDownloadUrl(id);
+        const source =
+          req.query.source === "1" ||
+          req.query.source === "true" ||
+          req.query.edit === "1";
+        const url = source
+          ? await getContractEditPdfUrl(id)
+          : await getContractDownloadUrl(id);
         return res.status(200).json({ url });
       }
       if (resource === "contract_templates") {
@@ -444,7 +453,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           portal_user: user ? publicPortalUser(user) : null,
           owner_url: user ? ownerPortalUrl(user.slug) : null,
           awaiting_contract: awaiting
-            ? { id: awaiting.id, title: awaiting.title, status: awaiting.status }
+            ? {
+                id: awaiting.id,
+                title: awaiting.title,
+                status: awaiting.status,
+                template_id: awaiting.template_id || null,
+                sign_fields: awaiting.sign_fields ?? [],
+              }
             : null,
           signed_contracts: signed.map((c) => ({
             id: c.id,
@@ -934,13 +949,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const existingHost =
             body.existing_host === true || str(body.kind) === "existing";
+          const replaceId = str(body.replace_contract_id);
+          const existingPortal = await getPortalUserByClientId(clientId);
+          const keepPortalLogin = Boolean(
+            replaceId && existingPortal?.last_login_at && !existingHost,
+          );
 
-          const { user, tempPassword } = await createOrRefreshPortalInvite({
-            pm_client_id: clientId,
-            email,
-            fullName: name,
-            slug: str(body.slug) || undefined,
-          });
+          let user = existingPortal;
+          let tempPassword: string | undefined;
+          if (!keepPortalLogin) {
+            const invited = await createOrRefreshPortalInvite({
+              pm_client_id: clientId,
+              email,
+              fullName: name,
+              slug: str(body.slug) || undefined,
+            });
+            user = invited.user;
+            tempPassword = invited.tempPassword;
+          }
+          if (!user) {
+            return res.status(500).json({ error: "Could not load portal user." });
+          }
 
           const props = await listPmProperties(clientId).catch(() => []);
           const propertyId = str(body.property_id) || props[0]?.id || null;
@@ -994,7 +1023,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const oneOffB64 = str(body.contentBase64);
           let pdf: { buffer: Buffer; filename: string; mime: string; title: string; template_id: string | null };
 
-          if (templateId) {
+          if (replaceId) {
+            const prev = await getContract(replaceId);
+            if (!prev) return res.status(404).json({ error: "Contract not found." });
+            if (prev.client_id !== clientId) {
+              return res.status(400).json({ error: "That agreement is not on this client." });
+            }
+            if (prev.status === "signed") {
+              return res.status(400).json({
+                error: "This agreement is already signed. Send a new one instead of editing it.",
+              });
+            }
+            const src = await downloadContractSourceBuffer(replaceId);
+            pdf = {
+              buffer: src.buffer,
+              filename: src.filename,
+              mime: src.mime,
+              title: src.title,
+              template_id: src.template_id,
+            };
+          } else if (templateId) {
             const t = await downloadTemplateBuffer(templateId);
             pdf = {
               buffer: t.buffer,
@@ -1065,6 +1113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             buffer,
             template_id: pdf.template_id,
             sign_fields: signFields,
+            sourceBuffer: pdf.buffer,
           });
 
           const mail = await sendOwnerInviteEmail({
@@ -1073,7 +1122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             propertyLabel,
             slug: user.slug,
             tempPassword,
-            kind: "new",
+            kind: replaceId ? "revised" : "new",
           });
 
           return res.status(200).json({

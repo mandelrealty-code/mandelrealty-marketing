@@ -1,6 +1,11 @@
 import { getSupabaseAdmin } from "../supabase.js";
+import { downloadTemplateBuffer, getTemplateDownloadUrl } from "./contractTemplateStore.js";
 import { mergeHostFieldValues, normalizeSignFields, type SignField } from "./signFields.js";
 import { stampSignedPdf } from "./stampSignedPdf.js";
+
+function sourcePath(id: string) {
+  return `${id}/source.pdf`;
+}
 
 function db() {
   const sb = getSupabaseAdmin();
@@ -58,6 +63,8 @@ export async function createContract(input: {
   note?: string;
   template_id?: string | null;
   sign_fields?: SignField[];
+  /** Unstamped PDF so later edits can re-place fields without double-stamping MRG signatures. */
+  sourceBuffer?: Buffer;
 }): Promise<PmContract> {
   const title = input.title.trim() || input.filename.trim() || "Contract";
   if (!input.client_id && !input.property_id) {
@@ -102,6 +109,20 @@ export async function createContract(input: {
     throw new Error(`Storage upload failed: ${upErr.message}`);
   }
 
+  if (input.sourceBuffer?.length) {
+    const { error: srcErr } = await db()
+      .storage.from("pm-contracts")
+      .upload(sourcePath(contract.id), input.sourceBuffer, {
+        contentType: input.mime || "application/pdf",
+        upsert: true,
+      });
+    if (srcErr) {
+      await db().storage.from("pm-contracts").remove([storagePath]).catch(() => undefined);
+      await db().from("pm_contracts").delete().eq("id", contract.id);
+      throw new Error(`Source PDF upload failed: ${srcErr.message}`);
+    }
+  }
+
   const { data: updated, error: updErr } = await db()
     .from("pm_contracts")
     .update({ storage_path: storagePath })
@@ -115,13 +136,21 @@ export async function createContract(input: {
 export async function deleteContract(id: string): Promise<void> {
   const { data, error } = await db()
     .from("pm_contracts")
-    .select("storage_path")
+    .select("storage_path, signed_storage_path, signature_image_path")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
-  const path = typeof data?.storage_path === "string" ? data.storage_path : "";
-  if (path) {
-    await db().storage.from("pm-contracts").remove([path]).catch(() => undefined);
+  const { data: files } = await db().storage.from("pm-contracts").list(id);
+  const listed = (files ?? []).map((f) => `${id}/${f.name}`);
+  const extra = [
+    typeof data?.storage_path === "string" ? data.storage_path : "",
+    typeof data?.signed_storage_path === "string" ? data.signed_storage_path : "",
+    typeof data?.signature_image_path === "string" ? data.signature_image_path : "",
+    sourcePath(id),
+  ];
+  const paths = [...new Set([...listed, ...extra].filter(Boolean))];
+  if (paths.length) {
+    await db().storage.from("pm-contracts").remove(paths).catch(() => undefined);
   }
   const { error: delErr } = await db().from("pm_contracts").delete().eq("id", id);
   if (delErr) throw delErr;
@@ -178,6 +207,82 @@ export async function downloadContractBuffer(id: string): Promise<{
   };
 }
 
+async function hasStorageFile(path: string): Promise<boolean> {
+  const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const name = path.includes("/") ? path.slice(path.lastIndexOf("/") + 1) : path;
+  const { data } = await db().storage.from("pm-contracts").list(folder || undefined);
+  return (data ?? []).some((f) => f.name === name);
+}
+
+async function signedUrlFor(path: string): Promise<string> {
+  const { data: signed, error } = await db()
+    .storage.from("pm-contracts")
+    .createSignedUrl(path, 60 * 10);
+  if (error || !signed?.signedUrl) {
+    throw new Error(error?.message || "Could not create download link.");
+  }
+  return signed.signedUrl;
+}
+
+/** Unstamped PDF for re-placing fields. Falls back to the template, then the sent file. */
+export async function downloadContractSourceBuffer(id: string): Promise<{
+  buffer: Buffer;
+  filename: string;
+  mime: string;
+  title: string;
+  template_id: string | null;
+  contract: PmContract;
+}> {
+  const contract = await getContract(id);
+  if (!contract) throw new Error("Contract not found.");
+
+  const tryDownload = async (path: string): Promise<Buffer | null> => {
+    const { data, error } = await db().storage.from("pm-contracts").download(path);
+    if (error || !data) return null;
+    return Buffer.from(await data.arrayBuffer());
+  };
+
+  let buffer: Buffer | null = await tryDownload(sourcePath(contract.id));
+  if (!buffer && contract.template_id) {
+    try {
+      const t = await downloadTemplateBuffer(contract.template_id);
+      buffer = t.buffer;
+    } catch {
+      buffer = null;
+    }
+  }
+  if (!buffer && contract.storage_path) {
+    buffer = await tryDownload(contract.storage_path);
+  }
+  if (!buffer?.length) throw new Error("No PDF on this contract.");
+
+  return {
+    buffer,
+    filename: contract.filename || "agreement.pdf",
+    mime: contract.mime || "application/pdf",
+    title: contract.title,
+    template_id: contract.template_id || null,
+    contract,
+  };
+}
+
+/** URL for the field placer — source PDF if we have it, else template, else the sent file. */
+export async function getContractEditPdfUrl(id: string): Promise<string> {
+  const contract = await getContract(id);
+  if (!contract) throw new Error("Contract not found.");
+  if (await hasStorageFile(sourcePath(contract.id))) {
+    return signedUrlFor(sourcePath(contract.id));
+  }
+  if (contract.template_id) {
+    try {
+      return await getTemplateDownloadUrl(contract.template_id);
+    } catch {
+      /* fall through to the sent file */
+    }
+  }
+  return getContractDownloadUrl(id);
+}
+
 export async function cancelAwaitingContracts(clientId: string, note?: string): Promise<void> {
   const { error } = await db()
     .from("pm_contracts")
@@ -200,6 +305,7 @@ export async function assignAwaitingContract(input: {
   buffer: Buffer;
   template_id?: string | null;
   sign_fields?: SignField[];
+  sourceBuffer?: Buffer;
 }): Promise<PmContract> {
   await cancelAwaitingContracts(input.client_id, "Superseded by newer invite");
 
@@ -213,6 +319,7 @@ export async function assignAwaitingContract(input: {
     status: "awaiting_signature",
     template_id: input.template_id || null,
     sign_fields: input.sign_fields,
+    sourceBuffer: input.sourceBuffer,
   });
 }
 

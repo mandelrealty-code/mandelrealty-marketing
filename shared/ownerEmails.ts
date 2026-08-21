@@ -158,21 +158,84 @@ export async function sendOwnerInviteEmail(input: {
   firstName: string;
   propertyLabel?: string;
   slug: string;
-  tempPassword: string;
-  /** existing = already signed; new = must sign in portal */
-  kind?: "new" | "existing";
+  tempPassword?: string;
+  /** existing = already signed; new = must sign; revised = unsigned agreement was replaced */
+  kind?: "new" | "existing" | "revised";
 }): Promise<{ ok: boolean; message?: string }> {
   const apiKey = process.env.RESEND_API_KEY?.trim() || "";
   if (!apiKey) return { ok: false, message: "RESEND_API_KEY not configured." };
   const from = inviteFrom();
   const portal = ownerPortalUrl(input.slug);
-  const ctaBase = input.kind === "existing" ? portal : ownerPortalUrl(input.slug, "contracts");
-  const codeQs = `code=${encodeURIComponent(input.tempPassword)}`;
-  const portalWithCode = `${portal}${portal.includes("?") ? "&" : "?"}${codeQs}`;
-  const cta = `${ctaBase}${ctaBase.includes("?") ? "&" : "?"}${codeQs}`;
+  const contracts = ownerPortalUrl(input.slug, "contracts");
   const prop = input.propertyLabel?.trim();
-  const existing = input.kind === "existing";
   const replyTo = process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com";
+  const code = input.tempPassword?.trim() || "";
+  const withCode = (url: string) =>
+    code ? `${url}${url.includes("?") ? "&" : "?"}code=${encodeURIComponent(code)}` : url;
+
+  if (input.kind === "revised") {
+    const cta = withCode(contracts);
+    const portalLink = withCode(portal);
+    const html = emailShell(`
+    <div style="font-family:Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;line-height:1.2;color:#f5f5f5;padding-bottom:12px;">
+      Your agreement was updated
+    </div>
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 16px;">
+      We replaced the management agreement in your portal${prop ? ` for <strong style="color:#f5f5f5;font-weight:600">${esc(prop)}</strong>` : ""}.
+      Please open it and sign the new version — the previous unsigned copy is no longer valid.
+    </p>
+    ${code ? passwordBlock(code, withCode(portal)) : ""}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      ${row(
+        "Portal link",
+        `<a href="${esc(portalLink)}" style="color:#c4a35a;text-decoration:none;">${esc(displayHostUrl(portal))}</a>`,
+      )}
+      ${row("Email to sign in with", esc(input.to))}
+    </table>
+    ${goldButton(cta, "Review updated agreement")}
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0;">
+      ${
+        code
+          ? "Use the sign-in code above, then choose your own password."
+          : "Sign in with the password you already set."
+      }
+      Questions? Reply to this email — it goes to our team at ${esc(replyTo)}.
+    </p>
+  `);
+    const text = [
+      `Your agreement was updated, ${input.firstName}`,
+      "",
+      prop
+        ? `We replaced the management agreement in your portal for ${prop}.`
+        : "We replaced the management agreement in your portal.",
+      "Please open it and sign the new version — the previous unsigned copy is no longer valid.",
+      "",
+      ...(code
+        ? ["Your temporary sign-in code:", "", `    ${code}`, ""]
+        : ["Sign in with the password you already set.", ""]),
+      `Portal: ${cta}`,
+      `Email: ${input.to}`,
+      "",
+      `Questions? Reply to this email (${replyTo}).`,
+      "— Mandel Realty Group",
+    ].join("\n");
+    return sendResendEmail({
+      apiKey,
+      from,
+      to: [input.to],
+      subject: `Please review your updated MRG agreement${prop ? ` — ${prop}` : ""}`,
+      html,
+      text,
+      replyTo,
+      headers: deliverabilityHeaders(),
+    });
+  }
+
+  if (!code) return { ok: false, message: "tempPassword required." };
+  const ctaBase = input.kind === "existing" ? portal : contracts;
+  const portalWithCode = withCode(portal);
+  const cta = withCode(ctaBase);
+  const existing = input.kind === "existing";
 
   const html = emailShell(`
     <div style="font-family:Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;line-height:1.2;color:#f5f5f5;padding-bottom:12px;">
@@ -200,7 +263,7 @@ export async function sendOwnerInviteEmail(input: {
       </tr>
     </table>`
     }
-    ${passwordBlock(input.tempPassword, portalWithCode)}
+    ${passwordBlock(code, portalWithCode)}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       ${row(
         "Portal link",
@@ -230,7 +293,7 @@ export async function sendOwnerInviteEmail(input: {
         "",
         "Your temporary sign-in code:",
         "",
-        `    ${input.tempPassword}`,
+        `    ${code}`,
         "",
         `(Copy the line above.)`,
         "",
@@ -259,7 +322,7 @@ export async function sendOwnerInviteEmail(input: {
         "",
         "Your temporary sign-in code:",
         "",
-        `    ${input.tempPassword}`,
+        `    ${code}`,
         "",
         `Portal (code ready): ${cta}`,
         `Email: ${input.to}`,

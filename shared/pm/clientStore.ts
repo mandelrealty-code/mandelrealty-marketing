@@ -92,13 +92,14 @@ export async function updatePmClient(
 export async function deletePmClient(id: string): Promise<void> {
   const { data: contracts } = await db()
     .from("pm_contracts")
-    .select("storage_path, signed_storage_path, signature_image_path")
+    .select("id, storage_path, signed_storage_path, signature_image_path")
     .eq("client_id", id);
   const paths = (contracts ?? [])
     .flatMap((c) => [
       typeof c.storage_path === "string" ? c.storage_path : "",
       typeof c.signed_storage_path === "string" ? c.signed_storage_path : "",
       typeof c.signature_image_path === "string" ? c.signature_image_path : "",
+      typeof c.id === "string" ? `${c.id}/source.pdf` : "",
     ])
     .filter(Boolean);
   if (paths.length) {

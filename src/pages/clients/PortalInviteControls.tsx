@@ -28,7 +28,13 @@ type PortalStatus = {
     must_change_password: boolean;
   } | null;
   owner_url: string | null;
-  awaiting_contract: { id: string; title: string; status: string } | null;
+  awaiting_contract: {
+    id: string;
+    title: string;
+    status: string;
+    template_id?: string | null;
+    sign_fields?: SignField[];
+  } | null;
   signed_contracts?: Array<{ id: string; title: string; signed_on: string | null }>;
 };
 
@@ -105,6 +111,7 @@ export function PortalInviteControls({
   );
   const [signedFile, setSignedFile] = useState<File | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [replaceId, setReplaceId] = useState<string | null>(null);
 
   const loadStatus = useCallback(async () => {
     const data = await pmGet<PortalStatus>("portal_user", { client_id: client.id });
@@ -131,6 +138,7 @@ export function PortalInviteControls({
     setFields(normalizeSignFields(draft?.fields));
     setKind(draft?.kind === "new" ? "new" : "existing");
     setSignedFile(null);
+    setReplaceId(null);
   }, [client.id, client.name, client.email, client.phone]);
 
   useEffect(() => {
@@ -194,9 +202,38 @@ export function PortalInviteControls({
       }
       // Always start blank — never reuse another customer's layout or template leftovers.
       setFields([]);
+      setReplaceId(null);
       setStep("place");
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not open PDF.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startEdit = async () => {
+    const awaiting = status?.awaiting_contract;
+    if (!awaiting?.id) {
+      onError("No unsigned agreement to edit.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const data = await pmGet<{ url: string }>("contract_url", {
+        id: awaiting.id,
+        source: "1",
+      });
+      if (!data.url) throw new Error("Could not open the agreement PDF.");
+      setPdfUrl(data.url);
+      setFields(normalizeSignFields(awaiting.sign_fields));
+      setTemplateId(awaiting.template_id || "");
+      setOneOff(null);
+      setReplaceId(awaiting.id);
+      setKind("new");
+      setOpen(true);
+      setStep("place");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not reopen the agreement.");
     } finally {
       setBusy(false);
     }
@@ -268,7 +305,9 @@ export function PortalInviteControls({
         phone,
         sign_fields: fields,
       };
-      if (oneOff) {
+      if (replaceId) {
+        body.replace_contract_id = replaceId;
+      } else if (oneOff) {
         body.filename = oneOff.name;
         body.mime = oneOff.type || "application/pdf";
         body.contentBase64 = await fileToBase64(oneOff);
@@ -288,14 +327,20 @@ export function PortalInviteControls({
       setStep("form");
       setOneOff(null);
       setFields([]);
+      setReplaceId(null);
       try {
         sessionStorage.removeItem(inviteDraftKey(client.id));
       } catch {
         /* ignore */
       }
       await loadStatus();
-      if (res.email_sent) onToast?.(`Invite sent · ${res.owner_url}`);
-      else onToast?.(`Portal ready · email failed: ${res.email_error || "check Resend"}`);
+      if (res.email_sent) {
+        onToast?.(
+          replaceId
+            ? `Updated agreement sent · ${res.owner_url}`
+            : `Invite sent · ${res.owner_url}`,
+        );
+      } else onToast?.(`Portal ready · email failed: ${res.email_error || "check Resend"}`);
     } catch (e) {
       onError(e instanceof Error ? e.message : "Invite failed.");
     } finally {
@@ -356,6 +401,7 @@ export function PortalInviteControls({
           <button
             type="button"
             onClick={() => {
+              setReplaceId(null);
               setOpen((v) => !v);
               setStep("form");
             }}
@@ -363,6 +409,16 @@ export function PortalInviteControls({
           >
             {portal?.invited_at ? "Resend invite" : "Send portal invite"}
           </button>
+          {status?.awaiting_contract ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void startEdit()}
+              className="text-[12.5px] font-semibold text-[#c4a35a] disabled:opacity-50"
+            >
+              {busy && replaceId ? "Opening…" : "Edit agreement"}
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={previewBusy}
@@ -497,11 +553,17 @@ export function PortalInviteControls({
         <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0a0a] text-[#f5f5f5]">
           <div className="flex flex-col gap-3 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <div className="text-[15px] font-semibold">Prepare agreement</div>
+              <div className="text-[15px] font-semibold">
+                {replaceId ? "Edit agreement" : "Prepare agreement"}
+              </div>
               <div className="hidden text-[12.5px] text-[#6f6a65] sm:block">
+                {replaceId
+                  ? "Same PDF and boxes as the version already sent. Move or redraw, then replace — the host only sees the new one."
+                  : <>
                 {hostFirst}’s boxes = they fill later. MRG boxes = you sign and type now. Use{" "}
                 <span className="text-[#c4a35a]">Move</span> to grab and reposition · pick a field type
                 to place · Escape switches back to Move.
+                  </>}
               </div>
             </div>
             <div className="flex flex-col items-stretch gap-1 sm:items-end">
@@ -509,7 +571,16 @@ export function PortalInviteControls({
               <button
                 type="button"
                 className="text-[13px] text-[#9a9590]"
-                onClick={() => setStep("form")}
+                onClick={() => {
+                  if (replaceId) {
+                    setOpen(false);
+                    setStep("form");
+                    setReplaceId(null);
+                    setPdfUrl("");
+                    return;
+                  }
+                  setStep("form");
+                }}
               >
                 Back
               </button>
@@ -519,7 +590,7 @@ export function PortalInviteControls({
                 onClick={() => void send()}
                 className="rounded-lg bg-[#c4a35a] px-4 py-2 text-[13px] font-bold text-[#0a0a0a] disabled:opacity-40"
               >
-                {busy ? "Sending…" : "Send invite"}
+                {busy ? (replaceId ? "Replacing…" : "Sending…") : replaceId ? "Replace & resend" : "Send invite"}
               </button>
               </div>
               {sendBlocked ? (
