@@ -324,6 +324,17 @@ export function AdminPage() {
   const [smsSending, setSmsSending] = useState(false);
   const smsSendLock = useRef(false);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const mobileTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const desktopTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    for (const ref of [mobileTextareaRef, desktopTextareaRef]) {
+      if (ref.current) {
+        ref.current.style.height = "auto";
+        ref.current.style.height = `${Math.min(Math.max(ref.current.scrollHeight, 42), 220)}px`;
+      }
+    }
+  }, [smsDraft]);
 
   const [aiEnabled, setAiEnabled] = useState(true);
   const [aiEffective, setAiEffective] = useState(true);
@@ -1670,8 +1681,10 @@ export function AdminPage() {
                 </button>
               </div>
             ) : null}
-            <div className="flex items-center gap-3">
-            <input
+            <div className="flex items-end gap-3">
+            <textarea
+              ref={mobileTextareaRef}
+              rows={1}
               value={smsDraft}
               onChange={(e) => setSmsDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -1681,7 +1694,7 @@ export function AdminPage() {
                 }
               }}
               placeholder={`Write to ${firstName} yourself…`}
-              className="h-[42px] min-w-0 flex-1 rounded-[22px] border border-white/10 bg-[#141414] px-4 text-[13.5px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+              className="min-h-[42px] max-h-[220px] min-w-0 flex-1 resize-none overflow-y-auto rounded-[20px] border border-white/10 bg-[#141414] px-4 py-2.5 text-[13.5px] leading-relaxed text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
             />
             <button
               type="button"
@@ -2411,8 +2424,10 @@ export function AdminPage() {
             </button>
           </div>
         ) : null}
-        <div className="flex items-center gap-3">
-        <input
+        <div className="flex items-end gap-3">
+        <textarea
+          ref={desktopTextareaRef}
+          rows={1}
           value={smsDraft}
           onChange={(e) => setSmsDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -2422,7 +2437,7 @@ export function AdminPage() {
             }
           }}
           placeholder={`Write to ${selFirst} yourself…`}
-          className="h-[42px] min-w-0 flex-1 rounded-[22px] border border-white/10 bg-[#141414] px-4 text-[13.5px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+          className="min-h-[42px] max-h-[220px] min-w-0 flex-1 resize-none overflow-y-auto rounded-[20px] border border-white/10 bg-[#141414] px-4 py-2.5 text-[13.5px] leading-relaxed text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
         />
         <button
           type="button"
