@@ -5,20 +5,19 @@ import { listSmsForLead } from "./smsStore.js";
 export const AI_NUDGE_SEQUENCE = "ai_nudge";
 /** Placeholder body — cron regenerates with Claude, never sends this text. */
 export const AI_NUDGE_BODY = "[AI_NUDGE]";
-/** 3h, 24h, 72h after last unanswered outbound. */
-export const AI_NUDGE_DELAYS_MIN = [3 * 60, 24 * 60, 72 * 60] as const;
+/** 24h, 72h after last unanswered outbound (never send back-to-back same-day bumps). */
+export const AI_NUDGE_DELAYS_MIN = [24 * 60, 72 * 60] as const;
 
 const LIVE_STATUSES = new Set([
   "new",
   "engaging",
   "interested",
-  "nurturing",
   "booked",
   "call_done",
 ]);
 
-/** After a CRM call — first bump sooner so we pick up from call notes. */
-export const AI_NUDGE_POST_CALL_DELAYS_MIN = [60, 24 * 60, 72 * 60] as const;
+/** After a CRM call — follow up next day so we pick up from call notes. */
+export const AI_NUDGE_POST_CALL_DELAYS_MIN = [24 * 60, 72 * 60] as const;
 
 export async function cancelAiNudgeFollowups(leadId: string): Promise<void> {
   const sb = getSupabaseAdmin();

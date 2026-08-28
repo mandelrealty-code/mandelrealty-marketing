@@ -581,18 +581,22 @@ export function AdminPage() {
       return true;
     });
 
-    if (sortBy === "newest") {
-      return [...list].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
-    }
     if (sortBy === "oldest") {
       return [...list].sort(
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       );
     }
-    // inbox: keep API order (needs you → unread → last activity)
-    return list;
+    if (sortBy === "newest") {
+      return [...list].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+    }
+    // Default inbox: most recent message / activity always on top (like Airbnb / iMessage)
+    return [...list].sort((a, b) => {
+      const aTime = new Date(a.last_activity_at || a.last_sms?.created_at || a.created_at).getTime();
+      const bTime = new Date(b.last_activity_at || b.last_sms?.created_at || b.created_at).getTime();
+      return bTime - aTime;
+    });
   }, [leads, filterPath, filterStage, filterAi, filterBookedWeek, inboxChip, aiEffective, sortBy]);
 
   const needsYouLeads = useMemo(
@@ -601,6 +605,10 @@ export function AdminPage() {
   );
   const draftLeads = useMemo(
     () => leads.filter((l) => Boolean(l.pending_draft)),
+    [leads],
+  );
+  const unreadCount = useMemo(
+    () => leads.filter((l) => l.unread).length,
     [leads],
   );
 
@@ -1078,7 +1086,29 @@ export function AdminPage() {
         pending_draft?: PendingDraft | null;
       };
       if (res.ok) {
-        if (data.lead) {
+        const lastMsg =
+          data.messages && data.messages.length > 0
+            ? data.messages[data.messages.length - 1]
+            : null;
+        if (lastMsg) {
+          setLeads((prev) =>
+            prev.map((l) =>
+              l.id === selected.id
+                ? {
+                    ...l,
+                    ...(data.lead || {}),
+                    last_activity_at: lastMsg.created_at,
+                    last_sms: {
+                      body: lastMsg.body,
+                      direction: lastMsg.direction,
+                      created_at: lastMsg.created_at,
+                      meta: lastMsg.meta,
+                    },
+                  }
+                : l,
+            ),
+          );
+        } else if (data.lead) {
           setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
         }
         if (data.messages) setSmsMessages(data.messages);
@@ -1164,9 +1194,30 @@ export function AdminPage() {
       };
       if (!res.ok) throw new Error(data.error || "SMS failed");
       setSmsDraft("");
-      if (data.lead) {
-        setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
-      }
+      const nowIso = new Date().toISOString();
+      const lastMsg =
+        data.messages && data.messages.length > 0
+          ? data.messages[data.messages.length - 1]
+          : null;
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === selected.id
+            ? {
+                ...l,
+                ...(data.lead || {}),
+                ai_paused: true,
+                unread: false,
+                last_activity_at: lastMsg?.created_at || nowIso,
+                last_sms: {
+                  body: text,
+                  direction: "outbound" as const,
+                  created_at: lastMsg?.created_at || nowIso,
+                  meta: { human: true },
+                },
+              }
+            : l,
+        ),
+      );
       if (data.messages) setSmsMessages(data.messages);
       if (data.followups) setFollowups(data.followups);
       setSaveMsg("Sent — AI paused for this lead");
@@ -2161,14 +2212,14 @@ export function AdminPage() {
         ) : (
           filteredLeads.map((lead, i) => {
             const draft = lead.pending_draft;
+            const lastSms = lead.last_sms;
             const subtitle = draft
-              ? `AI wants to send: “${previewSms(draft.body, 42)}”`
-              : lead.last_sms?.meta?.ai_generated
-                ? `AI sent: “${previewSms(lead.last_sms.body, 42)}”`
-                : lead.whats_next?.trim() ||
-                  (lead.last_sms
-                    ? previewSms(lead.last_sms.body, 64)
-                    : STATUS_JOURNEY[lead.status]);
+              ? `Draft: ${previewSms(draft.body, 65)}`
+              : lastSms
+                ? lastSms.direction === "outbound"
+                  ? `You: ${previewSms(lastSms.body, 65)}`
+                  : previewSms(lastSms.body, 65)
+                : STATUS_JOURNEY[lead.status] || "No messages yet";
             return (
               <motion.div
                 key={lead.id}
@@ -2192,21 +2243,35 @@ export function AdminPage() {
                   }}
                   className="flex min-w-0 flex-1 items-start gap-3 text-left"
                 >
-                  <span
-                    className={`mt-0.5 flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border text-[11.5px] font-bold ${
-                      draft
-                        ? "border-[rgba(196,163,90,0.4)] text-[#c4a35a]"
-                        : "border-white/14 text-[#9a9590]"
-                    }`}
-                  >
-                    {initials(lead.name || "?")}
-                  </span>
+                  <div className="relative mt-0.5 shrink-0">
+                    <span
+                      className={`flex h-[36px] w-[36px] items-center justify-center rounded-full border text-[11.5px] font-bold ${
+                        draft
+                          ? "border-[rgba(196,163,90,0.4)] text-[#c4a35a]"
+                          : lead.unread
+                            ? "border-[#c4a35a]/60 text-white bg-[rgba(196,163,90,0.14)]"
+                            : "border-white/14 text-[#9a9590]"
+                      }`}
+                    >
+                      {initials(lead.name || "?")}
+                    </span>
+                    {lead.unread && !draft ? (
+                      <span
+                        className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-[#0c0c0c] bg-[#c4a35a] shadow-[0_0_8px_rgba(196,163,90,0.9)]"
+                        title="Unread"
+                      />
+                    ) : null}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       {lead.unread && !draft ? (
-                        <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-[#c4a35a]" />
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-[#c4a35a] shadow-[0_0_6px_rgba(196,163,90,0.85)]" />
                       ) : null}
-                      <p className="truncate text-[14px] font-semibold leading-snug text-[#f5f5f5]">
+                      <p
+                        className={`truncate text-[14px] leading-snug ${
+                          lead.unread ? "font-bold text-white" : "font-semibold text-[#f5f5f5]"
+                        }`}
+                      >
                         {lead.name || "Unnamed"}
                       </p>
                       {draft ? (
@@ -2215,9 +2280,19 @@ export function AdminPage() {
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-1 truncate text-[12.5px] leading-snug text-[#9a9590]">{subtitle}</p>
+                    <p
+                      className={`mt-1 truncate text-[12.5px] leading-snug ${
+                        lead.unread ? "font-medium text-[#dfdad3]" : "text-[#9a9590]"
+                      }`}
+                    >
+                      {subtitle}
+                    </p>
                   </div>
-                  <span className="crm-mono mt-0.5 shrink-0 text-[9.5px] text-[#6f6a65]">
+                  <span
+                    className={`crm-mono mt-0.5 shrink-0 text-[9.5px] ${
+                      lead.unread ? "font-bold text-[#c4a35a]" : "text-[#6f6a65]"
+                    }`}
+                  >
                     {leadActivityTime(draft ? { ...lead, last_activity_at: draft.created_at } : lead)}
                   </span>
                 </button>
@@ -2269,8 +2344,11 @@ export function AdminPage() {
             ))}
           </div>
           <span className="text-[13px] leading-snug text-[#9a9590]">
-            {lead.whats_next ||
-              (lead.last_sms ? previewSms(lead.last_sms.body) : STATUS_JOURNEY[lead.status])}
+            {lead.last_sms
+              ? lead.last_sms.direction === "outbound"
+                ? `You: ${previewSms(lead.last_sms.body, 65)}`
+                : previewSms(lead.last_sms.body, 65)
+              : STATUS_JOURNEY[lead.status] || "No messages yet"}
           </span>
         </button>
       ))}
@@ -2787,7 +2865,11 @@ export function AdminPage() {
                 }`}
               >
                 {label}
-                {id === "contacts" && draftLeads.length > 0 ? (
+                {id === "contacts" && unreadCount > 0 ? (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c4a35a] px-1.5 text-[11px] font-bold text-[#0a0a0a]">
+                    {unreadCount}
+                  </span>
+                ) : id === "contacts" && draftLeads.length > 0 ? (
                   <span className="crm-mono text-[10px] text-[#c99a4b]">{draftLeads.length}</span>
                 ) : null}
               </button>

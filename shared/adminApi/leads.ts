@@ -178,6 +178,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
       });
       if (!result.ok) return res.status(400).json({ error: result.error || "SMS failed" });
+      await markLeadSmsRead(id).catch(() => undefined);
       const [followups, messages] = await Promise.all([
         listFollowupsForLead(id),
         listSmsForLead(id),
@@ -302,7 +303,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const { sendAiNudgeOnSilence } = await import("../../shared/aiSmsAgent.js");
       const { getLeadById } = await import("../leadStore.js");
-      const result = await sendAiNudgeOnSilence({ leadId: id, env: twilioEnv });
+      const result = await sendAiNudgeOnSilence({ leadId: id, env: twilioEnv, force: true });
       if (!result.ok) {
         return res.status(400).json({
           error: result.error || result.reason || "Could not follow up.",

@@ -101,7 +101,7 @@ export async function fetchLatestSmsByLeadIds(
     .select("lead_id, body, direction, created_at, meta")
     .in("lead_id", leadIds)
     .order("created_at", { ascending: false })
-    .limit(Math.min(leadIds.length * 3, 600));
+    .limit(Math.max(leadIds.length * 25, 2000));
 
   if (error) {
     console.warn("[crmInbox] latest sms query failed", error.message);
@@ -130,11 +130,15 @@ export function enrichLeadInbox(
   aiGlobalOn: boolean,
 ): LeadInboxRow {
   const smsLastReadAt = lead.sms_last_read_at ?? null;
-  // Any new SMS after last open counts as unread — including AI outbound — so the team can review
-  const unread = Boolean(
-    lastSms &&
-      (!smsLastReadAt || new Date(lastSms.created_at) > new Date(smsLastReadAt)),
-  );
+  // Inbound messages (or unreviewed AI outbound) after last read count as unread
+  let unread = false;
+  if (lastSms) {
+    if (lastSms.direction === "inbound") {
+      unread = !smsLastReadAt || new Date(lastSms.created_at) > new Date(smsLastReadAt);
+    } else if (lastSms.meta?.ai_generated === true) {
+      unread = !smsLastReadAt || new Date(lastSms.created_at) > new Date(smsLastReadAt);
+    }
+  }
   const needs_you = detectNeedsYou({
     lead,
     lastSms,
@@ -191,14 +195,9 @@ export async function listLeadsInbox(limit = 200, q?: string): Promise<LeadInbox
   });
 
   enriched.sort((a, b) => {
-    const aDraft = a.pending_draft ? 1 : 0;
-    const bDraft = b.pending_draft ? 1 : 0;
-    if (aDraft !== bDraft) return bDraft - aDraft;
-    const aNeed = a.needs_you.length > 0 ? 1 : 0;
-    const bNeed = b.needs_you.length > 0 ? 1 : 0;
-    if (aNeed !== bNeed) return bNeed - aNeed;
-    if (a.unread !== b.unread) return a.unread ? -1 : 1;
-    return new Date(b.last_activity_at).getTime() - new Date(a.last_activity_at).getTime();
+    const aTime = new Date(a.last_activity_at || a.last_sms?.created_at || a.created_at).getTime();
+    const bTime = new Date(b.last_activity_at || b.last_sms?.created_at || b.created_at).getTime();
+    return bTime - aTime;
   });
 
   return enriched;

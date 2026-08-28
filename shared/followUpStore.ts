@@ -292,6 +292,8 @@ export async function processDueFollowups(env: {
     return result;
   }
 
+  const processedLeadIdsInRun = new Set<string>();
+
   for (const row of data ?? []) {
     result.processed += 1;
     const followup = mapRow(row as Record<string, unknown>);
@@ -316,6 +318,12 @@ export async function processDueFollowups(env: {
         .update({ status: "cancelled", error: `Cancelled — lead is ${lead.status}` })
         .eq("lead_id", lead.id)
         .eq("status", "pending");
+      result.skipped += 1;
+      continue;
+    }
+
+    // Safety: never process more than 1 follow-up message per lead in the same run
+    if (processedLeadIdsInRun.has(lead.id)) {
       result.skipped += 1;
       continue;
     }
@@ -349,18 +357,20 @@ export async function processDueFollowups(env: {
         rescheduleSilence: false,
       });
       if (!nudged.ok) {
-        const alreadyReplied = /already replied|no last message/i.test(
-          nudged.error || nudged.reason || "",
-        );
+        const cancelAll =
+          nudged.skipped ||
+          /already replied|no last message|cooldown active|later date|delay|opted out/i.test(
+            nudged.error || nudged.reason || "",
+          );
         await sb
           .from("lead_followups")
           .update({
-            status: alreadyReplied ? "cancelled" : "failed",
+            status: cancelAll ? "cancelled" : "failed",
             error: nudged.error || nudged.reason || "Nudge failed",
-            sent_at: alreadyReplied ? new Date().toISOString() : null,
+            sent_at: cancelAll ? new Date().toISOString() : null,
           })
           .eq("id", followup.id);
-        if (alreadyReplied) {
+        if (cancelAll) {
           const { cancelAiNudgeFollowups } = await import("./aiSilenceFollowups.js");
           await cancelAiNudgeFollowups(lead.id);
           result.skipped += 1;
@@ -369,6 +379,9 @@ export async function processDueFollowups(env: {
         }
         continue;
       }
+
+      processedLeadIdsInRun.add(lead.id);
+
       await sb
         .from("lead_followups")
         .update({
@@ -377,13 +390,24 @@ export async function processDueFollowups(env: {
           error: nudged.drafted ? "queued_as_draft" : null,
         })
         .eq("id", followup.id);
-      const lastStep = followup.sequence === "ai_nudge" ? 3 : 12;
-      if (followup.step === lastStep && !nudged.drafted) {
+
+      // Reschedule any remaining pending nudge rows for this lead at least 24h into the future
+      await sb
+        .from("lead_followups")
+        .update({
+          send_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        })
+        .eq("lead_id", lead.id)
+        .eq("status", "pending")
+        .neq("id", followup.id);
+
+      const lastStep = followup.sequence === "ai_nudge" ? 2 : 12;
+      if (followup.step >= lastStep && !nudged.drafted) {
         const { updateLeadCrm } = await import("./leadStore.js");
         const stamp = new Date().toLocaleString("en-CA", { timeZone: "America/Toronto" });
         await updateLeadCrm(lead.id, {
           status: "nurturing",
-          whatsNext: `[Nudge ${stamp}] Three bumps, no reply — parked nurturing`,
+          whatsNext: `[Nudge ${stamp}] Auto follow-up complete — parked nurturing`,
         });
       }
       result.sent += 1;

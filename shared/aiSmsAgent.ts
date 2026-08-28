@@ -137,6 +137,12 @@ SELL
 - Management path: same — sell the service from KB, then contract when ready.
 - Education path: helpful, low pressure, soft invite to keep texting. No guide landing URLs.
 
+RESPECT DELAYS & TIMELINES
+- If they ask to reconnect at a later date (e.g. "after Sept 5th", "call me next week", "busy right now", "reach back out in October"):
+  Acknowledge politely and agree to reconnect at that time. Do NOT interrogate them with questions or push for details right away.
+  Set suggested_stage to "nurturing".
+  Set whats_next to note their requested reconnect date.
+
 STOP (stop_ai=true) only for: they opted out / STOP, angry, wrong number, or clearly not a fit (STR banned, never going to list). 
 Do NOT stop because they have not booked a call, are not ready to sign, went quiet, or the thread feels long. Keep asking and selling.
 Do NOT stop because you "need to look something up."
@@ -1022,6 +1028,8 @@ export async function sendAiNudgeOnSilence(input: {
   env: TwilioEnv;
   /** Cron already queued 24h/72h — don't reset. Operator Follow up should reset. */
   rescheduleSilence?: boolean;
+  /** Force send bypass for operator manual click */
+  force?: boolean;
 }): Promise<AiReplyResult> {
   const lead = await getLeadById(input.leadId);
   if (!lead) return { ok: false, error: "Lead not found" };
@@ -1044,6 +1052,39 @@ export async function sendAiNudgeOnSilence(input: {
       reason: "They already replied, or there is no last message to follow up on.",
       error: "They already replied, or there is no last message to follow up on.",
     };
+  }
+
+  // Safety cooldown: never send an automated bump if any outbound message was sent in the last 4 hours
+  if (last && last.direction === "outbound" && !input.force) {
+    const elapsedMs = Date.now() - new Date(last.created_at).getTime();
+    const minCooldownMs = 4 * 60 * 60 * 1000;
+    if (elapsedMs < minCooldownMs) {
+      const waitMins = Math.round((minCooldownMs - elapsedMs) / 60000);
+      return {
+        ok: false,
+        skipped: true,
+        reason: `Recent outbound SMS was sent ${Math.round(elapsedMs / 60000)}m ago — cooldown active (${waitMins}m remaining).`,
+        error: `Recent outbound SMS was sent ${Math.round(elapsedMs / 60000)}m ago — cooldown active (${waitMins}m remaining).`,
+      };
+    }
+  }
+
+  // Check if lead asked for a future date/delay (e.g. "after Sept 5th", "call next week")
+  const lastInbound = thread.slice().reverse().find((m) => m.direction === "inbound");
+  if (lastInbound && !input.force) {
+    const inboundText = lastInbound.body.toLowerCase();
+    const delayRequested =
+      /\b(after (the )?\d|after \w+|next (week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in (a few|\d+) (weeks|months|days)|reconnect (in|after|on)|not ready|maybe later|call (me )?(back|later|on|in)|busy right now|reach back out)\b/i.test(
+        inboundText,
+      );
+    if (delayRequested) {
+      return {
+        ok: false,
+        skipped: true,
+        reason: "Lead requested to connect at a later date or delay — automated nudge skipped.",
+        error: "Lead requested to connect at a later date or delay — automated nudge skipped.",
+      };
+    }
   }
 
   const { getPendingDraft } = await import("./smsDraftStore.js");
