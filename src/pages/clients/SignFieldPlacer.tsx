@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PdfPages, fieldStyle, FittedFieldInput, FittedFieldText, PartyChip } from "../../lib/pdfPages";
+import { PdfPages, fieldStyle, FittedFieldInput, FittedFieldText } from "../../lib/pdfPages";
 import { SignaturePad } from "../../lib/SignaturePad";
 import {
   defaultFieldSize,
@@ -219,17 +219,33 @@ export function SignFieldPlacer({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-      if (e.key === "Escape" || e.key === "v" || e.key === "V") {
+      const isTyping = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+      if (e.key === "Escape" || (!isTyping && (e.key === "v" || e.key === "V"))) {
         e.preventDefault();
         enterMove();
         if (e.key === "Escape") setSelected(null);
         return;
       }
-      if (e.key !== "Backspace" && e.key !== "Delete") return;
-      if (!selected) return;
-      e.preventDefault();
-      remove(selected);
+      if (!isTyping && (e.key === "Backspace" || e.key === "Delete")) {
+        if (!selected) return;
+        e.preventDefault();
+        remove(selected);
+        return;
+      }
+      if (!isTyping && selected && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        const f = fieldsRef.current.find((x) => x.id === selected);
+        if (f) {
+          e.preventDefault();
+          const step = e.shiftKey ? 0.02 : 0.003;
+          let dx = 0;
+          let dy = 0;
+          if (e.key === "ArrowUp") dy = -step;
+          if (e.key === "ArrowDown") dy = step;
+          if (e.key === "ArrowLeft") dx = -step;
+          if (e.key === "ArrowRight") dx = step;
+          replace(f.id, clampField({ ...f, x: f.x + dx, y: f.y + dy }));
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -239,7 +255,10 @@ export function SignFieldPlacer({
     e.stopPropagation();
     setSelected(f.id);
     setMode("move");
-    if ((e.target as HTMLElement).closest("input,textarea,[data-handle],[data-delete]")) return;
+    const target = e.target as HTMLElement;
+    if (!target.closest("[data-drag-handle]") && target.closest("input,textarea,[data-handle],[data-delete]")) {
+      return;
+    }
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     const p = pageFrac(f.page, e.clientX, e.clientY);
@@ -309,12 +328,12 @@ export function SignFieldPlacer({
             {fieldLabel(t)}
           </button>
         ))}
-        <span className="text-[12px] text-[#6f6a65]">
+        <span className="text-[12px] text-[#9a9590]">
           {mode === "move"
             ? selected
-              ? "Drag to reposition · gold corners to resize · Delete to remove"
-              : "Click a box to grab it · V or Escape for Move"
-            : `Click the PDF to place ${fieldLabel(tool).toLowerCase()} · switches to Move after`}
+              ? "Drag top handle to move · Arrow keys to nudge · Gold corners to resize · Delete to remove"
+              : "Click any box to select & drag · V or Escape for Move"
+            : `Click PDF to place ${fieldLabel(tool).toLowerCase()} · switches to Move after`}
         </span>
         {selected ? (
           <>
@@ -388,45 +407,83 @@ export function SignFieldPlacer({
                         setSigningId(f.id);
                       }
                     }}
-                    className={`@container absolute touch-none select-none overflow-visible rounded-[1px] border [container-type:size] ${
+                    className={`@container absolute touch-none select-none overflow-visible rounded-[2px] border-2 [container-type:size] ${
                       active
-                        ? "z-20 cursor-grab border-[#c4a35a] bg-[#c4a35a]/18 shadow-[0_0_0_2px_rgba(196,163,90,0.35)] active:cursor-grabbing"
+                        ? "z-30 cursor-grab border-[#c4a35a] bg-[#c4a35a]/20 shadow-[0_0_0_2px_rgba(196,163,90,0.4)] active:cursor-grabbing"
                         : isMrg
-                          ? "cursor-grab border-[#4ea882]/80 bg-[#4ea882]/12 active:cursor-grabbing"
-                          : "cursor-grab border-[#c4a35a]/80 bg-[#c4a35a]/12 active:cursor-grabbing"
+                          ? "cursor-grab border-[#4ea882] bg-[#4ea882]/15 hover:border-[#6ee7b7] active:cursor-grabbing"
+                          : "cursor-grab border-[#c4a35a] bg-[#c4a35a]/15 hover:border-[#dcc084] active:cursor-grabbing"
                     }`}
                   >
-                    <PartyChip party={f.party} hostLabel={hostFirst} />
+                    {/* Top drag handle header with grip icon and label */}
+                    <div
+                      data-drag-handle
+                      onPointerDown={(e) => startMove(f, e)}
+                      className={`absolute -top-5 left-0 z-30 flex h-[18px] items-center gap-1 rounded-t px-1.5 text-[8.5px] font-bold tracking-wide shadow-md cursor-grab active:cursor-grabbing select-none transition-colors ${
+                        isMrg
+                          ? active
+                            ? "bg-[#1b4332] text-[#a7f3d0] ring-1 ring-[#4ea882]"
+                            : "bg-[#0f291e] text-[#86efac] hover:bg-[#1b4332]"
+                          : active
+                            ? "bg-[#614a1a] text-[#fde68a] ring-1 ring-[#c4a35a]"
+                            : "bg-[#332508] text-[#fcd34d] hover:bg-[#614a1a]"
+                      }`}
+                      title="Click and drag to move box · Arrow keys to nudge"
+                    >
+                      <svg viewBox="0 0 8 14" className="h-2.5 w-1.5 fill-current opacity-85" aria-hidden>
+                        <circle cx="2" cy="2.5" r="1.1" />
+                        <circle cx="6" cy="2.5" r="1.1" />
+                        <circle cx="2" cy="7" r="1.1" />
+                        <circle cx="6" cy="7" r="1.1" />
+                        <circle cx="2" cy="11.5" r="1.1" />
+                        <circle cx="6" cy="11.5" r="1.1" />
+                      </svg>
+                      <span className="uppercase font-semibold">
+                        {isMrg ? "MRG" : hostFirst} · {fieldLabel(f.type)}
+                      </span>
+                    </div>
+
                     {active ? (
                       <button
                         type="button"
                         data-delete
-                        title="Delete"
+                        title="Delete box (or press Delete)"
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
                           remove(f.id);
                         }}
-                        className="absolute left-1/2 z-40 flex h-5 -translate-x-1/2 -translate-y-[165%] items-center rounded-full bg-[#cf7f7b] px-2 text-[10px] font-bold leading-none text-[#0a0a0a] shadow"
+                        className="absolute -top-5 right-0 z-40 flex h-[18px] items-center rounded-t bg-[#cf7f7b] px-1.5 text-[8.5px] font-bold text-[#0a0a0a] shadow hover:bg-[#e0918d]"
                       >
-                        Delete
+                        ✕ Delete
                       </button>
                     ) : null}
+
                     <div className="flex h-full min-w-0 items-center overflow-hidden rounded-[1px]">
                       {f.type === "checkbox" ? (
-                        <div className="mx-auto flex h-[88%] w-[88%] items-center justify-center rounded-[2px] border-2 border-[#1a1408] bg-white/90">
-                          {isCheckboxChecked(f.value) ? (
-                            <svg viewBox="0 0 16 16" className="h-[85%] w-[85%]" aria-hidden>
-                              <path
-                                d="M2.8 8.2 L6.3 11.6 L13.2 3.8"
-                                fill="none"
-                                stroke="#1a1408"
-                                strokeWidth="2.2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          ) : null}
+                        <div
+                          className="flex h-full w-full cursor-pointer items-center justify-center p-0.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            patch(f.id, {
+                              value: isCheckboxChecked(f.value) ? "" : "1",
+                            });
+                          }}
+                        >
+                          <div className="flex h-full w-full items-center justify-center rounded-[2px] border-2 border-[#1a1408] bg-white/95 shadow-sm transition hover:scale-105">
+                            {isCheckboxChecked(f.value) ? (
+                              <svg viewBox="0 0 16 16" className="h-[85%] w-[85%]" aria-hidden>
+                                <path
+                                  d="M2.8 8.2 L6.3 11.6 L13.2 3.8"
+                                  fill="none"
+                                  stroke="#1a1408"
+                                  strokeWidth="2.2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            ) : null}
+                          </div>
                         </div>
                       ) : f.type === "signature" ? (
                         f.signature_png ? (
@@ -441,22 +498,39 @@ export function SignFieldPlacer({
                           </span>
                         )
                       ) : isMrg ? (
-                        <FittedFieldInput
-                          value={f.value || ""}
-                          placeholder={
-                            f.type === "date"
-                              ? "YYYY-MM-DD"
-                              : f.type === "name"
-                                ? "Printed name"
-                                : "Type here"
-                          }
-                          onPointerDown={(e) => {
-                            e.stopPropagation();
-                            setSelected(f.id);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => patch(f.id, { value: e.target.value })}
-                        />
+                        <div className="flex h-full w-full min-w-0 items-center">
+                          <span
+                            data-drag-handle
+                            onPointerDown={(e) => startMove(f, e)}
+                            className="flex h-full shrink-0 cursor-grab items-center px-1 text-[#4ea882] hover:text-[#6ee7b7] active:cursor-grabbing"
+                            title="Drag to move"
+                          >
+                            <svg viewBox="0 0 8 14" className="h-3 w-1.5 fill-current opacity-70" aria-hidden>
+                              <circle cx="2" cy="2.5" r="1.1" />
+                              <circle cx="6" cy="2.5" r="1.1" />
+                              <circle cx="2" cy="7" r="1.1" />
+                              <circle cx="6" cy="7" r="1.1" />
+                              <circle cx="2" cy="11.5" r="1.1" />
+                              <circle cx="6" cy="11.5" r="1.1" />
+                            </svg>
+                          </span>
+                          <FittedFieldInput
+                            value={f.value || ""}
+                            placeholder={
+                              f.type === "date"
+                                ? "YYYY-MM-DD"
+                                : f.type === "name"
+                                  ? "Printed name"
+                                  : "Type here"
+                            }
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              setSelected(f.id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => patch(f.id, { value: e.target.value })}
+                          />
+                        </div>
                       ) : (
                         <div className="flex h-full w-full min-w-0 items-center px-0.5">
                           <FittedFieldText
