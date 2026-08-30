@@ -197,23 +197,14 @@ export function InPdfSigner({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when step field changes
   }, [started, active?.id, showingFinish]);
 
-  // Sync draft text for the step — no auto-focus (that scrolls the PDF on mobile).
+  // Sync draft text for the step — no auto-focus or auto-popup (let user read first).
   useEffect(() => {
     if (!started || !active || showingFinish) return;
-
-    if (active.type === "signature" && !active.signature_png) {
-      const t = window.setTimeout(() => {
-        setName((n) => n.trim() || signerHint);
-        setSigningId(active.id);
-      }, 200);
-      return () => window.clearTimeout(t);
-    }
 
     if (active.type === "name" || active.type === "text") {
       setDraftValue(active.value || "");
     }
-    return undefined;
-  }, [started, active?.id, active?.type, showingFinish, signerHint]);
+  }, [started, active?.id, active?.type, showingFinish]);
 
   useEffect(() => {
     return () => {
@@ -308,34 +299,47 @@ export function InPdfSigner({
   return (
     <div
       ref={rootRef}
-      className={`relative flex flex-col gap-5 ${started ? "pb-56" : "pb-8"}`}
+      className={`relative flex flex-col gap-5 ${started ? "pb-60" : "pb-12"}`}
     >
-      {!started ? (
-        <div className="rounded-none border border-white/10 bg-[#121212] px-5 py-6 sm:px-7">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c4a35a]">
-            Almost done
+      <div className="rounded-xl border border-white/10 bg-[#121212] p-5 shadow-lg sm:p-7">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-[#c4a35a]" />
+          <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#c4a35a]">
+            Review & Sign Agreement
           </div>
-          <h2 className="mt-2 text-[24px] font-semibold tracking-tight text-[#f5f5f5] sm:text-[28px]">
-            Sign your agreement
-          </h2>
-          <p className="mt-3 max-w-[42ch] text-[15px] leading-relaxed text-[#9a9590]">
-            We’ll highlight each spot in gold on the agreement. Fill it in the panel below, then
-            Continue — you can scroll and read anytime.
-          </p>
+        </div>
+        <h2 className="mt-2 text-[22px] font-bold tracking-tight text-[#f5f5f5] sm:text-[26px]">
+          Please review your agreement
+        </h2>
+        <p className="mt-2 text-[14.5px] leading-relaxed text-[#9a9590] sm:text-[15px]">
+          Please read through the document below. When you are ready, tap{" "}
+          <strong className="font-semibold text-[#f5f5f5]">Start signing</strong> to jump to your signature spot, or tap directly on any highlighted box on the agreement.
+        </p>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={start}
-            className="mt-6 w-full bg-[#c4a35a] py-4 text-[16px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] sm:w-auto sm:px-12"
+            className="rounded-lg bg-[#c4a35a] px-6 py-3.5 text-[15px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition"
           >
-            Start signing
+            {started ? "Continue signing →" : "Start signing →"}
           </button>
-          {queue.length ? (
-            <p className="mt-3 text-[13px] text-[#6f6a65]">
-              {queue.length} step{queue.length === 1 ? "" : "s"} · takes about a minute
-            </p>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.querySelector("[data-pdf-page]");
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            className="rounded-lg border border-white/14 px-5 py-3.5 text-[14px] font-semibold text-[#9a9590] hover:text-[#f5f5f5] transition"
+          >
+            Scroll & read document ↓
+          </button>
         </div>
-      ) : null}
+        {queue.length ? (
+          <p className="mt-3 text-[12.5px] text-[#6f6a65]">
+            {queue.length} signature spot{queue.length === 1 ? "" : "s"} required · Dates are filled automatically
+          </p>
+        ) : null}
+      </div>
 
       <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
         <div className="min-w-[min(100%,560px)] opacity-95 sm:min-w-0">
@@ -366,16 +370,28 @@ export function InPdfSigner({
                         key={f.id}
                         data-sign-field={f.id}
                         style={fieldStyle(f)}
-                        className={`absolute rounded-[2px] ${
+                        onClick={() => {
+                          if (isMrg) return;
+                          const idx = queue.findIndex((qf) => qf.id === f.id);
+                          if (idx >= 0) {
+                            setStarted(true);
+                            jumpTo(idx);
+                            if (f.type === "signature") {
+                              setName(signatureName || signerHint);
+                              setSigningId(f.id);
+                            }
+                          }
+                        }}
+                        className={`absolute rounded-[2px] transition-all ${
                           isMrg
                             ? "pointer-events-none overflow-hidden border-0 bg-transparent"
                             : isActive
-                              ? "z-40 overflow-visible border-2 border-[#c4a35a] bg-[#c4a35a]/28 shadow-[0_0_0_4px_rgba(196,163,90,0.45)]"
+                              ? "z-40 overflow-visible border-2 border-[#c4a35a] bg-[#c4a35a]/28 shadow-[0_0_0_4px_rgba(196,163,90,0.45)] cursor-pointer"
                               : isComplete
-                                ? "pointer-events-none z-20 overflow-hidden border border-[#4ea882]/70 bg-white/85"
+                                ? "z-20 overflow-hidden border border-[#4ea882]/70 bg-white/90 hover:border-[#4ea882] cursor-pointer"
                                 : isDate
                                   ? "pointer-events-none overflow-hidden border border-[#c4a35a]/30 bg-[#c4a35a]/06"
-                                  : "pointer-events-none overflow-hidden border border-[#c4a35a]/55 bg-[#c4a35a]/14"
+                                  : "z-30 overflow-hidden border-2 border-[#c4a35a] bg-[#c4a35a]/14 hover:bg-[#c4a35a]/24 cursor-pointer"
                         }`}
                       >
                         {isActive ? (
@@ -392,7 +408,7 @@ export function InPdfSigner({
                         ) : emptyHostSig ? (
                           <div className="flex h-full w-full items-center justify-center px-0.5">
                             <span className="truncate text-center text-[9px] font-bold uppercase tracking-wide text-[#8a6a28] sm:text-[10px]">
-                              Sign here
+                              Tap to sign
                             </span>
                           </div>
                         ) : emptyHostText && isActive ? (
@@ -503,20 +519,29 @@ export function InPdfSigner({
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6f6a65]">
                     Step {Math.min(stepIdx + 1, queue.length)} of {queue.length} · page {active.page}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => showOnAgreement()}
-                    className="text-[12px] font-semibold text-[#c4a35a]"
-                  >
-                    Show on agreement →
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => showOnAgreement()}
+                      className="text-[12px] font-semibold text-[#c4a35a]"
+                    >
+                      Show on agreement →
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStarted(false)}
+                      className="text-[12px] text-[#9a9590] hover:text-[#f5f5f5]"
+                    >
+                      Hide guide
+                    </button>
+                  </div>
                 </div>
                 <div className="text-[18px] font-semibold text-[#f5f5f5]">
                   {stepTitle(active)}
                 </div>
                 <p className="text-[14px] leading-snug text-[#9a9590]">
                   {active.type === "signature" && active.signature_png
-                    ? "Signature is on the agreement (gold box). Continue, or redraw if you need to change it."
+                    ? "Signature is placed on the agreement (gold box). Continue, or redraw to change it."
                     : stepHelp(active)}
                 </p>
 
@@ -567,13 +592,18 @@ export function InPdfSigner({
                   <button
                     type="button"
                     onClick={continueStep}
-                    className="min-w-0 flex-1 bg-[#c4a35a] py-4 text-[16px] font-bold text-[#0a0a0a] hover:bg-[#dcc084]"
+                    className="min-w-0 flex-1 bg-[#c4a35a] py-4 text-[16px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition flex items-center justify-center gap-2"
                   >
-                    {active.type === "signature" && !active.signature_png
-                      ? "Open signature pad"
-                      : active.type === "signature" && active.signature_png
-                        ? "Continue"
-                        : "Continue"}
+                    {active.type === "signature" && !active.signature_png ? (
+                      <>
+                        <svg viewBox="0 0 20 20" className="h-4 w-4 fill-current" aria-hidden>
+                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                        </svg>
+                        <span>Draw signature</span>
+                      </>
+                    ) : (
+                      <span>Continue</span>
+                    )}
                   </button>
                 </div>
                 {active.type === "signature" && active.signature_png ? (
@@ -583,7 +613,7 @@ export function InPdfSigner({
                       setName(signatureName || signerHint);
                       setSigningId(active.id);
                     }}
-                    className="text-center text-[13px] font-semibold text-[#c4a35a]"
+                    className="text-center text-[13px] font-semibold text-[#c4a35a] hover:underline"
                   >
                     Redraw signature
                   </button>
@@ -592,11 +622,27 @@ export function InPdfSigner({
             ) : null}
           </div>
         </div>
-      ) : (
-        <p className="text-center text-[13px] text-[#6f6a65]">
-          Dates are filled automatically. Only your fields need attention.
-        </p>
-      )}
+      ) : queue.length > 0 ? (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0c0c0c]/95 backdrop-blur px-4 py-3 sm:px-6 shadow-2xl">
+          <div className="mx-auto flex max-w-[640px] items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-[14px] font-semibold text-[#f5f5f5]">
+                {doneCount === queue.length ? "All signatures complete" : `Agreement ready · ${queue.length - doneCount} spot${queue.length - doneCount === 1 ? "" : "s"} left`}
+              </div>
+              <div className="truncate text-[12px] text-[#9a9590]">
+                {doneCount === queue.length ? "Ready to submit agreement" : "Read the contract, then tap to sign"}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={start}
+              className="shrink-0 rounded-lg bg-[#c4a35a] px-5 py-2.5 text-[14px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition"
+            >
+              {doneCount === queue.length ? "Finish & Submit" : "Sign agreement →"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
