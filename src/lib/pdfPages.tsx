@@ -148,7 +148,7 @@ export const FittedFieldInput = forwardRef<
   HTMLInputElement,
   InputHTMLAttributes<HTMLInputElement>
 >(function FittedFieldInput(props, ref) {
-  const { className = "", value, onChange, style, ...rest } = props;
+  const { className = "", value, onChange, style, autoFocus, ...rest } = props;
   const innerRef = useRef<HTMLInputElement | null>(null);
   const setRefs = (node: HTMLInputElement | null) => {
     innerRef.current = node;
@@ -159,6 +159,9 @@ export const FittedFieldInput = forwardRef<
   useEffect(() => {
     const el = innerRef.current;
     if (!el) return;
+    if (autoFocus) {
+      el.focus({ preventScroll: true });
+    }
     const fit = () => {
       el.style.fontSize = `${fitFontSize(String(value ?? ""), el.clientWidth, el.clientHeight)}px`;
     };
@@ -166,7 +169,7 @@ export const FittedFieldInput = forwardRef<
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [value]);
+  }, [value, autoFocus]);
 
   return (
     <input
@@ -175,7 +178,7 @@ export const FittedFieldInput = forwardRef<
       value={value}
       onChange={onChange}
       style={style}
-      className={`h-full w-full min-w-0 truncate whitespace-nowrap bg-transparent px-0.5 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] ${className}`}
+      className={`h-full w-full min-w-0 truncate whitespace-nowrap bg-transparent px-1 leading-none text-[#1a1408] outline-none placeholder:text-[#8a7a58] ${className}`}
     />
   );
 });
