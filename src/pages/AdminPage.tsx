@@ -824,6 +824,33 @@ export function AdminPage() {
     setRoute(emptyAdminRoute(mode), { push: true });
   };
 
+  const convertLeadToOpsClient = (lead: Lead) => {
+    try {
+      sessionStorage.setItem(
+        "mrg_prefill_client_lead",
+        JSON.stringify({
+          id: lead.id,
+          name: lead.name,
+          email: lead.email,
+          phone: lead.phone,
+        }),
+      );
+    } catch {
+      /* quota */
+    }
+    writeStoredAdminMode("ops");
+    setProductMode("ops");
+    setRoute(
+      {
+        ...emptyAdminRoute("ops"),
+        mode: "ops",
+        opsTab: "clients",
+        createClient: true,
+      },
+      { push: true },
+    );
+  };
+
   const openLead = (id: string) => {
     setDetailsOpen(false);
     setActionLeadId(null);
@@ -2110,6 +2137,13 @@ export function AdminPage() {
                 <div className="flex flex-col gap-2.5">
                   <button
                     type="button"
+                    onClick={() => convertLeadToOpsClient(selected)}
+                    className="h-[46px] rounded-xl bg-[#c4a35a] text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084]"
+                  >
+                    Create client & send contract
+                  </button>
+                  <button
+                    type="button"
                     disabled={saving}
                     onClick={() =>
                       patchLead({ markBooked: true })
@@ -2732,6 +2766,13 @@ export function AdminPage() {
         />
         {saveMsg ? <p className="mb-3 text-xs text-[#9a9590]">{saveMsg}</p> : null}
         <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => convertLeadToOpsClient(selected)}
+            className="h-11 rounded-xl bg-[#c4a35a] text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084]"
+          >
+            Create client & send contract
+          </button>
           <button
             type="button"
             disabled={saving}
@@ -3654,6 +3695,17 @@ export function AdminPage() {
                         ? "AI on"
                         : "Test only"}
                   </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    convertLeadToOpsClient(actionLead);
+                    setActionLeadId(null);
+                  }}
+                  className="flex w-full items-center justify-between border-t border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-left text-[14.5px] font-semibold text-[#c4a35a] hover:bg-[#212121]"
+                >
+                  <span>Create client & send contract</span>
+                  <span className="text-[13px] font-normal text-[#9a9590]">OPS →</span>
                 </button>
                 <button
                   type="button"

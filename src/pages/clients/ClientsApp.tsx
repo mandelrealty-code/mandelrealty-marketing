@@ -5,6 +5,7 @@ import {
   pmPost,
   rateLabel,
   type ClientRow,
+  type CrmLead,
   type PropertyDetail,
   type PropertyRow,
 } from "./api";
@@ -175,6 +176,28 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
   const coverInputRef = useRef<HTMLInputElement>(null);
   const appliedOpsKey = useRef("");
 
+  const [crmLeads, setCrmLeads] = useState<CrmLead[]>([]);
+  const [crmLeadsLoading, setCrmLeadsLoading] = useState(false);
+  const [selectedLeadId, setSelectedLeadId] = useState<string>("");
+  const [leadDropdownOpen, setLeadDropdownOpen] = useState(false);
+  const [leadSearchQuery, setLeadSearchQuery] = useState("");
+  const leadDropdownRef = useRef<HTMLDivElement>(null);
+
+  const loadCrmLeads = useCallback(async () => {
+    try {
+      setCrmLeadsLoading(true);
+      const res = await fetch("/api/admin/leads", { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { leads?: CrmLead[] };
+      if (Array.isArray(data.leads)) {
+        setCrmLeads(data.leads);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setCrmLeadsLoading(false);
+    }
+  }, []);
+
   const loadLists = useCallback(async () => {
     setLoadError("");
     const [c, p, s] = await Promise.all([
@@ -303,7 +326,88 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     loadProperty,
   ]);
 
+  useEffect(() => {
+    if (!leadDropdownOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (leadDropdownRef.current && !leadDropdownRef.current.contains(e.target as Node)) {
+        setLeadDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [leadDropdownOpen]);
+
+  useEffect(() => {
+    if (clientSheet === "create") {
+      void loadCrmLeads();
+      try {
+        const raw = sessionStorage.getItem("mrg_prefill_client_lead");
+        if (raw) {
+          const prefill = JSON.parse(raw) as { id?: string; name?: string; email?: string; phone?: string };
+          if (prefill) {
+            setClientForm((f) => ({
+              ...f,
+              name: prefill.name || f.name,
+              email: prefill.email || f.email,
+              phone: prefill.phone || f.phone,
+            }));
+            if (prefill.id) {
+              setSelectedLeadId(prefill.id);
+            }
+          }
+          sessionStorage.removeItem("mrg_prefill_client_lead");
+        }
+      } catch {
+        /* ignore */
+      }
+    } else {
+      setSelectedLeadId("");
+      setLeadDropdownOpen(false);
+      setLeadSearchQuery("");
+    }
+  }, [clientSheet, loadCrmLeads]);
+
+  const selectLead = (lead: CrmLead) => {
+    setSelectedLeadId(lead.id);
+    setClientForm({
+      name: lead.name || "",
+      email: lead.email || "",
+      phone: lead.phone || "",
+      status: "active",
+    });
+    setLeadDropdownOpen(false);
+    setLeadSearchQuery("");
+  };
+
+  const clearLeadSelection = () => {
+    setSelectedLeadId("");
+    setClientForm({
+      name: "",
+      email: "",
+      phone: "",
+      status: "active",
+    });
+    setLeadDropdownOpen(false);
+    setLeadSearchQuery("");
+  };
+
+  const filteredLeads = useMemo(() => {
+    const q = leadSearchQuery.trim().toLowerCase();
+    if (!q) return crmLeads;
+    return crmLeads.filter(
+      (l) =>
+        (l.name && l.name.toLowerCase().includes(q)) ||
+        (l.email && l.email.toLowerCase().includes(q)) ||
+        (l.phone && l.phone.toLowerCase().includes(q)) ||
+        (l.address && l.address.toLowerCase().includes(q)) ||
+        (l.listing_title && l.listing_title.toLowerCase().includes(q)),
+    );
+  }, [crmLeads, leadSearchQuery]);
+
   const openCreateClient = () => {
+    setSelectedLeadId("");
+    setLeadDropdownOpen(false);
+    setLeadSearchQuery("");
     setClientForm({ name: "", email: "", phone: "", status: "active" });
     navOps({ opsTab: "clients", createClient: true });
   };
@@ -318,22 +422,53 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     navOps({ opsTab: "clients", clientId: c.id, clientEdit: true });
   };
 
-  const saveClient = async () => {
+  const saveClient = async (sendContract = false) => {
     setBusy(true);
     setLoadError("");
     try {
       if (clientSheet === "create") {
-        await pmPost("clients", { op: "create", ...clientForm });
+        const res = await pmPost<{ client: ClientRow }>("clients", {
+          op: "create",
+          ...clientForm,
+        });
+        await loadLists();
+        if (sendContract && res.client?.id) {
+          try {
+            sessionStorage.setItem(
+              `mrg_invite_${res.client.id}`,
+              JSON.stringify({
+                open: true,
+                step: "form",
+                kind: "new",
+                templateId: "",
+                fields: [],
+                name: clientForm.name,
+                email: clientForm.email,
+                phone: clientForm.phone,
+                saveAsTemplate: false,
+              }),
+            );
+          } catch {
+            /* quota */
+          }
+          setClientSheet(res.client);
+          navOps({ opsTab: "clients", clientId: res.client.id, clientEdit: true }, false);
+          setToast(`Client ${res.client.name} created · Pick a template or PDF to send contract`);
+        } else {
+          setClientSheet(null);
+          navOps({ opsTab: "clients" }, false);
+          setToast(`Client ${res.client?.name || clientForm.name} created`);
+        }
       } else if (clientSheet && typeof clientSheet === "object") {
         await pmPost("clients", {
           op: "update",
           id: clientSheet.id,
           ...clientForm,
         });
+        setClientSheet(null);
+        navOps({ opsTab: "clients" }, false);
+        await loadLists();
       }
-      setClientSheet(null);
-      navOps({ opsTab: "clients" }, false);
-      await loadLists();
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Save failed.");
     } finally {
@@ -1897,6 +2032,133 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           desktop={desktop}
         >
           <div className="flex flex-col gap-3">
+            {clientSheet === "create" ? (
+              <div
+                ref={leadDropdownRef}
+                className="flex flex-col gap-1.5 rounded-xl border border-[#c4a35a]/30 bg-[#c4a35a]/[0.05] p-3.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#c4a35a]">
+                      Select from CRM Leads
+                    </span>
+                    {crmLeads.length > 0 ? (
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10.5px] font-medium text-[#9a9590]">
+                        {crmLeads.length} leads
+                      </span>
+                    ) : null}
+                  </div>
+                  {selectedLeadId || clientForm.name || clientForm.email || clientForm.phone ? (
+                    <button
+                      type="button"
+                      onClick={clearLeadSelection}
+                      className="text-[11.5px] font-semibold text-[#9a9590] hover:text-[#f5f5f5]"
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="relative mt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLeadDropdownOpen((v) => !v);
+                      if (!leadDropdownOpen) {
+                        void loadCrmLeads();
+                      }
+                    }}
+                    className="flex w-full items-center justify-between rounded-[9px] border border-white/14 bg-[#1c1c1c] px-3.5 py-2.5 text-left text-sm text-[#f5f5f5] transition hover:border-[#c4a35a]/60 focus:border-[#c4a35a]"
+                  >
+                    {(() => {
+                      const matched = crmLeads.find((l) => l.id === selectedLeadId);
+                      if (matched) {
+                        return (
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-[#c4a35a]" />
+                            <span className="truncate font-semibold text-[#f5f5f5]">
+                              {matched.name || "Unnamed lead"}
+                            </span>
+                            <span className="truncate text-xs text-[#9a9590]">
+                              ({matched.email || matched.phone || "No contact"})
+                            </span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <span className="text-[#9a9590]">
+                          {crmLeadsLoading
+                            ? "Loading CRM leads…"
+                            : "Choose a lead to auto-fill details…"}
+                        </span>
+                      );
+                    })()}
+                    <span className="ml-2 shrink-0 text-xs text-[#c4a35a]">
+                      {leadDropdownOpen ? "▲" : "▼"}
+                    </span>
+                  </button>
+
+                  {leadDropdownOpen ? (
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1.5 flex max-h-64 flex-col overflow-hidden rounded-[10px] border border-white/14 bg-[#1a1a1a] shadow-2xl">
+                      <div className="border-b border-white/10 p-2">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={leadSearchQuery}
+                          onChange={(e) => setLeadSearchQuery(e.target.value)}
+                          placeholder="Search leads by name, email, or phone…"
+                          className="w-full rounded-[6px] border border-white/10 bg-[#121212] px-3 py-1.5 text-xs text-[#f5f5f5] placeholder:text-[#6f6a65] outline-none focus:border-[#c4a35a]/60"
+                        />
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto divide-y divide-white/[0.06]">
+                        {filteredLeads.length === 0 ? (
+                          <div className="p-3.5 text-center text-xs text-[#6f6a65]">
+                            {crmLeadsLoading ? "Loading leads…" : "No leads found"}
+                          </div>
+                        ) : (
+                          filteredLeads.map((lead) => {
+                            const isSelected = lead.id === selectedLeadId;
+                            return (
+                              <button
+                                key={lead.id}
+                                type="button"
+                                onClick={() => selectLead(lead)}
+                                className={`flex w-full flex-col gap-0.5 p-2.5 text-left transition hover:bg-white/[0.06] ${
+                                  isSelected ? "bg-[#c4a35a]/15 border-l-2 border-[#c4a35a]" : ""
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="truncate text-xs font-bold text-[#f5f5f5]">
+                                    {lead.name || "Unnamed"}
+                                  </span>
+                                  {lead.status ? (
+                                    <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#c4a35a] uppercase tracking-wide">
+                                      {lead.status}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="flex items-center gap-2 text-[11px] text-[#9a9590]">
+                                  {lead.email ? <span className="truncate">{lead.email}</span> : null}
+                                  {lead.email && lead.phone ? <span>·</span> : null}
+                                  {lead.phone ? <span>{lead.phone}</span> : null}
+                                </div>
+                                {lead.address || lead.listing_title ? (
+                                  <div className="truncate text-[10.5px] text-[#6f6a65]">
+                                    {lead.address || lead.listing_title}
+                                  </div>
+                                ) : null}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex flex-col gap-1.5">
               <FieldLabel>Name</FieldLabel>
               <TextInput
@@ -1974,9 +2236,29 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                 </div>
               </>
             ) : null}
-            <GoldButton type="button" disabled={busy || !clientForm.name.trim()} onClick={saveClient}>
-              {busy ? "Saving…" : "Save"}
-            </GoldButton>
+            {clientSheet === "create" ? (
+              <div className="flex flex-col gap-2 pt-2">
+                <GoldButton
+                  type="button"
+                  disabled={busy || !clientForm.name.trim()}
+                  onClick={() => void saveClient(true)}
+                >
+                  {busy ? "Saving…" : "Save & send contract"}
+                </GoldButton>
+                <button
+                  type="button"
+                  disabled={busy || !clientForm.name.trim()}
+                  onClick={() => void saveClient(false)}
+                  className="h-[46px] rounded-[9px] border border-white/12 bg-[#1c1c1c] text-sm font-semibold text-[#f5f5f5] hover:bg-white/[0.06] disabled:opacity-50"
+                >
+                  Save client only
+                </button>
+              </div>
+            ) : (
+              <GoldButton type="button" disabled={busy || !clientForm.name.trim()} onClick={() => void saveClient(false)}>
+                {busy ? "Saving…" : "Save"}
+              </GoldButton>
+            )}
             {clientSheet !== "create" && typeof clientSheet === "object" ? (
               <button
                 type="button"

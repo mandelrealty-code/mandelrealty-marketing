@@ -107,7 +107,7 @@ export function PortalInviteControls({
     normalizeSignFields(saved?.fields),
   );
   const [kind, setKind] = useState<"existing" | "new">(() =>
-    saved?.kind === "new" ? "new" : "existing",
+    saved?.kind === "existing" ? "existing" : "new",
   );
   const [signedFile, setSignedFile] = useState<File | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -136,7 +136,7 @@ export function PortalInviteControls({
     setSaveAsTemplate(Boolean(draft?.saveAsTemplate));
     setPdfUrl("");
     setFields(normalizeSignFields(draft?.fields));
-    setKind(draft?.kind === "new" ? "new" : "existing");
+    setKind(draft ? (draft.kind === "existing" ? "existing" : "new") : "new");
     setSignedFile(null);
     setReplaceId(null);
   }, [client.id, client.name, client.email, client.phone]);

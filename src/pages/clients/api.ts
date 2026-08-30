@@ -7,6 +7,17 @@ export type ClientRow = {
   property_count?: number;
 };
 
+export type CrmLead = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address?: string;
+  listing_title?: string;
+  status?: string;
+  offer_path?: string;
+};
+
 export type TaskStatus = "open" | "in_progress" | "blocked" | "done";
 export type TaskPriority = "normal" | "high";
 export type TaskType =
