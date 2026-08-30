@@ -281,7 +281,7 @@ export function SignFieldPlacer({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="z-20 shrink-0 border-b border-white/8 bg-[#0a0a0a] px-3 py-2.5 sm:px-4 sm:py-3">
+      <div className="z-20 shrink-0 border-b border-white/8 bg-[#0a0a0a] px-3 py-2 sm:px-4 sm:py-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -333,63 +333,10 @@ export function SignFieldPlacer({
         <span className="text-[12px] text-[#9a9590]">
           {mode === "move"
             ? selected
-              ? "Drag box to move · Double-click to type · Arrow keys to nudge · Gold corners to resize"
-              : "Click any box to select & drag · Double-click to type · V or Escape for Move"
+              ? "Drag to move · Double-click to type · Arrows to nudge · Gold corners to resize"
+              : "Click to select & drag · Double-click to type · V or Escape for Move"
             : `Click PDF to place ${fieldLabel(tool).toLowerCase()} · switches to Move after`}
         </span>
-        {selected ? (
-          <>
-            {(() => {
-              const sf = fields.find((x) => x.id === selected);
-              if (!sf) return null;
-              const sfMrg = sf.party === "mrg";
-              if (sfMrg && (sf.type === "text" || sf.type === "name" || sf.type === "date")) {
-                return (
-                  <label className="flex items-center gap-2 text-[12px] text-[#9a9590]">
-                    Text
-                    <input
-                      type="text"
-                      value={sf.value || ""}
-                      placeholder={
-                        sf.type === "date"
-                          ? todayIsoDate()
-                          : sf.type === "name"
-                            ? (mrgNameHint || "Printed name")
-                            : "Type here"
-                      }
-                      onChange={(e) => patch(selected, { value: e.target.value })}
-                      className="w-[170px] rounded border border-white/14 bg-[#141414] px-2 py-1 text-[12px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]"
-                    />
-                  </label>
-                );
-              }
-              if (sf.party === "host") {
-                return (
-                  <label className="flex items-center gap-2 text-[12px] text-[#9a9590]">
-                    Host sees as
-                    <input
-                      type="text"
-                      value={sf.label || ""}
-                      placeholder={fieldLabel(sf.type)}
-                      onChange={(e) =>
-                        patch(selected, { label: e.target.value.slice(0, 48) || undefined })
-                      }
-                      className="w-[140px] rounded border border-white/14 bg-[#141414] px-2 py-1 text-[12px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]"
-                    />
-                  </label>
-                );
-              }
-              return null;
-            })()}
-            <button
-              type="button"
-              className="rounded-md border border-[#cf7f7b]/40 px-3 py-1.5 text-[12.5px] font-semibold text-[#cf7f7b]"
-              onClick={() => remove(selected)}
-            >
-              Delete
-            </button>
-          </>
-        ) : null}
       </div>
       </div>
 
