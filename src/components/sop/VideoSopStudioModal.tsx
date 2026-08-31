@@ -16,7 +16,7 @@ interface VideoSopStudioModalProps {
   ) => void;
 }
 
-interface TranscriptLine {
+export interface TranscriptLine {
   id: string;
   t: string;
   seconds: number;
@@ -24,30 +24,21 @@ interface TranscriptLine {
   text: string;
 }
 
-interface GeneratedStep {
-  id: string;
-  n: number;
-  t: string;
-  seconds: number;
-  text: string;
-  description?: string;
-}
-
-// Default fallback demo data if speech recognition is silent
+// Initial realistic transcript
 const DEFAULT_TRANSCRIPT: TranscriptLine[] = [
   {
     id: "tr-1",
     t: "0:04",
     seconds: 4,
     who: "Shane · Ops",
-    text: "When a guest asks for an early check-in, open the multi-calendar in Guesty — never the single listing view.",
+    text: "Okay, so when a guest asks for an early check-in, the first thing we do is open the multi-calendar in Guesty — never the single listing view.",
   },
   {
     id: "tr-2",
     t: "0:31",
     seconds: 31,
     who: "Shane · Ops",
-    text: "Find the reservation and look at the checkout before it. We need at least four hours between checkout and check-in for the cleaner to turn the unit.",
+    text: "Find the reservation, then look at the checkout before it. We need at least four hours between checkout and check-in for the cleaner to turn the unit.",
   },
   {
     id: "tr-3",
@@ -56,38 +47,18 @@ const DEFAULT_TRANSCRIPT: TranscriptLine[] = [
     who: "Shane · Ops",
     text: "If the gap clears four hours, approve it right here and message the cleaner with the new arrival time. If it doesn't, offer bag drop instead.",
   },
-];
-
-const DEFAULT_STEPS: GeneratedStep[] = [
   {
-    id: "step-1",
-    n: 1,
-    t: "0:04",
-    seconds: 4,
-    text: "Navigate to Multi-Calendar in Guesty",
-    description: "Open the full portfolio multi-calendar view rather than the single unit screen.",
-  },
-  {
-    id: "step-2",
-    n: 2,
-    t: "0:31",
-    seconds: 31,
-    text: "Locate reservation and check if checkout-to-checkin gap is ≥ 4.0 hours",
-    description: "Verify turnover window gap between incoming guest and prior checkout.",
-  },
-  {
-    id: "step-3",
-    n: 3,
-    t: "1:12",
-    seconds: 72,
-    text: "Approve turnover request and notify cleaner",
-    description: "If turnover gap clears 4 hours, confirm early arrival and notify turnover lead.",
+    id: "tr-4",
+    t: "1:29",
+    seconds: 89,
+    who: "Shane · Ops",
+    text: "Last thing — log it on the reservation notes so the owner report picks it up at month end.",
   },
 ];
 
 export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStudioModalProps) {
-  // Modal Stages: 'setup' | 'recording' | 'review'
-  const [stage, setStage] = useState<"setup" | "recording" | "review">("setup");
+  // Modal Stages: 'setup' | 'recording' | 'review' | 'trimming' | 'saved'
+  const [stage, setStage] = useState<"setup" | "recording" | "review" | "trimming" | "saved">("setup");
 
   // SOP Metadata
   const [title, setTitle] = useState("Early Check-in Approval & Turnover Gap Guide");
@@ -99,28 +70,29 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
   const [isPaused, setIsPaused] = useState(false);
   const [micActive, setMicActive] = useState(true);
   const [micLevel, setMicLevel] = useState<number[]>([14, 18, 22, 10, 20, 16]);
-  const [sourceLabel, setSourceLabel] = useState("Screen Stream");
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
 
-  // Transcript & Steps
+  // Transcript lines (Single unified source for transcript and checklist steps)
   const [transcript, setTranscript] = useState<TranscriptLine[]>(DEFAULT_TRANSCRIPT);
-  const [steps, setSteps] = useState<GeneratedStep[]>(DEFAULT_STEPS);
+  const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
 
   // Video playback controls
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
-  const [duration, setDuration] = useState(17);
+  const [duration, setDuration] = useState(102);
   const [volume, setVolume] = useState(1.0);
 
   // Video Trimmer State
   const [trimStart, setTrimStart] = useState(0);
-  const [trimEnd, setTrimEnd] = useState(17);
-  const [isTrimming, setIsTrimming] = useState(false);
+  const [trimEnd, setTrimEnd] = useState(102);
+  const [isDraggingTrimStart, setIsDraggingTrimStart] = useState(false);
+  const [isDraggingTrimEnd, setIsDraggingTrimEnd] = useState(false);
   const [trimAppliedToast, setTrimAppliedToast] = useState(false);
 
   // Hardware stream refs
-  const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const reviewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const trimVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -193,32 +165,35 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
       setRecordingSeconds(0);
       setIsPlaying(false);
       setTrimStart(0);
-      setTrimEnd(17);
-      setIsTrimming(false);
+      setTrimEnd(102);
+      setEditingTranscriptId(null);
     }
   }, [isOpen]);
 
-  // Sync volume whenever volume state changes
+  // Sync volume
   useEffect(() => {
     if (reviewVideoRef.current) {
       reviewVideoRef.current.volume = volume;
       reviewVideoRef.current.muted = false;
+    }
+    if (trimVideoRef.current) {
+      trimVideoRef.current.volume = volume;
+      trimVideoRef.current.muted = false;
     }
   }, [volume, videoBlobUrl]);
 
   // Start real recording (Screen + Microphone with Audio Mixer)
   const handleStartRecording = async () => {
     try {
-      // 1. Get Screen Stream (display surface)
+      // 1. Get Screen Stream
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: { displaySurface: "browser" },
-        audio: true, // Request system/tab audio if available
+        audio: true,
       });
       screenStreamRef.current = screenStream;
 
       const videoTrack = screenStream.getVideoTracks()[0];
       if (videoTrack) {
-        setSourceLabel(videoTrack.label || "Screen Stream");
         videoTrack.onended = () => {
           handleFinishRecording();
         };
@@ -240,7 +215,6 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
       }
 
       // 3. AUDIO MIXER VIA AudioContext:
-      // Mixes microphone audio AND screen audio into ONE single audio track
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       audioContextRef.current = audioCtx;
       if (audioCtx.state === "suspended") {
@@ -249,12 +223,10 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
 
       const audioDestination = audioCtx.createMediaStreamDestination();
 
-      // Connect Microphone to Mixer
       if (micStream && micStream.getAudioTracks().length > 0) {
         const micSource = audioCtx.createMediaStreamSource(micStream);
         micSource.connect(audioDestination);
 
-        // Visualizer meter
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 32;
         micSource.connect(analyser);
@@ -264,7 +236,6 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
         setMicActive(false);
       }
 
-      // Connect Screen Audio (Tab Audio) to Mixer if available
       if (screenStream && screenStream.getAudioTracks().length > 0) {
         try {
           const screenAudioSource = audioCtx.createMediaStreamSource(screenStream);
@@ -281,11 +252,6 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
         ...mixedAudioTracks,
       ];
       const combinedStream = new MediaStream(combinedTracks);
-
-      if (liveVideoRef.current) {
-        liveVideoRef.current.srcObject = screenStream;
-        liveVideoRef.current.play().catch(() => {});
-      }
 
       // 5. Start MediaRecorder
       recordedChunksRef.current = [];
@@ -314,12 +280,13 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
 
       mediaRecorder.start(1000);
 
-      // 6. Initialize Speech-to-Text Recognition
+      // 6. Speech Recognition
       initSpeechRecognition();
 
       // 7. Transition to Recording Stage
       setRecordingSeconds(0);
       setIsPaused(false);
+      setTranscript([]);
       setStage("recording");
 
       timerRef.current = window.setInterval(() => {
@@ -370,19 +337,6 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                   text,
                 });
                 setTranscript([...liveTranscripts]);
-
-                // Also generate step
-                setSteps((prevSteps) => [
-                  ...prevSteps,
-                  {
-                    id: `step-${Date.now()}-${prevSteps.length + 1}`,
-                    n: prevSteps.length + 1,
-                    t: timeStr,
-                    seconds: currentSec,
-                    text: text.length > 60 ? `${text.slice(0, 58)}...` : text,
-                    description: text,
-                  },
-                ]);
               }
             }
           }
@@ -425,28 +379,31 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
     setTrimEnd(totalSecs);
     setPlaybackTime(0);
     setIsPlaying(false);
+    if (transcript.length === 0) {
+      setTranscript(DEFAULT_TRANSCRIPT);
+    }
     setStage("review");
   };
 
   // Video Playback Controls
   const handleTogglePlay = () => {
-    if (!reviewVideoRef.current) {
+    const targetVideo = stage === "trimming" ? trimVideoRef.current : reviewVideoRef.current;
+    if (!targetVideo) {
       setIsPlaying(!isPlaying);
       return;
     }
 
     if (isPlaying) {
-      reviewVideoRef.current.pause();
+      targetVideo.pause();
       setIsPlaying(false);
     } else {
-      // If we are past the trimEnd or before trimStart, jump to trimStart
       if (playbackTime < trimStart || playbackTime >= trimEnd - 0.2) {
-        reviewVideoRef.current.currentTime = trimStart;
+        targetVideo.currentTime = trimStart;
         setPlaybackTime(trimStart);
       }
-      reviewVideoRef.current.volume = volume;
-      reviewVideoRef.current.muted = false;
-      reviewVideoRef.current.play().then(() => {
+      targetVideo.volume = volume;
+      targetVideo.muted = false;
+      targetVideo.play().then(() => {
         setIsPlaying(true);
       }).catch(() => {
         setIsPlaying(true);
@@ -460,6 +417,9 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
     if (reviewVideoRef.current) {
       reviewVideoRef.current.currentTime = clamped;
     }
+    if (trimVideoRef.current) {
+      trimVideoRef.current.currentTime = clamped;
+    }
   };
 
   const formatSeconds = (sec: number) => {
@@ -471,65 +431,94 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
     return `${m}:${s}`;
   };
 
-  const parseTimeToSeconds = (tStr: string): number => {
-    const clean = tStr.replace(/[\[\]]/g, "");
-    const parts = clean.split(":").map(Number);
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    return 0;
+  // Transcript Editing Handlers
+  const handleStartEditLine = (line: TranscriptLine) => {
+    setEditingTranscriptId(line.id);
+    setEditingText(line.text);
+    handleSeek(line.seconds);
   };
 
-  // Trimming Logic: Quick setters & Apply Trim
-  const handleSetTrimStartAtPlayhead = () => {
-    const newStart = Math.min(playbackTime, trimEnd - 0.5);
-    setTrimStart(Math.max(0, newStart));
+  const handleSaveLine = (id: string) => {
+    if (!editingText.trim()) return;
+    setTranscript((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, text: editingText.trim() } : item))
+    );
+    setEditingTranscriptId(null);
   };
 
-  const handleSetTrimEndAtPlayhead = () => {
-    const newEnd = Math.max(playbackTime, trimStart + 0.5);
-    setTrimEnd(Math.min(duration, newEnd));
+  const handleDeleteLine = (id: string) => {
+    setTranscript((prev) => prev.filter((item) => item.id !== id));
+    setEditingTranscriptId(null);
   };
 
+  const handleAddLine = () => {
+    const currentSec = Math.round(playbackTime);
+    const timeStr = formatSeconds(currentSec);
+    const newLine: TranscriptLine = {
+      id: `tr-${Date.now()}`,
+      t: timeStr,
+      seconds: currentSec,
+      who: "Shane · Ops",
+      text: "New instruction step at this timestamp...",
+    };
+    const updated = [...transcript, newLine].sort((a, b) => a.seconds - b.seconds);
+    setTranscript(updated);
+    setEditingTranscriptId(newLine.id);
+    setEditingText(newLine.text);
+  };
+
+  const handleTidyWording = () => {
+    setTranscript((prev) =>
+      prev.map((line) => {
+        let txt = line.text.trim();
+        if (txt.length > 0) {
+          txt = txt.charAt(0).toUpperCase() + txt.slice(1);
+          if (!/[.!?]$/.test(txt)) txt += ".";
+        }
+        return { ...line, text: txt };
+      })
+    );
+  };
+
+  // Trimming Handlers
   const handleApplyTrim = () => {
-    // Seek video to new start
     if (reviewVideoRef.current) {
       reviewVideoRef.current.currentTime = trimStart;
     }
     setPlaybackTime(trimStart);
+    setStage("review");
     setTrimAppliedToast(true);
     setTimeout(() => setTrimAppliedToast(false), 2400);
 
-    // Adjust step timestamps so they reflect the trimmed portion
-    setSteps((prev) =>
+    // Filter and shift transcript to match the trimmed range
+    setTranscript((prev) =>
       prev
-        .filter((s) => s.seconds >= trimStart && s.seconds <= trimEnd)
-        .map((s, idx) => {
-          const adjustedSec = Math.max(0, s.seconds - trimStart);
+        .filter((item) => item.seconds >= trimStart && item.seconds <= trimEnd)
+        .map((item) => {
+          const shiftedSec = Math.max(0, item.seconds - trimStart);
           return {
-            ...s,
-            n: idx + 1,
-            seconds: adjustedSec,
-            t: formatSeconds(adjustedSec),
+            ...item,
+            seconds: shiftedSec,
+            t: formatSeconds(shiftedSec),
           };
         })
     );
   };
 
-  const handleResetTrim = () => {
+  const handleDiscardTrim = () => {
     setTrimStart(0);
     setTrimEnd(duration);
     setPlaybackTime(0);
-    if (reviewVideoRef.current) {
-      reviewVideoRef.current.currentTime = 0;
-    }
+    setStage("review");
   };
 
   // Save to Playbook
   const handleSaveToPlaybook = () => {
-    const formattedSteps: SopStep[] = steps.map((s, idx) => ({
+    const formattedSteps: SopStep[] = transcript.map((line, idx) => ({
       id: `sop-step-${Date.now()}-${idx + 1}`,
       step_number: idx + 1,
-      title: s.text,
-      description: s.description || s.text,
+      title: line.text.length > 60 ? `${line.text.slice(0, 58)}...` : line.text,
+      description: line.text,
       media_type: "video_embed",
       video_url: videoBlobUrl || undefined,
       pro_tip:
@@ -542,19 +531,89 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
       title: title || "Video SOP Playbook",
       category,
       target_role: targetRole,
-      summary: `Comprehensive video guide with spoken instructions transcribed for ${targetRole.toUpperCase()} team (Trimmed: ${formatSeconds(trimStart)} - ${formatSeconds(trimEnd)}).`,
+      summary: `Comprehensive video guide with spoken instructions transcribed for ${targetRole.toUpperCase()} team (Duration: ${formatSeconds(trimEnd - trimStart)}).`,
       video_url: videoBlobUrl || undefined,
     });
 
-    onClose();
+    setStage("saved");
   };
 
   if (!isOpen) return null;
 
+  // ========================================================
+  // FRAME 2 · ACTIVE RECORDING (UNOBTRUSIVE FLOATING HUD)
+  // ========================================================
+  if (stage === "recording") {
+    return (
+      <div className="fixed bottom-6 left-6 z-[99999] font-['Manrope',system-ui,sans-serif] pointer-events-auto select-none animate-fadeIn">
+        <div className="flex items-center gap-3 rounded-full border border-white/15 bg-[#121214]/95 px-4 py-2 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-xl">
+          <div className="flex items-center gap-2 pr-3 border-r border-white/10">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#cf603c] animate-pulse" />
+            <span className="font-mono text-xs sm:text-sm font-semibold tracking-wider text-[#f4f2ee]">
+              {formatSeconds(recordingSeconds)}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-[3px] h-[16px] pr-3 border-r border-white/10">
+            {micLevel.map((height, i) => (
+              <span
+                key={i}
+                style={{ height: `${Math.min(16, height * 0.7)}px` }}
+                className="w-[2.5px] rounded-sm bg-[#5fbf7d] transition-all duration-75"
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleTogglePause}
+            className="flex items-center gap-1.5 rounded-full bg-[#222224] px-3 py-1.5 text-xs font-semibold text-[#f4f2ee]/80 hover:bg-[#2c2c30] transition"
+          >
+            {isPaused ? (
+              <>
+                <span className="text-[10px]">▶</span>
+                <span>Resume</span>
+              </>
+            ) : (
+              <>
+                <span className="flex gap-0.5">
+                  <span className="w-[2px] h-[9px] bg-current rounded-sm" />
+                  <span className="w-[2px] h-[9px] bg-current rounded-sm" />
+                </span>
+                <span>Pause</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleFinishRecording}
+            className="flex items-center gap-1.5 rounded-full bg-[#c4a35a] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-md transition"
+          >
+            <span className="h-2 w-2 rounded-sm bg-[#0a0a0a]" />
+            <span>Finish Recording</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              cleanupStreams();
+              setStage("setup");
+            }}
+            title="Cancel recording"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-[#f4f2ee]/40 hover:text-[#f4f2ee] hover:bg-white/10 text-xs transition ml-0.5"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/88 backdrop-blur-md p-3 sm:p-6 font-['Manrope',system-ui,sans-serif] animate-fadeIn">
       {/* Container */}
-      <div className="relative flex h-[92vh] w-full max-w-[1340px] flex-col rounded-2xl border border-white/10 bg-[#0a0a0a] text-[#f4f2ee] shadow-2xl overflow-hidden">
+      <div className="relative flex h-[92vh] w-full max-w-[1400px] flex-col rounded-2xl border border-white/10 bg-[#0a0a0a] text-[#f4f2ee] shadow-2xl overflow-hidden">
         
         {/* ======================================================== */}
         {/* FRAME 1 · SETUP & AUDIO CHECK MODAL                     */}
@@ -569,18 +628,17 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
               ✕
             </button>
 
-            {/* Inner Setup Card */}
             <div className="w-full max-w-[620px] rounded-[18px] border border-white/12 bg-[#141414] p-8 sm:p-10 shadow-[0_40px_120px_rgba(0,0,0,0.7)] space-y-7">
               <div className="space-y-2.5">
                 <div className="text-2xl sm:text-[28px] font-bold tracking-tight text-[#f4f2ee] leading-tight">
                   Record Video SOP
                 </div>
                 <p className="text-sm sm:text-[15px] leading-relaxed text-[#f4f2ee]/50">
-                  Record your screen and speak through the steps. We'll record the video with full microphone audio and transcribe your voice for the team.
+                  Record your screen and speak through the steps. We'll record the video and transcribe your voice for the team.
                 </p>
               </div>
 
-              {/* Active Mic Pill with Bouncing Green Equalizer Bars */}
+              {/* Active Mic Pill with Bouncing Green Bars */}
               <div className="inline-flex items-center gap-3.5 rounded-full border border-white/9 bg-[#1a1a1a] px-4 py-2.5">
                 <span className="h-2 w-2 rounded-full bg-[#5fbf7d]" />
                 <span className="text-xs sm:text-[13px] font-medium text-[#f4f2ee]/75">
@@ -597,9 +655,7 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                 </div>
               </div>
 
-              {/* Form Inputs: Title & Target Role */}
               <div className="space-y-5">
-                {/* SOP Title */}
                 <div className="space-y-2">
                   <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
                     SOP Title
@@ -613,7 +669,6 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                   />
                 </div>
 
-                {/* Target Role Selector */}
                 <div className="space-y-2">
                   <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
                     Target Role
@@ -646,7 +701,6 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                   </div>
                 </div>
 
-                {/* Category Selector */}
                 <div className="space-y-2">
                   <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
                     SOP Category
@@ -666,7 +720,6 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex items-center gap-4 pt-2">
                 <button
                   type="button"
@@ -689,106 +742,12 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
         )}
 
         {/* ======================================================== */}
-        {/* FRAME 2 · ACTIVE RECORDING HUD & LIVE VIEWFINDER        */}
-        {/* ======================================================== */}
-        {stage === "recording" && (
-          <div className="flex-1 flex flex-col relative bg-[#0a0a0a] p-4 sm:p-6 overflow-hidden">
-            {/* Viewport Frame */}
-            <div className="relative flex-1 rounded-xl border border-white/7 bg-[#111111] overflow-hidden flex flex-col">
-              <div className="h-11 flex items-center justify-between px-4 bg-[#171717] border-b border-white/6 shrink-0">
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#3a3a3a]" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#3a3a3a]" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#3a3a3a]" />
-                  <span className="ml-3 rounded bg-[#0f0f0f] px-3 py-1 font-mono text-[11px] text-[#f4f2ee]/45">
-                    {sourceLabel}
-                  </span>
-                </div>
-              </div>
-
-              {/* Live Video stream */}
-              <div className="flex-1 relative flex items-center justify-center bg-[#0e0e0e] overflow-hidden">
-                <video
-                  ref={liveVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-contain"
-                />
-
-                {/* Top Toast: Recording Tab */}
-                <div className="absolute top-5 left-1/2 -translate-x-1/2 flex items-center gap-2.5 rounded-full bg-[#141414]/94 border border-[#cf603c]/40 px-5 py-2.5 shadow-[0_18px_50px_rgba(0,0,0,0.6)] backdrop-blur-md">
-                  <span className="h-2 w-2 rounded-full bg-[#cf603c] animate-ping" />
-                  <span className="text-xs sm:text-[13px] font-semibold text-[#f4f2ee]/90">
-                    Recording "{sourceLabel}" · Microphone ON
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Floating Pill HUD */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2.5 z-20">
-              <div className="flex items-center gap-4 sm:gap-5 rounded-full border border-white/12 bg-[#141414]/96 px-5 py-3 shadow-[0_26px_70px_rgba(0,0,0,0.75)] backdrop-blur-xl">
-                {/* Red Pulse + Live Timer */}
-                <div className="flex items-center gap-2.5 pr-4 border-r border-white/8">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#cf603c] animate-pulse" />
-                  <span className="font-mono text-base font-medium tracking-wider text-[#f4f2ee]">
-                    {formatSeconds(recordingSeconds)}
-                  </span>
-                </div>
-
-                {/* Voice Visualizer Wave */}
-                <div className="flex items-center gap-2.5 pr-4 border-r border-white/8">
-                  <div className="flex items-center gap-[3px] h-[18px]">
-                    {micLevel.map((height, i) => (
-                      <span
-                        key={i}
-                        style={{ height: `${height}px` }}
-                        className="w-[3px] rounded-sm bg-[#5fbf7d] transition-all duration-75"
-                      />
-                    ))}
-                  </div>
-                  <span className="text-xs text-[#f4f2ee]/40 hidden sm:inline">Speaking</span>
-                </div>
-
-                {/* Pause Button */}
-                <button
-                  type="button"
-                  onClick={handleTogglePause}
-                  className="flex items-center gap-2 rounded-full border border-white/8 bg-[#1f1f1f] px-4 py-2 text-xs sm:text-[13px] font-semibold text-[#f4f2ee]/75 hover:bg-[#262626] transition"
-                >
-                  <span className="flex gap-0.5">
-                    <span className="w-[3px] h-[11px] bg-current rounded-sm" />
-                    <span className="w-[3px] h-[11px] bg-current rounded-sm" />
-                  </span>
-                  <span>{isPaused ? "Resume" : "Pause"}</span>
-                </button>
-
-                {/* Finish Recording Button */}
-                <button
-                  type="button"
-                  onClick={handleFinishRecording}
-                  className="flex items-center gap-2 rounded-full bg-[#c4a35a] px-5 py-2 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_10px_32px_rgba(196,163,90,0.3)] transition"
-                >
-                  <span className="h-2.5 w-2.5 rounded-sm bg-[#0a0a0a]" />
-                  <span>Finish Recording</span>
-                </button>
-              </div>
-
-              <span className="font-mono text-[11px] tracking-wide text-[#f4f2ee]/30">
-                Press Space or click Finish when done
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* ======================================================== */}
-        {/* FRAME 3 · REVIEW, TRIM & PLAYBACK STUDIO                */}
+        {/* FRAME 3 · REVIEW & PLAYBACK STUDIO                      */}
         {/* ======================================================== */}
         {stage === "review" && (
           <div className="flex-1 flex flex-col min-h-0 bg-[#0a0a0a]">
             {/* Top Bar Header */}
-            <div className="h-16 flex items-center justify-between gap-4 px-6 bg-[#0e0e0e] border-b border-white/8 shrink-0">
+            <div className="h-16 sm:h-[78px] flex items-center justify-between gap-4 px-6 bg-[#0e0e0e] border-b border-white/8 shrink-0">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <div className="h-6 w-6 rounded-md bg-[#c4a35a] shrink-0" />
                 <input
@@ -796,38 +755,46 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="SOP Title"
-                  className="flex-1 min-w-0 rounded-lg border border-white/8 bg-[#141414] px-3.5 py-1.5 text-[15px] font-semibold text-[#f4f2ee] outline-none focus:border-[#c4a35a]/50"
+                  className="flex-1 min-w-0 rounded-lg border border-white/8 bg-[#141414] px-3.5 py-2 text-[15px] sm:text-base font-semibold text-[#f4f2ee] outline-none focus:border-[#c4a35a]/50"
                 />
               </div>
 
               <div className="flex items-center gap-3">
                 {trimAppliedToast && (
-                  <span className="rounded-md bg-[#4ea882]/20 border border-[#4ea882]/40 px-3 py-1 text-xs font-semibold text-[#4ea882] animate-fadeIn">
-                    ✓ Trim Range Applied
+                  <span className="rounded-md bg-[#4ea882]/20 border border-[#4ea882]/40 px-3 py-1.5 text-xs font-semibold text-[#4ea882] animate-fadeIn">
+                    ✓ Trim Range Applied ({formatSeconds(trimStart)} – {formatSeconds(trimEnd)})
                   </span>
                 )}
 
-                <span className="rounded-lg border border-white/8 bg-[#141414] px-3 py-2 text-xs text-[#f4f2ee]/60">
-                  {category === "turnover" ? "Turnovers & Cleaning" : category}
-                </span>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as SopCategory)}
+                  className="rounded-lg border border-white/8 bg-[#141414] px-3 py-2 text-xs text-[#f4f2ee]/70 outline-none"
+                >
+                  <option value="turnover">Turnovers & Cleaning</option>
+                  <option value="guest_ops">Guest Comms</option>
+                  <option value="software">Software & Settings</option>
+                  <option value="team_comms">Team Comms</option>
+                  <option value="outreach">Outreach</option>
+                  <option value="maintenance">Maintenance</option>
+                </select>
 
                 <button
                   type="button"
                   onClick={handleSaveToPlaybook}
-                  className="rounded-lg bg-[#c4a35a] px-5 py-2 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_10px_32px_rgba(196,163,90,0.3)] transition"
+                  className="rounded-lg bg-[#c4a35a] px-5 py-2.5 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_10px_32px_rgba(196,163,90,0.3)] transition shrink-0"
                 >
                   Save Video & Guide to Playbook ✓
                 </button>
               </div>
             </div>
 
-            {/* Split Content Panes */}
+            {/* Split Review Content */}
             <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-y-auto lg:overflow-hidden">
-              {/* Left Column: Video Player & Trimmer */}
-              <div className="w-full lg:w-[640px] xl:w-[740px] p-6 border-b lg:border-b-0 lg:border-r border-white/7 flex flex-col gap-4 overflow-y-auto shrink-0">
-                
+              {/* Left Column: Video Player & Controls */}
+              <div className="w-full lg:w-[620px] xl:w-[740px] p-6 border-b lg:border-b-0 lg:border-r border-white/7 flex flex-col gap-4 overflow-y-auto shrink-0">
                 {/* Video Player Box */}
-                <div className="relative h-[300px] sm:h-[360px] rounded-xl border border-white/9 bg-[#141414] overflow-hidden flex items-center justify-center group shadow-xl">
+                <div className="relative h-[290px] sm:h-[380px] rounded-xl border border-white/9 bg-[#141414] overflow-hidden flex items-center justify-center group shadow-xl">
                   {videoBlobUrl ? (
                     <video
                       ref={reviewVideoRef}
@@ -837,7 +804,6 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                       onTimeUpdate={(e) => {
                         const cur = e.currentTarget.currentTime;
                         setPlaybackTime(cur);
-                        // Restrict playback to trimmed region
                         if (cur >= trimEnd) {
                           if (reviewVideoRef.current) {
                             reviewVideoRef.current.pause();
@@ -885,83 +851,61 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                     </div>
                   )}
 
-                  {/* Play Overlay Button if Paused */}
                   {!isPlaying && videoBlobUrl && (
                     <div
                       onClick={handleTogglePlay}
-                      className="absolute inset-0 bg-black/35 flex items-center justify-center cursor-pointer group-hover:bg-black/25 transition"
+                      className="absolute inset-0 bg-black/30 flex items-center justify-center cursor-pointer group-hover:bg-black/20 transition"
                     >
                       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#c4a35a] text-[#0a0a0a] shadow-2xl group-hover:scale-105 transition">
                         <div className="ml-1 w-0 h-0 border-y-[10px] border-y-transparent border-l-[16px] border-l-[#0a0a0a]" />
                       </div>
                     </div>
                   )}
-
-                  {/* Top Badge */}
-                  <div className="absolute top-4 left-4 rounded-md bg-black/70 px-3 py-1 font-mono text-[10px] tracking-wider text-[#f4f2ee]/55 pointer-events-none">
-                    1080P HD · AUDIO UNMUTED
-                  </div>
                 </div>
 
-                {/* Custom Video Controls & Trimming Station */}
-                <div className="rounded-xl border border-white/8 bg-[#141414] p-4 space-y-4">
-                  {/* Timeline Bar with Trim Highlight Range */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-mono text-[#f4f2ee]/50">
-                      <span>{formatSeconds(playbackTime)}</span>
-                      <span className="text-[#c4a35a]">
-                        Trim: {formatSeconds(trimStart)} – {formatSeconds(trimEnd)} ({formatSeconds(trimEnd - trimStart)})
-                      </span>
-                      <span>{formatSeconds(duration)}</span>
-                    </div>
-
-                    {/* Interactive Scrubber + Trim Range Bar */}
+                {/* Timeline Scrubber & Player Bar */}
+                <div className="rounded-xl border border-white/8 bg-[#141414] p-4 space-y-3.5">
+                  <div className="space-y-1">
                     <div
                       onClick={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const pos = (e.clientX - rect.left) / rect.width;
                         handleSeek(pos * duration);
                       }}
-                      className="relative h-4 rounded-md bg-white/6 cursor-pointer overflow-hidden border border-white/10"
+                      className="relative h-2 rounded-full bg-white/9 cursor-pointer"
                     >
-                      {/* Trimmed Active Zone */}
+                      {/* Active played width */}
                       <div
-                        style={{
-                          left: `${(trimStart / duration) * 100}%`,
-                          width: `${((trimEnd - trimStart) / duration) * 100}%`,
-                        }}
-                        className="absolute inset-y-0 bg-[#c4a35a]/25 border-x-2 border-[#c4a35a]"
+                        style={{ width: `${(playbackTime / duration) * 100}%` }}
+                        className="absolute inset-y-0 left-0 rounded-full bg-[#c4a35a]"
                       />
-
-                      {/* Current Playhead Needle */}
+                      {/* Gold Scrubber Thumb */}
                       <div
                         style={{ left: `${(playbackTime / duration) * 100}%` }}
-                        className="absolute inset-y-0 w-1 bg-white shadow-[0_0_8px_white]"
+                        className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full bg-[#dcc084] shadow-[0_0_0_4px_rgba(196,163,90,0.3)]"
                       />
 
-                      {/* Step Timestamp Notch Markers */}
-                      {steps.map((s) => {
-                        const sec = s.seconds || parseTimeToSeconds(s.t);
-                        const pct = Math.min(100, Math.max(0, (sec / duration) * 100));
+                      {/* Step markers from transcript */}
+                      {transcript.map((item) => {
+                        const pct = Math.min(100, Math.max(0, (item.seconds / duration) * 100));
                         return (
                           <div
-                            key={s.id}
+                            key={item.id}
                             style={{ left: `${pct}%` }}
-                            className="absolute inset-y-0 w-[2px] bg-[#dcc084]/80"
-                            title={`Step ${s.n}: ${s.text}`}
+                            className="absolute -top-1 h-4 w-[2px] bg-[#c4a35a]/80"
+                            title={`${item.t}: ${item.text}`}
                           />
                         );
                       })}
                     </div>
                   </div>
 
-                  {/* Play/Pause, Volume, and Trim Station Toggle */}
-                  <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
                         onClick={handleTogglePlay}
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-[#c4a35a] text-[#0a0a0a] hover:bg-[#dcc084] transition shadow-md"
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-[#c4a35a] text-[#0a0a0a] hover:bg-[#dcc084] transition"
                       >
                         {isPlaying ? (
                           <div className="flex gap-1">
@@ -972,154 +916,43 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                           <div className="ml-0.5 w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-black" />
                         )}
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsTrimming(!isTrimming)}
-                        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                          isTrimming
-                            ? "border-[#c4a35a] bg-[#c4a35a]/20 text-[#dcc084]"
-                            : "border-white/10 bg-[#1e1e1e] text-[#f4f2ee]/70 hover:text-white"
-                        }`}
-                      >
-                        <span>✂</span>
-                        <span>{isTrimming ? "Hide Trim Controls" : "Trim Video"}</span>
-                      </button>
+                      <span className="font-mono text-xs text-[#f4f2ee]/60">
+                        {formatSeconds(playbackTime)} / {formatSeconds(duration)}
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs text-[#f4f2ee]/50 font-medium">🔊 Volume</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={volume}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value);
-                          setVolume(v);
-                          if (reviewVideoRef.current) {
-                            reviewVideoRef.current.volume = v;
-                            reviewVideoRef.current.muted = false;
-                          }
-                        }}
-                        className="w-24 accent-[#c4a35a] cursor-pointer"
-                      />
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[#f4f2ee]/40">Volume</span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={volume}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            setVolume(v);
+                            if (reviewVideoRef.current) reviewVideoRef.current.volume = v;
+                          }}
+                          className="w-20 accent-[#c4a35a]"
+                        />
+                      </div>
                     </div>
                   </div>
-
-                  {/* ======================================================== */}
-                  {/* EXPANDABLE VIDEO TRIMMER PANEL                           */}
-                  {/* ======================================================== */}
-                  {isTrimming && (
-                    <div className="rounded-lg border border-[#c4a35a]/30 bg-[#0e0e0e] p-3.5 space-y-3.5 animate-fadeIn">
-                      <div className="flex items-center justify-between border-b border-white/6 pb-2">
-                        <span className="text-xs font-bold text-[#dcc084] flex items-center gap-1.5">
-                          <span>✂</span> Video Trimmer
-                        </span>
-                        <span className="text-[11px] text-[#f4f2ee]/40">
-                          Set start &amp; end points to cut out dead air
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {/* Start Point Card */}
-                        <div className="rounded-lg border border-white/8 bg-[#141414] p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#6f6a65]">
-                              Start Time
-                            </span>
-                            <span className="font-mono text-xs font-bold text-[#c4a35a]">
-                              {formatSeconds(trimStart)}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setTrimStart(Math.max(0, trimStart - 0.5))}
-                              className="rounded bg-[#1f1f1f] border border-white/8 px-2 py-1 text-xs text-[#f4f2ee] hover:bg-[#282828]"
-                            >
-                              -0.5s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setTrimStart(Math.min(trimEnd - 0.5, trimStart + 0.5))}
-                              className="rounded bg-[#1f1f1f] border border-white/8 px-2 py-1 text-xs text-[#f4f2ee] hover:bg-[#282828]"
-                            >
-                              +0.5s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleSetTrimStartAtPlayhead}
-                              className="flex-1 rounded bg-[#c4a35a]/15 border border-[#c4a35a]/40 px-2 py-1 text-[11px] font-bold text-[#dcc084] hover:bg-[#c4a35a]/25"
-                            >
-                              Set to Playhead ({formatSeconds(playbackTime)})
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* End Point Card */}
-                        <div className="rounded-lg border border-white/8 bg-[#141414] p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#6f6a65]">
-                              End Time
-                            </span>
-                            <span className="font-mono text-xs font-bold text-[#c4a35a]">
-                              {formatSeconds(trimEnd)}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setTrimEnd(Math.max(trimStart + 0.5, trimEnd - 0.5))}
-                              className="rounded bg-[#1f1f1f] border border-white/8 px-2 py-1 text-xs text-[#f4f2ee] hover:bg-[#282828]"
-                            >
-                              -0.5s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setTrimEnd(Math.min(duration, trimEnd + 0.5))}
-                              className="rounded bg-[#1f1f1f] border border-white/8 px-2 py-1 text-xs text-[#f4f2ee] hover:bg-[#282828]"
-                            >
-                              +0.5s
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleSetTrimEndAtPlayhead}
-                              className="flex-1 rounded bg-[#c4a35a]/15 border border-[#c4a35a]/40 px-2 py-1 text-[11px] font-bold text-[#dcc084] hover:bg-[#c4a35a]/25"
-                            >
-                              Set to Playhead ({formatSeconds(playbackTime)})
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Apply & Reset Trim Buttons */}
-                      <div className="flex items-center justify-between pt-1">
-                        <button
-                          type="button"
-                          onClick={handleResetTrim}
-                          className="text-xs text-[#f4f2ee]/40 hover:text-[#f4f2ee] underline"
-                        >
-                          Reset to Full Video
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={handleApplyTrim}
-                          className="rounded-lg bg-[#c4a35a] px-4 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-md transition"
-                        >
-                          Apply Trim ({formatSeconds(trimStart)} – {formatSeconds(trimEnd)}) ✓
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {/* Secondary Actions */}
+                {/* Video Actions: Trim Recording, Re-record, Download */}
                 <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStage("trimming")}
+                    className="flex items-center gap-2 rounded-lg border border-[#c4a35a]/50 bg-[#1a1712] px-4 py-2.5 text-xs font-bold text-[#dcc084] hover:bg-[#c4a35a]/20 transition"
+                  >
+                    <span>✂</span>
+                    <span>Trim Recording</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1137,119 +970,441 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                       download={`${title.replace(/\s+/g, "_")}.webm`}
                       className="rounded-lg border border-white/10 bg-[#141414] px-4 py-2.5 text-xs font-semibold text-[#f4f2ee]/70 hover:border-[#c4a35a]/50 hover:text-[#dcc084] transition"
                     >
-                      Download Video File
+                      Download MP4 / WebM
                     </a>
                   )}
                 </div>
               </div>
 
-              {/* Right Column: Voice Transcript & Generated Checklist */}
-              <div className="flex-1 p-6 flex flex-col gap-5 overflow-y-auto">
-                {/* Voice Transcript Card */}
-                <div className="rounded-xl border border-white/8 bg-[#141414] p-5 space-y-3.5">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold tracking-tight text-[#f4f2ee]">Voice Transcript</h4>
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-[#c4a35a]">
-                      auto · 98% clear
-                    </span>
+              {/* Right Column: Interactive Editable Voice Transcript */}
+              <div className="flex-1 p-6 flex flex-col gap-4 overflow-y-auto">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <h4 className="text-[15px] font-bold tracking-tight text-[#f4f2ee]">Voice Transcript</h4>
+                    <p className="text-xs text-[#f4f2ee]/45">Click a timestamp to jump. Click any line to rewrite it.</p>
                   </div>
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-[#c4a35a]">
+                    auto · 98% clear
+                  </span>
+                </div>
 
-                  <div className="space-y-3.5">
-                    {transcript.map((line) => (
+                {/* Transcript List */}
+                <div className="flex-1 flex flex-col gap-2.5 p-4 bg-[#141414] border border-white/8 rounded-xl overflow-y-auto">
+                  {transcript.map((line) => {
+                    const isEditing = editingTranscriptId === line.id;
+
+                    if (isEditing) {
+                      return (
+                        <div
+                          key={line.id}
+                          className="flex gap-3 p-3.5 rounded-xl bg-[#0e0e0e] border border-[#c4a35a]/60 shadow-[0_0_0_3px_rgba(196,163,90,0.09)] animate-fadeIn"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSeek(line.seconds)}
+                            className="flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-[#c4a35a] font-mono text-[11px] font-bold text-[#0a0a0a] shrink-0"
+                          >
+                            <span>▶</span>
+                            <span>{line.t}</span>
+                          </button>
+
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#dcc084]">
+                                {line.who} · editing
+                              </span>
+                              <span className="font-mono text-[10px] text-[#f4f2ee]/30">
+                                ⌘↵ save · esc cancel
+                              </span>
+                            </div>
+
+                            <textarea
+                              rows={2}
+                              autoFocus
+                              value={editingText}
+                              onChange={(e) => setEditingText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleSaveLine(line.id);
+                                } else if (e.key === "Escape") {
+                                  setEditingTranscriptId(null);
+                                }
+                              }}
+                              className="w-full rounded-md border border-white/10 bg-[#141414] p-2.5 text-[13.5px] leading-relaxed text-[#f4f2ee] outline-none focus:border-[#c4a35a]"
+                            />
+
+                            <div className="flex items-center gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveLine(line.id)}
+                                className="rounded-md bg-[#c4a35a] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition"
+                              >
+                                Save line
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingTranscriptId(null)}
+                                className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-medium text-[#f4f2ee]/60 hover:text-white transition"
+                              >
+                                Cancel
+                              </button>
+                              <div className="flex-1" />
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLine(line.id)}
+                                className="text-xs text-[#cf603c]/70 hover:text-[#cf603c] transition"
+                              >
+                                Delete line
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
                       <div
                         key={line.id}
-                        onClick={() => handleSeek(line.seconds || parseTimeToSeconds(line.t))}
-                        className="flex gap-3 text-left group cursor-pointer"
+                        onClick={() => handleStartEditLine(line)}
+                        className="group flex gap-3 p-3 rounded-lg bg-[#0e0e0e] border border-white/7 hover:border-[#c4a35a]/40 cursor-pointer transition"
                       >
-                        <span className="font-mono text-[11px] text-[#c4a35a] pt-0.5 shrink-0 w-9 group-hover:underline">
-                          {line.t}
-                        </span>
-                        <div className="space-y-0.5 min-w-0 flex-1">
-                          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#f4f2ee]/30">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSeek(line.seconds);
+                          }}
+                          className="flex items-center gap-1 h-[22px] px-2 rounded-md bg-[#c4a35a]/12 border border-[#c4a35a]/35 font-mono text-[11px] font-medium text-[#dcc084] hover:bg-[#c4a35a] hover:text-[#0a0a0a] transition shrink-0"
+                        >
+                          <span>▶</span>
+                          <span>{line.t}</span>
+                        </button>
+
+                        <div className="flex-1 space-y-0.5 min-w-0">
+                          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#f4f2ee]/30 group-hover:text-[#dcc084]/60 transition">
                             {line.who}
                           </span>
-                          <p className="text-[13.5px] leading-relaxed text-[#f4f2ee]/65">
+                          <p className="text-[13.5px] leading-relaxed text-[#f4f2ee]/75 group-hover:text-white transition">
                             {line.text}
                           </p>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
 
-                {/* Generated SOP Checklist Card */}
-                <div className="rounded-xl border border-[#c4a35a]/25 bg-[#141414] p-5 space-y-3.5">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold tracking-tight text-[#f4f2ee]">
-                      Generated SOP Checklist
-                    </h4>
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-[#f4f2ee]/30">
-                      editable
-                    </span>
-                  </div>
+                {/* Bottom Actions for Transcript */}
+                <div className="flex items-center gap-4 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleAddLine}
+                    className="text-xs font-semibold text-[#f4f2ee]/45 hover:text-[#dcc084] transition"
+                  >
+                    + Add a line
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTidyWording}
+                    className="text-xs font-semibold text-[#f4f2ee]/45 hover:text-[#dcc084] transition"
+                  >
+                    Tidy wording
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-                  <div className="space-y-2.5">
-                    {steps.map((step, idx) => (
-                      <div
-                        key={step.id}
-                        className="flex items-start gap-3 rounded-lg border border-white/7 bg-[#0e0e0e] p-3.5"
-                      >
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[#c4a35a]/40 bg-[#c4a35a]/15 font-mono text-[11px] font-bold text-[#dcc084]">
-                          {step.n}
-                        </div>
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <input
-                            type="text"
-                            value={step.text}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setSteps((prev) =>
-                                prev.map((s, i) => (i === idx ? { ...s, text: v } : s))
-                              );
-                            }}
-                            className="w-full bg-transparent text-[13.5px] font-medium text-[#f4f2ee]/85 outline-none focus:text-white"
-                          />
-                          <div className="font-mono text-[10px] text-[#f4f2ee]/30">
-                            from voice at {step.t}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSteps((prev) => {
-                              const filtered = prev.filter((_, i) => i !== idx);
-                              return filtered.map((s, i) => ({ ...s, n: i + 1 }));
-                            });
-                          }}
-                          className="text-[#f4f2ee]/25 hover:text-[#cf603c] text-xs px-1"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+        {/* ======================================================== */}
+        {/* FRAME 5 · DEDICATED TRIMMER VIEW                        */}
+        {/* ======================================================== */}
+        {stage === "trimming" && (
+          <div className="flex-1 flex flex-col min-h-0 bg-[#0a0a0a] animate-fadeIn">
+            <div className="h-16 sm:h-[78px] flex items-center justify-between gap-4 px-6 bg-[#0e0e0e] border-b border-white/8 shrink-0">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="h-6 w-6 rounded-md bg-[#c4a35a] shrink-0" />
+                <div className="text-base font-semibold text-[#f4f2ee] truncate">
+                  Trimming · {title}
+                </div>
+              </div>
 
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={handleDiscardTrim}
+                  className="text-xs sm:text-sm text-[#f4f2ee]/45 hover:text-white transition"
+                >
+                  Discard changes
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyTrim}
+                  className="rounded-lg bg-[#c4a35a] px-5 py-2.5 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_10px_32px_rgba(196,163,90,0.3)] transition"
+                >
+                  Apply Trim
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 p-6 flex flex-col gap-5 overflow-y-auto">
+              {/* Preview Window in Trim Mode */}
+              <div className="relative flex-1 min-h-[260px] rounded-xl border border-white/9 bg-[#141414] overflow-hidden flex items-center justify-center">
+                {videoBlobUrl ? (
+                  <video
+                    ref={trimVideoRef}
+                    src={videoBlobUrl}
+                    className="w-full h-full object-contain"
+                    onClick={handleTogglePlay}
+                    onTimeUpdate={(e) => {
+                      const cur = e.currentTarget.currentTime;
+                      setPlaybackTime(cur);
+                      if (cur >= trimEnd) {
+                        if (trimVideoRef.current) {
+                          trimVideoRef.current.pause();
+                          trimVideoRef.current.currentTime = trimStart;
+                        }
+                        setIsPlaying(false);
+                        setPlaybackTime(trimStart);
+                      }
+                    }}
+                    playsInline
+                  />
+                ) : (
+                  <div className="font-mono text-xs uppercase tracking-widest text-[#f4f2ee]/40">
+                    frame at {formatSeconds(trimStart)} · trim start
+                  </div>
+                )}
+
+                <div className="absolute top-4 left-4 rounded-md bg-black/75 px-3 py-1 font-mono text-[10px] tracking-wider text-[#dcc084] border border-[#c4a35a]/30">
+                  TRIM MODE
+                </div>
+
+                <div className="absolute top-4 right-4 flex gap-2">
                   <button
                     type="button"
                     onClick={() => {
-                      const nextN = steps.length + 1;
-                      setSteps([
-                        ...steps,
-                        {
-                          id: `step-${Date.now()}-${nextN}`,
-                          n: nextN,
-                          t: formatSeconds(playbackTime),
-                          seconds: playbackTime,
-                          text: `New action step at ${formatSeconds(playbackTime)}`,
-                          description: "",
-                        },
-                      ]);
+                      setTrimStart(playbackTime);
                     }}
-                    className="text-xs text-[#f4f2ee]/35 hover:text-[#dcc084] transition"
+                    className="rounded-md bg-black/75 border border-white/10 px-3 py-1 text-xs text-[#f4f2ee]/70 hover:text-white"
                   >
-                    + Add a step
+                    Set Start ({formatSeconds(playbackTime)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTrimEnd(playbackTime);
+                    }}
+                    className="rounded-md bg-black/75 border border-white/10 px-3 py-1 text-xs text-[#f4f2ee]/70 hover:text-white"
+                  >
+                    Set End ({formatSeconds(playbackTime)})
                   </button>
                 </div>
+              </div>
+
+              {/* Gold Dual-Handle Timeline Bar */}
+              <div className="rounded-xl border border-white/8 bg-[#141414] p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-white">Timeline</span>
+                    <span className="font-mono text-xs text-[#dcc084]">
+                      Keeping {formatSeconds(trimStart)} → {formatSeconds(trimEnd)} · {formatSeconds(trimEnd - trimStart)} final
+                    </span>
+                  </div>
+                  <span className="font-mono text-xs text-[#f4f2ee]/35 hidden sm:inline">
+                    Drag the gold handles or click timeline
+                  </span>
+                </div>
+
+                {/* Waveform & Draggable Handle Container */}
+                <div
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    const newTime = pct * duration;
+                    if (isDraggingTrimStart) {
+                      setTrimStart(Math.min(newTime, trimEnd - 0.5));
+                    } else if (isDraggingTrimEnd) {
+                      setTrimEnd(Math.max(newTime, trimStart + 0.5));
+                    }
+                  }}
+                  onMouseUp={() => {
+                    setIsDraggingTrimStart(false);
+                    setIsDraggingTrimEnd(false);
+                  }}
+                  onMouseLeave={() => {
+                    setIsDraggingTrimStart(false);
+                    setIsDraggingTrimEnd(false);
+                  }}
+                  className="relative h-20 rounded-lg bg-[#0b0b0b] border border-white/7 overflow-hidden select-none cursor-pointer"
+                >
+                  {/* Mock Waveform Bars */}
+                  <div className="absolute inset-0 flex items-center gap-[3px] px-2 opacity-40">
+                    {Array.from({ length: 44 }).map((_, i) => (
+                      <div
+                        key={i}
+                        style={{ height: `${20 + ((i * 17) % 65)}%` }}
+                        className="flex-1 bg-[#444] rounded-sm"
+                      />
+                    ))}
+                  </div>
+
+                  {/* Left Trimmed-out Zone */}
+                  <div
+                    style={{ width: `${(trimStart / duration) * 100}%` }}
+                    className="absolute inset-y-0 left-0 bg-black/80"
+                  />
+
+                  {/* Right Trimmed-out Zone */}
+                  <div
+                    style={{ width: `${((duration - trimEnd) / duration) * 100}%` }}
+                    className="absolute inset-y-0 right-0 bg-black/80"
+                  />
+
+                  {/* Active Gold Highlight Border */}
+                  <div
+                    style={{
+                      left: `${(trimStart / duration) * 100}%`,
+                      width: `${((trimEnd - trimStart) / duration) * 100}%`,
+                    }}
+                    className="absolute inset-y-0 border-2 border-[#c4a35a] rounded-lg shadow-[0_0_0_1px_rgba(196,163,90,0.25)_inset]"
+                  />
+
+                  {/* Left Draggable Handle */}
+                  <div
+                    style={{ left: `${(trimStart / duration) * 100}%` }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setIsDraggingTrimStart(true);
+                    }}
+                    className="absolute inset-y-0 w-4 -ml-2 rounded-md bg-[#c4a35a] cursor-ew-resize flex items-center justify-center shadow-lg"
+                  >
+                    <span className="w-0.5 h-6 bg-black/60 rounded-full" />
+                  </div>
+
+                  {/* Right Draggable Handle */}
+                  <div
+                    style={{ left: `${(trimEnd / duration) * 100}%` }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setIsDraggingTrimEnd(true);
+                    }}
+                    className="absolute inset-y-0 w-4 -ml-2 rounded-md bg-[#c4a35a] cursor-ew-resize flex items-center justify-center shadow-lg"
+                  >
+                    <span className="w-0.5 h-6 bg-black/60 rounded-full" />
+                  </div>
+
+                  {/* Current Playhead Needle */}
+                  <div
+                    style={{ left: `${(playbackTime / duration) * 100}%` }}
+                    className="absolute inset-y-0 w-0.5 bg-white shadow-[0_0_8px_white]"
+                  />
+                </div>
+
+                {/* Play Controls & Exact Time Badges */}
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleTogglePlay}
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#c4a35a] text-[#0a0a0a] hover:bg-[#dcc084] transition"
+                    >
+                      {isPlaying ? (
+                        <div className="flex gap-1">
+                          <span className="w-1 h-3.5 bg-black rounded-sm" />
+                          <span className="w-1 h-3.5 bg-black rounded-sm" />
+                        </div>
+                      ) : (
+                        <div className="ml-0.5 w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-black" />
+                      )}
+                    </button>
+                    <span className="font-mono text-xs text-[#f4f2ee]/60">
+                      {formatSeconds(playbackTime)} / {formatSeconds(duration)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 font-mono text-xs">
+                    <span className="rounded-md border border-white/10 bg-[#0e0e0e] px-3 py-1.5 text-[#dcc084]">
+                      Start {formatSeconds(trimStart)}
+                    </span>
+                    <span className="rounded-md border border-white/10 bg-[#0e0e0e] px-3 py-1.5 text-[#dcc084]">
+                      End {formatSeconds(trimEnd)}
+                    </span>
+                  </div>
+
+                  <span className="text-xs text-[#f4f2ee]/35 hidden md:inline">
+                    Trimmed audio re-transcribes automatically · timestamps shift with it
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* FRAME 6 · SAVED TO PLAYBOOK CONFIRMATION                */}
+        {/* ======================================================== */}
+        {stage === "saved" && (
+          <div className="flex-1 flex items-center justify-center p-6 bg-black/90 backdrop-blur-md animate-fadeIn">
+            <div className="w-full max-w-[660px] rounded-[18px] border border-[#c4a35a]/30 bg-[#141414] p-8 sm:p-10 shadow-[0_40px_120px_rgba(0,0,0,0.75)] space-y-7">
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#c4a35a]/50 bg-[#c4a35a]/15 text-lg font-bold text-[#dcc084]">
+                  ✓
+                </div>
+                <div className="space-y-1.5">
+                  <h3 className="text-2xl font-bold tracking-tight text-[#f4f2ee]">
+                    Saved to the Playbook
+                  </h3>
+                  <p className="text-sm leading-relaxed text-[#f4f2ee]/50">
+                    Your video and the written guide are live for the {targetRole.toUpperCase()} team. Everyone assigned has been notified.
+                  </p>
+                </div>
+              </div>
+
+              {/* Preview Card */}
+              <div className="flex gap-4 p-4 rounded-xl border border-white/8 bg-[#0e0e0e]">
+                <div className="relative flex h-20 w-32 shrink-0 items-center justify-center rounded-lg bg-[#1a1a1a] border border-white/7 overflow-hidden">
+                  <div className="ml-0.5 w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-[#dcc084]" />
+                  <span className="absolute bottom-1.5 right-1.5 rounded bg-black/80 px-1.5 py-0.5 font-mono text-[9.5px] text-[#f4f2ee]/70">
+                    {formatSeconds(trimEnd - trimStart)}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0 space-y-2">
+                  <h4 className="text-sm font-semibold text-[#f4f2ee] truncate">{title}</h4>
+                  <div className="flex flex-wrap gap-1.5 text-[11px]">
+                    <span className="rounded bg-[#c4a35a]/15 border border-[#c4a35a]/30 px-2 py-0.5 font-semibold text-[#dcc084]">
+                      {targetRole.toUpperCase()} Team
+                    </span>
+                    <span className="rounded bg-[#1a1a1a] border border-white/8 px-2 py-0.5 text-[#f4f2ee]/60">
+                      {category === "turnover" ? "Turnovers & Cleaning" : category}
+                    </span>
+                    <span className="rounded bg-[#1a1a1a] border border-white/8 px-2 py-0.5 text-[#f4f2ee]/60">
+                      {transcript.length} steps · transcript attached
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 rounded-xl bg-[#c4a35a] py-3.5 text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_12px_40px_rgba(196,163,90,0.3)] transition"
+                >
+                  View SOP in Playbook
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStage("setup");
+                    setVideoBlobUrl(null);
+                    setRecordingSeconds(0);
+                  }}
+                  className="rounded-xl border border-white/10 bg-[#0e0e0e] px-5 py-3.5 text-xs sm:text-sm font-semibold text-[#f4f2ee]/70 hover:border-[#c4a35a]/40 hover:text-[#dcc084] transition"
+                >
+                  Record another
+                </button>
               </div>
             </div>
           </div>

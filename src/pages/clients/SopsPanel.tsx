@@ -220,12 +220,6 @@ export function SopsPanel() {
             </span>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-xl sm:text-2xl font-bold text-[#f5f5f5]">{stats.steps}</span>
-            <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#6f6a65]">
-              Total Steps
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
             <span className="text-xl sm:text-2xl font-bold text-[#c4a35a]">{stats.drafts}</span>
             <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#6f6a65]">
               Drafts
@@ -238,7 +232,7 @@ export function SopsPanel() {
               className="flex items-center gap-2 rounded-md border border-[#c4a35a]/45 bg-[#1a1712] px-3.5 py-2 text-[12px] font-bold text-[#c4a35a] hover:bg-[#c4a35a]/15 transition shadow-sm"
             >
               <span className="flex h-2 w-2 rounded-full bg-[#cf603c] animate-pulse" />
-              <span>Record Video SOP</span>
+              <span>Record</span>
             </button>
             <button
               type="button"
