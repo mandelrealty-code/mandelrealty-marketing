@@ -1298,16 +1298,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (resource === "sops") {
         if (op === "save") {
+          const rawSop = (body.sop && typeof body.sop === "object") ? (body.sop as Record<string, unknown>) : body;
           const sop = await upsertSop({
-            id: body.id ? str(body.id) : undefined,
-            title: str(body.title),
-            slug: str(body.slug) || undefined,
-            category: (body.category as any) || "outreach",
-            target_role: (body.target_role as any) || "va",
-            summary: str(body.summary) || "",
-            estimated_minutes: Number(body.estimated_minutes) || 15,
-            steps: Array.isArray(body.steps) ? (body.steps as any) : [],
-            is_published: body.is_published !== false,
+            id: rawSop.id || body.id ? str(rawSop.id || body.id) : undefined,
+            title: str(rawSop.title || body.title),
+            slug: str(rawSop.slug || body.slug) || undefined,
+            category: ((rawSop.category || body.category) as any) || "outreach",
+            target_role: ((rawSop.target_role || body.target_role) as any) || "va",
+            summary: str(rawSop.summary || body.summary) || "",
+            estimated_minutes: Number(rawSop.estimated_minutes || body.estimated_minutes) || 15,
+            steps: Array.isArray(rawSop.steps)
+              ? (rawSop.steps as any)
+              : Array.isArray(body.steps)
+              ? (body.steps as any)
+              : [],
+            video_url: str(rawSop.video_url || body.video_url) || undefined,
+            author: str(rawSop.author || body.author) || "MRG Admin",
+            is_published:
+              typeof rawSop.is_published === "boolean"
+                ? rawSop.is_published
+                : body.is_published !== false,
           });
           return res.status(200).json({ sop });
         }

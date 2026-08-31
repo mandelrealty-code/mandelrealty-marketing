@@ -22,9 +22,10 @@ const ROLE_STYLE: Record<string, { fg: string; bg: string; border: string }> = {
 
 interface SopsPanelProps {
   onOpenVideoStudio?: () => void;
+  refreshTrigger?: number;
 }
 
-export function SopsPanel({ onOpenVideoStudio }: SopsPanelProps) {
+export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps) {
   const [sops, setSops] = useState<SopItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCat, setSelectedCat] = useState("All");
@@ -52,7 +53,7 @@ export function SopsPanel({ onOpenVideoStudio }: SopsPanelProps) {
 
   useEffect(() => {
     fetchSops();
-  }, []);
+  }, [refreshTrigger]);
 
   const handleCopyLink = (sop: SopItem) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "https://mandelrealtygroup.com";

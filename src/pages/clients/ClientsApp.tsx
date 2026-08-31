@@ -177,6 +177,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
   const [termsBilling, setTermsBilling] = useState<BillingTermsValue | null>(null);
   const [hstSheetBilling, setHstSheetBilling] = useState<BillingTermsValue | null>(null);
   const [videoStudioOpen, setVideoStudioOpen] = useState(false);
+  const [sopsRefreshTrigger, setSopsRefreshTrigger] = useState(0);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const appliedOpsKey = useRef("");
 
@@ -1977,6 +1978,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
   } else if (tab === "sops") {
     main = (
       <SopsPanel
+        refreshTrigger={sopsRefreshTrigger}
         onOpenVideoStudio={() => setVideoStudioOpen(true)}
       />
     );
@@ -2880,11 +2882,11 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
             id: "",
             slug: `sop-${Date.now()}`,
             title: metadata.title || "Video SOP Guide",
-            category: metadata.category,
-            target_role: metadata.target_role,
-            summary: metadata.summary,
+            category: metadata.category || "outreach",
+            target_role: metadata.target_role || "va",
+            summary: metadata.summary || "",
             estimated_minutes: Math.max(5, generatedSteps.length * 2),
-            video_url: metadata.video_url,
+            video_url: metadata.video_url || "",
             is_published: true,
             author: "Shane M. (Video Studio)",
             created_at: new Date().toISOString(),
@@ -2892,10 +2894,14 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
             steps: generatedSteps,
           };
           try {
-            await pmPost("sops", { op: "save", sop: newSop });
+            await pmPost("sops", {
+              op: "save",
+              ...newSop,
+            });
             setToast("SOP Video Guide saved to Playbook.");
-          } catch {
-            /* ignore */
+            setSopsRefreshTrigger((k) => k + 1);
+          } catch (err: any) {
+            setToast(`Could not save SOP: ${err.message || err}`);
           }
         }}
       />

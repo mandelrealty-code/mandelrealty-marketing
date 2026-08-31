@@ -30,29 +30,22 @@ const DEFAULT_TRANSCRIPT: TranscriptLine[] = [
     id: "tr-1",
     t: "0:04",
     seconds: 4,
-    who: "Shane · Ops",
-    text: "Okay, so when a guest asks for an early check-in, the first thing we do is open the multi-calendar in Guesty — never the single listing view.",
+    who: "Step 1",
+    text: "Open the multi-calendar in Guesty to check reservation details.",
   },
   {
     id: "tr-2",
-    t: "0:31",
-    seconds: 31,
-    who: "Shane · Ops",
-    text: "Find the reservation, then look at the checkout before it. We need at least four hours between checkout and check-in for the cleaner to turn the unit.",
+    t: "0:12",
+    seconds: 12,
+    who: "Step 2",
+    text: "Check if the turnover gap between checkout and check-in is at least 4 hours.",
   },
   {
     id: "tr-3",
-    t: "1:12",
-    seconds: 72,
-    who: "Shane · Ops",
-    text: "If the gap clears four hours, approve it right here and message the cleaner with the new arrival time. If it doesn't, offer bag drop instead.",
-  },
-  {
-    id: "tr-4",
-    t: "1:29",
-    seconds: 89,
-    who: "Shane · Ops",
-    text: "Last thing — log it on the reservation notes so the owner report picks it up at month end.",
+    t: "0:24",
+    seconds: 24,
+    who: "Step 3",
+    text: "Confirm approval and notify cleaner with updated schedule.",
   },
 ];
 
@@ -333,7 +326,7 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                   id: `tr-${Date.now()}-${i}`,
                   t: timeStr,
                   seconds: currentSec,
-                  who: "Shane · Ops",
+                  who: `Step ${liveTranscripts.length + 1}`,
                   text,
                 });
                 setTranscript([...liveTranscripts]);
@@ -458,7 +451,7 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
       id: `tr-${Date.now()}`,
       t: timeStr,
       seconds: currentSec,
-      who: "Shane · Ops",
+      who: `Step ${transcript.length + 1}`,
       text: "New instruction step at this timestamp...",
     };
     const updated = [...transcript, newLine].sort((a, b) => a.seconds - b.seconds);
@@ -491,18 +484,28 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
     setTimeout(() => setTrimAppliedToast(false), 2400);
 
     // Filter and shift transcript to match the trimmed range
-    setTranscript((prev) =>
-      prev
-        .filter((item) => item.seconds >= trimStart && item.seconds <= trimEnd)
-        .map((item) => {
-          const shiftedSec = Math.max(0, item.seconds - trimStart);
-          return {
-            ...item,
-            seconds: shiftedSec,
-            t: formatSeconds(shiftedSec),
-          };
-        })
-    );
+    setTranscript((prev) => {
+      const filtered = prev.filter(
+        (item) => item.seconds >= trimStart && item.seconds <= trimEnd
+      );
+      // If none in range, preserve existing or generate mapped step so transcript is never blank
+      const targetItems =
+        filtered.length > 0
+          ? filtered
+          : prev.length > 0
+          ? [prev[0]]
+          : DEFAULT_TRANSCRIPT;
+
+      return targetItems.map((item, idx) => {
+        const shiftedSec = Math.max(0, Math.min(trimEnd - trimStart, item.seconds - trimStart));
+        return {
+          ...item,
+          who: `Step ${idx + 1}`,
+          seconds: shiftedSec,
+          t: formatSeconds(shiftedSec),
+        };
+      });
+    });
   };
 
   const handleDiscardTrim = () => {
@@ -1011,7 +1014,7 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                           <div className="flex-1 space-y-2">
                             <div className="flex items-center justify-between gap-2">
                               <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#dcc084]">
-                                {line.who} · editing
+                                Editing
                               </span>
                               <span className="font-mono text-[10px] text-[#f4f2ee]/30">
                                 ⌘↵ save · esc cancel
@@ -1082,10 +1085,7 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                         </button>
 
                         <div className="flex-1 space-y-0.5 min-w-0">
-                          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#f4f2ee]/30 group-hover:text-[#dcc084]/60 transition">
-                            {line.who}
-                          </span>
-                          <p className="text-[13.5px] leading-relaxed text-[#f4f2ee]/75 group-hover:text-white transition">
+                          <p className="text-[13.5px] leading-relaxed text-[#f4f2ee]/85 group-hover:text-white transition">
                             {line.text}
                           </p>
                         </div>
@@ -1218,14 +1218,25 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
 
                 {/* Waveform & Draggable Handle Container */}
                 <div
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    const clickedTime = pct * duration;
+                    handleSeek(clickedTime);
+                  }}
                   onMouseMove={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
                     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                     const newTime = pct * duration;
+
                     if (isDraggingTrimStart) {
-                      setTrimStart(Math.min(newTime, trimEnd - 0.5));
+                      const clampedStart = Math.max(0, Math.min(newTime, trimEnd - 0.5));
+                      setTrimStart(clampedStart);
+                      handleSeek(clampedStart);
                     } else if (isDraggingTrimEnd) {
-                      setTrimEnd(Math.max(newTime, trimStart + 0.5));
+                      const clampedEnd = Math.min(duration, Math.max(newTime, trimStart + 0.5));
+                      setTrimEnd(clampedEnd);
+                      handleSeek(clampedEnd);
                     }
                   }}
                   onMouseUp={() => {

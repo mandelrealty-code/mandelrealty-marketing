@@ -23,6 +23,7 @@ function mapSop(row: Record<string, unknown>): SopItem {
     steps: Array.isArray(row.steps) ? (row.steps as SopStep[]) : [],
     is_published: row.is_published !== false,
     author: String(row.author || "MRG Admin"),
+    video_url: row.video_url ? String(row.video_url) : undefined,
   };
 }
 
@@ -77,7 +78,7 @@ export async function upsertSop(input: Partial<SopItem> & { title: string }): Pr
 
   if (!slug) slug = `sop-${Date.now()}`;
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     title,
     slug,
     category: input.category || "outreach",
@@ -90,25 +91,53 @@ export async function upsertSop(input: Partial<SopItem> & { title: string }): Pr
     updated_at: new Date().toISOString(),
   };
 
+  if (input.video_url) {
+    payload.video_url = input.video_url;
+  }
+
   if (input.id) {
-    const { data, error } = await db()
+    let res = await db()
       .from("pm_sops")
       .update(payload)
       .eq("id", input.id)
       .select("*")
       .single();
-    if (error) throw error;
-    return mapSop(data as Record<string, unknown>);
+
+    if (res.error && /video_url|column/i.test(res.error.message || "")) {
+      delete payload.video_url;
+      res = await db()
+        .from("pm_sops")
+        .update(payload)
+        .eq("id", input.id)
+        .select("*")
+        .single();
+    }
+
+    if (res.error) throw res.error;
+    const sop = mapSop(res.data as Record<string, unknown>);
+    if (input.video_url && !sop.video_url) sop.video_url = input.video_url;
+    return sop;
   }
 
-  const { data, error } = await db()
+  let res = await db()
     .from("pm_sops")
     .insert(payload)
     .select("*")
     .single();
 
-  if (error) throw error;
-  return mapSop(data as Record<string, unknown>);
+  if (res.error && /video_url|column/i.test(res.error.message || "")) {
+    delete payload.video_url;
+    res = await db()
+      .from("pm_sops")
+      .insert(payload)
+      .select("*")
+      .single();
+  }
+
+  if (res.error) throw res.error;
+  const sop = mapSop(res.data as Record<string, unknown>);
+  if (input.video_url && !sop.video_url) sop.video_url = input.video_url;
+  return sop;
 }
 
 export async function deleteSop(id: string): Promise<void> {
