@@ -3,6 +3,7 @@ import { pmGet, pmPost } from "./api";
 import type { SopItem, SopStep, SopCategory, SopTargetRole } from "../../../shared/pm/sopTypes";
 import { ImageRedactorModal } from "../../components/sop/ImageRedactorModal";
 import { AiDraftModal } from "../../components/sop/AiDraftModal";
+import { CaptureStudioModal } from "../../components/sop/CaptureStudioModal";
 
 const CATS: { id: string; label: string; catKey?: SopCategory }[] = [
   { id: "All", label: "All" },
@@ -27,6 +28,7 @@ export function SopsPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
+  const [captureStudioOpen, setCaptureStudioOpen] = useState(false);
   const [editingSop, setEditingSop] = useState<SopItem | null>(null);
   const [activeRedactorStepIdx, setActiveRedactorStepIdx] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -232,8 +234,16 @@ export function SopsPanel() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setCaptureStudioOpen(true)}
+              className="flex items-center gap-1.5 rounded-md border border-[#c4a35a]/40 bg-[#1e1a14] px-3.5 py-2 text-[12px] font-bold text-[#c4a35a] hover:bg-[#c4a35a]/20 transition shadow-sm"
+            >
+              <span className="flex h-2 w-2 rounded-full bg-[#cf603c] animate-pulse" />
+              <span>Record / Capture</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setAiDraftOpen(true)}
-              className="flex items-center gap-1.5 rounded-md border border-[#c4a35a]/35 bg-[#1a1814] px-3.5 py-2 text-[12px] font-bold text-[#c4a35a] hover:bg-[#c4a35a]/15 transition"
+              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-[#161616] px-3.5 py-2 text-[12px] font-semibold text-[#f5f5f5] hover:bg-[#202020] transition"
             >
               <span>✦</span>
               <span>Draft with AI</span>
@@ -756,6 +766,37 @@ export function SopsPanel() {
             estimated_minutes: generatedSteps.length * 3,
             is_published: true,
             author: "Shane M. (AI)",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            steps: generatedSteps,
+          };
+          setEditingSop(newSop);
+          setEditorOpen(true);
+        }}
+      />
+
+      {/* Capture Studio Modal (Scribe Screen Recording + Screenshot Mode) */}
+      <CaptureStudioModal
+        isOpen={captureStudioOpen}
+        onClose={() => setCaptureStudioOpen(false)}
+        onOpenScreenshotRedactor={() => {
+          // Open new blank SOP and trigger Redactor
+          handleOpenNew();
+          setTimeout(() => {
+            setActiveRedactorStepIdx(0);
+          }, 150);
+        }}
+        onInsertSteps={(generatedSteps, metadata) => {
+          const newSop: SopItem = {
+            id: "",
+            slug: `sop-${Date.now()}`,
+            title: metadata.title || "Screen Captured SOP",
+            category: metadata.category,
+            target_role: metadata.target_role,
+            summary: metadata.summary,
+            estimated_minutes: generatedSteps.length * 2,
+            is_published: true,
+            author: "Shane M. (Capture Studio)",
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             steps: generatedSteps,
