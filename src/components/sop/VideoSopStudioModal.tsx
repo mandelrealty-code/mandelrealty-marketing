@@ -1,17 +1,36 @@
 import { useState, useRef, useEffect } from "react";
-import type { SopStep, SopCategory, SopTargetRole } from "../../../shared/pm/sopTypes";
+import type { SopItem, SopStep, SopCategory, SopTargetRole } from "../../../shared/pm/sopTypes";
+import { storeSopVideoBlob, getSopVideoBlob } from "../../lib/sopVideoStorage";
+
+export function parseTimeToSeconds(t: string | undefined): number {
+  if (!t) return 0;
+  const clean = String(t).replace(/[^\d:]/g, "").trim();
+  const parts = clean.split(":").map(Number);
+  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    return parts[0] * 60 + parts[1];
+  }
+  if (parts.length === 1 && !isNaN(parts[0])) {
+    return parts[0];
+  }
+  return 0;
+}
 
 interface VideoSopStudioModalProps {
   isOpen: boolean;
+  initialSop?: SopItem | null;
   onClose: () => void;
   onSaveSop: (
     steps: SopStep[],
     meta: {
+      id?: string;
+      slug?: string;
       title: string;
       category: SopCategory;
       target_role: SopTargetRole;
       summary: string;
       video_url?: string;
+      author?: string;
+      created_at?: string;
     }
   ) => void;
 }
@@ -49,7 +68,7 @@ const DEFAULT_TRANSCRIPT: TranscriptLine[] = [
   },
 ];
 
-export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStudioModalProps) {
+export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: VideoSopStudioModalProps) {
   // Modal Stages: 'setup' | 'recording' | 'review' | 'trimming' | 'saved'
   const [stage, setStage] = useState<"setup" | "recording" | "review" | "trimming" | "saved">("setup");
 
@@ -88,12 +107,65 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
   const trimVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+  const recordedBlobRef = useRef<Blob | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number | null>(null);
+  const recordingSecondsRef = useRef<number>(0);
+  const recordingStartTimeRef = useRef<number>(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const speechRecognitionRef = useRef<any>(null);
+
+  // Sync with initialSop when modal is opened for editing
+  useEffect(() => {
+    if (isOpen) {
+      if (initialSop) {
+        setTitle(initialSop.title || "Video SOP Guide");
+        setTargetRole(initialSop.target_role || "va");
+        setCategory(initialSop.category || "turnover");
+
+        if (initialSop.slug) {
+          getSopVideoBlob(initialSop.slug).then((blob) => {
+            if (blob) {
+              recordedBlobRef.current = blob;
+              setVideoBlobUrl(URL.createObjectURL(blob));
+            } else if (initialSop.video_url) {
+              setVideoBlobUrl(initialSop.video_url);
+            }
+          });
+        } else if (initialSop.video_url) {
+          setVideoBlobUrl(initialSop.video_url);
+        }
+
+        if (initialSop.steps && initialSop.steps.length > 0) {
+          const loaded: TranscriptLine[] = initialSop.steps.map((st, idx) => {
+            const stepSec = idx * 6;
+            return {
+              id: st.id || `tr-${Date.now()}-${idx}`,
+              t: formatSeconds(stepSec),
+              seconds: stepSec,
+              who: `Step ${st.step_number || idx + 1}`,
+              text: st.description || st.title || "",
+            };
+          });
+          setTranscript(loaded);
+        }
+
+        const est = (initialSop.estimated_minutes || 2) * 60;
+        setDuration(est);
+        setTrimStart(0);
+        setTrimEnd(est);
+        setStage("review");
+      } else {
+        setStage("setup");
+        setTranscript(DEFAULT_TRANSCRIPT);
+        setVideoBlobUrl(null);
+        setRecordingSeconds(0);
+        recordingSecondsRef.current = 0;
+      }
+    }
+  }, [isOpen, initialSop]);
 
   // Audio level visualizer loop
   useEffect(() => {
@@ -267,6 +339,7 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        recordedBlobRef.current = blob;
         const url = URL.createObjectURL(blob);
         setVideoBlobUrl(url);
       };
@@ -278,12 +351,18 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
 
       // 7. Transition to Recording Stage
       setRecordingSeconds(0);
+      recordingSecondsRef.current = 0;
+      recordingStartTimeRef.current = Date.now();
       setIsPaused(false);
       setTranscript([]);
       setStage("recording");
 
       timerRef.current = window.setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
+        setRecordingSeconds((prev) => {
+          const next = prev + 1;
+          recordingSecondsRef.current = next;
+          return next;
+        });
       }, 1000);
     } catch {
       handleStartSimulatedRecording();
@@ -294,9 +373,15 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
   const handleStartSimulatedRecording = () => {
     setStage("recording");
     setRecordingSeconds(0);
+    recordingSecondsRef.current = 0;
+    recordingStartTimeRef.current = Date.now();
     setIsPaused(false);
     timerRef.current = window.setInterval(() => {
-      setRecordingSeconds((prev) => prev + 1);
+      setRecordingSeconds((prev) => {
+        const next = prev + 1;
+        recordingSecondsRef.current = next;
+        return next;
+      });
     }, 1000);
   };
 
@@ -318,7 +403,8 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
             if (event.results[i].isFinal) {
               const text = event.results[i][0].transcript.trim();
               if (text.length > 2) {
-                const currentSec = recordingSeconds;
+                const nowElapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
+                const currentSec = Math.max(0, recordingSecondsRef.current || nowElapsed);
                 const mins = Math.floor(currentSec / 60);
                 const secs = (currentSec % 60).toString().padStart(2, "0");
                 const timeStr = `${mins}:${secs}`;
@@ -348,7 +434,11 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
       mediaRecorderRef.current.resume();
       setIsPaused(false);
       timerRef.current = window.setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
+        setRecordingSeconds((prev) => {
+          const next = prev + 1;
+          recordingSecondsRef.current = next;
+          return next;
+        });
       }, 1000);
     } else {
       mediaRecorderRef.current.pause();
@@ -366,7 +456,7 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
       mediaRecorderRef.current.stop();
     }
     cleanupStreams();
-    const totalSecs = Math.max(3, recordingSeconds || 17);
+    const totalSecs = Math.max(3, recordingSecondsRef.current || recordingSeconds || 17);
     setDuration(totalSecs);
     setTrimStart(0);
     setTrimEnd(totalSecs);
@@ -404,8 +494,9 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
     }
   };
 
-  const handleSeek = (time: number) => {
-    const clamped = Math.max(0, Math.min(duration, time));
+  const handleSeek = (time: number | undefined) => {
+    const target = typeof time === "number" && !isNaN(time) ? time : 0;
+    const clamped = Math.max(0, Math.min(duration || 9999, target));
     setPlaybackTime(clamped);
     if (reviewVideoRef.current) {
       reviewVideoRef.current.currentTime = clamped;
@@ -428,7 +519,8 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
   const handleStartEditLine = (line: TranscriptLine) => {
     setEditingTranscriptId(line.id);
     setEditingText(line.text);
-    handleSeek(line.seconds);
+    const targetSec = line.seconds != null ? line.seconds : parseTimeToSeconds(line.t);
+    handleSeek(targetSec);
   };
 
   const handleSaveLine = (id: string) => {
@@ -516,9 +608,14 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
   };
 
   // Save to Playbook
-  const handleSaveToPlaybook = () => {
+  const handleSaveToPlaybook = async () => {
+    const currentSlug = initialSop?.slug || `sop-${Date.now()}`;
+    if (recordedBlobRef.current) {
+      await storeSopVideoBlob(currentSlug, recordedBlobRef.current);
+    }
+
     const formattedSteps: SopStep[] = transcript.map((line, idx) => ({
-      id: `sop-step-${Date.now()}-${idx + 1}`,
+      id: line.id || `sop-step-${Date.now()}-${idx + 1}`,
       step_number: idx + 1,
       title: line.text.length > 60 ? `${line.text.slice(0, 58)}...` : line.text,
       description: line.text,
@@ -531,11 +628,15 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
     }));
 
     onSaveSop(formattedSteps, {
+      id: initialSop?.id,
+      slug: currentSlug,
       title: title || "Video SOP Playbook",
       category,
       target_role: targetRole,
       summary: `Comprehensive video guide with spoken instructions transcribed for ${targetRole.toUpperCase()} team (Duration: ${formatSeconds(trimEnd - trimStart)}).`,
       video_url: videoBlobUrl || undefined,
+      author: initialSop?.author,
+      created_at: initialSop?.created_at,
     });
 
     setStage("saved");
@@ -1004,7 +1105,7 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                         >
                           <button
                             type="button"
-                            onClick={() => handleSeek(line.seconds)}
+                            onClick={() => handleSeek(line.seconds != null ? line.seconds : parseTimeToSeconds(line.t))}
                             className="flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-[#c4a35a] font-mono text-[11px] font-bold text-[#0a0a0a] shrink-0"
                           >
                             <span>▶</span>
@@ -1076,7 +1177,7 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleSeek(line.seconds);
+                            handleSeek(line.seconds != null ? line.seconds : parseTimeToSeconds(line.t));
                           }}
                           className="flex items-center gap-1 h-[22px] px-2 rounded-md bg-[#c4a35a]/12 border border-[#c4a35a]/35 font-mono text-[11px] font-medium text-[#dcc084] hover:bg-[#c4a35a] hover:text-[#0a0a0a] transition shrink-0"
                         >

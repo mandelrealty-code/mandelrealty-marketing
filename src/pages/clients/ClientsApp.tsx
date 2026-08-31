@@ -177,6 +177,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
   const [termsBilling, setTermsBilling] = useState<BillingTermsValue | null>(null);
   const [hstSheetBilling, setHstSheetBilling] = useState<BillingTermsValue | null>(null);
   const [videoStudioOpen, setVideoStudioOpen] = useState(false);
+  const [editingVideoSop, setEditingVideoSop] = useState<SopItem | null>(null);
   const [sopsRefreshTrigger, setSopsRefreshTrigger] = useState(0);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const appliedOpsKey = useRef("");
@@ -1979,7 +1980,10 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     main = (
       <SopsPanel
         refreshTrigger={sopsRefreshTrigger}
-        onOpenVideoStudio={() => setVideoStudioOpen(true)}
+        onOpenVideoStudio={(sopToEdit?: SopItem) => {
+          setEditingVideoSop(sopToEdit || null);
+          setVideoStudioOpen(true);
+        }}
       />
     );
   } else if (tab === "tasks") {
@@ -2876,20 +2880,24 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
       {/* Global Persistent Video SOP Studio Recorder */}
       <VideoSopStudioModal
         isOpen={videoStudioOpen}
-        onClose={() => setVideoStudioOpen(false)}
+        initialSop={editingVideoSop}
+        onClose={() => {
+          setVideoStudioOpen(false);
+          setEditingVideoSop(null);
+        }}
         onSaveSop={async (generatedSteps, metadata) => {
           const newSop: SopItem = {
-            id: "",
-            slug: `sop-${Date.now()}`,
+            id: metadata.id || editingVideoSop?.id || "",
+            slug: metadata.slug || editingVideoSop?.slug || `sop-${Date.now()}`,
             title: metadata.title || "Video SOP Guide",
             category: metadata.category || "outreach",
             target_role: metadata.target_role || "va",
             summary: metadata.summary || "",
             estimated_minutes: Math.max(5, generatedSteps.length * 2),
-            video_url: metadata.video_url || "",
+            video_url: metadata.video_url || editingVideoSop?.video_url || "",
             is_published: true,
-            author: "Shane M. (Video Studio)",
-            created_at: new Date().toISOString(),
+            author: metadata.author || editingVideoSop?.author || "Shane M. (Video Studio)",
+            created_at: metadata.created_at || editingVideoSop?.created_at || new Date().toISOString(),
             updated_at: new Date().toISOString(),
             steps: generatedSteps,
           };
@@ -2899,6 +2907,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
               ...newSop,
             });
             setToast("SOP Video Guide saved to Playbook.");
+            setEditingVideoSop(null);
             setSopsRefreshTrigger((k) => k + 1);
           } catch (err: any) {
             setToast(`Could not save SOP: ${err.message || err}`);

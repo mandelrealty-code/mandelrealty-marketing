@@ -21,7 +21,7 @@ const ROLE_STYLE: Record<string, { fg: string; bg: string; border: string }> = {
 };
 
 interface SopsPanelProps {
-  onOpenVideoStudio?: () => void;
+  onOpenVideoStudio?: (sopToEdit?: SopItem) => void;
   refreshTrigger?: number;
 }
 
@@ -97,6 +97,15 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
   };
 
   const handleEditSop = (sop: SopItem) => {
+    const isVideoSop =
+      Boolean(sop.video_url) ||
+      sop.steps?.some((s) => s.media_type === "video_embed" || Boolean(s.video_url)) ||
+      (sop.author && sop.author.toLowerCase().includes("video"));
+
+    if (isVideoSop && onOpenVideoStudio) {
+      onOpenVideoStudio(sop);
+      return;
+    }
     // Deep clone to allow safe editing
     setEditingSop(JSON.parse(JSON.stringify(sop)));
     setEditorOpen(true);
@@ -432,13 +441,29 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
                   mandelrealtygroup.com/sop/{editingSop.slug}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setEditorOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-[#141414] text-[#9a9590] hover:text-[#f5f5f5]"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2.5">
+                {onOpenVideoStudio && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sopToTransfer = editingSop;
+                      setEditorOpen(false);
+                      onOpenVideoStudio(sopToTransfer);
+                    }}
+                    className="flex items-center gap-1.5 rounded border border-[#c4a35a]/40 bg-[#1a1712] px-3 py-1.5 text-xs font-semibold text-[#dcc084] hover:bg-[#c4a35a]/20 transition"
+                  >
+                    <span>📹</span>
+                    <span>Video Studio</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setEditorOpen(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-[#141414] text-[#9a9590] hover:text-[#f5f5f5]"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             {/* Editor Body */}
