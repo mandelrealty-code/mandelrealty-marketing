@@ -19,6 +19,7 @@ interface VideoSopStudioModalProps {
   isOpen: boolean;
   initialSop?: SopItem | null;
   onClose: () => void;
+  onDeleteSop?: (idOrSlug: string) => void;
   onSaveSop: (
     steps: SopStep[],
     meta: {
@@ -43,37 +44,13 @@ export interface TranscriptLine {
   text: string;
 }
 
-// Initial realistic transcript
-const DEFAULT_TRANSCRIPT: TranscriptLine[] = [
-  {
-    id: "tr-1",
-    t: "0:04",
-    seconds: 4,
-    who: "Step 1",
-    text: "Open the multi-calendar in Guesty to check reservation details.",
-  },
-  {
-    id: "tr-2",
-    t: "0:12",
-    seconds: 12,
-    who: "Step 2",
-    text: "Check if the turnover gap between checkout and check-in is at least 4 hours.",
-  },
-  {
-    id: "tr-3",
-    t: "0:24",
-    seconds: 24,
-    who: "Step 3",
-    text: "Confirm approval and notify cleaner with updated schedule.",
-  },
-];
-
-export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: VideoSopStudioModalProps) {
-  // Modal Stages: 'setup' | 'recording' | 'review' | 'trimming' | 'saved'
+// Modal Stages: 'setup' | 'recording' | 'review' | 'trimming' | 'saved'
+export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, onSaveSop }: VideoSopStudioModalProps) {
   const [stage, setStage] = useState<"setup" | "recording" | "review" | "trimming" | "saved">("setup");
+  const [isSaving, setIsSaving] = useState(false);
 
   // SOP Metadata
-  const [title, setTitle] = useState("Early Check-in Approval & Turnover Gap Guide");
+  const [title, setTitle] = useState("");
   const [targetRole, setTargetRole] = useState<SopTargetRole>("va");
   const [category, setCategory] = useState<SopCategory>("turnover");
 
@@ -84,8 +61,8 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: 
   const [micLevel, setMicLevel] = useState<number[]>([14, 18, 22, 10, 20, 16]);
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
 
-  // Transcript lines (Single unified source for transcript and checklist steps)
-  const [transcript, setTranscript] = useState<TranscriptLine[]>(DEFAULT_TRANSCRIPT);
+  // Transcript lines (Empty when no audio detected)
+  const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
 
@@ -159,7 +136,8 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: 
         setStage("review");
       } else {
         setStage("setup");
-        setTranscript(DEFAULT_TRANSCRIPT);
+        setTranscript([]);
+        setTitle("");
         setVideoBlobUrl(null);
         setRecordingSeconds(0);
         recordingSecondsRef.current = 0;
@@ -462,9 +440,6 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: 
     setTrimEnd(totalSecs);
     setPlaybackTime(0);
     setIsPlaying(false);
-    if (transcript.length === 0) {
-      setTranscript(DEFAULT_TRANSCRIPT);
-    }
     setStage("review");
   };
 
@@ -580,15 +555,7 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: 
       const filtered = prev.filter(
         (item) => item.seconds >= trimStart && item.seconds <= trimEnd
       );
-      // If none in range, preserve existing or generate mapped step so transcript is never blank
-      const targetItems =
-        filtered.length > 0
-          ? filtered
-          : prev.length > 0
-          ? [prev[0]]
-          : DEFAULT_TRANSCRIPT;
-
-      return targetItems.map((item, idx) => {
+      return filtered.map((item, idx) => {
         const shiftedSec = Math.max(0, Math.min(trimEnd - trimStart, item.seconds - trimStart));
         return {
           ...item,
@@ -609,37 +576,66 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: 
 
   // Save to Playbook
   const handleSaveToPlaybook = async () => {
-    const currentSlug = initialSop?.slug || `sop-${Date.now()}`;
-    if (recordedBlobRef.current) {
-      await storeSopVideoBlob(currentSlug, recordedBlobRef.current);
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const currentSlug = initialSop?.slug || `sop-${Date.now()}`;
+      if (recordedBlobRef.current) {
+        await storeSopVideoBlob(currentSlug, recordedBlobRef.current);
+      }
+
+      const formattedSteps: SopStep[] =
+        transcript.length > 0
+          ? transcript.map((line, idx) => ({
+              id: line.id || `sop-step-${Date.now()}-${idx + 1}`,
+              step_number: idx + 1,
+              title: line.text.length > 60 ? `${line.text.slice(0, 58)}...` : line.text,
+              description: line.text,
+              media_type: "video_embed",
+              video_url: videoBlobUrl || undefined,
+              pro_tip:
+                idx === 0
+                  ? "Ensure you verify all fields on this screen before approving."
+                  : undefined,
+            }))
+          : [
+              {
+                id: `sop-step-${Date.now()}-1`,
+                step_number: 1,
+                title: title || "Video SOP Walkthrough",
+                description: "Watch the recorded video walkthrough for step-by-step instructions.",
+                media_type: "video_embed",
+                video_url: videoBlobUrl || undefined,
+              },
+            ];
+
+      await onSaveSop(formattedSteps, {
+        id: initialSop?.id,
+        slug: currentSlug,
+        title: title || "Video SOP Guide",
+        category,
+        target_role: targetRole,
+        summary: `Video guide for ${targetRole.toUpperCase()} team (Duration: ${formatSeconds(trimEnd - trimStart)}).`,
+        video_url: videoBlobUrl || undefined,
+        author: initialSop?.author,
+        created_at: initialSop?.created_at,
+      });
+    } finally {
+      setIsSaving(false);
     }
+  };
 
-    const formattedSteps: SopStep[] = transcript.map((line, idx) => ({
-      id: line.id || `sop-step-${Date.now()}-${idx + 1}`,
-      step_number: idx + 1,
-      title: line.text.length > 60 ? `${line.text.slice(0, 58)}...` : line.text,
-      description: line.text,
-      media_type: "video_embed",
-      video_url: videoBlobUrl || undefined,
-      pro_tip:
-        idx === 0
-          ? "Ensure you verify all fields on this screen before approving."
-          : undefined,
-    }));
-
-    onSaveSop(formattedSteps, {
-      id: initialSop?.id,
-      slug: currentSlug,
-      title: title || "Video SOP Playbook",
-      category,
-      target_role: targetRole,
-      summary: `Comprehensive video guide with spoken instructions transcribed for ${targetRole.toUpperCase()} team (Duration: ${formatSeconds(trimEnd - trimStart)}).`,
-      video_url: videoBlobUrl || undefined,
-      author: initialSop?.author,
-      created_at: initialSop?.created_at,
-    });
-
-    setStage("saved");
+  const handleDeleteFromStudio = () => {
+    if (!initialSop) {
+      onClose();
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete "${title || initialSop.title}"? This cannot be undone.`)) {
+      return;
+    }
+    if (onDeleteSop) {
+      onDeleteSop(initialSop.id || initialSop.slug);
+    }
   };
 
   if (!isOpen) return null;
@@ -883,12 +879,32 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: 
                   <option value="maintenance">Maintenance</option>
                 </select>
 
+                {initialSop && onDeleteSop && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteFromStudio}
+                    className="rounded-lg border border-[#cf603c]/30 bg-[#cf603c]/10 px-3.5 py-2 text-xs font-semibold text-[#e8a48a] hover:bg-[#cf603c]/20 transition shrink-0"
+                  >
+                    Delete Guide
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={handleSaveToPlaybook}
-                  className="rounded-lg bg-[#c4a35a] px-5 py-2.5 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_10px_32px_rgba(196,163,90,0.3)] transition shrink-0"
+                  disabled={isSaving}
+                  className="rounded-lg bg-[#c4a35a] px-5 py-2.5 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_10px_32px_rgba(196,163,90,0.3)] transition shrink-0 disabled:opacity-50"
                 >
-                  Save Video & Guide to Playbook ✓
+                  {isSaving ? "Saving to Playbook..." : initialSop ? "Save Changes ✓" : "Save Video & Guide to Playbook ✓"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  title="Close Studio"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-[#141414] text-[#9a9590] hover:text-[#f4f2ee] hover:bg-[#1a1a1a] transition shrink-0"
+                >
+                  ✕
                 </button>
               </div>
             </div>
@@ -1085,114 +1101,145 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: 
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <h4 className="text-[15px] font-bold tracking-tight text-[#f4f2ee]">Voice Transcript</h4>
-                    <p className="text-xs text-[#f4f2ee]/45">Click a timestamp to jump. Click any line to rewrite it.</p>
+                    <p className="text-xs text-[#f4f2ee]/45">
+                      {transcript.length > 0
+                        ? "Click a timestamp to jump. Click any line to rewrite it."
+                        : "No spoken audio was detected on this recording."}
+                    </p>
                   </div>
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-[#c4a35a]">
-                    auto · 98% clear
-                  </span>
+                  {transcript.length > 0 ? (
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-[#c4a35a]">
+                      auto · transcribed
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-[#f4f2ee]/40 rounded bg-white/5 px-2 py-0.5 border border-white/10">
+                      no audio found
+                    </span>
+                  )}
                 </div>
 
                 {/* Transcript List */}
                 <div className="flex-1 flex flex-col gap-2.5 p-4 bg-[#141414] border border-white/8 rounded-xl overflow-y-auto">
-                  {transcript.map((line) => {
-                    const isEditing = editingTranscriptId === line.id;
+                  {transcript.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-3 my-auto">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 border border-white/10 text-[#f4f2ee]/40">
+                        <span className="text-base">🎙</span>
+                      </div>
+                      <div className="space-y-1.5 max-w-sm">
+                        <p className="text-sm font-semibold text-[#f4f2ee]/85">No audio detected</p>
+                        <p className="text-xs leading-relaxed text-[#f4f2ee]/45">
+                          We didn't detect any spoken words. You can save this video directly to the playbook, or click below to add manual step timestamps.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddLine}
+                        className="rounded-lg border border-[#c4a35a]/40 bg-[#1a1712] px-3.5 py-1.5 text-xs font-semibold text-[#dcc084] hover:bg-[#c4a35a]/20 transition mt-1"
+                      >
+                        + Add step at current timestamp
+                      </button>
+                    </div>
+                  ) : (
+                    transcript.map((line) => {
+                      const isEditing = editingTranscriptId === line.id;
 
-                    if (isEditing) {
+                      if (isEditing) {
+                        return (
+                          <div
+                            key={line.id}
+                            className="flex gap-3 p-3.5 rounded-xl bg-[#0e0e0e] border border-[#c4a35a]/60 shadow-[0_0_0_3px_rgba(196,163,90,0.09)] animate-fadeIn"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleSeek(line.seconds != null ? line.seconds : parseTimeToSeconds(line.t))}
+                              className="flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-[#c4a35a] font-mono text-[11px] font-bold text-[#0a0a0a] shrink-0"
+                            >
+                              <span>▶</span>
+                              <span>{line.t}</span>
+                            </button>
+
+                            <div className="flex-1 space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#dcc084]">
+                                  Editing
+                                </span>
+                                <span className="font-mono text-[10px] text-[#f4f2ee]/30">
+                                  ⌘↵ save · esc cancel
+                                </span>
+                              </div>
+
+                              <textarea
+                                rows={2}
+                                autoFocus
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleSaveLine(line.id);
+                                  } else if (e.key === "Escape") {
+                                    setEditingTranscriptId(null);
+                                  }
+                                }}
+                                className="w-full rounded-md border border-white/10 bg-[#141414] p-2.5 text-[13.5px] leading-relaxed text-[#f4f2ee] outline-none focus:border-[#c4a35a]"
+                              />
+
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveLine(line.id)}
+                                  className="rounded-md bg-[#c4a35a] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition"
+                                >
+                                  Save line
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingTranscriptId(null)}
+                                  className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-medium text-[#f4f2ee]/60 hover:text-white transition"
+                                >
+                                  Cancel
+                                </button>
+                                <div className="flex-1" />
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteLine(line.id)}
+                                  className="text-xs text-[#cf603c]/70 hover:text-[#cf603c] transition"
+                                >
+                                  Delete line
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       return (
                         <div
                           key={line.id}
-                          className="flex gap-3 p-3.5 rounded-xl bg-[#0e0e0e] border border-[#c4a35a]/60 shadow-[0_0_0_3px_rgba(196,163,90,0.09)] animate-fadeIn"
+                          onClick={() => handleStartEditLine(line)}
+                          className="group flex gap-3 p-3 rounded-lg bg-[#0e0e0e] border border-white/7 hover:border-[#c4a35a]/40 cursor-pointer transition"
                         >
                           <button
                             type="button"
-                            onClick={() => handleSeek(line.seconds != null ? line.seconds : parseTimeToSeconds(line.t))}
-                            className="flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-[#c4a35a] font-mono text-[11px] font-bold text-[#0a0a0a] shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSeek(line.seconds != null ? line.seconds : parseTimeToSeconds(line.t));
+                            }}
+                            className="flex items-center gap-1 h-[22px] px-2 rounded-md bg-[#c4a35a]/12 border border-[#c4a35a]/35 font-mono text-[11px] font-medium text-[#dcc084] hover:bg-[#c4a35a] hover:text-[#0a0a0a] transition shrink-0"
                           >
                             <span>▶</span>
                             <span>{line.t}</span>
                           </button>
 
-                          <div className="flex-1 space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#dcc084]">
-                                Editing
-                              </span>
-                              <span className="font-mono text-[10px] text-[#f4f2ee]/30">
-                                ⌘↵ save · esc cancel
-                              </span>
-                            </div>
-
-                            <textarea
-                              rows={2}
-                              autoFocus
-                              value={editingText}
-                              onChange={(e) => setEditingText(e.target.value)}
-                              onKeyDown={(e) => {
-                                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                                  e.preventDefault();
-                                  handleSaveLine(line.id);
-                                } else if (e.key === "Escape") {
-                                  setEditingTranscriptId(null);
-                                }
-                              }}
-                              className="w-full rounded-md border border-white/10 bg-[#141414] p-2.5 text-[13.5px] leading-relaxed text-[#f4f2ee] outline-none focus:border-[#c4a35a]"
-                            />
-
-                            <div className="flex items-center gap-2 pt-1">
-                              <button
-                                type="button"
-                                onClick={() => handleSaveLine(line.id)}
-                                className="rounded-md bg-[#c4a35a] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition"
-                              >
-                                Save line
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingTranscriptId(null)}
-                                className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-medium text-[#f4f2ee]/60 hover:text-white transition"
-                              >
-                                Cancel
-                              </button>
-                              <div className="flex-1" />
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteLine(line.id)}
-                                className="text-xs text-[#cf603c]/70 hover:text-[#cf603c] transition"
-                              >
-                                Delete line
-                              </button>
-                            </div>
+                          <div className="flex-1 space-y-0.5 min-w-0">
+                            <p className="text-[13.5px] leading-relaxed text-[#f4f2ee]/85 group-hover:text-white transition">
+                              {line.text}
+                            </p>
                           </div>
                         </div>
                       );
-                    }
-
-                    return (
-                      <div
-                        key={line.id}
-                        onClick={() => handleStartEditLine(line)}
-                        className="group flex gap-3 p-3 rounded-lg bg-[#0e0e0e] border border-white/7 hover:border-[#c4a35a]/40 cursor-pointer transition"
-                      >
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSeek(line.seconds != null ? line.seconds : parseTimeToSeconds(line.t));
-                          }}
-                          className="flex items-center gap-1 h-[22px] px-2 rounded-md bg-[#c4a35a]/12 border border-[#c4a35a]/35 font-mono text-[11px] font-medium text-[#dcc084] hover:bg-[#c4a35a] hover:text-[#0a0a0a] transition shrink-0"
-                        >
-                          <span>▶</span>
-                          <span>{line.t}</span>
-                        </button>
-
-                        <div className="flex-1 space-y-0.5 min-w-0">
-                          <p className="text-[13.5px] leading-relaxed text-[#f4f2ee]/85 group-hover:text-white transition">
-                            {line.text}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                    })
+                  )}
                 </div>
 
                 {/* Bottom Actions for Transcript */}
@@ -1230,7 +1277,7 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: 
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={handleDiscardTrim}
@@ -1244,6 +1291,14 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: 
                   className="rounded-lg bg-[#c4a35a] px-5 py-2.5 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_10px_32px_rgba(196,163,90,0.3)] transition"
                 >
                   Apply Trim
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  title="Close Studio"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-[#141414] text-[#9a9590] hover:text-[#f4f2ee] hover:bg-[#1a1a1a] transition shrink-0 ml-1"
+                >
+                  ✕
                 </button>
               </div>
             </div>
@@ -1491,7 +1546,9 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onSaveSop }: 
                       {category === "turnover" ? "Turnovers & Cleaning" : category}
                     </span>
                     <span className="rounded bg-[#1a1a1a] border border-white/8 px-2 py-0.5 text-[#f4f2ee]/60">
-                      {transcript.length} steps · transcript attached
+                      {transcript.length > 0
+                        ? `${transcript.length} steps · transcript attached`
+                        : "Video walkthrough · 1 step"}
                     </span>
                   </div>
                 </div>

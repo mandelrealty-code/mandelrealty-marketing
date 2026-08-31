@@ -1322,7 +1322,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(200).json({ sop });
         }
         if (op === "delete") {
-          const id = str(body.id);
+          const id = str(body.id) || str(body.slug);
           if (!id) return res.status(400).json({ error: "id required." });
           await deleteSop(id);
           return res.status(200).json({ ok: true });

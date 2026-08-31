@@ -139,6 +139,24 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
     }
   };
 
+  const handleDeleteSop = async (sop: SopItem) => {
+    if (!window.confirm(`Are you sure you want to delete "${sop.title}"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await pmPost("sops", { op: "delete", id: sop.id || sop.slug, slug: sop.slug });
+      setSops((prev) => prev.filter((s) => s.id !== sop.id && s.slug !== sop.slug));
+      if (editingSop && (editingSop.id === sop.id || editingSop.slug === sop.slug)) {
+        setEditorOpen(false);
+        setEditingSop(null);
+      }
+      setToast(`Deleted "${sop.title}"`);
+      setTimeout(() => setToast(null), 3000);
+    } catch (err: any) {
+      alert(`Could not delete SOP: ${err.message || err}`);
+    }
+  };
+
   const filteredSops = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return sops.filter((sop) => {
@@ -308,7 +326,7 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
       </div>
 
       {/* Table Head (Desktop) */}
-      <div className="hidden md:grid mx-6 sm:mx-9 px-4 py-2.5 grid-cols-[1fr_120px_100px_90px_230px] gap-4 border-b border-white/8 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#6f6a65]">
+      <div className="hidden md:grid mx-6 sm:mx-9 px-4 py-2.5 grid-cols-[1fr_120px_90px_80px_270px] gap-4 border-b border-white/8 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#6f6a65]">
         <span>SOP</span>
         <span>Role</span>
         <span>Time</span>
@@ -356,7 +374,7 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
             return (
               <div
                 key={sop.id || sop.slug}
-                className="group py-4 px-3 sm:px-4 flex flex-col md:grid md:grid-cols-[1fr_120px_100px_90px_230px] items-start md:items-center gap-3 md:gap-4 hover:bg-[#111111] transition rounded-lg"
+                className="group py-4 px-3 sm:px-4 flex flex-col md:grid md:grid-cols-[1fr_120px_90px_80px_270px] items-start md:items-center gap-3 md:gap-4 hover:bg-[#111111] transition rounded-lg"
               >
                 <div className="flex flex-col gap-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -395,20 +413,28 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
                   <button
                     type="button"
                     onClick={() => handleEditSop(sop)}
-                    className="flex-1 md:flex-none rounded border border-white/10 bg-[#1a1a1a] px-3.5 py-1.5 text-xs font-semibold text-[#f5f5f5] hover:bg-[#222222] hover:border-white/20 transition"
+                    className="flex-1 md:flex-none rounded border border-white/10 bg-[#1a1a1a] px-3 py-1.5 text-xs font-semibold text-[#f5f5f5] hover:bg-[#222222] hover:border-white/20 transition"
                   >
                     Edit Guide
                   </button>
                   <button
                     type="button"
                     onClick={() => handleCopyLink(sop)}
-                    className={`flex-1 md:flex-none rounded px-3.5 py-1.5 text-xs font-bold transition ${
+                    className={`flex-1 md:flex-none rounded px-3 py-1.5 text-xs font-bold transition ${
                       isCopied
                         ? "border border-[#c4a35a]/40 bg-[#1a1a1a] text-[#c4a35a]"
                         : "bg-[#c4a35a] text-[#0a0a0a] hover:bg-[#dcc084]"
                     }`}
                   >
-                    {isCopied ? "✓ Copied" : "Copy VA Link"}
+                    {isCopied ? "✓ Copied" : "Copy Link"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSop(sop)}
+                    title="Delete SOP"
+                    className="rounded border border-white/10 bg-[#141414] px-2 py-1.5 text-xs text-[#cf7f7b] hover:bg-[#cf603c]/20 hover:border-[#cf603c]/50 hover:text-[#e8a48a] transition shrink-0"
+                  >
+                    ✕
                   </button>
                 </div>
               </div>
@@ -731,7 +757,13 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
 
             {/* Sticky Bottom Bar */}
             <div className="flex items-center justify-between border-t border-white/10 bg-[#111111] px-6 py-4">
-              <span className="text-[11.5px] text-[#6f6a65]">Autosaved</span>
+              <button
+                type="button"
+                onClick={() => editingSop && handleDeleteSop(editingSop)}
+                className="rounded border border-[#cf603c]/30 bg-[#cf603c]/10 px-3.5 py-2 text-xs font-semibold text-[#e8a48a] hover:bg-[#cf603c]/20 transition"
+              >
+                Delete Guide
+              </button>
               <div className="flex items-center gap-3">
                 <button
                   type="button"

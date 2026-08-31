@@ -2885,6 +2885,21 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           setVideoStudioOpen(false);
           setEditingVideoSop(null);
         }}
+        onDeleteSop={async (idOrSlug) => {
+          try {
+            await pmPost("sops", {
+              op: "delete",
+              id: idOrSlug,
+              slug: idOrSlug,
+            });
+            setToast("SOP Video Guide deleted.");
+            setVideoStudioOpen(false);
+            setEditingVideoSop(null);
+            setSopsRefreshTrigger((k) => k + 1);
+          } catch (err: any) {
+            setToast(`Could not delete SOP: ${err.message || err}`);
+          }
+        }}
         onSaveSop={async (generatedSteps, metadata) => {
           const newSop: SopItem = {
             id: metadata.id || editingVideoSop?.id || "",
@@ -2907,6 +2922,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
               ...newSop,
             });
             setToast("SOP Video Guide saved to Playbook.");
+            setVideoStudioOpen(false);
             setEditingVideoSop(null);
             setSopsRefreshTrigger((k) => k + 1);
           } catch (err: any) {

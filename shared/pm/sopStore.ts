@@ -140,7 +140,16 @@ export async function upsertSop(input: Partial<SopItem> & { title: string }): Pr
   return sop;
 }
 
-export async function deleteSop(id: string): Promise<void> {
-  const { error } = await db().from("pm_sops").delete().eq("id", id);
+export async function deleteSop(idOrSlug: string): Promise<void> {
+  const target = String(idOrSlug || "").trim();
+  if (!target) return;
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
+  let query = db().from("pm_sops").delete();
+  if (isUuid) {
+    query = query.eq("id", target);
+  } else {
+    query = query.eq("slug", target);
+  }
+  const { error } = await query;
   if (error) throw error;
 }
