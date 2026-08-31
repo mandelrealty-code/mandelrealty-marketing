@@ -23,6 +23,7 @@ import { EarningsPanel } from "./EarningsPanel";
 import { MonthClosePanel } from "./MonthClosePanel";
 import { OwnerStatementPanel } from "./OwnerStatementPanel";
 import { TasksPanel } from "./TasksPanel";
+import { SopsPanel } from "./SopsPanel";
 import {
   EditSubscriptionSheet,
   SubscriptionsSheet,
@@ -48,7 +49,7 @@ import {
   TextInput,
 } from "./ui";
 
-type Tab = "tasks" | "clients" | "properties" | "month" | "settings";
+type Tab = "tasks" | "clients" | "properties" | "month" | "sops" | "settings";
 
 type Props = {
   onModeChange: (mode: AdminProductMode) => void;
@@ -1048,6 +1049,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
 
   const navItems = [
     ["tasks", "Tasks"],
+    ["sops", "SOPs"],
     ["clients", "Clients"],
     ["properties", "Properties"],
     ["month", "Month close"],
@@ -1969,6 +1971,8 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
         onError={setLoadError}
       />
     );
+  } else if (tab === "sops") {
+    main = <SopsPanel />;
   } else if (tab === "tasks") {
     main = (
       <TasksPanel

@@ -15,6 +15,7 @@ import { ThankYouPage } from "./pages/ThankYouPage";
 import { AdsLandingPage } from "./pages/AdsLandingPage";
 import { AdminPage } from "./pages/AdminPage";
 import { OwnerApp } from "./pages/owner/OwnerApp";
+import { PublicSopHub } from "./pages/sop/PublicSopHub";
 import { useScrollToHash } from "./hooks/useScrollToHash";
 
 function isAdminHostname(hostname: string): boolean {
@@ -54,6 +55,12 @@ function HomePage() {
 export default function App() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   const adminHost = isAdminHostname(window.location.hostname);
+
+  // Public SOP Library & Step-by-Step Guides: /sop or /sop/{slug}
+  if (path === "/sop" || path.startsWith("/sop/")) {
+    const slug = path.startsWith("/sop/") ? path.replace(/^\/sop\//, "").split("/")[0] : null;
+    return <PublicSopHub initialSlug={slug} />;
+  }
 
   // Admin subdomain only — never expose inbox on the marketing site.
   // Preview tokens let operators open /owner/{slug} on admin to see the host UI.

@@ -181,6 +181,12 @@ export async function handleDevApi(
     return runVercelAdminHandler(req, res, "", handleOwner);
   }
 
+  // Public SOP API
+  if (url === "/api/sop" || url.startsWith("/api/sop?")) {
+    const { default: handlePublicSop } = await import("./publicSopApi.js");
+    return runVercelAdminHandler(req, res, "", handlePublicSop);
+  }
+
   if (url === "/api/booked-slots" && method === "GET") {
     json(res, 200, { booked: await getBookedStartIsos() });
     return true;

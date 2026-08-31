@@ -106,6 +106,12 @@ import {
   deletePmTeamMember,
   listPmTeamMembers,
 } from "../pm/teamStore.js";
+import {
+  deleteSop,
+  getSopBySlug,
+  listSops,
+  upsertSop,
+} from "../pm/sopStore.js";
 import { percentToRateBps } from "../pm/types.js";
 import { isSupabaseConfigured } from "../supabase.js";
 
@@ -497,6 +503,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resource === "team_members") {
         const members = await listPmTeamMembers();
         return res.status(200).json({ members });
+      }
+      if (resource === "sops") {
+        const slug = typeof req.query.slug === "string" ? req.query.slug.trim() : "";
+        if (slug) {
+          const sop = await getSopBySlug(slug);
+          return res.status(200).json({ sop });
+        }
+        const category = typeof req.query.category === "string" ? req.query.category.trim() : undefined;
+        const sops = await listSops({ category });
+        return res.status(200).json({ sops });
       }
       if (resource === "company_subscriptions") {
         const subscriptions = await listCompanySubscriptions();
@@ -1276,6 +1292,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const id = str(body.id);
           if (!id) return res.status(400).json({ error: "id required." });
           await deletePmTeamMember(id);
+          return res.status(200).json({ ok: true });
+        }
+      }
+
+      if (resource === "sops") {
+        if (op === "save") {
+          const sop = await upsertSop({
+            id: body.id ? str(body.id) : undefined,
+            title: str(body.title),
+            slug: str(body.slug) || undefined,
+            category: (body.category as any) || "outreach",
+            target_role: (body.target_role as any) || "va",
+            summary: str(body.summary) || "",
+            estimated_minutes: Number(body.estimated_minutes) || 15,
+            steps: Array.isArray(body.steps) ? (body.steps as any) : [],
+            is_published: body.is_published !== false,
+          });
+          return res.status(200).json({ sop });
+        }
+        if (op === "delete") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await deleteSop(id);
           return res.status(200).json({ ok: true });
         }
       }

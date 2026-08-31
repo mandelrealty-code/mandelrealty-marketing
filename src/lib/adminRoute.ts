@@ -6,7 +6,7 @@ import {
 } from "../pages/clients/mode";
 
 export type CrmTab = "contacts" | "pipeline" | "knowledge" | "settings";
-export type OpsTab = "tasks" | "clients" | "properties" | "month" | "settings";
+export type OpsTab = "tasks" | "clients" | "properties" | "month" | "sops" | "settings";
 
 export type AdminRoute = {
   mode: AdminProductMode;
@@ -19,10 +19,11 @@ export type AdminRoute = {
   createClient: boolean;
   hstClientId: string | null;
   taskId: string | null;
+  sopSlug?: string | null;
 };
 
 const CRM_TABS: CrmTab[] = ["contacts", "pipeline", "knowledge", "settings"];
-const OPS_TABS: OpsTab[] = ["tasks", "clients", "properties", "month", "settings"];
+const OPS_TABS: OpsTab[] = ["tasks", "clients", "properties", "month", "sops", "settings"];
 
 function isCrmTab(v: string | undefined): v is CrmTab {
   return !!v && (CRM_TABS as string[]).includes(v);

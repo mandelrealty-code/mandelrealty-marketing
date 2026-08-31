@@ -1,0 +1,117 @@
+/** Storage and query helpers for SOPs */
+
+import { getSupabaseAdmin } from "../supabase.js";
+import type { SopItem, SopCategory, SopTargetRole, SopStep } from "./sopTypes.js";
+
+function db() {
+  const sb = getSupabaseAdmin();
+  if (!sb) throw new Error("Supabase is not configured.");
+  return sb;
+}
+
+function mapSop(row: Record<string, unknown>): SopItem {
+  return {
+    id: String(row.id),
+    created_at: String(row.created_at || ""),
+    updated_at: String(row.updated_at || ""),
+    slug: String(row.slug || ""),
+    title: String(row.title || ""),
+    category: (row.category as SopCategory) || "other",
+    summary: String(row.summary || ""),
+    target_role: (row.target_role as SopTargetRole) || "va",
+    estimated_minutes: Number(row.estimated_minutes) || 15,
+    steps: Array.isArray(row.steps) ? (row.steps as SopStep[]) : [],
+    is_published: row.is_published !== false,
+    author: String(row.author || "MRG Admin"),
+  };
+}
+
+export async function listSops(options?: {
+  category?: string;
+  onlyPublished?: boolean;
+}): Promise<SopItem[]> {
+  let query = db().from("pm_sops").select("*").order("created_at", { ascending: false });
+
+  if (options?.category && options.category !== "all") {
+    query = query.eq("category", options.category);
+  }
+  if (options?.onlyPublished) {
+    query = query.eq("is_published", true);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    if (/pm_sops|relation/i.test(error.message || "")) {
+      return [];
+    }
+    throw error;
+  }
+  return (data ?? []).map((r) => mapSop(r as Record<string, unknown>));
+}
+
+export async function getSopBySlug(slug: string): Promise<SopItem | null> {
+  const cleanSlug = String(slug || "").trim().toLowerCase();
+  if (!cleanSlug) return null;
+
+  const { data, error } = await db()
+    .from("pm_sops")
+    .select("*")
+    .eq("slug", cleanSlug)
+    .maybeSingle();
+
+  if (error) {
+    if (/pm_sops|relation/i.test(error.message || "")) return null;
+    throw error;
+  }
+  return data ? mapSop(data as Record<string, unknown>) : null;
+}
+
+export async function upsertSop(input: Partial<SopItem> & { title: string }): Promise<SopItem> {
+  const title = input.title.trim();
+  if (!title) throw new Error("Title is required.");
+
+  let slug = (input.slug || title)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+  if (!slug) slug = `sop-${Date.now()}`;
+
+  const payload = {
+    title,
+    slug,
+    category: input.category || "outreach",
+    summary: input.summary || "",
+    target_role: input.target_role || "va",
+    estimated_minutes: input.estimated_minutes || 15,
+    steps: input.steps || [],
+    is_published: input.is_published !== false,
+    author: input.author || "MRG Admin",
+    updated_at: new Date().toISOString(),
+  };
+
+  if (input.id) {
+    const { data, error } = await db()
+      .from("pm_sops")
+      .update(payload)
+      .eq("id", input.id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return mapSop(data as Record<string, unknown>);
+  }
+
+  const { data, error } = await db()
+    .from("pm_sops")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return mapSop(data as Record<string, unknown>);
+}
+
+export async function deleteSop(id: string): Promise<void> {
+  const { error } = await db().from("pm_sops").delete().eq("id", id);
+  if (error) throw error;
+}
