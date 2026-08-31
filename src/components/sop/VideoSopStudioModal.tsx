@@ -707,8 +707,14 @@ export function VideoSopStudioModal({ isOpen, onClose, onSaveSop }: VideoSopStud
                     <video
                       ref={reviewVideoRef}
                       src={videoBlobUrl}
-                      className="w-full h-full object-contain"
+                      className="w-full h-full object-contain cursor-pointer"
+                      onClick={handleTogglePlay}
                       onTimeUpdate={(e) => setPlaybackTime(e.currentTarget.currentTime)}
+                      onDurationChange={(e) => {
+                        if (e.currentTarget.duration && !isNaN(e.currentTarget.duration)) {
+                          setDuration(e.currentTarget.duration);
+                        }
+                      }}
                       onEnded={() => setIsPlaying(false)}
                       playsInline
                     />

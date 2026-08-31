@@ -775,7 +775,7 @@ export function SopsPanel() {
         }}
       />
 
-      {/* Loom-Style Video SOP Studio Modal */}
+      {/* Video SOP Studio Modal */}
       <VideoSopStudioModal
         isOpen={videoStudioOpen}
         onClose={() => setVideoStudioOpen(false)}

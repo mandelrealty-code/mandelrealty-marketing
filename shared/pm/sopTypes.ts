@@ -1,4 +1,4 @@
-/** SOP & Scribe-Style Guide Types */
+/** Standard Operating Procedure (SOP) & Guide Types */
 
 export type SopCategory =
   | "outreach"
