@@ -2915,6 +2915,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
             created_at: metadata.created_at || editingVideoSop?.created_at || new Date().toISOString(),
             updated_at: new Date().toISOString(),
             steps: generatedSteps,
+            transcript: (metadata.transcript as any) || editingVideoSop?.transcript,
           };
           try {
             await pmPost("sops", {

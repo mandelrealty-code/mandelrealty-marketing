@@ -13,6 +13,14 @@ export default async function handlePublicSop(req: VercelRequest, res: VercelRes
       if (!sop || !sop.is_published) {
         return res.status(404).json({ error: "SOP not found" });
       }
+
+      if (req.query.video === "1") {
+        if (sop.video_url && sop.video_url.startsWith("http")) {
+          return res.redirect(302, sop.video_url);
+        }
+        return res.status(404).json({ error: "Video not found for this SOP" });
+      }
+
       return res.status(200).json({ sop });
     }
 

@@ -36,11 +36,21 @@ export type SopCopySnippet = {
   description?: string;
 };
 
+export type SopTranscriptLine = {
+  id: string;
+  t: string;
+  seconds: number;
+  who?: string;
+  text: string;
+};
+
 export type SopStep = {
   id: string;
   step_number: number;
   title: string;
   description: string;
+  timestamp?: string;
+  seconds?: number;
   media_type?: "image" | "video_embed" | "none";
   image_url?: string;
   raw_image_url?: string;
@@ -63,6 +73,7 @@ export type SopItem = {
   target_role: SopTargetRole;
   estimated_minutes: number;
   video_url?: string;
+  transcript?: SopTranscriptLine[];
   steps: SopStep[];
   is_published: boolean;
   author: string;

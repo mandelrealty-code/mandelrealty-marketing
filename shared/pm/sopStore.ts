@@ -21,6 +21,7 @@ function mapSop(row: Record<string, unknown>): SopItem {
     target_role: (row.target_role as SopTargetRole) || "va",
     estimated_minutes: Number(row.estimated_minutes) || 15,
     steps: Array.isArray(row.steps) ? (row.steps as SopStep[]) : [],
+    transcript: Array.isArray(row.transcript) ? (row.transcript as any) : undefined,
     is_published: row.is_published !== false,
     author: String(row.author || "MRG Admin"),
     video_url: row.video_url ? String(row.video_url) : undefined,
@@ -64,7 +65,56 @@ export async function getSopBySlug(slug: string): Promise<SopItem | null> {
     if (/pm_sops|relation/i.test(error.message || "")) return null;
     throw error;
   }
-  return data ? mapSop(data as Record<string, unknown>) : null;
+  if (!data) return null;
+
+  const sop = mapSop(data as Record<string, unknown>);
+
+  // If video_url is not set or is an invalid local blob URL, try resolving signed URL from storage bucket
+  if (!sop.video_url || sop.video_url.startsWith("blob:")) {
+    try {
+      const { data: signed } = await db()
+        .storage.from("pm-contracts")
+        .createSignedUrl(`sop-videos/${cleanSlug}.webm`, 60 * 60 * 24 * 7);
+      if (signed?.signedUrl) {
+        sop.video_url = signed.signedUrl;
+      }
+    } catch {}
+  }
+
+  return sop;
+}
+
+export async function uploadSopVideo(
+  slug: string,
+  buffer: Buffer,
+  mime: string = "video/webm"
+): Promise<string> {
+  const cleanSlug = String(slug || "").trim().toLowerCase();
+  if (!cleanSlug) throw new Error("Slug is required.");
+
+  const storagePath = `sop-videos/${cleanSlug}.webm`;
+  const { error: upErr } = await db()
+    .storage.from("pm-contracts")
+    .upload(storagePath, buffer, {
+      contentType: mime,
+      upsert: true,
+    });
+  if (upErr) throw new Error(`Video upload failed: ${upErr.message}`);
+
+  const { data: signed } = await db()
+    .storage.from("pm-contracts")
+    .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+
+  const videoUrl = signed?.signedUrl || `/api/sop?slug=${cleanSlug}&video=1`;
+
+  try {
+    await db()
+      .from("pm_sops")
+      .update({ video_url: videoUrl, updated_at: new Date().toISOString() })
+      .eq("slug", cleanSlug);
+  } catch {}
+
+  return videoUrl;
 }
 
 export async function upsertSop(input: Partial<SopItem> & { title: string }): Promise<SopItem> {

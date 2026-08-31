@@ -110,6 +110,7 @@ import {
   deleteSop,
   getSopBySlug,
   listSops,
+  uploadSopVideo,
   upsertSop,
 } from "../pm/sopStore.js";
 import { percentToRateBps } from "../pm/types.js";
@@ -1297,6 +1298,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (resource === "sops") {
+        if (op === "upload_video") {
+          const slug = str(body.slug);
+          if (!slug) return res.status(400).json({ error: "slug required." });
+          const videoB64 = str(body.video_base64);
+          if (!videoB64) return res.status(400).json({ error: "video_base64 required." });
+          const buffer = Buffer.from(videoB64, "base64");
+          const mime = str(body.mime) || "video/webm";
+          const videoUrl = await uploadSopVideo(slug, buffer, mime);
+          return res.status(200).json({ ok: true, video_url: videoUrl });
+        }
         if (op === "save") {
           const rawSop = (body.sop && typeof body.sop === "object") ? (body.sop as Record<string, unknown>) : body;
           const sop = await upsertSop({

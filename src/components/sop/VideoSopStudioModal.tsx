@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { SopItem, SopStep, SopCategory, SopTargetRole } from "../../../shared/pm/sopTypes";
 import { storeSopVideoBlob, getSopVideoBlob } from "../../lib/sopVideoStorage";
+import { pmPost } from "../../pages/clients/api";
 
 export function parseTimeToSeconds(t: string | undefined): number {
   if (!t) return 0;
@@ -13,6 +14,19 @@ export function parseTimeToSeconds(t: string | undefined): number {
     return parts[0];
   }
   return 0;
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const res = reader.result as string;
+      const base64 = res.split(",")[1] || "";
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 interface VideoSopStudioModalProps {
@@ -30,6 +44,7 @@ interface VideoSopStudioModalProps {
       target_role: SopTargetRole;
       summary: string;
       video_url?: string;
+      transcript?: TranscriptLine[];
       author?: string;
       created_at?: string;
     }
@@ -115,12 +130,27 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
           setVideoBlobUrl(initialSop.video_url);
         }
 
-        if (initialSop.steps && initialSop.steps.length > 0) {
+        if (initialSop.transcript && initialSop.transcript.length > 0) {
+          setTranscript(
+            initialSop.transcript.map((line) => ({
+              id: line.id,
+              t: line.t,
+              seconds: line.seconds != null ? line.seconds : parseTimeToSeconds(line.t),
+              who: line.who || "Speaker",
+              text: line.text,
+            }))
+          );
+        } else if (initialSop.steps && initialSop.steps.length > 0) {
           const loaded: TranscriptLine[] = initialSop.steps.map((st, idx) => {
-            const stepSec = idx * 6;
+            const stepSec =
+              st.seconds != null
+                ? st.seconds
+                : st.timestamp
+                ? parseTimeToSeconds(st.timestamp)
+                : idx * 6;
             return {
               id: st.id || `tr-${Date.now()}-${idx}`,
-              t: formatSeconds(stepSec),
+              t: st.timestamp || formatSeconds(stepSec),
               seconds: stepSec,
               who: `Step ${st.step_number || idx + 1}`,
               text: st.description || st.title || "",
@@ -580,8 +610,29 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
     setIsSaving(true);
     try {
       const currentSlug = initialSop?.slug || `sop-${Date.now()}`;
+      let finalVideoUrl = videoBlobUrl || undefined;
+
+      // 1. Cache to IndexedDB for instantaneous local access
       if (recordedBlobRef.current) {
         await storeSopVideoBlob(currentSlug, recordedBlobRef.current);
+
+        // 2. Upload to server storage (pm-contracts bucket under sop-videos/)
+        try {
+          const b64 = await blobToBase64(recordedBlobRef.current);
+          if (b64) {
+            const upRes = await pmPost<{ ok: boolean; video_url?: string }>("sops", {
+              op: "upload_video",
+              slug: currentSlug,
+              video_base64: b64,
+              mime: recordedBlobRef.current.type || "video/webm",
+            });
+            if (upRes.video_url) {
+              finalVideoUrl = upRes.video_url;
+            }
+          }
+        } catch (uploadErr) {
+          console.warn("Server video upload error (fallback to local blob):", uploadErr);
+        }
       }
 
       const formattedSteps: SopStep[] =
@@ -591,8 +642,10 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
               step_number: idx + 1,
               title: line.text.length > 60 ? `${line.text.slice(0, 58)}...` : line.text,
               description: line.text,
+              timestamp: line.t,
+              seconds: line.seconds != null ? line.seconds : parseTimeToSeconds(line.t),
               media_type: "video_embed",
-              video_url: videoBlobUrl || undefined,
+              video_url: finalVideoUrl,
               pro_tip:
                 idx === 0
                   ? "Ensure you verify all fields on this screen before approving."
@@ -604,8 +657,10 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                 step_number: 1,
                 title: title || "Video SOP Walkthrough",
                 description: "Watch the recorded video walkthrough for step-by-step instructions.",
+                timestamp: "0:00",
+                seconds: 0,
                 media_type: "video_embed",
-                video_url: videoBlobUrl || undefined,
+                video_url: finalVideoUrl,
               },
             ];
 
@@ -616,7 +671,8 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
         category,
         target_role: targetRole,
         summary: `Video guide for ${targetRole.toUpperCase()} team (Duration: ${formatSeconds(trimEnd - trimStart)}).`,
-        video_url: videoBlobUrl || undefined,
+        video_url: finalVideoUrl,
+        transcript: transcript.length > 0 ? transcript : undefined,
         author: initialSop?.author,
         created_at: initialSop?.created_at,
       });
