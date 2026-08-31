@@ -18,162 +18,9 @@ const CATEGORY_MAP: Record<string, string> = {
 const CATEGORIES = ["All", "Outreach & Leads", "Guest Comms", "Team & Cleaners", "Turnover", "Software"];
 const ROLES = ["All", "VA", "Cleaner", "Manager"];
 
-const DEFAULT_SOPS: SopItem[] = [
-  {
-    id: "sop-1",
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-    updated_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-    title: "Airbnb Host Cold Outreach & Pitching",
-    category: "outreach",
-    target_role: "va",
-    estimated_minutes: 15,
-    slug: "airbnb-outreach",
-    summary:
-      "Find Airbnb listings in our target markets that are still self-managed, confirm the owner runs it themselves, and send a personalised pitch offering full-service management. Target: 40 verified hosts contacted per day, 12% reply rate, 3 discovery calls booked per week.",
-    is_published: true,
-    author: "Shane M.",
-    steps: [
-      {
-        id: "s1",
-        step_number: 1,
-        title: "Pull the target host list",
-        description:
-          "Open the OPS > Prospecting board and export hosts flagged 'multi-listing' within a 12-mile radius of the assigned market.\nCap the batch at 40 hosts per day.\nSort by listings-per-host descending. One conversation can bring 3–5 doors.",
-        pro_tip: "Sort by listings-per-host descending. One conversation can bring 3–5 doors.",
-      },
-      {
-        id: "s2",
-        step_number: 2,
-        title: "Verify listing quality before pitching",
-        description:
-          "Check calendar gaps in the next 30 days, review score, and photo quality.\nSkip anything above 92% occupancy — they don't need us yet.\nCheck for existing co-hosts or property management logos in listing photos.",
-        media_type: "image",
-        warning: "Do not pitch a host whose listing is already under another management brand's branding.",
-      },
-      {
-        id: "s3",
-        step_number: 3,
-        title: "Send the opening DM",
-        description:
-          "Message the host from the MRG account.\nKeep it under 60 words, lead with the property, never mention commission in the first touch.\nSend between 8–10am local time for highest response rates.",
-        media_type: "image",
-        copy_snippets: [
-          {
-            id: "cs1",
-            title: "Opening Touch",
-            template:
-              "Hi {host_name} — I manage short-term rentals near {property_address} and had two guest inquiries this month I couldn't place. Would you be open to a quick look at your calendar?",
-          },
-        ],
-        pro_tip: "Send between 8–10am local time. Response rate roughly doubles versus evenings.",
-        warning: "Don't send a second message before the CRM touch is logged — hosts get double-pitched.",
-      },
-      {
-        id: "s4",
-        step_number: 4,
-        title: "Log the touch in CRM",
-        description:
-          "Create the lead in CRM > Leads with source 'Airbnb Outreach'.\nPaste the listing URL, and set the follow-up task to Day 3.\nTag with neighborhood and estimated bedroom count.",
-        media_type: "image",
-      },
-      {
-        id: "s5",
-        step_number: 5,
-        title: "Run the Day 3 follow-up",
-        description:
-          "If no reply, send the second-touch script with the market occupancy number.\nOne follow-up only, then move to Nurture.\nNever send more than two touches without a reply.",
-        copy_snippets: [
-          {
-            id: "cs2",
-            title: "Day 3 Follow-up",
-            template:
-              "Following up on {property_address}, {host_name} — occupancy in your pocket of the market is running at 78% this quarter. Happy to send the comp set either way, no pitch.",
-          },
-        ],
-      },
-      {
-        id: "s6",
-        step_number: 6,
-        title: "Hand warm leads to the manager",
-        description:
-          "Any reply that mentions rates, calendars, or a call goes to Shane the same day via the CRM handoff button.\nInclude a one-line summary of what the host said.\nPaste the host's exact words in the handoff note.",
-        pro_tip: "Paste the host's own words in the handoff note — the pitch call converts better when it echoes their language.",
-      },
-    ],
-  },
-  {
-    id: "sop-2",
-    created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-    updated_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-    title: "Inbound Guest Inquiry Response",
-    category: "guest_ops",
-    target_role: "va",
-    estimated_minutes: 8,
-    slug: "guest-inquiry",
-    summary:
-      "Triage and reply to incoming guest questions within 5 minutes across Airbnb and Hospitable unified inbox.",
-    is_published: true,
-    author: "Shane M.",
-    steps: [
-      {
-        id: "s2-1",
-        step_number: 1,
-        title: "Check instant booking eligibility & identity verification",
-        description:
-          "Open the unified inbox and review guest past reviews and party risk before accepting any reservation inquiry.",
-        media_type: "image",
-      },
-    ],
-  },
-  {
-    id: "sop-3",
-    created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
-    updated_at: new Date(Date.now() - 7 * 86400000).toISOString(),
-    title: "Same-Day Turnover Checklist",
-    category: "turnover",
-    target_role: "cleaner",
-    estimated_minutes: 45,
-    slug: "same-day-turnover",
-    summary:
-      "Step-by-step cleaning, linen change, and restocking standard for 4-hour checkout-to-checkin turnaround windows.",
-    is_published: true,
-    author: "Shane M.",
-    steps: [],
-  },
-  {
-    id: "sop-4",
-    created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
-    updated_at: new Date(Date.now() - 10 * 86400000).toISOString(),
-    title: "Cleaner Onboarding & Property Access",
-    category: "team_comms",
-    target_role: "manager",
-    estimated_minutes: 25,
-    slug: "cleaner-onboarding",
-    summary:
-      "How to invite a new turnover cleaner to Turno, configure building fob access, and set backup lockbox codes.",
-    is_published: true,
-    author: "Shane M.",
-    steps: [],
-  },
-  {
-    id: "sop-5",
-    created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
-    updated_at: new Date(Date.now() - 14 * 86400000).toISOString(),
-    title: "PriceLabs Weekly Rate Review",
-    category: "software",
-    target_role: "manager",
-    estimated_minutes: 20,
-    slug: "pricelabs-review",
-    summary:
-      "Review pacing charts, adjust min-stay rules for orphan calendar gaps, and override base rates for event dates.",
-    is_published: true,
-    author: "Shane M.",
-    steps: [],
-  },
-];
-
 export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
-  const [sops, setSops] = useState<SopItem[]>(DEFAULT_SOPS);
+  const [sops, setSops] = useState<SopItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentSlug, setCurrentSlug] = useState<string | null>(initialSlug || null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCat, setSelectedCat] = useState("All");
@@ -195,16 +42,19 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
   // Fetch SOPs on mount
   useEffect(() => {
     async function load() {
+      setLoading(true);
       try {
         const res = await fetch("/api/sop");
         if (res.ok) {
           const data = await res.json();
-          if (data.sops && data.sops.length > 0) {
-            setSops(data.sops);
-          }
+          setSops(data.sops || []);
+        } else {
+          setSops([]);
         }
       } catch {
-        // Fallback to default
+        setSops([]);
+      } finally {
+        setLoading(false);
       }
     }
     load();
@@ -470,46 +320,60 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
             <span>Sorted by most recently updated</span>
           </div>
 
-          {/* Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredSops.map((sop) => (
-              <div
-                key={sop.id || sop.slug}
-                onClick={() => handleOpenSop(sop.slug)}
-                className="group flex flex-col rounded-lg border border-white/8 bg-[#121212] overflow-hidden hover:border-[#c4a35a]/40 hover:bg-[#161616] transition cursor-pointer shadow-lg"
-              >
-                <div className="flex-1 p-5 flex flex-col gap-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="text-base font-bold text-[#f5f5f5] leading-snug group-hover:text-[#c4a35a] transition">
-                      {sop.title}
-                    </h3>
-                    <span className="rounded bg-[#c4a35a]/10 border border-[#c4a35a]/30 px-2 py-0.5 font-mono text-[9.5px] font-bold uppercase tracking-wider text-[#c4a35a] shrink-0">
-                      {sop.category}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-[#9a9590] leading-relaxed line-clamp-3">
-                    {sop.summary}
-                  </p>
-
-                  <div className="mt-auto pt-2 flex items-center gap-2">
-                    <span className="rounded border border-white/10 bg-[#1a1a1a] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#9a9590]">
-                      {sop.target_role.toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-white/8 bg-[#0f0f0f] px-5 py-3 text-xs">
-                  <span className="text-[#6f6a65]">
-                    {sop.steps?.length || 0} steps · {sop.estimated_minutes} min
-                  </span>
-                  <span className="font-bold text-[#c4a35a] group-hover:translate-x-0.5 transition">
-                    Open Guide →
-                  </span>
-                </div>
+          {/* Cards Grid / Empty State */}
+          {loading ? (
+            <div className="py-20 text-center text-xs text-[#6f6a65]">Loading playbooks...</div>
+          ) : filteredSops.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center text-center rounded-lg border border-white/8 bg-[#121212] p-8">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 border border-white/8 text-[#c4a35a] mb-3">
+                <span className="text-lg">✦</span>
               </div>
-            ))}
-          </div>
+              <h3 className="text-base font-bold text-[#f5f5f5]">No playbooks published yet</h3>
+              <p className="text-xs text-[#9a9590] mt-1 max-w-sm">
+                Standard operating procedures published by Mandel Realty Group will appear here for the team to view.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredSops.map((sop) => (
+                <div
+                  key={sop.id || sop.slug}
+                  onClick={() => handleOpenSop(sop.slug)}
+                  className="group flex flex-col rounded-lg border border-white/8 bg-[#121212] overflow-hidden hover:border-[#c4a35a]/40 hover:bg-[#161616] transition cursor-pointer shadow-lg"
+                >
+                  <div className="flex-1 p-5 flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="text-base font-bold text-[#f5f5f5] leading-snug group-hover:text-[#c4a35a] transition">
+                        {sop.title}
+                      </h3>
+                      <span className="rounded bg-[#c4a35a]/10 border border-[#c4a35a]/30 px-2 py-0.5 font-mono text-[9.5px] font-bold uppercase tracking-wider text-[#c4a35a] shrink-0">
+                        {sop.category}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-[#9a9590] leading-relaxed line-clamp-3">
+                      {sop.summary}
+                    </p>
+
+                    <div className="mt-auto pt-2 flex items-center gap-2">
+                      <span className="rounded border border-white/10 bg-[#1a1a1a] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#9a9590]">
+                        {sop.target_role.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-white/8 bg-[#0f0f0f] px-5 py-3 text-xs">
+                    <span className="text-[#6f6a65]">
+                      {sop.steps?.length || 0} steps · {sop.estimated_minutes} min
+                    </span>
+                    <span className="font-bold text-[#c4a35a] group-hover:translate-x-0.5 transition">
+                      Open Guide →
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </main>
       )}
 
