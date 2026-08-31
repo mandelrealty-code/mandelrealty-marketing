@@ -62,6 +62,7 @@ export type SopItem = {
   summary: string;
   target_role: SopTargetRole;
   estimated_minutes: number;
+  video_url?: string;
   steps: SopStep[];
   is_published: boolean;
   author: string;

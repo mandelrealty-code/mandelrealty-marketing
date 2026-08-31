@@ -253,6 +253,29 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                 </div>
               )}
 
+              {/* Video Walkthrough Player if present */}
+              {sop.video_url && (
+                <div className="rounded-xl border border-white/10 bg-[#121214] p-5 space-y-3 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-[#c4a35a]" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-[#c4a35a]">
+                        Video Walkthrough &amp; Voice Guide
+                      </span>
+                    </div>
+                    <span className="font-mono text-[10.5px] text-[#9a9590]">1080P HD · AUDIO</span>
+                  </div>
+                  <div className="rounded-lg overflow-hidden border border-white/8 bg-black">
+                    <video
+                      src={sop.video_url}
+                      controls
+                      playsInline
+                      className="w-full max-h-[440px] object-contain"
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Progress Bar with Reset */}
               <div className="flex items-center gap-4 rounded-lg border border-white/8 bg-[#0f0f0f] px-5 py-3.5 shadow-sm">
                 <div className="flex-1 h-1.5 rounded-full bg-[#1a1a1a] overflow-hidden">
