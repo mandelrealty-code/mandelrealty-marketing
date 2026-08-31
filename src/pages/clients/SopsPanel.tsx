@@ -3,7 +3,6 @@ import { pmGet, pmPost } from "./api";
 import type { SopItem, SopStep, SopCategory, SopTargetRole } from "../../../shared/pm/sopTypes";
 import { ImageRedactorModal } from "../../components/sop/ImageRedactorModal";
 import { AiDraftModal } from "../../components/sop/AiDraftModal";
-import { VideoSopStudioModal } from "../../components/sop/VideoSopStudioModal";
 
 const CATS: { id: string; label: string; catKey?: SopCategory }[] = [
   { id: "All", label: "All" },
@@ -21,14 +20,17 @@ const ROLE_STYLE: Record<string, { fg: string; bg: string; border: string }> = {
   all: { fg: "#f5f5f5", bg: "#1c1c1c", border: "rgba(255,255,255,0.14)" },
 };
 
-export function SopsPanel() {
+interface SopsPanelProps {
+  onOpenVideoStudio?: () => void;
+}
+
+export function SopsPanel({ onOpenVideoStudio }: SopsPanelProps) {
   const [sops, setSops] = useState<SopItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCat, setSelectedCat] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
-  const [videoStudioOpen, setVideoStudioOpen] = useState(false);
   const [editingSop, setEditingSop] = useState<SopItem | null>(null);
   const [activeRedactorStepIdx, setActiveRedactorStepIdx] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -228,7 +230,9 @@ export function SopsPanel() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setVideoStudioOpen(true)}
+              onClick={() => {
+                if (onOpenVideoStudio) onOpenVideoStudio();
+              }}
               className="flex items-center gap-2 rounded-md border border-[#c4a35a]/45 bg-[#1a1712] px-3.5 py-2 text-[12px] font-bold text-[#c4a35a] hover:bg-[#c4a35a]/15 transition shadow-sm"
             >
               <span className="flex h-2 w-2 rounded-full bg-[#cf603c] animate-pulse" />
@@ -760,31 +764,6 @@ export function SopsPanel() {
             estimated_minutes: generatedSteps.length * 3,
             is_published: true,
             author: "Shane M. (AI)",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            steps: generatedSteps,
-          };
-          setEditingSop(newSop);
-          setEditorOpen(true);
-        }}
-      />
-
-      {/* Video SOP Studio Modal */}
-      <VideoSopStudioModal
-        isOpen={videoStudioOpen}
-        onClose={() => setVideoStudioOpen(false)}
-        onSaveSop={(generatedSteps, metadata) => {
-          const newSop: SopItem = {
-            id: "",
-            slug: `sop-${Date.now()}`,
-            title: metadata.title || "Video SOP Guide",
-            category: metadata.category,
-            target_role: metadata.target_role,
-            summary: metadata.summary,
-            estimated_minutes: Math.max(5, generatedSteps.length * 2),
-            video_url: metadata.video_url,
-            is_published: true,
-            author: "Shane M. (Video Studio)",
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             steps: generatedSteps,

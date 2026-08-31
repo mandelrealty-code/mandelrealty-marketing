@@ -579,7 +579,7 @@ export function MonthClosePanel({
     return (
       <div className="mx-auto w-full max-w-[1100px] px-4 lg:px-8">
         <div className="flex items-baseline justify-between pb-3.5 pt-[22px] lg:pb-[18px] lg:pt-9">
-          <h1 className="text-[26px] font-bold tracking-tight lg:text-2xl">Month close</h1>
+          <h1 className="text-[26px] font-bold tracking-tight lg:text-2xl">Revenue</h1>
         </div>
         <div className="mx-auto flex max-w-md flex-col items-center gap-2.5 rounded-2xl border border-white/8 bg-[#0c0c0c] px-6 py-10 text-center">
           <p className="text-base font-semibold text-[#f5f5f5]">Nothing to close yet</p>
@@ -895,7 +895,7 @@ export function MonthClosePanel({
     <div className="mx-auto w-full max-w-[1100px]">
       <div className="flex flex-col gap-4 px-4 pb-[max(5.5rem,env(safe-area-inset-bottom))] pt-[max(14px,env(safe-area-inset-top))] lg:hidden">
         <div className="flex items-center justify-between">
-          <h1 className="text-[26px] font-bold tracking-tight">Month close</h1>
+          <h1 className="text-[26px] font-bold tracking-tight">Revenue</h1>
           <button
             type="button"
             disabled={!portfolio}
@@ -1075,7 +1075,7 @@ export function MonthClosePanel({
       <div className="hidden border-b border-white/8 px-8 pb-[18px] pt-9 lg:block">
         <div className="mb-[18px] flex flex-wrap items-center justify-between gap-5">
           <div className="flex flex-wrap items-center gap-4">
-            <h1 className="text-2xl font-bold tracking-tight">Month close</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Revenue</h1>
             <MonthPicker value={month} onChange={setMonth} disabled={loading || syncing} />
             <p className="text-[12.5px] text-[#6f6a65]">
               {portfolio

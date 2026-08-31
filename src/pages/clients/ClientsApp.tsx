@@ -24,6 +24,8 @@ import { MonthClosePanel } from "./MonthClosePanel";
 import { OwnerStatementPanel } from "./OwnerStatementPanel";
 import { TasksPanel } from "./TasksPanel";
 import { SopsPanel } from "./SopsPanel";
+import { VideoSopStudioModal } from "../../components/sop/VideoSopStudioModal";
+import type { SopItem } from "../../../shared/pm/sopTypes";
 import {
   EditSubscriptionSheet,
   SubscriptionsSheet,
@@ -174,6 +176,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
   );
   const [termsBilling, setTermsBilling] = useState<BillingTermsValue | null>(null);
   const [hstSheetBilling, setHstSheetBilling] = useState<BillingTermsValue | null>(null);
+  const [videoStudioOpen, setVideoStudioOpen] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const appliedOpsKey = useRef("");
 
@@ -1052,7 +1055,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     ["sops", "SOPs"],
     ["clients", "Clients"],
     ["properties", "Properties"],
-    ["month", "Month close"],
+    ["month", "Revenue"],
     ["settings", "Settings"],
   ] as const;
 
@@ -1972,7 +1975,11 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
       />
     );
   } else if (tab === "sops") {
-    main = <SopsPanel />;
+    main = (
+      <SopsPanel
+        onOpenVideoStudio={() => setVideoStudioOpen(true)}
+      />
+    );
   } else if (tab === "tasks") {
     main = (
       <TasksPanel
@@ -2863,6 +2870,35 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           )}
         </Sheet>
       ) : null}
+
+      {/* Global Persistent Video SOP Studio Recorder */}
+      <VideoSopStudioModal
+        isOpen={videoStudioOpen}
+        onClose={() => setVideoStudioOpen(false)}
+        onSaveSop={async (generatedSteps, metadata) => {
+          const newSop: SopItem = {
+            id: "",
+            slug: `sop-${Date.now()}`,
+            title: metadata.title || "Video SOP Guide",
+            category: metadata.category,
+            target_role: metadata.target_role,
+            summary: metadata.summary,
+            estimated_minutes: Math.max(5, generatedSteps.length * 2),
+            video_url: metadata.video_url,
+            is_published: true,
+            author: "Shane M. (Video Studio)",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            steps: generatedSteps,
+          };
+          try {
+            await pmPost("sops", { op: "save", sop: newSop });
+            setToast("SOP Video Guide saved to Playbook.");
+          } catch {
+            /* ignore */
+          }
+        }}
+      />
     </div>
   );
 }
