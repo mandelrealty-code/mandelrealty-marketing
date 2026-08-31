@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { pmGet, pmPost } from "./api";
 import type { SopItem, SopStep, SopCategory, SopTargetRole } from "../../../shared/pm/sopTypes";
 import { ImageRedactorModal } from "../../components/sop/ImageRedactorModal";
-import { AiDraftModal } from "../../components/sop/AiDraftModal";
 
 const CATS: { id: string; label: string; catKey?: SopCategory }[] = [
   { id: "All", label: "All" },
@@ -31,7 +30,6 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
   const [selectedCat, setSelectedCat] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
-  const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [editingSop, setEditingSop] = useState<SopItem | null>(null);
   const [activeRedactorStepIdx, setActiveRedactorStepIdx] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -268,14 +266,6 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
             </button>
             <button
               type="button"
-              onClick={() => setAiDraftOpen(true)}
-              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-[#161616] px-3.5 py-2 text-[12px] font-semibold text-[#f5f5f5] hover:bg-[#202020] transition"
-            >
-              <span>✦</span>
-              <span>Draft with AI</span>
-            </button>
-            <button
-              type="button"
               onClick={handleOpenNew}
               className="rounded-md bg-[#c4a35a] px-4 py-2 text-[12.5px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition shadow-md"
             >
@@ -348,14 +338,6 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
               Create your first step-by-step operating procedure, or draft one in seconds using AI from your notes.
             </p>
             <div className="flex items-center gap-3 mt-5">
-              <button
-                type="button"
-                onClick={() => setAiDraftOpen(true)}
-                className="flex items-center gap-1.5 rounded-md border border-[#c4a35a]/35 bg-[#1a1814] px-4 py-2 text-xs font-bold text-[#c4a35a] hover:bg-[#c4a35a]/15 transition"
-              >
-                <span>✦</span>
-                <span>Draft with AI</span>
-              </button>
               <button
                 type="button"
                 onClick={handleOpenNew}
@@ -806,30 +788,6 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
           }}
         />
       )}
-
-      {/* AI Draft Modal Instance */}
-      <AiDraftModal
-        isOpen={aiDraftOpen}
-        onClose={() => setAiDraftOpen(false)}
-        onInsertSteps={(generatedSteps, metadata) => {
-          const newSop: SopItem = {
-            id: "",
-            slug: `sop-${Date.now()}`,
-            title: generatedSteps[0]?.title || "AI Generated SOP",
-            category: metadata.category,
-            target_role: metadata.target_role,
-            summary: "AI generated standard operating procedure playbook.",
-            estimated_minutes: generatedSteps.length * 3,
-            is_published: true,
-            author: "Shane M. (AI)",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            steps: generatedSteps,
-          };
-          setEditingSop(newSop);
-          setEditorOpen(true);
-        }}
-      />
     </div>
   );
 }
