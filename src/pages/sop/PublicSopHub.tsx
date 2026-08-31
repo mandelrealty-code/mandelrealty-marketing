@@ -542,20 +542,41 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
 
                         {/* Screenshot / Annotated Media Preview */}
                         {step.image_url && (
-                          <div
-                            onClick={() =>
-                              setLightboxImg({ src: step.image_url!, title: step.title })
-                            }
-                            className="relative rounded-md border border-white/10 overflow-hidden cursor-zoom-in bg-[#151515] group"
-                          >
-                            <img
-                              src={step.image_url}
-                              alt={step.title}
-                              className="w-full max-h-96 object-contain"
-                            />
-                            <div className="absolute right-3 bottom-3 rounded bg-black/85 border border-white/12 px-2.5 py-1 text-[10.5px] font-semibold text-[#9a9590] group-hover:text-white transition">
-                              ⤢ Click to zoom
+                          <div className="space-y-3">
+                            <div
+                              onClick={() =>
+                                setLightboxImg({ src: step.image_url!, title: step.title })
+                              }
+                              className="relative rounded-md border border-white/10 overflow-hidden cursor-zoom-in bg-[#151515] group"
+                            >
+                              <img
+                                src={step.image_url}
+                                alt={step.title}
+                                className="w-full max-h-96 object-contain"
+                              />
+                              <div className="absolute right-3 bottom-3 rounded bg-black/85 border border-white/12 px-2.5 py-1 text-[10.5px] font-semibold text-[#9a9590] group-hover:text-white transition">
+                                ⤢ Click to zoom
+                              </div>
                             </div>
+
+                            {/* Numbered Pin Legend & Captions */}
+                            {step.pins && step.pins.length > 0 && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                {step.pins.map((pin) => (
+                                  <div
+                                    key={pin.id}
+                                    className="flex items-center gap-2.5 rounded-md border border-white/8 bg-[#161616] px-3 py-2 text-xs text-[#cfc9c2]"
+                                  >
+                                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#c4a35a] font-mono text-[11px] font-bold text-black">
+                                      {pin.number}
+                                    </span>
+                                    <span className="font-medium text-[#f5f5f5]">
+                                      {pin.label || `Action ${pin.number}`}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
 

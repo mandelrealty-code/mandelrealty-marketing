@@ -725,10 +725,14 @@ export function SopsPanel() {
         <ImageRedactorModal
           isOpen={true}
           initialImageUrl={editingSop.steps?.[activeRedactorStepIdx]?.image_url}
+          rawImageUrl={editingSop.steps?.[activeRedactorStepIdx]?.raw_image_url}
+          initialBoxes={editingSop.steps?.[activeRedactorStepIdx]?.boxes}
+          initialPins={editingSop.steps?.[activeRedactorStepIdx]?.pins}
           onClose={() => setActiveRedactorStepIdx(null)}
-          onSave={(bakedDataUrl, boxes, pins) => {
+          onSave={(bakedDataUrl, boxes, pins, rawImageUrl) => {
             updateStep(activeRedactorStepIdx, {
               image_url: bakedDataUrl,
+              raw_image_url: rawImageUrl || editingSop.steps?.[activeRedactorStepIdx]?.raw_image_url || bakedDataUrl,
               boxes,
               pins,
             });

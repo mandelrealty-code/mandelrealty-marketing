@@ -13,7 +13,7 @@ export type SopTargetRole = "va" | "cleaner" | "manager" | "all";
 
 export type SopStepPin = {
   id: string;
-  number: number;
+  number: number | string;
   x: number; // 0 to 1 percentage
   y: number; // 0 to 1 percentage
   label?: string;
@@ -43,6 +43,7 @@ export type SopStep = {
   description: string;
   media_type?: "image" | "video_embed" | "none";
   image_url?: string;
+  raw_image_url?: string;
   video_url?: string;
   pro_tip?: string;
   warning?: string;
