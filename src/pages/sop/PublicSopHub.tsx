@@ -158,6 +158,27 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
     }).sort((a, b) => a.seconds - b.seconds);
   }, [sop]);
 
+  // Fallback duration parsed from summary "(Duration: 0:13)" or estimated minutes or max step
+  const fallbackDuration = useMemo(() => {
+    if (!sop) return 0;
+    const match = sop.summary?.match(/duration:\s*(\d+:\d+|\d+)/i);
+    if (match && match[1]) {
+      const s = parseTimeToSeconds(match[1]);
+      if (s > 0) return s;
+    }
+    if (sop.steps && sop.steps.length > 0) {
+      let maxSec = 0;
+      for (const st of sop.steps) {
+        const sec = st.seconds != null ? st.seconds : parseTimeToSeconds(st.timestamp);
+        if (sec > maxSec) maxSec = sec;
+      }
+      if (maxSec > 0) return maxSec + 5;
+    }
+    return (sop.estimated_minutes || 1) * 60;
+  }, [sop]);
+
+  const effectiveDuration = duration > 0 ? duration : (fallbackDuration || 1);
+
   // Active step highlight tracking based on current video playback
   useEffect(() => {
     if (!videoSteps.length) return;
@@ -166,7 +187,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
       const step = videoSteps[i];
       const nextStep = videoSteps[i + 1];
       const stepStart = step.seconds;
-      const stepEnd = nextStep ? nextStep.seconds : (duration || stepStart + 30);
+      const stepEnd = nextStep ? nextStep.seconds : (effectiveDuration || stepStart + 30);
 
       if (currentTime >= stepStart - 0.5 && currentTime < stepEnd) {
         currentActive = step.id;
@@ -179,7 +200,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
       }
     }
     setActiveStepId(currentActive);
-  }, [currentTime, videoSteps, duration]);
+  }, [currentTime, videoSteps, effectiveDuration]);
 
   // Video Playback Controls
   const handleTogglePlay = () => {
@@ -200,7 +221,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
   };
 
   const handleSeek = (timeSec: number) => {
-    const clamped = Math.max(0, Math.min(duration || 9999, timeSec));
+    const clamped = Math.max(0, Math.min(effectiveDuration, timeSec));
     setCurrentTime(clamped);
     if (videoRef.current) {
       videoRef.current.currentTime = clamped;
@@ -222,7 +243,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
 
   const handleSkip = (secondsDelta: number) => {
     if (!videoRef.current) return;
-    const nextTime = Math.max(0, Math.min(duration || 9999, (videoRef.current.currentTime || 0) + secondsDelta));
+    const nextTime = Math.max(0, Math.min(effectiveDuration, (videoRef.current.currentTime || 0) + secondsDelta));
     handleSeek(nextTime);
   };
 
@@ -469,7 +490,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                     Role: {sop.target_role.toUpperCase()} TEAM
                   </span>
                   <span>·</span>
-                  <span>{duration > 0 ? `${formatSeconds(duration)} Video` : `${sop.estimated_minutes} min read`}</span>
+                  <span>{`${formatSeconds(effectiveDuration)} Video`}</span>
                   <span>·</span>
                   <span className="text-[#5fbf7d] font-semibold">1080P HD · AUDIO SYNC</span>
                 </div>
@@ -503,14 +524,53 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                         className="w-full h-full object-contain cursor-pointer bg-black"
                         onClick={handleTogglePlay}
                         onTimeUpdate={(e) => {
-                          setCurrentTime(e.currentTarget.currentTime);
+                          const cur = e.currentTarget.currentTime;
+                          setCurrentTime(cur);
+                          const d = e.currentTarget.duration;
+                          if (d && isFinite(d) && d > 0) {
+                            setDuration(d);
+                          } else if (e.currentTarget.seekable && e.currentTarget.seekable.length > 0) {
+                            try {
+                              const sEnd = e.currentTarget.seekable.end(e.currentTarget.seekable.length - 1);
+                              if (sEnd && isFinite(sEnd) && sEnd > 0) {
+                                setDuration(Math.max(sEnd, cur));
+                              }
+                            } catch {}
+                          } else if (cur > duration) {
+                            setDuration(Math.max(cur, fallbackDuration));
+                          }
                         }}
                         onLoadedMetadata={(e) => {
+                          const v = e.currentTarget;
+                          const d = v.duration;
+                          if (d && isFinite(d) && d > 0) {
+                            setDuration(d);
+                          } else {
+                            // Chromium WebM duration resolution: temporarily seek to end to read true duration
+                            if (d === Infinity || !isFinite(d)) {
+                              v.currentTime = 1e101;
+                              v.ontimeupdate = () => {
+                                v.ontimeupdate = null;
+                                v.currentTime = 0;
+                                if (v.duration && isFinite(v.duration) && v.duration > 0) {
+                                  setDuration(v.duration);
+                                } else if (fallbackDuration > 0) {
+                                  setDuration(fallbackDuration);
+                                }
+                              };
+                            } else if (fallbackDuration > 0) {
+                              setDuration(fallbackDuration);
+                            }
+                          }
+                        }}
+                        onDurationChange={(e) => {
                           const d = e.currentTarget.duration;
-                          if (d && !isNaN(d) && isFinite(d) && d > 0) {
+                          if (d && isFinite(d) && d > 0) {
                             setDuration(d);
                           }
                         }}
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
                         onEnded={() => {
                           setIsPlaying(false);
                         }}
@@ -549,25 +609,29 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                         onClick={(e) => {
                           const rect = e.currentTarget.getBoundingClientRect();
                           const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                          handleSeek(pos * (duration || 1));
+                          handleSeek(pos * effectiveDuration);
                         }}
                         className="relative h-2.5 rounded-full bg-white/10 cursor-pointer group/scrub"
                       >
                         {/* Played Progress Bar */}
                         <div
-                          style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                          style={{
+                            width: `${Math.min(100, Math.max(0, (currentTime / effectiveDuration) * 100))}%`,
+                          }}
                           className="absolute inset-y-0 left-0 rounded-full bg-[#c4a35a] transition-[width] duration-75"
                         />
 
                         {/* Gold Scrubber Thumb */}
                         <div
-                          style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                          style={{
+                            left: `${Math.min(100, Math.max(0, (currentTime / effectiveDuration) * 100))}%`,
+                          }}
                           className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-[#dcc084] shadow-[0_0_10px_rgba(196,163,90,0.6)] group-hover/scrub:scale-125 transition-transform"
                         />
 
                         {/* Chapter / Step Tick Markers on Timeline */}
                         {videoSteps.map((step) => {
-                          const pct = duration > 0 ? Math.min(100, Math.max(0, (step.seconds / duration) * 100)) : 0;
+                          const pct = Math.min(100, Math.max(0, (step.seconds / effectiveDuration) * 100));
                           return (
                             <div
                               key={step.id}
@@ -626,7 +690,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
 
                         {/* Time display */}
                         <span className="font-mono text-xs text-[#cfc9c2] whitespace-nowrap pl-1">
-                          {formatSeconds(currentTime)} / {formatSeconds(duration)}
+                          {formatSeconds(currentTime)} / {formatSeconds(effectiveDuration)}
                         </span>
                       </div>
 
