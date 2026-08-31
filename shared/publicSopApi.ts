@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getSopBySlug, listSops } from "./pm/sopStore.js";
+import { getSopBySlug } from "./pm/sopStore.js";
 
 export default async function handlePublicSop(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET") {
@@ -16,9 +16,8 @@ export default async function handlePublicSop(req: VercelRequest, res: VercelRes
       return res.status(200).json({ sop });
     }
 
-    const category = typeof req.query.category === "string" ? req.query.category.trim() : undefined;
-    const sops = await listSops({ category, onlyPublished: true });
-    return res.status(200).json({ sops });
+    // Public hub list is disabled: individual shareable links only provide access to that specific SOP
+    return res.status(403).json({ error: "Direct SOP slug required" });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || "Failed to load SOP" });
   }

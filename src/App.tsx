@@ -56,10 +56,18 @@ export default function App() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   const adminHost = isAdminHostname(window.location.hostname);
 
-  // Public SOP Library & Step-by-Step Guides: /sop or /sop/{slug}
-  if (path === "/sop" || path.startsWith("/sop/")) {
-    const slug = path.startsWith("/sop/") ? path.replace(/^\/sop\//, "").split("/")[0] : null;
-    return <PublicSopHub initialSlug={slug} />;
+  // Single Shareable SOP Guide Viewer: /sop/{slug}
+  if (path.startsWith("/sop/")) {
+    const slug = path.replace(/^\/sop\//, "").split("/")[0];
+    if (slug) {
+      return <PublicSopHub initialSlug={slug} />;
+    }
+  }
+
+  // Standalone /sop without a slug redirects to homepage
+  if (path === "/sop") {
+    window.location.replace("/");
+    return null;
   }
 
   // Admin subdomain only — never expose inbox on the marketing site.

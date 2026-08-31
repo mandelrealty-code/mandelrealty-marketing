@@ -1,33 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { SopItem } from "../../../shared/pm/sopTypes";
 
 interface PublicSopHubProps {
   initialSlug?: string | null;
 }
 
-const CATEGORY_MAP: Record<string, string> = {
-  All: "All",
-  "Outreach & Leads": "outreach",
-  "Guest Comms": "guest_ops",
-  "Team & Cleaners": "team_comms",
-  Turnover: "turnover",
-  Maintenance: "maintenance",
-  Software: "software",
-};
-
-const CATEGORIES = ["All", "Outreach & Leads", "Guest Comms", "Team & Cleaners", "Turnover", "Software"];
-const ROLES = ["All", "VA", "Cleaner", "Manager"];
-
 export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
-  const [sops, setSops] = useState<SopItem[]>([]);
+  const [sop, setSop] = useState<SopItem | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentSlug, setCurrentSlug] = useState<string | null>(initialSlug || null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCat, setSelectedCat] = useState("All");
-  const [selectedRole, setSelectedRole] = useState("All");
+  const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"doc" | "guide">("doc");
 
-  // Step Progress State (persisted in localStorage)
+  // Step Progress State (persisted in localStorage per SOP)
   const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>({});
   const [guideStepIdx, setGuideStepIdx] = useState(0);
   const [guideFinished, setGuideFinished] = useState(false);
@@ -39,87 +23,53 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
   // Lightbox State
   const [lightboxImg, setLightboxImg] = useState<{ src: string; title: string } | null>(null);
 
-  // Fetch SOPs on mount
+  // Fetch only this individual SOP by slug
   useEffect(() => {
     async function load() {
+      const slug = initialSlug?.trim();
+      if (!slug) {
+        setError("Guide not found");
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
+      setError(null);
       try {
-        const res = await fetch("/api/sop");
+        const res = await fetch(`/api/sop?slug=${encodeURIComponent(slug)}`);
         if (res.ok) {
           const data = await res.json();
-          setSops(data.sops || []);
+          if (data.sop) {
+            setSop(data.sop);
+            try {
+              const key = `mrg_sop_progress_${data.sop.slug}`;
+              const saved = localStorage.getItem(key);
+              if (saved) {
+                setCompletedSteps(JSON.parse(saved));
+              }
+            } catch {}
+          } else {
+            setError("Standard Operating Procedure not found or has been unpublished.");
+          }
         } else {
-          setSops([]);
+          setError("Standard Operating Procedure not found or has been unpublished.");
         }
       } catch {
-        setSops([]);
+        setError("Unable to load procedure. Please check your network connection.");
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, []);
-
-  // Listen for browser popstate
-  useEffect(() => {
-    const handlePopState = () => {
-      const parts = window.location.pathname.split("/").filter(Boolean);
-      if (parts[0] === "sop" && parts[1]) {
-        setCurrentSlug(parts[1]);
-      } else {
-        setCurrentSlug(null);
-      }
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-
-  // Active SOP
-  const activeSop = useMemo(() => {
-    if (!currentSlug) return null;
-    return sops.find((s) => s.slug.toLowerCase() === currentSlug.toLowerCase()) || null;
-  }, [sops, currentSlug]);
-
-  // Load progress from localStorage
-  useEffect(() => {
-    if (activeSop) {
-      try {
-        const key = `mrg_sop_progress_${activeSop.slug}`;
-        const saved = localStorage.getItem(key);
-        if (saved) {
-          setCompletedSteps(JSON.parse(saved));
-        } else {
-          setCompletedSteps({});
-        }
-      } catch {
-        setCompletedSteps({});
-      }
-      setGuideStepIdx(0);
-      setGuideFinished(false);
-    }
-  }, [activeSop?.slug]);
-
-  // Navigate to SOP
-  const handleOpenSop = (slug: string) => {
-    setCurrentSlug(slug);
-    window.history.pushState(null, "", `/sop/${encodeURIComponent(slug)}`);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  // Navigate back to Hub
-  const handleGoHub = () => {
-    setCurrentSlug(null);
-    window.history.pushState(null, "", "/sop");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  }, [initialSlug]);
 
   // Toggle Step Checkbox in Doc View
   const handleToggleStep = (stepId: string) => {
-    if (!activeSop) return;
+    if (!sop) return;
     setCompletedSteps((prev) => {
       const next = { ...prev, [stepId]: !prev[stepId] };
       try {
-        localStorage.setItem(`mrg_sop_progress_${activeSop.slug}`, JSON.stringify(next));
+        localStorage.setItem(`mrg_sop_progress_${sop.slug}`, JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -127,10 +77,10 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
 
   // Reset Progress
   const handleResetProgress = () => {
-    if (!activeSop) return;
+    if (!sop) return;
     setCompletedSteps({});
     try {
-      localStorage.removeItem(`mrg_sop_progress_${activeSop.slug}`);
+      localStorage.removeItem(`mrg_sop_progress_${sop.slug}`);
     } catch {}
     setGuideStepIdx(0);
     setGuideFinished(false);
@@ -155,29 +105,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
     setTimeout(() => setShareToast(null), 2500);
   };
 
-  // Filtered List on Hub
-  const filteredSops = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return sops.filter((sop) => {
-      if (!sop.is_published) return false;
-      const matchCat =
-        selectedCat === "All" ||
-        CATEGORY_MAP[selectedCat] === sop.category ||
-        sop.category === selectedCat;
-      const matchRole =
-        selectedRole === "All" ||
-        sop.target_role.toLowerCase() === selectedRole.toLowerCase();
-      const matchQuery =
-        !q ||
-        sop.title.toLowerCase().includes(q) ||
-        sop.summary.toLowerCase().includes(q) ||
-        sop.category.toLowerCase().includes(q);
-      return matchCat && matchRole && matchQuery;
-    });
-  }, [sops, selectedCat, selectedRole, searchQuery]);
-
-  // Progress Calculations
-  const stepsList = activeSop?.steps || [];
+  const stepsList = sop?.steps || [];
   const completedCount = stepsList.filter((s) => completedSteps[s.id]).length;
   const progressPct = stepsList.length ? Math.round((completedCount / stepsList.length) * 100) : 0;
   const guidePct = stepsList.length
@@ -186,21 +114,18 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#f5f5f5] font-sans antialiased pb-24 selection:bg-[#c4a35a]/30 selection:text-white">
-      {/* Top MRG Branded Sticky Header */}
+      {/* Top MRG Branded Sticky Header (No click-away back to all SOPs) */}
       <header className="sticky top-0 z-30 border-b border-white/8 bg-[#0c0c0c]/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div
-            onClick={handleGoHub}
-            className="flex items-center gap-3 cursor-pointer group select-none"
-          >
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-3 select-none">
             {/* Bowtie Mark */}
             <div className="flex items-center gap-[2px]">
               <div
-                className="h-5 w-3.5 bg-[#c4a35a] transition group-hover:bg-[#dcc084]"
+                className="h-5 w-3.5 bg-[#c4a35a]"
                 style={{ clipPath: "polygon(0 0, 100% 50%, 0 100%)" }}
               />
               <div
-                className="h-5 w-3.5 bg-[#c4a35a] transition group-hover:bg-[#dcc084]"
+                className="h-5 w-3.5 bg-[#c4a35a]"
                 style={{ clipPath: "polygon(100% 0, 0 50%, 100% 100%)" }}
               />
             </div>
@@ -209,190 +134,50 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                 MANDEL REALTY GROUP
               </span>
               <span className="text-[10.5px] text-[#6f6a65] tracking-tight">
-                Standard Operating Procedures &amp; Guides
+                Standard Operating Procedure Guide
               </span>
             </div>
           </div>
 
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="font-mono text-[11px] text-[#4d4a47]">
-              {activeSop ? `/sop/${activeSop.slug}` : "/sop"}
+          <div className="flex items-center gap-2">
+            <span className="rounded bg-[#c4a35a]/10 border border-[#c4a35a]/30 px-2.5 py-1 font-mono text-[10.5px] font-bold uppercase tracking-wider text-[#c4a35a]">
+              Direct SOP Access
             </span>
           </div>
         </div>
       </header>
 
-      {/* VIEW 1: Central SOP Directory Hub */}
-      {!activeSop && (
-        <main className="mx-auto max-w-6xl px-6 pt-10 animate-fade-in">
-          <div className="mb-8">
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#f5f5f5] mb-2">
-              SOP Library
-            </h1>
-            <p className="text-sm sm:text-base text-[#9a9590] max-w-2xl leading-relaxed">
-              Every workflow we run, documented step by step with screenshots and copy-paste scripts.
-              No login needed — open a guide and follow along.
+      {/* Loading state */}
+      {loading && (
+        <div className="mx-auto max-w-5xl px-6 py-24 text-center">
+          <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-[#c4a35a] border-t-transparent mb-3" />
+          <p className="text-xs text-[#9a9590]">Loading procedure...</p>
+        </div>
+      )}
+
+      {/* Error state */}
+      {!loading && error && (
+        <main className="mx-auto max-w-lg px-6 pt-20 text-center animate-fade-in">
+          <div className="rounded-xl border border-white/10 bg-[#121212] p-8 space-y-4 shadow-xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 border border-white/10 text-[#c4a35a] mx-auto text-lg">
+              !
+            </div>
+            <h2 className="text-lg font-bold text-[#f5f5f5]">Guide Unavailable</h2>
+            <p className="text-xs text-[#9a9590] leading-relaxed">
+              {error}
             </p>
           </div>
-
-          {/* Search & Filter Bar */}
-          <div className="mb-6 rounded-lg border border-white/8 bg-[#121212] p-5 space-y-4 shadow-xl">
-            {/* Search Input */}
-            <div className="flex items-center gap-3 rounded-md border border-white/10 bg-[#0a0a0a] px-3.5 h-11">
-              <span className="text-sm text-[#6f6a65]">⌕</span>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search SOPs, templates, keywords..."
-                className="flex-1 bg-transparent text-sm text-[#f5f5f5] outline-none placeholder:text-[#4d4a47]"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="text-xs text-[#6f6a65] hover:text-[#f5f5f5]"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-
-            {/* Filter Pills */}
-            <div className="flex flex-wrap items-center gap-6 pt-1">
-              {/* Role Filter */}
-              <div className="flex items-center gap-2.5">
-                <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6f6a65]">
-                  Role
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {ROLES.map((role) => {
-                    const active = selectedRole === role;
-                    return (
-                      <button
-                        key={role}
-                        type="button"
-                        onClick={() => setSelectedRole(role)}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                          active
-                            ? "bg-[#c4a35a] text-[#0a0a0a] font-bold"
-                            : "border border-white/10 bg-[#141414] text-[#9a9590] hover:text-[#f5f5f5]"
-                        }`}
-                      >
-                        {role}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Category Filter */}
-              <div className="flex items-center gap-2.5">
-                <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6f6a65]">
-                  Category
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {CATEGORIES.map((cat) => {
-                    const active = selectedCat === cat;
-                    return (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setSelectedCat(cat)}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                          active
-                            ? "bg-[#c4a35a] text-[#0a0a0a] font-bold"
-                            : "border border-white/10 bg-[#141414] text-[#9a9590] hover:text-[#f5f5f5]"
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Result Count Header */}
-          <div className="flex items-center justify-between pb-4 text-xs text-[#6f6a65]">
-            <span>Showing {filteredSops.length} guides</span>
-            <span>Sorted by most recently updated</span>
-          </div>
-
-          {/* Cards Grid / Empty State */}
-          {loading ? (
-            <div className="py-20 text-center text-xs text-[#6f6a65]">Loading playbooks...</div>
-          ) : filteredSops.length === 0 ? (
-            <div className="py-20 flex flex-col items-center justify-center text-center rounded-lg border border-white/8 bg-[#121212] p-8">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 border border-white/8 text-[#c4a35a] mb-3">
-                <span className="text-lg">✦</span>
-              </div>
-              <h3 className="text-base font-bold text-[#f5f5f5]">No playbooks published yet</h3>
-              <p className="text-xs text-[#9a9590] mt-1 max-w-sm">
-                Standard operating procedures published by Mandel Realty Group will appear here for the team to view.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredSops.map((sop) => (
-                <div
-                  key={sop.id || sop.slug}
-                  onClick={() => handleOpenSop(sop.slug)}
-                  className="group flex flex-col rounded-lg border border-white/8 bg-[#121212] overflow-hidden hover:border-[#c4a35a]/40 hover:bg-[#161616] transition cursor-pointer shadow-lg"
-                >
-                  <div className="flex-1 p-5 flex flex-col gap-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-base font-bold text-[#f5f5f5] leading-snug group-hover:text-[#c4a35a] transition">
-                        {sop.title}
-                      </h3>
-                      <span className="rounded bg-[#c4a35a]/10 border border-[#c4a35a]/30 px-2 py-0.5 font-mono text-[9.5px] font-bold uppercase tracking-wider text-[#c4a35a] shrink-0">
-                        {sop.category}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-[#9a9590] leading-relaxed line-clamp-3">
-                      {sop.summary}
-                    </p>
-
-                    <div className="mt-auto pt-2 flex items-center gap-2">
-                      <span className="rounded border border-white/10 bg-[#1a1a1a] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#9a9590]">
-                        {sop.target_role.toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-white/8 bg-[#0f0f0f] px-5 py-3 text-xs">
-                    <span className="text-[#6f6a65]">
-                      {sop.steps?.length || 0} steps · {sop.estimated_minutes} min
-                    </span>
-                    <span className="font-bold text-[#c4a35a] group-hover:translate-x-0.5 transition">
-                      Open Guide →
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </main>
       )}
 
-      {/* VIEW 2: Detail SOP View */}
-      {activeSop && (
+      {/* Detail SOP View */}
+      {!loading && sop && (
         <main className="mx-auto max-w-5xl px-6 pt-4 animate-fade-in">
           {/* Action Sub-Header */}
           <div className="sticky top-[61px] z-20 flex flex-wrap items-center justify-between gap-3 border-b border-white/8 bg-[#0a0a0a]/95 backdrop-blur-md py-3.5 mb-6">
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleGoHub}
-                className="rounded border border-white/10 bg-transparent px-3 py-1.5 text-xs font-semibold text-[#9a9590] hover:text-[#f5f5f5] hover:border-white/20 transition"
-              >
-                ← All SOPs
-              </button>
-              <span className="text-xs text-[#4d4a47]">/</span>
-              <span className="text-xs font-semibold text-[#9a9590] truncate max-w-[200px] sm:max-w-sm">
-                {activeSop.title}
+              <span className="text-xs font-semibold text-[#f5f5f5] truncate max-w-[240px] sm:max-w-md">
+                {sop.title}
               </span>
             </div>
 
@@ -447,24 +232,24 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
               <div>
                 <div className="flex items-center gap-2.5 text-xs text-[#6f6a65] mb-3">
                   <span className="rounded bg-[#c4a35a]/10 border border-[#c4a35a]/30 px-2 py-0.5 font-mono text-[10.5px] font-bold uppercase text-[#c4a35a]">
-                    {activeSop.category}
+                    {sop.category}
                   </span>
-                  <span>{activeSop.estimated_minutes} min read</span>
+                  <span>{sop.estimated_minutes} min read</span>
                   <span>·</span>
-                  <span>Role: {activeSop.target_role.toUpperCase()}</span>
+                  <span>Role: {sop.target_role.toUpperCase()}</span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#f5f5f5] leading-tight">
-                  {activeSop.title}
+                  {sop.title}
                 </h1>
               </div>
 
               {/* Objective Box */}
-              {activeSop.summary && (
+              {sop.summary && (
                 <div className="rounded-r-lg border-y border-r border-white/8 border-l-2 border-l-[#c4a35a] bg-[#121212] p-5 space-y-1.5 shadow-md">
                   <span className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-[#c4a35a]">
                     Objective
                   </span>
-                  <p className="text-sm text-[#cfc9c2] leading-relaxed">{activeSop.summary}</p>
+                  <p className="text-sm text-[#cfc9c2] leading-relaxed">{sop.summary}</p>
                 </div>
               )}
 
@@ -567,7 +352,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                                     key={pin.id}
                                     className="flex items-center gap-2.5 rounded-md border border-white/8 bg-[#161616] px-3 py-2 text-xs text-[#cfc9c2]"
                                   >
-                                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#c4a35a] font-mono text-[11px] font-bold text-black">
+                                    <span className="flex h-5 min-w-[20px] px-1 shrink-0 items-center justify-center rounded-full bg-[#c4a35a] font-mono text-[11px] font-bold text-black">
                                       {pin.number}
                                     </span>
                                     <span className="font-medium text-[#f5f5f5]">
@@ -814,7 +599,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                   <div>
                     <h2 className="text-2xl font-bold text-[#f5f5f5]">SOP Completed</h2>
                     <p className="text-sm text-[#9a9590] mt-1">
-                      You completed all {stepsList.length} steps in {activeSop.title}.
+                      You completed all {stepsList.length} steps in {sop.title}.
                     </p>
                   </div>
                   <div className="flex gap-3 pt-2">
@@ -824,16 +609,9 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                         setGuideStepIdx(0);
                         setGuideFinished(false);
                       }}
-                      className="rounded border border-white/10 bg-[#1a1a1a] px-4 py-2 text-xs font-semibold text-[#f5f5f5] hover:bg-[#222]"
+                      className="rounded border border-white/10 bg-[#1a1a1a] px-5 py-2 text-xs font-semibold text-[#f5f5f5] hover:bg-[#222]"
                     >
                       Restart Walkthrough
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleGoHub}
-                      className="rounded bg-[#c4a35a] px-5 py-2 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084]"
-                    >
-                      Browse Other SOPs
                     </button>
                   </div>
                 </div>
