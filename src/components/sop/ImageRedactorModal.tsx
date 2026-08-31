@@ -54,6 +54,7 @@ export function ImageRedactorModal({
   const [activeTool, setActiveTool] = useState<ToolType>("blur");
   const [imageSrc, setImageSrc] = useState<string | null>(initialImageUrl || null);
   const [imageMeta, setImageMeta] = useState<{ width: number; height: number; name: string } | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   
   const [boxes, setBoxes] = useState<SopStepBox[]>([]);
   const [pins, setPins] = useState<SopStepPin[]>([]);
@@ -61,9 +62,36 @@ export function ImageRedactorModal({
   const [history, setHistory] = useState<{ boxes: SopStepBox[]; pins: SopStepPin[] }[]>([]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isDrawing = useRef(false);
   const startPos = useRef<{ x: number; y: number } | null>(null);
   const [currentDragBox, setCurrentDragBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  // Process and load an image File or Blob
+  const loadImageFile = (file: File | Blob, customName?: string) => {
+    if (!file || (file.type && !file.type.startsWith("image/"))) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const res = event.target?.result as string;
+      if (res) {
+        saveHistory();
+        setImageSrc(res);
+        const img = new Image();
+        img.onload = () => {
+          setImageMeta({
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+            name: customName || (file instanceof File ? file.name : "screenshot.png"),
+          });
+        };
+        img.src = res;
+        setBoxes([]);
+        setPins([]);
+        setHiddenIds({});
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Sync initial image
   useEffect(() => {
@@ -115,23 +143,7 @@ export function ImageRedactorModal({
         if (items[i].type.indexOf("image") !== -1) {
           const blob = items[i].getAsFile();
           if (blob) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              const res = event.target?.result as string;
-              if (res) {
-                saveHistory();
-                setImageSrc(res);
-                const img = new Image();
-                img.onload = () => {
-                  setImageMeta({ width: img.naturalWidth, height: img.naturalHeight, name: "pasted-screenshot.png" });
-                };
-                img.src = res;
-                setBoxes([]);
-                setPins([]);
-                setHiddenIds({});
-              }
-            };
-            reader.readAsDataURL(blob);
+            loadImageFile(blob, "pasted-screenshot.png");
           }
           break;
         }
@@ -141,6 +153,37 @@ export function ImageRedactorModal({
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
   }, [isOpen, boxes, pins]);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      loadImageFile(file);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      loadImageFile(file);
+    }
+    // reset input value so re-uploading same file name triggers onChange
+    e.target.value = "";
+  };
 
   const saveHistory = () => {
     setHistory((prev) => [...prev.slice(-20), { boxes: [...boxes], pins: [...pins] }]);
@@ -415,7 +458,22 @@ export function ImageRedactorModal({
         </div>
 
         {/* Main Canvas Viewport */}
-        <div className="relative flex-1 flex items-center justify-center bg-[#0a0a0a] bg-[radial-gradient(#171717_1px,transparent_1px)] [background-size:16px_16px] overflow-hidden p-6 pr-48 select-none">
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`relative flex-1 flex items-center justify-center bg-[#0a0a0a] bg-[radial-gradient(#171717_1px,transparent_1px)] [background-size:16px_16px] overflow-hidden p-6 pr-48 select-none transition ${
+            isDragOver ? "bg-[#14120c] ring-2 ring-inset ring-[#c4a35a]" : ""
+          }`}
+        >
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
           
           {/* Canvas Metadata Pill */}
           {imageMeta && (
@@ -426,6 +484,13 @@ export function ImageRedactorModal({
               <span className="font-mono text-[10px] text-[#6f6a65] bg-[#141414] border border-white/8 px-1.5 py-0.5 rounded">
                 100%
               </span>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="font-mono text-[10px] text-[#c4a35a] bg-[#18150f] border border-[#c4a35a]/30 px-2 py-0.5 rounded hover:bg-[#c4a35a]/20 transition"
+              >
+                ↻ Replace Image
+              </button>
             </div>
           )}
 
@@ -504,13 +569,35 @@ export function ImageRedactorModal({
               })}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/15 p-12 text-center">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 text-center cursor-pointer transition max-w-lg ${
+                isDragOver
+                  ? "border-[#c4a35a] bg-[#c4a35a]/10 scale-[1.02]"
+                  : "border-white/15 hover:border-[#c4a35a]/50 hover:bg-[#141414]"
+              }`}
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#1a1a1a] border border-white/10 text-[#c4a35a] mb-3.5">
+                <span className="text-xl">↑</span>
+              </div>
               <p className="text-base font-semibold text-[#f5f5f5]">
-                Paste a screenshot or upload an image
+                Upload a screenshot or paste from clipboard
               </p>
-              <p className="mt-1 text-xs text-[#9a9590]">
-                Press <kbd className="rounded bg-white/10 px-1.5 py-0.5 text-[#f5f5f5]">⌘V</kbd> to paste directly from your clipboard
+              <p className="mt-1 text-xs text-[#9a9590] max-w-xs">
+                Drag &amp; drop an image file here, click to browse files, or press{" "}
+                <kbd className="rounded bg-white/10 px-1.5 py-0.5 text-[#f5f5f5] font-mono">⌘V</kbd> to paste directly.
               </p>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="mt-4 flex items-center gap-2 rounded-md bg-[#c4a35a] px-4 py-2 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition shadow-md"
+              >
+                <span>📁</span>
+                <span>Browse Files</span>
+              </button>
             </div>
           )}
 
