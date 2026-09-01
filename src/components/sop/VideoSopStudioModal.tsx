@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { SopItem, SopStep, SopCategory, SopTargetRole } from "../../../shared/pm/sopTypes";
 import { storeSopVideoBlob, getSopVideoBlob } from "../../lib/sopVideoStorage";
 import { pmPost } from "../../pages/clients/api";
+import { ImageRedactorModal } from "./ImageRedactorModal";
 
 export function parseTimeToSeconds(t: string | undefined): number {
   if (!t) return 0;
@@ -14,6 +15,15 @@ export function parseTimeToSeconds(t: string | undefined): number {
     return parts[0];
   }
   return 0;
+}
+
+export function formatSeconds(sec: number): string {
+  const valid = Math.max(0, isNaN(sec) ? 0 : sec);
+  const m = Math.floor(valid / 60);
+  const s = Math.floor(valid % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${m}:${s}`;
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -60,8 +70,15 @@ export interface TranscriptLine {
 }
 
 // Modal Stages: 'setup' | 'recording' | 'review' | 'trimming' | 'saved'
-export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, onSaveSop }: VideoSopStudioModalProps) {
+export function VideoSopStudioModal({
+  isOpen,
+  initialSop,
+  onClose,
+  onDeleteSop,
+  onSaveSop,
+}: VideoSopStudioModalProps) {
   const [stage, setStage] = useState<"setup" | "recording" | "review" | "trimming" | "saved">("setup");
+  const [recordMode, setRecordMode] = useState<"snapshots" | "video">("snapshots");
   const [isSaving, setIsSaving] = useState(false);
 
   // SOP Metadata
@@ -69,14 +86,20 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
   const [targetRole, setTargetRole] = useState<SopTargetRole>("va");
   const [category, setCategory] = useState<SopCategory>("turnover");
 
+  // Step List (for Scribe snapshots & Video chapters)
+  const [steps, setSteps] = useState<SopStep[]>([]);
+  const [activeRedactorStepIdx, setActiveRedactorStepIdx] = useState<number | null>(null);
+  const [snapFlash, setSnapFlash] = useState<string | null>(null);
+
   // Recording State & Media
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [micActive, setMicActive] = useState(true);
   const [micLevel, setMicLevel] = useState<number[]>([14, 18, 22, 10, 20, 16]);
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null);
+  const [latestSpokenText, setLatestSpokenText] = useState("");
 
-  // Transcript lines (Empty when no audio detected)
+  // Transcript lines (for full video mode)
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
@@ -95,6 +118,7 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
   const [trimAppliedToast, setTrimAppliedToast] = useState(false);
 
   // Hardware stream refs
+  const liveVideoElementRef = useRef<HTMLVideoElement | null>(null);
   const reviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const trimVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -113,9 +137,16 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
   useEffect(() => {
     if (isOpen) {
       if (initialSop) {
-        setTitle(initialSop.title || "Video SOP Guide");
+        setTitle(initialSop.title || "SOP Guide");
         setTargetRole(initialSop.target_role || "va");
         setCategory(initialSop.category || "turnover");
+        setSteps(initialSop.steps || []);
+
+        const hasVideo =
+          Boolean(initialSop.video_url) ||
+          initialSop.steps?.some((s) => s.media_type === "video_embed" || Boolean(s.video_url));
+
+        setRecordMode(hasVideo ? "video" : "snapshots");
 
         if (initialSop.slug) {
           getSopVideoBlob(initialSop.slug).then((blob) => {
@@ -166,11 +197,14 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
         setStage("review");
       } else {
         setStage("setup");
+        setRecordMode("snapshots");
+        setSteps([]);
         setTranscript([]);
         setTitle("");
         setVideoBlobUrl(null);
         setRecordingSeconds(0);
         recordingSecondsRef.current = 0;
+        setLatestSpokenText("");
       }
     }
   }, [isOpen, initialSop]);
@@ -240,6 +274,7 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
       setTrimStart(0);
       setTrimEnd(102);
       setEditingTranscriptId(null);
+      setActiveRedactorStepIdx(null);
     }
   }, [isOpen]);
 
@@ -255,8 +290,75 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
     }
   }, [volume, videoBlobUrl]);
 
-  // Start real recording (Screen + Microphone with Audio Mixer)
-  const handleStartRecording = async () => {
+  // Frame Capture Function (from active live screen video stream)
+  const captureCurrentScreenFrame = (): string | null => {
+    const videoEl = liveVideoElementRef.current;
+    if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
+      return null;
+    }
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = videoEl.videoWidth;
+      canvas.height = videoEl.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL("image/jpeg", 0.92);
+    } catch (err) {
+      console.warn("Could not capture frame from screen stream:", err);
+      return null;
+    }
+  };
+
+  // Capture Step Snapshot (triggered by HUD button or Spacebar hotkey)
+  const handleCaptureSnapshotStep = () => {
+    const frameDataUrl = captureCurrentScreenFrame();
+    const currentSec = Math.max(0, recordingSecondsRef.current || recordingSeconds);
+    const timeStr = formatSeconds(currentSec);
+
+    const stepNum = steps.length + 1;
+    const spoken = latestSpokenText.trim();
+    const stepTitle = spoken ? (spoken.length > 55 ? `${spoken.slice(0, 52)}...` : spoken) : `Step ${stepNum}: Action`;
+    const stepDesc = spoken || "Click the highlighted area or follow the instruction below.";
+
+    const newStep: SopStep = {
+      id: `step-${Date.now()}-${stepNum}`,
+      step_number: stepNum,
+      title: stepTitle,
+      description: stepDesc,
+      timestamp: timeStr,
+      seconds: currentSec,
+      media_type: "image",
+      image_url: frameDataUrl || undefined,
+      raw_image_url: frameDataUrl || undefined,
+      pro_tip: stepNum === 1 ? "Verify all fields on screen before proceeding." : undefined,
+    };
+
+    setSteps((prev) => [...prev, newStep]);
+    setLatestSpokenText("");
+
+    // Flash feedback toast
+    setSnapFlash(`📸 Step ${stepNum} Captured!`);
+    setTimeout(() => setSnapFlash(null), 2000);
+  };
+
+  // Keyboard shortcut listener during recording (Space / 'S' to snap)
+  useEffect(() => {
+    if (stage !== "recording") return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // If user presses 's' or space outside input, trigger snapshot
+      if (e.key.toLowerCase() === "s" && !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) {
+        e.preventDefault();
+        handleCaptureSnapshotStep();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [stage, steps.length, latestSpokenText]);
+
+  // Start real recording (Screen + Microphone)
+  const handleStartRecording = async (mode: "snapshots" | "video") => {
+    setRecordMode(mode);
     try {
       // 1. Get Screen Stream
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -264,6 +366,12 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
         audio: true,
       });
       screenStreamRef.current = screenStream;
+
+      // Connect to background live video element for instantaneous canvas snapshotting
+      if (liveVideoElementRef.current) {
+        liveVideoElementRef.current.srcObject = screenStream;
+        liveVideoElementRef.current.play().catch(() => {});
+      }
 
       const videoTrack = screenStream.getVideoTracks()[0];
       if (videoTrack) {
@@ -287,7 +395,7 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
         console.warn("Mic permission was denied or not available", err);
       }
 
-      // 3. AUDIO MIXER VIA AudioContext:
+      // 3. Audio mixer via AudioContext
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       audioContextRef.current = audioCtx;
       if (audioCtx.state === "suspended") {
@@ -318,50 +426,52 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
         }
       }
 
-      // 4. Combine Video Track + the ONE Unified Audio Track
-      const mixedAudioTracks = audioDestination.stream.getAudioTracks();
-      const combinedTracks: MediaStreamTrack[] = [
-        ...screenStream.getVideoTracks(),
-        ...mixedAudioTracks,
-      ];
-      const combinedStream = new MediaStream(combinedTracks);
+      // 4. In Video mode, start MediaRecorder
+      if (mode === "video") {
+        const mixedAudioTracks = audioDestination.stream.getAudioTracks();
+        const combinedTracks: MediaStreamTrack[] = [
+          ...screenStream.getVideoTracks(),
+          ...mixedAudioTracks,
+        ];
+        const combinedStream = new MediaStream(combinedTracks);
 
-      // 5. Start MediaRecorder
-      recordedChunksRef.current = [];
-      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-        ? "video/webm;codecs=vp9,opus"
-        : MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
-        ? "video/webm;codecs=vp8,opus"
-        : MediaRecorder.isTypeSupported("video/webm")
-        ? "video/webm"
-        : "video/mp4";
+        recordedChunksRef.current = [];
+        const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+          ? "video/webm;codecs=vp9,opus"
+          : MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+          ? "video/webm;codecs=vp8,opus"
+          : MediaRecorder.isTypeSupported("video/webm")
+          ? "video/webm"
+          : "video/mp4";
 
-      const mediaRecorder = new MediaRecorder(combinedStream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
+        const mediaRecorder = new MediaRecorder(combinedStream, { mimeType });
+        mediaRecorderRef.current = mediaRecorder;
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          recordedChunksRef.current.push(e.data);
-        }
-      };
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            recordedChunksRef.current.push(e.data);
+          }
+        };
 
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
-        recordedBlobRef.current = blob;
-        const url = URL.createObjectURL(blob);
-        setVideoBlobUrl(url);
-      };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+          recordedBlobRef.current = blob;
+          const url = URL.createObjectURL(blob);
+          setVideoBlobUrl(url);
+        };
 
-      mediaRecorder.start(1000);
+        mediaRecorder.start(1000);
+      }
 
-      // 6. Speech Recognition
-      initSpeechRecognition();
+      // 5. Speech Recognition
+      initSpeechRecognition(mode);
 
-      // 7. Transition to Recording Stage
+      // 6. Transition to Recording Stage
       setRecordingSeconds(0);
       recordingSecondsRef.current = 0;
       recordingStartTimeRef.current = Date.now();
       setIsPaused(false);
+      setSteps([]);
       setTranscript([]);
       setStage("recording");
 
@@ -373,12 +483,13 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
         });
       }, 1000);
     } catch {
-      handleStartSimulatedRecording();
+      handleStartSimulatedRecording(mode);
     }
   };
 
   // Fallback demo simulation
-  const handleStartSimulatedRecording = () => {
+  const handleStartSimulatedRecording = (mode: "snapshots" | "video") => {
+    setRecordMode(mode);
     setStage("recording");
     setRecordingSeconds(0);
     recordingSecondsRef.current = 0;
@@ -394,34 +505,37 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
   };
 
   // Speech Recognition
-  const initSpeechRecognition = () => {
+  const initSpeechRecognition = (mode: "snapshots" | "video") => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       try {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
-        recognition.interimResults = false;
+        recognition.interimResults = true;
         recognition.lang = "en-US";
 
         const liveTranscripts: TranscriptLine[] = [];
 
         recognition.onresult = (event: any) => {
           for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              const text = event.results[i][0].transcript.trim();
-              if (text.length > 2) {
-                const nowElapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
-                const currentSec = Math.max(0, recordingSecondsRef.current || nowElapsed);
-                const mins = Math.floor(currentSec / 60);
-                const secs = (currentSec % 60).toString().padStart(2, "0");
-                const timeStr = `${mins}:${secs}`;
+            const currentTxt = event.results[i][0].transcript.trim();
+            setLatestSpokenText(currentTxt);
+
+            if (event.results[i].isFinal && currentTxt.length > 2) {
+              const nowElapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
+              const currentSec = Math.max(0, recordingSecondsRef.current || nowElapsed);
+              const mins = Math.floor(currentSec / 60);
+              const secs = (currentSec % 60).toString().padStart(2, "0");
+              const timeStr = `${mins}:${secs}`;
+
+              if (mode === "video") {
                 liveTranscripts.push({
                   id: `tr-${Date.now()}-${i}`,
                   t: timeStr,
                   seconds: currentSec,
                   who: `Step ${liveTranscripts.length + 1}`,
-                  text,
+                  text: currentTxt,
                 });
                 setTranscript([...liveTranscripts]);
               }
@@ -437,9 +551,10 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
 
   // Toggle Pause
   const handleTogglePause = () => {
-    if (!mediaRecorderRef.current) return;
     if (isPaused) {
-      mediaRecorderRef.current.resume();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "paused") {
+        mediaRecorderRef.current.resume();
+      }
       setIsPaused(false);
       timerRef.current = window.setInterval(() => {
         setRecordingSeconds((prev) => {
@@ -449,7 +564,9 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
         });
       }, 1000);
     } else {
-      mediaRecorderRef.current.pause();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.pause();
+      }
       setIsPaused(true);
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -464,12 +581,27 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
       mediaRecorderRef.current.stop();
     }
     cleanupStreams();
+
     const totalSecs = Math.max(3, recordingSecondsRef.current || recordingSeconds || 17);
     setDuration(totalSecs);
     setTrimStart(0);
     setTrimEnd(totalSecs);
     setPlaybackTime(0);
     setIsPlaying(false);
+
+    // If in snapshot mode and user didn't click capture, provide default step
+    if (recordMode === "snapshots" && steps.length === 0) {
+      setSteps([
+        {
+          id: `step-${Date.now()}-1`,
+          step_number: 1,
+          title: title || "Step 1: First action",
+          description: "Explain clearly what the team member needs to do here.",
+          media_type: "image",
+        },
+      ]);
+    }
+
     setStage("review");
   };
 
@@ -511,16 +643,36 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
     }
   };
 
-  const formatSeconds = (sec: number) => {
-    const valid = Math.max(0, isNaN(sec) ? 0 : sec);
-    const m = Math.floor(valid / 60);
-    const s = Math.floor(valid % 60)
-      .toString()
-      .padStart(2, "0");
-    return `${m}:${s}`;
+  // Step editing functions
+  const handleUpdateStep = (idx: number, patch: Partial<SopStep>) => {
+    setSteps((prev) => {
+      const next = [...prev];
+      if (next[idx]) {
+        next[idx] = { ...next[idx], ...patch };
+      }
+      return next;
+    });
   };
 
-  // Transcript Editing Handlers
+  const handleDeleteStep = (idx: number) => {
+    setSteps((prev) => prev.filter((_, i) => i !== idx).map((s, i) => ({ ...s, step_number: i + 1 })));
+  };
+
+  const handleAddBlankStep = () => {
+    const stepNum = steps.length + 1;
+    setSteps((prev) => [
+      ...prev,
+      {
+        id: `step-${Date.now()}-${stepNum}`,
+        step_number: stepNum,
+        title: `Step ${stepNum}: New action`,
+        description: "Describe the action required.",
+        media_type: "image",
+      },
+    ]);
+  };
+
+  // Transcript Editing Handlers (for video mode)
   const handleStartEditLine = (line: TranscriptLine) => {
     setEditingTranscriptId(line.id);
     setEditingText(line.text);
@@ -580,7 +732,6 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
     setTrimAppliedToast(true);
     setTimeout(() => setTrimAppliedToast(false), 2400);
 
-    // Filter and shift transcript to match the trimmed range
     setTranscript((prev) => {
       const filtered = prev.filter(
         (item) => item.seconds >= trimStart && item.seconds <= trimEnd
@@ -612,11 +763,9 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
       const currentSlug = initialSop?.slug || `sop-${Date.now()}`;
       let finalVideoUrl = videoBlobUrl || undefined;
 
-      // 1. Cache to IndexedDB for instantaneous local access
-      if (recordedBlobRef.current) {
+      // 1. If video was recorded, store & upload
+      if (recordMode === "video" && recordedBlobRef.current) {
         await storeSopVideoBlob(currentSlug, recordedBlobRef.current);
-
-        // 2. Upload to server storage (pm-contracts bucket under sop-videos/)
         try {
           const b64 = await blobToBase64(recordedBlobRef.current);
           if (b64) {
@@ -635,44 +784,49 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
         }
       }
 
-      const formattedSteps: SopStep[] =
-        transcript.length > 0
-          ? transcript.map((line, idx) => ({
-              id: line.id || `sop-step-${Date.now()}-${idx + 1}`,
-              step_number: idx + 1,
-              title: line.text.length > 60 ? `${line.text.slice(0, 58)}...` : line.text,
-              description: line.text,
-              timestamp: line.t,
-              seconds: line.seconds != null ? line.seconds : parseTimeToSeconds(line.t),
-              media_type: "video_embed",
-              video_url: finalVideoUrl,
-              pro_tip:
-                idx === 0
-                  ? "Ensure you verify all fields on this screen before approving."
-                  : undefined,
-            }))
-          : [
-              {
-                id: `sop-step-${Date.now()}-1`,
-                step_number: 1,
-                title: title || "Video SOP Walkthrough",
-                description: "Watch the recorded video walkthrough for step-by-step instructions.",
-                timestamp: "0:00",
-                seconds: 0,
-                media_type: "video_embed",
-                video_url: finalVideoUrl,
-              },
-            ];
+      // 2. Prepare steps array
+      let formattedSteps: SopStep[] = [];
+      if (recordMode === "snapshots" && steps.length > 0) {
+        formattedSteps = steps.map((s, idx) => ({
+          ...s,
+          step_number: idx + 1,
+        }));
+      } else if (recordMode === "video" && transcript.length > 0) {
+        formattedSteps = transcript.map((line, idx) => ({
+          id: line.id || `sop-step-${Date.now()}-${idx + 1}`,
+          step_number: idx + 1,
+          title: line.text.length > 60 ? `${line.text.slice(0, 58)}...` : line.text,
+          description: line.text,
+          timestamp: line.t,
+          seconds: line.seconds != null ? line.seconds : parseTimeToSeconds(line.t),
+          media_type: "video_embed",
+          video_url: finalVideoUrl,
+          pro_tip: idx === 0 ? "Ensure you verify all fields on this screen before approving." : undefined,
+        }));
+      } else {
+        formattedSteps = steps.length > 0 ? steps : [
+          {
+            id: `sop-step-${Date.now()}-1`,
+            step_number: 1,
+            title: title || "Step 1: First action",
+            description: "Follow the visual walkthrough instructions.",
+            media_type: "image",
+          },
+        ];
+      }
 
       await onSaveSop(formattedSteps, {
         id: initialSop?.id,
         slug: currentSlug,
-        title: title || "Video SOP Guide",
+        title: title || (recordMode === "snapshots" ? "Scribe Process Guide" : "Video SOP Guide"),
         category,
         target_role: targetRole,
-        summary: `Video guide for ${targetRole.toUpperCase()} team (Duration: ${formatSeconds(trimEnd - trimStart)}).`,
-        video_url: finalVideoUrl,
-        transcript: transcript.length > 0 ? transcript : undefined,
+        summary:
+          recordMode === "snapshots"
+            ? `Step-by-step Scribe guide for ${targetRole.toUpperCase()} team (${formattedSteps.length} action steps).`
+            : `Video guide for ${targetRole.toUpperCase()} team (Duration: ${formatSeconds(trimEnd - trimStart)}).`,
+        video_url: recordMode === "video" ? finalVideoUrl : undefined,
+        transcript: recordMode === "video" && transcript.length > 0 ? transcript : undefined,
         author: initialSop?.author,
         created_at: initialSop?.created_at,
       });
@@ -702,15 +856,33 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
   if (stage === "recording") {
     return (
       <div className="fixed bottom-6 left-6 z-[99999] font-['Manrope',system-ui,sans-serif] pointer-events-auto select-none animate-fadeIn">
-        <div className="flex items-center gap-3 rounded-full border border-white/15 bg-[#121214]/95 px-4 py-2 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-          <div className="flex items-center gap-2 pr-3 border-r border-white/10">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#cf603c] animate-pulse" />
+        {/* Hidden video element used to capture high-res frame snapshots */}
+        <video
+          ref={liveVideoElementRef}
+          autoPlay
+          muted
+          playsInline
+          className="hidden"
+        />
+
+        {/* Snapshot Capture Notification Flash */}
+        {snapFlash && (
+          <div className="absolute -top-12 left-0 rounded-full bg-[#c4a35a] px-4 py-1.5 text-xs font-bold text-black shadow-2xl animate-bounce">
+            {snapFlash}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2.5 sm:gap-3 rounded-full border border-white/15 bg-[#121214]/95 px-4 py-2 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-xl">
+          {/* Mode Pill & Time */}
+          <div className="flex items-center gap-2 pr-2.5 border-r border-white/10">
+            <span className={`h-2.5 w-2.5 rounded-full ${recordMode === "snapshots" ? "bg-[#c4a35a]" : "bg-[#cf603c] animate-pulse"}`} />
             <span className="font-mono text-xs sm:text-sm font-semibold tracking-wider text-[#f4f2ee]">
               {formatSeconds(recordingSeconds)}
             </span>
           </div>
 
-          <div className="flex items-center gap-[3px] h-[16px] pr-3 border-r border-white/10">
+          {/* Mic Visualizer */}
+          <div className="flex items-center gap-[3px] h-[16px] pr-2.5 border-r border-white/10">
             {micLevel.map((height, i) => (
               <span
                 key={i}
@@ -720,6 +892,21 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
             ))}
           </div>
 
+          {/* Scribe Snapshot Trigger Button */}
+          <button
+            type="button"
+            onClick={handleCaptureSnapshotStep}
+            className="flex items-center gap-1.5 rounded-full bg-[#c4a35a] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-md transition"
+            title="Take screenshot of current screen (Hotkey: Space or S)"
+          >
+            <span>📸</span>
+            <span>Snap Step</span>
+            <span className="rounded bg-black/20 px-1.5 py-0.2 font-mono text-[10px]">
+              {steps.length}
+            </span>
+          </button>
+
+          {/* Pause Button */}
           <button
             type="button"
             onClick={handleTogglePause}
@@ -741,15 +928,17 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
             )}
           </button>
 
+          {/* Finish Button */}
           <button
             type="button"
             onClick={handleFinishRecording}
-            className="flex items-center gap-1.5 rounded-full bg-[#c4a35a] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-md transition"
+            className="flex items-center gap-1.5 rounded-full bg-[#5fbf7d] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#72d392] shadow-md transition"
           >
             <span className="h-2 w-2 rounded-sm bg-[#0a0a0a]" />
-            <span>Finish Recording</span>
+            <span>Finish ({steps.length || 1} {steps.length === 1 ? "Step" : "Steps"})</span>
           </button>
 
+          {/* Cancel */}
           <button
             type="button"
             onClick={() => {
@@ -772,7 +961,7 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
       <div className="relative flex h-[92vh] w-full max-w-[1400px] flex-col rounded-2xl border border-white/10 bg-[#0a0a0a] text-[#f4f2ee] shadow-2xl overflow-hidden">
         
         {/* ======================================================== */}
-        {/* FRAME 1 · SETUP & AUDIO CHECK MODAL                     */}
+        {/* FRAME 1 · SETUP & MODE SELECTION MODAL                  */}
         {/* ======================================================== */}
         {stage === "setup" && (
           <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 relative overflow-y-auto">
@@ -784,23 +973,80 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
               ✕
             </button>
 
-            <div className="w-full max-w-[620px] rounded-[18px] border border-white/12 bg-[#141414] p-8 sm:p-10 shadow-[0_40px_120px_rgba(0,0,0,0.7)] space-y-7">
-              <div className="space-y-2.5">
+            <div className="w-full max-w-[680px] rounded-[20px] border border-white/12 bg-[#141414] p-8 sm:p-10 shadow-[0_40px_120px_rgba(0,0,0,0.7)] space-y-7">
+              <div className="space-y-2">
                 <div className="text-2xl sm:text-[28px] font-bold tracking-tight text-[#f4f2ee] leading-tight">
-                  Record Video SOP
+                  Record SOP Guide
                 </div>
-                <p className="text-sm sm:text-[15px] leading-relaxed text-[#f4f2ee]/50">
-                  Record your screen and speak through the steps. We'll record the video and transcribe your voice for the team.
+                <p className="text-sm leading-relaxed text-[#f4f2ee]/50">
+                  Choose your recording style. Scribe Snapshot mode captures crisp annotated screenshots on each click, while Video mode records continuous screen &amp; voice.
                 </p>
               </div>
 
-              {/* Active Mic Pill with Bouncing Green Bars */}
-              <div className="inline-flex items-center gap-3.5 rounded-full border border-white/9 bg-[#1a1a1a] px-4 py-2.5">
+              {/* Mode Switcher Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Mode A: Scribe Snapshot Mode */}
+                <div
+                  onClick={() => setRecordMode("snapshots")}
+                  className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between gap-3 ${
+                    recordMode === "snapshots"
+                      ? "border-[#c4a35a] bg-[#1c1913] shadow-[0_0_20px_rgba(196,163,90,0.15)] ring-1 ring-[#c4a35a]/40"
+                      : "border-white/10 bg-[#0f0f0f] hover:border-white/20"
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#dcc084]">
+                        <span>📸</span> Scribe Snapshot Mode
+                      </span>
+                      <span className="rounded bg-[#5fbf7d]/15 border border-[#5fbf7d]/30 px-2 py-0.5 font-mono text-[9.5px] font-bold text-[#5fbf7d]">
+                        ZERO AI COST
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#cfc9c2] leading-relaxed">
+                      Snap keyframe screenshots as you work. Add numbered click pins, spotlight boxes, and blur sensitive data after.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-semibold text-[#c4a35a]">
+                    Best for: Quick VA playbooks, checklists, and click guides →
+                  </span>
+                </div>
+
+                {/* Mode B: Full Video Mode */}
+                <div
+                  onClick={() => setRecordMode("video")}
+                  className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between gap-3 ${
+                    recordMode === "video"
+                      ? "border-[#c4a35a] bg-[#1c1913] shadow-[0_0_20px_rgba(196,163,90,0.15)] ring-1 ring-[#c4a35a]/40"
+                      : "border-white/10 bg-[#0f0f0f] hover:border-white/20"
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#dcc084]">
+                        <span>🎥</span> Video Walkthrough
+                      </span>
+                      <span className="rounded bg-white/10 px-2 py-0.5 font-mono text-[9.5px] text-[#9a9590]">
+                        1080P HD
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#cfc9c2] leading-relaxed">
+                      Record continuous video with speech-to-text transcription and an interactive chapter scrubber.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-semibold text-[#c4a35a]">
+                    Best for: In-depth video trainings &amp; voiceovers →
+                  </span>
+                </div>
+              </div>
+
+              {/* Active Mic Pill */}
+              <div className="inline-flex items-center gap-3.5 rounded-full border border-white/9 bg-[#1a1a1a] px-4 py-2">
                 <span className="h-2 w-2 rounded-full bg-[#5fbf7d]" />
-                <span className="text-xs sm:text-[13px] font-medium text-[#f4f2ee]/75">
-                  Mic: Microphone <span className="text-[#5fbf7d] font-semibold">({micActive ? "Active" : "Ready"})</span>
+                <span className="text-xs font-medium text-[#f4f2ee]/75">
+                  Mic: <span className="text-[#5fbf7d] font-semibold">({micActive ? "Active" : "Ready"})</span>
                 </span>
-                <div className="flex items-end gap-[3px] h-[18px]">
+                <div className="flex items-end gap-[3px] h-[16px]">
                   {micLevel.map((height, i) => (
                     <span
                       key={i}
@@ -811,8 +1057,9 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                 </div>
               </div>
 
-              <div className="space-y-5">
-                <div className="space-y-2">
+              {/* Form Metadata */}
+              <div className="space-y-4">
+                <div className="space-y-1.5">
                   <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
                     SOP Title
                   </label>
@@ -825,65 +1072,54 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
-                    Target Role
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {(
-                      [
-                        { id: "va", label: "VA Team" },
-                        { id: "cleaner", label: "Cleaner" },
-                        { id: "manager", label: "Operations Manager" },
-                        { id: "all", label: "Everyone" },
-                      ] as const
-                    ).map((role) => {
-                      const isSelected = targetRole === role.id;
-                      return (
-                        <button
-                          key={role.id}
-                          type="button"
-                          onClick={() => setTargetRole(role.id)}
-                          className={`rounded-lg py-3 px-2 text-center text-xs sm:text-[13.5px] font-semibold transition ${
-                            isSelected
-                              ? "border border-[#c4a35a]/45 bg-[#c4a35a]/12 text-[#dcc084]"
-                              : "border border-white/8 bg-[#0e0e0e] text-[#f4f2ee]/50 hover:text-[#f4f2ee]"
-                          }`}
-                        >
-                          {role.label}
-                        </button>
-                      );
-                    })}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
+                      Target Role
+                    </label>
+                    <select
+                      value={targetRole}
+                      onChange={(e) => setTargetRole(e.target.value as SopTargetRole)}
+                      className="w-full rounded-lg border border-white/8 bg-[#0e0e0e] px-3.5 py-2.5 text-xs sm:text-[13px] text-[#f4f2ee] outline-none"
+                    >
+                      <option value="va">VA Team</option>
+                      <option value="cleaner">Cleaner</option>
+                      <option value="manager">Operations Manager</option>
+                      <option value="all">Everyone</option>
+                    </select>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
-                    SOP Category
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value as SopCategory)}
-                    className="w-full rounded-lg border border-white/8 bg-[#0e0e0e] px-3.5 py-2.5 text-xs sm:text-[13px] text-[#f4f2ee] outline-none"
-                  >
-                    <option value="turnover">Turnovers & Cleaning</option>
-                    <option value="guest_ops">Guest Comms & Inquiries</option>
-                    <option value="outreach">Outreach & Leads</option>
-                    <option value="team_comms">Team & Cleaner Comms</option>
-                    <option value="software">Software & Settings</option>
-                    <option value="maintenance">Maintenance & Repairs</option>
-                  </select>
+                  <div className="space-y-1.5">
+                    <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
+                      SOP Category
+                    </label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value as SopCategory)}
+                      className="w-full rounded-lg border border-white/8 bg-[#0e0e0e] px-3.5 py-2.5 text-xs sm:text-[13px] text-[#f4f2ee] outline-none"
+                    >
+                      <option value="turnover">Turnovers &amp; Cleaning</option>
+                      <option value="guest_ops">Guest Comms &amp; Inquiries</option>
+                      <option value="outreach">Outreach &amp; Leads</option>
+                      <option value="team_comms">Team &amp; Cleaner Comms</option>
+                      <option value="software">Software &amp; Settings</option>
+                      <option value="maintenance">Maintenance &amp; Repairs</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
+              {/* Start Button */}
               <div className="flex items-center gap-4 pt-2">
                 <button
                   type="button"
-                  onClick={handleStartRecording}
-                  className="flex-1 flex items-center justify-center gap-2.5 rounded-xl bg-[#c4a35a] py-4 text-sm sm:text-[15px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_12px_40px_rgba(196,163,90,0.3)] transition"
+                  onClick={() => handleStartRecording(recordMode)}
+                  className="flex-1 flex items-center justify-center gap-2.5 rounded-xl bg-[#c4a35a] py-3.5 text-sm sm:text-[15px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_12px_40px_rgba(196,163,90,0.3)] transition"
                 >
                   <span className="h-2.5 w-2.5 rounded-full bg-[#cf603c] animate-pulse" />
-                  <span>Start Recording (Screen + Mic)</span>
+                  <span>
+                    {recordMode === "snapshots" ? "Start Scribe Snapshot Capture" : "Start Video Recording"}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -898,14 +1134,16 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
         )}
 
         {/* ======================================================== */}
-        {/* FRAME 3 · REVIEW & PLAYBACK STUDIO                      */}
+        {/* FRAME 3 · REVIEW & SCRIBE REDACTOR STUDIO               */}
         {/* ======================================================== */}
         {stage === "review" && (
           <div className="flex-1 flex flex-col min-h-0 bg-[#0a0a0a]">
             {/* Top Bar Header */}
-            <div className="h-16 sm:h-[78px] flex items-center justify-between gap-4 px-6 bg-[#0e0e0e] border-b border-white/8 shrink-0">
+            <div className="h-16 sm:h-[72px] flex items-center justify-between gap-4 px-6 bg-[#0e0e0e] border-b border-white/8 shrink-0">
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="h-6 w-6 rounded-md bg-[#c4a35a] shrink-0" />
+                <div className="h-6 w-6 rounded-md bg-[#c4a35a] flex items-center justify-center text-xs font-bold text-black shrink-0">
+                  {recordMode === "snapshots" ? "📸" : "🎥"}
+                </div>
                 <input
                   type="text"
                   value={title}
@@ -918,7 +1156,7 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
               <div className="flex items-center gap-3">
                 {trimAppliedToast && (
                   <span className="rounded-md bg-[#4ea882]/20 border border-[#4ea882]/40 px-3 py-1.5 text-xs font-semibold text-[#4ea882] animate-fadeIn">
-                    ✓ Trim Range Applied ({formatSeconds(trimStart)} – {formatSeconds(trimEnd)})
+                    ✓ Trim Range Applied
                   </span>
                 )}
 
@@ -927,9 +1165,9 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                   onChange={(e) => setCategory(e.target.value as SopCategory)}
                   className="rounded-lg border border-white/8 bg-[#141414] px-3 py-2 text-xs text-[#f4f2ee]/70 outline-none"
                 >
-                  <option value="turnover">Turnovers & Cleaning</option>
+                  <option value="turnover">Turnovers &amp; Cleaning</option>
                   <option value="guest_ops">Guest Comms</option>
-                  <option value="software">Software & Settings</option>
+                  <option value="software">Software &amp; Settings</option>
                   <option value="team_comms">Team Comms</option>
                   <option value="outreach">Outreach</option>
                   <option value="maintenance">Maintenance</option>
@@ -951,7 +1189,7 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                   disabled={isSaving}
                   className="rounded-lg bg-[#c4a35a] px-5 py-2.5 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_10px_32px_rgba(196,163,90,0.3)] transition shrink-0 disabled:opacity-50"
                 >
-                  {isSaving ? "Saving to Playbook..." : initialSop ? "Save Changes ✓" : "Save Video & Guide to Playbook ✓"}
+                  {isSaving ? "Saving to Playbook..." : initialSop ? "Save Changes ✓" : "Save Guide to Playbook ✓"}
                 </button>
 
                 <button
@@ -965,363 +1203,568 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
               </div>
             </div>
 
-            {/* Split Review Content */}
-            <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-y-auto lg:overflow-hidden">
-              {/* Left Column: Video Player & Controls */}
-              <div className="w-full lg:w-[620px] xl:w-[740px] p-6 border-b lg:border-b-0 lg:border-r border-white/7 flex flex-col gap-4 overflow-y-auto shrink-0">
-                {/* Video Player Box */}
-                <div className="relative h-[290px] sm:h-[380px] rounded-xl border border-white/9 bg-[#141414] overflow-hidden flex items-center justify-center group shadow-xl">
-                  {videoBlobUrl ? (
-                    <video
-                      ref={reviewVideoRef}
-                      src={videoBlobUrl}
-                      className="w-full h-full object-contain cursor-pointer"
-                      onClick={handleTogglePlay}
-                      onTimeUpdate={(e) => {
-                        const cur = e.currentTarget.currentTime;
-                        setPlaybackTime(cur);
-                        if (cur >= trimEnd) {
-                          if (reviewVideoRef.current) {
-                            reviewVideoRef.current.pause();
-                            reviewVideoRef.current.currentTime = trimStart;
-                          }
-                          setIsPlaying(false);
-                          setPlaybackTime(trimStart);
-                        }
-                      }}
-                      onLoadedMetadata={(e) => {
-                        const d = e.currentTarget.duration;
-                        if (d && !isNaN(d) && isFinite(d) && d > 0) {
-                          setDuration(d);
-                          setTrimEnd(d);
-                        } else if (recordingSeconds > 0) {
-                          setDuration(recordingSeconds);
-                          setTrimEnd(recordingSeconds);
-                        }
-                        if (reviewVideoRef.current) {
-                          reviewVideoRef.current.volume = volume;
-                          reviewVideoRef.current.muted = false;
-                        }
-                      }}
-                      onEnded={() => {
-                        setIsPlaying(false);
-                        if (reviewVideoRef.current) {
-                          reviewVideoRef.current.currentTime = trimStart;
-                        }
-                        setPlaybackTime(trimStart);
-                      }}
-                      playsInline
-                    />
-                  ) : (
-                    <div className="relative flex flex-col items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={handleTogglePlay}
-                        className="flex h-16 w-16 items-center justify-center rounded-full border border-[#c4a35a]/50 bg-[#c4a35a]/15 text-[#dcc084] hover:scale-105 transition"
-                      >
-                        <div className="ml-1 w-0 h-0 border-y-[10px] border-y-transparent border-l-[16px] border-l-[#dcc084]" />
-                      </button>
-                      <span className="font-mono text-[11px] uppercase tracking-widest text-[#f4f2ee]/35">
-                        screen recording · playback ready
-                      </span>
+            {/* ======================================================== */}
+            {/* SUB-VIEW A: SCRIBE SNAPSHOTS & REDACTION REVIEW          */}
+            {/* ======================================================== */}
+            {recordMode === "snapshots" ? (
+              <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
+                {/* Steps List Main Column */}
+                <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <h3 className="text-base font-bold text-[#f4f2ee] flex items-center gap-2">
+                        <span>Captured Step Snapshots</span>
+                        <span className="rounded bg-[#c4a35a]/20 border border-[#c4a35a]/40 px-2 py-0.5 text-xs font-mono text-[#dcc084]">
+                          {steps.length} {steps.length === 1 ? "Step" : "Steps"}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-[#f4f2ee]/50">
+                        Click "Redact &amp; Annotate" on any screenshot to add click pins, spotlight boxes, or blur private customer info.
+                      </p>
                     </div>
-                  )}
 
-                  {!isPlaying && videoBlobUrl && (
-                    <div
-                      onClick={handleTogglePlay}
-                      className="absolute inset-0 bg-black/30 flex items-center justify-center cursor-pointer group-hover:bg-black/20 transition"
+                    <button
+                      type="button"
+                      onClick={handleAddBlankStep}
+                      className="rounded-lg border border-[#c4a35a]/40 bg-[#1a1712] px-3.5 py-2 text-xs font-bold text-[#dcc084] hover:bg-[#c4a35a]/20 transition"
                     >
-                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#c4a35a] text-[#0a0a0a] shadow-2xl group-hover:scale-105 transition">
-                        <div className="ml-1 w-0 h-0 border-y-[10px] border-y-transparent border-l-[16px] border-l-[#0a0a0a]" />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Timeline Scrubber & Player Bar */}
-                <div className="rounded-xl border border-white/8 bg-[#141414] p-4 space-y-3.5">
-                  <div className="space-y-1">
-                    <div
-                      onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const pos = (e.clientX - rect.left) / rect.width;
-                        handleSeek(pos * duration);
-                      }}
-                      className="relative h-2 rounded-full bg-white/9 cursor-pointer"
-                    >
-                      {/* Active played width */}
-                      <div
-                        style={{ width: `${(playbackTime / duration) * 100}%` }}
-                        className="absolute inset-y-0 left-0 rounded-full bg-[#c4a35a]"
-                      />
-                      {/* Gold Scrubber Thumb */}
-                      <div
-                        style={{ left: `${(playbackTime / duration) * 100}%` }}
-                        className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full bg-[#dcc084] shadow-[0_0_0_4px_rgba(196,163,90,0.3)]"
-                      />
-
-                      {/* Step markers from transcript */}
-                      {transcript.map((item) => {
-                        const pct = Math.min(100, Math.max(0, (item.seconds / duration) * 100));
-                        return (
-                          <div
-                            key={item.id}
-                            style={{ left: `${pct}%` }}
-                            className="absolute -top-1 h-4 w-[2px] bg-[#c4a35a]/80"
-                            title={`${item.t}: ${item.text}`}
-                          />
-                        );
-                      })}
-                    </div>
+                      + Add Step
+                    </button>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={handleTogglePlay}
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-[#c4a35a] text-[#0a0a0a] hover:bg-[#dcc084] transition"
+                  {/* Step Cards List */}
+                  <div className="space-y-5">
+                    {steps.map((step, idx) => (
+                      <div
+                        key={step.id || idx}
+                        className="rounded-xl border border-white/9 bg-[#141414] p-5 space-y-4 shadow-lg hover:border-white/15 transition"
                       >
-                        {isPlaying ? (
-                          <div className="flex gap-1">
-                            <span className="w-1 h-3.5 bg-black rounded-sm" />
-                            <span className="w-1 h-3.5 bg-black rounded-sm" />
+                        {/* Top Step Row: Number + Title + Delete */}
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#c4a35a] font-mono text-xs font-bold text-black shrink-0">
+                              0{idx + 1}
+                            </span>
+                            <input
+                              type="text"
+                              value={step.title}
+                              onChange={(e) => handleUpdateStep(idx, { title: e.target.value })}
+                              placeholder={`Step ${idx + 1} Title`}
+                              className="flex-1 min-w-0 rounded-md border border-white/8 bg-[#0a0a0a] px-3 py-1.5 text-sm font-semibold text-[#f4f2ee] outline-none focus:border-[#c4a35a]"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {step.timestamp && (
+                              <span className="font-mono text-xs text-[#dcc084] bg-[#c4a35a]/10 px-2 py-1 rounded border border-[#c4a35a]/25">
+                                {step.timestamp}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStep(idx)}
+                              className="text-xs text-[#cf603c]/70 hover:text-[#cf603c] p-1"
+                              title="Delete step"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Description */}
+                        <textarea
+                          rows={2}
+                          value={step.description}
+                          onChange={(e) => handleUpdateStep(idx, { description: e.target.value })}
+                          placeholder="Describe what the team member should do in this step..."
+                          className="w-full rounded-md border border-white/8 bg-[#0a0a0a] p-3 text-xs sm:text-[13px] leading-relaxed text-[#f4f2ee] outline-none focus:border-[#c4a35a]"
+                        />
+
+                        {/* Screenshot Box & Redact Toolbar */}
+                        {step.image_url ? (
+                          <div className="space-y-2.5">
+                            <div className="relative rounded-lg border border-white/10 bg-[#0e0e0e] overflow-hidden group max-h-[380px] flex items-center justify-center">
+                              <img
+                                src={step.image_url}
+                                alt={step.title}
+                                className="w-full h-auto max-h-[360px] object-contain rounded"
+                              />
+
+                              {/* Hover Redact Overlay */}
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 backdrop-blur-[2px] flex items-center justify-center gap-3 transition">
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveRedactorStepIdx(idx)}
+                                  className="rounded-lg bg-[#c4a35a] px-4 py-2 text-xs font-bold text-black shadow-xl hover:scale-105 transition"
+                                >
+                                  ✏️ Redact &amp; Add Click Pins
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                              <div className="flex items-center gap-2 text-[#f4f2ee]/50">
+                                {step.pins && step.pins.length > 0 && (
+                                  <span className="rounded bg-[#c4a35a]/15 border border-[#c4a35a]/30 px-2 py-0.5 text-[#dcc084] font-medium">
+                                    {step.pins.length} Click {step.pins.length === 1 ? "Pin" : "Pins"} Added
+                                  </span>
+                                )}
+                                {step.boxes && step.boxes.length > 0 && (
+                                  <span className="rounded bg-white/10 px-2 py-0.5 text-[#cfc9c2]">
+                                    {step.boxes.length} Redaction/Spotlight {step.boxes.length === 1 ? "Box" : "Boxes"}
+                                  </span>
+                                )}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setActiveRedactorStepIdx(idx)}
+                                className="rounded border border-[#c4a35a]/40 bg-[#1a1712] px-3 py-1.5 font-semibold text-[#dcc084] hover:bg-[#c4a35a]/20 transition"
+                              >
+                                ✏️ Open Image Redactor
+                              </button>
+                            </div>
                           </div>
                         ) : (
-                          <div className="ml-0.5 w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-black" />
+                          <div className="rounded-lg border border-dashed border-white/15 p-5 text-center space-y-2 bg-[#0e0e0e]">
+                            <p className="text-xs text-[#f4f2ee]/50">No screenshot attached for this step.</p>
+                            <label className="inline-block rounded border border-white/10 bg-[#161616] px-3 py-1.5 text-xs font-semibold text-[#cfc9c2] hover:text-white cursor-pointer">
+                              Upload Screenshot
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = (ev) => {
+                                      const url = ev.target?.result as string;
+                                      handleUpdateStep(idx, { image_url: url, raw_image_url: url });
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
                         )}
-                      </button>
-                      <span className="font-mono text-xs text-[#f4f2ee]/60">
-                        {formatSeconds(playbackTime)} / {formatSeconds(duration)}
-                      </span>
-                    </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-[#f4f2ee]/40">Volume</span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          value={volume}
-                          onChange={(e) => {
-                            const v = parseFloat(e.target.value);
-                            setVolume(v);
-                            if (reviewVideoRef.current) reviewVideoRef.current.volume = v;
-                          }}
-                          className="w-20 accent-[#c4a35a]"
-                        />
+                        {/* Pro tip / Warning inputs */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <input
+                            type="text"
+                            value={step.pro_tip || ""}
+                            onChange={(e) => handleUpdateStep(idx, { pro_tip: e.target.value || undefined })}
+                            placeholder="💡 Pro Tip (Optional)"
+                            className="rounded border border-white/8 bg-[#0a0a0a] px-3 py-2 text-xs text-[#cfc9c2] outline-none focus:border-[#c4a35a]"
+                          />
+                          <input
+                            type="text"
+                            value={step.warning || ""}
+                            onChange={(e) => handleUpdateStep(idx, { warning: e.target.value || undefined })}
+                            placeholder="⚠️ Warning / Careful (Optional)"
+                            className="rounded border border-white/8 bg-[#0a0a0a] px-3 py-2 text-xs text-[#cfc9c2] outline-none focus:border-[#cf603c]"
+                          />
+                        </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
 
-                {/* Video Actions: Trim Recording, Re-record, Download */}
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setStage("trimming")}
-                    className="flex items-center gap-2 rounded-lg border border-[#c4a35a]/50 bg-[#1a1712] px-4 py-2.5 text-xs font-bold text-[#dcc084] hover:bg-[#c4a35a]/20 transition"
-                  >
-                    <span>✂</span>
-                    <span>Trim Recording</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStage("setup");
-                      setVideoBlobUrl(null);
-                    }}
-                    className="rounded-lg border border-white/10 bg-[#141414] px-4 py-2.5 text-xs font-semibold text-[#f4f2ee]/70 hover:border-[#cf603c]/50 hover:text-[#e8a48a] transition"
-                  >
-                    Re-record Video
-                  </button>
-
-                  {videoBlobUrl && (
-                    <a
-                      href={videoBlobUrl}
-                      download={`${title.replace(/\s+/g, "_")}.webm`}
-                      className="rounded-lg border border-white/10 bg-[#141414] px-4 py-2.5 text-xs font-semibold text-[#f4f2ee]/70 hover:border-[#c4a35a]/50 hover:text-[#dcc084] transition"
-                    >
-                      Download MP4 / WebM
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              {/* Right Column: Interactive Editable Voice Transcript */}
-              <div className="flex-1 p-6 flex flex-col gap-4 overflow-y-auto">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <h4 className="text-[15px] font-bold tracking-tight text-[#f4f2ee]">Voice Transcript</h4>
-                    <p className="text-xs text-[#f4f2ee]/45">
-                      {transcript.length > 0
-                        ? "Click a timestamp to jump. Click any line to rewrite it."
-                        : "No spoken audio was detected on this recording."}
+                {/* Right Metadata / Quick Action Sidebar */}
+                <div className="w-full lg:w-[320px] p-6 border-t lg:border-t-0 lg:border-l border-white/8 space-y-6 shrink-0 bg-[#0c0c0e]">
+                  <div className="space-y-2">
+                    <span className="font-mono text-[10.5px] uppercase tracking-[0.2em] text-[#c4a35a]">
+                      Scribe Summary
+                    </span>
+                    <h4 className="text-sm font-bold text-[#f4f2ee]">Step-by-Step Playbook</h4>
+                    <p className="text-xs text-[#f4f2ee]/50 leading-relaxed">
+                      This guide will be published with annotated screenshots, zoomable lightboxes, and click pins for your team.
                     </p>
                   </div>
-                  {transcript.length > 0 ? (
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-[#c4a35a]">
-                      auto · transcribed
-                    </span>
-                  ) : (
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-[#f4f2ee]/40 rounded bg-white/5 px-2 py-0.5 border border-white/10">
-                      no audio found
-                    </span>
-                  )}
+
+                  <div className="space-y-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStage("setup");
+                        setSteps([]);
+                      }}
+                      className="w-full rounded-lg border border-white/10 bg-[#141414] py-2.5 text-xs font-semibold text-[#f4f2ee]/70 hover:text-white transition"
+                    >
+                      Record New Process
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSaveToPlaybook}
+                      disabled={isSaving}
+                      className="w-full rounded-lg bg-[#c4a35a] py-3 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-lg transition disabled:opacity-50"
+                    >
+                      {isSaving ? "Saving..." : "Publish to Playbook ✓"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* ======================================================== */
+              /* SUB-VIEW B: FULL VIDEO PLAYBACK & TRANSCRIPT STUDIO     */
+              /* ======================================================== */
+              <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-y-auto lg:overflow-hidden">
+                {/* Left Column: Video Player & Controls */}
+                <div className="w-full lg:w-[620px] xl:w-[740px] p-6 border-b lg:border-b-0 lg:border-r border-white/7 flex flex-col gap-4 overflow-y-auto shrink-0">
+                  {/* Video Player Box */}
+                  <div className="relative h-[290px] sm:h-[380px] rounded-xl border border-white/9 bg-[#141414] overflow-hidden flex items-center justify-center group shadow-xl">
+                    {videoBlobUrl ? (
+                      <video
+                        ref={reviewVideoRef}
+                        src={videoBlobUrl}
+                        className="w-full h-full object-contain cursor-pointer"
+                        onClick={handleTogglePlay}
+                        onTimeUpdate={(e) => {
+                          const cur = e.currentTarget.currentTime;
+                          setPlaybackTime(cur);
+                          if (cur >= trimEnd) {
+                            if (reviewVideoRef.current) {
+                              reviewVideoRef.current.pause();
+                              reviewVideoRef.current.currentTime = trimStart;
+                            }
+                            setIsPlaying(false);
+                            setPlaybackTime(trimStart);
+                          }
+                        }}
+                        onLoadedMetadata={(e) => {
+                          const d = e.currentTarget.duration;
+                          if (d && !isNaN(d) && isFinite(d) && d > 0) {
+                            setDuration(d);
+                            setTrimEnd(d);
+                          } else if (recordingSeconds > 0) {
+                            setDuration(recordingSeconds);
+                            setTrimEnd(recordingSeconds);
+                          }
+                          if (reviewVideoRef.current) {
+                            reviewVideoRef.current.volume = volume;
+                            reviewVideoRef.current.muted = false;
+                          }
+                        }}
+                        onEnded={() => {
+                          setIsPlaying(false);
+                          if (reviewVideoRef.current) {
+                            reviewVideoRef.current.currentTime = trimStart;
+                          }
+                          setPlaybackTime(trimStart);
+                        }}
+                        playsInline
+                      />
+                    ) : (
+                      <div className="relative flex flex-col items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleTogglePlay}
+                          className="flex h-16 w-16 items-center justify-center rounded-full border border-[#c4a35a]/50 bg-[#c4a35a]/15 text-[#dcc084] hover:scale-105 transition"
+                        >
+                          <div className="ml-1 w-0 h-0 border-y-[10px] border-y-transparent border-l-[16px] border-l-[#dcc084]" />
+                        </button>
+                        <span className="font-mono text-[11px] uppercase tracking-widest text-[#f4f2ee]/35">
+                          screen recording · playback ready
+                        </span>
+                      </div>
+                    )}
+
+                    {!isPlaying && videoBlobUrl && (
+                      <div
+                        onClick={handleTogglePlay}
+                        className="absolute inset-0 bg-black/30 flex items-center justify-center cursor-pointer group-hover:bg-black/20 transition"
+                      >
+                        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#c4a35a] text-[#0a0a0a] shadow-2xl group-hover:scale-105 transition">
+                          <div className="ml-1 w-0 h-0 border-y-[10px] border-y-transparent border-l-[16px] border-l-[#0a0a0a]" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Timeline Scrubber & Player Bar */}
+                  <div className="rounded-xl border border-white/8 bg-[#141414] p-4 space-y-3.5">
+                    <div className="space-y-1">
+                      <div
+                        onClick={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const pos = (e.clientX - rect.left) / rect.width;
+                          handleSeek(pos * duration);
+                        }}
+                        className="relative h-2 rounded-full bg-white/9 cursor-pointer"
+                      >
+                        <div
+                          style={{ width: `${(playbackTime / duration) * 100}%` }}
+                          className="absolute inset-y-0 left-0 rounded-full bg-[#c4a35a]"
+                        />
+                        <div
+                          style={{ left: `${(playbackTime / duration) * 100}%` }}
+                          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full bg-[#dcc084] shadow-[0_0_0_4px_rgba(196,163,90,0.3)]"
+                        />
+
+                        {transcript.map((item) => {
+                          const pct = Math.min(100, Math.max(0, (item.seconds / duration) * 100));
+                          return (
+                            <div
+                              key={item.id}
+                              style={{ left: `${pct}%` }}
+                              className="absolute -top-1 h-4 w-[2px] bg-[#c4a35a]/80"
+                              title={`${item.t}: ${item.text}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleTogglePlay}
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#c4a35a] text-[#0a0a0a] hover:bg-[#dcc084] transition"
+                        >
+                          {isPlaying ? (
+                            <div className="flex gap-1">
+                              <span className="w-1 h-3.5 bg-black rounded-sm" />
+                              <span className="w-1 h-3.5 bg-black rounded-sm" />
+                            </div>
+                          ) : (
+                            <div className="ml-0.5 w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-black" />
+                          )}
+                        </button>
+                        <span className="font-mono text-xs text-[#f4f2ee]/60">
+                          {formatSeconds(playbackTime)} / {formatSeconds(duration)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[#f4f2ee]/40">Volume</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={volume}
+                            onChange={(e) => {
+                              const v = parseFloat(e.target.value);
+                              setVolume(v);
+                              if (reviewVideoRef.current) reviewVideoRef.current.volume = v;
+                            }}
+                            className="w-20 accent-[#c4a35a]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Video Actions */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setStage("trimming")}
+                      className="flex items-center gap-2 rounded-lg border border-[#c4a35a]/50 bg-[#1a1712] px-4 py-2.5 text-xs font-bold text-[#dcc084] hover:bg-[#c4a35a]/20 transition"
+                    >
+                      <span>✂</span>
+                      <span>Trim Recording</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStage("setup");
+                        setVideoBlobUrl(null);
+                      }}
+                      className="rounded-lg border border-white/10 bg-[#141414] px-4 py-2.5 text-xs font-semibold text-[#f4f2ee]/70 hover:border-[#cf603c]/50 hover:text-[#e8a48a] transition"
+                    >
+                      Re-record Video
+                    </button>
+
+                    {videoBlobUrl && (
+                      <a
+                        href={videoBlobUrl}
+                        download={`${title.replace(/\s+/g, "_")}.webm`}
+                        className="rounded-lg border border-white/10 bg-[#141414] px-4 py-2.5 text-xs font-semibold text-[#f4f2ee]/70 hover:border-[#c4a35a]/50 hover:text-[#dcc084] transition"
+                      >
+                        Download MP4 / WebM
+                      </a>
+                    )}
+                  </div>
                 </div>
 
-                {/* Transcript List */}
-                <div className="flex-1 flex flex-col gap-2.5 p-4 bg-[#141414] border border-white/8 rounded-xl overflow-y-auto">
-                  {transcript.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-3 my-auto">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 border border-white/10 text-[#f4f2ee]/40">
-                        <span className="text-base">🎙</span>
-                      </div>
-                      <div className="space-y-1.5 max-w-sm">
-                        <p className="text-sm font-semibold text-[#f4f2ee]/85">No audio detected</p>
-                        <p className="text-xs leading-relaxed text-[#f4f2ee]/45">
-                          We didn't detect any spoken words. You can save this video directly to the playbook, or click below to add manual step timestamps.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleAddLine}
-                        className="rounded-lg border border-[#c4a35a]/40 bg-[#1a1712] px-3.5 py-1.5 text-xs font-semibold text-[#dcc084] hover:bg-[#c4a35a]/20 transition mt-1"
-                      >
-                        + Add step at current timestamp
-                      </button>
+                {/* Right Column: Voice Transcript */}
+                <div className="flex-1 p-6 flex flex-col gap-4 overflow-y-auto">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <h4 className="text-[15px] font-bold tracking-tight text-[#f4f2ee]">Voice Transcript</h4>
+                      <p className="text-xs text-[#f4f2ee]/45">
+                        {transcript.length > 0
+                          ? "Click a timestamp to jump. Click any line to rewrite it."
+                          : "No spoken audio was detected on this recording."}
+                      </p>
                     </div>
-                  ) : (
-                    transcript.map((line) => {
-                      const isEditing = editingTranscriptId === line.id;
+                    {transcript.length > 0 ? (
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-[#c4a35a]">
+                        auto · transcribed
+                      </span>
+                    ) : (
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-[#f4f2ee]/40 rounded bg-white/5 px-2 py-0.5 border border-white/10">
+                        no audio found
+                      </span>
+                    )}
+                  </div>
 
-                      if (isEditing) {
+                  {/* Transcript List */}
+                  <div className="flex-1 flex flex-col gap-2.5 p-4 bg-[#141414] border border-white/8 rounded-xl overflow-y-auto">
+                    {transcript.length === 0 ? (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-3 my-auto">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 border border-white/10 text-[#f4f2ee]/40">
+                          <span className="text-base">🎙</span>
+                        </div>
+                        <div className="space-y-1.5 max-w-sm">
+                          <p className="text-sm font-semibold text-[#f4f2ee]/85">No audio detected</p>
+                          <p className="text-xs leading-relaxed text-[#f4f2ee]/45">
+                            We didn't detect any spoken words. You can save this video directly, or click below to add manual step timestamps.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleAddLine}
+                          className="rounded-lg border border-[#c4a35a]/40 bg-[#1a1712] px-3.5 py-1.5 text-xs font-semibold text-[#dcc084] hover:bg-[#c4a35a]/20 transition mt-1"
+                        >
+                          + Add step at current timestamp
+                        </button>
+                      </div>
+                    ) : (
+                      transcript.map((line) => {
+                        const isEditing = editingTranscriptId === line.id;
+
+                        if (isEditing) {
+                          return (
+                            <div
+                              key={line.id}
+                              className="flex gap-3 p-3.5 rounded-xl bg-[#0e0e0e] border border-[#c4a35a]/60 shadow-[0_0_0_3px_rgba(196,163,90,0.09)] animate-fadeIn"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleSeek(line.seconds != null ? line.seconds : parseTimeToSeconds(line.t))}
+                                className="flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-[#c4a35a] font-mono text-[11px] font-bold text-[#0a0a0a] shrink-0"
+                              >
+                                <span>▶</span>
+                                <span>{line.t}</span>
+                              </button>
+
+                              <div className="flex-1 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#dcc084]">
+                                    Editing
+                                  </span>
+                                  <span className="font-mono text-[10px] text-[#f4f2ee]/30">
+                                    ⌘↵ save · esc cancel
+                                  </span>
+                                </div>
+
+                                <textarea
+                                  rows={2}
+                                  autoFocus
+                                  value={editingText}
+                                  onChange={(e) => setEditingText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                                      e.preventDefault();
+                                      handleSaveLine(line.id);
+                                    } else if (e.key === "Escape") {
+                                      setEditingTranscriptId(null);
+                                    }
+                                  }}
+                                  className="w-full rounded-md border border-white/10 bg-[#141414] p-2.5 text-[13.5px] leading-relaxed text-[#f4f2ee] outline-none focus:border-[#c4a35a]"
+                                />
+
+                                <div className="flex items-center gap-2 pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveLine(line.id)}
+                                    className="rounded-md bg-[#c4a35a] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition"
+                                  >
+                                    Save line
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingTranscriptId(null)}
+                                    className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-medium text-[#f4f2ee]/60 hover:text-white transition"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <div className="flex-1" />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteLine(line.id)}
+                                    className="text-xs text-[#cf603c]/70 hover:text-[#cf603c] transition"
+                                  >
+                                    Delete line
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
                         return (
                           <div
                             key={line.id}
-                            className="flex gap-3 p-3.5 rounded-xl bg-[#0e0e0e] border border-[#c4a35a]/60 shadow-[0_0_0_3px_rgba(196,163,90,0.09)] animate-fadeIn"
+                            onClick={() => handleStartEditLine(line)}
+                            className="group flex gap-3 p-3 rounded-lg bg-[#0e0e0e] border border-white/7 hover:border-[#c4a35a]/40 cursor-pointer transition"
                           >
                             <button
                               type="button"
-                              onClick={() => handleSeek(line.seconds != null ? line.seconds : parseTimeToSeconds(line.t))}
-                              className="flex items-center gap-1.5 h-6 px-2.5 rounded-md bg-[#c4a35a] font-mono text-[11px] font-bold text-[#0a0a0a] shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSeek(line.seconds != null ? line.seconds : parseTimeToSeconds(line.t));
+                              }}
+                              className="flex items-center gap-1 h-[22px] px-2 rounded-md bg-[#c4a35a]/12 border border-[#c4a35a]/35 font-mono text-[11px] font-medium text-[#dcc084] hover:bg-[#c4a35a] hover:text-[#0a0a0a] transition shrink-0"
                             >
                               <span>▶</span>
                               <span>{line.t}</span>
                             </button>
 
-                            <div className="flex-1 space-y-2">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#dcc084]">
-                                  Editing
-                                </span>
-                                <span className="font-mono text-[10px] text-[#f4f2ee]/30">
-                                  ⌘↵ save · esc cancel
-                                </span>
-                              </div>
-
-                              <textarea
-                                rows={2}
-                                autoFocus
-                                value={editingText}
-                                onChange={(e) => setEditingText(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                                    e.preventDefault();
-                                    handleSaveLine(line.id);
-                                  } else if (e.key === "Escape") {
-                                    setEditingTranscriptId(null);
-                                  }
-                                }}
-                                className="w-full rounded-md border border-white/10 bg-[#141414] p-2.5 text-[13.5px] leading-relaxed text-[#f4f2ee] outline-none focus:border-[#c4a35a]"
-                              />
-
-                              <div className="flex items-center gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleSaveLine(line.id)}
-                                  className="rounded-md bg-[#c4a35a] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition"
-                                >
-                                  Save line
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingTranscriptId(null)}
-                                  className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-medium text-[#f4f2ee]/60 hover:text-white transition"
-                                >
-                                  Cancel
-                                </button>
-                                <div className="flex-1" />
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteLine(line.id)}
-                                  className="text-xs text-[#cf603c]/70 hover:text-[#cf603c] transition"
-                                >
-                                  Delete line
-                                </button>
-                              </div>
+                            <div className="flex-1 space-y-0.5 min-w-0">
+                              <p className="text-[13.5px] leading-relaxed text-[#f4f2ee]/85 group-hover:text-white transition">
+                                {line.text}
+                              </p>
                             </div>
                           </div>
                         );
-                      }
+                      })
+                    )}
+                  </div>
 
-                      return (
-                        <div
-                          key={line.id}
-                          onClick={() => handleStartEditLine(line)}
-                          className="group flex gap-3 p-3 rounded-lg bg-[#0e0e0e] border border-white/7 hover:border-[#c4a35a]/40 cursor-pointer transition"
-                        >
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSeek(line.seconds != null ? line.seconds : parseTimeToSeconds(line.t));
-                            }}
-                            className="flex items-center gap-1 h-[22px] px-2 rounded-md bg-[#c4a35a]/12 border border-[#c4a35a]/35 font-mono text-[11px] font-medium text-[#dcc084] hover:bg-[#c4a35a] hover:text-[#0a0a0a] transition shrink-0"
-                          >
-                            <span>▶</span>
-                            <span>{line.t}</span>
-                          </button>
-
-                          <div className="flex-1 space-y-0.5 min-w-0">
-                            <p className="text-[13.5px] leading-relaxed text-[#f4f2ee]/85 group-hover:text-white transition">
-                              {line.text}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* Bottom Actions for Transcript */}
-                <div className="flex items-center gap-4 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleAddLine}
-                    className="text-xs font-semibold text-[#f4f2ee]/45 hover:text-[#dcc084] transition"
-                  >
-                    + Add a line
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleTidyWording}
-                    className="text-xs font-semibold text-[#f4f2ee]/45 hover:text-[#dcc084] transition"
-                  >
-                    Tidy wording
-                  </button>
+                  {/* Bottom Actions for Transcript */}
+                  <div className="flex items-center gap-4 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleAddLine}
+                      className="text-xs font-semibold text-[#f4f2ee]/45 hover:text-[#dcc084] transition"
+                    >
+                      + Add a line
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTidyWording}
+                      className="text-xs font-semibold text-[#f4f2ee]/45 hover:text-[#dcc084] transition"
+                    >
+                      Tidy wording
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
         {/* ======================================================== */}
-        {/* FRAME 5 · DEDICATED TRIMMER VIEW                        */}
+        {/* FRAME 4 · DEDICATED TRIMMER VIEW                        */}
         {/* ======================================================== */}
         {stage === "trimming" && (
           <div className="flex-1 flex flex-col min-h-0 bg-[#0a0a0a] animate-fadeIn">
@@ -1360,7 +1803,6 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
             </div>
 
             <div className="flex-1 p-6 flex flex-col gap-5 overflow-y-auto">
-              {/* Preview Window in Trim Mode */}
               <div className="relative flex-1 min-h-[260px] rounded-xl border border-white/9 bg-[#141414] overflow-hidden flex items-center justify-center">
                 {videoBlobUrl ? (
                   <video
@@ -1395,18 +1837,14 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                 <div className="absolute top-4 right-4 flex gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setTrimStart(playbackTime);
-                    }}
+                    onClick={() => setTrimStart(playbackTime)}
                     className="rounded-md bg-black/75 border border-white/10 px-3 py-1 text-xs text-[#f4f2ee]/70 hover:text-white"
                   >
                     Set Start ({formatSeconds(playbackTime)})
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setTrimEnd(playbackTime);
-                    }}
+                    onClick={() => setTrimEnd(playbackTime)}
                     className="rounded-md bg-black/75 border border-white/10 px-3 py-1 text-xs text-[#f4f2ee]/70 hover:text-white"
                   >
                     Set End ({formatSeconds(playbackTime)})
@@ -1414,7 +1852,6 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                 </div>
               </div>
 
-              {/* Gold Dual-Handle Timeline Bar */}
               <div className="rounded-xl border border-white/8 bg-[#141414] p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -1428,7 +1865,6 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                   </span>
                 </div>
 
-                {/* Waveform & Draggable Handle Container */}
                 <div
                   onClick={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -1461,7 +1897,6 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                   }}
                   className="relative h-20 rounded-lg bg-[#0b0b0b] border border-white/7 overflow-hidden select-none cursor-pointer"
                 >
-                  {/* Mock Waveform Bars */}
                   <div className="absolute inset-0 flex items-center gap-[3px] px-2 opacity-40">
                     {Array.from({ length: 44 }).map((_, i) => (
                       <div
@@ -1472,19 +1907,16 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                     ))}
                   </div>
 
-                  {/* Left Trimmed-out Zone */}
                   <div
                     style={{ width: `${(trimStart / duration) * 100}%` }}
                     className="absolute inset-y-0 left-0 bg-black/80"
                   />
 
-                  {/* Right Trimmed-out Zone */}
                   <div
                     style={{ width: `${((duration - trimEnd) / duration) * 100}%` }}
                     className="absolute inset-y-0 right-0 bg-black/80"
                   />
 
-                  {/* Active Gold Highlight Border */}
                   <div
                     style={{
                       left: `${(trimStart / duration) * 100}%`,
@@ -1493,7 +1925,6 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                     className="absolute inset-y-0 border-2 border-[#c4a35a] rounded-lg shadow-[0_0_0_1px_rgba(196,163,90,0.25)_inset]"
                   />
 
-                  {/* Left Draggable Handle */}
                   <div
                     style={{ left: `${(trimStart / duration) * 100}%` }}
                     onMouseDown={(e) => {
@@ -1505,7 +1936,6 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                     <span className="w-0.5 h-6 bg-black/60 rounded-full" />
                   </div>
 
-                  {/* Right Draggable Handle */}
                   <div
                     style={{ left: `${(trimEnd / duration) * 100}%` }}
                     onMouseDown={(e) => {
@@ -1517,14 +1947,12 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                     <span className="w-0.5 h-6 bg-black/60 rounded-full" />
                   </div>
 
-                  {/* Current Playhead Needle */}
                   <div
                     style={{ left: `${(playbackTime / duration) * 100}%` }}
                     className="absolute inset-y-0 w-0.5 bg-white shadow-[0_0_8px_white]"
                   />
                 </div>
 
-                {/* Play Controls & Exact Time Badges */}
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div className="flex items-center gap-3">
                     <button
@@ -1554,87 +1982,33 @@ export function VideoSopStudioModal({ isOpen, initialSop, onClose, onDeleteSop, 
                       End {formatSeconds(trimEnd)}
                     </span>
                   </div>
-
-                  <span className="text-xs text-[#f4f2ee]/35 hidden md:inline">
-                    Trimmed audio re-transcribes automatically · timestamps shift with it
-                  </span>
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ======================================================== */}
-        {/* FRAME 6 · SAVED TO PLAYBOOK CONFIRMATION                */}
-        {/* ======================================================== */}
-        {stage === "saved" && (
-          <div className="flex-1 flex items-center justify-center p-6 bg-black/90 backdrop-blur-md animate-fadeIn">
-            <div className="w-full max-w-[660px] rounded-[18px] border border-[#c4a35a]/30 bg-[#141414] p-8 sm:p-10 shadow-[0_40px_120px_rgba(0,0,0,0.75)] space-y-7">
-              <div className="flex items-start gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#c4a35a]/50 bg-[#c4a35a]/15 text-lg font-bold text-[#dcc084]">
-                  ✓
-                </div>
-                <div className="space-y-1.5">
-                  <h3 className="text-2xl font-bold tracking-tight text-[#f4f2ee]">
-                    Saved to the Playbook
-                  </h3>
-                  <p className="text-sm leading-relaxed text-[#f4f2ee]/50">
-                    Your video and the written guide are live for the {targetRole.toUpperCase()} team. Everyone assigned has been notified.
-                  </p>
-                </div>
-              </div>
-
-              {/* Preview Card */}
-              <div className="flex gap-4 p-4 rounded-xl border border-white/8 bg-[#0e0e0e]">
-                <div className="relative flex h-20 w-32 shrink-0 items-center justify-center rounded-lg bg-[#1a1a1a] border border-white/7 overflow-hidden">
-                  <div className="ml-0.5 w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-[#dcc084]" />
-                  <span className="absolute bottom-1.5 right-1.5 rounded bg-black/80 px-1.5 py-0.5 font-mono text-[9.5px] text-[#f4f2ee]/70">
-                    {formatSeconds(trimEnd - trimStart)}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0 space-y-2">
-                  <h4 className="text-sm font-semibold text-[#f4f2ee] truncate">{title}</h4>
-                  <div className="flex flex-wrap gap-1.5 text-[11px]">
-                    <span className="rounded bg-[#c4a35a]/15 border border-[#c4a35a]/30 px-2 py-0.5 font-semibold text-[#dcc084]">
-                      {targetRole.toUpperCase()} Team
-                    </span>
-                    <span className="rounded bg-[#1a1a1a] border border-white/8 px-2 py-0.5 text-[#f4f2ee]/60">
-                      {category === "turnover" ? "Turnovers & Cleaning" : category}
-                    </span>
-                    <span className="rounded bg-[#1a1a1a] border border-white/8 px-2 py-0.5 text-[#f4f2ee]/60">
-                      {transcript.length > 0
-                        ? `${transcript.length} steps · transcript attached`
-                        : "Video walkthrough · 1 step"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex-1 rounded-xl bg-[#c4a35a] py-3.5 text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_12px_40px_rgba(196,163,90,0.3)] transition"
-                >
-                  View SOP in Playbook
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStage("setup");
-                    setVideoBlobUrl(null);
-                    setRecordingSeconds(0);
-                  }}
-                  className="rounded-xl border border-white/10 bg-[#0e0e0e] px-5 py-3.5 text-xs sm:text-sm font-semibold text-[#f4f2ee]/70 hover:border-[#c4a35a]/40 hover:text-[#dcc084] transition"
-                >
-                  Record another
-                </button>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Embedded Image Redactor Modal for Scribe Annotation & Redaction */}
+      {activeRedactorStepIdx !== null && steps[activeRedactorStepIdx] && (
+        <ImageRedactorModal
+          isOpen={true}
+          initialImageUrl={steps[activeRedactorStepIdx].image_url}
+          rawImageUrl={steps[activeRedactorStepIdx].raw_image_url}
+          initialBoxes={steps[activeRedactorStepIdx].boxes}
+          initialPins={steps[activeRedactorStepIdx].pins}
+          onClose={() => setActiveRedactorStepIdx(null)}
+          onSave={(bakedDataUrl, boxes, pins, rawImageUrl) => {
+            handleUpdateStep(activeRedactorStepIdx, {
+              image_url: bakedDataUrl,
+              raw_image_url: rawImageUrl || steps[activeRedactorStepIdx].raw_image_url || bakedDataUrl,
+              boxes,
+              pins,
+            });
+            setActiveRedactorStepIdx(null);
+          }}
+        />
+      )}
     </div>
   );
 }
