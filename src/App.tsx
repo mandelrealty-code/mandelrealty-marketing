@@ -12,6 +12,7 @@ import { FitCheckSection } from "./components/FitCheckSection";
 import { Footer } from "./components/Footer";
 import { FloatingCtas } from "./components/FloatingCtas";
 import { ThankYouPage } from "./pages/ThankYouPage";
+import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { AdsLandingPage } from "./pages/AdsLandingPage";
 import { AdminPage } from "./pages/AdminPage";
 import { OwnerApp } from "./pages/owner/OwnerApp";
@@ -93,6 +94,10 @@ export default function App() {
 
   if (path === "/thank-you") {
     return <ThankYouPage />;
+  }
+
+  if (path === "/privacy" || path === "/privacy-policy") {
+    return <PrivacyPolicyPage />;
   }
 
   if (path === "/book-a-call" || path === "/get-estimate") {

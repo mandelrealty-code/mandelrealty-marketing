@@ -1,0 +1,22 @@
+Campaign: MRG Phase 1 Test — B/E/F Single Image (Ad Set 3)
+Creative: Growth Plan Fee Cut
+
+Files:
+  GrowthFee_preview.png       1:1 (1080×1080)
+  GrowthFee_4x5_preview.png   4:5 (1080×1350)
+  GrowthFee_9x16_preview.png  9:16 (1080×1920)
+
+Rebuild:
+  node public/ads/management/render-growth-fee.mjs
+
+Primary text
+Most management companies charge a flat 20%. We're cutting that by 75% — down to just 5% — with full management still included. You only pay a premium once we actually grow your revenue past your own number. For hosts with a live Airbnb only, since we need real performance data to set your benchmark.
+
+Headline
+75% Off Our Management Fee
+
+Description
+5% instead of 20% — see if you qualify
+
+Call to action
+Learn More

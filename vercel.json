@@ -46,6 +46,11 @@
       "has": [{ "type": "host", "value": "mandelrealtygroup.com" }],
       "destination": "/",
       "permanent": true
+    },
+    {
+      "source": "/privacy-policy",
+      "destination": "/privacy",
+      "permanent": true
     }
   ],
   "rewrites": [
