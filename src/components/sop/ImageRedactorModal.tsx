@@ -4,6 +4,9 @@ import type { SopStepBox, SopStepPin } from "../../../shared/pm/sopTypes";
 
 type ToolType = "spotlight" | "blur" | "blackout" | "pin";
 
+const EMPTY_BOXES: SopStepBox[] = [];
+const EMPTY_PINS: SopStepPin[] = [];
+
 interface ImageRedactorModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -66,10 +69,12 @@ export function ImageRedactorModal({
   onClose,
   initialImageUrl,
   rawImageUrl,
-  initialBoxes = [],
-  initialPins = [],
+  initialBoxes,
+  initialPins,
   onSave,
 }: ImageRedactorModalProps) {
+  const seedBoxes = initialBoxes ?? EMPTY_BOXES;
+  const seedPins = initialPins ?? EMPTY_PINS;
   const [activeTool, setActiveTool] = useState<ToolType>("blur");
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [cleanImageSrc, setCleanImageSrc] = useState<string | null>(null);
@@ -111,24 +116,32 @@ export function ImageRedactorModal({
 
   // Focus ref for auto-focusing caption input
   const activeInputRef = useRef<HTMLInputElement | null>(null);
+  const initializedForOpenRef = useRef(false);
 
-  // Sync initial state when modal opens or initial props change
+  // Sync initial state once when the modal opens — not on every parent re-render.
+  // Default `[]` props were creating new array refs each render and wiping annotations.
   useEffect(() => {
-    if (isOpen) {
-      const base = rawImageUrl || initialImageUrl || null;
-      setImageSrc(base);
-      setCleanImageSrc(base);
-      setBoxes(initialBoxes && initialBoxes.length > 0 ? JSON.parse(JSON.stringify(initialBoxes)) : []);
-      setPins(initialPins && initialPins.length > 0 ? JSON.parse(JSON.stringify(initialPins)) : []);
-      setSelectedLayerId(null);
-      setHiddenIds({});
-      setHistory([]);
-      setCurrentDragBox(null);
-      isDrawing.current = false;
-      startPos.current = null;
-      currentDragBoxRef.current = null;
+    if (!isOpen) {
+      initializedForOpenRef.current = false;
+      return;
     }
-  }, [isOpen, initialImageUrl, rawImageUrl, initialBoxes, initialPins]);
+
+    if (initializedForOpenRef.current) return;
+    initializedForOpenRef.current = true;
+
+    const base = rawImageUrl || initialImageUrl || null;
+    setImageSrc(base);
+    setCleanImageSrc(base);
+    setBoxes(seedBoxes.length > 0 ? JSON.parse(JSON.stringify(seedBoxes)) : []);
+    setPins(seedPins.length > 0 ? JSON.parse(JSON.stringify(seedPins)) : []);
+    setSelectedLayerId(null);
+    setHiddenIds({});
+    setHistory([]);
+    setCurrentDragBox(null);
+    isDrawing.current = false;
+    startPos.current = null;
+    currentDragBoxRef.current = null;
+  }, [isOpen, initialImageUrl, rawImageUrl, seedBoxes, seedPins]);
 
   // Focus input when a layer is selected
   useEffect(() => {
