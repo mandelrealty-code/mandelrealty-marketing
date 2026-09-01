@@ -169,8 +169,14 @@ export function VideoSopStudioModal({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const speechRecognitionRef = useRef<any>(null);
   const pipWindowRef = useRef<Window | null>(null);
+  const recordingHudRef = useRef<HTMLDivElement | null>(null);
+  const pipMountNodeRef = useRef<HTMLElement | null>(null);
   const [pipMountNode, setPipMountNode] = useState<HTMLElement | null>(null);
   const [pipOpenFailed, setPipOpenFailed] = useState(false);
+
+  useEffect(() => {
+    pipMountNodeRef.current = pipMountNode;
+  }, [pipMountNode]);
 
   // Sync with initialSop when modal is opened for editing
   useEffect(() => {
@@ -390,6 +396,59 @@ export function VideoSopStudioModal({
     }
   }, [volume, videoBlobUrl]);
 
+  const waitForCompositorPaint = () =>
+    new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTimeout(resolve, 80);
+        });
+      });
+    });
+
+  const hideCaptureOverlays = async () => {
+    const hud = recordingHudRef.current;
+    const pipMount = pipMountNodeRef.current;
+
+    if (hud) {
+      hud.style.visibility = "hidden";
+      hud.style.opacity = "0";
+      hud.style.pointerEvents = "none";
+    }
+    if (pipMount) {
+      pipMount.style.visibility = "hidden";
+      pipMount.style.opacity = "0";
+      pipMount.style.pointerEvents = "none";
+    }
+
+    const pipWin = pipWindowRef.current;
+    if (pipWin && !pipWin.closed) {
+      pipWin.document.body.style.visibility = "hidden";
+    }
+
+    await waitForCompositorPaint();
+  };
+
+  const restoreCaptureOverlays = () => {
+    const hud = recordingHudRef.current;
+    const pipMount = pipMountNodeRef.current;
+
+    if (hud) {
+      hud.style.visibility = "";
+      hud.style.opacity = "";
+      hud.style.pointerEvents = "";
+    }
+    if (pipMount) {
+      pipMount.style.visibility = "";
+      pipMount.style.opacity = "";
+      pipMount.style.pointerEvents = "";
+    }
+
+    const pipWin = pipWindowRef.current;
+    if (pipWin && !pipWin.closed) {
+      pipWin.document.body.style.visibility = "";
+    }
+  };
+
   // Frame capture from the live screen-share stream (ImageCapture API + fallbacks)
   const captureCurrentScreenFrame = async (): Promise<string | null> => {
     const stream = screenStreamRef.current;
@@ -398,6 +457,9 @@ export function VideoSopStudioModal({
     const track = stream.getVideoTracks()[0];
     if (!track || track.readyState !== "live") return null;
 
+    await hideCaptureOverlays();
+
+    try {
     const canvasFromSource = (source: CanvasImageSource, w: number, h: number): string | null => {
       try {
         const canvas = document.createElement("canvas");
@@ -468,6 +530,9 @@ export function VideoSopStudioModal({
     }
 
     return null;
+    } finally {
+      restoreCaptureOverlays();
+    }
   };
 
   const attachStreamToLivePreview = (stream: MediaStream) => {
@@ -1052,6 +1117,7 @@ export function VideoSopStudioModal({
 
   const recordingHud = (
     <div
+      ref={recordingHudRef}
       className={`font-['Manrope',system-ui,sans-serif] pointer-events-auto select-none ${
         pipMountNode ? "" : "fixed bottom-6 left-6 z-[99999] animate-fadeIn"
       }`}
@@ -1241,19 +1307,20 @@ export function VideoSopStudioModal({
 
               <div className="rounded-xl border border-[#c4a35a]/25 bg-[#16140f] px-3.5 py-3 text-xs text-[#cfc9c2] space-y-1.5">
                 <p>
-                  <span className="font-semibold text-[#dcc084]">Screen share:</span> choose{" "}
-                  <span className="text-[#f4f2ee]">Entire screen</span> or{" "}
-                  <span className="text-[#f4f2ee]">Chrome window</span> so captures work in any tab.
+                  <span className="font-semibold text-[#dcc084]">Screen share:</span> share the{" "}
+                  <span className="text-[#f4f2ee]">window or tab you are demonstrating</span> — not
+                  this admin page. The control bar is hidden from each snap automatically.
                 </p>
                 {isDocumentPipSupported() ? (
                   <p>
-                    <span className="font-semibold text-[#dcc084]">Floating controls:</span> a small
-                    bar stays on top while you work in other tabs and apps (Chrome / Edge).
+                    <span className="font-semibold text-[#dcc084]">Floating controls:</span> controls
+                    pop out in a small always-on-top bar (Chrome / Edge) so they never appear in your
+                    step screenshots.
                   </p>
                 ) : (
                   <p>
                     For floating controls across tabs, use Chrome or Edge. Safari keeps the bar on this
-                    tab only.
+                    tab only — it is hidden for each snap.
                   </p>
                 )}
               </div>
