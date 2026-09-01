@@ -290,36 +290,120 @@ export function VideoSopStudioModal({
     }
   }, [volume, videoBlobUrl]);
 
-  // Frame Capture Function (from active live screen video stream)
-  const captureCurrentScreenFrame = (): string | null => {
+  // Frame capture from the live screen-share stream (ImageCapture API + fallbacks)
+  const captureCurrentScreenFrame = async (): Promise<string | null> => {
+    const stream = screenStreamRef.current;
+    if (!stream) return null;
+
+    const track = stream.getVideoTracks()[0];
+    if (!track || track.readyState !== "live") return null;
+
+    const canvasFromSource = (source: CanvasImageSource, w: number, h: number): string | null => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+        ctx.drawImage(source, 0, 0, w, h);
+        return canvas.toDataURL("image/jpeg", 0.92);
+      } catch (err) {
+        console.warn("Canvas snapshot failed:", err);
+        return null;
+      }
+    };
+
+    // 1) ImageCapture — works even when hidden <video> has no dimensions yet
+    if (typeof ImageCapture !== "undefined") {
+      try {
+        const capturer = new ImageCapture(track);
+        const bitmap = await capturer.grabFrame();
+        const dataUrl = canvasFromSource(bitmap, bitmap.width, bitmap.height);
+        bitmap.close();
+        if (dataUrl) return dataUrl;
+      } catch (err) {
+        console.warn("ImageCapture grabFrame failed:", err);
+      }
+    }
+
+    // 2) Hidden preview video element
     const videoEl = liveVideoElementRef.current;
-    if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) {
-      return null;
+    if (videoEl) {
+      if (!videoEl.srcObject) {
+        videoEl.srcObject = stream;
+      }
+      if (videoEl.readyState < 2) {
+        await new Promise<void>((resolve) => {
+          const done = () => resolve();
+          videoEl.addEventListener("loadeddata", done, { once: true });
+          setTimeout(done, 400);
+        });
+      }
+      await videoEl.play().catch(() => {});
+      if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+        const dataUrl = canvasFromSource(videoEl, videoEl.videoWidth, videoEl.videoHeight);
+        if (dataUrl) return dataUrl;
+      }
     }
+
+    // 3) Ephemeral video element bound to the same stream
     try {
-      const canvas = document.createElement("canvas");
-      canvas.width = videoEl.videoWidth;
-      canvas.height = videoEl.videoHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return null;
-      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL("image/jpeg", 0.92);
+      const temp = document.createElement("video");
+      temp.srcObject = stream;
+      temp.muted = true;
+      temp.playsInline = true;
+      await temp.play();
+      for (let i = 0; i < 30; i++) {
+        if (temp.videoWidth > 0) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      if (temp.videoWidth > 0 && temp.videoHeight > 0) {
+        const dataUrl = canvasFromSource(temp, temp.videoWidth, temp.videoHeight);
+        temp.srcObject = null;
+        if (dataUrl) return dataUrl;
+      }
+      temp.srcObject = null;
     } catch (err) {
-      console.warn("Could not capture frame from screen stream:", err);
-      return null;
+      console.warn("Temp video snapshot failed:", err);
     }
+
+    return null;
   };
 
-  // Capture Step Snapshot (triggered by HUD button or Spacebar hotkey)
-  const handleCaptureSnapshotStep = () => {
-    const frameDataUrl = captureCurrentScreenFrame();
+  const attachStreamToLivePreview = (stream: MediaStream) => {
+    const videoEl = liveVideoElementRef.current;
+    if (!videoEl) return;
+    videoEl.srcObject = stream;
+    const play = () => videoEl.play().catch(() => {});
+    if (videoEl.readyState >= 1) play();
+    else videoEl.addEventListener("loadedmetadata", play, { once: true });
+  };
+
+  useEffect(() => {
+    if (stage !== "recording" || !screenStreamRef.current) return;
+    attachStreamToLivePreview(screenStreamRef.current);
+  }, [stage]);
+
+  // Capture Step Snapshot (triggered by HUD button or hotkey)
+  const handleCaptureSnapshotStep = async () => {
+    const frameDataUrl = await captureCurrentScreenFrame();
     const currentSec = Math.max(0, recordingSecondsRef.current || recordingSeconds);
     const timeStr = formatSeconds(currentSec);
 
     const stepNum = steps.length + 1;
     const spoken = latestSpokenText.trim();
-    const stepTitle = spoken ? (spoken.length > 55 ? `${spoken.slice(0, 52)}...` : spoken) : `Step ${stepNum}: Action`;
+    const stepTitle = spoken
+      ? spoken.length > 55
+        ? `${spoken.slice(0, 52)}...`
+        : spoken
+      : `Step ${stepNum}: Action`;
     const stepDesc = spoken || "Click the highlighted area or follow the instruction below.";
+
+    if (!frameDataUrl) {
+      setSnapFlash("⚠️ Screenshot failed — wait 1s, then try again");
+      setTimeout(() => setSnapFlash(null), 2800);
+      return;
+    }
 
     const newStep: SopStep = {
       id: `step-${Date.now()}-${stepNum}`,
@@ -329,25 +413,24 @@ export function VideoSopStudioModal({
       timestamp: timeStr,
       seconds: currentSec,
       media_type: "image",
-      image_url: frameDataUrl || undefined,
-      raw_image_url: frameDataUrl || undefined,
+      image_url: frameDataUrl,
+      raw_image_url: frameDataUrl,
       pro_tip: stepNum === 1 ? "Verify all fields on screen before proceeding." : undefined,
     };
 
     setSteps((prev) => [...prev, newStep]);
     setLatestSpokenText("");
 
-    // Flash feedback toast
-    setSnapFlash(`📸 Step ${stepNum} Captured!`);
+    setSnapFlash(`📸 Step ${stepNum} captured`);
     setTimeout(() => setSnapFlash(null), 2000);
   };
 
-  // Keyboard shortcut listener during recording (Space / 'S' to snap)
+  // Keyboard shortcut during recording (S or Space to snap)
   useEffect(() => {
     if (stage !== "recording") return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      // If user presses 's' or space outside input, trigger snapshot
-      if (e.key.toLowerCase() === "s" && !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) {
+      if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName)) return;
+      if (e.key === " " || e.key.toLowerCase() === "s") {
         e.preventDefault();
         handleCaptureSnapshotStep();
       }
@@ -367,11 +450,7 @@ export function VideoSopStudioModal({
       });
       screenStreamRef.current = screenStream;
 
-      // Connect to background live video element for instantaneous canvas snapshotting
-      if (liveVideoElementRef.current) {
-        liveVideoElementRef.current.srcObject = screenStream;
-        liveVideoElementRef.current.play().catch(() => {});
-      }
+      attachStreamToLivePreview(screenStream);
 
       const videoTrack = screenStream.getVideoTracks()[0];
       if (videoTrack) {
@@ -855,20 +934,25 @@ export function VideoSopStudioModal({
 
   if (!isOpen) return null;
 
+  const hiddenLivePreview = (
+    <video
+      ref={liveVideoElementRef}
+      autoPlay
+      muted
+      playsInline
+      className="fixed left-0 top-0 h-px w-px opacity-0 pointer-events-none"
+      aria-hidden="true"
+    />
+  );
+
   // ========================================================
   // FRAME 2 · ACTIVE RECORDING (UNOBTRUSIVE FLOATING HUD)
   // ========================================================
   if (stage === "recording") {
     return (
-      <div className="fixed bottom-6 left-6 z-[99999] font-['Manrope',system-ui,sans-serif] pointer-events-auto select-none animate-fadeIn">
-        {/* Hidden video element used to capture high-res frame snapshots */}
-        <video
-          ref={liveVideoElementRef}
-          autoPlay
-          muted
-          playsInline
-          className="hidden"
-        />
+      <>
+        {hiddenLivePreview}
+        <div className="fixed bottom-6 left-6 z-[99999] font-['Manrope',system-ui,sans-serif] pointer-events-auto select-none animate-fadeIn">
 
         {/* Snapshot Capture Notification Flash */}
         {snapFlash && (
@@ -902,7 +986,7 @@ export function VideoSopStudioModal({
             type="button"
             onClick={handleCaptureSnapshotStep}
             className="flex items-center gap-1.5 rounded-full bg-[#c4a35a] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-md transition"
-            title="Take screenshot of current screen (Hotkey: Space or S)"
+            title="Screenshot this step (S or Space)"
           >
             <span>📸</span>
             <span>Snap Step</span>
@@ -957,11 +1041,14 @@ export function VideoSopStudioModal({
           </button>
         </div>
       </div>
+      </>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/88 backdrop-blur-md p-3 sm:p-6 font-['Manrope',system-ui,sans-serif] animate-fadeIn">
+    <>
+      {hiddenLivePreview}
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/88 backdrop-blur-md p-3 sm:p-6 font-['Manrope',system-ui,sans-serif] animate-fadeIn">
       {/* Container */}
       <div className="relative flex h-[92vh] w-full max-w-[1400px] flex-col rounded-2xl border border-white/10 bg-[#0a0a0a] text-[#f4f2ee] shadow-2xl overflow-hidden">
         
@@ -1995,5 +2082,6 @@ export function VideoSopStudioModal({
         />
       )}
     </div>
+    </>
   );
 }
