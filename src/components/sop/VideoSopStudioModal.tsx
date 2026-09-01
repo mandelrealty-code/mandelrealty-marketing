@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import type { SopItem, SopStep, SopCategory, SopTargetRole } from "../../../shared/pm/sopTypes";
 import { storeSopVideoBlob, getSopVideoBlob } from "../../lib/sopVideoStorage";
 import { pmPost } from "../../pages/clients/api";
@@ -39,6 +40,31 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+function isDocumentPipSupported(): boolean {
+  return typeof window !== "undefined" && "documentPictureInPicture" in window;
+}
+
+function copyStyleSheetsToDocument(targetDoc: Document) {
+  [...document.styleSheets].forEach((styleSheet) => {
+    try {
+      if (styleSheet.cssRules) {
+        const style = targetDoc.createElement("style");
+        [...styleSheet.cssRules].forEach((rule) => {
+          style.appendChild(targetDoc.createTextNode(rule.cssText));
+        });
+        targetDoc.head.appendChild(style);
+      }
+    } catch {
+      if (styleSheet.href) {
+        const link = targetDoc.createElement("link");
+        link.rel = "stylesheet";
+        link.href = styleSheet.href;
+        targetDoc.head.appendChild(link);
+      }
+    }
+  });
+}
+
 interface VideoSopStudioModalProps {
   isOpen: boolean;
   initialSop?: SopItem | null;
@@ -67,6 +93,16 @@ export interface TranscriptLine {
   seconds: number;
   who: string;
   text: string;
+}
+
+interface DocumentPictureInPicture {
+  window: Window | null;
+  requestWindow(options?: {
+    width?: number;
+    height?: number;
+    disallowReturnToOpener?: boolean;
+    preferInitialWindowPlacement?: boolean;
+  }): Promise<Window>;
 }
 
 // Modal Stages: 'setup' | 'recording' | 'review' | 'trimming' | 'saved'
@@ -132,6 +168,9 @@ export function VideoSopStudioModal({
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const speechRecognitionRef = useRef<any>(null);
+  const pipWindowRef = useRef<Window | null>(null);
+  const [pipMountNode, setPipMountNode] = useState<HTMLElement | null>(null);
+  const [pipOpenFailed, setPipOpenFailed] = useState(false);
 
   // Sync with initialSop when modal is opened for editing
   useEffect(() => {
@@ -240,6 +279,66 @@ export function VideoSopStudioModal({
   }, [isOpen]);
 
   // Teardown streams
+  const closeRecordingPipWindow = () => {
+    if (pipWindowRef.current && !pipWindowRef.current.closed) {
+      pipWindowRef.current.close();
+    }
+    pipWindowRef.current = null;
+    setPipMountNode(null);
+    setPipOpenFailed(false);
+  };
+
+  const openRecordingPipWindow = async (): Promise<boolean> => {
+    const dpp = (window as Window & { documentPictureInPicture?: DocumentPictureInPicture }).documentPictureInPicture;
+    if (!dpp?.requestWindow) return false;
+
+    if (dpp.window && !dpp.window.closed) {
+      pipWindowRef.current = dpp.window;
+      let mount = dpp.window.document.getElementById("sop-recording-hud-mount");
+      if (!mount) {
+        mount = dpp.window.document.createElement("div");
+        mount.id = "sop-recording-hud-mount";
+        dpp.window.document.body.appendChild(mount);
+      }
+      setPipMountNode(mount);
+      setPipOpenFailed(false);
+      return true;
+    }
+
+    try {
+      const pipWin = await dpp.requestWindow({
+        width: 580,
+        height: 96,
+        disallowReturnToOpener: false,
+        preferInitialWindowPlacement: true,
+      });
+      copyStyleSheetsToDocument(pipWin.document);
+      pipWin.document.body.style.margin = "0";
+      pipWin.document.body.style.padding = "10px";
+      pipWin.document.body.style.background = "#121214";
+      pipWin.document.body.style.overflow = "hidden";
+
+      const mount = pipWin.document.createElement("div");
+      mount.id = "sop-recording-hud-mount";
+      pipWin.document.body.appendChild(mount);
+
+      pipWindowRef.current = pipWin;
+      setPipMountNode(mount);
+      setPipOpenFailed(false);
+
+      pipWin.addEventListener("pagehide", () => {
+        pipWindowRef.current = null;
+        setPipMountNode(null);
+      });
+
+      return true;
+    } catch (err) {
+      console.warn("Could not open floating recording controls:", err);
+      setPipOpenFailed(true);
+      return false;
+    }
+  };
+
   const cleanupStreams = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -263,6 +362,7 @@ export function VideoSopStudioModal({
       } catch {}
       speechRecognitionRef.current = null;
     }
+    closeRecordingPipWindow();
   };
 
   useEffect(() => {
@@ -442,6 +542,11 @@ export function VideoSopStudioModal({
   // Start real recording (Screen + Microphone)
   const handleStartRecording = async (mode: "snapshots" | "video") => {
     setRecordMode(mode);
+    setPipOpenFailed(false);
+
+    // Open always-on-top control bar while user gesture is still active
+    await openRecordingPipWindow();
+
     try {
       // 1. Get Screen Stream
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -945,43 +1050,55 @@ export function VideoSopStudioModal({
     />
   );
 
-  // ========================================================
-  // FRAME 2 · ACTIVE RECORDING (UNOBTRUSIVE FLOATING HUD)
-  // ========================================================
-  if (stage === "recording") {
-    return (
-      <>
-        {hiddenLivePreview}
-        <div className="fixed bottom-6 left-6 z-[99999] font-['Manrope',system-ui,sans-serif] pointer-events-auto select-none animate-fadeIn">
+  const recordingHud = (
+    <div
+      className={`font-['Manrope',system-ui,sans-serif] pointer-events-auto select-none ${
+        pipMountNode ? "" : "fixed bottom-6 left-6 z-[99999] animate-fadeIn"
+      }`}
+    >
+      {snapFlash && (
+        <div
+          className={`rounded-full bg-[#c4a35a] px-4 py-1.5 text-xs font-bold text-black shadow-2xl ${
+            pipMountNode ? "mb-2" : "absolute -top-12 left-0 animate-bounce"
+          }`}
+        >
+          {snapFlash}
+        </div>
+      )}
 
-        {/* Snapshot Capture Notification Flash */}
-        {snapFlash && (
-          <div className="absolute -top-12 left-0 rounded-full bg-[#c4a35a] px-4 py-1.5 text-xs font-bold text-black shadow-2xl animate-bounce">
-            {snapFlash}
-          </div>
-        )}
+      {pipOpenFailed && !pipMountNode && (
+        <button
+          type="button"
+          onClick={() => openRecordingPipWindow()}
+          className="mb-2 rounded-full border border-[#c4a35a]/50 bg-[#1c1913] px-3 py-1 text-[11px] font-semibold text-[#dcc084] hover:bg-[#252018]"
+        >
+          Float controls on screen
+        </button>
+      )}
 
-        <div className="flex items-center gap-2.5 sm:gap-3 rounded-full border border-white/15 bg-[#121214]/95 px-4 py-2 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-          {/* Mode Pill & Time */}
-          <div className="flex items-center gap-2 pr-2.5 border-r border-white/10">
-            <span className={`h-2.5 w-2.5 rounded-full ${recordMode === "snapshots" ? "bg-[#c4a35a]" : "bg-[#cf603c] animate-pulse"}`} />
-            <span className="font-mono text-xs sm:text-sm font-semibold tracking-wider text-[#f4f2ee]">
-              {formatSeconds(recordingSeconds)}
-            </span>
-          </div>
+      <div className="flex items-center gap-2.5 sm:gap-3 rounded-full border border-white/15 bg-[#121214]/95 px-4 py-2 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-xl">
+        <div className="flex items-center gap-2 pr-2.5 border-r border-white/10">
+          <span
+            className={`h-2.5 w-2.5 rounded-full ${
+              recordMode === "snapshots" ? "bg-[#c4a35a]" : "bg-[#cf603c] animate-pulse"
+            }`}
+          />
+          <span className="font-mono text-xs sm:text-sm font-semibold tracking-wider text-[#f4f2ee]">
+            {formatSeconds(recordingSeconds)}
+          </span>
+        </div>
 
-          {/* Mic Visualizer */}
-          <div className="flex items-center gap-[3px] h-[16px] pr-2.5 border-r border-white/10">
-            {micLevel.map((height, i) => (
-              <span
-                key={i}
-                style={{ height: `${Math.min(16, height * 0.7)}px` }}
-                className="w-[2.5px] rounded-sm bg-[#5fbf7d] transition-all duration-75"
-              />
-            ))}
-          </div>
+        <div className="flex items-center gap-[3px] h-[16px] pr-2.5 border-r border-white/10">
+          {micLevel.map((height, i) => (
+            <span
+              key={i}
+              style={{ height: `${Math.min(16, height * 0.7)}px` }}
+              className="w-[2.5px] rounded-sm bg-[#5fbf7d] transition-all duration-75"
+            />
+          ))}
+        </div>
 
-          {/* Scribe Snapshot Trigger Button */}
+        {recordMode === "snapshots" && (
           <button
             type="button"
             onClick={handleCaptureSnapshotStep}
@@ -994,53 +1111,63 @@ export function VideoSopStudioModal({
               {steps.length}
             </span>
           </button>
+        )}
 
-          {/* Pause Button */}
-          <button
-            type="button"
-            onClick={handleTogglePause}
-            className="flex items-center gap-1.5 rounded-full bg-[#222224] px-3 py-1.5 text-xs font-semibold text-[#f4f2ee]/80 hover:bg-[#2c2c30] transition"
-          >
-            {isPaused ? (
-              <>
-                <span className="text-[10px]">▶</span>
-                <span>Resume</span>
-              </>
-            ) : (
-              <>
-                <span className="flex gap-0.5">
-                  <span className="w-[2px] h-[9px] bg-current rounded-sm" />
-                  <span className="w-[2px] h-[9px] bg-current rounded-sm" />
-                </span>
-                <span>Pause</span>
-              </>
-            )}
-          </button>
+        <button
+          type="button"
+          onClick={handleTogglePause}
+          className="flex items-center gap-1.5 rounded-full bg-[#222224] px-3 py-1.5 text-xs font-semibold text-[#f4f2ee]/80 hover:bg-[#2c2c30] transition"
+        >
+          {isPaused ? (
+            <>
+              <span className="text-[10px]">▶</span>
+              <span>Resume</span>
+            </>
+          ) : (
+            <>
+              <span className="flex gap-0.5">
+                <span className="w-[2px] h-[9px] bg-current rounded-sm" />
+                <span className="w-[2px] h-[9px] bg-current rounded-sm" />
+              </span>
+              <span>Pause</span>
+            </>
+          )}
+        </button>
 
-          {/* Finish Button */}
-          <button
-            type="button"
-            onClick={handleFinishRecording}
-            className="flex items-center gap-1.5 rounded-full bg-[#5fbf7d] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#72d392] shadow-md transition"
-          >
-            <span className="h-2 w-2 rounded-sm bg-[#0a0a0a]" />
-            <span>Finish ({steps.length || 1} {steps.length === 1 ? "Step" : "Steps"})</span>
-          </button>
+        <button
+          type="button"
+          onClick={handleFinishRecording}
+          className="flex items-center gap-1.5 rounded-full bg-[#5fbf7d] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#72d392] shadow-md transition"
+        >
+          <span className="h-2 w-2 rounded-sm bg-[#0a0a0a]" />
+          <span>
+            Finish ({steps.length || 1} {steps.length === 1 ? "Step" : "Steps"})
+          </span>
+        </button>
 
-          {/* Cancel */}
-          <button
-            type="button"
-            onClick={() => {
-              cleanupStreams();
-              setStage("setup");
-            }}
-            title="Cancel recording"
-            className="flex h-7 w-7 items-center justify-center rounded-full text-[#f4f2ee]/40 hover:text-[#f4f2ee] hover:bg-white/10 text-xs transition ml-0.5"
-          >
-            ✕
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            cleanupStreams();
+            setStage("setup");
+          }}
+          title="Cancel recording"
+          className="flex h-7 w-7 items-center justify-center rounded-full text-[#f4f2ee]/40 hover:text-[#f4f2ee] hover:bg-white/10 text-xs transition ml-0.5"
+        >
+          ✕
+        </button>
       </div>
+    </div>
+  );
+
+  // ========================================================
+  // FRAME 2 · ACTIVE RECORDING (UNOBTRUSIVE FLOATING HUD)
+  // ========================================================
+  if (stage === "recording") {
+    return (
+      <>
+        {hiddenLivePreview}
+        {pipMountNode ? createPortal(recordingHud, pipMountNode) : recordingHud}
       </>
     );
   }
@@ -1110,6 +1237,25 @@ export function VideoSopStudioModal({
                     Record your screen and voice. Transcript builds automatically.
                   </p>
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-[#c4a35a]/25 bg-[#16140f] px-3.5 py-3 text-xs text-[#cfc9c2] space-y-1.5">
+                <p>
+                  <span className="font-semibold text-[#dcc084]">Screen share:</span> choose{" "}
+                  <span className="text-[#f4f2ee]">Entire screen</span> or{" "}
+                  <span className="text-[#f4f2ee]">Chrome window</span> so captures work in any tab.
+                </p>
+                {isDocumentPipSupported() ? (
+                  <p>
+                    <span className="font-semibold text-[#dcc084]">Floating controls:</span> a small
+                    bar stays on top while you work in other tabs and apps (Chrome / Edge).
+                  </p>
+                ) : (
+                  <p>
+                    For floating controls across tabs, use Chrome or Edge. Safari keeps the bar on this
+                    tab only.
+                  </p>
+                )}
               </div>
 
               {/* Active Mic Pill */}

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { SopStepBox, SopStepPin } from "../../../shared/pm/sopTypes";
 
 type ToolType = "spotlight" | "blur" | "blackout" | "pin";
@@ -81,15 +82,32 @@ export function ImageRedactorModal({
   const [history, setHistory] = useState<{ boxes: SopStepBox[]; pins: SopStepPin[] }[]>([]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isDrawing = useRef(false);
   const startPos = useRef<{ x: number; y: number } | null>(null);
+  const activeToolRef = useRef<ToolType>(activeTool);
+  const currentDragBoxRef = useRef<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
   const [currentDragBox, setCurrentDragBox] = useState<{
     x: number;
     y: number;
     w: number;
     h: number;
   } | null>(null);
+
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
+
+  const setDragBox = (box: { x: number; y: number; w: number; h: number } | null) => {
+    currentDragBoxRef.current = box;
+    setCurrentDragBox(box);
+  };
 
   // Focus ref for auto-focusing caption input
   const activeInputRef = useRef<HTMLInputElement | null>(null);
@@ -105,6 +123,10 @@ export function ImageRedactorModal({
       setSelectedLayerId(null);
       setHiddenIds({});
       setHistory([]);
+      setCurrentDragBox(null);
+      isDrawing.current = false;
+      startPos.current = null;
+      currentDragBoxRef.current = null;
     }
   }, [isOpen, initialImageUrl, rawImageUrl, initialBoxes, initialPins]);
 
@@ -291,16 +313,55 @@ export function ImageRedactorModal({
     );
   };
 
-  const getNormalizedCoords = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clientX = e.clientX - rect.left;
-    const clientY = e.clientY - rect.top;
-    const x = Math.max(0, Math.min(1, clientX / rect.width));
-    const y = Math.max(0, Math.min(1, clientY / rect.height));
-    return { x, y };
+  const getNormalizedCoords = (clientX: number, clientY: number) => {
+    const img = imageRef.current;
+    if (!img) {
+      const container = containerRef.current;
+      if (!container) return { x: 0, y: 0 };
+      const rect = container.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+        y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+      };
+    }
+
+    const rect = img.getBoundingClientRect();
+    const nw = img.naturalWidth;
+    const nh = img.naturalHeight;
+
+    if (!nw || !nh || !rect.width || !rect.height) {
+      return {
+        x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+        y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+      };
+    }
+
+    const imageAspect = nw / nh;
+    const elementAspect = rect.width / rect.height;
+    let displayW: number;
+    let displayH: number;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (imageAspect > elementAspect) {
+      displayW = rect.width;
+      displayH = rect.width / imageAspect;
+      offsetY = (rect.height - displayH) / 2;
+    } else {
+      displayH = rect.height;
+      displayW = rect.height * imageAspect;
+      offsetX = (rect.width - displayW) / 2;
+    }
+
+    const x = (clientX - rect.left - offsetX) / displayW;
+    const y = (clientY - rect.top - offsetY) / displayH;
+
+    return {
+      x: Math.max(0, Math.min(1, x)),
+      y: Math.max(0, Math.min(1, y)),
+    };
   };
 
-  // Get next sensible default pin number
   const getNextPinNumber = () => {
     const numericPins = pins
       .map((p) => Number(p.number))
@@ -309,9 +370,38 @@ export function ImageRedactorModal({
     return Math.max(...numericPins) + 1;
   };
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+  const finishDrawingBox = () => {
+    if (!isDrawing.current) return;
+    isDrawing.current = false;
+
+    const dragBox = currentDragBoxRef.current;
+    if (dragBox && dragBox.w > 0.008 && dragBox.h > 0.008) {
+      saveHistory();
+      const tool = activeToolRef.current;
+      const newBox: SopStepBox = {
+        id: `box-${Date.now()}`,
+        type: tool as "spotlight" | "blur" | "blackout",
+        x: dragBox.x,
+        y: dragBox.y,
+        w: dragBox.w,
+        h: dragBox.h,
+        label: `${tool.toUpperCase()} region`,
+      };
+      setBoxes((prev) => [...prev, newBox]);
+      setSelectedLayerId(newBox.id);
+    }
+
+    setDragBox(null);
+    startPos.current = null;
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!imageSrc) return;
-    const coords = getNormalizedCoords(e);
+    if (e.button !== 0) return;
+
+    const coords = getNormalizedCoords(e.clientX, e.clientY);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
 
     if (activeTool === "pin") {
       saveHistory();
@@ -328,44 +418,40 @@ export function ImageRedactorModal({
       return;
     }
 
-    // Otherwise dragging a box
     setSelectedLayerId(null);
     isDrawing.current = true;
     startPos.current = coords;
-    setCurrentDragBox({ x: coords.x, y: coords.y, w: 0, h: 0 });
+    setDragBox({ x: coords.x, y: coords.y, w: 0, h: 0 });
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDrawing.current || !startPos.current) return;
-    const coords = getNormalizedCoords(e);
+    const coords = getNormalizedCoords(e.clientX, e.clientY);
     const x = Math.min(startPos.current.x, coords.x);
     const y = Math.min(startPos.current.y, coords.y);
     const w = Math.abs(coords.x - startPos.current.x);
     const h = Math.abs(coords.y - startPos.current.y);
-    setCurrentDragBox({ x, y, w, h });
+    setDragBox({ x, y, w, h });
   };
 
-  const handleMouseUp = () => {
-    if (!isDrawing.current || !currentDragBox) return;
-    isDrawing.current = false;
-
-    if (currentDragBox.w > 0.008 && currentDragBox.h > 0.008) {
-      saveHistory();
-      const newBox: SopStepBox = {
-        id: `box-${Date.now()}`,
-        type: activeTool as "spotlight" | "blur" | "blackout",
-        x: currentDragBox.x,
-        y: currentDragBox.y,
-        w: currentDragBox.w,
-        h: currentDragBox.h,
-        label: `${activeTool.toUpperCase()} region`,
-      };
-      setBoxes((prev) => [...prev, newBox]);
-      setSelectedLayerId(newBox.id);
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    setCurrentDragBox(null);
-    startPos.current = null;
+    finishDrawingBox();
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onWindowPointerUp = () => finishDrawingBox();
+    window.addEventListener("pointerup", onWindowPointerUp);
+    window.addEventListener("pointercancel", onWindowPointerUp);
+    return () => {
+      window.removeEventListener("pointerup", onWindowPointerUp);
+      window.removeEventListener("pointercancel", onWindowPointerUp);
+    };
+  }, [isOpen]);
 
   // Render & Bake composite image
   const handleSaveAndBake = () => {
@@ -487,8 +573,8 @@ export function ImageRedactorModal({
       } spotlight · ${pins.filter((p) => !hiddenIds[p.id]).length} pins`
     : "No annotations yet";
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/88 backdrop-blur-md p-3 sm:p-5">
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/88 backdrop-blur-md p-3 sm:p-5">
       <div className="flex h-[92vh] w-full max-w-7xl flex-col rounded-lg border border-white/10 bg-[#0e0e0e] shadow-2xl overflow-hidden">
         
         {/* Header Toolbar */}
@@ -608,14 +694,16 @@ export function ImageRedactorModal({
             {imageSrc ? (
               <div
                 ref={containerRef}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                className="relative cursor-crosshair rounded border border-white/14 shadow-2xl max-h-[72vh] max-w-full overflow-visible"
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                className="relative cursor-crosshair rounded border border-white/14 shadow-2xl max-h-[72vh] max-w-full overflow-visible touch-none"
               >
                 <img
+                  ref={imageRef}
                   src={imageSrc}
                   alt="Workspace"
+                  draggable={false}
                   className="pointer-events-none block max-h-[72vh] max-w-full object-contain select-none"
                 />
 
@@ -626,7 +714,7 @@ export function ImageRedactorModal({
                   return (
                     <div
                       key={box.id}
-                      onClick={(e) => {
+                      onPointerDown={(e) => {
                         e.stopPropagation();
                         setSelectedLayerId(box.id);
                       }}
@@ -683,7 +771,7 @@ export function ImageRedactorModal({
                   return (
                     <div
                       key={pin.id}
-                      onClick={(e) => {
+                      onPointerDown={(e) => {
                         e.stopPropagation();
                         setSelectedLayerId(pin.id);
                       }}
@@ -954,6 +1042,7 @@ export function ImageRedactorModal({
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
