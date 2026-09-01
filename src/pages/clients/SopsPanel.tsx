@@ -35,15 +35,19 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
   const [toast, setToast] = useState<string | null>(null);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Load from database (clean slate if empty)
+  // Load from database
   const fetchSops = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await pmGet<{ sops: SopItem[] }>("sops");
       setSops(data.sops || []);
-    } catch {
+    } catch (err: unknown) {
       setSops([]);
+      const msg = err instanceof Error ? err.message : "Could not load SOPs.";
+      setLoadError(msg);
     } finally {
       setLoading(false);
     }
@@ -275,6 +279,14 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
         </div>
       </div>
 
+      {/* Load error banner */}
+      {loadError && (
+        <div className="mx-6 sm:mx-9 mt-4 rounded-lg border border-[#cf603c]/35 bg-[#cf603c]/10 px-4 py-3 text-xs text-[#e8a48a]">
+          <span className="font-semibold text-[#f5c4a8]">Could not load SOPs: </span>
+          {loadError}
+        </div>
+      )}
+
       {/* Filter Chips & Search Bar */}
       <div className="px-6 sm:px-9 py-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
@@ -333,9 +345,13 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 border border-white/8 text-[#c4a35a] mb-3">
               <span className="text-lg">✦</span>
             </div>
-            <h3 className="text-base font-bold text-[#f5f5f5]">No SOPs created yet</h3>
+            <h3 className="text-base font-bold text-[#f5f5f5]">
+              {sops.length === 0 ? "No SOPs created yet" : "No SOPs match this filter"}
+            </h3>
             <p className="text-xs text-[#9a9590] mt-1 max-w-sm">
-              Create your first step-by-step operating procedure, or draft one in seconds using AI from your notes.
+              {sops.length === 0
+                ? "Create your first step-by-step operating procedure, or record a Scribe snapshot or video walkthrough."
+                : "Try a different category chip or clear your search."}
             </p>
             <div className="flex items-center gap-3 mt-5">
               <button

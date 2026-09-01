@@ -1310,8 +1310,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         if (op === "save") {
           const rawSop = (body.sop && typeof body.sop === "object") ? (body.sop as Record<string, unknown>) : body;
+          const rawId = str(rawSop.id || body.id).trim();
+          const sopId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId)
+            ? rawId
+            : undefined;
           const sop = await upsertSop({
-            id: rawSop.id || body.id ? str(rawSop.id || body.id) : undefined,
+            id: sopId,
             title: str(rawSop.title || body.title),
             slug: str(rawSop.slug || body.slug) || undefined,
             category: ((rawSop.category || body.category) as any) || "outreach",

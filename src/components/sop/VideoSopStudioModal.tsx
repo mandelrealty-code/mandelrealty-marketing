@@ -784,6 +784,11 @@ export function VideoSopStudioModal({
         }
       }
 
+      // Only persist remote video URLs (never blob: URLs from local preview)
+      if (finalVideoUrl && !finalVideoUrl.startsWith("http")) {
+        finalVideoUrl = undefined;
+      }
+
       // 2. Prepare steps array
       let formattedSteps: SopStep[] = [];
       if (recordMode === "snapshots" && steps.length > 0) {
@@ -800,7 +805,7 @@ export function VideoSopStudioModal({
           timestamp: line.t,
           seconds: line.seconds != null ? line.seconds : parseTimeToSeconds(line.t),
           media_type: "video_embed",
-          video_url: finalVideoUrl,
+          video_url: finalVideoUrl && finalVideoUrl.startsWith("http") ? finalVideoUrl : undefined,
           pro_tip: idx === 0 ? "Ensure you verify all fields on this screen before approving." : undefined,
         }));
       } else {
@@ -964,89 +969,69 @@ export function VideoSopStudioModal({
         {/* FRAME 1 · SETUP & MODE SELECTION MODAL                  */}
         {/* ======================================================== */}
         {stage === "setup" && (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 relative overflow-y-auto">
+          <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-y-auto min-h-0">
             <button
               type="button"
               onClick={onClose}
-              className="absolute top-6 right-6 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-[#141414] text-[#9a9590] hover:text-[#f4f2ee] hover:bg-[#1a1a1a] transition"
+              className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-[#141414] text-[#9a9590] hover:text-[#f4f2ee] hover:bg-[#1a1a1a] transition"
             >
               ✕
             </button>
 
-            <div className="w-full max-w-[680px] rounded-[20px] border border-white/12 bg-[#141414] p-8 sm:p-10 shadow-[0_40px_120px_rgba(0,0,0,0.7)] space-y-7">
-              <div className="space-y-2">
-                <div className="text-2xl sm:text-[28px] font-bold tracking-tight text-[#f4f2ee] leading-tight">
-                  Record SOP Guide
+            <div className="w-full max-w-[680px] rounded-[20px] border border-white/12 bg-[#141414] p-6 sm:p-8 shadow-[0_40px_120px_rgba(0,0,0,0.7)] space-y-5">
+              <div className="space-y-1">
+                <div className="text-xl sm:text-2xl font-bold tracking-tight text-[#f4f2ee] leading-tight">
+                  Record SOP
                 </div>
-                <p className="text-sm leading-relaxed text-[#f4f2ee]/50">
-                  Choose your recording style. Scribe Snapshot mode captures crisp annotated screenshots on each click, while Video mode records continuous screen &amp; voice.
+                <p className="text-sm text-[#f4f2ee]/50">
+                  Pick a style, fill in the basics, then start.
                 </p>
               </div>
 
               {/* Mode Switcher Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Mode A: Scribe Snapshot Mode */}
                 <div
                   onClick={() => setRecordMode("snapshots")}
-                  className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between gap-3 ${
+                  className={`p-3.5 rounded-xl border cursor-pointer transition ${
                     recordMode === "snapshots"
                       ? "border-[#c4a35a] bg-[#1c1913] shadow-[0_0_20px_rgba(196,163,90,0.15)] ring-1 ring-[#c4a35a]/40"
                       : "border-white/10 bg-[#0f0f0f] hover:border-white/20"
                   }`}
                 >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#dcc084]">
-                        <span>📸</span> Scribe Snapshot Mode
-                      </span>
-                      <span className="rounded bg-[#5fbf7d]/15 border border-[#5fbf7d]/30 px-2 py-0.5 font-mono text-[9.5px] font-bold text-[#5fbf7d]">
-                        ZERO AI COST
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#cfc9c2] leading-relaxed">
-                      Snap keyframe screenshots as you work. Add numbered click pins, spotlight boxes, and blur sensitive data after.
-                    </p>
-                  </div>
-                  <span className="text-[11px] font-semibold text-[#c4a35a]">
-                    Best for: Quick VA playbooks, checklists, and click guides →
+                  <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#dcc084]">
+                    <span>📸</span> Snapshots
                   </span>
+                  <p className="text-xs text-[#cfc9c2] mt-1.5">
+                    Capture a screenshot at each step. Add pins and blur after.
+                  </p>
                 </div>
 
                 {/* Mode B: Full Video Mode */}
                 <div
                   onClick={() => setRecordMode("video")}
-                  className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between gap-3 ${
+                  className={`p-3.5 rounded-xl border cursor-pointer transition ${
                     recordMode === "video"
                       ? "border-[#c4a35a] bg-[#1c1913] shadow-[0_0_20px_rgba(196,163,90,0.15)] ring-1 ring-[#c4a35a]/40"
                       : "border-white/10 bg-[#0f0f0f] hover:border-white/20"
                   }`}
                 >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#dcc084]">
-                        <span>🎥</span> Video Walkthrough
-                      </span>
-                      <span className="rounded bg-white/10 px-2 py-0.5 font-mono text-[9.5px] text-[#9a9590]">
-                        1080P HD
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#cfc9c2] leading-relaxed">
-                      Record continuous video with speech-to-text transcription and an interactive chapter scrubber.
-                    </p>
-                  </div>
-                  <span className="text-[11px] font-semibold text-[#c4a35a]">
-                    Best for: In-depth video trainings &amp; voiceovers →
+                  <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#dcc084]">
+                    <span>🎥</span> Video
                   </span>
+                  <p className="text-xs text-[#cfc9c2] mt-1.5">
+                    Record your screen and voice. Transcript builds automatically.
+                  </p>
                 </div>
               </div>
 
               {/* Active Mic Pill */}
-              <div className="inline-flex items-center gap-3.5 rounded-full border border-white/9 bg-[#1a1a1a] px-4 py-2">
+              <div className="inline-flex items-center gap-2.5 rounded-full border border-white/9 bg-[#1a1a1a] px-3 py-1.5">
                 <span className="h-2 w-2 rounded-full bg-[#5fbf7d]" />
-                <span className="text-xs font-medium text-[#f4f2ee]/75">
-                  Mic: <span className="text-[#5fbf7d] font-semibold">({micActive ? "Active" : "Ready"})</span>
+                <span className="text-xs text-[#f4f2ee]/75">
+                  Mic {micActive ? "on" : "ready"}
                 </span>
-                <div className="flex items-end gap-[3px] h-[16px]">
+                <div className="flex items-end gap-[3px] h-[14px]">
                   {micLevel.map((height, i) => (
                     <span
                       key={i}
@@ -1058,29 +1043,29 @@ export function VideoSopStudioModal({
               </div>
 
               {/* Form Metadata */}
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
-                    SOP Title
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-[#f4f2ee]/45">
+                    Title
                   </label>
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g. Early Check-in Approval & Turnover Gap Guide"
-                    className="w-full rounded-lg border border-[#c4a35a]/45 bg-[#0e0e0e] px-4 py-3 text-[14.5px] font-medium text-[#f4f2ee] outline-none shadow-[0_0_0_3px_rgba(196,163,90,0.08)] focus:border-[#c4a35a]"
+                    placeholder="e.g. Early check-in approval"
+                    className="w-full rounded-lg border border-[#c4a35a]/45 bg-[#0e0e0e] px-3.5 py-2.5 text-sm font-medium text-[#f4f2ee] outline-none focus:border-[#c4a35a]"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
-                      Target Role
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-[#f4f2ee]/45">
+                      For
                     </label>
                     <select
                       value={targetRole}
                       onChange={(e) => setTargetRole(e.target.value as SopTargetRole)}
-                      className="w-full rounded-lg border border-white/8 bg-[#0e0e0e] px-3.5 py-2.5 text-xs sm:text-[13px] text-[#f4f2ee] outline-none"
+                      className="w-full rounded-lg border border-white/8 bg-[#0e0e0e] px-3 py-2 text-xs text-[#f4f2ee] outline-none"
                     >
                       <option value="va">VA Team</option>
                       <option value="cleaner">Cleaner</option>
@@ -1089,36 +1074,36 @@ export function VideoSopStudioModal({
                     </select>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-[#f4f2ee]/40">
-                      SOP Category
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-[#f4f2ee]/45">
+                      Category
                     </label>
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value as SopCategory)}
-                      className="w-full rounded-lg border border-white/8 bg-[#0e0e0e] px-3.5 py-2.5 text-xs sm:text-[13px] text-[#f4f2ee] outline-none"
+                      className="w-full rounded-lg border border-white/8 bg-[#0e0e0e] px-3 py-2 text-xs text-[#f4f2ee] outline-none"
                     >
                       <option value="turnover">Turnovers &amp; Cleaning</option>
-                      <option value="guest_ops">Guest Comms &amp; Inquiries</option>
+                      <option value="guest_ops">Guest Comms</option>
                       <option value="outreach">Outreach &amp; Leads</option>
-                      <option value="team_comms">Team &amp; Cleaner Comms</option>
-                      <option value="software">Software &amp; Settings</option>
-                      <option value="maintenance">Maintenance &amp; Repairs</option>
+                      <option value="team_comms">Team Comms</option>
+                      <option value="software">Software</option>
+                      <option value="maintenance">Maintenance</option>
                     </select>
                   </div>
                 </div>
               </div>
 
               {/* Start Button */}
-              <div className="flex items-center gap-4 pt-2">
+              <div className="flex items-center gap-3 pt-1">
                 <button
                   type="button"
                   onClick={() => handleStartRecording(recordMode)}
-                  className="flex-1 flex items-center justify-center gap-2.5 rounded-xl bg-[#c4a35a] py-3.5 text-sm sm:text-[15px] font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_12px_40px_rgba(196,163,90,0.3)] transition"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-[#c4a35a] py-3 text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_12px_40px_rgba(196,163,90,0.3)] transition"
                 >
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#cf603c] animate-pulse" />
+                  <span className="h-2 w-2 rounded-full bg-[#cf603c] animate-pulse" />
                   <span>
-                    {recordMode === "snapshots" ? "Start Scribe Snapshot Capture" : "Start Video Recording"}
+                    {recordMode === "snapshots" ? "Start Snapshots" : "Start Video"}
                   </span>
                 </button>
                 <button

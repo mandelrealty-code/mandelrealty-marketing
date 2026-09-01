@@ -2918,10 +2918,13 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
             transcript: (metadata.transcript as any) || editingVideoSop?.transcript,
           };
           try {
-            await pmPost("sops", {
+            const res = await pmPost<{ sop: SopItem }>("sops", {
               op: "save",
               ...newSop,
             });
+            if (!res.sop) {
+              throw new Error("Save succeeded but no SOP was returned.");
+            }
             setToast("SOP Video Guide saved to Playbook.");
             setVideoStudioOpen(false);
             setEditingVideoSop(null);

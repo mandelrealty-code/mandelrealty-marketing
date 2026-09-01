@@ -28,6 +28,67 @@ function mapSop(row: Record<string, unknown>): SopItem {
   };
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function sanitizeVideoUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const clean = String(url).trim();
+  if (!clean.startsWith("http")) return undefined;
+  if (clean.startsWith("blob:")) return undefined;
+  return clean;
+}
+
+async function uploadStepImageDataUrl(slug: string, stepId: string, dataUrl: string): Promise<string> {
+  const match = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
+  if (!match) throw new Error("Invalid step image data URL.");
+
+  const mime = match[1].toLowerCase();
+  const buffer = Buffer.from(match[2], "base64");
+  const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+  const safeStep = stepId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) || "step";
+  const storagePath = `sop-images/${slug}/${safeStep}.${ext}`;
+
+  const { error: upErr } = await db()
+    .storage.from("pm-contracts")
+    .upload(storagePath, buffer, { contentType: mime, upsert: true });
+  if (upErr) throw new Error(`Step image upload failed: ${upErr.message}`);
+
+  const { data: signed } = await db()
+    .storage.from("pm-contracts")
+    .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+
+  return signed?.signedUrl || storagePath;
+}
+
+async function persistStepMedia(slug: string, steps: SopStep[]): Promise<SopStep[]> {
+  const out: SopStep[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = { ...steps[i] };
+    const stepKey = step.id || `step-${i + 1}`;
+
+    if (step.image_url?.startsWith("data:image")) {
+      step.image_url = await uploadStepImageDataUrl(slug, `${stepKey}-baked`, step.image_url);
+    } else if (step.image_url?.startsWith("blob:")) {
+      delete step.image_url;
+    }
+
+    if (step.raw_image_url?.startsWith("data:image")) {
+      step.raw_image_url = await uploadStepImageDataUrl(slug, `${stepKey}-raw`, step.raw_image_url);
+    } else if (step.raw_image_url?.startsWith("blob:")) {
+      delete step.raw_image_url;
+    }
+
+    if (step.video_url?.startsWith("blob:")) {
+      delete step.video_url;
+    }
+
+    out.push(step);
+  }
+  return out;
+}
+
 export async function listSops(options?: {
   category?: string;
   onlyPublished?: boolean;
@@ -43,8 +104,10 @@ export async function listSops(options?: {
 
   const { data, error } = await query;
   if (error) {
-    if (/pm_sops|relation/i.test(error.message || "")) {
-      return [];
+    if (/pm_sops|relation|does not exist/i.test(error.message || "")) {
+      throw new Error(
+        "SOP table missing. Run supabase/pm_sops_v1.sql (and pm_sops_v2.sql for video) in Supabase, then retry.",
+      );
     }
     throw error;
   }
@@ -128,6 +191,8 @@ export async function upsertSop(input: Partial<SopItem> & { title: string }): Pr
 
   if (!slug) slug = `sop-${Date.now()}`;
 
+  const persistedSteps = await persistStepMedia(slug, Array.isArray(input.steps) ? input.steps : []);
+
   const payload: Record<string, unknown> = {
     title,
     slug,
@@ -135,21 +200,30 @@ export async function upsertSop(input: Partial<SopItem> & { title: string }): Pr
     summary: input.summary || "",
     target_role: input.target_role || "va",
     estimated_minutes: input.estimated_minutes || 15,
-    steps: input.steps || [],
+    steps: persistedSteps,
     is_published: input.is_published !== false,
     author: input.author || "MRG Admin",
     updated_at: new Date().toISOString(),
   };
 
-  if (input.video_url) {
-    payload.video_url = input.video_url;
+  const cleanVideoUrl = sanitizeVideoUrl(input.video_url);
+  if (cleanVideoUrl) {
+    payload.video_url = cleanVideoUrl;
   }
 
-  if (input.id) {
+  const rawId = String(input.id || "").trim();
+  let targetId = isUuid(rawId) ? rawId : "";
+
+  if (!targetId) {
+    const existing = await getSopBySlug(slug);
+    if (existing?.id) targetId = existing.id;
+  }
+
+  if (targetId) {
     let res = await db()
       .from("pm_sops")
       .update(payload)
-      .eq("id", input.id)
+      .eq("id", targetId)
       .select("*")
       .single();
 
@@ -158,14 +232,14 @@ export async function upsertSop(input: Partial<SopItem> & { title: string }): Pr
       res = await db()
         .from("pm_sops")
         .update(payload)
-        .eq("id", input.id)
+        .eq("id", targetId)
         .select("*")
         .single();
     }
 
     if (res.error) throw res.error;
     const sop = mapSop(res.data as Record<string, unknown>);
-    if (input.video_url && !sop.video_url) sop.video_url = input.video_url;
+    if (cleanVideoUrl && !sop.video_url) sop.video_url = cleanVideoUrl;
     return sop;
   }
 
@@ -184,9 +258,23 @@ export async function upsertSop(input: Partial<SopItem> & { title: string }): Pr
       .single();
   }
 
-  if (res.error) throw res.error;
+  if (res.error) {
+    if (/duplicate|unique.*slug/i.test(res.error.message || "")) {
+      const existing = await getSopBySlug(slug);
+      if (existing?.id) {
+        return upsertSop({ ...input, id: existing.id, slug });
+      }
+    }
+    if (/pm_sops|relation|does not exist/i.test(res.error.message || "")) {
+      throw new Error(
+        "SOP table missing. Run supabase/pm_sops_v1.sql (and pm_sops_v2.sql for video) in Supabase, then retry.",
+      );
+    }
+    throw res.error;
+  }
+
   const sop = mapSop(res.data as Record<string, unknown>);
-  if (input.video_url && !sop.video_url) sop.video_url = input.video_url;
+  if (cleanVideoUrl && !sop.video_url) sop.video_url = cleanVideoUrl;
   return sop;
 }
 
