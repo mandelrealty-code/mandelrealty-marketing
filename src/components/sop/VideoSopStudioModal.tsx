@@ -4,6 +4,14 @@ import type { SopItem, SopStep, SopCategory, SopTargetRole } from "../../../shar
 import { storeSopVideoBlob, getSopVideoBlob } from "../../lib/sopVideoStorage";
 import { pmPost } from "../../pages/clients/api";
 import { ImageRedactorModal } from "./ImageRedactorModal";
+import {
+  SOP_AUTO_CAPTURE,
+  buildStepCopy,
+  fingerprintDiffRatio,
+  sampleVideoFingerprint,
+  type FrameFingerprint,
+  type SopSnapSource,
+} from "../../lib/sopAutoCapture";
 
 export function parseTimeToSeconds(t: string | undefined): number {
   if (!t) return 0;
@@ -177,6 +185,56 @@ export function VideoSopStudioModal({
   useEffect(() => {
     pipMountNodeRef.current = pipMountNode;
   }, [pipMountNode]);
+
+  // Auto-capture refs (stable across speech / visual watchers)
+  const stageRef = useRef(stage);
+  const recordModeRef = useRef(recordMode);
+  const isPausedRef = useRef(isPaused);
+  const latestSpokenTextRef = useRef(latestSpokenText);
+  const stepsLengthRef = useRef(0);
+  const isCapturingRef = useRef(false);
+  const lastSnapAtRef = useRef(0);
+  const lastFingerprintRef = useRef<FrameFingerprint | null>(null);
+  const pendingSpeechRef = useRef("");
+  const speechDebounceTimerRef = useRef<number | null>(null);
+  const visualWatchTimerRef = useRef<number | null>(null);
+  const startSnapTimerRef = useRef<number | null>(null);
+  const captureSnapshotStepRef = useRef<
+    (opts: { source: SopSnapSource; spokenOverride?: string }) => Promise<void>
+  >(async () => {});
+
+  useEffect(() => {
+    stageRef.current = stage;
+  }, [stage]);
+  useEffect(() => {
+    recordModeRef.current = recordMode;
+  }, [recordMode]);
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+  useEffect(() => {
+    latestSpokenTextRef.current = latestSpokenText;
+  }, [latestSpokenText]);
+  useEffect(() => {
+    stepsLengthRef.current = steps.length;
+  }, [steps.length]);
+
+  const clearAutoCaptureTimers = () => {
+    if (speechDebounceTimerRef.current) {
+      clearTimeout(speechDebounceTimerRef.current);
+      speechDebounceTimerRef.current = null;
+    }
+    if (visualWatchTimerRef.current) {
+      clearInterval(visualWatchTimerRef.current);
+      visualWatchTimerRef.current = null;
+    }
+    if (startSnapTimerRef.current) {
+      clearTimeout(startSnapTimerRef.current);
+      startSnapTimerRef.current = null;
+    }
+    pendingSpeechRef.current = "";
+    lastFingerprintRef.current = null;
+  };
 
   // Sync with initialSop when modal is opened for editing
   useEffect(() => {
@@ -369,6 +427,7 @@ export function VideoSopStudioModal({
       speechRecognitionRef.current = null;
     }
     closeRecordingPipWindow();
+    clearAutoCaptureTimers();
   };
 
   useEffect(() => {
@@ -549,60 +608,151 @@ export function VideoSopStudioModal({
     attachStreamToLivePreview(screenStreamRef.current);
   }, [stage]);
 
-  // Capture Step Snapshot (triggered by HUD button or hotkey)
-  const handleCaptureSnapshotStep = async () => {
-    const frameDataUrl = await captureCurrentScreenFrame();
-    const currentSec = Math.max(0, recordingSecondsRef.current || recordingSeconds);
-    const timeStr = formatSeconds(currentSec);
+  const refreshFingerprintBaseline = () => {
+    const fp = sampleVideoFingerprint(liveVideoElementRef.current);
+    if (fp) lastFingerprintRef.current = fp;
+  };
 
-    const stepNum = steps.length + 1;
-    const spoken = latestSpokenText.trim();
-    const stepTitle = spoken
-      ? spoken.length > 55
-        ? `${spoken.slice(0, 52)}...`
-        : spoken
-      : `Step ${stepNum}: Action`;
-    const stepDesc = spoken || "Click the highlighted area or follow the instruction below.";
+  const captureSnapshotStep = async (opts: {
+    source: SopSnapSource;
+    spokenOverride?: string;
+  }) => {
+    if (stageRef.current !== "recording" || recordModeRef.current !== "snapshots") return;
+    if (isPausedRef.current) return;
+    if (isCapturingRef.current) return;
 
-    if (!frameDataUrl) {
-      setSnapFlash("⚠️ Screenshot failed — wait 1s, then try again");
-      setTimeout(() => setSnapFlash(null), 2800);
+    const now = Date.now();
+    const bypassCooldown = opts.source === "manual" || opts.source === "start";
+    if (
+      !bypassCooldown &&
+      now - lastSnapAtRef.current < SOP_AUTO_CAPTURE.MIN_STEP_INTERVAL_MS
+    ) {
       return;
     }
 
-    const newStep: SopStep = {
-      id: `step-${Date.now()}-${stepNum}`,
-      step_number: stepNum,
-      title: stepTitle,
-      description: stepDesc,
-      timestamp: timeStr,
-      seconds: currentSec,
-      media_type: "image",
-      image_url: frameDataUrl,
-      raw_image_url: frameDataUrl,
-      pro_tip: stepNum === 1 ? "Verify all fields on screen before proceeding." : undefined,
-    };
+    isCapturingRef.current = true;
+    try {
+      const frameDataUrl = await captureCurrentScreenFrame();
+      const currentSec = Math.max(0, recordingSecondsRef.current);
+      const timeStr = formatSeconds(currentSec);
+      const stepNum = stepsLengthRef.current + 1;
+      const spoken =
+        opts.spokenOverride?.trim() ||
+        (opts.source === "speech" || opts.source === "manual"
+          ? latestSpokenTextRef.current.trim()
+          : "");
+      const { title, description } = buildStepCopy(opts.source, stepNum, spoken);
 
-    setSteps((prev) => [...prev, newStep]);
-    setLatestSpokenText("");
+      if (!frameDataUrl) {
+        if (opts.source === "manual") {
+          setSnapFlash("⚠️ Screenshot failed — wait 1s, then try again");
+          setTimeout(() => setSnapFlash(null), 2800);
+        }
+        return;
+      }
 
-    setSnapFlash(`📸 Step ${stepNum} captured`);
-    setTimeout(() => setSnapFlash(null), 2000);
+      const newStep: SopStep = {
+        id: `step-${Date.now()}-${stepNum}`,
+        step_number: stepNum,
+        title,
+        description,
+        timestamp: timeStr,
+        seconds: currentSec,
+        media_type: "image",
+        image_url: frameDataUrl,
+        raw_image_url: frameDataUrl,
+        pro_tip: stepNum === 1 ? "Verify all fields on screen before proceeding." : undefined,
+      };
+
+      setSteps((prev) => {
+        const next = [...prev, newStep];
+        stepsLengthRef.current = next.length;
+        return next;
+      });
+      lastSnapAtRef.current = Date.now();
+
+      if (opts.source === "speech" || opts.source === "manual") {
+        pendingSpeechRef.current = "";
+        latestSpokenTextRef.current = "";
+        setLatestSpokenText("");
+      }
+
+      refreshFingerprintBaseline();
+
+      setSnapFlash(`📸 Step ${stepNum} captured`);
+      setTimeout(() => setSnapFlash(null), 2000);
+    } finally {
+      isCapturingRef.current = false;
+    }
   };
 
-  // Keyboard shortcut during recording (S or Space to snap)
+  captureSnapshotStepRef.current = captureSnapshotStep;
+
+  const handleCaptureSnapshotStep = () => {
+    void captureSnapshotStep({ source: "manual" });
+  };
+
+  const scheduleOpeningStepCapture = () => {
+    if (startSnapTimerRef.current) clearTimeout(startSnapTimerRef.current);
+    startSnapTimerRef.current = window.setTimeout(() => {
+      void captureSnapshotStepRef.current({ source: "start" });
+      startSnapTimerRef.current = null;
+    }, SOP_AUTO_CAPTURE.START_SNAP_DELAY_MS);
+  };
+
+  // Visual change watcher — detects clicks/navigation via screen-share frame diffs
   useEffect(() => {
-    if (stage !== "recording") return;
+    if (stage !== "recording" || recordMode !== "snapshots" || isPaused) {
+      if (visualWatchTimerRef.current) {
+        clearInterval(visualWatchTimerRef.current);
+        visualWatchTimerRef.current = null;
+      }
+      return;
+    }
+
+    visualWatchTimerRef.current = window.setInterval(() => {
+      if (isPausedRef.current || isCapturingRef.current) return;
+      if (stageRef.current !== "recording" || recordModeRef.current !== "snapshots") return;
+
+      const fp = sampleVideoFingerprint(liveVideoElementRef.current);
+      if (!fp) return;
+
+      const baseline = lastFingerprintRef.current;
+      if (!baseline) {
+        lastFingerprintRef.current = fp;
+        return;
+      }
+
+      const diff = fingerprintDiffRatio(baseline, fp);
+      if (diff < SOP_AUTO_CAPTURE.VISUAL_DIFF_THRESHOLD) return;
+
+      const now = Date.now();
+      if (now - lastSnapAtRef.current < SOP_AUTO_CAPTURE.MIN_STEP_INTERVAL_MS) return;
+
+      void captureSnapshotStepRef.current({ source: "visual" });
+    }, SOP_AUTO_CAPTURE.VISUAL_POLL_MS);
+
+    return () => {
+      if (visualWatchTimerRef.current) {
+        clearInterval(visualWatchTimerRef.current);
+        visualWatchTimerRef.current = null;
+      }
+    };
+  }, [stage, recordMode, isPaused]);
+
+  // Keyboard shortcut during recording (manual override snap)
+  useEffect(() => {
+    if (stage !== "recording" || recordMode !== "snapshots") return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName)) return;
       if (e.key === " " || e.key.toLowerCase() === "s") {
         e.preventDefault();
-        handleCaptureSnapshotStep();
+        void captureSnapshotStepRef.current({ source: "manual" });
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [stage, steps.length, latestSpokenText]);
+  }, [stage, recordMode]);
 
   // Start real recording (Screen + Microphone)
   const handleStartRecording = async (mode: "snapshots" | "video") => {
@@ -721,8 +871,17 @@ export function VideoSopStudioModal({
       recordingStartTimeRef.current = Date.now();
       setIsPaused(false);
       setSteps([]);
+      stepsLengthRef.current = 0;
+      lastSnapAtRef.current = 0;
+      lastFingerprintRef.current = null;
+      pendingSpeechRef.current = "";
+      setLatestSpokenText("");
       setTranscript([]);
       setStage("recording");
+
+      if (mode === "snapshots") {
+        scheduleOpeningStepCapture();
+      }
 
       timerRef.current = window.setInterval(() => {
         setRecordingSeconds((prev) => {
@@ -787,9 +946,29 @@ export function VideoSopStudioModal({
                   text: currentTxt,
                 });
                 setTranscript([...liveTranscripts]);
+              } else if (mode === "snapshots" && !isPausedRef.current) {
+                pendingSpeechRef.current = `${pendingSpeechRef.current} ${currentTxt}`.trim();
+                setLatestSpokenText(pendingSpeechRef.current);
+
+                if (speechDebounceTimerRef.current) {
+                  clearTimeout(speechDebounceTimerRef.current);
+                }
+                speechDebounceTimerRef.current = window.setTimeout(() => {
+                  const spoken = pendingSpeechRef.current.trim();
+                  if (spoken.length > 2) {
+                    void captureSnapshotStepRef.current({
+                      source: "speech",
+                      spokenOverride: spoken,
+                    });
+                  }
+                }, SOP_AUTO_CAPTURE.SPEECH_DEBOUNCE_MS);
               }
             }
           }
+        };
+
+        recognition.onerror = () => {
+          // Speech is optional — visual auto-capture still works without mic transcript.
         };
 
         recognition.start();
@@ -804,6 +983,13 @@ export function VideoSopStudioModal({
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === "paused") {
         mediaRecorderRef.current.resume();
       }
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.start();
+        } catch {
+          /* already running */
+        }
+      }
       setIsPaused(false);
       timerRef.current = window.setInterval(() => {
         setRecordingSeconds((prev) => {
@@ -815,6 +1001,17 @@ export function VideoSopStudioModal({
     } else {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
         mediaRecorderRef.current.pause();
+      }
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+      if (speechDebounceTimerRef.current) {
+        clearTimeout(speechDebounceTimerRef.current);
+        speechDebounceTimerRef.current = null;
       }
       setIsPaused(true);
       if (timerRef.current) {
@@ -829,6 +1026,7 @@ export function VideoSopStudioModal({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
+    clearAutoCaptureTimers();
     cleanupStreams();
 
     const totalSecs = Math.max(3, recordingSecondsRef.current || recordingSeconds || 17);
