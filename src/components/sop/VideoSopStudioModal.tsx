@@ -7,9 +7,8 @@ import { ImageRedactorModal } from "./ImageRedactorModal";
 import {
   SOP_AUTO_CAPTURE,
   buildStepCopy,
-  fingerprintDiffRatio,
-  sampleVideoFingerprint,
-  type FrameFingerprint,
+  describeClickTarget,
+  isCaptureControlClick,
   type SopSnapSource,
 } from "../../lib/sopAutoCapture";
 
@@ -132,6 +131,7 @@ export function VideoSopStudioModal({
 
   // Step List (for Scribe snapshots & Video chapters)
   const [steps, setSteps] = useState<SopStep[]>([]);
+  const stepsRef = useRef<SopStep[]>([]);
   const [activeRedactorStepIdx, setActiveRedactorStepIdx] = useState<number | null>(null);
   const [snapFlash, setSnapFlash] = useState<string | null>(null);
 
@@ -194,13 +194,9 @@ export function VideoSopStudioModal({
   const stepsLengthRef = useRef(0);
   const isCapturingRef = useRef(false);
   const lastSnapAtRef = useRef(0);
-  const lastFingerprintRef = useRef<FrameFingerprint | null>(null);
-  const pendingSpeechRef = useRef("");
-  const speechDebounceTimerRef = useRef<number | null>(null);
-  const visualWatchTimerRef = useRef<number | null>(null);
-  const startSnapTimerRef = useRef<number | null>(null);
+  const pendingNarrationRef = useRef("");
   const captureSnapshotStepRef = useRef<
-    (opts: { source: SopSnapSource; spokenOverride?: string }) => Promise<void>
+    (opts: { source: SopSnapSource; spokenOverride?: string; clickLabel?: string | null }) => Promise<void>
   >(async () => {});
 
   useEffect(() => {
@@ -217,23 +213,11 @@ export function VideoSopStudioModal({
   }, [latestSpokenText]);
   useEffect(() => {
     stepsLengthRef.current = steps.length;
-  }, [steps.length]);
+    stepsRef.current = steps;
+  }, [steps.length, steps]);
 
   const clearAutoCaptureTimers = () => {
-    if (speechDebounceTimerRef.current) {
-      clearTimeout(speechDebounceTimerRef.current);
-      speechDebounceTimerRef.current = null;
-    }
-    if (visualWatchTimerRef.current) {
-      clearInterval(visualWatchTimerRef.current);
-      visualWatchTimerRef.current = null;
-    }
-    if (startSnapTimerRef.current) {
-      clearTimeout(startSnapTimerRef.current);
-      startSnapTimerRef.current = null;
-    }
-    pendingSpeechRef.current = "";
-    lastFingerprintRef.current = null;
+    pendingNarrationRef.current = "";
   };
 
   // Sync with initialSop when modal is opened for editing
@@ -608,21 +592,17 @@ export function VideoSopStudioModal({
     attachStreamToLivePreview(screenStreamRef.current);
   }, [stage]);
 
-  const refreshFingerprintBaseline = () => {
-    const fp = sampleVideoFingerprint(liveVideoElementRef.current);
-    if (fp) lastFingerprintRef.current = fp;
-  };
-
   const captureSnapshotStep = async (opts: {
     source: SopSnapSource;
     spokenOverride?: string;
+    clickLabel?: string | null;
   }) => {
     if (stageRef.current !== "recording" || recordModeRef.current !== "snapshots") return;
     if (isPausedRef.current) return;
     if (isCapturingRef.current) return;
 
     const now = Date.now();
-    const bypassCooldown = opts.source === "manual" || opts.source === "start";
+    const bypassCooldown = opts.source === "manual";
     if (
       !bypassCooldown &&
       now - lastSnapAtRef.current < SOP_AUTO_CAPTURE.MIN_STEP_INTERVAL_MS
@@ -636,12 +616,15 @@ export function VideoSopStudioModal({
       const currentSec = Math.max(0, recordingSecondsRef.current);
       const timeStr = formatSeconds(currentSec);
       const stepNum = stepsLengthRef.current + 1;
-      const spoken =
+      const narration =
         opts.spokenOverride?.trim() ||
-        (opts.source === "speech" || opts.source === "manual"
-          ? latestSpokenTextRef.current.trim()
-          : "");
-      const { title, description } = buildStepCopy(opts.source, stepNum, spoken);
+        (opts.source === "manual" ? latestSpokenTextRef.current.trim() : pendingNarrationRef.current.trim());
+      const { title, description } = buildStepCopy(
+        opts.source,
+        stepNum,
+        narration,
+        opts.clickLabel
+      );
 
       if (!frameDataUrl) {
         if (opts.source === "manual") {
@@ -671,13 +654,9 @@ export function VideoSopStudioModal({
       });
       lastSnapAtRef.current = Date.now();
 
-      if (opts.source === "speech" || opts.source === "manual") {
-        pendingSpeechRef.current = "";
-        latestSpokenTextRef.current = "";
-        setLatestSpokenText("");
-      }
-
-      refreshFingerprintBaseline();
+      pendingNarrationRef.current = "";
+      latestSpokenTextRef.current = "";
+      setLatestSpokenText("");
 
       setSnapFlash(`📸 Step ${stepNum} captured`);
       setTimeout(() => setSnapFlash(null), 2000);
@@ -692,52 +671,29 @@ export function VideoSopStudioModal({
     void captureSnapshotStep({ source: "manual" });
   };
 
-  const scheduleOpeningStepCapture = () => {
-    if (startSnapTimerRef.current) clearTimeout(startSnapTimerRef.current);
-    startSnapTimerRef.current = window.setTimeout(() => {
-      void captureSnapshotStepRef.current({ source: "start" });
-      startSnapTimerRef.current = null;
-    }, SOP_AUTO_CAPTURE.START_SNAP_DELAY_MS);
-  };
-
-  // Visual change watcher — detects clicks/navigation via screen-share frame diffs
+  // Scribe-style: each click in the shared browser context creates a step.
+  // Narration spoken before the click is stored as that step's description.
   useEffect(() => {
-    if (stage !== "recording" || recordMode !== "snapshots" || isPaused) {
-      if (visualWatchTimerRef.current) {
-        clearInterval(visualWatchTimerRef.current);
-        visualWatchTimerRef.current = null;
-      }
-      return;
-    }
+    if (stage !== "recording" || recordMode !== "snapshots" || isPaused) return;
 
-    visualWatchTimerRef.current = window.setInterval(() => {
-      if (isPausedRef.current || isCapturingRef.current) return;
-      if (stageRef.current !== "recording" || recordModeRef.current !== "snapshots") return;
-
-      const fp = sampleVideoFingerprint(liveVideoElementRef.current);
-      if (!fp) return;
-
-      const baseline = lastFingerprintRef.current;
-      if (!baseline) {
-        lastFingerprintRef.current = fp;
+    const handleClick = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      if (isCaptureControlClick(event.target, recordingHudRef.current, pipMountNodeRef.current)) {
         return;
       }
 
-      const diff = fingerprintDiffRatio(baseline, fp);
-      if (diff < SOP_AUTO_CAPTURE.VISUAL_DIFF_THRESHOLD) return;
+      const clickLabel = describeClickTarget(event.target);
+      const narration = pendingNarrationRef.current.trim();
 
-      const now = Date.now();
-      if (now - lastSnapAtRef.current < SOP_AUTO_CAPTURE.MIN_STEP_INTERVAL_MS) return;
-
-      void captureSnapshotStepRef.current({ source: "visual" });
-    }, SOP_AUTO_CAPTURE.VISUAL_POLL_MS);
-
-    return () => {
-      if (visualWatchTimerRef.current) {
-        clearInterval(visualWatchTimerRef.current);
-        visualWatchTimerRef.current = null;
-      }
+      void captureSnapshotStepRef.current({
+        source: "click",
+        spokenOverride: narration,
+        clickLabel,
+      });
     };
+
+    window.addEventListener("click", handleClick, true);
+    return () => window.removeEventListener("click", handleClick, true);
   }, [stage, recordMode, isPaused]);
 
   // Keyboard shortcut during recording (manual override snap)
@@ -765,7 +721,7 @@ export function VideoSopStudioModal({
     try {
       // 1. Get Screen Stream
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: "browser" },
+        video: { cursor: "always" } as MediaTrackConstraints,
         audio: true,
       });
       screenStreamRef.current = screenStream;
@@ -775,7 +731,7 @@ export function VideoSopStudioModal({
       const videoTrack = screenStream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.onended = () => {
-          handleFinishRecording();
+          void handlePublishRecording();
         };
       }
 
@@ -873,15 +829,10 @@ export function VideoSopStudioModal({
       setSteps([]);
       stepsLengthRef.current = 0;
       lastSnapAtRef.current = 0;
-      lastFingerprintRef.current = null;
-      pendingSpeechRef.current = "";
+      pendingNarrationRef.current = "";
       setLatestSpokenText("");
       setTranscript([]);
       setStage("recording");
-
-      if (mode === "snapshots") {
-        scheduleOpeningStepCapture();
-      }
 
       timerRef.current = window.setInterval(() => {
         setRecordingSeconds((prev) => {
@@ -928,16 +879,17 @@ export function VideoSopStudioModal({
         recognition.onresult = (event: any) => {
           for (let i = event.resultIndex; i < event.results.length; ++i) {
             const currentTxt = event.results[i][0].transcript.trim();
-            setLatestSpokenText(currentTxt);
+            if (!currentTxt) continue;
 
-            if (event.results[i].isFinal && currentTxt.length > 2) {
-              const nowElapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
-              const currentSec = Math.max(0, recordingSecondsRef.current || nowElapsed);
-              const mins = Math.floor(currentSec / 60);
-              const secs = (currentSec % 60).toString().padStart(2, "0");
-              const timeStr = `${mins}:${secs}`;
+            if (mode === "video") {
+              setLatestSpokenText(currentTxt);
+              if (event.results[i].isFinal && currentTxt.length > 2) {
+                const nowElapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
+                const currentSec = Math.max(0, recordingSecondsRef.current || nowElapsed);
+                const mins = Math.floor(currentSec / 60);
+                const secs = (currentSec % 60).toString().padStart(2, "0");
+                const timeStr = `${mins}:${secs}`;
 
-              if (mode === "video") {
                 liveTranscripts.push({
                   id: `tr-${Date.now()}-${i}`,
                   t: timeStr,
@@ -946,29 +898,23 @@ export function VideoSopStudioModal({
                   text: currentTxt,
                 });
                 setTranscript([...liveTranscripts]);
-              } else if (mode === "snapshots" && !isPausedRef.current) {
-                pendingSpeechRef.current = `${pendingSpeechRef.current} ${currentTxt}`.trim();
-                setLatestSpokenText(pendingSpeechRef.current);
-
-                if (speechDebounceTimerRef.current) {
-                  clearTimeout(speechDebounceTimerRef.current);
-                }
-                speechDebounceTimerRef.current = window.setTimeout(() => {
-                  const spoken = pendingSpeechRef.current.trim();
-                  if (spoken.length > 2) {
-                    void captureSnapshotStepRef.current({
-                      source: "speech",
-                      spokenOverride: spoken,
-                    });
-                  }
-                }, SOP_AUTO_CAPTURE.SPEECH_DEBOUNCE_MS);
               }
+              continue;
             }
+
+            // Snapshot mode: accumulate narration; clicks create steps (Scribe model).
+            if (event.results[i].isFinal) {
+              pendingNarrationRef.current = `${pendingNarrationRef.current} ${currentTxt}`.trim();
+            }
+            const livePreview = event.results[i].isFinal
+              ? pendingNarrationRef.current
+              : `${pendingNarrationRef.current} ${currentTxt}`.trim();
+            setLatestSpokenText(livePreview);
           }
         };
 
         recognition.onerror = () => {
-          // Speech is optional — visual auto-capture still works without mic transcript.
+          // Speech is optional — click capture still works without mic transcript.
         };
 
         recognition.start();
@@ -1009,10 +955,6 @@ export function VideoSopStudioModal({
           /* ignore */
         }
       }
-      if (speechDebounceTimerRef.current) {
-        clearTimeout(speechDebounceTimerRef.current);
-        speechDebounceTimerRef.current = null;
-      }
       setIsPaused(true);
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -1021,35 +963,174 @@ export function VideoSopStudioModal({
     }
   };
 
-  // Finish Recording
-  const handleFinishRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-    }
-    clearAutoCaptureTimers();
-    cleanupStreams();
+  // Publish ends recording and saves straight to the playbook (no extra review step).
+  const performSaveToPlaybook = async (stepsOverride?: SopStep[]) => {
+    const currentSlug = initialSop?.slug || `sop-${Date.now()}`;
+    let finalVideoUrl = videoBlobUrl || undefined;
 
-    const totalSecs = Math.max(3, recordingSecondsRef.current || recordingSeconds || 17);
-    setDuration(totalSecs);
-    setTrimStart(0);
-    setTrimEnd(totalSecs);
-    setPlaybackTime(0);
-    setIsPlaying(false);
-
-    // If in snapshot mode and user didn't click capture, provide default step
-    if (recordMode === "snapshots" && steps.length === 0) {
-      setSteps([
-        {
-          id: `step-${Date.now()}-1`,
-          step_number: 1,
-          title: title || "Step 1: First action",
-          description: "Explain clearly what the team member needs to do here.",
-          media_type: "image",
-        },
-      ]);
+    if (recordMode === "video" && recordedBlobRef.current) {
+      await storeSopVideoBlob(currentSlug, recordedBlobRef.current);
+      try {
+        const b64 = await blobToBase64(recordedBlobRef.current);
+        if (b64) {
+          const upRes = await pmPost<{ ok: boolean; video_url?: string }>("sops", {
+            op: "upload_video",
+            slug: currentSlug,
+            video_base64: b64,
+            mime: recordedBlobRef.current.type || "video/webm",
+          });
+          if (upRes.video_url) {
+            finalVideoUrl = upRes.video_url;
+          }
+        }
+      } catch (uploadErr) {
+        console.warn("Server video upload error (fallback to local blob):", uploadErr);
+      }
     }
 
-    setStage("review");
+    if (finalVideoUrl && !finalVideoUrl.startsWith("http")) {
+      finalVideoUrl = undefined;
+    }
+
+    const sourceSteps = stepsOverride ?? stepsRef.current;
+    let formattedSteps: SopStep[] = [];
+    if (recordMode === "snapshots" && sourceSteps.length > 0) {
+      formattedSteps = sourceSteps.map((s, idx) => ({
+        ...s,
+        step_number: idx + 1,
+      }));
+    } else if (recordMode === "video" && transcript.length > 0) {
+      formattedSteps = transcript.map((line, idx) => ({
+        id: line.id || `sop-step-${Date.now()}-${idx + 1}`,
+        step_number: idx + 1,
+        title: line.text.length > 60 ? `${line.text.slice(0, 58)}...` : line.text,
+        description: line.text,
+        timestamp: line.t,
+        seconds: line.seconds != null ? line.seconds : parseTimeToSeconds(line.t),
+        media_type: "video_embed",
+        video_url: finalVideoUrl && finalVideoUrl.startsWith("http") ? finalVideoUrl : undefined,
+        pro_tip: idx === 0 ? "Ensure you verify all fields on this screen before approving." : undefined,
+      }));
+    } else {
+      formattedSteps =
+        sourceSteps.length > 0
+          ? sourceSteps
+          : [
+              {
+                id: `sop-step-${Date.now()}-1`,
+                step_number: 1,
+                title: title || "Step 1: First action",
+                description: "Follow the visual walkthrough instructions.",
+                media_type: "image",
+              },
+            ];
+    }
+
+    const publishedDuration = Math.max(
+      3,
+      recordingSecondsRef.current || Math.max(0, trimEnd - trimStart) || 17
+    );
+
+    await onSaveSop(formattedSteps, {
+      id: initialSop?.id,
+      slug: currentSlug,
+      title: title || (recordMode === "snapshots" ? "Scribe Process Guide" : "Video SOP Guide"),
+      category,
+      target_role: targetRole,
+      summary:
+        recordMode === "snapshots"
+          ? `Step-by-step Scribe guide for ${targetRole.toUpperCase()} team (${formattedSteps.length} action steps).`
+          : `Video guide for ${targetRole.toUpperCase()} team (Duration: ${formatSeconds(publishedDuration)}).`,
+      video_url: recordMode === "video" ? finalVideoUrl : undefined,
+      transcript:
+        recordMode === "snapshots" && formattedSteps.length > 0
+          ? formattedSteps.map((s, idx) => ({
+              id: s.id,
+              t: s.timestamp || formatSeconds(s.seconds ?? idx * 6),
+              seconds: s.seconds ?? idx * 6,
+              who: `Step ${idx + 1}`,
+              text: s.description,
+            }))
+          : recordMode === "video" && transcript.length > 0
+            ? transcript
+            : undefined,
+      author: initialSop?.author,
+      created_at: initialSop?.created_at,
+    });
+  };
+
+  const handlePublishRecording = async () => {
+    if (isSaving || stageRef.current !== "recording") return;
+
+    setIsSaving(true);
+    setSnapFlash("Publishing...");
+
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        await new Promise<void>((resolve) => {
+          const mr = mediaRecorderRef.current!;
+          const finish = () => resolve();
+          mr.addEventListener("stop", finish, { once: true });
+          mr.stop();
+          window.setTimeout(finish, 2500);
+        });
+        await new Promise((r) => setTimeout(r, 150));
+      }
+
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.stop();
+        } catch {
+          /* ignore */
+        }
+        speechRecognitionRef.current = null;
+      }
+
+      clearAutoCaptureTimers();
+      cleanupStreams();
+
+      const totalSecs = Math.max(3, recordingSecondsRef.current || recordingSeconds || 17);
+      setDuration(totalSecs);
+      setTrimStart(0);
+      setTrimEnd(totalSecs);
+      setPlaybackTime(0);
+      setIsPlaying(false);
+
+      let stepsToSave = stepsRef.current;
+      if (recordModeRef.current === "snapshots" && stepsToSave.length === 0) {
+        stepsToSave = [
+          {
+            id: `step-${Date.now()}-1`,
+            step_number: 1,
+            title: title || "Step 1: First action",
+            description: "Explain clearly what the team member needs to do here.",
+            media_type: "image",
+          },
+        ];
+        setSteps(stepsToSave);
+        stepsRef.current = stepsToSave;
+      }
+
+      await performSaveToPlaybook(stepsToSave);
+    } catch (err) {
+      console.error("[sop] publish failed", err);
+      setSnapFlash("⚠️ Publish failed — try again");
+      setTimeout(() => setSnapFlash(null), 3000);
+      setStage("review");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Save to Playbook (review / edit mode)
+  const handleSaveToPlaybook = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await performSaveToPlaybook();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Video Playback Controls
@@ -1202,91 +1283,6 @@ export function VideoSopStudioModal({
     setStage("review");
   };
 
-  // Save to Playbook
-  const handleSaveToPlaybook = async () => {
-    if (isSaving) return;
-    setIsSaving(true);
-    try {
-      const currentSlug = initialSop?.slug || `sop-${Date.now()}`;
-      let finalVideoUrl = videoBlobUrl || undefined;
-
-      // 1. If video was recorded, store & upload
-      if (recordMode === "video" && recordedBlobRef.current) {
-        await storeSopVideoBlob(currentSlug, recordedBlobRef.current);
-        try {
-          const b64 = await blobToBase64(recordedBlobRef.current);
-          if (b64) {
-            const upRes = await pmPost<{ ok: boolean; video_url?: string }>("sops", {
-              op: "upload_video",
-              slug: currentSlug,
-              video_base64: b64,
-              mime: recordedBlobRef.current.type || "video/webm",
-            });
-            if (upRes.video_url) {
-              finalVideoUrl = upRes.video_url;
-            }
-          }
-        } catch (uploadErr) {
-          console.warn("Server video upload error (fallback to local blob):", uploadErr);
-        }
-      }
-
-      // Only persist remote video URLs (never blob: URLs from local preview)
-      if (finalVideoUrl && !finalVideoUrl.startsWith("http")) {
-        finalVideoUrl = undefined;
-      }
-
-      // 2. Prepare steps array
-      let formattedSteps: SopStep[] = [];
-      if (recordMode === "snapshots" && steps.length > 0) {
-        formattedSteps = steps.map((s, idx) => ({
-          ...s,
-          step_number: idx + 1,
-        }));
-      } else if (recordMode === "video" && transcript.length > 0) {
-        formattedSteps = transcript.map((line, idx) => ({
-          id: line.id || `sop-step-${Date.now()}-${idx + 1}`,
-          step_number: idx + 1,
-          title: line.text.length > 60 ? `${line.text.slice(0, 58)}...` : line.text,
-          description: line.text,
-          timestamp: line.t,
-          seconds: line.seconds != null ? line.seconds : parseTimeToSeconds(line.t),
-          media_type: "video_embed",
-          video_url: finalVideoUrl && finalVideoUrl.startsWith("http") ? finalVideoUrl : undefined,
-          pro_tip: idx === 0 ? "Ensure you verify all fields on this screen before approving." : undefined,
-        }));
-      } else {
-        formattedSteps = steps.length > 0 ? steps : [
-          {
-            id: `sop-step-${Date.now()}-1`,
-            step_number: 1,
-            title: title || "Step 1: First action",
-            description: "Follow the visual walkthrough instructions.",
-            media_type: "image",
-          },
-        ];
-      }
-
-      await onSaveSop(formattedSteps, {
-        id: initialSop?.id,
-        slug: currentSlug,
-        title: title || (recordMode === "snapshots" ? "Scribe Process Guide" : "Video SOP Guide"),
-        category,
-        target_role: targetRole,
-        summary:
-          recordMode === "snapshots"
-            ? `Step-by-step Scribe guide for ${targetRole.toUpperCase()} team (${formattedSteps.length} action steps).`
-            : `Video guide for ${targetRole.toUpperCase()} team (Duration: ${formatSeconds(trimEnd - trimStart)}).`,
-        video_url: recordMode === "video" ? finalVideoUrl : undefined,
-        transcript: recordMode === "video" && transcript.length > 0 ? transcript : undefined,
-        author: initialSop?.author,
-        created_at: initialSop?.created_at,
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleDeleteFromStudio = () => {
     if (!initialSop) {
       onClose();
@@ -1316,6 +1312,7 @@ export function VideoSopStudioModal({
   const recordingHud = (
     <div
       ref={recordingHudRef}
+      data-sop-capture-ignore
       className={`font-['Manrope',system-ui,sans-serif] pointer-events-auto select-none ${
         pipMountNode ? "" : "fixed bottom-6 left-6 z-[99999] animate-fadeIn"
       }`}
@@ -1327,6 +1324,17 @@ export function VideoSopStudioModal({
           }`}
         >
           {snapFlash}
+        </div>
+      )}
+
+      {recordMode === "snapshots" && latestSpokenText && !snapFlash && (
+        <div
+          className={`max-w-sm truncate rounded-full border border-white/10 bg-[#121214]/95 px-3 py-1 text-[10px] text-[#dcc084] ${
+            pipMountNode ? "mb-2" : "absolute -top-12 left-0"
+          }`}
+          title={latestSpokenText}
+        >
+          🎙 {latestSpokenText}
         </div>
       )}
 
@@ -1400,12 +1408,15 @@ export function VideoSopStudioModal({
 
         <button
           type="button"
-          onClick={handleFinishRecording}
-          className="flex items-center gap-1.5 rounded-full bg-[#5fbf7d] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#72d392] shadow-md transition"
+          onClick={() => void handlePublishRecording()}
+          disabled={isSaving}
+          className="flex items-center gap-1.5 rounded-full bg-[#5fbf7d] px-3.5 py-1.5 text-xs font-bold text-[#0a0a0a] hover:bg-[#72d392] shadow-md transition disabled:opacity-50"
         >
           <span className="h-2 w-2 rounded-sm bg-[#0a0a0a]" />
           <span>
-            Finish ({steps.length || 1} {steps.length === 1 ? "Step" : "Steps"})
+            {isSaving
+              ? "Publishing..."
+              : `Publish (${steps.length} ${steps.length === 1 ? "Step" : "Steps"})`}
           </span>
         </button>
 
@@ -1505,20 +1516,24 @@ export function VideoSopStudioModal({
 
               <div className="rounded-xl border border-[#c4a35a]/25 bg-[#16140f] px-3.5 py-3 text-xs text-[#cfc9c2] space-y-1.5">
                 <p>
-                  <span className="font-semibold text-[#dcc084]">Screen share:</span> share the{" "}
-                  <span className="text-[#f4f2ee]">window or tab you are demonstrating</span> — not
-                  this admin page. The control bar is hidden from each snap automatically.
+                  <span className="font-semibold text-[#dcc084]">Screen share:</span> share this{" "}
+                  <span className="text-[#f4f2ee]">admin browser window</span> so clicks in the CRM
+                  are captured. Scroll does not create steps — only clicks do.
+                </p>
+                <p>
+                  <span className="font-semibold text-[#dcc084]">Narration:</span> speak before each
+                  click; your words become that step&apos;s instruction text (like Scribe voice
+                  transcription).
                 </p>
                 {isDocumentPipSupported() ? (
                   <p>
                     <span className="font-semibold text-[#dcc084]">Floating controls:</span> controls
-                    pop out in a small always-on-top bar (Chrome / Edge) so they never appear in your
-                    step screenshots.
+                    pop out in a small always-on-top bar (Chrome / Edge).
                   </p>
                 ) : (
                   <p>
                     For floating controls across tabs, use Chrome or Edge. Safari keeps the bar on this
-                    tab only — it is hidden for each snap.
+                    tab only.
                   </p>
                 )}
               </div>
@@ -1672,7 +1687,7 @@ export function VideoSopStudioModal({
                   disabled={isSaving}
                   className="rounded-lg bg-[#c4a35a] px-5 py-2.5 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-[0_10px_32px_rgba(196,163,90,0.3)] transition shrink-0 disabled:opacity-50"
                 >
-                  {isSaving ? "Saving to Playbook..." : initialSop ? "Save Changes ✓" : "Save Guide to Playbook ✓"}
+                  {isSaving ? "Publishing..." : "Publish"}
                 </button>
 
                 <button
@@ -1885,7 +1900,7 @@ export function VideoSopStudioModal({
                       disabled={isSaving}
                       className="w-full rounded-lg bg-[#c4a35a] py-3 text-xs sm:text-sm font-bold text-[#0a0a0a] hover:bg-[#dcc084] shadow-lg transition disabled:opacity-50"
                     >
-                      {isSaving ? "Saving..." : "Publish to Playbook ✓"}
+                      {isSaving ? "Publishing..." : "Publish"}
                     </button>
                   </div>
                 </div>

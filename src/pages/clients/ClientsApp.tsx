@@ -2925,7 +2925,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
             if (!res.sop) {
               throw new Error("Save succeeded but no SOP was returned.");
             }
-            setToast("SOP Video Guide saved to Playbook.");
+            setToast("SOP published to Playbook.");
             setVideoStudioOpen(false);
             setEditingVideoSop(null);
             setSopsRefreshTrigger((k) => k + 1);
