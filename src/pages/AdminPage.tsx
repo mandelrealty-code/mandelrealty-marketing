@@ -301,6 +301,9 @@ export function AdminPage() {
       propertyStage: string | null;
       strAllowed: string | null;
       earnings: string;
+      listingTitle?: string;
+      offerPath: OfferPath;
+      rawAnswers?: Record<string, string>;
       warnings: string[];
     };
     decision: { status: LeadStatus; qualifiesForBookEmail: boolean; reason: string };
@@ -611,6 +614,8 @@ export function AdminPage() {
     () => leads.filter((l) => l.unread).length,
     [leads],
   );
+  const inboxLeadCount = filteredLeads.length;
+  const totalLeadCount = leadStats.total || leads.length;
 
   const pipelineLeads = useMemo(() => {
     const list =
@@ -2192,29 +2197,59 @@ export function AdminPage() {
 
   const contactsList = (
     <>
-      <div className="mb-2.5 flex gap-2 px-4 lg:mb-0 lg:border-b lg:border-white/8 lg:px-4 lg:py-3">
-        <button
-          type="button"
-          onClick={() => setInboxChip("all")}
-          className={`rounded-[7px] border px-3 py-1.5 text-[11.5px] ${
-            inboxChip === "all"
-              ? "border-[rgba(201,154,75,0.55)] bg-[rgba(201,154,75,0.16)] font-bold text-[#c99a4b]"
-              : "border-white/12 text-[#9a9590]"
-          }`}
-        >
-          All
-        </button>
-        <button
-          type="button"
-          onClick={() => setInboxChip("review")}
-          className={`rounded-[7px] border px-3 py-1.5 text-[11.5px] ${
-            inboxChip === "review"
-              ? "border-[rgba(201,154,75,0.55)] bg-[rgba(201,154,75,0.16)] font-bold text-[#c99a4b]"
-              : "border-white/12 text-[#9a9590]"
-          }`}
-        >
-          Needs review{draftLeads.length ? ` ${draftLeads.length}` : ""}
-        </button>
+      <div className="mb-2.5 flex flex-col gap-2 px-4 lg:mb-0 lg:border-b lg:border-white/8 lg:px-4 lg:py-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="text-[13px] font-semibold tabular-nums text-[#f5f5f5]">
+            {hasActiveFilters || inboxChip === "review" ? (
+              <>
+                {inboxLeadCount}
+                <span className="font-medium text-[#9a9590]">
+                  {" "}
+                  of {totalLeadCount} leads
+                </span>
+              </>
+            ) : (
+              <>
+                {totalLeadCount}
+                <span className="font-medium text-[#9a9590]">
+                  {" "}
+                  {totalLeadCount === 1 ? "lead" : "leads"}
+                </span>
+              </>
+            )}
+          </p>
+          {unreadCount > 0 ? (
+            <p className="text-[12px] font-bold tabular-nums text-[#c4a35a]">
+              {unreadCount} unread
+            </p>
+          ) : (
+            <p className="text-[12px] font-medium text-[#6f6a65]">All caught up</p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setInboxChip("all")}
+            className={`rounded-[7px] border px-3 py-1.5 text-[11.5px] ${
+              inboxChip === "all"
+                ? "border-[rgba(201,154,75,0.55)] bg-[rgba(201,154,75,0.16)] font-bold text-[#c99a4b]"
+                : "border-white/12 text-[#9a9590]"
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setInboxChip("review")}
+            className={`rounded-[7px] border px-3 py-1.5 text-[11.5px] ${
+              inboxChip === "review"
+                ? "border-[rgba(201,154,75,0.55)] bg-[rgba(201,154,75,0.16)] font-bold text-[#c99a4b]"
+                : "border-white/12 text-[#9a9590]"
+            }`}
+          >
+            Needs review{draftLeads.length ? ` ${draftLeads.length}` : ""}
+          </button>
+        </div>
       </div>
       <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#111] lg:rounded-none lg:border-0 lg:bg-transparent">
         {filteredLeads.length === 0 ? (
@@ -2798,9 +2833,9 @@ export function AdminPage() {
     <div className="grid grid-cols-3 gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
       {(
         [
-          { label: "Total", value: leadStats.total },
+          { label: "Leads", value: totalLeadCount },
+          { label: "Unread", value: unreadCount },
           { label: "Booked", value: leadStats.booked },
-          { label: "Closed", value: leadStats.closed },
         ] as const
       ).map((stat) => (
         <div key={stat.label} className="bg-[#111] px-2 py-3 text-center">
@@ -2812,6 +2847,16 @@ export function AdminPage() {
       ))}
     </div>
   );
+
+  const inboxTabBadge =
+    unreadCount > 0 ? (
+      <span
+        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c4a35a] px-1.5 text-[11px] font-bold tabular-nums text-[#0a0a0a]"
+        aria-label={`${unreadCount} unread`}
+      >
+        {unreadCount > 99 ? "99+" : unreadCount}
+      </span>
+    ) : null;
 
   return (
     <motion.div
@@ -2906,12 +2951,18 @@ export function AdminPage() {
                 }`}
               >
                 {label}
-                {id === "contacts" && unreadCount > 0 ? (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c4a35a] px-1.5 text-[11px] font-bold text-[#0a0a0a]">
-                    {unreadCount}
+                {id === "contacts" ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="crm-mono text-[10px] font-medium tabular-nums text-[#6f6a65]">
+                      {totalLeadCount}
+                    </span>
+                    {inboxTabBadge}
+                    {!inboxTabBadge && draftLeads.length > 0 ? (
+                      <span className="crm-mono text-[10px] text-[#c99a4b]">
+                        {draftLeads.length}
+                      </span>
+                    ) : null}
                   </span>
-                ) : id === "contacts" && draftLeads.length > 0 ? (
-                  <span className="crm-mono text-[10px] text-[#c99a4b]">{draftLeads.length}</span>
                 ) : null}
               </button>
             );
@@ -2932,9 +2983,9 @@ export function AdminPage() {
               className="flex min-h-0 flex-1 flex-col lg:min-h-0 lg:flex-row"
             >
               <div className="crm-scroll-pane flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto lg:w-[296px] lg:shrink-0 lg:overflow-hidden lg:border-r lg:border-white/8">
-                <div className="space-y-3 px-4 pt-3 lg:hidden">
+                <div className="space-y-3 px-4 pt-3">
                   {statsStrip}
-                  {needsYouBlock}
+                  <div className="lg:hidden">{needsYouBlock}</div>
                 </div>
                 <div className="flex gap-2.5 px-4 pt-3 lg:px-4 lg:pt-3.5">
                   <input
@@ -3484,8 +3535,32 @@ export function AdminPage() {
                           [
                             ["Name", pastePreview.parsed.name || "—"],
                             ["Phone", pastePreview.parsed.phone || "—"],
+                            ["Email", pastePreview.parsed.email || "—"],
                             ["City", pastePreview.parsed.address || "—"],
                             ["Airbnb", listingShort(pastePreview.parsed.hasListing)],
+                            [
+                              "Listing URL",
+                              pastePreview.parsed.listingTitle
+                                ? pastePreview.parsed.listingTitle.length > 42
+                                  ? `${pastePreview.parsed.listingTitle.slice(0, 42)}…`
+                                  : pastePreview.parsed.listingTitle
+                                : "—",
+                            ],
+                            [
+                              "Form / ad",
+                              [
+                                pastePreview.parsed.rawAnswers?.campaign_name,
+                                pastePreview.parsed.rawAnswers?.ad_name,
+                                pastePreview.parsed.rawAnswers?.form_name,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || "—",
+                            ],
+                            [
+                              "Offer path",
+                              OFFER_PATH_LABEL[pastePreview.parsed.offerPath] ||
+                                pastePreview.parsed.offerPath,
+                            ],
                             [
                               "Process",
                               pastePreview.parsed.propertyStage
@@ -3809,7 +3884,7 @@ export function AdminPage() {
         <div className="mx-auto grid max-w-[1000px] grid-cols-4 lg:flex lg:justify-center">
           {(
             [
-              ["contacts", "Contacts"],
+              ["contacts", "Inbox"],
               ["pipeline", "Pipeline"],
               ["knowledge", "Knowledge"],
               ["settings", "Settings"],
@@ -3821,16 +3896,26 @@ export function AdminPage() {
                 key={id}
                 type="button"
                 onClick={() => goCrmTab(id)}
-                className="flex flex-col items-center gap-1.5 px-0 py-1.5 lg:w-[120px]"
+                className="relative flex flex-col items-center gap-1.5 px-0 py-1.5 lg:w-[120px]"
               >
-                <span
-                  className={`text-xs lg:text-[13px] ${
-                    active
-                      ? "font-semibold text-[#c4a35a]"
-                      : "font-medium text-[#6f6a65]"
-                  }`}
-                >
-                  {label}
+                <span className="relative inline-flex items-center justify-center">
+                  <span
+                    className={`text-xs lg:text-[13px] ${
+                      active
+                        ? "font-semibold text-[#c4a35a]"
+                        : "font-medium text-[#6f6a65]"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                  {id === "contacts" && unreadCount > 0 ? (
+                    <span
+                      className="absolute -right-4 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#c4a35a] px-1 text-[9px] font-bold tabular-nums text-[#0a0a0a]"
+                      aria-label={`${unreadCount} unread`}
+                    >
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  ) : null}
                 </span>
                 <span
                   className={`h-[5px] w-[5px] rounded-full ${

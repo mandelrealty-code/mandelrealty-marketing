@@ -49,6 +49,17 @@ function answerAfter(text: string, questionPatterns: RegExp[]): string | null {
     const line = lines[i].trim();
     if (!line) continue;
     const n = norm(line);
+
+    // Same-line key: value / key = value (Make body paste, manual tests)
+    const inline = line.match(/^(.{3,160?}?)\s*[:=]\s*(.+)$/);
+    if (inline) {
+      const q = norm(inline[1]);
+      if (questionPatterns.some((re) => re.test(q))) {
+        const val = inline[2].trim();
+        if (val) return val;
+      }
+    }
+
     if (!questionPatterns.some((re) => re.test(n))) continue;
     for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
       const next = lines[j].trim();
@@ -63,8 +74,39 @@ function answerAfter(text: string, questionPatterns: RegExp[]): string | null {
         continue;
       }
       if (questionPatterns.some((re) => re.test(nn))) continue;
+      // Next line might also be key: value for a different field
+      if (/^[^:=\n]{3,120}\s*[:=]\s*.+/.test(next) && !questionPatterns.some((re) => re.test(nn))) {
+        continue;
+      }
       return next;
     }
+  }
+  return null;
+}
+
+/** Flat key→value map from `field: value` / `field = value` lines (any Instant Form). */
+function parseKvPasteLines(text: string): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const m = line.match(/^([^:=\n]{1,160}?)\s*[:=]\s*(.+)$/);
+    if (!m) continue;
+    const key = m[1].trim();
+    const val = m[2].trim();
+    if (!key || !val) continue;
+    map[key] = val;
+    map[norm(key)] = val;
+    map[key.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")] = val;
+  }
+  return map;
+}
+
+function kvPick(map: Record<string, string>, patterns: RegExp[]): string | null {
+  for (const [k, v] of Object.entries(map)) {
+    if (!v?.trim()) continue;
+    const nk = norm(k.replace(/_/g, " "));
+    if (patterns.some((re) => re.test(nk) || re.test(norm(k)))) return v.trim();
   }
   return null;
 }
@@ -109,6 +151,11 @@ function extractEmail(text: string): string {
     const e = labeled[1].trim();
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return e;
   }
+  const inline = text.match(/^\s*email\s*[:=]\s*([^\n]+)/im);
+  if (inline) {
+    const e = inline[1].trim();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return e;
+  }
   const all = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
   return (all[0] ?? "").trim();
 }
@@ -117,6 +164,13 @@ function extractPhone(text: string): string {
   const labeled = text.match(/^\s*Phone number\s*\n\s*([^\n]+)/im);
   if (labeled) {
     const p = labeled[1].trim();
+    if (/\d{7,}/.test(p.replace(/\D/g, ""))) return p;
+  }
+  const inline = text.match(
+    /^\s*(?:phone(?:[_\s-]?number)?|phone_number)\s*[:=]\s*([^\n]+)/im,
+  );
+  if (inline) {
+    const p = inline[1].trim();
     if (/\d{7,}/.test(p.replace(/\D/g, ""))) return p;
   }
   const plus = text.match(/\+\d[\d\s().-]{8,}\d/);
@@ -162,6 +216,7 @@ function isPlausiblePersonName(n: string): boolean {
 /**
  * Parse a raw Meta Leads Center paste OR a Meta CSV/TSV export row into CRM fields.
  * Never invents answers — only maps what is in the paste/CSV.
+ * Supports any Instant Form: key: value lines, Leads Center blocks, or CSV.
  */
 export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
   const text = raw.replace(/\u00a0/g, " ").trim();
@@ -169,57 +224,96 @@ export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
   if (fromCsv) return fromCsv;
 
   const warnings: string[] = [];
-  const rawAnswers: Record<string, string> = {};
+  const kv = parseKvPasteLines(text);
+  const rawAnswers: Record<string, string> = { ...kv };
 
-  const email = extractEmail(text);
-  const phone = extractPhone(text);
-  const name = extractName(text, email);
+  const email =
+    kvPick(kv, [/^email$/]) ||
+    extractEmail(text);
+  const phone =
+    kvPick(kv, [/^phone/, /phone.?number/]) ||
+    extractPhone(text);
+  const name =
+    kvPick(kv, [/^full.?name$/, /^name$/]) ||
+    extractName(text, email);
 
-  const listingRaw = answerAfter(text, [
-    /do you have an airbnb listing/,
+  const listingPatterns = [
+    /do you have an? (live )?airbnb listing/,
     /airbnb listing live/,
-    /have an airbnb/,
-  ]);
+    /have an? (live )?airbnb/,
+    /live airbnb listing/,
+    /^has.?listing$/,
+  ];
+  const listingRaw =
+    kvPick(kv, listingPatterns) ||
+    answerAfter(text, listingPatterns);
   if (listingRaw) rawAnswers.listing = listingRaw;
+  rawAnswers.has_listing = listingRaw || rawAnswers.has_listing || "";
 
-  const stageRaw = answerAfter(text, [
-    /where are you in the process/,
-    /where are you in/,
-  ]);
+  const stageRaw =
+    kvPick(kv, [/where are you in the process/, /where are you in/, /property.?stage/]) ||
+    answerAfter(text, [/where are you in the process/, /where are you in/]);
   if (stageRaw) rawAnswers.stage = stageRaw;
 
-  const strRaw = answerAfter(text, [
-    /does your building or area allow/,
-    /allow airbnb/,
-    /short-term rentals/,
-  ]);
+  const strRaw =
+    kvPick(kv, [/does your building or area allow/, /allow airbnb/, /short-term rentals/, /str.?allowed/]) ||
+    answerAfter(text, [
+      /does your building or area allow/,
+      /allow airbnb/,
+      /short-term rentals/,
+    ]);
   if (strRaw) rawAnswers.str = strRaw;
 
-  const cityRaw = answerAfter(text, [
-    /what city \/ area/,
-    /what city/,
-    /area is the property/,
-  ]);
+  const cityRaw =
+    kvPick(kv, [/what city/, /area is the property/, /^city$/, /^address$/]) ||
+    answerAfter(text, [
+      /what city \/ area/,
+      /what city/,
+      /area is the property/,
+    ]);
   if (cityRaw) rawAnswers.city = cityRaw;
 
-  const earningsRaw = answerAfter(text, [
-    /how much.*(earn|making|revenue)/,
-    /monthly (earn|revenue)/,
-    /current (earn|revenue)/,
-  ]);
+  const earningsRaw =
+    kvPick(kv, [/how much.*(earn|making|revenue)/, /monthly (earn|revenue)/, /current (earn|revenue)/, /^earnings$/]) ||
+    answerAfter(text, [
+      /how much.*(earn|making|revenue)/,
+      /monthly (earn|revenue)/,
+      /current (earn|revenue)/,
+    ]);
   if (earningsRaw) rawAnswers.earnings = earningsRaw;
 
-  const listingTitleRaw = answerAfter(text, [
-    /listing (title|name|link|url)/,
-    /airbnb (link|url|title)/,
-    /paste your airbnb listing/,
-  ]);
-  if (listingTitleRaw) rawAnswers.listingTitle = listingTitleRaw;
+  const listingTitleRaw =
+    kvPick(kv, [
+      /listing (title|name|link|url)/,
+      /airbnb (link|url|title)/,
+      /paste your airbnb listing/,
+      /^listing.?url$/,
+      /^airbnb.?url$/,
+    ]) ||
+    answerAfter(text, [
+      /listing (title|name|link|url)/,
+      /airbnb (link|url|title)/,
+      /paste your airbnb listing/,
+    ]);
+  if (listingTitleRaw) {
+    rawAnswers.listingTitle = listingTitleRaw;
+    rawAnswers.listing_url = listingTitleRaw;
+  }
+
+  const campaignRaw =
+    kvPick(kv, [/^campaign.?name$/, /^campaign$/, /^ad.?name$/, /^form.?name$/, /campaign_or_ad/]) ||
+    null;
+  if (campaignRaw) rawAnswers.campaign_or_ad = campaignRaw;
+
+  // Normalize Make identity fields onto known keys for inferOfferPath / ad angle
+  for (const key of ["campaign_name", "ad_name", "form_name"] as const) {
+    const v = kvPick(kv, [new RegExp(`^${key.replace(/_/g, ".?")}$`, "i")]) || kv[key];
+    if (v) rawAnswers[key] = v;
+  }
 
   const hasListing = mapHasListing(listingRaw);
   const propertyStage = mapByLabel(stageRaw, PROPERTY_STAGES);
   let strAllowed = mapByLabel(strRaw, STR_ALLOWED_OPTIONS);
-  // mapByLabel may confuse yes/no with stages - refine STR
   if (strRaw) {
     const n = norm(strRaw);
     if (/not sure|unsure/.test(n)) strAllowed = "unsure";
@@ -227,7 +321,9 @@ export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
     else if (/^yes\b|is allowed|allowed/.test(n)) strAllowed = "yes";
   }
 
-  const permitRaw = answerAfter(text, [/str permit status/, /permit status/, /do you have an str/]);
+  const permitRaw =
+    kvPick(kv, [/str permit status/, /permit status/, /do you have an str/, /^permit/]) ||
+    answerAfter(text, [/str permit status/, /permit status/, /do you have an str/]);
   const permitStatus = mapByLabel(permitRaw, PERMIT_OPTIONS);
   if (permitRaw) rawAnswers.permit = permitRaw;
 
@@ -239,10 +335,20 @@ export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
     warnings.push(`Could not map process answer: "${stageRaw.slice(0, 80)}"`);
   }
 
+  const sourceBlob = [
+    "meta_instant_form",
+    rawAnswers.campaign_name,
+    rawAnswers.ad_name,
+    rawAnswers.form_name,
+    rawAnswers.campaign_or_ad,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   const offerPath = inferOfferPath({
     hasListing,
     propertyStage,
-    source: "meta_instant_form",
+    source: sourceBlob,
     rawAnswers,
   });
 
@@ -309,7 +415,7 @@ function looksLikeMetaExportHeader(cells: string[]): boolean {
   const hasName = cells.some((c) => /^full_name$/i.test(c) || /^full name$/i.test(c));
   const hasContact = cells.some((c) => /^(email|phone|phone_number)$/i.test(c));
   const hasMeta =
-    /created_time|campaign_name|form_name|ad_name|do_you_have_an_airbnb|where_are_you_in_the_process/.test(
+    /created_time|campaign_name|form_name|ad_name|do_you_have_an_airbnb|do_you_have_a_live_airbnb|where_are_you_in_the_process|live_airbnb/.test(
       joined,
     );
   return (hasName || hasContact) && hasMeta;
