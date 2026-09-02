@@ -26,9 +26,10 @@
 | Danger / blocked | `#cf7f7b` |
 | Hairlines | `rgba(255,255,255,0.08–0.10)` |
 
-- Font: **Manrope** 400/500/600/700
+- Font: **Manrope** 400/500/600/700 — **required on every frame** (UI text, labels, buttons, empty states)
 - Logo: MRG mark / wordmark (white or gold)
 - Avoid: purple SaaS, cream paper, Inter, card soup, emoji, neon glow, floating badge clutter
+- **Banned fonts (hard):** Architects Daughter, Caveat, Patrick Hand, or any handwriting / “sketch wireframe” cursive. Do **not** use Claude Design’s default doodle typeface. Product comps must look like the live MRG app (Manrope), not a napkin sketch.
 
 **Tone:** Calm **work tool** for contractors — operator density like OPS Tasks, not cinematic host ownership. No unit hero photography.
 
