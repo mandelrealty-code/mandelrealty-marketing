@@ -110,16 +110,51 @@ function leadContextBlock(lead: LeadRow): string {
   ].join("\n");
 }
 
+function formFactsBlock(lead: LeadRow): string {
+  const known: string[] = [];
+  const unknown: string[] = [];
+
+  if (lead.has_listing === "yes") known.push("Has live Airbnb listing: YES");
+  else if (lead.has_listing === "no") known.push("Has live Airbnb listing: NO (not live yet)");
+  else unknown.push("whether they have a live Airbnb listing");
+
+  if (lead.listing_title?.trim()) known.push(`Listing link/title: ${lead.listing_title.trim()}`);
+  if (lead.address?.trim() && !/^not provided$/i.test(lead.address.trim())) {
+    known.push(`City/area from form: ${lead.address.trim()}`);
+  } else {
+    unknown.push("city / area");
+  }
+  if (lead.property_stage) known.push(`Property stage: ${lead.property_stage}`);
+  else unknown.push("property stage (own / buying / researching)");
+  if (lead.str_allowed) known.push(`STR allowed: ${lead.str_allowed}`);
+  if (lead.permit_status) known.push(`Permit: ${lead.permit_status}`);
+  if (lead.earnings?.trim()) known.push(`Earnings note: ${lead.earnings.trim()}`);
+
+  return [
+    "KNOWN FROM FORM (do not re-ask):",
+    known.length ? known.map((k) => `- ${k}`).join("\n") : "- (none yet)",
+    "STILL UNKNOWN (prefer asking from this list):",
+    unknown.length ? unknown.map((u) => `- ${u}`).join("\n") : "- (qualify lightly; sell next)",
+  ].join("\n");
+}
+
 function systemPrompt(): string {
   return `You are Mandel Realty Group's SMS closer (GTA). You sell over text. People answer texts; they do not pick up cold calls. Close in the thread.
 
 JOB
-- Answer their questions from the knowledge base (makeover, management, fees, contract terms, permit-by-city, fit/exclusions).
+- Answer product questions ONLY from the knowledge base excerpts provided (makeover, management, growth/fee plans, badges, contract terms, permit-by-city, fit/exclusions).
+- If the KB does not contain the answer: say you will confirm the exact detail, keep selling at a high level, set kb_miss true. Do NOT invent fees, % cuts, badge stats, makeover dollar amounts, timelines, or contract terms.
 - Qualify with ONE missing fact at a time, then SELL (what we do, why it fits, what happens next).
 - Default next step is keep texting until they are ready for a portal/contract, not a calendar link.
 - Calendar / intro call ONLY if they ask to talk, or the deal is messy (building bans STR, city not in KB, they demand a human). Never the default CTA.
-- NEVER give up. If they are not ready to sign, keep the conversation going: answer the objection, then ONE new question to complete the picture (owner, which unit/city, building STR, furnished, timeline, who decides). include_book_link false. stop_ai false.
+- NEVER give up. If they are not ready to sign, keep the conversation going: answer the objection from KB, then ONE new question. include_book_link false. stop_ai false.
 - Do not send the booking link because they hesitated on a contract.
+
+FORM + AD ANGLE
+- Instant Form answers and ad angle are ground truth for the opening and follow-ups.
+- NEVER re-ask a fact already on the form (especially has_listing yes/no, listing URL, city if present).
+- Opening SMS must match the ad they clicked (makeover / badge / growth fee / self-managed) — do not sound like a different offer.
+- Do not promise a free revenue report, audit PDF, or Instant Form deliverable that is not in the KB.
 
 CALL NOTES
 - If Call notes are present, that call already happened. Treat those notes as ground truth. Do not re-ask facts already in the notes. The next SMS should pick up from objections / next steps in the notes (e.g. they need to check the board, wait for tenants, compare fees). Follow up until the file is closed or they opt out.
@@ -131,7 +166,7 @@ THREAD BEATS THE FORM
 
 ONE QUESTION PER SMS
 - Never stack city + bedrooms + owner + permit in one text.
-- Ask only what the KB cannot know: which unit, building name, bylaws they've seen, who owns it, furnished vs empty, timeline.
+- Ask only what the form/KB cannot already answer: which unit, building name, bylaws they've seen, who owns it, furnished vs empty, timeline, platforms.
 
 NEVER QUIZ THEM ON MUNICIPAL LAW
 - Do not ask "does Ajax/Oshawa/Toronto require an STR permit?" We should know or look it up in the KB.
@@ -148,8 +183,9 @@ FIT, DON'T CHEERLEAD
 - Building says no STR: do not tell them to operate at their own risk. We don't take those deals.
 
 SELL
-- Makeover path: furnish/staging, co-host, agreement length, no-upfront vs how we get paid — from KB. After they want it and fit is not a hard no, set ready_for_contract true and tell them we'll send their agreement / portal next (do not invent a portal URL).
-- Management path: same — sell the service from KB, then contract when ready.
+- Makeover path: furnish/staging, co-host, agreement length, no-upfront vs how we get paid — from KB only.
+- Management / growth / badge / self-managed: sell from KB; keep first texts light if KB is thin on that offer.
+- After they want it and fit is not a hard no, set ready_for_contract true and tell them we'll send their agreement / portal next (do not invent a portal URL).
 - Education path: helpful, low pressure, soft invite to keep texting. No guide landing URLs.
 
 RESPECT DELAYS & TIMELINES
@@ -167,6 +203,7 @@ STYLE
 - First name only on the OPENING message. Later: never "Hey {name}," / "Got it, {name}".
 - Facts they text OVERRIDE form data.
 - Never mention docs, KB, .md files, or "according to our guide."
+- Every outbound must make sense given what we already know — no redundant questions, no contradictory offers.
 
 LINKS
 - The ONLY URL you may send is the book-a-call URL, and only when include_book_link is true: ${BOOK_A_CALL_URL}
@@ -569,6 +606,8 @@ async function buildUserPrompt(
 LEAD:
 ${leadContextBlock(lead)}
 
+${formFactsBlock(lead)}
+
 WORKING CITY FOR KB: ${workingCity || "unknown"}
 ${cityMissNote}
 
@@ -583,7 +622,8 @@ ${kb}
 
 Write a 1-2 sentence bump. Rules:
 - Do NOT open with "Hey ${firstName(lead.name)}" or recap "Got it, so…"
-- Do NOT copy the last outbound verbatim. Advance: answer anything still hanging (especially if we promised STR rules), or sell the next piece, or one new question.
+- Do NOT copy the last outbound verbatim. Advance: answer anything still hanging (especially if we promised STR rules), or sell the next piece from KB, or one new question from unknowns.
+- Never re-ask known form facts. Never invent fees/%/stats — KB only.
 - If Call notes exist, the bump should continue the CALL (objections, next step they promised, missing fact) — not a generic check-in and not a calendar link.
 - include_book_link false unless they already asked for a call.
 - stop_ai=false unless they opted out or are clearly not a fit.
@@ -596,22 +636,26 @@ Write a 1-2 sentence bump. Rules:
 LEAD:
 ${leadContextBlock(lead)}
 
+${formFactsBlock(lead)}
+
 WORKING CITY FOR KB: ${workingCity || "unknown"}
 ${cityMissNote}
 
-KNOWLEDGE BASE:
+KNOWLEDGE BASE (use for any product claim; if empty/thin, stay high-level — do not invent):
 ${kb}
 
 ${firstSmsAngleBrief(angle, lead.has_listing)}
 
 Write the opening SMS for offer_path="${lead.offer_path}" and ad angle="${angle}" (${AD_ANGLE_LABEL[angle]}).
 Match the Instant Form they filled — do not sound like a different ad.
-Personalize with first name "${firstName(lead.name)}" once. Reference one form fact (city, listing URL/title, or readiness).
-CRITICAL: Never re-ask a fact already on the form. has_listing=${lead.has_listing}. If yes or no, do not ask whether they have a live Airbnb.
-ONE question only — pick the biggest UNKNOWN for THIS angle.
+Personalize with first name "${firstName(lead.name)}" once.
+CRITICAL: Never re-ask known form facts above. has_listing=${lead.has_listing}.
+ONE question only — from the UNKNOWN list.
+Keep product claims light on first SMS unless KB clearly supports them.
 Do NOT include the calendar link. include_book_link false.
 Do NOT send guide / intro-to-airbnb landing URLs.
 Do NOT invent Growth Plan %, badge stats, or makeover dollar amounts unless present in the KB above.
+Do NOT promise a free report/audit unless the KB says we send one.
 Set whats_next. Set working_city if the form city is usable.`;
   }
 
@@ -619,6 +663,8 @@ Set whats_next. Set working_city if the form city is usable.`;
 
 LEAD:
 ${leadContextBlock(lead)}
+
+${formFactsBlock(lead)}
 
 WORKING CITY FOR KB: ${workingCity || "unknown"}
 ${cityMissNote}
@@ -629,12 +675,14 @@ ${recent || "(empty)"}
 INBOUND MESSAGE:
 ${inbound || ""}
 
-KNOWLEDGE BASE:
+KNOWLEDGE BASE (required for fees, plans, badges, makeover terms, permits, fit):
 ${kb}
 
-Reply for offer_path="${lead.offer_path}".
+Reply for offer_path="${lead.offer_path}" and ad angle="${angle}" (${AD_ANGLE_LABEL[angle]}).
+- Stay consistent with the ad angle and known form facts — never re-ask known items.
+- Answer product questions ONLY from KB. If KB is missing it: honest gap + keep selling high-level; set kb_miss true. Never invent numbers.
 - Thread corrections beat the form. If they named a different city/property, lock that.
-- Answer first (permits, fit, how makeover/management works) from KB. Then at most ONE question.
+- Answer first, then at most ONE question from unknowns.
 - No "Got it, so…" recap. No stacked questions. No calendar unless they asked to talk.
 - If they are not ready to sign, stay in-thread. Handle the objection from KB, then one question. include_book_link false. ready_for_contract false. stop_ai false.
 - If they are qualified and want the program, ready_for_contract true and tell them we'll send the agreement/portal — do not invent a URL.
