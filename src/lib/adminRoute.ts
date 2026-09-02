@@ -6,7 +6,14 @@ import {
 } from "../pages/clients/mode";
 
 export type CrmTab = "contacts" | "pipeline" | "knowledge" | "settings";
-export type OpsTab = "tasks" | "clients" | "properties" | "month" | "sops" | "settings";
+export type OpsTab =
+  | "tasks"
+  | "clients"
+  | "properties"
+  | "month"
+  | "sops"
+  | "employees"
+  | "settings";
 
 export type AdminRoute = {
   mode: AdminProductMode;
@@ -19,11 +26,20 @@ export type AdminRoute = {
   createClient: boolean;
   hstClientId: string | null;
   taskId: string | null;
+  employeeId: string | null;
   sopSlug?: string | null;
 };
 
 const CRM_TABS: CrmTab[] = ["contacts", "pipeline", "knowledge", "settings"];
-const OPS_TABS: OpsTab[] = ["tasks", "clients", "properties", "month", "sops", "settings"];
+const OPS_TABS: OpsTab[] = [
+  "tasks",
+  "clients",
+  "properties",
+  "month",
+  "sops",
+  "employees",
+  "settings",
+];
 
 function isCrmTab(v: string | undefined): v is CrmTab {
   return !!v && (CRM_TABS as string[]).includes(v);
@@ -45,6 +61,7 @@ export function emptyAdminRoute(mode: AdminProductMode = readStoredAdminMode()):
     createClient: false,
     hstClientId: null,
     taskId: null,
+    employeeId: null,
   };
 }
 
@@ -88,6 +105,9 @@ export function parseAdminRoute(
     if (parts[1] === "tasks" && parts[2]) {
       return { ...base, opsTab: "tasks", taskId: parts[2] };
     }
+    if (parts[1] === "employees" && parts[2]) {
+      return { ...base, opsTab: "employees", employeeId: parts[2] };
+    }
     if (isOpsTab(parts[1])) {
       return { ...base, opsTab: parts[1] };
     }
@@ -115,6 +135,7 @@ export function adminPath(route: AdminRoute): string {
   }
   if (route.hstClientId) return `/ops/month/hst/${encodeURIComponent(route.hstClientId)}`;
   if (route.taskId) return `/ops/tasks/${encodeURIComponent(route.taskId)}`;
+  if (route.employeeId) return `/ops/employees/${encodeURIComponent(route.employeeId)}`;
   if (route.opsTab === "tasks") return "/ops";
   return `/ops/${route.opsTab}`;
 }

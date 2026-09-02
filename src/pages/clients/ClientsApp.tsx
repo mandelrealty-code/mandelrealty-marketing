@@ -18,7 +18,7 @@ import {
 import { ClientMonthPanel } from "./ClientMonthPanel";
 import { ContractsPanel } from "./ContractsPanel";
 import { ContractTemplatesPanel } from "./ContractTemplatesPanel";
-import { TeamPortalPanel } from "./TeamPortalPanel";
+import { EmployeesPanel } from "./EmployeesPanel";
 import { PortalInviteControls } from "./PortalInviteControls";
 import { EarningsPanel } from "./EarningsPanel";
 import { MonthClosePanel } from "./MonthClosePanel";
@@ -52,7 +52,7 @@ import {
   TextInput,
 } from "./ui";
 
-type Tab = "tasks" | "clients" | "properties" | "month" | "sops" | "settings";
+type Tab = "tasks" | "clients" | "properties" | "month" | "sops" | "employees" | "settings";
 
 type Props = {
   onModeChange: (mode: AdminProductMode) => void;
@@ -264,6 +264,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           | "createClient"
           | "hstClientId"
           | "taskId"
+          | "employeeId"
         >
       >,
       push = true,
@@ -278,6 +279,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           createClient: Boolean(patch.createClient),
           hstClientId: patch.hstClientId ?? null,
           taskId: patch.taskId ?? null,
+          employeeId: patch.employeeId ?? null,
         },
         { push },
       );
@@ -1056,6 +1058,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
   const navItems = [
     ["tasks", "Tasks"],
     ["sops", "SOPs"],
+    ["employees", "Employees"],
     ["clients", "Clients"],
     ["properties", "Properties"],
     ["month", "Revenue"],
@@ -1102,7 +1105,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
               : "font-medium text-[#6f6a65]"
           }`}
         >
-          {id === "month" ? "Month" : label}
+          {id === "month" ? "Month" : id === "employees" ? "Team" : label}
         </button>
       ))}
     </nav>
@@ -1916,7 +1919,6 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
         </button>
       </div>
       <ContractTemplatesPanel onError={setLoadError} />
-      <TeamPortalPanel onError={setLoadError} onToast={setToast} />
     </div>
   );
 
@@ -2004,6 +2006,17 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           if (id === route.taskId) return;
           navOps({ opsTab: "tasks", taskId: id || null });
         }}
+      />
+    );
+  } else if (tab === "employees") {
+    main = (
+      <EmployeesPanel
+        selectedId={route.employeeId}
+        onSelect={(id) => {
+          navOps({ opsTab: "employees", employeeId: id });
+        }}
+        onToast={setToast}
+        onError={setLoadError}
       />
     );
   } else if (tab === "settings") main = settingsView;

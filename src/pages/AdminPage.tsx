@@ -2091,8 +2091,21 @@ export function AdminPage() {
                   placeholder="Old lead we spoke about Muskoka only — not full management. Remind them we already talked and pick up from there…"
                   className="mb-2 w-full rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
                 />
+                <div className="mb-2 flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={saving || notes === (selected.notes || "")}
+                    onClick={() => void patchLead({ notes })}
+                    className="h-9 rounded-lg border border-white/12 bg-white/5 px-3.5 text-[13px] font-semibold text-[#e6e2dc] hover:bg-white/10 disabled:cursor-default disabled:opacity-40"
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                  {saveMsg && notes === (selected.notes || "") && (
+                    <span className="text-[12px] text-[#9a9590]">{saveMsg}</span>
+                  )}
+                </div>
                 <p className="mb-5 text-[12px] leading-relaxed text-[#9a9590]">
-                  Paste what you remember. AI uses this on the next SMS — not a to-do list.
+                  Paste what you remember, then Save (or click outside). AI uses this on the next SMS — not a to-do list.
                 </p>
                 <PlaybookBlock
                   steps={selected.playbook_steps ?? []}
@@ -2714,8 +2727,21 @@ export function AdminPage() {
           placeholder="Old lead — we spoke about Muskoka only. Remind them and pick up from there…"
           className="mb-2 w-full rounded-[12px] border border-white/8 bg-[#1a1a1a] px-3 py-2.5 text-sm leading-relaxed text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
         />
+        <div className="mb-2 flex items-center gap-3">
+          <button
+            type="button"
+            disabled={saving || notes === (selected.notes || "")}
+            onClick={() => void patchLead({ notes })}
+            className="h-9 rounded-lg border border-white/12 bg-white/5 px-3.5 text-[13px] font-semibold text-[#e6e2dc] hover:bg-white/10 disabled:cursor-default disabled:opacity-40"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+          {saveMsg && notes === (selected.notes || "") && (
+            <span className="text-[12px] text-[#9a9590]">{saveMsg}</span>
+          )}
+        </div>
         <p className="mb-4 text-[12px] leading-relaxed text-[#9a9590]">
-          Paste what you remember. AI uses this on the next SMS.
+          Paste what you remember, then Save (or click outside). AI uses this on the next SMS.
         </p>
         <PlaybookBlock
           steps={selected.playbook_steps ?? []}
