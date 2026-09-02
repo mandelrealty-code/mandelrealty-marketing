@@ -5,6 +5,7 @@ import {
   sendResendEmail,
   type LeadEmailInput,
 } from "./auditEmails.js";
+import { inferAdAngle } from "./adAngle.js";
 import { sendAiFirstSms } from "./aiSmsAgent.js";
 import { isTwilioConfigured } from "./followUpSequences.js";
 import { findLeadByEmailOrPhone, insertLead, type LeadRow } from "./leadStore.js";
@@ -136,6 +137,7 @@ export async function importParsedMetaLead(
 
   const notesLines = [
     `Imported from ${sourceLabel}.`,
+    `Ad angle: ${inferAdAngle({ source, rawAnswers: parsed.rawAnswers })}`,
     `Has Airbnb: ${parsed.hasListing}`,
     `Book-a-call email: not sent (SMS only)`,
     `SMS: ${decision.qualifiesForBookEmail ? "AI first message when AI is on" : "none"}`,

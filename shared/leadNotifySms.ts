@@ -2,6 +2,10 @@
  * Operator SMS when a new lead lands in the CRM.
  */
 import {
+  adAngleNotifyLabel,
+  inferAdAngle,
+} from "./adAngle.js";
+import {
   firstNameFromNotifyName,
   getCrmSettings,
   normalizeLeadNotifyRecipients,
@@ -57,11 +61,17 @@ export function buildNewLeadNotifySms(input: NewLeadNotifyInput): string {
     "Process unknown";
   const city = input.city?.trim() || "City unknown";
   const link = `${adminCrmBaseUrl()}/?lead=${encodeURIComponent(input.leadId)}`;
+  const angle = inferAdAngle({ source: input.source });
+  const formLine =
+    angle !== "unknown"
+      ? adAngleNotifyLabel(angle)
+      : input.source?.replace(/^meta_make:/i, "").trim() || "Form unknown";
 
   const lines = [
     "New MRG Lead",
     "",
     input.name.trim() || "Unnamed",
+    `Form: ${formLine}`,
     `${path} · ${city}`,
     `${listingLabel(input.hasListing)} · ${process}`,
   ];

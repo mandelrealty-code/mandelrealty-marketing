@@ -1,4 +1,10 @@
 import { BOOK_A_CALL_URL } from "./auditEmails.js";
+import {
+  AD_ANGLE_LABEL,
+  firstSmsAngleBrief,
+  inferAdAngle,
+  safeFirstSmsForAngle,
+} from "./adAngle.js";
 import { isGlobalAiEnabled } from "./crmSettings.js";
 import { matchKnowledgeChunks } from "./knowledgeStore.js";
 import {
@@ -67,9 +73,16 @@ function firstName(full: string): string {
   return part || "there";
 }
 
+function leadAdAngle(lead: LeadRow) {
+  return inferAdAngle({
+    source: [lead.source, lead.notes].filter(Boolean).join("\n"),
+  });
+}
+
 function leadContextBlock(lead: LeadRow): string {
   const facts = parseThreadFacts(lead.notes || "");
   const workingCity = facts.city || lead.address || "unknown";
+  const angle = leadAdAngle(lead);
   return [
     `Name: ${lead.name}`,
     `Form city/area (may be WRONG if they corrected in thread): ${lead.address || "unknown"}`,
@@ -82,6 +95,8 @@ function leadContextBlock(lead: LeadRow): string {
     `Property stage: ${lead.property_stage || "n/a"}`,
     `STR allowed: ${lead.str_allowed || "n/a"}`,
     `Permit: ${lead.permit_status || "n/a"}`,
+    `Lead source: ${lead.source || "n/a"}`,
+    `Ad / Instant Form angle: ${angle} (${AD_ANGLE_LABEL[angle]})`,
     `Offer path (what to sell): ${lead.offer_path} (${OFFER_PATH_LABEL[lead.offer_path]})`,
     `Current CRM stage: ${lead.status}`,
     `AI paused: ${lead.ai_paused ? "yes" : "no"}`,
@@ -507,16 +522,20 @@ async function buildUserPrompt(
     lead.address ||
     "";
 
+  const angle = leadAdAngle(lead);
   const retrievalQuery = [
     lead.offer_path,
     OFFER_PATH_LABEL[lead.offer_path],
+    AD_ANGLE_LABEL[angle],
+    angle,
     workingCity ? retrieveQueryForCity(workingCity) : "",
     workingCity,
     lead.has_listing,
     lead.property_stage,
     lead.permit_status,
+    lead.source,
     inbound || "",
-    "Airbnb makeover management STR permit client fit exclusions contract",
+    "Airbnb makeover management growth fee badge Superhost self-managed Booking Expedia STR permit client fit exclusions contract",
   ]
     .filter(Boolean)
     .join(" ");
@@ -583,11 +602,15 @@ ${cityMissNote}
 KNOWLEDGE BASE:
 ${kb}
 
-Write the opening SMS for offer_path="${lead.offer_path}".
-Personalize with first name "${firstName(lead.name)}" once. Reference one form fact (city, listing, or readiness).
-ONE question only (own vs planning, or which property, or furnished vs empty — pick the biggest unknown).
+${firstSmsAngleBrief(angle)}
+
+Write the opening SMS for offer_path="${lead.offer_path}" and ad angle="${angle}" (${AD_ANGLE_LABEL[angle]}).
+Match the Instant Form they filled — do not sound like a different ad.
+Personalize with first name "${firstName(lead.name)}" once. Reference one form fact (city, listing URL/title, or readiness).
+ONE question only (own vs planning, live listing, or which platforms — pick the biggest unknown for THIS angle).
 Do NOT include the calendar link. include_book_link false.
 Do NOT send guide / intro-to-airbnb landing URLs.
+Do NOT invent Growth Plan %, badge stats, or makeover dollar amounts unless present in the KB above.
 Set whats_next. Set working_city if the form city is usable.`;
   }
 
@@ -822,13 +845,14 @@ export async function canAiTextLead(
 function safeFirstSmsFallback(lead: LeadRow): string {
   const name = firstName(lead.name);
   const city = lead.address || "your area";
+  const angle = leadAdAngle(lead);
   let body: string;
-  if (lead.offer_path === "education") {
+  if (lead.offer_path === "education" && angle === "unknown") {
     body = `Hey ${name}, thanks for reaching out to Mandel Realty Group. Happy to help you figure out Airbnb in ${city}. Do you already own a place, or still looking?`;
-  } else if (lead.offer_path === "makeover") {
-    body = `Hey ${name}, it's Mandel Realty Group, thanks for applying for the free Airbnb makeover. Is the ${city} place already yours, or still in the planning stage?`;
+  } else if (lead.offer_path === "makeover" || angle === "makeover") {
+    body = safeFirstSmsForAngle("makeover", name, city);
   } else {
-    body = `Hey ${name}, it's Mandel Realty Group, thanks for your interest in our management. Quick one on ${city}: is it already live on Airbnb, or still getting set up?`;
+    body = safeFirstSmsForAngle(angle === "unknown" ? "unknown" : angle, name, city);
   }
   if (!/stop/i.test(body)) body = `${body.trim()}\nReply STOP to opt out.`;
   return sanitizeCustomerSms(body);

@@ -112,7 +112,11 @@ export function inferOfferPath(input: {
   if (/makeover|free makeover|furnish|staging|photo package/.test(blob)) {
     return "makeover";
   }
-  if (/full.?service|management|co-?host|property management/.test(blob)) {
+  if (
+    /full.?service|management|co-?host|property management|growth\s*fee|growth\s*plan|badge|self[_\s-]?managed|self manage/.test(
+      blob,
+    )
+  ) {
     return "management";
   }
 
