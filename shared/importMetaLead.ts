@@ -259,10 +259,24 @@ export async function importMetaLeadPaste(
     };
   }
 
+  const campaign = campaignFromParsed(preview.parsed);
+
   return importParsedMetaLead(preview.parsed, env, {
-    sourceLabel: "Meta Leads Center paste",
-    source: "meta_instant_form",
+    sourceLabel: campaign
+      ? `Meta paste (${campaign})`
+      : "Meta Leads Center paste",
+    source: campaign ? `meta_paste:${campaign}` : "meta_paste",
   });
+}
+
+function campaignFromParsed(parsed: ParsedMetaLead): string {
+  return (
+    parsed.rawAnswers.campaign_name ||
+    parsed.rawAnswers.campaign_or_ad ||
+    parsed.rawAnswers.ad_name ||
+    parsed.rawAnswers.form_name ||
+    ""
+  );
 }
 
 export async function importMetaLeadWebhook(

@@ -59,13 +59,15 @@ export function buildNewLeadNotifySms(input: NewLeadNotifyInput): string {
     (input.propertyStage && STAGE_LABEL[input.propertyStage]) ||
     input.propertyStage ||
     "Process unknown";
-  const city = input.city?.trim() || "City unknown";
+  const cityRaw = input.city?.trim() || "";
+  const city =
+    !cityRaw || /^not provided$/i.test(cityRaw) ? "City unknown" : cityRaw;
   const link = `${adminCrmBaseUrl()}/?lead=${encodeURIComponent(input.leadId)}`;
   const angle = inferAdAngle({ source: input.source });
   const formLine =
     angle !== "unknown"
       ? adAngleNotifyLabel(angle)
-      : input.source?.replace(/^meta_make:/i, "").trim() || "Form unknown";
+      : cleanSourceLabel(input.source) || "Form unknown";
 
   const lines = [
     "New MRG Lead",
@@ -81,6 +83,17 @@ export function buildNewLeadNotifySms(input: NewLeadNotifyInput): string {
   }
   lines.push("", `Open: ${link}`);
   return lines.join("\n").slice(0, 1400);
+}
+
+function cleanSourceLabel(source?: string): string {
+  if (!source?.trim()) return "";
+  const cleaned = source
+    .trim()
+    .replace(/^meta_(?:make|paste):/i, "")
+    .replace(/^meta_instant_form$/i, "")
+    .trim();
+  if (!cleaned || /^meta_/i.test(cleaned)) return "";
+  return cleaned;
 }
 
 export function buildNotifyWelcomeSms(name: string): string {
