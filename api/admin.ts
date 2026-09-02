@@ -4,11 +4,13 @@ import handleLeads from "../shared/adminApi/leads.js";
 import handlePm from "../shared/adminApi/pm.js";
 import handleSession from "../shared/adminApi/session.js";
 import handleSettings from "../shared/adminApi/settings.js";
+import { rejectIfNotAdminHost } from "../shared/adminHost.js";
 
 /**
  * Single admin serverless function (Hobby plan ≤12 functions).
  * Paths are rewritten in vercel.json:
  *   /api/admin/leads|settings|knowledge|session|pm → /api/admin?section=…
+ * Bound to admin hostname only — never on marketing www (VA / public).
  */
 
 function sectionOf(req: VercelRequest): string {
@@ -32,6 +34,8 @@ function sectionOf(req: VercelRequest): string {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (rejectIfNotAdminHost(req, res)) return;
+
   const section = sectionOf(req);
   switch (section) {
     case "session":

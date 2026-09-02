@@ -130,6 +130,42 @@ async function ownerBootstrap(slug: string) {
   };
 }
 
+/** Public login chrome only — no PII, contracts, or financials. */
+async function ownerBootstrapPublic(slug: string) {
+  const user = await getPortalUserBySlug(slug);
+  if (!user) return null;
+  const props = await listPmProperties(user.pm_client_id).catch(() => []);
+  const primary = props[0] ?? null;
+  const awaiting = await getAwaitingContractForClient(user.pm_client_id);
+  return {
+    user: {
+      slug: user.slug,
+      first_name: user.first_name,
+    },
+    client: null,
+    property: primary
+      ? {
+          id: "",
+          name: primary.name,
+          address: "",
+          cover_image_url: primary.cover_image_url ?? null,
+        }
+      : null,
+    awaiting_contract: awaiting
+      ? { id: "", title: awaiting.title, filename: "", status: awaiting.status }
+      : null,
+    signed_contracts: [] as Array<{
+      id: string;
+      title: string;
+      filename: string;
+      signed_on: string | null;
+      signed_at: string | null;
+      signature_name: string;
+    }>,
+    dashboard: null,
+  };
+}
+
 export default async function handleOwner(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Cache-Control", "no-store");
   if (!isSupabaseConfigured()) {
@@ -147,29 +183,43 @@ export default async function handleOwner(req: VercelRequest, res: VercelRespons
           str(req.query.slug) ||
           (typeof req.query.slug === "string" ? req.query.slug : "");
         if (!slug) return res.status(400).json({ error: "slug required." });
-        const payload = await ownerBootstrap(slug);
-        if (!payload) return res.status(404).json({ error: "Owner portal not found." });
 
         const token = getOwnerSessionFromRequest(req.headers.cookie);
         const session = verifyOwnerSessionToken(token);
         const preview = verifyOwnerPreviewToken(str(req.query.preview));
-        const previewOk = Boolean(preview && preview.slug === payload.user.slug);
-        const authed =
-          previewOk || (session && session.userId === payload.user.id)
-            ? payload.user
-            : null;
+        const previewOk = Boolean(preview && preview.slug === slug.trim().toLowerCase());
 
+        let authedUserId: string | null = null;
+        if (previewOk) {
+          const previewUser = await getPortalUserBySlug(slug);
+          if (previewUser) authedUserId = previewUser.id;
+        } else if (session) {
+          const sessionUser = await getPortalUserById(session.userId);
+          if (sessionUser && sessionUser.slug === slug.trim().toLowerCase()) {
+            authedUserId = sessionUser.id;
+          }
+        }
+
+        if (authedUserId) {
+          const payload = await ownerBootstrap(slug);
+          if (!payload) return res.status(404).json({ error: "Owner portal not found." });
+          return res.status(200).json({
+            ...payload,
+            session: {
+              authenticated: true,
+              preview: previewOk,
+              must_change_password: previewOk
+                ? false
+                : payload.user.must_change_password,
+            },
+          });
+        }
+
+        const pub = await ownerBootstrapPublic(slug);
+        if (!pub) return res.status(404).json({ error: "Owner portal not found." });
         return res.status(200).json({
-          ...payload,
-          session: authed
-            ? {
-                authenticated: true,
-                preview: previewOk,
-                must_change_password: previewOk
-                  ? false
-                  : payload.user.must_change_password,
-              }
-            : { authenticated: false, preview: false, must_change_password: false },
+          ...pub,
+          session: { authenticated: false, preview: false, must_change_password: false },
         });
       }
 

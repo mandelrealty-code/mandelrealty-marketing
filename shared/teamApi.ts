@@ -72,7 +72,6 @@ function publicTask(t: PmTask) {
     due_on: t.due_on,
     task_type: t.task_type,
     property_name: t.property_name || "",
-    client_name: t.client_name || "",
     updated_at: t.updated_at,
   };
 }
@@ -89,6 +88,22 @@ async function tasksForStaff(user: StaffUser, status: "openish" | "all" | "done"
     assignee: user.display_name,
   });
   return all.filter((t) => nameMatchesAssignee(user.display_name, t));
+}
+
+async function staffBootstrapPublic(slug: string) {
+  const user = await getStaffUserBySlug(slug);
+  if (!user || !user.active) return null;
+  // Unauthenticated: never leak email, ids, or login timestamps
+  return {
+    user: {
+      slug: user.slug,
+      first_name: user.first_name,
+    },
+  };
+}
+
+async function staffBootstrapAuthed(user: StaffUser) {
+  return { user: publicStaffUser(user) };
 }
 
 async function requireStaff(
@@ -109,12 +124,6 @@ async function requireStaff(
   return user;
 }
 
-async function staffBootstrap(slug: string) {
-  const user = await getStaffUserBySlug(slug);
-  if (!user || !user.active) return null;
-  return { user: publicStaffUser(user) };
-}
-
 export default async function handleTeam(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Cache-Control", "no-store");
   if (!isSupabaseConfigured()) {
@@ -130,22 +139,27 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
       if (op === "bootstrap" || !op) {
         const slug = str(req.query.slug);
         if (!slug) return res.status(400).json({ error: "slug required." });
-        const payload = await staffBootstrap(slug);
-        if (!payload) return res.status(404).json({ error: "Team portal not found." });
+        const pub = await staffBootstrapPublic(slug);
+        if (!pub) return res.status(404).json({ error: "Team portal not found." });
 
         const token = getStaffSessionFromRequest(req.headers.cookie);
         const session = verifyStaffSessionToken(token);
-        const authed =
-          session && session.userId === payload.user.id ? payload.user : null;
+        if (session) {
+          const user = await getStaffUserById(session.userId);
+          if (user && user.active && user.slug === pub.user.slug) {
+            return res.status(200).json({
+              ...(await staffBootstrapAuthed(user)),
+              session: {
+                authenticated: true,
+                must_change_password: user.must_change_password,
+              },
+            });
+          }
+        }
 
         return res.status(200).json({
-          ...payload,
-          session: authed
-            ? {
-                authenticated: true,
-                must_change_password: payload.user.must_change_password,
-              }
-            : { authenticated: false, must_change_password: false },
+          ...pub,
+          session: { authenticated: false, must_change_password: false },
         });
       }
 
@@ -186,6 +200,7 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
         return res.status(400).json({ error: "slug, email, and password required." });
       }
       const user = await getStaffUserBySlug(slug);
+      // Constant-ish failure message — do not reveal whether slug/email exists
       if (!user || !user.active || user.email.toLowerCase() !== email) {
         return res.status(401).json({ error: "Invalid email or password." });
       }
@@ -195,7 +210,7 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
       await touchStaffLogin(user.id);
       const token = createStaffSessionToken(user.id);
       res.setHeader("Set-Cookie", staffSessionCookie(token, { secure }));
-      const payload = await staffBootstrap(slug);
+      const payload = await staffBootstrapAuthed(user);
       return res.status(200).json({
         ok: true,
         user: publicStaffUser(user),
@@ -298,7 +313,7 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
 
     return res.status(404).json({ error: "Unknown op." });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Request failed.";
-    return res.status(500).json({ error: message });
+    console.error("[teamApi]", e instanceof Error ? e.message : e);
+    return res.status(500).json({ error: "Request failed." });
   }
 }

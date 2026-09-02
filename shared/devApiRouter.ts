@@ -181,6 +181,12 @@ export async function handleDevApi(
     return runVercelAdminHandler(req, res, "", handleOwner);
   }
 
+  // Employee / VA team portal API
+  if (url === "/api/team" || url.startsWith("/api/team?")) {
+    const { default: handleTeam } = await import("./teamApi.js");
+    return runVercelAdminHandler(req, res, "", handleTeam);
+  }
+
   // Public SOP API
   if (url === "/api/sop" || url.startsWith("/api/sop?")) {
     const { default: handlePublicSop } = await import("./publicSopApi.js");

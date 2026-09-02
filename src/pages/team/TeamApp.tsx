@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { MrgMark } from "../owner/OwnerChrome";
 
 type StaffPublic = {
-  id: string;
-  email: string;
+  id?: string;
+  email?: string;
   slug: string;
-  display_name: string;
+  display_name?: string;
   first_name: string;
-  must_change_password: boolean;
+  must_change_password?: boolean;
 };
 
 type Bootstrap = {
@@ -24,7 +24,6 @@ type TaskRow = {
   due_on: string | null;
   task_type: string;
   property_name: string;
-  client_name: string;
 };
 
 type TimeEntry = {

@@ -11,19 +11,31 @@ const COOKIE_NAME = "mrg_staff_session";
 const MAX_AGE_SEC = 60 * 60 * 24 * 30; // 30 days
 
 function sessionSecret(): string {
-  let secret =
-    process.env.STAFF_SESSION_SECRET?.trim() ||
+  // Prefer a dedicated staff secret. Never reuse ADMIN_PASSWORD raw — derive a
+  // namespaced key so a forged staff cookie cannot be replayed as admin/owner.
+  let dedicated = process.env.STAFF_SESSION_SECRET?.trim() || "";
+  if (
+    (dedicated.startsWith('"') && dedicated.endsWith('"')) ||
+    (dedicated.startsWith("'") && dedicated.endsWith("'"))
+  ) {
+    dedicated = dedicated.slice(1, -1).trim();
+  }
+  if (dedicated) return dedicated;
+
+  const base =
     process.env.OWNER_SESSION_SECRET?.trim() ||
     process.env.ADMIN_SESSION_SECRET?.trim() ||
     process.env.ADMIN_PASSWORD?.trim() ||
     "";
+  let cleaned = base;
   if (
-    (secret.startsWith('"') && secret.endsWith('"')) ||
-    (secret.startsWith("'") && secret.endsWith("'"))
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
   ) {
-    secret = secret.slice(1, -1).trim();
+    cleaned = cleaned.slice(1, -1).trim();
   }
-  return secret;
+  if (!cleaned) return "";
+  return createHmac("sha256", cleaned).update("mrg-staff-session-v1").digest("hex");
 }
 
 function sign(payload: string): string {
