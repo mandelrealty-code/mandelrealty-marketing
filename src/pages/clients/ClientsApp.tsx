@@ -18,6 +18,7 @@ import {
 import { ClientMonthPanel } from "./ClientMonthPanel";
 import { ContractsPanel } from "./ContractsPanel";
 import { ContractTemplatesPanel } from "./ContractTemplatesPanel";
+import { TeamPortalPanel } from "./TeamPortalPanel";
 import { PortalInviteControls } from "./PortalInviteControls";
 import { EarningsPanel } from "./EarningsPanel";
 import { MonthClosePanel } from "./MonthClosePanel";
@@ -1915,6 +1916,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
         </button>
       </div>
       <ContractTemplatesPanel onError={setLoadError} />
+      <TeamPortalPanel onError={setLoadError} onToast={setToast} />
     </div>
   );
 

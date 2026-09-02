@@ -16,6 +16,7 @@ import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { AdsLandingPage } from "./pages/AdsLandingPage";
 import { AdminPage } from "./pages/AdminPage";
 import { OwnerApp } from "./pages/owner/OwnerApp";
+import { TeamApp } from "./pages/team/TeamApp";
 import { PublicSopHub } from "./pages/sop/PublicSopHub";
 import { useScrollToHash } from "./hooks/useScrollToHash";
 
@@ -90,6 +91,11 @@ export default function App() {
   // Owner portal on marketing host: /owner/{slug}/…
   if (path === "/owner" || path.startsWith("/owner/")) {
     return <OwnerApp />;
+  }
+
+  // Employee / VA portal: /team/{slug}/…
+  if (path === "/team" || path.startsWith("/team/")) {
+    return <TeamApp />;
   }
 
   if (path === "/thank-you") {

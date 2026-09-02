@@ -107,6 +107,13 @@ import {
   listPmTeamMembers,
 } from "../pm/teamStore.js";
 import {
+  createOrRefreshStaffInvite,
+  listStaffUsers,
+  publicStaffUser,
+} from "../pm/staffUserStore.js";
+import { listTimeEntriesAdmin, weekStartIso } from "../pm/timeEntryStore.js";
+import { teamPortalUrl, sendStaffInviteEmail } from "../staffEmails.js";
+import {
   deleteSop,
   getSopBySlug,
   listSops,
@@ -504,6 +511,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resource === "team_members") {
         const members = await listPmTeamMembers();
         return res.status(200).json({ members });
+      }
+      if (resource === "staff_users") {
+        const users = await listStaffUsers();
+        return res.status(200).json({
+          users: users.map(publicStaffUser),
+        });
+      }
+      if (resource === "time_entries") {
+        const staffId =
+          typeof req.query.staff_user_id === "string"
+            ? req.query.staff_user_id.trim()
+            : "";
+        const since =
+          typeof req.query.since === "string" ? req.query.since.trim() : weekStartIso();
+        const entries = await listTimeEntriesAdmin({
+          staff_user_id: staffId || undefined,
+          since: since || undefined,
+        });
+        const total_hours = entries.reduce((sum, e) => sum + e.hours, 0);
+        return res.status(200).json({ entries, since, total_hours });
       }
       if (resource === "sops") {
         const slug = typeof req.query.slug === "string" ? req.query.slug.trim() : "";
@@ -1294,6 +1321,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (!id) return res.status(400).json({ error: "id required." });
           await deletePmTeamMember(id);
           return res.status(200).json({ ok: true });
+        }
+      }
+
+      if (resource === "staff_invite") {
+        if (op === "send") {
+          const email = str(body.email);
+          const displayName = str(body.display_name) || str(body.name);
+          if (!email) return res.status(400).json({ error: "email required." });
+          if (!displayName) {
+            return res.status(400).json({ error: "display_name required." });
+          }
+          const invited = await createOrRefreshStaffInvite({
+            email,
+            displayName,
+            slug: str(body.slug) || undefined,
+          });
+          const mail = await sendStaffInviteEmail({
+            to: email,
+            firstName: invited.user.first_name || "there",
+            slug: invited.user.slug,
+            tempPassword: invited.tempPassword,
+            displayName: invited.user.display_name,
+          });
+          return res.status(200).json({
+            ok: true,
+            created: invited.created,
+            staff_user: publicStaffUser(invited.user),
+            team_url: teamPortalUrl(invited.user.slug),
+            email_sent: mail.ok,
+            email_error: mail.ok ? null : mail.message || "Email failed",
+          });
         }
       }
 
