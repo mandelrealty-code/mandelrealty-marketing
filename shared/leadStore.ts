@@ -97,6 +97,8 @@ export type LeadCrmUpdate = {
   offerPath?: OfferPath;
   address?: string;
   listingTitle?: string;
+  phone?: string;
+  hasListing?: HasListing;
 };
 
 function mapLead(row: Record<string, unknown>): LeadRow {
@@ -354,6 +356,12 @@ export async function updateLeadCrm(
   }
   if (patch.listingTitle !== undefined) {
     update.listing_title = patch.listingTitle;
+  }
+  if (patch.phone !== undefined) {
+    update.phone = patch.phone;
+  }
+  if (patch.hasListing !== undefined) {
+    update.has_listing = patch.hasListing;
   }
 
   if (Object.keys(update).length === 0) return null;

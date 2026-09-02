@@ -120,6 +120,13 @@ function telHref(phone: string): string | null {
   return e164 ? `tel:${e164}` : null;
 }
 
+/** CRM sometimes stores literal "unknown" when Make omitted the number. */
+function leadPhoneUsable(phone: string | null | undefined): boolean {
+  const p = (phone || "").trim();
+  if (!p || /^unknown$/i.test(p) || /^n\/?a$/i.test(p)) return false;
+  return Boolean(telHref(p));
+}
+
 function leadHadPreCallSms(
   messages: { direction: string; body: string; meta?: Record<string, unknown> }[],
 ): boolean {
@@ -284,6 +291,7 @@ export function AdminPage() {
   const [notes, setNotes] = useState("");
   const [callNotes, setCallNotes] = useState("");
   const [whatsNext, setWhatsNext] = useState("");
+  const [phoneDraft, setPhoneDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
@@ -660,6 +668,7 @@ export function AdminPage() {
     setNotes(lead.notes || "");
     setCallNotes(lead.call_notes || "");
     setWhatsNext(lead.whats_next || "");
+    setPhoneDraft(leadPhoneUsable(lead.phone) ? lead.phone : "");
     setSaveMsg(null);
     try {
       setSmsDraft(sessionStorage.getItem(`mrg_sms_${selectedId}`) || "");
@@ -1142,6 +1151,9 @@ export function AdminPage() {
           );
         } else if (data.lead) {
           setLeads((prev) => prev.map((l) => (l.id === data.lead!.id ? { ...l, ...data.lead } : l)));
+          if (typeof data.lead.phone === "string" && leadPhoneUsable(data.lead.phone)) {
+            setPhoneDraft(data.lead.phone);
+          }
         }
         if (data.messages) setSmsMessages(data.messages);
         if (data.followups) setFollowups(data.followups);
@@ -1209,6 +1221,11 @@ export function AdminPage() {
     if (!selected || smsSendLock.current) return;
     const text = smsDraft.trim();
     if (!text) return;
+    if (!leadPhoneUsable(selected.phone)) {
+      setSaveMsg("Add a valid phone number for this lead first.");
+      setDetailsOpen(true);
+      return;
+    }
     smsSendLock.current = true;
     setSmsSending(true);
     try {
@@ -1644,7 +1661,7 @@ export function AdminPage() {
               </div>
             </div>
             <p className="crm-mono hidden shrink-0 text-[11px] text-[#6f6a65] sm:block">
-              {selected.phone || headerMeta}
+              {leadPhoneUsable(selected.phone) ? selected.phone : headerMeta}
             </p>
             <button
               type="button"
@@ -1936,8 +1953,40 @@ export function AdminPage() {
                   ))}
                 </div>
 
+                <div className="mb-5 flex flex-col gap-2 rounded-[14px] border border-white/8 bg-[#1a1a1a] px-3.5 py-3.5">
+                  <p className="text-[10.5px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
+                    Phone
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="tel"
+                      value={phoneDraft}
+                      onChange={(e) => setPhoneDraft(e.target.value)}
+                      placeholder="+1…"
+                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#121212] px-3 py-2 text-sm text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+                    />
+                    <button
+                      type="button"
+                      disabled={
+                        saving ||
+                        phoneDraft.trim() ===
+                          (leadPhoneUsable(selected.phone) ? selected.phone : "")
+                      }
+                      onClick={() => void patchLead({ phone: phoneDraft.trim() })}
+                      className="h-9 shrink-0 rounded-lg border border-white/12 bg-white/5 px-3 text-[13px] font-semibold text-[#e6e2dc] hover:bg-white/10 disabled:opacity-40"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  {!leadPhoneUsable(selected.phone) && (
+                    <p className="text-[12px] text-[#d9ac63]">
+                      Missing number — paste from Meta, then Save to text this lead.
+                    </p>
+                  )}
+                </div>
+
                 <div className="mb-5 flex flex-col gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
-                  {selected.phone && (
+                  {leadPhoneUsable(selected.phone) && (
                     <>
                       <button
                         type="button"
@@ -1981,12 +2030,12 @@ export function AdminPage() {
                       </a>
                     </>
                   )}
-                  {callMsg && selected.phone && (
+                  {callMsg && leadPhoneUsable(selected.phone) && (
                     <p className="bg-[#1a1a1a] px-3.5 py-2.5 text-[12.5px] text-[#9a9590]">
                       {callMsg}
                     </p>
                   )}
-                  {selected.phone && !operatorCallbackPhone && (
+                  {leadPhoneUsable(selected.phone) && !operatorCallbackPhone && (
                     <p className="bg-[#1a1a1a] px-3.5 py-2.5 text-[12.5px] text-[#d9ac63]">
                       Set your callback phone in Settings → CRM calls first.
                     </p>
@@ -2467,7 +2516,9 @@ export function AdminPage() {
             </p>
           </div>
         </div>
-        <p className="crm-mono hidden shrink-0 text-[11px] text-[#6f6a65] xl:block">{selected.phone}</p>
+        <p className="crm-mono hidden shrink-0 text-[11px] text-[#6f6a65] xl:block">
+          {leadPhoneUsable(selected.phone) ? selected.phone : ""}
+        </p>
         {selLive ? (
           <button
             type="button"
@@ -2715,6 +2766,40 @@ export function AdminPage() {
 
       <div className="border-b border-white/8 px-5 py-4">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
+          Phone
+        </p>
+        <div className="mb-2 flex items-center gap-2">
+          <input
+            type="tel"
+            value={phoneDraft}
+            onChange={(e) => setPhoneDraft(e.target.value)}
+            placeholder="+1…"
+            className="min-w-0 flex-1 rounded-[12px] border border-white/8 bg-[#1a1a1a] px-3 py-2.5 text-sm text-[#e6e2dc] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/40"
+          />
+          <button
+            type="button"
+            disabled={
+              saving ||
+              phoneDraft.trim() ===
+                (leadPhoneUsable(selected.phone) ? selected.phone : "")
+            }
+            onClick={() => void patchLead({ phone: phoneDraft.trim() })}
+            className="h-10 shrink-0 rounded-lg border border-white/12 bg-white/5 px-3.5 text-[13px] font-semibold text-[#e6e2dc] hover:bg-white/10 disabled:opacity-40"
+          >
+            Save
+          </button>
+        </div>
+        {!leadPhoneUsable(selected.phone) ? (
+          <p className="text-[12px] text-[#d9ac63]">
+            Missing number — paste from Meta, then Save to text this lead.
+          </p>
+        ) : saveMsg ? (
+          <p className="text-[12px] text-[#9a9590]">{saveMsg}</p>
+        ) : null}
+      </div>
+
+      <div className="border-b border-white/8 px-5 py-4">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
           Tell the AI
         </p>
         <textarea
@@ -2756,7 +2841,7 @@ export function AdminPage() {
         />
       </div>
 
-      {selected.phone ? (
+      {leadPhoneUsable(selected.phone) ? (
         <div className="flex flex-col gap-px border-b border-white/8">
           <button
             type="button"

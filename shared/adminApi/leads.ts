@@ -218,6 +218,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       aiSendMode?: "draft" | "autopilot";
       playbookSteps?: PlaybookStep[];
       offerPath?: OfferPath;
+      phone?: string;
+      hasListing?: "yes" | "no" | "unknown";
+      listingTitle?: string;
     } = {};
 
     if (body.status !== undefined) {
@@ -226,6 +229,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "Invalid status." });
       }
       patch.status = status;
+    }
+    if (body.phone !== undefined || body.phone_number !== undefined) {
+      const { toE164 } = await import("../followUpSequences.js");
+      const raw = String(body.phone ?? body.phone_number ?? "").trim();
+      const e164 = toE164(raw);
+      if (!e164) {
+        return res.status(400).json({ error: "Enter a valid CA/US phone number." });
+      }
+      patch.phone = e164;
+    }
+    if (body.hasListing !== undefined || body.has_listing !== undefined) {
+      const raw = String(body.hasListing ?? body.has_listing ?? "").trim().toLowerCase();
+      if (raw !== "yes" && raw !== "no" && raw !== "unknown") {
+        return res.status(400).json({ error: "hasListing must be yes, no, or unknown." });
+      }
+      patch.hasListing = raw;
+    }
+    if (body.listingTitle !== undefined || body.listing_title !== undefined) {
+      patch.listingTitle = String(body.listingTitle ?? body.listing_title ?? "").trim();
     }
     if (body.notes !== undefined) patch.notes = String(body.notes);
     if (body.callNotes !== undefined) patch.callNotes = String(body.callNotes);

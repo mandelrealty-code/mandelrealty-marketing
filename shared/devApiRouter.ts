@@ -664,6 +664,9 @@ export async function handleDevApi(
         aiForceOn?: boolean;
         aiSendMode?: "draft" | "autopilot";
         playbookSteps?: import("./playbook.js").PlaybookStep[];
+        phone?: string;
+        hasListing?: "yes" | "no" | "unknown";
+        listingTitle?: string;
       } = {};
       if (body.status !== undefined) {
         const status = String(body.status).trim() as LeadStatus;
@@ -672,6 +675,29 @@ export async function handleDevApi(
           return true;
         }
         patch.status = status;
+      }
+      if (body.phone !== undefined || body.phone_number !== undefined) {
+        const { toE164 } = await import("./followUpSequences.js");
+        const raw = String(body.phone ?? body.phone_number ?? "").trim();
+        const e164 = toE164(raw);
+        if (!e164) {
+          json(res, 400, { error: "Enter a valid CA/US phone number." });
+          return true;
+        }
+        patch.phone = e164;
+      }
+      if (body.hasListing !== undefined || body.has_listing !== undefined) {
+        const raw = String(body.hasListing ?? body.has_listing ?? "")
+          .trim()
+          .toLowerCase();
+        if (raw !== "yes" && raw !== "no" && raw !== "unknown") {
+          json(res, 400, { error: "hasListing must be yes, no, or unknown." });
+          return true;
+        }
+        patch.hasListing = raw;
+      }
+      if (body.listingTitle !== undefined || body.listing_title !== undefined) {
+        patch.listingTitle = String(body.listingTitle ?? body.listing_title ?? "").trim();
       }
       if (body.notes !== undefined) patch.notes = String(body.notes);
       if (body.callNotes !== undefined) patch.callNotes = String(body.callNotes);
