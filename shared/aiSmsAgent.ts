@@ -602,12 +602,13 @@ ${cityMissNote}
 KNOWLEDGE BASE:
 ${kb}
 
-${firstSmsAngleBrief(angle)}
+${firstSmsAngleBrief(angle, lead.has_listing)}
 
 Write the opening SMS for offer_path="${lead.offer_path}" and ad angle="${angle}" (${AD_ANGLE_LABEL[angle]}).
 Match the Instant Form they filled — do not sound like a different ad.
 Personalize with first name "${firstName(lead.name)}" once. Reference one form fact (city, listing URL/title, or readiness).
-ONE question only (own vs planning, live listing, or which platforms — pick the biggest unknown for THIS angle).
+CRITICAL: Never re-ask a fact already on the form. has_listing=${lead.has_listing}. If yes or no, do not ask whether they have a live Airbnb.
+ONE question only — pick the biggest UNKNOWN for THIS angle.
 Do NOT include the calendar link. include_book_link false.
 Do NOT send guide / intro-to-airbnb landing URLs.
 Do NOT invent Growth Plan %, badge stats, or makeover dollar amounts unless present in the KB above.
@@ -850,9 +851,14 @@ function safeFirstSmsFallback(lead: LeadRow): string {
   if (lead.offer_path === "education" && angle === "unknown") {
     body = `Hey ${name}, thanks for reaching out to Mandel Realty Group. Happy to help you figure out Airbnb in ${city}. Do you already own a place, or still looking?`;
   } else if (lead.offer_path === "makeover" || angle === "makeover") {
-    body = safeFirstSmsForAngle("makeover", name, city);
+    body = safeFirstSmsForAngle("makeover", name, city, lead.has_listing);
   } else {
-    body = safeFirstSmsForAngle(angle === "unknown" ? "unknown" : angle, name, city);
+    body = safeFirstSmsForAngle(
+      angle === "unknown" ? "unknown" : angle,
+      name,
+      city,
+      lead.has_listing,
+    );
   }
   if (!/stop/i.test(body)) body = `${body.trim()}\nReply STOP to opt out.`;
   return sanitizeCustomerSms(body);
