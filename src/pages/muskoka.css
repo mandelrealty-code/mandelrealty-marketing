@@ -1,0 +1,192 @@
+/* Muskoka landing — scoped tokens (Claude Design) */
+.muskoka-page {
+  --mk-deep: oklch(0.15 0.018 225);
+  --mk-dusk: oklch(0.21 0.026 228);
+  --mk-slate: oklch(0.19 0.024 210);
+  --mk-ink: oklch(0.14 0.018 226);
+  --mk-lake: oklch(0.83 0.098 78);
+  --mk-lake-hot: oklch(0.89 0.09 78);
+  --mk-mist: oklch(0.78 0.02 210);
+  --mk-paper: oklch(0.98 0.005 215);
+  --mk-soft: oklch(0.88 0.012 215);
+  --mk-muted: oklch(0.78 0.014 215);
+  --mk-quiet: oklch(0.7 0.02 210);
+  --font-mk-display: "Instrument Serif", Georgia, serif;
+  --font-mk-body: "Manrope", system-ui, sans-serif;
+  --font-mk-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  font-family: var(--font-mk-body);
+  color: var(--mk-paper);
+  background: linear-gradient(
+    180deg,
+    var(--mk-dusk) 0%,
+    oklch(0.17 0.02 224) 40%,
+    var(--mk-slate) 100%
+  );
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.muskoka-page ::selection {
+  background: oklch(0.83 0.098 78 / 0.3);
+}
+
+.muskoka-atmosphere {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(1100px 700px at 12% 4%, oklch(0.55 0.06 210 / 0.28), transparent 70%),
+    radial-gradient(900px 600px at 92% 22%, oklch(0.72 0.09 78 / 0.14), transparent 72%),
+    radial-gradient(1200px 900px at 50% 96%, oklch(0.45 0.05 195 / 0.22), transparent 70%);
+}
+
+.muskoka-page .mk-serif {
+  font-family: var(--font-mk-display);
+  font-weight: 400;
+}
+
+.muskoka-page .mk-mono {
+  font-family: var(--font-mk-mono);
+}
+
+.muskoka-page .mk-glass-nav {
+  background: oklch(0.18 0.02 224 / 0.55);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border-bottom: 1px solid oklch(1 0 0 / 0.1);
+}
+
+.muskoka-page .mk-glass-panel {
+  background: oklch(1 0 0 / 0.055);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  border: 1px solid oklch(1 0 0 / 0.11);
+}
+
+.muskoka-page .mk-glass-feature {
+  background: linear-gradient(155deg, oklch(1 0 0 / 0.085), oklch(1 0 0 / 0.03));
+  backdrop-filter: blur(30px) saturate(160%);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  border: 1px solid oklch(1 0 0 / 0.12);
+}
+
+.muskoka-page .mk-glass-form {
+  background: linear-gradient(155deg, oklch(1 0 0 / 0.1), oklch(1 0 0 / 0.04));
+  backdrop-filter: blur(34px) saturate(170%);
+  -webkit-backdrop-filter: blur(34px) saturate(170%);
+  border: 1px solid oklch(1 0 0 / 0.14);
+}
+
+.muskoka-page .mk-glass-tile {
+  background: oklch(1 0 0 / 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid oklch(1 0 0 / 0.11);
+}
+
+.muskoka-page .mk-btn-primary {
+  background: var(--mk-lake);
+  color: oklch(0.2 0.03 60);
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+.muskoka-page .mk-btn-primary:hover {
+  background: var(--mk-lake-hot);
+}
+.muskoka-page .mk-btn-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.muskoka-page .mk-btn-ghost {
+  border: 1px solid oklch(1 0 0 / 0.2);
+  background: oklch(1 0 0 / 0.08);
+  color: var(--mk-paper);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: background 0.2s ease;
+}
+.muskoka-page .mk-btn-ghost:hover {
+  background: oklch(1 0 0 / 0.14);
+}
+
+.muskoka-page .mk-input {
+  width: 100%;
+  padding: 13px 14px;
+  font-size: 16px;
+  font-weight: 300;
+  color: var(--mk-paper);
+  background: oklch(1 0 0 / 0.07);
+  border: 1px solid oklch(1 0 0 / 0.16);
+  border-radius: 10px;
+  outline: none;
+}
+.muskoka-page .mk-input:focus {
+  border-color: oklch(0.83 0.098 78 / 0.7);
+}
+.muskoka-page select.mk-input {
+  appearance: none;
+  background-color: oklch(0.24 0.02 224);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23c9b896' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+
+.muskoka-page .mk-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@keyframes mkDrift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.02);
+  }
+  50% {
+    transform: translate3d(-1.5%, -1%, 0) scale(1.06);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.02);
+  }
+}
+
+@keyframes mkSheen {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.muskoka-page .mk-drift {
+  animation: mkDrift 34s ease-in-out infinite;
+}
+
+.muskoka-page .mk-sheen {
+  animation: mkSheen 9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .muskoka-page .mk-drift,
+  .muskoka-page .mk-sheen {
+    animation: none;
+  }
+}
+
+/* Soften CallTimePicker gold into lake light on this page */
+.muskoka-page .bg-mrg-gold {
+  background-color: oklch(0.83 0.098 78) !important;
+}
+.muskoka-page .text-mrg-gold {
+  color: oklch(0.83 0.098 78) !important;
+}
+.muskoka-page .ring-mrg-gold {
+  --tw-ring-color: oklch(0.83 0.098 78) !important;
+}

@@ -14,6 +14,7 @@ import { FloatingCtas } from "./components/FloatingCtas";
 import { ThankYouPage } from "./pages/ThankYouPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { AdsLandingPage } from "./pages/AdsLandingPage";
+import { MuskokaLandingPage } from "./pages/MuskokaLandingPage";
 import { AdminPage } from "./pages/AdminPage";
 import { OwnerApp } from "./pages/owner/OwnerApp";
 import { TeamApp } from "./pages/team/TeamApp";
@@ -108,6 +109,10 @@ export default function App() {
 
   if (path === "/book-a-call" || path === "/get-estimate") {
     return <AdsLandingPage />;
+  }
+
+  if (path === "/muskoka") {
+    return <MuskokaLandingPage />;
   }
 
   return <HomePage />;

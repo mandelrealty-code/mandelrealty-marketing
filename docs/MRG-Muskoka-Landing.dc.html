@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital,wght@0,400;1,400&family=Manrope:wght@200;300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="./image-slot.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: oklch(0.15 0.018 225); }
+  * { box-sizing: border-box; }
+  a { color: oklch(0.83 0.098 78); text-decoration: none; }
+  a:hover { color: oklch(0.92 0.06 78); }
+  input, select, textarea, button { font-family: inherit; }
+  ::selection { background: oklch(0.83 0.098 78 / 0.3); }
+  @keyframes mrgDrift { 0% { transform: translate3d(0,0,0) scale(1.02); } 50% { transform: translate3d(-1.5%, -1%, 0) scale(1.06); } 100% { transform: translate3d(0,0,0) scale(1.02); } }
+  @keyframes mrgSheen { 0% { opacity: 0.35; } 50% { opacity: 0.7; } 100% { opacity: 0.35; } }
+</style>
+</helmet>
+
+<div style="width: 100%; background: oklch(0.15 0.018 225); font-family: Manrope, sans-serif; color: oklch(0.96 0.006 215); display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0 0 0 0;">
+
+  <!-- ================= DESKTOP 1280 ================= -->
+  <div style="width: 1280px; max-width: 100%; position: relative; overflow: hidden; background: linear-gradient(180deg, oklch(0.21 0.026 228) 0%, oklch(0.17 0.02 224) 40%, oklch(0.19 0.024 210) 100%);">
+
+    <!-- atmosphere -->
+    <div style="position: absolute; inset: 0; pointer-events: none; background: radial-gradient(1100px 700px at 12% 4%, oklch(0.55 0.06 210 / 0.28), transparent 70%), radial-gradient(900px 600px at 92% 22%, oklch(0.72 0.09 78 / 0.14), transparent 72%), radial-gradient(1200px 900px at 50% 96%, oklch(0.45 0.05 195 / 0.22), transparent 70%); z-index: 0;"></div>
+
+    <!-- ---------- NAV ---------- -->
+    <div style="position: sticky; top: 0; z-index: 40; width: 100%; padding: 14px 40px; display: flex; align-items: center; justify-content: space-between; gap: 24px; background: oklch(0.18 0.02 224 / 0.55); backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%); border-bottom: 1px solid oklch(1 0 0 / 0.1);">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <span style="font-size: 13px; letter-spacing: 0.3em; text-transform: uppercase; font-weight: 300; color: oklch(0.97 0.006 215);">Mandel Realty Group</span>
+        <span style="width: 1px; height: 14px; background: oklch(1 0 0 / 0.22); display: inline-block;"></span>
+        <span style="font-family: 'Instrument Serif', serif; font-style: italic; font-size: 18px; color: oklch(0.85 0.09 78);">Muskoka</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 30px;">
+        <a href="#pains" style="font-size: 13.5px; font-weight: 300; color: oklch(0.85 0.012 215);" style-hover="color: oklch(0.98 0.006 215);">The reality</a>
+        <a href="#how" style="font-size: 13.5px; font-weight: 300; color: oklch(0.85 0.012 215);" style-hover="color: oklch(0.98 0.006 215);">How it works</a>
+        <a href="#plans" style="font-size: 13.5px; font-weight: 300; color: oklch(0.85 0.012 215);" style-hover="color: oklch(0.98 0.006 215);">Plans</a>
+        <a href="#proof" style="font-size: 13.5px; font-weight: 300; color: oklch(0.85 0.012 215);" style-hover="color: oklch(0.98 0.006 215);">Proof</a>
+        <a href="#faq" style="font-size: 13.5px; font-weight: 300; color: oklch(0.85 0.012 215);" style-hover="color: oklch(0.98 0.006 215);">FAQ</a>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <a href="tel:+16473817325" style="font-size: 13.5px; font-weight: 400; padding: 10px 16px; border-radius: 10px; border: 1px solid oklch(1 0 0 / 0.18); background: oklch(1 0 0 / 0.06); color: oklch(0.97 0.006 215); backdrop-filter: blur(12px);" style-hover="background: oklch(1 0 0 / 0.12);">(647) 381-7325</a>
+          <a href="#fit" style="font-size: 13.5px; font-weight: 500; padding: 10px 18px; border-radius: 10px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);" style-hover="background: oklch(0.89 0.09 78);">Book a call</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- HERO ---------- -->
+    <div style="position: relative; width: 100%; height: 820px; overflow: hidden;">
+      <div data-parallax="hero" style="position: absolute; inset: -6% -2%; z-index: 0; animation: mrgDrift 34s ease-in-out infinite;">
+        <image-slot id="mrg-hero-lakeside" shape="rect" placeholder="hero-lakeside.jpg — modern Muskoka cottage on the water, golden hour"></image-slot>
+      </div>
+      <div style="position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(100deg, oklch(0.14 0.02 228 / 0.88) 0%, oklch(0.15 0.02 225 / 0.62) 42%, oklch(0.18 0.03 210 / 0.25) 72%, oklch(0.2 0.04 200 / 0.1) 100%);"></div>
+      <div style="position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, oklch(0.13 0.02 228 / 0.55) 0%, transparent 26%, transparent 62%, oklch(0.16 0.02 224 / 0.92) 100%);"></div>
+
+      <div style="position: relative; z-index: 2; height: 100%; padding: 0 40px 96px; display: flex; flex-direction: column; justify-content: flex-end; pointer-events: none;">
+        <div style="max-width: 800px; display: flex; flex-direction: column; gap: 30px;">
+          <div data-reveal="1" style="display: flex; flex-direction: column; gap: 12px;">
+            <span style="font-family: 'Instrument Serif', serif; font-size: 20px; font-style: italic; letter-spacing: 0.02em; color: oklch(0.85 0.09 78);">Muskoka cottage &amp; short-term rental management</span>
+            <span style="font-size: 40px; line-height: 1.05; font-weight: 200; letter-spacing: 0.22em; text-transform: uppercase; color: oklch(0.98 0.005 215);">Mandel<br />Realty Group</span>
+          </div>
+          <div data-reveal="2" style="width: 96px; height: 1px; background: linear-gradient(90deg, oklch(0.83 0.098 78), transparent);"></div>
+          <h1 data-reveal="3" style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 68px; line-height: 1.02; letter-spacing: -0.015em; color: oklch(0.98 0.005 215); text-wrap: pretty;">Cottages managed like a business — without you living in the inbox.</h1>
+          <p data-reveal="4" style="margin: 0; max-width: 620px; font-size: 18.5px; line-height: 1.6; font-weight: 300; color: oklch(0.88 0.012 215);">Dynamic pricing, turnovers and 5-star guest ops for lake country — so summer weekends, shoulder Saturdays and winter stays all actually pay.</p>
+          <div data-reveal="5" style="display: flex; align-items: center; gap: 14px; pointer-events: auto;">
+            <a href="#fit" style="font-size: 15px; font-weight: 500; padding: 16px 28px; border-radius: 12px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);" style-hover="background: oklch(0.89 0.09 78);">Book a free 15-minute call</a>
+            <a href="tel:+16473817325" style="font-size: 15px; font-weight: 400; padding: 16px 26px; border-radius: 12px; border: 1px solid oklch(1 0 0 / 0.2); background: oklch(1 0 0 / 0.08); color: oklch(0.97 0.006 215); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);" style-hover="background: oklch(1 0 0 / 0.14);">Call (647) 381-7325</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- SERVING LINE ---------- -->
+    <div style="position: relative; z-index: 5; width: 100%; padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; gap: 24px; background: oklch(1 0 0 / 0.045); border-top: 1px solid oklch(1 0 0 / 0.09); border-bottom: 1px solid oklch(1 0 0 / 0.07); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Serving Bracebridge · Gravenhurst · Huntsville · Lake of Bays · Port Carling</span>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.7 0.02 210);">Toronto-based · Canada + US portfolios</span>
+    </div>
+
+    <!-- ---------- PAINS ---------- -->
+    <div id="pains" style="position: relative; z-index: 5; padding: 120px 40px 110px; display: grid; grid-template-columns: 430px 1fr; gap: 72px;">
+      <div data-reveal="1" style="display: flex; flex-direction: column; gap: 22px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">01 — Cottage country reality</span>
+        <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 46px; line-height: 1.08; color: oklch(0.98 0.005 215);">The lake is the easy part.</h2>
+        <p style="margin: 0; font-size: 16.5px; line-height: 1.65; font-weight: 300; color: oklch(0.82 0.014 215);">Muskoka rents at some of the highest nightly rates in Ontario — and asks the most in return. High season is eleven weeks long, the shoulders are unforgiving, and every one of them runs through your phone.</p>
+      </div>
+      <div style="display: flex; flex-direction: column;">
+        <div data-reveal="2" style="display: grid; grid-template-columns: 40px 1fr; gap: 24px; padding: 26px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: oklch(0.62 0.02 210); padding-top: 5px;">01</span>
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <span style="font-size: 21px; font-weight: 400; color: oklch(0.97 0.006 215);">Midnight messages during your own week at the lake</span>
+            <span style="font-size: 15.5px; font-weight: 300; line-height: 1.6; color: oklch(0.78 0.014 215);">The hot tub, the gate code, the boat lift. Guests expect an answer in minutes, and Airbnb scores you on it.</span>
+          </div>
+        </div>
+        <div data-reveal="3" style="display: grid; grid-template-columns: 40px 1fr; gap: 24px; padding: 26px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: oklch(0.62 0.02 210); padding-top: 5px;">02</span>
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <span style="font-size: 21px; font-weight: 400; color: oklch(0.97 0.006 215);">Back-to-back Saturday turnovers on lake roads</span>
+            <span style="font-size: 15.5px; font-weight: 300; line-height: 1.6; color: oklch(0.78 0.014 215);">Same-day check-out and check-in, forty minutes from town, with a cleaner who has three other cottages that morning.</span>
+          </div>
+        </div>
+        <div data-reveal="4" style="display: grid; grid-template-columns: 40px 1fr; gap: 24px; padding: 26px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: oklch(0.62 0.02 210); padding-top: 5px;">03</span>
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <span style="font-size: 21px; font-weight: 400; color: oklch(0.97 0.006 215);">Soft mid-weeks while the neighbours are full</span>
+            <span style="font-size: 15.5px; font-weight: 300; line-height: 1.6; color: oklch(0.78 0.014 215);">June and September carry real demand in Muskoka — but only if the calendar and the rate move to meet it.</span>
+          </div>
+        </div>
+        <div data-reveal="5" style="display: grid; grid-template-columns: 40px 1fr; gap: 24px; padding: 26px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: oklch(0.62 0.02 210); padding-top: 5px;">04</span>
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <span style="font-size: 21px; font-weight: 400; color: oklch(0.97 0.006 215);">Set-and-forget pricing through the weekends that matter</span>
+            <span style="font-size: 15.5px; font-weight: 300; line-height: 1.6; color: oklch(0.78 0.014 215);">Victoria Day, Canada Day, Civic, Thanksgiving, ski weeks — flat rates leave thousands on the table every season.</span>
+          </div>
+        </div>
+        <div data-reveal="6" style="display: grid; grid-template-columns: 40px 1fr; gap: 24px; padding: 26px 0; border-top: 1px solid oklch(1 0 0 / 0.1); border-bottom: 1px solid oklch(1 0 0 / 0.1);">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: oklch(0.62 0.02 210); padding-top: 5px;">05</span>
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <span style="font-size: 21px; font-weight: 400; color: oklch(0.97 0.006 215);">A listing that still looks like 2016 pine and plaid</span>
+            <span style="font-size: 15.5px; font-weight: 300; line-height: 1.6; color: oklch(0.78 0.014 215);">Two bays over, glass-and-cedar photography is taking the summer bookings — and the summer rate.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- HOW IT WORKS ---------- -->
+    <div id="how" style="position: relative; z-index: 5; padding: 20px 40px 120px;">
+      <div data-reveal="1" style="display: flex; flex-direction: column; gap: 18px; max-width: 720px; margin-bottom: 64px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">02 — How MRG works</span>
+        <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 46px; line-height: 1.08; color: oklch(0.98 0.005 215);">One chain, run properly, every week of the year.</h2>
+        <p style="margin: 0; font-size: 16.5px; line-height: 1.65; font-weight: 300; color: oklch(0.82 0.014 215);">Nothing exotic. Systems produce a better stay, better stays produce reviews, reviews buy visibility, visibility fills the calendar — and a full calendar priced correctly is the money.</p>
+      </div>
+      <div data-reveal="2" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; border-radius: 20px; border: 1px solid oklch(1 0 0 / 0.11); background: oklch(1 0 0 / 0.055); backdrop-filter: blur(26px) saturate(150%); -webkit-backdrop-filter: blur(26px) saturate(150%); overflow: hidden;">
+        <div style="padding: 30px 24px 34px; border-right: 1px solid oklch(1 0 0 / 0.09); display: flex; flex-direction: column; gap: 14px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: oklch(0.83 0.098 78);">STEP 01</span>
+          <span style="font-family: 'Instrument Serif', serif; font-size: 24px; color: oklch(0.98 0.005 215);">Systems</span>
+          <span style="font-size: 14px; line-height: 1.55; font-weight: 300; color: oklch(0.78 0.014 215);">Pricing rules, turnover schedule, restock lists, screening and a single calendar of record.</span>
+        </div>
+        <div style="padding: 30px 24px 34px; border-right: 1px solid oklch(1 0 0 / 0.09); display: flex; flex-direction: column; gap: 14px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: oklch(0.83 0.098 78);">STEP 02</span>
+          <span style="font-family: 'Instrument Serif', serif; font-size: 24px; color: oklch(0.98 0.005 215);">Guest experience</span>
+          <span style="font-size: 14px; line-height: 1.55; font-weight: 300; color: oklch(0.78 0.014 215);">Answered in minutes, arrival that works after an eight-hour drive, a cottage that photographs like it lives.</span>
+        </div>
+        <div style="padding: 30px 24px 34px; border-right: 1px solid oklch(1 0 0 / 0.09); display: flex; flex-direction: column; gap: 14px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: oklch(0.83 0.098 78);">STEP 03</span>
+          <span style="font-family: 'Instrument Serif', serif; font-size: 24px; color: oklch(0.98 0.005 215);">Reviews</span>
+          <span style="font-size: 14px; line-height: 1.55; font-weight: 300; color: oklch(0.78 0.014 215);">Review requests timed and worded, issues intercepted before they become a four-star.</span>
+        </div>
+        <div style="padding: 30px 24px 34px; border-right: 1px solid oklch(1 0 0 / 0.09); display: flex; flex-direction: column; gap: 14px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: oklch(0.83 0.098 78);">STEP 04</span>
+          <span style="font-family: 'Instrument Serif', serif; font-size: 24px; color: oklch(0.98 0.005 215);">Visibility</span>
+          <span style="font-size: 14px; line-height: 1.55; font-weight: 300; color: oklch(0.78 0.014 215);">Rating and response feed placement. Your listing surfaces for “Muskoka lakefront” searches, not page four.</span>
+        </div>
+        <div style="padding: 30px 24px 34px; border-right: 1px solid oklch(1 0 0 / 0.09); display: flex; flex-direction: column; gap: 14px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: oklch(0.83 0.098 78);">STEP 05</span>
+          <span style="font-family: 'Instrument Serif', serif; font-size: 24px; color: oklch(0.98 0.005 215);">Bookings</span>
+          <span style="font-size: 14px; line-height: 1.55; font-weight: 300; color: oklch(0.78 0.014 215);">Long weekends sold early at the right rate; mid-weeks and shoulders filled instead of discounted late.</span>
+        </div>
+        <div style="padding: 30px 24px 34px; display: flex; flex-direction: column; gap: 14px; background: oklch(0.83 0.098 78 / 0.1);">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: oklch(0.86 0.1 78);">STEP 06</span>
+          <span style="font-family: 'Instrument Serif', serif; font-size: 24px; color: oklch(0.98 0.005 215);">Money</span>
+          <span style="font-size: 14px; line-height: 1.55; font-weight: 300; color: oklch(0.82 0.014 215);">One monthly report: revenue, occupancy, ADR, review trend, and what we are changing next month.</span>
+        </div>
+      </div>
+      <div data-reveal="3" style="margin-top: 40px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px 40px;">
+        <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.84 0.012 215); padding: 12px 0; border-top: 1px solid oklch(1 0 0 / 0.09);">Dynamic daily pricing</span>
+        <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.84 0.012 215); padding: 12px 0; border-top: 1px solid oklch(1 0 0 / 0.09);">Listing + photo optimization</span>
+        <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.84 0.012 215); padding: 12px 0; border-top: 1px solid oklch(1 0 0 / 0.09);">24/7 guest communication</span>
+        <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.84 0.012 215); padding: 12px 0; border-top: 1px solid oklch(1 0 0 / 0.09);">Cleaning &amp; turnover coordination</span>
+        <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.84 0.012 215); padding: 12px 0; border-top: 1px solid oklch(1 0 0 / 0.09);">Inventory &amp; restock</span>
+        <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.84 0.012 215); padding: 12px 0; border-top: 1px solid oklch(1 0 0 / 0.09);">Review &amp; reputation</span>
+        <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.84 0.012 215); padding: 12px 0; border-top: 1px solid oklch(1 0 0 / 0.09);">Monthly performance reporting</span>
+        <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.84 0.012 215); padding: 12px 0; border-top: 1px solid oklch(1 0 0 / 0.09);">Guest ID &amp; screening</span>
+        <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.84 0.012 215); padding: 12px 0; border-top: 1px solid oklch(1 0 0 / 0.09);">Furniture makeover (Standard / Full Service)</span>
+        <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.84 0.012 215); padding: 12px 0; border-top: 1px solid oklch(1 0 0 / 0.09);">Growth Partnership for hosts with history</span>
+      </div>
+    </div>
+
+    <!-- ---------- GALLERY ---------- -->
+    <div id="gallery" style="position: relative; z-index: 5; padding: 0 0 120px;">
+      <div data-reveal="1" style="padding: 0 40px; display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; margin-bottom: 36px;">
+        <div style="display: flex; flex-direction: column; gap: 18px; max-width: 640px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">03 — What guests book</span>
+          <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 46px; line-height: 1.08; color: oklch(0.98 0.005 215);">Cottages we run, photographed the way they rent.</h2>
+        </div>
+        <p style="margin: 0; max-width: 340px; font-size: 15.5px; line-height: 1.6; font-weight: 300; color: oklch(0.8 0.014 215);">Every listing we take on gets re-shot, re-sequenced and re-written before its first night on market.</p>
+      </div>
+
+      <div style="width: 100%; height: 560px; position: relative;">
+        <image-slot id="mrg-great-room" shape="rect" placeholder="great-room.jpg — open great room, lake glass"></image-slot>
+      </div>
+
+      <div style="padding: 0 40px; margin-top: 14px; display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.7 0.02 210);">Great room · Lake of Bays</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.7 0.02 210);">Sleeps 10 · 4 br · dock</span>
+      </div>
+
+      <div style="padding: 0 40px; margin-top: 40px; display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="height: 420px; position: relative;">
+            <image-slot id="mrg-dock-sunset" shape="rounded" radius="18" placeholder="dock-sunset.jpg — private dock + lake"></image-slot>
+          </div>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.7 0.02 210);">Private dock · Port Carling</span>
+        </div>
+        <div style="display: grid; grid-template-rows: 1fr 1fr; gap: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="height: 194px; position: relative;">
+              <image-slot id="mrg-kitchen-dining" shape="rounded" radius="18" placeholder="kitchen-dining.jpg — kitchen / dining opening to the lake"></image-slot>
+            </div>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.7 0.02 210);">Kitchen &amp; dining</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="height: 194px; position: relative;">
+              <image-slot id="mrg-primary-suite" shape="rounded" radius="18" placeholder="primary-suite.jpg — primary bedroom, water view"></image-slot>
+            </div>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.7 0.02 210);">Primary suite</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 0 40px; margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="height: 250px; position: relative;">
+            <image-slot id="mrg-boathouse" shape="rounded" radius="18" placeholder="boathouse.jpg — boathouse / shoreline architecture"></image-slot>
+          </div>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.7 0.02 210);">Boathouse · Gravenhurst</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="height: 250px; position: relative;">
+            <image-slot id="mrg-firepit-evening" shape="rounded" radius="18" placeholder="firepit-evening.jpg — outdoor living / fire"></image-slot>
+          </div>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.7 0.02 210);">Evening shoreline</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="height: 250px; position: relative;">
+            <image-slot id="mrg-winter-cottage" shape="rounded" radius="18" placeholder="winter-cottage.jpg — winter cottage, shoulder / ski season"></image-slot>
+          </div>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.7 0.02 210);">February · still booked</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- PLANS ---------- -->
+    <div id="plans" style="position: relative; z-index: 5; padding: 0 40px 120px;">
+      <div data-reveal="1" style="display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; margin-bottom: 42px;">
+        <div style="display: flex; flex-direction: column; gap: 18px; max-width: 700px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">04 — What we offer</span>
+          <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 46px; line-height: 1.08; color: oklch(0.98 0.005 215);">Four ways to work with us.</h2>
+          <p style="margin: 0; font-size: 16.5px; line-height: 1.65; font-weight: 300; color: oklch(0.82 0.014 215);">Pick the one that matches how much you want to keep. All fees are on gross booking revenue — nightly plus upsells, excluding cleaning and pass-throughs. HST applies to fees.</p>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start;">
+        <!-- selector -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div onClick="{{ pickFull }}" style="position: relative; cursor: pointer; padding: 20px 22px; border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.11); background: oklch(1 0 0 / 0.05); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: flex; flex-direction: column; gap: 6px;" style-hover="background: oklch(1 0 0 / 0.09);">
+            <sc-if value="{{ isFull }}" hint-placeholder-val="{{ true }}"><span style="position: absolute; left: 0; top: 18px; bottom: 18px; width: 3px; border-radius: 0 3px 3px 0; background: oklch(0.83 0.098 78);"></span></sc-if>
+            <span style="font-size: 17.5px; font-weight: 400; color: oklch(0.98 0.005 215);">Full Service / Standard</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.1em; color: oklch(0.8 0.05 78);">20% – 25% of revenue</span>
+          </div>
+          <div onClick="{{ pickGrowth }}" style="position: relative; cursor: pointer; padding: 20px 22px; border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.11); background: oklch(1 0 0 / 0.05); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: flex; flex-direction: column; gap: 6px;" style-hover="background: oklch(1 0 0 / 0.09);">
+            <sc-if value="{{ isGrowth }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; top: 18px; bottom: 18px; width: 3px; border-radius: 0 3px 3px 0; background: oklch(0.83 0.098 78);"></span></sc-if>
+            <span style="font-size: 17.5px; font-weight: 400; color: oklch(0.98 0.005 215);">Growth Partnership</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.1em; color: oklch(0.8 0.05 78);">Performance-tied · history required</span>
+          </div>
+          <div onClick="{{ pickEssentials }}" style="position: relative; cursor: pointer; padding: 20px 22px; border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.11); background: oklch(1 0 0 / 0.05); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: flex; flex-direction: column; gap: 6px;" style-hover="background: oklch(1 0 0 / 0.09);">
+            <sc-if value="{{ isEssentials }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; top: 18px; bottom: 18px; width: 3px; border-radius: 0 3px 3px 0; background: oklch(0.83 0.098 78);"></span></sc-if>
+            <span style="font-size: 17.5px; font-weight: 400; color: oklch(0.98 0.005 215);">Managed Essentials</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.1em; color: oklch(0.8 0.05 78);">$199 or $349 / month</span>
+          </div>
+          <div onClick="{{ pickFurniture }}" style="position: relative; cursor: pointer; padding: 20px 22px; border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.11); background: oklch(1 0 0 / 0.05); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: flex; flex-direction: column; gap: 6px;" style-hover="background: oklch(1 0 0 / 0.09);">
+            <sc-if value="{{ isFurniture }}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 0; top: 18px; bottom: 18px; width: 3px; border-radius: 0 3px 3px 0; background: oklch(0.83 0.098 78);"></span></sc-if>
+            <span style="font-size: 17.5px; font-weight: 400; color: oklch(0.98 0.005 215);">Furniture Investment</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.1em; color: oklch(0.8 0.05 78);">Pairs with Standard / Full Service</span>
+          </div>
+          <p style="margin: 8px 4px 0; font-size: 13px; line-height: 1.55; font-weight: 300; color: oklch(0.72 0.014 215);">Not sure which fits? The 15-minute call ends with a recommendation, not a pitch.</p>
+        </div>
+
+        <!-- detail -->
+        <div style="min-height: 470px; padding: 40px; border-radius: 20px; border: 1px solid oklch(1 0 0 / 0.12); background: linear-gradient(150deg, oklch(1 0 0 / 0.09), oklch(1 0 0 / 0.035)); backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%);">
+          <sc-if value="{{ isFull }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-direction: column; gap: 28px;">
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 30px;">
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <h3 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 34px; color: oklch(0.98 0.005 215);">Full Service / Standard management</h3>
+                  <p style="margin: 0; max-width: 560px; font-size: 16px; line-height: 1.6; font-weight: 300; color: oklch(0.83 0.014 215);">Hands-off hosting. We run the cottage as a business and you get a monthly report and a deposit.</p>
+                </div>
+                <div style="text-align: right; flex-shrink: 0;">
+                  <div style="font-family: 'Instrument Serif', serif; font-size: 46px; line-height: 1; color: oklch(0.9 0.1 78);">20–25%</div>
+                  <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.74 0.02 210); margin-top: 8px;">of gross revenue</div>
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px 40px;">
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">24/7 guest messaging</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Cleaning &amp; turnover coordination</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Dynamic daily pricing</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Inventory &amp; restock</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Listing optimization &amp; photo direction</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Review protection &amp; reputation</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Guest ID &amp; screening</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Monthly performance reporting</span>
+              </div>
+              <div style="padding: 18px 20px; border-radius: 12px; background: oklch(0.83 0.098 78 / 0.09); border: 1px solid oklch(0.83 0.098 78 / 0.22);">
+                <span style="font-size: 14.5px; font-weight: 300; line-height: 1.6; color: oklch(0.9 0.03 78);">Furniture Investment Program can pair with Standard (~20%) or Full Service (~25%) only.</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <a href="#fit" style="font-size: 14.5px; font-weight: 500; padding: 14px 24px; border-radius: 11px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);" style-hover="background: oklch(0.89 0.09 78);">Book a free 15-minute call</a>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(0.7 0.02 210);">New or existing listings · HST on fees</span>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isGrowth }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 28px;">
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <h3 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 34px; color: oklch(0.98 0.005 215);">Growth Partnership</h3>
+                <p style="margin: 0; max-width: 620px; font-size: 16px; line-height: 1.6; font-weight: 300; color: oklch(0.83 0.014 215);">For cottages already live with booking history. We agree on your monthly Benchmark Revenue, charge a low fee up to it, and a larger fee only on what we add above it.</p>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
+                <div style="padding: 26px; border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.13); background: oklch(1 0 0 / 0.06); display: flex; flex-direction: column; gap: 16px;">
+                  <span style="font-size: 20px; font-weight: 400; color: oklch(0.98 0.005 215);">Aligned Growth</span>
+                  <div style="display: flex; align-items: baseline; gap: 10px;">
+                    <span style="font-family: 'Instrument Serif', serif; font-size: 40px; color: oklch(0.9 0.1 78);">10%</span>
+                    <span style="font-size: 13.5px; font-weight: 300; color: oklch(0.8 0.014 215);">up to benchmark</span>
+                  </div>
+                  <div style="display: flex; align-items: baseline; gap: 10px;">
+                    <span style="font-family: 'Instrument Serif', serif; font-size: 40px; color: oklch(0.98 0.005 215);">35%</span>
+                    <span style="font-size: 13.5px; font-weight: 300; color: oklch(0.8 0.014 215);">on revenue above it</span>
+                  </div>
+                </div>
+                <div style="padding: 26px; border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.13); background: oklch(1 0 0 / 0.06); display: flex; flex-direction: column; gap: 16px;">
+                  <span style="font-size: 20px; font-weight: 400; color: oklch(0.98 0.005 215);">Confidence Partner</span>
+                  <div style="display: flex; align-items: baseline; gap: 10px;">
+                    <span style="font-family: 'Instrument Serif', serif; font-size: 40px; color: oklch(0.9 0.1 78);">5%</span>
+                    <span style="font-size: 13.5px; font-weight: 300; color: oklch(0.8 0.014 215);">up to benchmark</span>
+                  </div>
+                  <div style="display: flex; align-items: baseline; gap: 10px;">
+                    <span style="font-family: 'Instrument Serif', serif; font-size: 40px; color: oklch(0.98 0.005 215);">45%</span>
+                    <span style="font-size: 13.5px; font-weight: 300; color: oklch(0.8 0.014 215);">on revenue above it</span>
+                  </div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 11px;">
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Gross booking revenue = nightly + upsells. Cleaning and pass-throughs excluded.</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Requires an existing live listing with booking history to set the benchmark.</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">HST applies to fees. Furniture Investment is not available with Growth.</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <a href="#fit" style="font-size: 14.5px; font-weight: 500; padding: 14px 24px; border-radius: 11px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);" style-hover="background: oklch(0.89 0.09 78);">Set my benchmark on a call</a>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isEssentials }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 28px;">
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <h3 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 34px; color: oklch(0.98 0.005 215);">Managed Essentials</h3>
+                <p style="margin: 0; max-width: 620px; font-size: 16px; line-height: 1.6; font-weight: 300; color: oklch(0.83 0.014 215);">Fixed monthly, no revenue share. You keep your cleaner and your on-lake logistics; we take the inbox and the calendar.</p>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
+                <div style="padding: 26px; border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.13); background: oklch(1 0 0 / 0.06); display: flex; flex-direction: column; gap: 14px;">
+                  <span style="font-size: 20px; font-weight: 400; color: oklch(0.98 0.005 215);">Message &amp; Book</span>
+                  <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <span style="font-family: 'Instrument Serif', serif; font-size: 42px; color: oklch(0.9 0.1 78);">$199</span>
+                    <span style="font-size: 13.5px; font-weight: 300; color: oklch(0.8 0.014 215);">/ month</span>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 9px;">
+                    <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.85 0.012 215); padding-top: 9px; border-top: 1px solid oklch(1 0 0 / 0.09);">AI + VA guest messaging</span>
+                    <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.85 0.012 215); padding-top: 9px; border-top: 1px solid oklch(1 0 0 / 0.09);">Booking confirmations</span>
+                    <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.85 0.012 215); padding-top: 9px; border-top: 1px solid oklch(1 0 0 / 0.09);">Guest ID / screening</span>
+                    <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.85 0.012 215); padding-top: 9px; border-top: 1px solid oklch(1 0 0 / 0.09);">Review requests</span>
+                    <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.85 0.012 215); padding-top: 9px; border-top: 1px solid oklch(1 0 0 / 0.09);">Monthly snapshot</span>
+                  </div>
+                </div>
+                <div style="padding: 26px; border-radius: 16px; border: 1px solid oklch(0.83 0.098 78 / 0.28); background: oklch(0.83 0.098 78 / 0.08); display: flex; flex-direction: column; gap: 14px;">
+                  <span style="font-size: 20px; font-weight: 400; color: oklch(0.98 0.005 215);">Message &amp; Optimize</span>
+                  <div style="display: flex; align-items: baseline; gap: 8px;">
+                    <span style="font-family: 'Instrument Serif', serif; font-size: 42px; color: oklch(0.9 0.1 78);">$349</span>
+                    <span style="font-size: 13.5px; font-weight: 300; color: oklch(0.8 0.014 215);">/ month</span>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 9px;">
+                    <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.85 0.012 215); padding-top: 9px; border-top: 1px solid oklch(1 0 0 / 0.09);">Everything in Message &amp; Book</span>
+                    <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.85 0.012 215); padding-top: 9px; border-top: 1px solid oklch(1 0 0 / 0.09);">Dynamic pricing</span>
+                    <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.85 0.012 215); padding-top: 9px; border-top: 1px solid oklch(1 0 0 / 0.09);">Scheduled listing / photo optimization</span>
+                    <span style="font-size: 14.5px; font-weight: 300; color: oklch(0.85 0.012 215); padding-top: 9px; border-top: 1px solid oklch(1 0 0 / 0.09);">Monthly next-steps report</span>
+                  </div>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 11px;">
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">HST extra. Owner keeps cleaning, maintenance and on-site logistics.</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Optional Klarna 12-month path, about 5% off — no refunds on that path.</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <a href="#fit" style="font-size: 14.5px; font-weight: 500; padding: 14px 24px; border-radius: 11px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);" style-hover="background: oklch(0.89 0.09 78);">Start with Essentials</a>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isFurniture }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 28px;">
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <h3 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 34px; color: oklch(0.98 0.005 215);">Furniture Investment / cottage makeover</h3>
+                <p style="margin: 0; max-width: 620px; font-size: 16px; line-height: 1.6; font-weight: 300; color: oklch(0.83 0.014 215);">A tired interior caps your nightly rate long before your lake does. We invest in the makeover so the listing can earn what the shoreline is worth — then re-shoot it and take it back to market.</p>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px 40px;">
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Room-by-room plan for the spaces guests book on</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Sourcing, delivery and install coordinated</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">Durable, cottage-appropriate spec — not showroom-only</span>
+                <span style="font-size: 15px; font-weight: 300; color: oklch(0.86 0.012 215); padding: 11px 0; border-top: 1px solid oklch(1 0 0 / 0.1);">New photography and a rewritten listing after install</span>
+              </div>
+              <div style="padding: 18px 20px; border-radius: 12px; background: oklch(0.83 0.098 78 / 0.09); border: 1px solid oklch(0.83 0.098 78 / 0.22); display: flex; flex-direction: column; gap: 8px;">
+                <span style="font-size: 14.5px; font-weight: 400; color: oklch(0.92 0.03 78);">Pairing rules</span>
+                <span style="font-size: 14.5px; font-weight: 300; line-height: 1.6; color: oklch(0.88 0.02 78);">Available with Standard (~20%) or Full Service (~25%) only. Not available with Growth Partnership or Managed Essentials.</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <a href="#fit" style="font-size: 14.5px; font-weight: 500; padding: 14px 24px; border-radius: 11px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);" style-hover="background: oklch(0.89 0.09 78);">Ask about a makeover</a>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(0.7 0.02 210);">Scope agreed before anything is ordered</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- PROOF ---------- -->
+    <div id="proof" style="position: relative; z-index: 5; padding: 0 40px 120px;">
+      <div data-reveal="1" style="padding: 48px; border-radius: 24px; border: 1px solid oklch(1 0 0 / 0.12); background: linear-gradient(155deg, oklch(1 0 0 / 0.085), oklch(1 0 0 / 0.03)); backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%); display: grid; grid-template-columns: 1fr 1.1fr; gap: 56px;">
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">05 — Proof of systems</span>
+          <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 42px; line-height: 1.08; color: oklch(0.98 0.005 215);">Same unit. Same building. Different operator.</h2>
+          <p style="margin: 0; font-size: 16px; line-height: 1.65; font-weight: 300; color: oklch(0.83 0.014 215);">A Toronto client came to us after a full year of self-managing. We kept the property and changed the operating system: pricing, photography, listing copy, response times, review flow.</p>
+          <div style="display: flex; align-items: flex-end; gap: 40px; margin-top: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.7 0.02 210);">Full year 2025 · before MRG</span>
+              <span style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1; color: oklch(0.86 0.012 215);">$26,995</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.83 0.098 78);">May–Aug 2026 · with MRG</span>
+              <span style="font-family: 'Instrument Serif', serif; font-size: 56px; line-height: 1; color: oklch(0.9 0.1 78);">$33,713</span>
+            </div>
+          </div>
+          <p style="margin: 4px 0 0; font-size: 15px; line-height: 1.6; font-weight: 300; color: oklch(0.84 0.012 215);">Four months beat the entire previous year — <strong style="font-weight: 500; color: oklch(0.96 0.006 215);">+159% against the same months</strong> a year earlier.</p>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; letter-spacing: 0.06em; color: oklch(0.68 0.02 210);">Verified Airbnb host dashboard · Toronto client. Same playbook we run for Muskoka cottages — we don't publish Muskoka dashboards we haven't earned yet.</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 18px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.72 0.02 210);">Change vs same month, prior year</span>
+          <div style="flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; align-items: end; min-height: 300px;">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+              <span style="font-family: 'Instrument Serif', serif; font-size: 30px; color: oklch(0.9 0.1 78);">+99%</span>
+              <div style="width: 100%; height: 195px; border-radius: 10px 10px 0 0; background: linear-gradient(180deg, oklch(0.83 0.098 78 / 0.85), oklch(0.83 0.098 78 / 0.12)); animation: mrgSheen 9s ease-in-out infinite;"></div>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: oklch(0.78 0.02 210);">MAY</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+              <span style="font-family: 'Instrument Serif', serif; font-size: 30px; color: oklch(0.9 0.1 78);">$8,755</span>
+              <div style="width: 100%; height: 258px; border-radius: 10px 10px 0 0; background: linear-gradient(180deg, oklch(0.83 0.098 78 / 0.95), oklch(0.83 0.098 78 / 0.14)); animation: mrgSheen 9s ease-in-out infinite;"></div>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: oklch(0.78 0.02 210);">JUNE · FROM $0</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+              <span style="font-family: 'Instrument Serif', serif; font-size: 30px; color: oklch(0.9 0.1 78);">+90%</span>
+              <div style="width: 100%; height: 178px; border-radius: 10px 10px 0 0; background: linear-gradient(180deg, oklch(0.83 0.098 78 / 0.85), oklch(0.83 0.098 78 / 0.12)); animation: mrgSheen 9s ease-in-out infinite;"></div>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: oklch(0.78 0.02 210);">JULY</span>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+              <span style="font-family: 'Instrument Serif', serif; font-size: 30px; color: oklch(0.9 0.1 78);">+91%</span>
+              <div style="width: 100%; height: 181px; border-radius: 10px 10px 0 0; background: linear-gradient(180deg, oklch(0.83 0.098 78 / 0.85), oklch(0.83 0.098 78 / 0.12)); animation: mrgSheen 9s ease-in-out infinite;"></div>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: oklch(0.78 0.02 210);">AUGUST</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- TESTIMONIALS ---------- -->
+    <div id="voices" style="position: relative; z-index: 5; padding: 0 40px 120px;">
+      <div data-reveal="1" style="display: flex; flex-direction: column; gap: 18px; max-width: 660px; margin-bottom: 48px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">06 — Owners</span>
+        <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 46px; line-height: 1.08; color: oklch(0.98 0.005 215);">What cottage owners say after a season.</h2>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 64px;">
+        <div data-reveal="2" style="padding: 34px 0; border-top: 1px solid oklch(1 0 0 / 0.11); display: flex; flex-direction: column; gap: 18px;">
+          <p style="margin: 0; font-family: 'Instrument Serif', serif; font-size: 25px; line-height: 1.4; color: oklch(0.96 0.006 215); text-wrap: pretty;">“I assumed a manager meant giving up a fifth of the revenue for nothing. First quarter with MRG came in meaningfully ahead of what I was doing alone, and I have not touched the calendar since April.”</p>
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-size: 14.5px; font-weight: 400; color: oklch(0.9 0.012 215);">Dan R. · Lake Muskoka, Port Carling</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; padding: 6px 11px; border-radius: 7px; background: oklch(0.83 0.098 78 / 0.14); border: 1px solid oklch(0.83 0.098 78 / 0.28); color: oklch(0.88 0.06 78);">+40% REVENUE</span>
+          </div>
+        </div>
+        <div data-reveal="3" style="padding: 34px 0; border-top: 1px solid oklch(1 0 0 / 0.11); display: flex; flex-direction: column; gap: 18px;">
+          <p style="margin: 0; font-family: 'Instrument Serif', serif; font-size: 25px; line-height: 1.4; color: oklch(0.96 0.006 215); text-wrap: pretty;">“Guests used to wait until morning for an answer. Now they get one in minutes, at 11pm, from someone who knows which key opens the boathouse. We went from 4.6 to 4.9 in one summer.”</p>
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-size: 14.5px; font-weight: 400; color: oklch(0.9 0.012 215);">Priya M. · Lake of Bays, Dwight</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; padding: 6px 11px; border-radius: 7px; background: oklch(0.83 0.098 78 / 0.14); border: 1px solid oklch(0.83 0.098 78 / 0.28); color: oklch(0.88 0.06 78);">4.9★</span>
+          </div>
+        </div>
+        <div data-reveal="4" style="padding: 34px 0; border-top: 1px solid oklch(1 0 0 / 0.11); border-bottom: 1px solid oklch(1 0 0 / 0.11); display: flex; flex-direction: column; gap: 18px;">
+          <p style="margin: 0; font-family: 'Instrument Serif', serif; font-size: 25px; line-height: 1.4; color: oklch(0.96 0.006 215); text-wrap: pretty;">“Three cottages on two lakes, one cleaner shared between them. MRG untangled the schedule and sends one report a month I can actually read. My accountant is happier than I am.”</p>
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-size: 14.5px; font-weight: 400; color: oklch(0.9 0.012 215);">Marc &amp; Ellen T. · Gravenhurst + Bracebridge</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; padding: 6px 11px; border-radius: 7px; background: oklch(0.83 0.098 78 / 0.14); border: 1px solid oklch(0.83 0.098 78 / 0.28); color: oklch(0.88 0.06 78);">3 COTTAGES</span>
+          </div>
+        </div>
+        <div data-reveal="5" style="padding: 34px 0; border-top: 1px solid oklch(1 0 0 / 0.11); border-bottom: 1px solid oklch(1 0 0 / 0.11); display: flex; flex-direction: column; gap: 18px;">
+          <p style="margin: 0; font-family: 'Instrument Serif', serif; font-size: 25px; line-height: 1.4; color: oklch(0.96 0.006 215); text-wrap: pretty;">“Civic weekend used to be four turnovers and a fight with the cleaning schedule. This year I spent it on the dock with my kids and found out afterwards it was our best week ever.”</p>
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-size: 14.5px; font-weight: 400; color: oklch(0.9 0.012 215);">Sarah K. · Huntsville, Peninsula Lake</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; padding: 6px 11px; border-radius: 7px; background: oklch(0.83 0.098 78 / 0.14); border: 1px solid oklch(0.83 0.098 78 / 0.28); color: oklch(0.88 0.06 78);">HANDS-OFF SUMMERS</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- CAPACITY ---------- -->
+    <div style="position: relative; z-index: 5; padding: 0 40px 120px;">
+      <div data-reveal="1" style="padding: 54px 48px; border-radius: 24px; border: 1px solid oklch(1 0 0 / 0.12); background: oklch(1 0 0 / 0.05); backdrop-filter: blur(28px) saturate(150%); -webkit-backdrop-filter: blur(28px) saturate(150%); display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center;">
+        <div style="display: flex; flex-direction: column; gap: 18px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">07 — Boutique capacity</span>
+          <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 42px; line-height: 1.08; color: oklch(0.98 0.005 215);">We partner with about twenty listings at a time.</h2>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 22px;">
+          <p style="margin: 0; font-size: 16.5px; line-height: 1.65; font-weight: 300; color: oklch(0.85 0.012 215);">Not a franchise, not a call centre. Twenty is the number where every owner still gets a named operator, a weekly eye on their calendar and a real conversation each month. A small number of Muskoka spots open ahead of next season — when they are taken, the list is closed until one frees up.</p>
+          <a href="#fit" style="align-self: flex-start; font-size: 14.5px; font-weight: 500; padding: 14px 24px; border-radius: 11px; border: 1px solid oklch(0.83 0.098 78 / 0.45); background: oklch(0.83 0.098 78 / 0.12); color: oklch(0.9 0.06 78);" style-hover="background: oklch(0.83 0.098 78 / 0.2);">Check fit for my cottage</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- FAQ ---------- -->
+    <div id="faq" style="position: relative; z-index: 5; padding: 0 40px 120px; display: grid; grid-template-columns: 380px 1fr; gap: 72px;">
+      <div data-reveal="1" style="display: flex; flex-direction: column; gap: 18px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">08 — Questions</span>
+        <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 46px; line-height: 1.08; color: oklch(0.98 0.005 215);">Before you book the call.</h2>
+        <p style="margin: 0; font-size: 15.5px; line-height: 1.6; font-weight: 300; color: oklch(0.8 0.014 215);">Anything not answered here, ask on the call — or text it to <a href="tel:+16473817325">(647) 381-7325</a>.</p>
+      </div>
+      <div data-reveal="2" style="border-radius: 20px; border: 1px solid oklch(1 0 0 / 0.11); background: oklch(1 0 0 / 0.045); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); overflow: hidden;">
+        <div onClick="{{ toggle1 }}" style="cursor: pointer; padding: 26px 30px; border-bottom: 1px solid oklch(1 0 0 / 0.08);" style-hover="background: oklch(1 0 0 / 0.03);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+            <span style="font-size: 18px; font-weight: 400; color: oklch(0.97 0.006 215);">What does it cost — percentage or fixed?</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 18px; color: oklch(0.83 0.098 78); flex-shrink: 0;">{{ sign1 }}</span>
+          </div>
+          <sc-if value="{{ open1 }}" hint-placeholder-val="{{ true }}">
+            <p style="margin: 16px 0 0; max-width: 720px; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: oklch(0.83 0.014 215);">Both exist. Full Service / Standard management runs 20–25% of gross booking revenue — you pay only when the cottage earns. Managed Essentials is fixed at $199 or $349 a month and you keep cleaning and on-site work. Growth Partnership ties our fee to growth above a benchmark. HST applies to fees on every plan.</p>
+          </sc-if>
+        </div>
+        <div onClick="{{ toggle2 }}" style="cursor: pointer; padding: 26px 30px; border-bottom: 1px solid oklch(1 0 0 / 0.08);" style-hover="background: oklch(1 0 0 / 0.03);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+            <span style="font-size: 18px; font-weight: 400; color: oklch(0.97 0.006 215);">Are you actually in Muskoka, or managing from Toronto?</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 18px; color: oklch(0.83 0.098 78); flex-shrink: 0;">{{ sign2 }}</span>
+          </div>
+          <sc-if value="{{ open2 }}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 16px 0 0; max-width: 720px; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: oklch(0.83 0.014 215);">Both, deliberately. We are Toronto-based and run always-on virtual operations — messaging, pricing, screening, reporting — with local execution where it has to be local: cleaners, linen, handyman, snow, water and dock help, coordinated on the ground at your lake.</p>
+          </sc-if>
+        </div>
+        <div onClick="{{ toggle3 }}" style="cursor: pointer; padding: 26px 30px; border-bottom: 1px solid oklch(1 0 0 / 0.08);" style-hover="background: oklch(1 0 0 / 0.03);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+            <span style="font-size: 18px; font-weight: 400; color: oklch(0.97 0.006 215);">My cottage has never been rented. Can you still take it?</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 18px; color: oklch(0.83 0.098 78); flex-shrink: 0;">{{ sign3 }}</span>
+          </div>
+          <sc-if value="{{ open3 }}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 16px 0 0; max-width: 720px; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: oklch(0.83 0.014 215);">Yes — Full Service / Standard or Managed Essentials both work from a standing start, including the launch: photography, listing build, pricing strategy, house manual. Growth Partnership is the exception; it needs an existing live listing with booking history so we can set an honest Benchmark Revenue.</p>
+          </sc-if>
+        </div>
+        <div onClick="{{ toggle4 }}" style="cursor: pointer; padding: 26px 30px; border-bottom: 1px solid oklch(1 0 0 / 0.08);" style-hover="background: oklch(1 0 0 / 0.03);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+            <span style="font-size: 18px; font-weight: 400; color: oklch(0.97 0.006 215);">How fast can we onboard?</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 18px; color: oklch(0.83 0.098 78); flex-shrink: 0;">{{ sign4 }}</span>
+          </div>
+          <sc-if value="{{ open4 }}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 16px 0 0; max-width: 720px; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: oklch(0.83 0.014 215);">An existing listing can move onto our systems in days — access, pricing rules, messaging and the turnover calendar first, then optimization. A new launch depends on photography and the makeover scope, and we will give you a dated plan on the call rather than a promise here.</p>
+          </sc-if>
+        </div>
+        <div onClick="{{ toggle5 }}" style="cursor: pointer; padding: 26px 30px; border-bottom: 1px solid oklch(1 0 0 / 0.08);" style-hover="background: oklch(1 0 0 / 0.03);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+            <span style="font-size: 18px; font-weight: 400; color: oklch(0.97 0.006 215);">Do you cover Bracebridge, Gravenhurst, Huntsville, Port Carling?</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 18px; color: oklch(0.83 0.098 78); flex-shrink: 0;">{{ sign5 }}</span>
+          </div>
+          <sc-if value="{{ open5 }}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 16px 0 0; max-width: 720px; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: oklch(0.83 0.014 215);">Yes. Muskoka cottages are an active focus: Bracebridge, Gravenhurst, Huntsville, Lake of Bays, Port Carling and the surrounding lakes. MRG also manages properties across Canada and the US, so seasonal playbooks come from more than one market.</p>
+          </sc-if>
+        </div>
+        <div onClick="{{ toggle6 }}" style="cursor: pointer; padding: 26px 30px; border-bottom: 1px solid oklch(1 0 0 / 0.08);" style-hover="background: oklch(1 0 0 / 0.03);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+            <span style="font-size: 18px; font-weight: 400; color: oklch(0.97 0.006 215);">Who pays cleaning, maintenance, insurance and taxes?</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 18px; color: oklch(0.83 0.098 78); flex-shrink: 0;">{{ sign6 }}</span>
+          </div>
+          <sc-if value="{{ open6 }}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 16px 0 0; max-width: 720px; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: oklch(0.83 0.014 215);">Cleaning is charged to guests and coordinated by us on Full Service / Standard; on Managed Essentials you keep your own cleaner and schedule. Insurance, property taxes, utilities and repairs stay with the owner on every plan unless we agree otherwise in writing. Our fees exclude cleaning and other pass-throughs.</p>
+          </sc-if>
+        </div>
+        <div onClick="{{ toggle7 }}" style="cursor: pointer; padding: 26px 30px;" style-hover="background: oklch(1 0 0 / 0.03);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+            <span style="font-size: 18px; font-weight: 400; color: oklch(0.97 0.006 215);">Can I get the furniture makeover on any plan?</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 18px; color: oklch(0.83 0.098 78); flex-shrink: 0;">{{ sign7 }}</span>
+          </div>
+          <sc-if value="{{ open7 }}" hint-placeholder-val="{{ false }}">
+            <p style="margin: 16px 0 0; max-width: 720px; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: oklch(0.83 0.014 215);">No. The Furniture Investment Program pairs with Standard (~20%) or Full Service (~25%) only — those are the plans where we control the guest experience end to end. It is not available with Growth Partnership or Managed Essentials.</p>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- FIT FORM ---------- -->
+    <div id="fit" style="position: relative; z-index: 5; padding: 0 0 0;">
+      <div style="position: relative; overflow: hidden;">
+        <div style="position: absolute; inset: 0; z-index: 0;">
+          <image-slot id="mrg-firepit-cta" shape="rect" placeholder="firepit-evening.jpg — evening outdoor living / fire"></image-slot>
+        </div>
+        <div style="position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, oklch(0.16 0.02 224 / 0.94) 0%, oklch(0.16 0.02 224 / 0.7) 40%, oklch(0.15 0.02 224 / 0.9) 100%);"></div>
+        <div style="position: relative; z-index: 2; padding: 110px 40px; display: grid; grid-template-columns: 1fr 1.05fr; gap: 64px; align-items: start;">
+          <div data-reveal="1" style="display: flex; flex-direction: column; gap: 22px; pointer-events: none;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">09 — Free 15-minute call</span>
+            <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 50px; line-height: 1.04; color: oklch(0.98 0.005 215);">Fifteen minutes, a real number, no pitch deck.</h2>
+            <p style="margin: 0; max-width: 480px; font-size: 16.5px; line-height: 1.65; font-weight: 300; color: oklch(0.86 0.012 215);">Tell us the lake, the bedrooms and roughly what it earns now. We come back with what we would change first, which plan fits, and what the season could realistically look like.</p>
+            <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 6px; pointer-events: auto;">
+              <a href="tel:+16473817325" style="font-family: 'Instrument Serif', serif; font-size: 34px; color: oklch(0.9 0.1 78);">(647) 381-7325</a>
+              <a href="mailto:info@mandelrealtygroup.com" style="font-size: 15.5px; font-weight: 300; color: oklch(0.86 0.012 215);" style-hover="color: oklch(0.96 0.006 215);">info@mandelrealtygroup.com</a>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.72 0.02 210);">Prefer WhatsApp? Text the same number for an estimate.</span>
+            </div>
+          </div>
+
+          <div data-reveal="2" style="padding: 40px; border-radius: 22px; border: 1px solid oklch(1 0 0 / 0.14); background: linear-gradient(155deg, oklch(1 0 0 / 0.1), oklch(1 0 0 / 0.04)); backdrop-filter: blur(34px) saturate(170%); -webkit-backdrop-filter: blur(34px) saturate(170%);">
+            <sc-if value="{{ notSubmitted }}" hint-placeholder-val="{{ true }}">
+              <form ref="{{ formRef }}" onSubmit="{{ submit }}" style="display: flex; flex-direction: column; gap: 18px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                  <label style="display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Name</span>
+                    <input name="name" type="text" required="required" placeholder="Dan Roberts" style="width: 100%; padding: 13px 14px; font-size: 15px; font-weight: 300; color: oklch(0.97 0.006 215); background: oklch(1 0 0 / 0.07); border: 1px solid oklch(1 0 0 / 0.16); border-radius: 10px; outline: none;" style-focus="border-color: oklch(0.83 0.098 78 / 0.7);" />
+                  </label>
+                  <label style="display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Email</span>
+                    <input name="email" type="email" required="required" placeholder="you@email.com" style="width: 100%; padding: 13px 14px; font-size: 15px; font-weight: 300; color: oklch(0.97 0.006 215); background: oklch(1 0 0 / 0.07); border: 1px solid oklch(1 0 0 / 0.16); border-radius: 10px; outline: none;" style-focus="border-color: oklch(0.83 0.098 78 / 0.7);" />
+                  </label>
+                  <label style="display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Phone</span>
+                    <input name="phone" type="tel" required="required" placeholder="(416) 000-0000" style="width: 100%; padding: 13px 14px; font-size: 15px; font-weight: 300; color: oklch(0.97 0.006 215); background: oklch(1 0 0 / 0.07); border: 1px solid oklch(1 0 0 / 0.16); border-radius: 10px; outline: none;" style-focus="border-color: oklch(0.83 0.098 78 / 0.7);" />
+                  </label>
+                  <label style="display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Lake / area or address</span>
+                    <input name="area" type="text" required="required" placeholder="Lake of Bays, Dwight" style="width: 100%; padding: 13px 14px; font-size: 15px; font-weight: 300; color: oklch(0.97 0.006 215); background: oklch(1 0 0 / 0.07); border: 1px solid oklch(1 0 0 / 0.16); border-radius: 10px; outline: none;" style-focus="border-color: oklch(0.83 0.098 78 / 0.7);" />
+                  </label>
+                </div>
+                <label style="display: flex; flex-direction: column; gap: 8px;">
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Rough monthly earnings today</span>
+                  <select name="earnings" style="width: 100%; padding: 13px 14px; font-size: 15px; font-weight: 300; color: oklch(0.97 0.006 215); background: oklch(0.24 0.02 224); border: 1px solid oklch(1 0 0 / 0.16); border-radius: 10px; outline: none; appearance: none;" style-focus="border-color: oklch(0.83 0.098 78 / 0.7);">
+                    <option value="none">Not rented yet</option>
+                    <option value="lt3">Under $3,000 / month</option>
+                    <option value="3-6">$3,000 – $6,000 / month</option>
+                    <option value="6-10">$6,000 – $10,000 / month</option>
+                    <option value="10-20">$10,000 – $20,000 / month</option>
+                    <option value="gt20">$20,000+ / month</option>
+                  </select>
+                </label>
+                <label style="display: flex; flex-direction: column; gap: 8px;">
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Listing URL <span style="text-transform: none; letter-spacing: 0.04em; color: oklch(0.66 0.02 210);">(optional)</span></span>
+                  <input name="listing" type="url" placeholder="airbnb.ca/rooms/…" style="width: 100%; padding: 13px 14px; font-size: 15px; font-weight: 300; color: oklch(0.97 0.006 215); background: oklch(1 0 0 / 0.07); border: 1px solid oklch(1 0 0 / 0.16); border-radius: 10px; outline: none;" style-focus="border-color: oklch(0.83 0.098 78 / 0.7);" />
+                </label>
+                <label style="display: flex; align-items: flex-start; gap: 11px; margin-top: 2px; cursor: pointer;">
+                  <input name="consent" type="checkbox" required="required" style="width: 17px; height: 17px; margin-top: 2px; accent-color: oklch(0.83 0.098 78);" />
+                  <span style="font-size: 13.5px; line-height: 1.55; font-weight: 300; color: oklch(0.8 0.014 215);">I agree that Mandel Realty Group may contact me by phone, text or email about managing my cottage.</span>
+                </label>
+                <button type="submit" style="margin-top: 6px; width: 100%; padding: 17px; font-size: 15.5px; font-weight: 500; border: none; border-radius: 12px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60); cursor: pointer;" style-hover="background: oklch(0.89 0.09 78);">Book my free 15-minute call</button>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.6; letter-spacing: 0.08em; text-align: center; color: oklch(0.68 0.02 210);">No obligation · No revenue guarantees · We reply within one business day</span>
+              </form>
+            </sc-if>
+            <sc-if value="{{ submitted }}" hint-placeholder-val="{{ false }}">
+              <div style="min-height: 480px; display: flex; flex-direction: column; justify-content: center; gap: 20px;">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.83 0.098 78);">Request received</span>
+                <h3 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 38px; line-height: 1.1; color: oklch(0.98 0.005 215);">Thanks, {{ leadName }} — we have your cottage.</h3>
+                <p style="margin: 0; font-size: 16px; line-height: 1.65; font-weight: 300; color: oklch(0.86 0.012 215);">We'll review your lake, your bedrooms and what comparable cottages are earning, then reach out within one business day to book the 15 minutes. If you'd rather not wait, call us now — we'll pull it up while you're on the line.</p>
+                <a href="tel:+16473817325" style="align-self: flex-start; font-size: 15px; font-weight: 500; padding: 15px 26px; border-radius: 12px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);" style-hover="background: oklch(0.89 0.09 78);">Call (647) 381-7325</a>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------- FOOTER ---------- -->
+    <div style="position: relative; z-index: 5; padding: 56px 40px 40px; background: oklch(0.14 0.018 226); border-top: 1px solid oklch(1 0 0 / 0.09);">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 48px; padding-bottom: 40px; border-bottom: 1px solid oklch(1 0 0 / 0.08);">
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <span style="font-size: 15px; letter-spacing: 0.28em; text-transform: uppercase; font-weight: 300; color: oklch(0.96 0.006 215);">Mandel Realty Group</span>
+          <span style="font-size: 14.5px; font-weight: 300; line-height: 1.6; color: oklch(0.76 0.014 215);">Muskoka cottage &amp; short-term rental management.<br />Toronto-based · portfolios across Canada and the US.</span>
+        </div>
+        <div style="display: flex; gap: 64px;">
+          <div style="display: flex; flex-direction: column; gap: 11px;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.66 0.02 210);">Contact</span>
+            <a href="tel:+16473817325" style="font-size: 14.5px; font-weight: 300; color: oklch(0.88 0.012 215);" style-hover="color: oklch(0.97 0.006 215);">(647) 381-7325</a>
+            <a href="mailto:info@mandelrealtygroup.com" style="font-size: 14.5px; font-weight: 300; color: oklch(0.88 0.012 215);" style-hover="color: oklch(0.97 0.006 215);">info@mandelrealtygroup.com</a>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 11px;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.66 0.02 210);">Page</span>
+            <a href="#plans" style="font-size: 14.5px; font-weight: 300; color: oklch(0.88 0.012 215);" style-hover="color: oklch(0.97 0.006 215);">Plans &amp; fees</a>
+            <a href="#faq" style="font-size: 14.5px; font-weight: 300; color: oklch(0.88 0.012 215);" style-hover="color: oklch(0.97 0.006 215);">FAQ</a>
+            <a href="#fit" style="font-size: 14.5px; font-weight: 300; color: oklch(0.88 0.012 215);" style-hover="color: oklch(0.97 0.006 215);">Book a call</a>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 11px;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.66 0.02 210);">Legal</span>
+            <a href="#privacy" style="font-size: 14.5px; font-weight: 300; color: oklch(0.88 0.012 215);" style-hover="color: oklch(0.97 0.006 215);">Privacy policy</a>
+            <a href="#terms" style="font-size: 14.5px; font-weight: 300; color: oklch(0.88 0.012 215);" style-hover="color: oklch(0.97 0.006 215);">Terms</a>
+          </div>
+        </div>
+      </div>
+      <div style="padding-top: 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.6 0.02 210);">© 2026 Mandel Realty Group. Fees quoted exclude HST. No revenue guarantees.</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: oklch(0.6 0.02 210);">Bracebridge · Gravenhurst · Huntsville · Lake of Bays · Port Carling</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MOBILE 390 ================= -->
+  <div style="width: 100%; padding: 96px 40px 40px; display: flex; flex-direction: column; gap: 36px; align-items: center; background: oklch(0.13 0.014 226);">
+    <div style="width: 100%; max-width: 1280px; display: flex; flex-direction: column; gap: 10px;">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">Deliverable 02 — Mobile 390</span>
+      <span style="font-family: 'Instrument Serif', serif; font-size: 34px; color: oklch(0.97 0.006 215);">Key sections at 390px</span>
+    </div>
+
+    <div style="display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; justify-content: center;">
+
+      <!-- M1: nav + hero -->
+      <div style="width: 390px; border-radius: 26px; overflow: hidden; border: 1px solid oklch(1 0 0 / 0.12); background: linear-gradient(180deg, oklch(0.2 0.026 228), oklch(0.17 0.02 224));">
+        <div style="padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; background: oklch(0.18 0.02 224 / 0.6); backdrop-filter: blur(18px); border-bottom: 1px solid oklch(1 0 0 / 0.1);">
+          <span style="font-size: 9.5px; letter-spacing: 0.22em; text-transform: uppercase; font-weight: 300; color: oklch(0.97 0.006 215);">Mandel Realty Group</span>
+          <span style="font-size: 12px; font-weight: 500; padding: 8px 12px; border-radius: 9px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);">Book</span>
+        </div>
+        <div style="position: relative; height: 620px; overflow: hidden;">
+          <div style="position: absolute; inset: 0;">
+            <image-slot id="mrg-m-hero" shape="rect" placeholder="hero-lakeside.jpg"></image-slot>
+          </div>
+          <div style="position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, oklch(0.14 0.02 228 / 0.5) 0%, oklch(0.15 0.02 225 / 0.35) 34%, oklch(0.15 0.02 224 / 0.95) 100%);"></div>
+          <div style="position: absolute; inset: auto 0 0 0; padding: 0 20px 28px; display: flex; flex-direction: column; gap: 18px; pointer-events: none;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-family: 'Instrument Serif', serif; font-style: italic; font-size: 14px; color: oklch(0.85 0.09 78);">Muskoka cottage management</span>
+              <span style="font-size: 20px; line-height: 1.1; font-weight: 200; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.98 0.005 215);">Mandel<br />Realty Group</span>
+            </div>
+            <div style="width: 64px; height: 1px; background: linear-gradient(90deg, oklch(0.83 0.098 78), transparent);"></div>
+            <h1 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 36px; line-height: 1.05; color: oklch(0.98 0.005 215);">Cottages managed like a business.</h1>
+            <p style="margin: 0; font-size: 14.5px; line-height: 1.6; font-weight: 300; color: oklch(0.87 0.012 215);">Dynamic pricing, turnovers and 5-star guest ops for lake country.</p>
+            <div style="display: flex; flex-direction: column; gap: 10px; pointer-events: auto;">
+              <a href="#fit" style="text-align: center; font-size: 14.5px; font-weight: 500; padding: 15px; border-radius: 12px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);">Book a free 15-minute call</a>
+              <a href="tel:+16473817325" style="text-align: center; font-size: 14.5px; font-weight: 400; padding: 15px; border-radius: 12px; border: 1px solid oklch(1 0 0 / 0.2); background: oklch(1 0 0 / 0.09); color: oklch(0.97 0.006 215); backdrop-filter: blur(14px);">Call (647) 381-7325</a>
+            </div>
+          </div>
+        </div>
+        <div style="padding: 14px 20px; background: oklch(1 0 0 / 0.05); border-top: 1px solid oklch(1 0 0 / 0.08);">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; line-height: 1.5; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.76 0.02 210);">Bracebridge · Gravenhurst · Huntsville · Lake of Bays · Port Carling</span>
+        </div>
+      </div>
+
+      <!-- M2: pain + chain -->
+      <div style="width: 390px; border-radius: 26px; overflow: hidden; border: 1px solid oklch(1 0 0 / 0.12); background: linear-gradient(180deg, oklch(0.19 0.024 226), oklch(0.17 0.02 218)); padding: 30px 20px 34px; display: flex; flex-direction: column; gap: 26px;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">01 — Cottage country reality</span>
+          <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 32px; line-height: 1.08; color: oklch(0.98 0.005 215);">The lake is the easy part.</h2>
+        </div>
+        <div style="display: flex; flex-direction: column;">
+          <div style="padding: 16px 0; border-top: 1px solid oklch(1 0 0 / 0.1); display: flex; flex-direction: column; gap: 5px;">
+            <span style="font-size: 16px; font-weight: 400; color: oklch(0.97 0.006 215);">Midnight messages on your own week</span>
+            <span style="font-size: 13.5px; line-height: 1.55; font-weight: 300; color: oklch(0.78 0.014 215);">Hot tub, gate code, boat lift — and Airbnb scores your response time.</span>
+          </div>
+          <div style="padding: 16px 0; border-top: 1px solid oklch(1 0 0 / 0.1); display: flex; flex-direction: column; gap: 5px;">
+            <span style="font-size: 16px; font-weight: 400; color: oklch(0.97 0.006 215);">Saturday turnovers on lake roads</span>
+            <span style="font-size: 13.5px; line-height: 1.55; font-weight: 300; color: oklch(0.78 0.014 215);">Out and in the same day, forty minutes from town.</span>
+          </div>
+          <div style="padding: 16px 0; border-top: 1px solid oklch(1 0 0 / 0.1); display: flex; flex-direction: column; gap: 5px;">
+            <span style="font-size: 16px; font-weight: 400; color: oklch(0.97 0.006 215);">Soft mid-weeks, full neighbours</span>
+            <span style="font-size: 13.5px; line-height: 1.55; font-weight: 300; color: oklch(0.78 0.014 215);">June and September pay — if the rate moves.</span>
+          </div>
+          <div style="padding: 16px 0; border-top: 1px solid oklch(1 0 0 / 0.1); border-bottom: 1px solid oklch(1 0 0 / 0.1); display: flex; flex-direction: column; gap: 5px;">
+            <span style="font-size: 16px; font-weight: 400; color: oklch(0.97 0.006 215);">Flat pricing through long weekends</span>
+            <span style="font-size: 13.5px; line-height: 1.55; font-weight: 300; color: oklch(0.78 0.014 215);">Canada Day, Civic, Thanksgiving, ski weeks.</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">02 — How MRG works</span>
+          <div style="border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.11); background: oklch(1 0 0 / 0.055); backdrop-filter: blur(20px); overflow: hidden;">
+            <div style="padding: 14px 18px; border-bottom: 1px solid oklch(1 0 0 / 0.08); display: flex; align-items: baseline; gap: 12px;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: oklch(0.83 0.098 78);">01</span><span style="font-family: 'Instrument Serif', serif; font-size: 19px; color: oklch(0.98 0.005 215);">Systems</span></div>
+            <div style="padding: 14px 18px; border-bottom: 1px solid oklch(1 0 0 / 0.08); display: flex; align-items: baseline; gap: 12px;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: oklch(0.83 0.098 78);">02</span><span style="font-family: 'Instrument Serif', serif; font-size: 19px; color: oklch(0.98 0.005 215);">Guest experience</span></div>
+            <div style="padding: 14px 18px; border-bottom: 1px solid oklch(1 0 0 / 0.08); display: flex; align-items: baseline; gap: 12px;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: oklch(0.83 0.098 78);">03</span><span style="font-family: 'Instrument Serif', serif; font-size: 19px; color: oklch(0.98 0.005 215);">Reviews</span></div>
+            <div style="padding: 14px 18px; border-bottom: 1px solid oklch(1 0 0 / 0.08); display: flex; align-items: baseline; gap: 12px;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: oklch(0.83 0.098 78);">04</span><span style="font-family: 'Instrument Serif', serif; font-size: 19px; color: oklch(0.98 0.005 215);">Visibility</span></div>
+            <div style="padding: 14px 18px; border-bottom: 1px solid oklch(1 0 0 / 0.08); display: flex; align-items: baseline; gap: 12px;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: oklch(0.83 0.098 78);">05</span><span style="font-family: 'Instrument Serif', serif; font-size: 19px; color: oklch(0.98 0.005 215);">Bookings</span></div>
+            <div style="padding: 14px 18px; background: oklch(0.83 0.098 78 / 0.1); display: flex; align-items: baseline; gap: 12px;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: oklch(0.86 0.1 78);">06</span><span style="font-family: 'Instrument Serif', serif; font-size: 19px; color: oklch(0.98 0.005 215);">Money</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M3: plans -->
+      <div style="width: 390px; border-radius: 26px; overflow: hidden; border: 1px solid oklch(1 0 0 / 0.12); background: linear-gradient(180deg, oklch(0.18 0.022 222), oklch(0.19 0.024 210)); padding: 30px 20px 34px; display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">04 — What we offer</span>
+          <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 32px; line-height: 1.08; color: oklch(0.98 0.005 215);">Four ways to work with us.</h2>
+          <span style="font-size: 13px; line-height: 1.55; font-weight: 300; color: oklch(0.78 0.014 215);">Fees on gross booking revenue — nightly + upsells, excluding cleaning. HST on fees.</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="padding: 20px; border-radius: 16px; border: 1px solid oklch(0.83 0.098 78 / 0.3); background: oklch(0.83 0.098 78 / 0.08); backdrop-filter: blur(18px); display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 16.5px; font-weight: 400; color: oklch(0.98 0.005 215);">Full Service / Standard</span>
+            <span style="font-family: 'Instrument Serif', serif; font-size: 30px; color: oklch(0.9 0.1 78);">20–25%</span>
+            <span style="font-size: 13.5px; line-height: 1.55; font-weight: 300; color: oklch(0.8 0.014 215);">Hands-off: messaging, turnovers, pricing, listing, reviews. Furniture Investment can pair here only.</span>
+          </div>
+          <div style="padding: 20px; border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.12); background: oklch(1 0 0 / 0.05); backdrop-filter: blur(18px); display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 16.5px; font-weight: 400; color: oklch(0.98 0.005 215);">Growth Partnership</span>
+            <span style="font-family: 'Instrument Serif', serif; font-size: 22px; color: oklch(0.9 0.1 78);">10% / 35% · 5% / 45%</span>
+            <span style="font-size: 13.5px; line-height: 1.55; font-weight: 300; color: oklch(0.8 0.014 215);">Aligned Growth or Confidence Partner: low fee to your benchmark, larger fee above it. Needs booking history.</span>
+          </div>
+          <div style="padding: 20px; border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.12); background: oklch(1 0 0 / 0.05); backdrop-filter: blur(18px); display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 16.5px; font-weight: 400; color: oklch(0.98 0.005 215);">Managed Essentials</span>
+            <span style="font-family: 'Instrument Serif', serif; font-size: 26px; color: oklch(0.9 0.1 78);">$199 · $349 / mo</span>
+            <span style="font-size: 13.5px; line-height: 1.55; font-weight: 300; color: oklch(0.8 0.014 215);">Message &amp; Book, or Message &amp; Optimize with pricing + listing work. You keep cleaning. HST extra.</span>
+          </div>
+          <div style="padding: 20px; border-radius: 16px; border: 1px solid oklch(1 0 0 / 0.12); background: oklch(1 0 0 / 0.05); backdrop-filter: blur(18px); display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 16.5px; font-weight: 400; color: oklch(0.98 0.005 215);">Furniture Investment</span>
+            <span style="font-size: 13.5px; line-height: 1.55; font-weight: 300; color: oklch(0.8 0.014 215);">We invest in the makeover so the listing can earn the Muskoka summer rate. Standard / Full Service only.</span>
+          </div>
+        </div>
+        <a href="#fit" style="text-align: center; font-size: 14.5px; font-weight: 500; padding: 15px; border-radius: 12px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);">Which plan fits my cottage?</a>
+      </div>
+
+      <!-- M4: proof + form -->
+      <div style="width: 390px; border-radius: 26px; overflow: hidden; border: 1px solid oklch(1 0 0 / 0.12); background: linear-gradient(180deg, oklch(0.19 0.024 220), oklch(0.15 0.018 226)); padding: 30px 20px 30px; display: flex; flex-direction: column; gap: 26px;">
+        <div style="padding: 22px; border-radius: 18px; border: 1px solid oklch(1 0 0 / 0.12); background: oklch(1 0 0 / 0.06); backdrop-filter: blur(20px); display: flex; flex-direction: column; gap: 14px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">05 — Proof of systems</span>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.72 0.02 210);">Full year 2025 · before MRG</span>
+            <span style="font-family: 'Instrument Serif', serif; font-size: 30px; color: oklch(0.86 0.012 215);">$26,995</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(0.83 0.098 78);">May–Aug 2026 · with MRG</span>
+            <span style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1; color: oklch(0.9 0.1 78);">$33,713</span>
+          </div>
+          <span style="font-size: 13.5px; line-height: 1.55; font-weight: 300; color: oklch(0.84 0.012 215);">Four months beat the whole prior year — +159% vs the same months.</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; line-height: 1.55; letter-spacing: 0.06em; color: oklch(0.68 0.02 210);">Verified Airbnb dashboard · Toronto client — same playbook we run for Muskoka cottages.</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">09 — Free 15-minute call</span>
+          <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 30px; line-height: 1.08; color: oklch(0.98 0.005 215);">Fifteen minutes, a real number.</h2>
+          <div style="display: flex; flex-direction: column; gap: 11px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Name</span>
+              <div style="padding: 13px 14px; border-radius: 10px; background: oklch(1 0 0 / 0.07); border: 1px solid oklch(1 0 0 / 0.16); font-size: 14.5px; font-weight: 300; color: oklch(0.62 0.014 215);">Dan Roberts</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Phone</span>
+              <div style="padding: 13px 14px; border-radius: 10px; background: oklch(1 0 0 / 0.07); border: 1px solid oklch(1 0 0 / 0.16); font-size: 14.5px; font-weight: 300; color: oklch(0.62 0.014 215);">(416) 000-0000</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Lake / area</span>
+              <div style="padding: 13px 14px; border-radius: 10px; background: oklch(1 0 0 / 0.07); border: 1px solid oklch(1 0 0 / 0.16); font-size: 14.5px; font-weight: 300; color: oklch(0.62 0.014 215);">Lake of Bays, Dwight</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.78 0.02 210);">Rough monthly earnings</span>
+              <div style="padding: 13px 14px; border-radius: 10px; background: oklch(1 0 0 / 0.07); border: 1px solid oklch(1 0 0 / 0.16); font-size: 14.5px; font-weight: 300; color: oklch(0.88 0.012 215); display: flex; justify-content: space-between;"><span>$6,000 – $10,000 / month</span><span style="color: oklch(0.83 0.098 78);">▾</span></div>
+            </div>
+            <a href="tel:+16473817325" style="margin-top: 4px; text-align: center; font-size: 14.5px; font-weight: 500; padding: 16px; border-radius: 12px; background: oklch(0.83 0.098 78); color: oklch(0.2 0.03 60);">Book my free 15-minute call</a>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: 0.08em; text-align: center; color: oklch(0.68 0.02 210);">No obligation · no revenue guarantees</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= SPEC / ANNOTATIONS ================= -->
+  <div style="width: 100%; padding: 96px 40px 120px; background: oklch(0.12 0.012 226); border-top: 1px solid oklch(1 0 0 / 0.08); display: flex; justify-content: center;">
+    <div style="width: 100%; max-width: 1280px; display: flex; flex-direction: column; gap: 56px;">
+      <div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: oklch(0.83 0.098 78);">Deliverable 03–05 — Handoff notes</span>
+          <span style="font-family: 'Instrument Serif', serif; font-size: 34px; color: oklch(0.97 0.006 215);">Tokens, assets, motion, copy source</span>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px;">
+        <div style="padding: 28px; border-radius: 18px; border: 1px solid oklch(1 0 0 / 0.1); background: oklch(1 0 0 / 0.035); display: flex; flex-direction: column; gap: 16px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.8 0.05 78);">Color tokens</span>
+          <div style="display: flex; flex-direction: column; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.5; color: oklch(0.84 0.012 215);">
+            <span>--mrg-deep &nbsp;oklch(0.15 0.018 225)</span>
+            <span>--mrg-dusk &nbsp;oklch(0.21 0.026 228)</span>
+            <span>--mrg-slate oklch(0.19 0.024 210)</span>
+            <span>--mrg-ink &nbsp;&nbsp;oklch(0.14 0.018 226)</span>
+            <span style="color: oklch(0.9 0.1 78);">--mrg-lake-light oklch(0.83 0.098 78)</span>
+            <span>--mrg-mist &nbsp;oklch(0.78 0.02 210)</span>
+            <span>--mrg-paper oklch(0.98 0.005 215)</span>
+          </div>
+          <span style="font-size: 13px; line-height: 1.6; font-weight: 300; color: oklch(0.74 0.014 215);">One accent only (lake light). Atmosphere comes from three fixed radial washes over the page, never a flat fill.</span>
+        </div>
+        <div style="padding: 28px; border-radius: 18px; border: 1px solid oklch(1 0 0 / 0.1); background: oklch(1 0 0 / 0.035); display: flex; flex-direction: column; gap: 16px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.8 0.05 78);">Type &amp; scale</span>
+          <div style="display: flex; flex-direction: column; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.5; color: oklch(0.84 0.012 215);">
+            <span>Display — Instrument Serif 400</span>
+            <span>Body — Manrope 200/300/400/500</span>
+            <span>Meta — JetBrains Mono 400/500</span>
+            <span>h1 68 / 1.02 · h2 46 / 1.08</span>
+            <span>h3 34 · quote 25 · body 16.5</span>
+            <span>meta 11–11.5, tracking 0.14–0.18em</span>
+            <span>Wordmark — Manrope 200, 0.22em</span>
+          </div>
+          <span style="font-size: 13px; line-height: 1.6; font-weight: 300; color: oklch(0.74 0.014 215);">Mobile: h1 36, h2 32, body 14.5, meta 10. Never below 13px on desktop body copy.</span>
+        </div>
+        <div style="padding: 28px; border-radius: 18px; border: 1px solid oklch(1 0 0 / 0.1); background: oklch(1 0 0 / 0.035); display: flex; flex-direction: column; gap: 16px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.8 0.05 78);">Glass recipes &amp; radii</span>
+          <div style="display: flex; flex-direction: column; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.5; color: oklch(0.84 0.012 215);">
+            <span>glass/nav — bg 0.55 ink, blur 22 sat 150</span>
+            <span>glass/panel — white 5.5%, blur 26 sat 150, border white 11%</span>
+            <span>glass/feature — linear 9%→3.5%, blur 30 sat 160, border 12%</span>
+            <span>glass/form — linear 10%→4%, blur 34 sat 170, border 14%</span>
+            <span>radius — 10 control · 16 tile · 20–24 panel · 26 phone</span>
+            <span>No drop shadows anywhere; depth is blur + 1px hairline.</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 28px;">
+        <div style="padding: 28px; border-radius: 18px; border: 1px solid oklch(1 0 0 / 0.1); background: oklch(1 0 0 / 0.035); display: flex; flex-direction: column; gap: 16px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.8 0.05 78);">Asset map — /public/muskoka/</span>
+          <div style="display: flex; flex-direction: column; gap: 9px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.5; color: oklch(0.84 0.012 215);">
+            <span>hero-lakeside.jpg → hero, full-bleed 1280×820 (mobile 390×620)</span>
+            <span>great-room.jpg → gallery opener, full-bleed 1280×560</span>
+            <span>dock-sunset.jpg → gallery primary, 780×420 r18</span>
+            <span>kitchen-dining.jpg → gallery upper right, 440×194 r18</span>
+            <span>primary-suite.jpg → gallery lower right, 440×194 r18</span>
+            <span>boathouse.jpg → gallery triptych 1, 400×250 r18</span>
+            <span>firepit-evening.jpg → gallery triptych 2 + CTA background</span>
+            <span>winter-cottage.jpg → gallery triptych 3 (seasonality)</span>
+          </div>
+          <span style="font-size: 13px; line-height: 1.6; font-weight: 300; color: oklch(0.74 0.014 215);">Slots in this mock are drop targets — drag the real files onto any frame to fill it. Hero and CTA use object-fit: cover with the two-stop scrim above; nothing overlays photo media except the scrim itself.</span>
+        </div>
+        <div style="padding: 28px; border-radius: 18px; border: 1px solid oklch(1 0 0 / 0.1); background: oklch(1 0 0 / 0.035); display: flex; flex-direction: column; gap: 16px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.8 0.05 78);">Motion — three only</span>
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <span style="font-size: 15px; font-weight: 400; color: oklch(0.95 0.006 215);">1 · Sectional reveal</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.55; color: oklch(0.8 0.014 215);">opacity 0→1, translateY 22px→0, 760ms cubic-bezier(.2,.7,.2,1), 70ms stagger per data-reveal index. IntersectionObserver at 12%, fires once. Respects prefers-reduced-motion.</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <span style="font-size: 15px; font-weight: 400; color: oklch(0.95 0.006 215);">2 · Hero glass parallax</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.55; color: oklch(0.8 0.014 215);">hero media translateY = scrollY × 0.18, capped at 140px, rAF-throttled. Text plate stays fixed so the scrim never slides off the type.</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <span style="font-size: 15px; font-weight: 400; color: oklch(0.95 0.006 215);">3 · Lake-light drift</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.55; color: oklch(0.8 0.014 215);">34s infinite ease-in-out scale 1.02→1.06 with −1.5%/−1% translate on hero media; 9s opacity sheen 0.35→0.7 on proof bars. Nothing else animates.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 28px; border-radius: 18px; border: 1px solid oklch(1 0 0 / 0.1); background: oklch(1 0 0 / 0.035); display: flex; flex-direction: column; gap: 16px;">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.8 0.05 78);">Section list &amp; implementation notes (React + Tailwind)</span>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 40px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6; color: oklch(0.84 0.012 215);">
+          <span>01 &lt;StickyNav /&gt; — sticky top-0, glass/nav, tel: + #fit</span>
+          <span>02 &lt;Hero /&gt; — h-[820px], full-bleed, brand + h1 + 1 line + 2 CTA</span>
+          <span>03 &lt;ServingStrip /&gt; — mono meta band under hero</span>
+          <span>04 &lt;PainList /&gt; — 430px sticky title + 5 hairline rows</span>
+          <span>05 &lt;ChainRow /&gt; — 6-col glass panel, step 06 tinted accent</span>
+          <span>06 &lt;ServiceIndex /&gt; — 5×2 hairline list of what we handle</span>
+          <span>07 &lt;Gallery /&gt; — full-bleed opener + 2/1 + triptych, mono captions</span>
+          <span>08 &lt;Plans /&gt; — controlled tab state, 4 panels, fees hardcoded</span>
+          <span>09 &lt;Proof /&gt; — glass/feature, delta bars, dashboard disclaimer</span>
+          <span>10 &lt;Testimonials /&gt; — 2×2 hairline quotes + mono badges</span>
+          <span>11 &lt;Capacity /&gt; — ~20 listings, scarcity stated once</span>
+          <span>12 &lt;Faq /&gt; — 7 items, single-open accordion, item 1 default open</span>
+          <span>13 &lt;FitForm /&gt; — photo bg + glass/form, POST → thank-you state</span>
+          <span>14 &lt;Footer /&gt; — contact, page, legal, HST + no-guarantee line</span>
+        </div>
+        <span style="font-size: 13px; line-height: 1.6; font-weight: 300; color: oklch(0.74 0.014 215);">Fee copy is contractual: 20–25% Full Service / Standard; Growth 10/35 (Aligned) and 5/45 (Confidence) against monthly Benchmark Revenue on gross booking revenue excluding cleaning and pass-throughs; Essentials $199 / $349 monthly plus HST with optional Klarna 12-month path at ~5% off (non-refundable); Furniture Investment pairs with Standard or Full Service only. Do not paraphrase these in code review.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultPlan&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;full&quot;,&quot;growth&quot;,&quot;essentials&quot;,&quot;furniture&quot;],&quot;default&quot;:&quot;full&quot;,&quot;tsType&quot;:&quot;'full'|'growth'|'essentials'|'furniture'&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;faqStartOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;motion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  state = { plan: null, faq: null, submitted: false, leadName: "" };
+
+  componentDidMount() {
+    const reduce = this.props.motion === false || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const nodes = Array.from(document.querySelectorAll("[data-reveal]"));
+    if (!reduce && "IntersectionObserver" in window) {
+      nodes.forEach((n) => {
+        n.style.opacity = "0";
+        n.style.transform = "translateY(22px)";
+        n.style.transition = "opacity 760ms cubic-bezier(.2,.7,.2,1), transform 760ms cubic-bezier(.2,.7,.2,1)";
+        n.style.transitionDelay = (Number(n.getAttribute("data-reveal") || 1) - 1) * 70 + "ms";
+      });
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.style.opacity = "1";
+            e.target.style.transform = "none";
+            io.unobserve(e.target);
+          }
+        });
+      }, { threshold: 0.12 });
+      nodes.forEach((n) => io.observe(n));
+      this._io = io;
+    }
+
+    const hero = document.querySelector('[data-parallax="hero"]');
+    if (hero && !reduce) {
+      let raf = null;
+      this._onScroll = () => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = null;
+          const y = Math.min(window.scrollY * 0.18, 140);
+          hero.style.transform = "translate3d(0," + y + "px,0)";
+        });
+      };
+      window.addEventListener("scroll", this._onScroll, { passive: true });
+    }
+  }
+
+  componentWillUnmount() {
+    if (this._io) this._io.disconnect();
+    if (this._onScroll) window.removeEventListener("scroll", this._onScroll);
+  }
+
+  pick(plan) { this.setState({ plan: plan }); }
+  toggleFaq(n) { this.setState((s) => ({ faq: s.faq === n ? 0 : n })); }
+
+  renderVals() {
+    const p = this.state.plan || this.props.defaultPlan || "full";
+    const f = this.state.faq === null ? (this.props.faqStartOpen === false ? 0 : 1) : this.state.faq;
+    const v = {
+      isFull: p === "full",
+      isGrowth: p === "growth",
+      isEssentials: p === "essentials",
+      isFurniture: p === "furniture",
+      pickFull: () => this.pick("full"),
+      pickGrowth: () => this.pick("growth"),
+      pickEssentials: () => this.pick("essentials"),
+      pickFurniture: () => this.pick("furniture"),
+      submitted: this.state.submitted,
+      notSubmitted: !this.state.submitted,
+      leadName: this.state.leadName || "there",
+      formRef: (el) => { this._form = el; },
+      submit: (e) => {
+        e.preventDefault();
+        let name = "";
+        try {
+          const fd = new FormData(this._form);
+          name = String(fd.get("name") || "").trim().split(" ")[0];
+        } catch (err) { name = ""; }
+        this.setState({ submitted: true, leadName: name });
+      }
+    };
+    for (let i = 1; i <= 7; i++) {
+      v["open" + i] = f === i;
+      v["sign" + i] = f === i ? "−" : "+";
+      v["toggle" + i] = ((n) => () => this.toggleFaq(n))(i);
+    }
+    return v;
+  }
+}
+</script>
+</body>
+</html>
