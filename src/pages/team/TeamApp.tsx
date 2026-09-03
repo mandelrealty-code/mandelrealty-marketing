@@ -554,16 +554,9 @@ export function TeamApp() {
                 {showDone ? "Hide done" : "Show done"}
               </button>
             </div>
-            <p className="mb-5 max-w-[52ch] text-[14px] leading-relaxed text-[#9a9590]">
-              This portal shows only the tasks assigned to you. Open a task, update its
-              status as you work, and log your hours on the Hours tab so we can match
-              what you billed on Upwork. I’ll update the SOP documents for you to start
-              your first task in the morning — check back here once they’re ready.
-            </p>
             {tasks.length === 0 ? (
               <p className="border-t border-white/8 py-10 text-[14px] text-[#6f6a65]">
-                No open tasks yet — your first assignment will appear here after the SOPs
-                are ready.
+                No open tasks yet — check back when your manager assigns work.
               </p>
             ) : (
               <ul className="divide-y divide-white/8 border-t border-white/8">
@@ -609,10 +602,6 @@ export function TeamApp() {
                 </span>
               </p>
             </div>
-            <p className="mb-5 max-w-[52ch] text-[14px] leading-relaxed text-[#9a9590]">
-              Log the time you worked each day (date, hours, short note). We use this to
-              reconcile against your Upwork hours — keep notes clear so we know what you did.
-            </p>
 
             <div className="mb-8 flex flex-col gap-4 border border-white/8 bg-[#141414] p-4">
               <Field label="Date">

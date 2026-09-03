@@ -26,18 +26,35 @@ function fmtHours(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1);
 }
 
-/** Admin-only: last signed-in, local timezone. */
+/** Admin-only: last signed-in as `2026-09-02 - 11:04PM EST`. */
 function fmtLastSignIn(iso: string | null | undefined): string {
   if (!iso) return "Never signed in";
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "Never signed in";
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
     year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     hour: "numeric",
     minute: "2-digit",
-  });
+    hour12: true,
+    timeZoneName: "short",
+  }).formatToParts(d);
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value || "";
+
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  const hour = get("hour");
+  const minute = get("minute");
+  const dayPeriod = get("dayPeriod").toUpperCase();
+  const tz = get("timeZoneName") || "EST";
+
+  return `${year}-${month}-${day} - ${hour}:${minute}${dayPeriod} ${tz}`;
 }
 
 function daysAgoIso(days: number): string {
