@@ -119,6 +119,7 @@ import {
   getSopBySlug,
   listSops,
   uploadSopVideo,
+  uploadStepImageDataUrl,
   upsertSop,
 } from "../pm/sopStore.js";
 import { percentToRateBps } from "../pm/types.js";
@@ -1375,6 +1376,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const mime = str(body.mime) || "video/webm";
           const videoUrl = await uploadSopVideo(slug, buffer, mime);
           return res.status(200).json({ ok: true, video_url: videoUrl });
+        }
+        if (op === "upload_image") {
+          const slug = str(body.slug);
+          const stepId = str(body.step_id) || "step";
+          const kind = str(body.kind) || "baked";
+          const imageB64 = str(body.image_base64);
+          if (!slug || !imageB64) {
+            return res.status(400).json({ error: "slug and image_base64 required." });
+          }
+          const mime = str(body.mime) || "image/jpeg";
+          const dataUrl = `data:${mime};base64,${imageB64}`;
+          const url = await uploadStepImageDataUrl(slug, `${stepId}-${kind}`, dataUrl);
+          return res.status(200).json({ ok: true, url });
         }
         if (op === "save") {
           const rawSop = (body.sop && typeof body.sop === "object") ? (body.sop as Record<string, unknown>) : body;

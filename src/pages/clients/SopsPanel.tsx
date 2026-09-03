@@ -3,6 +3,58 @@ import { pmGet, pmPost } from "./api";
 import type { SopItem, SopStep, SopCategory, SopTargetRole } from "../../../shared/pm/sopTypes";
 import { ImageRedactorModal } from "../../components/sop/ImageRedactorModal";
 
+const SOP_DRAFT_KEY = "mrg_sop_editor_draft";
+
+function dataUrlParts(dataUrl: string): { mime: string; b64: string } | null {
+  const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/i.exec(dataUrl);
+  if (!m) return null;
+  return { mime: m[1], b64: m[2] };
+}
+
+function compressDataUrl(dataUrl: string, maxW = 1400, quality = 0.72): Promise<string> {
+  if (!dataUrl.startsWith("data:image")) return Promise.resolve(dataUrl);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxW / Math.max(img.width, 1));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+async function persistSopDraft(sop: SopItem) {
+  try {
+    localStorage.setItem(SOP_DRAFT_KEY, JSON.stringify(sop));
+  } catch {
+    try {
+      const slim: SopItem = {
+        ...sop,
+        steps: (sop.steps || []).map((s) => ({
+          ...s,
+          image_url: s.image_url?.startsWith("data:") ? "[screenshot in memory — re-save after deploy]" : s.image_url,
+          raw_image_url: s.raw_image_url?.startsWith("data:") ? undefined : s.raw_image_url,
+        })),
+      };
+      localStorage.setItem(SOP_DRAFT_KEY, JSON.stringify(slim));
+    } catch {
+      /* ignore quota */
+    }
+  }
+}
+
 const CATS: { id: string; label: string; catKey?: SopCategory }[] = [
   { id: "All", label: "All" },
   { id: "Outreach & Leads", label: "Outreach & Leads", catKey: "outreach" },
@@ -57,6 +109,14 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
     fetchSops();
   }, [refreshTrigger]);
 
+  useEffect(() => {
+    if (!editingSop || !editorOpen) return;
+    const t = window.setTimeout(() => {
+      void persistSopDraft(editingSop);
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [editingSop, editorOpen]);
+
   const handleCopyLink = (sop: SopItem) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "https://mandelrealtygroup.com";
     const publicUrl = `${origin}/sop/${sop.slug}`;
@@ -69,6 +129,23 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
       setToast(null);
       setCopiedSlug(null);
     }, 2500);
+  };
+
+  const handleImportBackup = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result || "")) as SopItem;
+        if (!parsed || !Array.isArray(parsed.steps)) {
+          throw new Error("This file is not an SOP backup.");
+        }
+        setEditingSop(parsed);
+        setEditorOpen(true);
+      } catch (err: any) {
+        alert(`Could not import backup: ${err.message || err}`);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleOpenNew = () => {
@@ -117,9 +194,39 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
     if (!editingSop) return;
     setSaving(true);
     try {
+      await persistSopDraft(editingSop);
+      const slug = editingSop.slug || `sop-${Date.now()}`;
+      const steps: SopStep[] = [];
+      for (const step of editingSop.steps || []) {
+        const next: SopStep = { ...step };
+        for (const kind of ["image_url", "raw_image_url"] as const) {
+          const val = next[kind];
+          if (!val || !val.startsWith("data:image")) continue;
+          let compressed = await compressDataUrl(val);
+          let parts = dataUrlParts(compressed);
+          if (!parts || parts.b64.length > 2_800_000) {
+            compressed = await compressDataUrl(val, 1100, 0.58);
+            parts = dataUrlParts(compressed);
+          }
+          if (!parts) throw new Error(`Could not process screenshot on step ${step.step_number}.`);
+          const uploaded = await pmPost<{ url: string }>("sops", {
+            op: "upload_image",
+            slug,
+            step_id: step.id || `step-${step.step_number}`,
+            kind: kind === "raw_image_url" ? "raw" : "baked",
+            mime: parts.mime,
+            image_base64: parts.b64,
+          });
+          if (!uploaded.url) throw new Error("Screenshot upload did not return a URL.");
+          next[kind] = uploaded.url;
+        }
+        steps.push(next);
+      }
+      const payload = { ...editingSop, slug, steps };
+      setEditingSop(payload);
       const res = await pmPost<{ sop: SopItem }>("sops", {
         op: "save",
-        ...editingSop,
+        ...payload,
       });
       if (res.sop) {
         setSops((prev) => {
@@ -132,6 +239,11 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
           return [res.sop, ...prev];
         });
       }
+      try {
+        localStorage.removeItem(SOP_DRAFT_KEY);
+      } catch {
+        /* ignore */
+      }
       setEditorOpen(false);
       setEditingSop(null);
     } catch (err: any) {
@@ -139,6 +251,18 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
     } finally {
       setSaving(false);
     }
+  };
+
+  const downloadSopBackup = () => {
+    if (!editingSop) return;
+    const json = JSON.stringify(editingSop);
+    void persistSopDraft(editingSop);
+    const blob = new Blob([json], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${editingSop.slug || "sop"}-backup.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   const handleDeleteSop = async (sop: SopItem) => {
@@ -268,6 +392,19 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
               <span className="flex h-2 w-2 rounded-full bg-[#cf603c] animate-pulse" />
               <span>Record</span>
             </button>
+            <label className="cursor-pointer rounded-md border border-white/10 bg-[#141414] px-3.5 py-2 text-[12px] font-semibold text-[#dcc084] hover:bg-white/5">
+              Import backup
+              <input
+                type="file"
+                accept="application/json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImportBackup(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
             <button
               type="button"
               onClick={handleOpenNew}
@@ -453,7 +590,14 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
       {/* Slide-over SOP Step Editor */}
       {editorOpen && editingSop && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/65 backdrop-blur-sm">
-          <div className="flex-1" onClick={() => setEditorOpen(false)} />
+          <div
+            className="flex-1"
+            onClick={() => {
+              if (!saving && window.confirm("Close the editor? Your text stays in this tab until you refresh.")) {
+                setEditorOpen(false);
+              }
+            }}
+          />
           <div className="flex h-full w-full max-w-3xl flex-col border-l border-white/10 bg-[#0c0c0c] shadow-2xl overflow-hidden">
             {/* Editor Top Bar */}
             <div className="flex items-center justify-between border-b border-white/8 bg-[#111111] px-6 py-4">
@@ -482,7 +626,16 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
                 )}
                 <button
                   type="button"
-                  onClick={() => setEditorOpen(false)}
+                  onClick={downloadSopBackup}
+                  className="rounded border border-white/10 bg-[#141414] px-3 py-1.5 text-xs font-semibold text-[#dcc084] hover:bg-white/5"
+                >
+                  Download backup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!saving) setEditorOpen(false);
+                  }}
                   className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-[#141414] text-[#9a9590] hover:text-[#f5f5f5]"
                 >
                   ✕
@@ -776,7 +929,7 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
                   disabled={saving}
                   className="rounded bg-[#c4a35a] px-5 py-2 text-xs font-bold text-[#0a0a0a] hover:bg-[#dcc084] transition disabled:opacity-50"
                 >
-                  {saving ? "Publishing..." : "Publish SOP"}
+                  {saving ? "Uploading screenshots…" : "Publish SOP"}
                 </button>
               </div>
             </div>

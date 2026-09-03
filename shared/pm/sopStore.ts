@@ -40,7 +40,7 @@ function sanitizeVideoUrl(url: string | undefined): string | undefined {
   return clean;
 }
 
-async function uploadStepImageDataUrl(slug: string, stepId: string, dataUrl: string): Promise<string> {
+export async function uploadStepImageDataUrl(slug: string, stepId: string, dataUrl: string): Promise<string> {
   const match = dataUrl.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
   if (!match) throw new Error("Invalid step image data URL.");
 

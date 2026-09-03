@@ -188,7 +188,12 @@ export async function pmPost<T extends Record<string, unknown>>(
     body: JSON.stringify(body),
   });
   const data = await parseJson(res);
-  if (!res.ok) throw new Error(String(data.error || "Request failed."));
+  if (!res.ok) {
+    if (res.status === 413) {
+      throw new Error("Content too large. Upload screenshots one at a time, then save.");
+    }
+    throw new Error(String(data.error || "Request failed."));
+  }
   return data as T;
 }
 
