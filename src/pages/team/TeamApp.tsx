@@ -313,6 +313,8 @@ export function TeamApp() {
   const [outreachBusy, setOutreachBusy] = useState(false);
   const [outreachError, setOutreachError] = useState("");
   const [outreachCopied, setOutreachCopied] = useState(false);
+  const [outreachMode, setOutreachMode] = useState<"new" | "reply">("new");
+  const [outreachThread, setOutreachThread] = useState("");
   const [startedAt, setStartedAt] = useState(() => defaultStartLocal());
   const [endedAt, setEndedAt] = useState(() => defaultEndLocal(defaultStartLocal()));
   const [hourNote, setHourNote] = useState("");
@@ -549,7 +551,9 @@ export function TeamApp() {
     setOutreachMessage("");
     setOutreachCopied(false);
     try {
-      const data = await teamApi<{ message: string }>("draft_outreach", {
+      const op =
+        outreachMode === "reply" ? "draft_outreach_reply" : "draft_outreach";
+      const data = await teamApi<{ message: string }>(op, {
         method: "POST",
         body: {
           host_name: outreachHostName,
@@ -558,6 +562,7 @@ export function TeamApp() {
           listing_url: outreachListingUrl,
           issues: Array.from(outreachIssues),
           notes: outreachNotes,
+          thread: outreachMode === "reply" ? outreachThread : undefined,
         },
       });
       setOutreachMessage(data.message || "");
@@ -889,11 +894,50 @@ export function TeamApp() {
             <div className="mb-6">
               <h1 className="text-xl font-semibold tracking-tight">Craft outreach message</h1>
               <p className="mt-1 text-[13px] text-[#9a9590]">
-                Fill in what you observed — AI will write a personalized message for you to send.
+                Fill in what you actually saw. We draft a short Airbnb message you can copy and send.
               </p>
             </div>
 
+            <div className="mb-4 flex gap-1">
+              {(
+                [
+                  ["new", "New message"],
+                  ["reply", "Host replied"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setOutreachMode(mode);
+                    setOutreachMessage("");
+                    setOutreachError("");
+                    setOutreachCopied(false);
+                  }}
+                  className={`rounded-full px-4 py-2 text-[13px] font-semibold transition ${
+                    outreachMode === mode
+                      ? "bg-[#c4a35a] text-[#0a0a0a]"
+                      : "text-[#9a9590] hover:text-[#f5f5f5]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
             <div className="flex flex-col gap-5 border border-white/8 bg-[#141414] p-4">
+              {outreachMode === "reply" ? (
+                <Field label="Paste the host reply or full thread">
+                  <textarea
+                    value={outreachThread}
+                    onChange={(e) => setOutreachThread(e.target.value)}
+                    rows={6}
+                    placeholder="Paste what the host wrote, or the whole Airbnb thread"
+                    className="resize-none border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base leading-relaxed text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
+                  />
+                </Field>
+              ) : null}
+
               <Field label="Host first name">
                 <UnderlineInput
                   type="text"
@@ -924,9 +968,10 @@ export function TeamApp() {
               <div className="flex flex-col gap-2">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f6a65]">
                   Issues you noticed
+                  {outreachMode === "reply" ? " (optional)" : ""}
                 </span>
                 <p className="text-[12px] text-[#6f6a65]">
-                  Check all that apply — skip listings where the host has many listings or an active cohost (likely a manager).
+                  Check all that apply. Skip listings where the host has many listings or an active cohost (likely a manager).
                 </p>
                 <div className="mt-1 flex flex-col gap-3">
                   {OUTREACH_ISSUES.map((issue) => (
@@ -967,17 +1012,26 @@ export function TeamApp() {
               ) : null}
 
               <GoldButton
-                disabled={outreachBusy || (outreachIssues.size === 0 && !outreachNotes.trim())}
+                disabled={
+                  outreachBusy ||
+                  (outreachMode === "reply"
+                    ? !outreachThread.trim()
+                    : outreachIssues.size === 0 && !outreachNotes.trim())
+                }
                 onClick={() => void draftOutreach()}
               >
-                {outreachBusy ? "Generating…" : "Generate message"}
+                {outreachBusy
+                  ? "Generating…"
+                  : outreachMode === "reply"
+                    ? "Generate follow-up"
+                    : "Generate message"}
               </GoldButton>
             </div>
 
             {outreachMessage ? (
               <div className="mt-6 flex flex-col gap-3 border border-[#c4a35a]/20 bg-[#141414] p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c4a35a]">
-                  Your outreach message
+                  {outreachMode === "reply" ? "Your follow-up" : "Your outreach message"}
                 </p>
                 <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-[#f5f5f5]">
                   {outreachMessage}

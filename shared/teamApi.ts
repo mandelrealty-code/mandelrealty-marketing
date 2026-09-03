@@ -31,6 +31,11 @@ import {
   weekStartIso,
 } from "./pm/timeEntryStore.js";
 import { isSupabaseConfigured } from "./supabase.js";
+import {
+  OutreachDraftError,
+  draftFirstOutreach,
+  draftOutreachReply,
+} from "./pm/outreachDraft.js";
 
 function readBody(req: VercelRequest): Record<string, unknown> {
   const raw = req.body;
@@ -312,7 +317,7 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
       });
     }
 
-    if (op === "draft_outreach") {
+    if (op === "draft_outreach" || op === "draft_outreach_reply") {
       const user = await requireStaff(req, res);
       if (!user) return;
       if (user.must_change_password) {
@@ -320,89 +325,42 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
       }
 
       const issues = Array.isArray(body.issues)
-        ? (body.issues as unknown[]).filter((x) => typeof x === "string").join(", ")
-        : str(body.issues);
-      const hostName = str(body.host_name) || "the host";
-      const listingUrl = str(body.listing_url);
-      const neighborhood = str(body.neighborhood);
-      const starRating = str(body.star_rating);
-      const additionalNotes = str(body.notes);
+        ? (body.issues as unknown[])
+            .filter((x): x is string => typeof x === "string")
+            .map((x) => x.trim())
+            .filter(Boolean)
+        : str(body.issues)
+          ? str(body.issues)
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
 
-      const key = process.env.ANTHROPIC_API_KEY?.trim();
-      if (!key) {
-        return res.status(503).json({ error: "AI not configured." });
-      }
+      const listing = {
+        host_name: str(body.host_name),
+        neighborhood: str(body.neighborhood),
+        star_rating: str(body.star_rating),
+        listing_url: str(body.listing_url),
+        issues,
+        notes: str(body.notes),
+      };
 
-      const listingContext = [
-        issues ? `Issues observed: ${issues}` : null,
-        neighborhood ? `Location/neighborhood: ${neighborhood}` : null,
-        starRating ? `Star rating: ${starRating}` : null,
-        listingUrl ? `Listing URL (reference only): ${listingUrl}` : null,
-        additionalNotes ? `Additional notes from VA: ${additionalNotes}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      const systemPrompt = `You are an outreach specialist for Mandel Realty Group, a premium short-term rental management company based in the US.
-
-Write a short, warm, personalized Airbnb host outreach message (5–8 sentences max).
-
-Tone: friendly, confident, slightly observational — point out 1-2 specific flaws or missed opportunities without being harsh, then position Mandel Realty Group as the solution. End with a curiosity hook so the host wants to reply.
-
-Key things to mention naturally (where relevant):
-- We handle everything: professional photos, dynamic pricing, guest communication, reviews
-- $5,000 furniture upgrade program (mention if furniture/photos are an issue)
-- We can help them earn significantly more
-
-Rules:
-- Address the host by first name if provided
-- Reference a specific thing you noticed about their listing (makes it feel personal, not mass-sent)
-- Never be rude or harsh — be empathetic and helpful
-- Never use filler openers like "I hope this finds you well" or "My name is..."
-- Never use a subject line or sign-off placeholder
-- Write only the message body`;
-
-      const userPrompt = `Host name: ${hostName}
-${listingContext}
-
-Write the outreach message now.`;
-
-      let aiMessage = "";
       try {
-        const model =
-          process.env.ANTHROPIC_MODEL?.trim() || "claude-haiku-4-5";
-        const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model,
-            max_tokens: 400,
-            system: systemPrompt,
-            messages: [{ role: "user", content: userPrompt }],
-          }),
-        });
-        if (!aiRes.ok) {
-          console.error("[teamApi/draft_outreach] AI HTTP", aiRes.status);
-          return res.status(502).json({ error: "AI service unavailable." });
-        }
-        const aiData = (await aiRes.json()) as {
-          content?: { type: string; text: string }[];
-        };
-        aiMessage =
-          aiData.content?.find((c) => c.type === "text")?.text?.trim() || "";
+        const message =
+          op === "draft_outreach_reply"
+            ? await draftOutreachReply({
+                ...listing,
+                thread: str(body.thread) || str(body.reply),
+              })
+            : await draftFirstOutreach(listing);
+        return res.status(200).json({ message });
       } catch (aiErr) {
-        console.error("[teamApi/draft_outreach] AI call failed", aiErr);
+        if (aiErr instanceof OutreachDraftError) {
+          return res.status(aiErr.status).json({ error: aiErr.message });
+        }
+        console.error("[teamApi/draft_outreach]", aiErr);
         return res.status(502).json({ error: "AI service unavailable." });
       }
-
-      if (!aiMessage) {
-        return res.status(500).json({ error: "No message generated." });
-      }
-      return res.status(200).json({ message: aiMessage });
     }
 
     return res.status(404).json({ error: "Unknown op." });
