@@ -37,7 +37,18 @@ type TimeEntry = {
 };
 
 type Screen = "login" | "password" | "app";
-type Tab = "tasks" | "hours";
+type Tab = "tasks" | "hours" | "outreach";
+
+const OUTREACH_ISSUES = [
+  { id: "bad_photos", label: "Bad / low-quality photos" },
+  { id: "old_furniture", label: "Outdated or cheap-looking furniture" },
+  { id: "no_review_replies", label: "No replies to guest reviews" },
+  { id: "static_pricing", label: "Static flat pricing (same price every night)" },
+  { id: "low_rating", label: "Low rating / recurring complaints in reviews" },
+  { id: "thin_description", label: "Sparse or missing listing description" },
+] as const;
+
+type IssueId = (typeof OUTREACH_ISSUES)[number]["id"];
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -218,7 +229,12 @@ function WorkAtmosphere() {
 export function TeamApp() {
   const pathInfo = useMemo(() => parseTeamPath(window.location.pathname), []);
   const slug = pathInfo?.slug ?? "";
-  const initialTab: Tab = pathInfo?.rest === "hours" ? "hours" : "tasks";
+  const initialTab: Tab =
+    pathInfo?.rest === "hours"
+      ? "hours"
+      : pathInfo?.rest === "outreach"
+        ? "outreach"
+        : "tasks";
 
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [screen, setScreen] = useState<Screen>("login");
@@ -244,6 +260,18 @@ export function TeamApp() {
 
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [weekHours, setWeekHours] = useState(0);
+
+  // Outreach message generator
+  const [outreachHostName, setOutreachHostName] = useState("");
+  const [outreachNeighborhood, setOutreachNeighborhood] = useState("");
+  const [outreachStarRating, setOutreachStarRating] = useState("");
+  const [outreachListingUrl, setOutreachListingUrl] = useState("");
+  const [outreachNotes, setOutreachNotes] = useState("");
+  const [outreachIssues, setOutreachIssues] = useState<Set<IssueId>>(new Set());
+  const [outreachMessage, setOutreachMessage] = useState("");
+  const [outreachBusy, setOutreachBusy] = useState(false);
+  const [outreachError, setOutreachError] = useState("");
+  const [outreachCopied, setOutreachCopied] = useState(false);
   const [startedAt, setStartedAt] = useState(() => defaultStartLocal());
   const [endedAt, setEndedAt] = useState(() => defaultEndLocal(defaultStartLocal()));
   const [hourNote, setHourNote] = useState("");
@@ -253,7 +281,12 @@ export function TeamApp() {
   const goTab = useCallback(
     (next: Tab) => {
       setTab(next);
-      const path = next === "hours" ? `/team/${slug}/hours` : `/team/${slug}`;
+      const path =
+        next === "hours"
+          ? `/team/${slug}/hours`
+          : next === "outreach"
+            ? `/team/${slug}/outreach`
+            : `/team/${slug}`;
       window.history.replaceState({}, "", path);
     },
     [slug],
@@ -459,6 +492,50 @@ export function TeamApp() {
     }
   };
 
+  const toggleIssue = (id: IssueId) => {
+    setOutreachIssues((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const draftOutreach = async () => {
+    setOutreachBusy(true);
+    setOutreachError("");
+    setOutreachMessage("");
+    setOutreachCopied(false);
+    try {
+      const data = await teamApi<{ message: string }>("draft_outreach", {
+        method: "POST",
+        body: {
+          host_name: outreachHostName,
+          neighborhood: outreachNeighborhood,
+          star_rating: outreachStarRating,
+          listing_url: outreachListingUrl,
+          issues: Array.from(outreachIssues),
+          notes: outreachNotes,
+        },
+      });
+      setOutreachMessage(data.message || "");
+    } catch (e) {
+      setOutreachError(e instanceof Error ? e.message : "Could not generate message.");
+    } finally {
+      setOutreachBusy(false);
+    }
+  };
+
+  const copyOutreach = async () => {
+    try {
+      await navigator.clipboard.writeText(outreachMessage);
+      setOutreachCopied(true);
+      setTimeout(() => setOutreachCopied(false), 2000);
+    } catch {
+      // fallback — select text
+    }
+  };
+
   const removeEntry = async (id: string) => {
     setBusy(true);
     setError("");
@@ -601,18 +678,18 @@ export function TeamApp() {
           </button>
         </div>
         <div className="mx-auto flex max-w-3xl gap-1 px-4 pb-3 lg:px-0">
-          {(["tasks", "hours"] as const).map((t) => (
+          {(["tasks", "hours", "outreach"] as const).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => goTab(t)}
-              className={`rounded-full px-4 py-2 text-[13px] font-semibold capitalize transition ${
+              className={`rounded-full px-4 py-2 text-[13px] font-semibold transition ${
                 tab === t
                   ? "bg-[#c4a35a] text-[#0a0a0a]"
                   : "text-[#9a9590] hover:text-[#f5f5f5]"
               }`}
             >
-              {t === "tasks" ? "Tasks" : "Hours"}
+              {t === "tasks" ? "Tasks" : t === "hours" ? "Hours" : "Craft message"}
             </button>
           ))}
         </div>
@@ -756,7 +833,125 @@ export function TeamApp() {
               </ul>
             )}
           </div>
-        )}
+        ) : tab === "outreach" ? (
+          <div>
+            <div className="mb-6">
+              <h1 className="text-xl font-semibold tracking-tight">Craft outreach message</h1>
+              <p className="mt-1 text-[13px] text-[#9a9590]">
+                Fill in what you observed — AI will write a personalized message for you to send.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-5 border border-white/8 bg-[#141414] p-4">
+              <Field label="Host first name">
+                <UnderlineInput
+                  type="text"
+                  value={outreachHostName}
+                  onChange={(e) => setOutreachHostName(e.target.value)}
+                  placeholder="e.g. Sarah"
+                />
+              </Field>
+
+              <Field label="Location / neighborhood">
+                <UnderlineInput
+                  type="text"
+                  value={outreachNeighborhood}
+                  onChange={(e) => setOutreachNeighborhood(e.target.value)}
+                  placeholder="e.g. Miami Beach, South Beach"
+                />
+              </Field>
+
+              <Field label="Star rating (if shown)">
+                <UnderlineInput
+                  type="text"
+                  value={outreachStarRating}
+                  onChange={(e) => setOutreachStarRating(e.target.value)}
+                  placeholder="e.g. 3.8"
+                />
+              </Field>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f6a65]">
+                  Issues you noticed
+                </span>
+                <p className="text-[12px] text-[#6f6a65]">
+                  Check all that apply — skip listings where the host has many listings or an active cohost (likely a manager).
+                </p>
+                <div className="mt-1 flex flex-col gap-3">
+                  {OUTREACH_ISSUES.map((issue) => (
+                    <label key={issue.id} className="flex cursor-pointer items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={outreachIssues.has(issue.id)}
+                        onChange={() => toggleIssue(issue.id)}
+                        className="h-4 w-4 accent-[#c4a35a]"
+                      />
+                      <span className="text-[14px] text-[#f5f5f5]">{issue.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <Field label="Listing URL (optional — your reference)">
+                <UnderlineInput
+                  type="url"
+                  value={outreachListingUrl}
+                  onChange={(e) => setOutreachListingUrl(e.target.value)}
+                  placeholder="https://www.airbnb.com/rooms/..."
+                />
+              </Field>
+
+              <Field label="Anything else you noticed (optional)">
+                <textarea
+                  value={outreachNotes}
+                  onChange={(e) => setOutreachNotes(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. same price every night for 6 months, photos look like 2015"
+                  className="resize-none border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
+                />
+              </Field>
+
+              {outreachError ? (
+                <p className="text-sm text-[#cf7f7b]">{outreachError}</p>
+              ) : null}
+
+              <GoldButton
+                disabled={outreachBusy || (outreachIssues.size === 0 && !outreachNotes.trim())}
+                onClick={() => void draftOutreach()}
+              >
+                {outreachBusy ? "Generating…" : "Generate message"}
+              </GoldButton>
+            </div>
+
+            {outreachMessage ? (
+              <div className="mt-6 flex flex-col gap-3 border border-[#c4a35a]/20 bg-[#141414] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#c4a35a]">
+                  Your outreach message
+                </p>
+                <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-[#f5f5f5]">
+                  {outreachMessage}
+                </p>
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => void copyOutreach()}
+                    className="text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084]"
+                  >
+                    {outreachCopied ? "Copied!" : "Copy to clipboard"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void draftOutreach()}
+                    disabled={outreachBusy}
+                    className="text-[13px] font-semibold text-[#9a9590] hover:text-[#f5f5f5] disabled:opacity-40"
+                  >
+                    Regenerate
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </main>
 
       {selectedTask ? (
