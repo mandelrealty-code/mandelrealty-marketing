@@ -333,8 +333,25 @@ function expandQueryTerms(query: string): string[] {
   if (/book|call|calendly|schedule|walkthrough/.test(lower)) {
     extras.push("booking", "call", "schedule", "promise");
   }
-  if (/price|pricing|cost|fee|contract|percent|%/.test(lower)) {
-    extras.push("pricing", "contract", "fee", "percent");
+  if (/price|pricing|cost|fee|contract|percent|%|growth|benchmark|essentials|fixed.?rate/.test(lower)) {
+    extras.push(
+      "pricing",
+      "contract",
+      "fee",
+      "percent",
+      "growth",
+      "partnership",
+      "benchmark",
+      "managed essentials",
+      "message and book",
+      "message and optimize",
+    );
+  }
+  if (/growth.?partner|aligned growth|confidence partner|below benchmark|above benchmark/.test(lower)) {
+    extras.push("growth partnership", "aligned growth", "confidence partner", "benchmark revenue");
+  }
+  if (/managed essentials|message.?book|message.?optimize|\$199|\$349|klarna|fixed/.test(lower)) {
+    extras.push("managed essentials", "fixed rate", "message and book", "message and optimize", "199", "349");
   }
   if (/fit|exclu|skip|low.?fit|out of area/.test(lower)) {
     extras.push("exclusion", "fit", "client");
