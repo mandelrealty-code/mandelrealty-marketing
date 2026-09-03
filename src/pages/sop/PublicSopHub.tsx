@@ -28,11 +28,38 @@ function formatSeconds(sec: number): string {
   return `${m}:${s}`;
 }
 
+function isHttpUrl(v: string | undefined | null): boolean {
+  return Boolean(v && /^https?:\/\//i.test(v));
+}
+
+/** True only for real video SOPs — not regular document guides. */
+function sopHasVideo(sop: SopItem | null | undefined): boolean {
+  if (!sop) return false;
+  if (isHttpUrl(sop.video_url)) return true;
+  if (sop.transcript && sop.transcript.length > 0) return true;
+  if (
+    sop.steps?.some(
+      (s) =>
+        s.media_type === "video_embed" ||
+        isHttpUrl(s.video_url) ||
+        (typeof s.seconds === "number" && s.seconds > 0) ||
+        Boolean(s.timestamp && String(s.timestamp).trim() && String(s.timestamp).trim() !== "0:00"),
+    )
+  ) {
+    return true;
+  }
+  const author = (sop.author || "").toLowerCase();
+  const summary = (sop.summary || "").toLowerCase();
+  if (author.includes("video studio") || author.includes("(video)")) return true;
+  if (summary.includes("video guide") || summary.includes("video walkthrough")) return true;
+  return false;
+}
+
 export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
   const [sop, setSop] = useState<SopItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"video" | "doc" | "guide">("video");
+  const [viewMode, setViewMode] = useState<"video" | "doc" | "guide">("doc");
 
   // Video State & Source
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
@@ -77,39 +104,26 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
           if (data.sop) {
             const fetchedSop: SopItem = data.sop;
             setSop(fetchedSop);
+            setVideoSrc(null);
 
-            // Determine if it's a Video SOP
-            const isVideo =
-              Boolean(fetchedSop.video_url) ||
-              Boolean(fetchedSop.transcript?.length) ||
-              Boolean(
-                fetchedSop.steps?.some(
-                  (s) =>
-                    s.media_type === "video_embed" ||
-                    Boolean(s.video_url) ||
-                    s.seconds != null ||
-                    Boolean(s.timestamp)
-                )
-              ) ||
-              Boolean(fetchedSop.author?.toLowerCase().includes("video")) ||
-              Boolean(fetchedSop.summary?.toLowerCase().includes("video guide"));
-
+            const isVideo = sopHasVideo(fetchedSop);
             setViewMode(isVideo ? "video" : "doc");
 
-            // Resolve Video Source (Database URL or Local IndexedDB Cache or Fallback API)
-            if (fetchedSop.video_url && fetchedSop.video_url.startsWith("http")) {
-              setVideoSrc(fetchedSop.video_url);
-            } else {
-              // Try local IndexedDB blob
-              getSopVideoBlob(fetchedSop.slug).then((blob) => {
-                if (blob) {
-                  setVideoSrc(URL.createObjectURL(blob));
-                } else if (fetchedSop.video_url) {
-                  setVideoSrc(fetchedSop.video_url);
-                } else {
-                  setVideoSrc(`/api/sop?slug=${encodeURIComponent(fetchedSop.slug)}&video=1`);
-                }
-              });
+            // Only resolve a video source for real video SOPs
+            if (isVideo) {
+              if (fetchedSop.video_url && fetchedSop.video_url.startsWith("http")) {
+                setVideoSrc(fetchedSop.video_url);
+              } else {
+                getSopVideoBlob(fetchedSop.slug).then((blob) => {
+                  if (blob) {
+                    setVideoSrc(URL.createObjectURL(blob));
+                  } else if (fetchedSop.video_url && fetchedSop.video_url.startsWith("http")) {
+                    setVideoSrc(fetchedSop.video_url);
+                  } else if (fetchedSop.video_url) {
+                    setVideoSrc(`/api/sop?slug=${encodeURIComponent(fetchedSop.slug)}&video=1`);
+                  }
+                });
+              }
             }
 
             try {
@@ -137,25 +151,29 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
   // Video chapters & transcript list with calculated seconds
   const videoSteps = useMemo(() => {
     if (!sop) return [];
-
-    // If explicit transcript lines exist and steps are generic, merge them
     const steps = sop.steps || [];
-    return steps.map((step, idx) => {
-      const parsedSec =
-        step.seconds != null
-          ? step.seconds
-          : step.timestamp
-          ? parseTimeToSeconds(step.timestamp)
+    const isVideo = sopHasVideo(sop);
+
+    return steps
+      .map((step, idx) => {
+        if (!isVideo) {
+          return { ...step, seconds: 0, timestamp: undefined as string | undefined };
+        }
+        const hasRealTime =
+          step.seconds != null || Boolean(step.timestamp && String(step.timestamp).trim());
+        const parsedSec = hasRealTime
+          ? step.seconds != null
+            ? step.seconds
+            : parseTimeToSeconds(step.timestamp)
           : idx * 6;
-
-      const timeStr = step.timestamp || formatSeconds(parsedSec);
-
-      return {
-        ...step,
-        seconds: parsedSec,
-        timestamp: timeStr,
-      };
-    }).sort((a, b) => a.seconds - b.seconds);
+        const timeStr = step.timestamp || formatSeconds(parsedSec);
+        return {
+          ...step,
+          seconds: parsedSec,
+          timestamp: timeStr,
+        };
+      })
+      .sort((a, b) => (isVideo ? a.seconds - b.seconds : a.step_number - b.step_number));
   }, [sop]);
 
   // Fallback duration parsed from summary "(Duration: 0:13)" or estimated minutes or max step
@@ -326,21 +344,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
   const progressPct = stepsList.length ? Math.round((completedCount / stepsList.length) * 100) : 0;
   const guidePct = stepsList.length ? Math.round(((guideStepIdx + 1) / stepsList.length) * 100) : 0;
 
-  const isVideoSop =
-    Boolean(videoSrc) ||
-    Boolean(sop?.video_url) ||
-    Boolean(sop?.transcript?.length) ||
-    Boolean(
-      sop?.steps?.some(
-        (s) =>
-          s.media_type === "video_embed" ||
-          Boolean(s.video_url) ||
-          s.seconds != null ||
-          Boolean(s.timestamp)
-      )
-    ) ||
-    Boolean(sop?.author?.toLowerCase().includes("video")) ||
-    Boolean(sop?.summary?.toLowerCase().includes("video guide"));
+  const isVideoSop = sopHasVideo(sop);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#f5f5f5] font-sans antialiased pb-24 selection:bg-[#c4a35a]/30 selection:text-white">
@@ -983,7 +987,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
               )}
 
               {/* Video Walkthrough Player if present */}
-              {videoSrc && (
+              {isVideoSop && videoSrc && (
                 <div className="rounded-xl border border-white/10 bg-[#121214] p-5 space-y-3 shadow-lg">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1072,7 +1076,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                               {step.title}
                             </h3>
                           </div>
-                          {step.timestamp && (
+                          {isVideoSop && step.timestamp && (
                             <span className="rounded bg-[#c4a35a]/15 border border-[#c4a35a]/30 px-2.5 py-1 font-mono text-xs font-bold text-[#dcc084]">
                               {step.timestamp}
                             </span>
@@ -1219,7 +1223,7 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                           {videoSteps[guideStepIdx].title}
                         </h2>
                       </div>
-                      {videoSteps[guideStepIdx].timestamp && (
+                      {isVideoSop && videoSteps[guideStepIdx].timestamp && (
                         <span className="rounded bg-[#c4a35a]/15 border border-[#c4a35a]/35 px-3 py-1 font-mono text-xs font-bold text-[#dcc084]">
                           {videoSteps[guideStepIdx].timestamp}
                         </span>
