@@ -821,8 +821,16 @@ export function TeamApp() {
                   value={startedAt}
                   onChange={(e) => {
                     const next = e.target.value;
+                    const prevDate = startedAt.slice(0, 10);
+                    const nextDate = next.slice(0, 10);
                     setStartedAt(next);
-                    if (endedAt && next && endedAt <= next) {
+                    const span = hoursFromLocalRange(next, endedAt);
+                    if (
+                      !endedAt ||
+                      endedAt <= next ||
+                      span > 48 ||
+                      prevDate !== nextDate
+                    ) {
                       setEndedAt(defaultEndLocal(next));
                     }
                   }}
@@ -842,6 +850,12 @@ export function TeamApp() {
                     : "—"}
                 </span>
               </p>
+              {previewHours > 48 ? (
+                <p className="text-sm text-[#cf7f7b]">
+                  Each entry can be at most 48 hours. If you worked longer, log
+                  it as separate days.
+                </p>
+              ) : null}
               <Field label="Note">
                 <UnderlineInput
                   type="text"
@@ -851,7 +865,7 @@ export function TeamApp() {
                 />
               </Field>
               <GoldButton
-                disabled={busy || previewHours <= 0}
+                disabled={busy || previewHours <= 0 || previewHours > 48}
                 onClick={() => void logHours()}
               >
                 {busy ? "Saving…" : "Log hours"}

@@ -283,14 +283,27 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
           return res.status(403).json({ error: "Task not assigned to you." });
         }
       }
-      const entry = await createTimeEntry({
-        staff_user_id: user.id,
-        started_at: str(body.started_at) || str(body.start_at),
-        ended_at: str(body.ended_at) || str(body.end_at),
-        work_date: str(body.work_date),
-        note: str(body.note),
-        task_id: taskId,
-      });
+      let entry;
+      try {
+        entry = await createTimeEntry({
+          staff_user_id: user.id,
+          started_at: str(body.started_at) || str(body.start_at),
+          ended_at: str(body.ended_at) || str(body.end_at),
+          work_date: str(body.work_date),
+          note: str(body.note),
+          task_id: taskId,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "";
+        if (
+          /required|after start|48 hours|1 minute|Time range columns missing/i.test(
+            msg,
+          )
+        ) {
+          return res.status(400).json({ error: msg });
+        }
+        throw e;
+      }
       const entries = await listTimeEntriesForStaff(user.id);
       const weekStart = weekStartIso();
       return res.status(200).json({
