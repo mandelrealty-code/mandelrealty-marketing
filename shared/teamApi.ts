@@ -35,7 +35,9 @@ import {
   OutreachDraftError,
   draftFirstOutreach,
   draftOutreachReply,
+  draftReadyClose,
 } from "./pm/outreachDraft.js";
+import { autoSaveReplyOutcome } from "./pm/outreachOutcomeStore.js";
 
 function readBody(req: VercelRequest): Record<string, unknown> {
   const raw = req.body;
@@ -373,7 +375,46 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
             learning_saved: Boolean(result.learning_saved),
           });
         }
-        const message = await draftFirstOutreach(listing);
+        const intent = str(body.intent);
+        const rejectedRaw = Array.isArray(body.rejected_messages)
+          ? (body.rejected_messages as unknown[])
+              .filter((x): x is string => typeof x === "string")
+              .map((x) => x.trim())
+              .filter(Boolean)
+          : str(body.rejected_message)
+            ? [str(body.rejected_message)]
+            : [];
+        if (intent === "close") {
+          const message = await draftReadyClose({
+            ...listing,
+            thread: str(body.thread) || str(body.reply),
+            first_message: str(body.first_message),
+            reply_note: str(body.reply_note),
+            staff_user_id: user.id,
+          });
+          return res.status(200).json({ message, close: true });
+        }
+        const message = await draftFirstOutreach({
+          ...listing,
+          rejected_messages: rejectedRaw,
+          staff_user_id: user.id,
+        });
+        if (intent === "rewrite" && rejectedRaw[0]) {
+          const saved = await autoSaveReplyOutcome({
+            staff_user_id: user.id,
+            ...listing,
+            first_message: rejectedRaw[rejectedRaw.length - 1],
+            follow_up_message: message,
+            thread_snippet: "",
+            outcome: "airbnb_rejected",
+            outcome_note: "Airbnb blocked previous draft",
+          });
+          return res.status(200).json({
+            message,
+            learned_outcome: "airbnb_rejected",
+            learning_saved: saved.saved,
+          });
+        }
         return res.status(200).json({ message });
       } catch (aiErr) {
         if (aiErr instanceof OutreachDraftError) {

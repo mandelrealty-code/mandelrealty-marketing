@@ -379,6 +379,7 @@ export function TeamApp() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [outreachFirstMessage, setOutreachFirstMessage] = useState("");
   const [outreachLearningNote, setOutreachLearningNote] = useState("");
+  const [outreachRejectedHistory, setOutreachRejectedHistory] = useState<string[]>([]);
   const [startedAt, setStartedAt] = useState(() => defaultStartLocal());
   const [endedAt, setEndedAt] = useState(() => defaultEndLocal(defaultStartLocal()));
   const [hourNote, setHourNote] = useState("");
@@ -504,6 +505,7 @@ export function TeamApp() {
     setOutreachCopied(false);
     setOutreachEditContext(false);
     setOutreachLearningNote("");
+    setOutreachRejectedHistory([]);
     setOutreachMode("new");
   }, []);
 
@@ -696,39 +698,73 @@ export function TeamApp() {
     });
   };
 
-  const draftOutreach = async () => {
+  const draftOutreach = async (intent?: "rewrite" | "close") => {
     setOutreachBusy(true);
     setOutreachError("");
-    setOutreachMessage("");
     setOutreachCopied(false);
     setOutreachLearningNote("");
     try {
+      const rejected =
+        intent === "rewrite" && outreachMessage.trim()
+          ? [...outreachRejectedHistory, outreachMessage.trim()]
+          : outreachRejectedHistory;
       const op =
-        outreachMode === "reply" ? "draft_outreach_reply" : "draft_outreach";
+        intent === "rewrite" || intent === "close"
+          ? "draft_outreach"
+          : outreachMode === "reply"
+            ? "draft_outreach_reply"
+            : "draft_outreach";
       const data = await teamApi<{
         message: string;
         learned_outcome?: string | null;
         learning_saved?: boolean;
+        close?: boolean;
       }>(op, {
         method: "POST",
         body: {
+          intent: intent || undefined,
           host_name: outreachHostName,
           neighborhood: outreachNeighborhood,
           star_rating: outreachStarRating,
           listing_url: outreachListingUrl,
           issues: Array.from(outreachIssues),
-          notes: outreachNotes,
-          thread: outreachMode === "reply" ? outreachThread : undefined,
+          notes:
+            intent === "rewrite" && outreachThread.trim()
+              ? [outreachNotes.trim(), `Host thread:\n${outreachThread.trim()}`]
+                  .filter(Boolean)
+                  .join("\n\n")
+              : outreachNotes,
+          thread:
+            outreachMode === "reply" || intent === "close"
+              ? outreachThread
+              : undefined,
           first_message:
-            outreachMode === "reply"
+            outreachMode === "reply" || intent === "close"
               ? outreachFirstMessage || activeSession?.first_message
               : undefined,
-          reply_note: outreachMode === "reply" ? outreachReplyNote : undefined,
+          reply_note:
+            outreachMode === "reply" || intent === "close"
+              ? outreachReplyNote
+              : undefined,
+          rejected_messages: intent === "rewrite" ? rejected : undefined,
         },
       });
       const message = data.message || "";
       setOutreachMessage(message);
-      if (outreachMode === "new") {
+      if (intent === "rewrite") {
+        setOutreachRejectedHistory(rejected);
+        setOutreachLearningNote(
+          data.learning_saved
+            ? "Saved the blocked wording. This rewrite stays on-platform and uses different language."
+            : "Rewrite ready. Paste this instead. If Airbnb blocks twice, skip this host.",
+        );
+      }
+      if (intent === "close") {
+        setOutreachLearningNote(
+          "Stay on Airbnb. Do not send a phone or email unless the host asked for it. If they asked, this draft may include 647-381-7325 and info@mandelrealtygroup.com.",
+        );
+      }
+      if (outreachMode === "new" && intent !== "close") {
         setOutreachFirstMessage(message);
         persistOutreachSession({
           id: activeSessionId || undefined,
@@ -740,7 +776,7 @@ export function TeamApp() {
           issues: Array.from(outreachIssues),
           first_message: message,
         });
-      } else {
+      } else if (intent !== "rewrite" && intent !== "close") {
         persistOutreachSession({ id: activeSessionId || undefined });
         if (data.learning_saved && data.learned_outcome) {
           const labels: Record<string, string> = {
@@ -748,6 +784,7 @@ export function TeamApp() {
             soft: "Saved: soft reply — we’ll keep the tone lighter next time.",
             not_interested:
               "Saved: host wasn’t interested — we’ll avoid this pattern.",
+            airbnb_rejected: "Saved: Airbnb blocked that wording.",
           };
           setOutreachLearningNote(
             labels[data.learned_outcome] || "Host reply saved for learning.",
@@ -1119,6 +1156,23 @@ export function TeamApp() {
               </button>
             </div>
 
+            <div className="mb-5 border border-white/8 bg-[#141414] px-4 py-3 text-[13px] leading-relaxed text-[#9a9590]">
+              <p>
+                Stay on Airbnb. Never put a phone, email, or website in a first message.
+              </p>
+              <p className="mt-2">
+                If Airbnb blocks a draft, tap{" "}
+                <span className="text-[#f5f5f5]">Airbnb rejected this</span> for a
+                safer rewrite. If they block twice, skip the host.
+              </p>
+              <p className="mt-2">
+                When the host is clearly in, tap{" "}
+                <span className="text-[#f5f5f5]">Host is ready</span>. We only share{" "}
+                647-381-7325 or info@mandelrealtygroup.com if they asked how to reach
+                us.
+              </p>
+            </div>
+
             <div className="mb-4 flex gap-1">
               {(
                 [
@@ -1323,6 +1377,14 @@ export function TeamApp() {
                     ? "Generate follow-up"
                     : "Generate message"}
               </GoldButton>
+              <button
+                type="button"
+                disabled={outreachBusy || !hasListingContext}
+                onClick={() => void draftOutreach("close")}
+                className="text-left text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084] disabled:opacity-40"
+              >
+                Host is ready — draft the close
+              </button>
             </div>
 
             {outreachMessage ? (
@@ -1343,11 +1405,27 @@ export function TeamApp() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => void draftOutreach("rewrite")}
+                    disabled={outreachBusy}
+                    className="text-[13px] font-semibold text-[#e8a48a] hover:text-[#f5f5f5] disabled:opacity-40"
+                  >
+                    Airbnb rejected this
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => void draftOutreach()}
                     disabled={outreachBusy}
                     className="text-[13px] font-semibold text-[#9a9590] hover:text-[#f5f5f5] disabled:opacity-40"
                   >
                     Regenerate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void draftOutreach("close")}
+                    disabled={outreachBusy}
+                    className="text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084] disabled:opacity-40"
+                  >
+                    Host is ready
                   </button>
                   {outreachMode === "new" ? (
                     <button

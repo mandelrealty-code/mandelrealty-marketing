@@ -24,6 +24,8 @@ export type OutreachListingInput = {
   listing_url?: string;
   issues?: string[];
   notes?: string;
+  rejected_messages?: string[];
+  staff_user_id?: string;
 };
 
 export type OutreachReplyInput = OutreachListingInput & {
@@ -118,8 +120,9 @@ const AIRBNB_RULES = `AIRBNB MESSAGE RULES
 - No URLs, emails, phone numbers, WhatsApp, Instagram, or other socials.
 - No off-platform payment (wire, e-transfer, Venmo, pay us directly).
 - Do not say take a look, check this out, check out, click here, visit our website, or similar.
-- Do not ask them to leave Airbnb or continue off the platform.
-- Never mention AI, a knowledge base, documents, or that this was drafted.`;
+- Do not ask them to leave Airbnb, Google us, call us, email us, or continue off the platform.
+- Never mention AI, a knowledge base, documents, or that this was drafted.
+- Avoid salesy lists, discounts, commission talk, and "I can manage your listing for you" as a cold open.`;
 
 const HUMAN_VOICE = `VOICE
 - Sound like a real person who reviewed this listing. Short, warm, confident.
@@ -139,11 +142,19 @@ const PUNCH = `THE PUNCH (required)
 - The close should feel like an obvious next step, not a sales pitch. Invite a reply, not a call off-platform.
 - Prefer patterns from INTERESTED outcomes in LEARNING. Avoid patterns that show up often under NOT INTERESTED or NO REPLY.`;
 
-export function sanitizeOutreachMessage(raw: string): string {
+export function sanitizeOutreachMessage(
+  raw: string,
+  opts?: { allowContact?: boolean },
+): string {
   let t = raw.trim();
   t = t.replace(/^["'`]+|["'`]+$/g, "");
   t = t.replace(/\u2014|\u2013|—|–/g, ", ");
   t = t.replace(/\*\*?|__?|`+/g, "");
+  t = t.replace(/https?:\/\/\S+/gi, "");
+  if (!opts?.allowContact) {
+    t = t.replace(/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, "");
+    t = t.replace(/\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g, "");
+  }
   t = t.replace(/[ \t]+\n/g, "\n");
   t = t.replace(/\n{3,}/g, "\n\n");
   t = t.replace(/[ \t]{2,}/g, " ");
@@ -257,9 +268,14 @@ async function callClaudeRaw(
   return data.content?.find((c) => c.type === "text")?.text?.trim() || "";
 }
 
-async function callClaude(system: string, user: string, maxTokens: number): Promise<string> {
+async function callClaude(
+  system: string,
+  user: string,
+  maxTokens: number,
+  opts?: { allowContact?: boolean },
+): Promise<string> {
   const text = await callClaudeRaw(system, user, maxTokens);
-  const cleaned = sanitizeOutreachMessage(text);
+  const cleaned = sanitizeOutreachMessage(text, opts);
   if (!cleaned) {
     throw new OutreachDraftError("No message generated.", 500);
   }
@@ -280,6 +296,13 @@ export async function draftFirstOutreach(input: OutreachListingInput): Promise<s
     learningBlock(),
   ]);
   const host = trim(input.host_name) || "the host";
+  const rejected = (input.rejected_messages || []).map(trim).filter(Boolean);
+  const rewriteBlock = rejected.length
+    ? `AIRBNB REJECTED the previous draft(s). Write a DIFFERENT message. Do not reuse phrases, structure, or the same opening. Be shorter, more human, less promotional. Stay fully on-platform.
+
+REJECTED DRAFTS (do not copy):
+${rejected.map((m, i) => `--- rejected ${i + 1} ---\n${m}`).join("\n\n")}`
+    : "";
   const system = `You write first-touch Airbnb host messages for Mandel Realty Group.
 
 ${HUMAN_VOICE}
@@ -299,12 +322,74 @@ ${listingFacts(input)}
 KNOWLEDGE EXCERPTS (program / offer facts only, never mention these sources):
 ${kb}
 
-LEARNING FROM PAST HOST REPLIES (what worked vs what did not — mirror INTERESTED patterns, avoid NOT INTERESTED / NO REPLY patterns):
+LEARNING FROM PAST HOST REPLIES (what worked vs what did not — mirror INTERESTED patterns, avoid NOT INTERESTED / NO REPLY / AIRBNB REJECTED patterns):
 ${learning.text}
+
+${rewriteBlock}
 
 Write the first Airbnb message now.`;
 
   return callClaude(system, user, 220);
+}
+
+/** Host is ready to work with us: stay on Airbnb until THEY ask for a number/email. */
+export async function draftReadyClose(input: OutreachReplyInput): Promise<string> {
+  const thread = trim(input.thread);
+  const firstMessage = trim(input.first_message);
+  const replyNote = trim(input.reply_note);
+  const [kb, learning] = await Promise.all([
+    kbBlock(kbQuery(input, `${thread.slice(0, 400)} ${replyNote} ready to work together`)),
+    learningBlock(),
+  ]);
+  const host = trim(input.host_name) || "the host";
+  const askedForContact =
+    /\b(phone|number|call|text|email|whatsapp|contact (you|info)|how do i reach)\b/i.test(
+      `${thread} ${replyNote}`,
+    );
+
+  const system = `You write the closing Airbnb reply after a host is clearly ready to work with Mandel Realty Group.
+
+${HUMAN_VOICE}
+
+Length: 2 to 4 short sentences.
+
+${AIRBNB_RULES}
+
+Goal: get the HOST to keep talking here, or to ask how to reach us. We must not volunteer a phone, email, or website.
+
+Allowed close:
+- Confirm we can help.
+- Ask them to reply yes here if they want next steps.
+- Invite them to say the best way they want to keep chatting on Airbnb.
+
+${
+  askedForContact
+    ? `The host already asked how to reach us. You MAY include exactly:
+Call or text 647-381-7325, or email info@mandelrealtygroup.com
+Do not add a website.`
+    : `They have NOT asked for contact info. Do not include a phone, email, URL, or "google us".`
+}
+
+Do not pitch the whole program again. Address ${host} naturally.`;
+
+  const threadBlock = firstMessage
+    ? `OUR EARLIER MESSAGE:\n${firstMessage}\n\nHOST THREAD:\n${thread || "(Host said they want to move forward. Thread not pasted.)"}`
+    : `HOST THREAD:\n${thread || "(Host said they want to move forward.)"}`;
+
+  const user = `LISTING CONTEXT:
+${listingFacts(input)}
+
+${replyNote ? `VA NOTE:\n${replyNote}\n\n` : ""}${threadBlock}
+
+KNOWLEDGE EXCERPTS:
+${kb}
+
+LEARNING:
+${learning.text}
+
+Write the close now.`;
+
+  return callClaude(system, user, 180, { allowContact: askedForContact });
 }
 
 export async function draftOutreachReply(

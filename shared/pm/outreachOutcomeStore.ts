@@ -25,7 +25,8 @@ export type OutreachOutcomeKind =
   | "interested"
   | "soft"
   | "not_interested"
-  | "no_reply";
+  | "no_reply"
+  | "airbnb_rejected";
 
 export type OutreachOutcome = {
   id: string;
@@ -49,6 +50,7 @@ const OUTCOMES = new Set<OutreachOutcomeKind>([
   "soft",
   "not_interested",
   "no_reply",
+  "airbnb_rejected",
 ]);
 
 function mapRow(row: Record<string, unknown>): OutreachOutcome {
@@ -189,6 +191,24 @@ export async function autoSaveReplyOutcome(input: {
   if (input.outcome === "no_reply") {
     return { saved: false, outcome: null, skipped: "no_reply_not_auto" };
   }
+  if (input.outcome === "airbnb_rejected") {
+    try {
+      const row = await createOutreachOutcome({
+        ...input,
+        first_message: str(input.first_message).slice(0, 1200),
+        follow_up_message: str(input.follow_up_message).slice(0, 1200),
+        thread_snippet: str(input.thread_snippet).slice(0, 600),
+        outcome_note: str(input.outcome_note || "airbnb_rejected").slice(0, 280),
+      });
+      return { saved: true, outcome: row };
+    } catch (e) {
+      console.warn(
+        "[outreachOutcome] rejection save failed",
+        e instanceof Error ? e.message : e,
+      );
+      return { saved: false, outcome: null, skipped: "save_failed" };
+    }
+  }
   const thread = str(input.thread_snippet);
   if (thread.length < 8) {
     return { saved: false, outcome: null, skipped: "thread_too_short" };
@@ -256,6 +276,7 @@ export function formatLearningBlock(rows: OutreachOutcome[]): string {
     if (o === "interested") return "INTERESTED (host replied warmly / wanted more)";
     if (o === "soft") return "SOFT (curious but not ready)";
     if (o === "not_interested") return "NOT INTERESTED";
+    if (o === "airbnb_rejected") return "AIRBNB REJECTED THIS WORDING (do not reuse)";
     return "NO REPLY";
   };
 
