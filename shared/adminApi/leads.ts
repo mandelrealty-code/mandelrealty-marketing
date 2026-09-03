@@ -339,6 +339,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, lead, messages, pending_draft });
     }
 
+    // Manual operator "kick" — send the first AI SMS if none have been sent yet.
+    if (body.aiSendFirst === true || body.ai_send_first === true) {
+      const { sendAiFirstSms } = await import("../../shared/aiSmsAgent.js");
+      const { getLeadById } = await import("../leadStore.js");
+
+      const [messages, pending_draft, lead] = await Promise.all([
+        listSmsForLead(id),
+        getPendingDraft(id),
+        getLeadById(id),
+      ]);
+      if (!lead) return res.status(404).json({ error: "Lead not found." });
+
+      const hasOutbound = messages.some((m) => m.direction === "outbound");
+      if (!hasOutbound && !pending_draft) {
+        const result = await sendAiFirstSms({ leadId: id, env: twilioEnv });
+        if (!result.ok) {
+          return res.status(400).json({
+            error: result.error || result.reason || "AI did not send the first SMS.",
+          });
+        }
+      }
+
+      const [afterMessages, afterPendingDraft] = await Promise.all([
+        listSmsForLead(id),
+        getPendingDraft(id),
+      ]);
+      return res.status(200).json({
+        ok: true,
+        lead,
+        messages: afterMessages,
+        pending_draft: afterPendingDraft,
+      });
+    }
+
     if (
       body.playbookAction === "complete" ||
       body.playbook_action === "complete" ||
@@ -358,22 +392,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const updated = await updateLeadCrm(id, patch);
     if (!updated) return res.status(500).json({ error: "Could not update lead." });
 
-    // Turning on per-lead AI while global is off → send first SMS if none yet
+    // Kick first AI SMS when:
+    // - per-lead AI is force-enabled (aiForceOn), OR
+    // - the phone is added/updated (phone), OR
+    // - the lead is resumed (aiPaused -> false)
+    // but there must still be no outbound SMS yet.
     let messagesOut: Awaited<ReturnType<typeof listSmsForLead>> | undefined;
-    if (patch.aiForceOn === true) {
+    let pendingDraftOut: Awaited<ReturnType<typeof getPendingDraft>> | undefined;
+    if (patch.aiForceOn === true || patch.phone !== undefined || patch.aiPaused === false) {
       const messages = await listSmsForLead(id);
       const hasOutbound = messages.some((m) => m.direction === "outbound");
       if (!hasOutbound) {
         const { sendAiFirstSms } = await import("../../shared/aiSmsAgent.js");
-        await sendAiFirstSms({
-          leadId: id,
-          env: {
-            TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
-            TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-            TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
-          },
-        }).catch((err) => console.warn("[admin/leads] force-on first SMS", err));
+        await sendAiFirstSms({ leadId: id, env: twilioEnv }).catch((err) => {
+          console.warn("[admin/leads] first AI SMS kick failed", err);
+        });
         messagesOut = await listSmsForLead(id);
+        pendingDraftOut = await getPendingDraft(id);
       }
     }
 
@@ -391,6 +426,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ok: true,
       lead: updated,
       ...(messagesOut ? { messages: messagesOut } : {}),
+      ...(pendingDraftOut !== undefined ? { pending_draft: pendingDraftOut } : {}),
     });
   }
 

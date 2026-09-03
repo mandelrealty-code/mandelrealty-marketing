@@ -22,7 +22,6 @@ import {
 import { emptyAdminRoute, useAdminRoute } from "../lib/adminRoute";
 import { ModeSwitcher, MrgMark } from "./clients/ui";
 import { DraftCard, type PendingDraft } from "./crm/DraftCard";
-import { PlaybookBlock } from "./crm/PlaybookBlock";
 import { setCurrentPlaybookStep, type PlaybookStep } from "../../shared/playbookTypes";
 
 const ClientsApp = lazy(() => import("./clients/ClientsApp"));
@@ -1163,7 +1162,11 @@ export function AdminPage() {
             ? data.pending_draft
               ? "Follow-up drafted"
               : "Follow-up sent"
-            : "Saved",
+            : body.aiSendFirst
+              ? data.pending_draft
+                ? "AI first message drafted"
+                : "AI first message sent"
+              : "Saved",
         );
         setTimeout(() => setSaveMsg(null), 1500);
       } else {
@@ -1983,6 +1986,22 @@ export function AdminPage() {
                       Missing number — paste from Meta, then Save to text this lead.
                     </p>
                   )}
+                  {leadPhoneUsable(selected.phone) &&
+                  !pendingDraft &&
+                  !smsMessages.some((m) => m.direction === "outbound") &&
+                  !selected.ai_paused &&
+                  (aiEffective || selected.ai_force_on) ? (
+                    <button
+                      type="button"
+                      disabled={saving || aiBusy || aiEnvKill}
+                      onClick={() => void patchLead({ aiSendFirst: true })}
+                      className="mt-3 h-10 rounded-lg bg-[#c4a35a] px-3.5 text-[13px] font-semibold text-[#0a0a0a] disabled:opacity-40 hover:bg-[#dcc084]"
+                    >
+                      {selected.ai_send_mode === "draft"
+                        ? "Draft AI first text"
+                        : "Send AI first text"}
+                    </button>
+                  ) : null}
                 </div>
 
                 <div className="mb-5 flex flex-col gap-px overflow-hidden rounded-[14px] border border-white/8 bg-white/8">
@@ -2156,17 +2175,6 @@ export function AdminPage() {
                 <p className="mb-5 text-[12px] leading-relaxed text-[#9a9590]">
                   Paste what you remember, then Save (or click outside). AI uses this on the next SMS — not a to-do list.
                 </p>
-                <PlaybookBlock
-                  steps={selected.playbook_steps ?? []}
-                  busy={saving}
-                  hostFirstName={firstName}
-                  draftMode={selected.ai_send_mode === "draft"}
-                  canFollowUp={canFollowUpLastSms}
-                  onComplete={() => void patchLead({ playbookAction: "complete" })}
-                  onSkip={() => void patchLead({ playbookAction: "skip" })}
-                  onChange={(playbookSteps) => void patchLead({ playbookSteps })}
-                  onFollowUp={followUpOnLastSms}
-                />
                 <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d7873]">
                   Team next
                 </p>
@@ -2796,6 +2804,20 @@ export function AdminPage() {
         ) : saveMsg ? (
           <p className="text-[12px] text-[#9a9590]">{saveMsg}</p>
         ) : null}
+        {leadPhoneUsable(selected.phone) &&
+        !pendingDraft &&
+        !smsMessages.some((m) => m.direction === "outbound") &&
+        !selected.ai_paused &&
+        (aiEffective || selected.ai_force_on) ? (
+          <button
+            type="button"
+            disabled={saving || aiBusy || aiEnvKill}
+            onClick={() => void patchLead({ aiSendFirst: true })}
+            className="mt-2 h-10 w-full rounded-lg bg-[#c4a35a] px-3.5 text-[13px] font-semibold text-[#0a0a0a] disabled:opacity-40 hover:bg-[#dcc084]"
+          >
+            {selected.ai_send_mode === "draft" ? "Draft AI first text" : "Send AI first text"}
+          </button>
+        ) : null}
       </div>
 
       <div className="border-b border-white/8 px-5 py-4">
@@ -2828,17 +2850,6 @@ export function AdminPage() {
         <p className="mb-4 text-[12px] leading-relaxed text-[#9a9590]">
           Paste what you remember, then Save (or click outside). AI uses this on the next SMS.
         </p>
-        <PlaybookBlock
-          steps={selected.playbook_steps ?? []}
-          busy={saving}
-          hostFirstName={selFirst}
-          draftMode={selected.ai_send_mode === "draft"}
-          canFollowUp={canFollowUpLastSms}
-          onComplete={() => void patchLead({ playbookAction: "complete" })}
-          onSkip={() => void patchLead({ playbookAction: "skip" })}
-          onChange={(playbookSteps) => void patchLead({ playbookSteps })}
-          onFollowUp={followUpOnLastSms}
-        />
       </div>
 
       {leadPhoneUsable(selected.phone) ? (
