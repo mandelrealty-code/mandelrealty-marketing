@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from "react";
-import type { SopItem, SopStep } from "../../../shared/pm/sopTypes";
+import type { SopItem, SopStep, SopStepPin } from "../../../shared/pm/sopTypes";
 import { getSopVideoBlob } from "../../lib/sopVideoStorage";
+import { SopAnnotatedImage } from "../../components/sop/SopAnnotatedImage";
 
 interface PublicSopHubProps {
   initialSlug?: string | null;
@@ -83,7 +84,11 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
   const [shareToast, setShareToast] = useState<string | null>(null);
 
   // Lightbox State
-  const [lightboxImg, setLightboxImg] = useState<{ src: string; title: string } | null>(null);
+  const [lightboxImg, setLightboxImg] = useState<{
+    src: string;
+    title: string;
+    pins?: SopStepPin[];
+  } | null>(null);
 
   // Fetch individual SOP by slug
   useEffect(() => {
@@ -929,20 +934,21 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
 
                               {/* Screenshot Zoom */}
                               {step.image_url && (
-                                <div
-                                  onClick={() =>
-                                    setLightboxImg({ src: step.image_url!, title: step.title })
-                                  }
-                                  className="relative rounded-md border border-white/10 overflow-hidden cursor-zoom-in bg-[#151515] mt-2 group/img"
-                                >
-                                  <img
+                                <div className="mt-2">
+                                  <SopAnnotatedImage
                                     src={step.image_url}
                                     alt={step.title}
-                                    className="w-full max-h-56 object-contain"
+                                    pins={step.pins}
+                                    imgClassName="w-full max-h-56 object-contain"
+                                    zoomHint
+                                    onClick={() =>
+                                      setLightboxImg({
+                                        src: step.image_url!,
+                                        title: step.title,
+                                        pins: step.pins,
+                                      })
+                                    }
                                   />
-                                  <div className="absolute right-2 bottom-2 rounded bg-black/85 px-2 py-0.5 text-[10px] text-[#9a9590] group-hover/img:text-white">
-                                    ⤢ Zoom
-                                  </div>
                                 </div>
                               )}
                             </div>
@@ -1090,23 +1096,20 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
 
                         {/* Screenshot Preview */}
                         {step.image_url && (
-                          <div className="space-y-3">
-                            <div
-                              onClick={() =>
-                                setLightboxImg({ src: step.image_url!, title: step.title })
-                              }
-                              className="relative rounded-md border border-white/10 overflow-hidden cursor-zoom-in bg-[#151515] group"
-                            >
-                              <img
-                                src={step.image_url}
-                                alt={step.title}
-                                className="w-full max-h-96 object-contain"
-                              />
-                              <div className="absolute right-3 bottom-3 rounded bg-black/85 border border-white/12 px-2.5 py-1 text-[10.5px] font-semibold text-[#9a9590] group-hover:text-white transition">
-                                ⤢ Click to zoom
-                              </div>
-                            </div>
-                          </div>
+                          <SopAnnotatedImage
+                            src={step.image_url}
+                            alt={step.title}
+                            pins={step.pins}
+                            imgClassName="w-full max-h-96 object-contain"
+                            zoomHint
+                            onClick={() =>
+                              setLightboxImg({
+                                src: step.image_url!,
+                                title: step.title,
+                                pins: step.pins,
+                              })
+                            }
+                          />
                         )}
 
                         {/* Copyable Script Snippet */}
@@ -1236,21 +1239,20 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
 
                     {/* Screenshot */}
                     {videoSteps[guideStepIdx].image_url && (
-                      <div
+                      <SopAnnotatedImage
+                        src={videoSteps[guideStepIdx].image_url!}
+                        alt={videoSteps[guideStepIdx].title}
+                        pins={videoSteps[guideStepIdx].pins}
+                        imgClassName="w-full max-h-[440px] object-contain"
+                        zoomHint
                         onClick={() =>
                           setLightboxImg({
                             src: videoSteps[guideStepIdx].image_url!,
                             title: videoSteps[guideStepIdx].title,
+                            pins: videoSteps[guideStepIdx].pins,
                           })
                         }
-                        className="relative rounded-lg border border-white/10 overflow-hidden cursor-zoom-in bg-[#151515]"
-                      >
-                        <img
-                          src={videoSteps[guideStepIdx].image_url}
-                          alt={videoSteps[guideStepIdx].title}
-                          className="w-full max-h-[440px] object-contain"
-                        />
-                      </div>
+                      />
                     )}
 
                     {/* Script Snippet */}
@@ -1394,10 +1396,11 @@ export function PublicSopHub({ initialSlug }: PublicSopHubProps) {
                 ✕ Close
               </button>
             </div>
-            <img
+            <SopAnnotatedImage
               src={lightboxImg.src}
               alt={lightboxImg.title}
-              className="max-h-[80vh] w-auto object-contain mx-auto rounded"
+              pins={lightboxImg.pins}
+              imgClassName="max-h-[75vh] w-auto object-contain mx-auto rounded"
             />
           </div>
         </div>

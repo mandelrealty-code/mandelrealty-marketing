@@ -541,6 +541,59 @@ export function ImageRedactorModal({
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(pinText, px, py + 1);
+
+        const caption = String(pin.label || "").trim();
+        if (caption) {
+          const capFont = Math.max(12, Math.round(canvas.width * 0.014));
+          ctx.font = `600 ${capFont}px sans-serif`;
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+          const maxTextW = Math.min(canvas.width * 0.38, canvas.width - px - radius * 2 - 24);
+          const words = caption.split(/\s+/);
+          const lines: string[] = [];
+          let line = "";
+          for (const word of words) {
+            const test = line ? `${line} ${word}` : word;
+            if (ctx.measureText(test).width > maxTextW && line) {
+              lines.push(line);
+              line = word;
+            } else {
+              line = test;
+            }
+          }
+          if (line) lines.push(line);
+          const lineH = Math.round(capFont * 1.25);
+          const padX = Math.round(capFont * 0.55);
+          const padY = Math.round(capFont * 0.4);
+          const textW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+          const boxW = textW + padX * 2;
+          const boxH = lines.length * lineH + padY * 2;
+          const preferLeft = px > canvas.width * 0.62;
+          const gap = radius + Math.max(8, canvas.width * 0.008);
+          let boxX = preferLeft ? px - gap - boxW : px + gap;
+          boxX = Math.max(8, Math.min(boxX, canvas.width - boxW - 8));
+          let boxY = py - boxH / 2;
+          boxY = Math.max(8, Math.min(boxY, canvas.height - boxH - 8));
+
+          ctx.fillStyle = "rgba(10, 10, 10, 0.88)";
+          ctx.strokeStyle = "rgba(196, 163, 90, 0.7)";
+          ctx.lineWidth = Math.max(1.5, canvas.width * 0.0015);
+          const r = Math.max(4, capFont * 0.35);
+          ctx.beginPath();
+          ctx.moveTo(boxX + r, boxY);
+          ctx.arcTo(boxX + boxW, boxY, boxX + boxW, boxY + boxH, r);
+          ctx.arcTo(boxX + boxW, boxY + boxH, boxX, boxY + boxH, r);
+          ctx.arcTo(boxX, boxY + boxH, boxX, boxY, r);
+          ctx.arcTo(boxX, boxY, boxX + boxW, boxY, r);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = "#f5f5f5";
+          lines.forEach((l, i) => {
+            ctx.fillText(l, boxX + padX, boxY + padY + lineH * i + lineH / 2);
+          });
+        }
       });
 
       const bakedDataUrl = canvas.toDataURL("image/webp", 0.92);
@@ -804,6 +857,17 @@ export function ImageRedactorModal({
                       >
                         {pinText}
                       </div>
+
+                      {/* Always-visible caption on the screenshot */}
+                      {!isSelected && pin.label?.trim() ? (
+                        <div
+                          className={`pointer-events-none absolute top-1/2 z-10 max-w-[220px] -translate-y-1/2 rounded-md border border-[#c4a35a]/45 bg-[#0a0a0a]/92 px-2 py-1 text-[11px] font-semibold leading-snug text-[#f5f5f5] shadow-lg ${
+                            pin.x > 0.62 ? "right-full mr-2 text-right" : "left-full ml-2"
+                          }`}
+                        >
+                          {pin.label.trim()}
+                        </div>
+                      ) : null}
 
                       {/* Floating In-Place Caption Popover / Bubble (when selected) */}
                       {isSelected && (
