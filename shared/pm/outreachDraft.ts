@@ -22,6 +22,8 @@ export type OutreachListingInput = {
 
 export type OutreachReplyInput = OutreachListingInput & {
   thread: string;
+  first_message?: string;
+  reply_note?: string;
 };
 
 function trim(v: unknown): string {
@@ -194,7 +196,9 @@ export async function draftOutreachReply(input: OutreachReplyInput): Promise<str
   if (!thread) {
     throw new OutreachDraftError("Paste the host reply or thread.", 400);
   }
-  const kb = await kbBlock(kbQuery(input, thread.slice(0, 400)));
+  const firstMessage = trim(input.first_message);
+  const replyNote = trim(input.reply_note);
+  const kb = await kbBlock(kbQuery(input, `${thread.slice(0, 400)} ${replyNote}`));
   const host = trim(input.host_name) || "the host";
   const system = `You write the NEXT Airbnb reply for Mandel Realty Group after a host has responded.
 
@@ -210,11 +214,14 @@ Stricter:
 - Do not repeat the entire first pitch. Move the conversation forward.
 - Address ${host} by first name only if it still sounds natural. Do not start every reply with Hey {name}.`;
 
-  const user = `LISTING CONTEXT (optional, use if relevant):
+  const threadBlock = firstMessage
+    ? `OUR FIRST MESSAGE TO THEM:\n${firstMessage}\n\nHOST THREAD (paste from Airbnb, most recent last):\n${thread}`
+    : `HOST THREAD (most recent is last):\n${thread}`;
+
+  const user = `LISTING CONTEXT (saved from when we first reviewed this listing):
 ${listingFacts(input)}
 
-HOST THREAD (most recent is last):
-${thread}
+${replyNote ? `VA NOTE ON THIS REPLY (what the host asked or mentioned):\n${replyNote}\n\n` : ""}${threadBlock}
 
 KNOWLEDGE EXCERPTS (program facts only, never mention these sources):
 ${kb}

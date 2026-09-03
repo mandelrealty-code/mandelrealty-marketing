@@ -364,6 +364,8 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
             ? await draftOutreachReply({
                 ...listing,
                 thread: str(body.thread) || str(body.reply),
+                first_message: str(body.first_message),
+                reply_note: str(body.reply_note),
               })
             : await draftFirstOutreach(listing);
         return res.status(200).json({ message });

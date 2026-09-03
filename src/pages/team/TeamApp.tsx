@@ -50,6 +50,64 @@ const OUTREACH_ISSUES = [
 
 type IssueId = (typeof OUTREACH_ISSUES)[number]["id"];
 
+type OutreachSession = {
+  id: string;
+  host_name: string;
+  neighborhood: string;
+  star_rating: string;
+  listing_url: string;
+  notes: string;
+  issues: IssueId[];
+  first_message: string;
+  updated_at: string;
+};
+
+function outreachStorageKey(slug: string): string {
+  return `mrg_outreach_sessions_${slug}`;
+}
+
+function loadOutreachSessions(slug: string): OutreachSession[] {
+  try {
+    const raw = localStorage.getItem(outreachStorageKey(slug));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as OutreachSession[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((s) => s && typeof s.id === "string")
+      .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+  } catch {
+    return [];
+  }
+}
+
+function saveOutreachSessions(slug: string, sessions: OutreachSession[]): void {
+  try {
+    localStorage.setItem(outreachStorageKey(slug), JSON.stringify(sessions.slice(0, 30)));
+  } catch {
+    // ignore quota
+  }
+}
+
+function sessionSummary(s: OutreachSession): string {
+  const name = s.host_name.trim() || "Host";
+  const place = s.neighborhood.trim() || "—";
+  return `${name} · ${place}`;
+}
+
+function sessionDetail(s: OutreachSession): string {
+  const issueCount = s.issues?.length ?? 0;
+  const parts = [
+    s.star_rating.trim() ? `${s.star_rating}★` : null,
+    issueCount ? `${issueCount} issues noted` : null,
+    s.first_message ? "First message saved" : null,
+  ].filter(Boolean);
+  return parts.join(" · ") || "Listing saved";
+}
+
+function newSessionId(): string {
+  return `os_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -315,6 +373,11 @@ export function TeamApp() {
   const [outreachCopied, setOutreachCopied] = useState(false);
   const [outreachMode, setOutreachMode] = useState<"new" | "reply">("new");
   const [outreachThread, setOutreachThread] = useState("");
+  const [outreachReplyNote, setOutreachReplyNote] = useState("");
+  const [outreachEditContext, setOutreachEditContext] = useState(false);
+  const [outreachSessions, setOutreachSessions] = useState<OutreachSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [outreachFirstMessage, setOutreachFirstMessage] = useState("");
   const [startedAt, setStartedAt] = useState(() => defaultStartLocal());
   const [endedAt, setEndedAt] = useState(() => defaultEndLocal(defaultStartLocal()));
   const [hourNote, setHourNote] = useState("");
@@ -366,6 +429,92 @@ export function TeamApp() {
     setEntries(list);
     setWeekHours(sumHoursThisWeekLocal(list));
   }, []);
+
+  useEffect(() => {
+    if (!slug) return;
+    setOutreachSessions(loadOutreachSessions(slug));
+  }, [slug]);
+
+  const applyOutreachSession = useCallback((session: OutreachSession) => {
+    setActiveSessionId(session.id);
+    setOutreachHostName(session.host_name);
+    setOutreachNeighborhood(session.neighborhood);
+    setOutreachStarRating(session.star_rating);
+    setOutreachListingUrl(session.listing_url);
+    setOutreachNotes(session.notes);
+    setOutreachIssues(new Set(session.issues || []));
+    setOutreachFirstMessage(session.first_message || "");
+  }, []);
+
+  const persistOutreachSession = useCallback(
+    (patch: Partial<OutreachSession> & { id?: string }) => {
+      if (!slug) return null;
+      const now = new Date().toISOString();
+      const existing = patch.id
+        ? outreachSessions.find((s) => s.id === patch.id)
+        : undefined;
+      const id = patch.id || existing?.id || newSessionId();
+      const session: OutreachSession = {
+        id,
+        host_name: patch.host_name ?? existing?.host_name ?? outreachHostName,
+        neighborhood: patch.neighborhood ?? existing?.neighborhood ?? outreachNeighborhood,
+        star_rating: patch.star_rating ?? existing?.star_rating ?? outreachStarRating,
+        listing_url: patch.listing_url ?? existing?.listing_url ?? outreachListingUrl,
+        notes: patch.notes ?? existing?.notes ?? outreachNotes,
+        issues: patch.issues ?? existing?.issues ?? Array.from(outreachIssues),
+        first_message: patch.first_message ?? existing?.first_message ?? outreachFirstMessage,
+        updated_at: now,
+      };
+      const next = [session, ...outreachSessions.filter((s) => s.id !== id)].slice(
+        0,
+        30,
+      );
+      setOutreachSessions(next);
+      saveOutreachSessions(slug, next);
+      setActiveSessionId(id);
+      return session;
+    },
+    [
+      slug,
+      outreachSessions,
+      outreachHostName,
+      outreachNeighborhood,
+      outreachStarRating,
+      outreachListingUrl,
+      outreachNotes,
+      outreachIssues,
+      outreachFirstMessage,
+    ],
+  );
+
+  const startNewOutreachHost = useCallback(() => {
+    setActiveSessionId(null);
+    setOutreachHostName("");
+    setOutreachNeighborhood("");
+    setOutreachStarRating("");
+    setOutreachListingUrl("");
+    setOutreachNotes("");
+    setOutreachIssues(new Set());
+    setOutreachFirstMessage("");
+    setOutreachThread("");
+    setOutreachReplyNote("");
+    setOutreachMessage("");
+    setOutreachError("");
+    setOutreachCopied(false);
+    setOutreachEditContext(false);
+    setOutreachMode("new");
+  }, []);
+
+  const activeSession = useMemo(
+    () => outreachSessions.find((s) => s.id === activeSessionId) ?? null,
+    [outreachSessions, activeSessionId],
+  );
+
+  const hasListingContext =
+    Boolean(outreachHostName.trim()) ||
+    Boolean(outreachNeighborhood.trim()) ||
+    outreachIssues.size > 0 ||
+    Boolean(outreachNotes.trim());
 
   useEffect(() => {
     if (!slug) return;
@@ -563,9 +712,30 @@ export function TeamApp() {
           issues: Array.from(outreachIssues),
           notes: outreachNotes,
           thread: outreachMode === "reply" ? outreachThread : undefined,
+          first_message:
+            outreachMode === "reply"
+              ? outreachFirstMessage || activeSession?.first_message
+              : undefined,
+          reply_note: outreachMode === "reply" ? outreachReplyNote : undefined,
         },
       });
-      setOutreachMessage(data.message || "");
+      const message = data.message || "";
+      setOutreachMessage(message);
+      if (outreachMode === "new") {
+        setOutreachFirstMessage(message);
+        persistOutreachSession({
+          id: activeSessionId || undefined,
+          host_name: outreachHostName,
+          neighborhood: outreachNeighborhood,
+          star_rating: outreachStarRating,
+          listing_url: outreachListingUrl,
+          notes: outreachNotes,
+          issues: Array.from(outreachIssues),
+          first_message: message,
+        });
+      } else {
+        persistOutreachSession({ id: activeSessionId || undefined });
+      }
     } catch (e) {
       setOutreachError(e instanceof Error ? e.message : "Could not generate message.");
     } finally {
@@ -578,6 +748,10 @@ export function TeamApp() {
       await navigator.clipboard.writeText(outreachMessage);
       setOutreachCopied(true);
       setTimeout(() => setOutreachCopied(false), 2000);
+      if (outreachMode === "reply") {
+        setOutreachThread("");
+        setOutreachReplyNote("");
+      }
     } catch {
       // fallback — select text
     }
@@ -905,11 +1079,22 @@ export function TeamApp() {
           </div>
         ) : tab === "outreach" ? (
           <div>
-            <div className="mb-6">
-              <h1 className="text-xl font-semibold tracking-tight">Craft outreach message</h1>
-              <p className="mt-1 text-[13px] text-[#9a9590]">
-                Fill in what you actually saw. We draft a short Airbnb message you can copy and send.
-              </p>
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">Craft outreach message</h1>
+                <p className="mt-1 max-w-lg text-[13px] text-[#9a9590]">
+                  {outreachMode === "reply"
+                    ? "Paste the host reply. Listing details stay saved from your first message."
+                    : "Fill in what you saw once. We save it for follow-ups."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={startNewOutreachHost}
+                className="shrink-0 text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084]"
+              >
+                New host
+              </button>
             </div>
 
             <div className="mb-4 flex gap-1">
@@ -927,6 +1112,9 @@ export function TeamApp() {
                     setOutreachMessage("");
                     setOutreachError("");
                     setOutreachCopied(false);
+                    if (mode === "reply" && activeSession) {
+                      applyOutreachSession(activeSession);
+                    }
                   }}
                   className={`rounded-full px-4 py-2 text-[13px] font-semibold transition ${
                     outreachMode === mode
@@ -939,87 +1127,160 @@ export function TeamApp() {
               ))}
             </div>
 
+            {outreachSessions.length > 0 ? (
+              <div className="mb-4 flex flex-col gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f6a65]">
+                  Saved hosts
+                </span>
+                <select
+                  value={activeSessionId || ""}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (!id) {
+                      setActiveSessionId(null);
+                      return;
+                    }
+                    const session = outreachSessions.find((s) => s.id === id);
+                    if (session) applyOutreachSession(session);
+                  }}
+                  className="w-full border border-white/12 bg-[#141414] px-3 py-2.5 text-[14px] text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
+                >
+                  <option value="">Pick a saved host…</option>
+                  {outreachSessions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {sessionSummary(s)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            {outreachMode === "reply" && hasListingContext ? (
+              <div className="mb-4 border border-white/8 bg-[#141414] px-4 py-3">
+                <p className="text-[14px] font-semibold text-[#f5f5f5]">
+                  {outreachHostName.trim() || "Host"}
+                  {outreachNeighborhood.trim()
+                    ? ` · ${outreachNeighborhood.trim()}`
+                    : ""}
+                  {outreachStarRating.trim() ? ` · ${outreachStarRating.trim()}★` : ""}
+                </p>
+                <p className="mt-1 text-[12px] text-[#9a9590]">
+                  {activeSession
+                    ? sessionDetail(activeSession)
+                    : "Listing details saved from this browser"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setOutreachEditContext((v) => !v)}
+                  className="mt-2 text-[12px] font-semibold text-[#c4a35a] hover:text-[#dcc084]"
+                >
+                  {outreachEditContext ? "Hide listing details" : "Edit listing details"}
+                </button>
+              </div>
+            ) : null}
+
+            {outreachMode === "reply" && !hasListingContext ? (
+              <p className="mb-4 border border-[#c4a35a]/20 bg-[#141414] px-4 py-3 text-[13px] text-[#9a9590]">
+                Pick a saved host above, or switch to New message and generate a first
+                message first.
+              </p>
+            ) : null}
+
             <div className="flex flex-col gap-5 border border-white/8 bg-[#141414] p-4">
               {outreachMode === "reply" ? (
-                <Field label="Paste the host reply or full thread">
-                  <textarea
-                    value={outreachThread}
-                    onChange={(e) => setOutreachThread(e.target.value)}
-                    rows={6}
-                    placeholder="Paste what the host wrote, or the whole Airbnb thread"
-                    className="resize-none border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base leading-relaxed text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
-                  />
-                </Field>
+                <>
+                  <Field label="Paste the host reply or full Airbnb thread">
+                    <textarea
+                      value={outreachThread}
+                      onChange={(e) => setOutreachThread(e.target.value)}
+                      rows={6}
+                      placeholder="Paste what the host wrote, or copy the whole thread from Airbnb"
+                      className="resize-none border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base leading-relaxed text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
+                    />
+                  </Field>
+                  <Field label="What did they ask or mention? (optional)">
+                    <UnderlineInput
+                      type="text"
+                      value={outreachReplyNote}
+                      onChange={(e) => setOutreachReplyNote(e.target.value)}
+                      placeholder="e.g. asked about fees, said they self-manage, wants more info on photos"
+                    />
+                  </Field>
+                </>
               ) : null}
 
-              <Field label="Host first name">
-                <UnderlineInput
-                  type="text"
-                  value={outreachHostName}
-                  onChange={(e) => setOutreachHostName(e.target.value)}
-                  placeholder="e.g. Sarah"
-                />
-              </Field>
+              {(outreachMode === "new" || outreachEditContext) && (
+                <>
+                  <Field label="Host first name">
+                    <UnderlineInput
+                      type="text"
+                      value={outreachHostName}
+                      onChange={(e) => setOutreachHostName(e.target.value)}
+                      placeholder="e.g. Sarah"
+                    />
+                  </Field>
 
-              <Field label="Location / neighborhood">
-                <UnderlineInput
-                  type="text"
-                  value={outreachNeighborhood}
-                  onChange={(e) => setOutreachNeighborhood(e.target.value)}
-                  placeholder="e.g. Miami Beach, South Beach"
-                />
-              </Field>
+                  <Field label="Location / neighborhood">
+                    <UnderlineInput
+                      type="text"
+                      value={outreachNeighborhood}
+                      onChange={(e) => setOutreachNeighborhood(e.target.value)}
+                      placeholder="e.g. Miami Beach, South Beach"
+                    />
+                  </Field>
 
-              <Field label="Star rating (if shown)">
-                <UnderlineInput
-                  type="text"
-                  value={outreachStarRating}
-                  onChange={(e) => setOutreachStarRating(e.target.value)}
-                  placeholder="e.g. 3.8"
-                />
-              </Field>
+                  <Field label="Star rating (if shown)">
+                    <UnderlineInput
+                      type="text"
+                      value={outreachStarRating}
+                      onChange={(e) => setOutreachStarRating(e.target.value)}
+                      placeholder="e.g. 3.8"
+                    />
+                  </Field>
 
-              <div className="flex flex-col gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f6a65]">
-                  Issues you noticed
-                  {outreachMode === "reply" ? " (optional)" : ""}
-                </span>
-                <p className="text-[12px] text-[#6f6a65]">
-                  Check all that apply. Skip listings where the host has many listings or an active cohost (likely a manager).
-                </p>
-                <div className="mt-1 flex flex-col gap-3">
-                  {OUTREACH_ISSUES.map((issue) => (
-                    <label key={issue.id} className="flex cursor-pointer items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={outreachIssues.has(issue.id)}
-                        onChange={() => toggleIssue(issue.id)}
-                        className="h-4 w-4 accent-[#c4a35a]"
-                      />
-                      <span className="text-[14px] text-[#f5f5f5]">{issue.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f6a65]">
+                      Issues you noticed
+                    </span>
+                    <p className="text-[12px] text-[#6f6a65]">
+                      Check all that apply. Skip listings where the host has many listings or an
+                      active cohost (likely a manager).
+                    </p>
+                    <div className="mt-1 flex flex-col gap-3">
+                      {OUTREACH_ISSUES.map((issue) => (
+                        <label key={issue.id} className="flex cursor-pointer items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={outreachIssues.has(issue.id)}
+                            onChange={() => toggleIssue(issue.id)}
+                            className="h-4 w-4 accent-[#c4a35a]"
+                          />
+                          <span className="text-[14px] text-[#f5f5f5]">{issue.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
 
-              <Field label="Listing URL (optional — your reference)">
-                <UnderlineInput
-                  type="url"
-                  value={outreachListingUrl}
-                  onChange={(e) => setOutreachListingUrl(e.target.value)}
-                  placeholder="https://www.airbnb.com/rooms/..."
-                />
-              </Field>
+                  <Field label="Listing URL (optional — your reference)">
+                    <UnderlineInput
+                      type="url"
+                      value={outreachListingUrl}
+                      onChange={(e) => setOutreachListingUrl(e.target.value)}
+                      placeholder="https://www.airbnb.com/rooms/..."
+                    />
+                  </Field>
 
-              <Field label="Anything else you noticed (optional)">
-                <textarea
-                  value={outreachNotes}
-                  onChange={(e) => setOutreachNotes(e.target.value)}
-                  rows={2}
-                  placeholder="e.g. same price every night for 6 months, photos look like 2015"
-                  className="resize-none border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
-                />
-              </Field>
+                  <Field label="Anything else you noticed (optional)">
+                    <textarea
+                      value={outreachNotes}
+                      onChange={(e) => setOutreachNotes(e.target.value)}
+                      rows={2}
+                      placeholder="e.g. same price every night for 6 months, photos look like 2015"
+                      className="resize-none border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
+                    />
+                  </Field>
+                </>
+              )}
 
               {outreachError ? (
                 <p className="text-sm text-[#cf7f7b]">{outreachError}</p>
@@ -1029,7 +1290,7 @@ export function TeamApp() {
                 disabled={
                   outreachBusy ||
                   (outreachMode === "reply"
-                    ? !outreachThread.trim()
+                    ? !outreachThread.trim() || !hasListingContext
                     : outreachIssues.size === 0 && !outreachNotes.trim())
                 }
                 onClick={() => void draftOutreach()}
@@ -1050,7 +1311,7 @@ export function TeamApp() {
                 <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-[#f5f5f5]">
                   {outreachMessage}
                 </p>
-                <div className="flex gap-3 pt-1">
+                <div className="flex flex-wrap gap-3 pt-1">
                   <button
                     type="button"
                     onClick={() => void copyOutreach()}
@@ -1066,6 +1327,19 @@ export function TeamApp() {
                   >
                     Regenerate
                   </button>
+                  {outreachMode === "new" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOutreachMode("reply");
+                        setOutreachMessage("");
+                        setOutreachCopied(false);
+                      }}
+                      className="text-[13px] font-semibold text-[#9a9590] hover:text-[#f5f5f5]"
+                    >
+                      Host replied →
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : null}
