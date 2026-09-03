@@ -387,7 +387,7 @@ export function TeamApp() {
       loadTasks().catch((e) =>
         setError(e instanceof Error ? e.message : "Could not load tasks."),
       );
-    } else {
+    } else if (tab === "hours") {
       loadHours().catch((e) =>
         setError(e instanceof Error ? e.message : "Could not load hours."),
       );
@@ -789,7 +789,7 @@ export function TeamApp() {
               </ul>
             )}
           </div>
-        ) : (
+        ) : tab === "hours" ? (
           <div>
             <div className="mb-6 flex items-end justify-between gap-4">
               <div>
