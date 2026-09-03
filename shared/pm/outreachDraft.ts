@@ -372,60 +372,53 @@ Write the first Airbnb message now.`;
   return callClaude(system, user, 220);
 }
 
-/** Host is ready: stay in the Airbnb thread. Filters block numbers, emails, and "search us." */
+/** Host is ready: fixed open + short middle + business identity. No next-step menu. */
 export async function draftReadyClose(input: OutreachReplyInput): Promise<string> {
   const thread = trim(input.thread);
   const firstMessage = trim(input.first_message);
   const replyNote = trim(input.reply_note);
-  const [kb, learning] = await Promise.all([
-    kbBlock(kbQuery(input, `${thread.slice(0, 400)} ${replyNote} ready to work together`)),
-    learningBlock(),
-  ]);
-  const host = trim(input.host_name) || "the host";
-  const askedForContact =
-    /\b(phone|number|call|text|email|whatsapp|contact (you|info)|how do i reach|insta|instagram|@)\b/i.test(
-      `${thread} ${replyNote}`,
-    );
+  const host = trim(input.host_name);
+  const opening = host
+    ? `Great to hear you're ready to move forward, ${host}.`
+    : "Great to hear you're ready to move forward.";
+  const identity = "Our business is Mandel Realty Group in Toronto.";
 
-  const system = `You write the next Airbnb reply after a host is ready to work with Mandel Realty Group.
+  const system = `You write ONLY the middle sentence of an Airbnb reply.
 
 ${HUMAN_VOICE}
 
-Length: 2 to 4 short sentences.
-
 ${AIRBNB_RULES}
 
-Stay in this thread. That is the only message that will send.
-- Include this exact identity line, word for word: Our business is Mandel Realty Group in Toronto
-- Do not add search, Google, look us up, Instagram, @handles, phone, or email after it.
-- Then give one concrete next step they can answer here (photos vs pricing vs furniture, or a short plan in this chat).
-
-${
-  askedForContact
-    ? "They asked for a number, email, or social. Ignore that request in the wording. Do not explain the filter. Use the identity line above, then keep the work in this chat."
-    : "Move the conversation forward in this thread after the identity line."
-}
-
-Do not pitch the whole program again. Address ${host} naturally.`;
+Rules for this middle line only:
+- Exactly 1 short sentence (2 max if needed). No paragraph.
+- Warm and human. Acknowledge you can help with THEIR listing.
+- Do NOT say what we will do next. No photos vs pricing. No "next steps". No plan menu.
+- Do NOT ask a question.
+- Do NOT include a phone, email, Instagram, @handle, search, Google, or URL.
+- Do NOT include the opening "Great to hear..." line.
+- Do NOT include "Our business is Mandel Realty Group in Toronto."
+- Never use a personal name for our side (no Shane).`;
 
   const threadBlock = firstMessage
-    ? `OUR EARLIER MESSAGE:\n${firstMessage}\n\nHOST THREAD:\n${thread || "(Host said they want to move forward. Thread not pasted.)"}`
-    : `HOST THREAD:\n${thread || "(Host said they want to move forward.)"}`;
+    ? `OUR EARLIER MESSAGE:\n${firstMessage}\n\nHOST THREAD:\n${thread || "(Host is ready to move forward.)"}`
+    : `HOST THREAD:\n${thread || "(Host is ready to move forward.)"}`;
 
   const user = `LISTING CONTEXT:
 ${listingFacts(input)}
 
 ${replyNote ? `VA NOTE:\n${replyNote}\n\n` : ""}${threadBlock}
 
-KNOWLEDGE EXCERPTS:
-${kb}
+Write only the middle sentence now.`;
 
-LEARNING:
-${learning.text}
+  const middle = sanitizeOutreachMessage(await callClaude(system, user, 80));
+  const cleanedMiddle = middle
+    .replace(/^great to hear you're ready to move forward[^.]*\.\s*/i, "")
+    .replace(/\s*our business is mandel realty group in toronto\.?\s*$/i, "")
+    .trim();
 
-Write the close now.`;
-
-  return callClaude(system, user, 180);
+  return [opening, cleanedMiddle || "We're happy to help with the listing.", identity].join(
+    "\n\n",
+  );
 }
 
 export async function draftOutreachReply(
