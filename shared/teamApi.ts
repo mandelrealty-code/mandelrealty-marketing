@@ -282,6 +282,7 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
         staff_user_id: user.id,
         started_at: str(body.started_at) || str(body.start_at),
         ended_at: str(body.ended_at) || str(body.end_at),
+        work_date: str(body.work_date),
         note: str(body.note),
         task_id: taskId,
       });

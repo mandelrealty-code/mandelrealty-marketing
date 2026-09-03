@@ -82,13 +82,54 @@ function hoursFromLocalRange(startLocal: string, endLocal: string): number {
   return Math.round((minutes / 60) * 100) / 100;
 }
 
+/** Convert datetime-local value (browser local wall time) to UTC ISO for the API. */
+function localDatetimeToIso(local: string): string {
+  const d = new Date(local);
+  if (!Number.isFinite(d.getTime())) throw new Error("Invalid date or time.");
+  return d.toISOString();
+}
+
+/** Work date (YYYY-MM-DD) from datetime-local — employee's local calendar day. */
+function workDateFromLocalDatetime(local: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(local.trim());
+  if (m) return m[1];
+  return toDatetimeLocalValue(new Date(local)).slice(0, 10);
+}
+
+/** Monday of the current week in the employee's local timezone. */
+function weekStartLocalIso(): string {
+  const d = new Date();
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + diff);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function sumHoursThisWeekLocal(entries: TimeEntry[]): number {
+  const weekStart = weekStartLocalIso();
+  return entries
+    .filter((e) => e.work_date >= weekStart)
+    .reduce((sum, e) => sum + e.hours, 0);
+}
+
+function localTimezoneLabel(): string {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(
+      new Date(),
+    );
+    return parts.find((p) => p.type === "timeZoneName")?.value || "local time";
+  } catch {
+    return "local time";
+  }
+}
+
 function fmtEntryRange(e: TimeEntry): string {
   if (e.started_at && e.ended_at) {
     const start = new Date(e.started_at);
     const end = new Date(e.ended_at);
     if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())) {
       const opts: Intl.DateTimeFormatOptions = {
-        timeZone: "America/New_York",
         month: "2-digit",
         day: "2-digit",
         year: "numeric",
@@ -96,8 +137,8 @@ function fmtEntryRange(e: TimeEntry): string {
         minute: "2-digit",
         hour12: true,
       };
-      const sParts = new Intl.DateTimeFormat("en-US", opts).formatToParts(start);
-      const eParts = new Intl.DateTimeFormat("en-US", opts).formatToParts(end);
+      const sParts = new Intl.DateTimeFormat(undefined, opts).formatToParts(start);
+      const eParts = new Intl.DateTimeFormat(undefined, opts).formatToParts(end);
       const get = (parts: Intl.DateTimeFormatPart[], type: string) =>
         parts.find((p) => p.type === type)?.value || "";
       const date = `${get(sParts, "year")}-${get(sParts, "month")}-${get(sParts, "day")}`;
@@ -318,10 +359,10 @@ export function TeamApp() {
   const loadHours = useCallback(async () => {
     const data = await teamApi<{
       entries: TimeEntry[];
-      week_hours: number;
     }>("hours");
-    setEntries(data.entries ?? []);
-    setWeekHours(data.week_hours ?? 0);
+    const list = data.entries ?? [];
+    setEntries(list);
+    setWeekHours(sumHoursThisWeekLocal(list));
   }, []);
 
   useEffect(() => {
@@ -470,17 +511,18 @@ export function TeamApp() {
     try {
       const data = await teamApi<{
         entries: TimeEntry[];
-        week_hours: number;
       }>("log_hours", {
         method: "POST",
         body: {
-          started_at: startedAt,
-          ended_at: endedAt,
+          started_at: localDatetimeToIso(startedAt),
+          ended_at: localDatetimeToIso(endedAt),
+          work_date: workDateFromLocalDatetime(startedAt),
           note: hourNote,
         },
       });
-      setEntries(data.entries ?? []);
-      setWeekHours(data.week_hours ?? 0);
+      const list = data.entries ?? [];
+      setEntries(list);
+      setWeekHours(sumHoursThisWeekLocal(list));
       setHourNote("");
       const nextStart = endedAt;
       setStartedAt(nextStart);
@@ -542,13 +584,13 @@ export function TeamApp() {
     try {
       const data = await teamApi<{
         entries: TimeEntry[];
-        week_hours: number;
       }>("delete_hours", {
         method: "POST",
         body: { id },
       });
-      setEntries(data.entries ?? []);
-      setWeekHours(data.week_hours ?? 0);
+      const list = data.entries ?? [];
+      setEntries(list);
+      setWeekHours(sumHoursThisWeekLocal(list));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not delete entry.");
     } finally {
@@ -750,8 +792,13 @@ export function TeamApp() {
         ) : (
           <div>
             <div className="mb-6 flex items-end justify-between gap-4">
-              <h1 className="text-xl font-semibold tracking-tight">Log hours</h1>
-              <p className="text-[13px] text-[#9a9590]">
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">Log hours</h1>
+                <p className="mt-1 max-w-md text-[13px] text-[#9a9590]">
+                  These are not assigned hours — enter when you actually worked.
+                </p>
+              </div>
+              <p className="shrink-0 text-[13px] text-[#9a9590]">
                 This week ·{" "}
                 <span className="font-semibold text-[#f5f5f5]">
                   {weekHours % 1 === 0 ? weekHours : weekHours.toFixed(1)} hrs
@@ -760,7 +807,11 @@ export function TeamApp() {
             </div>
 
             <div className="mb-8 flex flex-col gap-4 border border-white/8 bg-[#141414] p-4">
-              <Field label="Start">
+              <p className="text-[12px] leading-relaxed text-[#6f6a65]">
+                Start and end default to the current time — change them to match when you
+                actually worked. Times are in your timezone ({localTimezoneLabel()}).
+              </p>
+              <Field label="When did you start?">
                 <BrandedDateTimeInput
                   value={startedAt}
                   onChange={(e) => {
@@ -772,7 +823,7 @@ export function TeamApp() {
                   }}
                 />
               </Field>
-              <Field label="End">
+              <Field label="When did you finish?">
                 <BrandedDateTimeInput
                   value={endedAt}
                   onChange={(e) => setEndedAt(e.target.value)}

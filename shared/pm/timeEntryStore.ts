@@ -60,11 +60,22 @@ function mapEntry(
   };
 }
 
-/** Parse local `YYYY-MM-DDTHH:mm` or ISO into Date. */
+/** Parse ISO (with offset/Z) or legacy `YYYY-MM-DDTHH:mm` wall time. */
+export function parseDateTimeInput(raw: string): Date | null {
+  const s = str(raw);
+  if (!s) return null;
+  // ISO from browser (preferred) — absolute instant, timezone-safe on server
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s) && (s.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(s))) {
+    const dt = new Date(s);
+    return Number.isFinite(dt.getTime()) ? dt : null;
+  }
+  return parseLocalDateTime(s);
+}
+
+/** Legacy: parse `YYYY-MM-DDTHH:mm` as server-local wall time (avoid for new clients). */
 export function parseLocalDateTime(raw: string): Date | null {
   const s = str(raw);
   if (!s) return null;
-  // datetime-local style (no Z) — treat as local wall time
   const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s);
   if (m) {
     const y = Number(m[1]);
@@ -174,11 +185,12 @@ export async function createTimeEntry(input: {
   staff_user_id: string;
   started_at: string;
   ended_at: string;
+  work_date?: string;
   note?: string;
   task_id?: string | null;
 }): Promise<PmTimeEntry> {
-  const start = parseLocalDateTime(input.started_at);
-  const end = parseLocalDateTime(input.ended_at);
+  const start = parseDateTimeInput(input.started_at);
+  const end = parseDateTimeInput(input.ended_at);
   if (!start || !end) {
     throw new Error("Start and end date/time are required.");
   }
@@ -190,7 +202,9 @@ export async function createTimeEntry(input: {
     throw new Error("Shift must be between 1 minute and 48 hours.");
   }
 
-  const workDate = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
+  const workDate =
+    str(input.work_date).slice(0, 10) ||
+    `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}-${String(start.getUTCDate()).padStart(2, "0")}`;
   const startedIso = start.toISOString();
   const endedIso = end.toISOString();
 
