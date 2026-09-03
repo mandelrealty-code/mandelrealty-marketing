@@ -535,13 +535,21 @@ export function MuskokaLandingPage() {
         {/* NAV */}
         <header className="mk-glass-nav sticky top-0 z-40 px-5 py-3.5 sm:px-10">
           <div className="flex items-center justify-between gap-4">
-            <a href="/muskoka" className="flex items-baseline gap-3 no-underline">
-              <span className="text-[11px] font-light uppercase tracking-[0.28em] text-[var(--mk-paper)] sm:text-[13px] sm:tracking-[0.3em]">
-                Mandel Realty Group
-              </span>
-              <span className="hidden h-3.5 w-px bg-white/20 sm:inline-block" aria-hidden />
-              <span className="mk-serif hidden text-lg italic text-[var(--mk-lake)] sm:inline">
-                Muskoka
+            <a href="/muskoka" className="flex items-center gap-2.5 no-underline sm:gap-3">
+              <img
+                src="/mrg-logo-white.png"
+                alt=""
+                aria-hidden
+                className="h-7 w-7 shrink-0 rounded-[3px] object-contain sm:h-8 sm:w-8"
+              />
+              <span className="flex items-baseline gap-2.5 sm:gap-3">
+                <span className="text-[11px] font-light uppercase tracking-[0.22em] text-[var(--mk-paper)] sm:text-[13px] sm:tracking-[0.3em]">
+                  Mandel Realty Group
+                </span>
+                <span className="hidden h-3.5 w-px bg-white/20 sm:inline-block" aria-hidden />
+                <span className="mk-serif hidden text-lg italic text-[var(--mk-lake)] sm:inline">
+                  Muskoka
+                </span>
               </span>
             </a>
 
