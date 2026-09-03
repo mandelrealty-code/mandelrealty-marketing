@@ -378,6 +378,7 @@ export function TeamApp() {
   const [outreachSessions, setOutreachSessions] = useState<OutreachSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [outreachFirstMessage, setOutreachFirstMessage] = useState("");
+  const [outreachLearningNote, setOutreachLearningNote] = useState("");
   const [startedAt, setStartedAt] = useState(() => defaultStartLocal());
   const [endedAt, setEndedAt] = useState(() => defaultEndLocal(defaultStartLocal()));
   const [hourNote, setHourNote] = useState("");
@@ -502,6 +503,7 @@ export function TeamApp() {
     setOutreachError("");
     setOutreachCopied(false);
     setOutreachEditContext(false);
+    setOutreachLearningNote("");
     setOutreachMode("new");
   }, []);
 
@@ -699,10 +701,15 @@ export function TeamApp() {
     setOutreachError("");
     setOutreachMessage("");
     setOutreachCopied(false);
+    setOutreachLearningNote("");
     try {
       const op =
         outreachMode === "reply" ? "draft_outreach_reply" : "draft_outreach";
-      const data = await teamApi<{ message: string }>(op, {
+      const data = await teamApi<{
+        message: string;
+        learned_outcome?: string | null;
+        learning_saved?: boolean;
+      }>(op, {
         method: "POST",
         body: {
           host_name: outreachHostName,
@@ -735,6 +742,21 @@ export function TeamApp() {
         });
       } else {
         persistOutreachSession({ id: activeSessionId || undefined });
+        if (data.learning_saved && data.learned_outcome) {
+          const labels: Record<string, string> = {
+            interested: "Saved: host seemed interested — future drafts will lean this way.",
+            soft: "Saved: soft reply — we’ll keep the tone lighter next time.",
+            not_interested:
+              "Saved: host wasn’t interested — we’ll avoid this pattern.",
+          };
+          setOutreachLearningNote(
+            labels[data.learned_outcome] || "Host reply saved for learning.",
+          );
+        } else if (data.learned_outcome) {
+          setOutreachLearningNote(
+            "Already learned from this thread (or recently saved).",
+          );
+        }
       }
     } catch (e) {
       setOutreachError(e instanceof Error ? e.message : "Could not generate message.");
@@ -1334,6 +1356,7 @@ export function TeamApp() {
                         setOutreachMode("reply");
                         setOutreachMessage("");
                         setOutreachCopied(false);
+                        setOutreachLearningNote("");
                       }}
                       className="text-[13px] font-semibold text-[#9a9590] hover:text-[#f5f5f5]"
                     >
@@ -1341,6 +1364,9 @@ export function TeamApp() {
                     </button>
                   ) : null}
                 </div>
+                {outreachLearningNote ? (
+                  <p className="mt-2 text-[12px] text-[#4ea882]">{outreachLearningNote}</p>
+                ) : null}
               </div>
             ) : null}
           </div>

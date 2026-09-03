@@ -359,15 +359,21 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
       };
 
       try {
-        const message =
-          op === "draft_outreach_reply"
-            ? await draftOutreachReply({
-                ...listing,
-                thread: str(body.thread) || str(body.reply),
-                first_message: str(body.first_message),
-                reply_note: str(body.reply_note),
-              })
-            : await draftFirstOutreach(listing);
+        if (op === "draft_outreach_reply") {
+          const result = await draftOutreachReply({
+            ...listing,
+            thread: str(body.thread) || str(body.reply),
+            first_message: str(body.first_message),
+            reply_note: str(body.reply_note),
+            staff_user_id: user.id,
+          });
+          return res.status(200).json({
+            message: result.message,
+            learned_outcome: result.learned_outcome ?? null,
+            learning_saved: Boolean(result.learning_saved),
+          });
+        }
+        const message = await draftFirstOutreach(listing);
         return res.status(200).json({ message });
       } catch (aiErr) {
         if (aiErr instanceof OutreachDraftError) {
