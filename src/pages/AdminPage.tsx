@@ -2033,7 +2033,7 @@ export function AdminPage() {
                                 : "CRM call (recorded)"}
                           </span>
                           <span className="text-sm font-semibold text-[#dcc084]">
-                            You {operatorCallbackPhone || "—"}
+                            You {selected.phone}
                           </span>
                         </span>
                         <span className="text-[12.5px] leading-snug text-[#7d7873]">
@@ -2882,7 +2882,7 @@ export function AdminPage() {
                 {callBusy ? "Starting…" : selectedPreCallDone ? "CRM call again" : "CRM call"}
               </span>
               <span className="text-[12.5px] font-semibold text-[#dcc084]">
-                You {operatorCallbackPhone || "—"}
+                You {selected.phone}
               </span>
             </span>
             <span className="mt-1 block text-[12px] leading-snug text-[#7d7873]">
@@ -3955,9 +3955,9 @@ export function AdminPage() {
                             : "CRM call (recorded)"}
                       </span>
                       <span className="text-[13px] font-normal text-[#6f6a65]">
-                        {operatorCallbackPhone
-                          ? `You ${operatorCallbackPhone}`
-                          : "Set phone in Settings"}
+                        {leadPhoneUsable(actionLead.phone)
+                          ? `You ${actionLead.phone}`
+                          : "Add lead phone"}
                       </span>
                     </span>
                     <span className="text-[12.5px] leading-snug text-[#7d7873]">
