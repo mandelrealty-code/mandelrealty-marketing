@@ -26,6 +26,20 @@ function fmtHours(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1);
 }
 
+/** Admin-only: last signed-in, local timezone. */
+function fmtLastSignIn(iso: string | null | undefined): string {
+  if (!iso) return "Never signed in";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "Never signed in";
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function daysAgoIso(days: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - days);
@@ -237,13 +251,14 @@ export function EmployeesPanel({
               <p className="mt-1 text-[13px] text-[#9a9590]">
                 {selected.email} · /team/{selected.slug}
               </p>
-              <p className="mt-0.5 text-[12px] text-[#6f6a65]">
-                {selected.last_login_at
-                  ? `Last login ${selected.last_login_at.slice(0, 10)}`
-                  : selected.invited_at
-                    ? `Invited ${selected.invited_at.slice(0, 10)}`
-                    : "Not invited yet"}
+              <p className="mt-2 text-[13px] font-semibold text-[#f5f5f5]">
+                Last signed in · {fmtLastSignIn(selected.last_login_at)}
               </p>
+              {!selected.last_login_at && selected.invited_at ? (
+                <p className="mt-0.5 text-[12px] text-[#6f6a65]">
+                  Invited {fmtLastSignIn(selected.invited_at)}
+                </p>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-3">
               <a
@@ -356,12 +371,11 @@ export function EmployeesPanel({
                     <p className="truncate text-[12px] text-[#6f6a65]">
                       {u.email} · /team/{u.slug}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-[#6f6a65]">
-                      {u.last_login_at
-                        ? `Last login ${u.last_login_at.slice(0, 10)}`
-                        : u.invited_at
-                          ? `Invited ${u.invited_at.slice(0, 10)}`
-                          : "Not invited"}
+                    <p className="mt-1 text-[12px] text-[#9a9590]">
+                      Last signed in ·{" "}
+                      <span className="text-[#f5f5f5]">
+                        {fmtLastSignIn(u.last_login_at)}
+                      </span>
                     </p>
                   </div>
                   <div className="shrink-0 text-right">

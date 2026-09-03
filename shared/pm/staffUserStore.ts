@@ -241,3 +241,16 @@ export function publicStaffUser(user: StaffUser) {
     active: user.active,
   };
 }
+
+/** Employee portal response — never expose login/invite timestamps to them. */
+export function staffUserForEmployee(user: StaffUser) {
+  return {
+    id: user.id,
+    email: user.email,
+    slug: user.slug,
+    display_name: user.display_name,
+    first_name: user.first_name,
+    must_change_password: user.must_change_password,
+    active: user.active,
+  };
+}

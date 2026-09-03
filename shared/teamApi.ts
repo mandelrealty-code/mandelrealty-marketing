@@ -11,7 +11,7 @@ import {
 import {
   getStaffUserById,
   getStaffUserBySlug,
-  publicStaffUser,
+  staffUserForEmployee,
   setStaffPassword,
   touchStaffLogin,
   type StaffUser,
@@ -103,7 +103,7 @@ async function staffBootstrapPublic(slug: string) {
 }
 
 async function staffBootstrapAuthed(user: StaffUser) {
-  return { user: publicStaffUser(user) };
+  return { user: staffUserForEmployee(user) };
 }
 
 async function requireStaff(
@@ -213,7 +213,7 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
       const payload = await staffBootstrapAuthed(user);
       return res.status(200).json({
         ok: true,
-        user: publicStaffUser(user),
+        user: staffUserForEmployee(user),
         must_change_password: user.must_change_password,
         bootstrap: payload,
       });
@@ -233,7 +233,7 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
         return res.status(400).json({ error: "Passwords do not match." });
       }
       const updated = await setStaffPassword(user.id, password);
-      return res.status(200).json({ ok: true, user: publicStaffUser(updated) });
+      return res.status(200).json({ ok: true, user: staffUserForEmployee(updated) });
     }
 
     if (op === "update_task") {

@@ -130,7 +130,8 @@ export async function sendStaffInviteEmail(input: {
       Welcome to the MRG team, ${esc(input.firstName)}
     </div>
     <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 16px;">
-      Your team portal is ready. Sign in to see assigned tasks and log your hours.
+      Your team portal is ready. After you sign in you’ll only see <strong style="color:#f5f5f5;font-weight:600">your</strong> assigned tasks and a place to log hours (so we can match what you track on Upwork).
+      I’ll update the SOP documents for you to start your first task in the morning — check the portal once they’re ready.
     </p>
     ${passwordBlock(code, portalWithCode)}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -165,7 +166,8 @@ export async function sendStaffInviteEmail(input: {
   const text = [
     `Welcome to the MRG team, ${input.firstName}`,
     "",
-    "Your team portal is ready. Sign in to see assigned tasks and log your hours.",
+    "Your team portal is ready. After you sign in you’ll only see your assigned tasks and a place to log hours (so we can match what you track on Upwork).",
+    "I’ll update the SOP documents for you to start your first task in the morning — check the portal once they’re ready.",
     "",
     "Your temporary sign-in code:",
     "",
