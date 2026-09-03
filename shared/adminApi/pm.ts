@@ -108,6 +108,7 @@ import {
 } from "../pm/teamStore.js";
 import {
   createOrRefreshStaffInvite,
+  deleteStaffUser,
   listStaffUsers,
   publicStaffUser,
 } from "../pm/staffUserStore.js";
@@ -1352,6 +1353,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             email_sent: mail.ok,
             email_error: mail.ok ? null : mail.message || "Email failed",
           });
+        }
+      }
+
+      if (resource === "staff_users") {
+        if (op === "delete") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          await deleteStaffUser(id);
+          return res.status(200).json({ ok: true });
         }
       }
 

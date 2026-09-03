@@ -228,6 +228,17 @@ export async function touchStaffLogin(userId: string): Promise<void> {
     .eq("id", userId);
 }
 
+export async function deleteStaffUser(id: string): Promise<void> {
+  const clean = id.trim();
+  if (!clean) throw new Error("id required.");
+  const { error } = await db().from("staff_users").delete().eq("id", clean);
+  if (error) {
+    const mapped = missingTableError(error);
+    if (mapped) throw mapped;
+    throw error;
+  }
+}
+
 export function publicStaffUser(user: StaffUser) {
   return {
     id: user.id,

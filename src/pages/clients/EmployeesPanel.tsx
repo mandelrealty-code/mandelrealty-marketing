@@ -171,6 +171,24 @@ export function EmployeesPanel({
     }
   };
 
+  const deleteEmployee = async (u: StaffRow) => {
+    const ok = window.confirm(
+      `Delete ${u.display_name}? They’ll lose portal access and their logged hours will be removed.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await pmPost("staff_users", { op: "delete", id: u.id });
+      onToast?.(`Deleted ${u.display_name}`);
+      onSelect(null);
+      await loadList();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not delete employee.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const inviteSheet = inviteOpen ? (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center">
       <button
@@ -276,6 +294,14 @@ export function EmployeesPanel({
                 className="text-[13px] font-semibold text-[#9a9590] hover:text-[#c4a35a]"
               >
                 Resend invite
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void deleteEmployee(selected)}
+                className="text-[13px] font-semibold text-[#cf7f7b] hover:text-[#e8a09c]"
+              >
+                Delete
               </button>
             </div>
           </div>
