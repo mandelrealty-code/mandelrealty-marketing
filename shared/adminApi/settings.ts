@@ -127,7 +127,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       patch.lead_notify_phone = body.lead_notify_phone;
     }
     if (typeof body.operator_callback_phone === "string") {
-      patch.operator_callback_phone = body.operator_callback_phone;
+      const { toE164, isCompanyTwilioPhone } = await import("../followUpSequences.js");
+      const raw = body.operator_callback_phone.trim();
+      if (!raw) {
+        patch.operator_callback_phone = "";
+      } else {
+        const e164 = toE164(raw);
+        if (!e164) {
+          return res.status(400).json({
+            error: "Enter a valid CA/US cell number for the callback phone.",
+          });
+        }
+        if (isCompanyTwilioPhone(e164)) {
+          return res.status(400).json({
+            error:
+              "Callback phone must be your personal cell — not the Mandel Realty Twilio line (+1 647-381-7325).",
+          });
+        }
+        patch.operator_callback_phone = e164;
+      }
     }
 
     if (Object.keys(patch).length === 0) {

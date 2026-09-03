@@ -4,6 +4,7 @@ import {
   type LeadStatus,
   type OfferPath,
 } from "./crmTypes.js";
+import { isCompanyTwilioPhone } from "./followUpSequences.js";
 import {
   PERMIT_OPTIONS,
   PROPERTY_STAGES,
@@ -352,10 +353,16 @@ export function parseMetaLeadPaste(raw: string): ParsedMetaLead {
     rawAnswers,
   });
 
+  let safePhone = phone;
+  if (phone && isCompanyTwilioPhone(phone)) {
+    warnings.push("Phone looked like Mandel Realty Twilio line — left blank for manual entry");
+    safePhone = "";
+  }
+
   return {
     name,
     email,
-    phone,
+    phone: safePhone,
     address: cityRaw?.trim() || "",
     hasListing,
     propertyStage,

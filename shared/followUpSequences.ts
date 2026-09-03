@@ -90,6 +90,23 @@ export function toE164(phone: string): string | null {
   return null;
 }
 
+/** Mandel Realty Twilio / public business line — never a lead or operator callback. */
+const KNOWN_COMPANY_PHONE_DIGITS = new Set(["6473817325"]);
+
+export function companyPhoneDigits(): string[] {
+  const fromEnv = normalizePhoneDigits(process.env.TWILIO_PHONE_NUMBER || "");
+  const out = [...KNOWN_COMPANY_PHONE_DIGITS];
+  if (fromEnv && !out.includes(fromEnv)) out.push(fromEnv);
+  return out;
+}
+
+/** True if this number is our Twilio / public MRG line (not a client, not your cell). */
+export function isCompanyTwilioPhone(phone: string | null | undefined): boolean {
+  const digits = normalizePhoneDigits(phone || "");
+  if (!digits) return false;
+  return companyPhoneDigits().includes(digits);
+}
+
 export function isTwilioConfigured(env: {
   TWILIO_ACCOUNT_SID?: string;
   TWILIO_AUTH_TOKEN?: string;

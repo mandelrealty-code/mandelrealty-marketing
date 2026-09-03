@@ -3,6 +3,7 @@ import {
   inferOfferPath,
   type OfferPath,
 } from "./crmTypes.js";
+import { isCompanyTwilioPhone } from "./followUpSequences.js";
 import {
   PERMIT_OPTIONS,
   PROPERTY_STAGES,
@@ -273,10 +274,17 @@ export function parseMetaLeadWebhook(
     return { error: "Need at least email or phone from Make payload." };
   }
 
+  // Never store our Twilio / public MRG line as the lead's phone
+  let leadPhone = phone || "unknown";
+  if (phone && isCompanyTwilioPhone(phone)) {
+    warnings.push("Phone looked like Mandel Realty Twilio line — left blank for manual entry");
+    leadPhone = "unknown";
+  }
+
   return {
     name: name || "Meta lead",
     email: email || `${phone.replace(/\D/g, "") || "unknown"}@meta-lead.local`,
-    phone: phone || "unknown",
+    phone: leadPhone,
     address: city || "",
     hasListing,
     propertyStage,

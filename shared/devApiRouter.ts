@@ -677,11 +677,18 @@ export async function handleDevApi(
         patch.status = status;
       }
       if (body.phone !== undefined || body.phone_number !== undefined) {
-        const { toE164 } = await import("./followUpSequences.js");
+        const { toE164, isCompanyTwilioPhone } = await import("./followUpSequences.js");
         const raw = String(body.phone ?? body.phone_number ?? "").trim();
         const e164 = toE164(raw);
         if (!e164) {
           json(res, 400, { error: "Enter a valid CA/US phone number." });
+          return true;
+        }
+        if (isCompanyTwilioPhone(e164)) {
+          json(res, 400, {
+            error:
+              "That is the Mandel Realty Twilio number. Enter the client's phone number.",
+          });
           return true;
         }
         patch.phone = e164;
@@ -874,7 +881,27 @@ export async function handleDevApi(
         patch.lead_notify_phone = body.lead_notify_phone;
       }
       if (typeof body.operator_callback_phone === "string") {
-        patch.operator_callback_phone = body.operator_callback_phone;
+        const { toE164, isCompanyTwilioPhone } = await import("./followUpSequences.js");
+        const raw = body.operator_callback_phone.trim();
+        if (!raw) {
+          patch.operator_callback_phone = "";
+        } else {
+          const e164 = toE164(raw);
+          if (!e164) {
+            json(res, 400, {
+              error: "Enter a valid CA/US cell number for the callback phone.",
+            });
+            return true;
+          }
+          if (isCompanyTwilioPhone(e164)) {
+            json(res, 400, {
+              error:
+                "Callback phone must be your personal cell — not the Mandel Realty Twilio line (+1 647-381-7325).",
+            });
+            return true;
+          }
+          patch.operator_callback_phone = e164;
+        }
       }
       if (Object.keys(patch).length === 0) {
         json(res, 400, {

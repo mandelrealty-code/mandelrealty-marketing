@@ -2,7 +2,7 @@
  * CRM click-to-call: pre-call SMS → dial operator → bridge to lead → record.
  */
 import { getCrmSettings } from "./crmSettings.js";
-import { isTwilioConfigured, toE164 } from "./followUpSequences.js";
+import { isCompanyTwilioPhone, isTwilioConfigured, toE164 } from "./followUpSequences.js";
 import { getLeadById, updateLeadCrm } from "./leadStore.js";
 import { createLeadCall, getLatestLeadCallForLead, getLeadCallById, listRecentLeadCalls, updateLeadCall } from "./leadCalls.js";
 import { listSmsForLead, logSmsMessage } from "./smsStore.js";
@@ -64,6 +64,13 @@ export async function startClickToCall(input: {
 
   const leadPhone = toE164(lead.phone || "");
   if (!leadPhone) return { ok: false, error: "Lead has no valid phone number." };
+  if (isCompanyTwilioPhone(leadPhone)) {
+    return {
+      ok: false,
+      error:
+        "Lead phone is set to the Mandel Realty Twilio number. Enter the client's number, then try again.",
+    };
+  }
 
   const settings = await getCrmSettings();
   const operatorPhone = toE164(
@@ -73,6 +80,13 @@ export async function startClickToCall(input: {
     return {
       ok: false,
       error: "Set your callback phone in Settings (CRM calls) first.",
+    };
+  }
+  if (isCompanyTwilioPhone(operatorPhone)) {
+    return {
+      ok: false,
+      error:
+        "Callback phone cannot be the Mandel Realty Twilio line. Set your personal cell in Settings → CRM calls.",
     };
   }
 

@@ -231,11 +231,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       patch.status = status;
     }
     if (body.phone !== undefined || body.phone_number !== undefined) {
-      const { toE164 } = await import("../followUpSequences.js");
+      const { toE164, isCompanyTwilioPhone } = await import("../followUpSequences.js");
       const raw = String(body.phone ?? body.phone_number ?? "").trim();
       const e164 = toE164(raw);
       if (!e164) {
         return res.status(400).json({ error: "Enter a valid CA/US phone number." });
+      }
+      if (isCompanyTwilioPhone(e164)) {
+        return res.status(400).json({
+          error:
+            "That is the Mandel Realty Twilio number. Enter the client's phone number.",
+        });
       }
       patch.phone = e164;
     }
