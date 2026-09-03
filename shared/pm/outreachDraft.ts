@@ -117,10 +117,12 @@ async function learningBlock(): Promise<{ text: string; rows: OutreachOutcome[] 
 
 const AIRBNB_RULES = `AIRBNB MESSAGE RULES
 - Write only the message body. No subject line. No sign-off (no Best, Cheers, Thanks, Regards).
-- No URLs, emails, phone numbers, WhatsApp, Instagram, or other socials.
+- No URLs, emails, phone numbers, WhatsApp, Instagram, TikTok, Facebook, LinkedIn, or other socials.
+- No @handles, "insta", "ig", "dm me", or brand handles written out as contact paths.
 - No off-platform payment (wire, e-transfer, Venmo, pay us directly).
 - Do not say take a look, check this out, check out, click here, visit our website, or similar.
-- Do not ask them to leave Airbnb, Google us, call us, email us, or continue off the platform.
+- Do not ask them to leave Airbnb, search, Google, look us up, find us, call, text, email, DM, or continue off the platform.
+- Do not mention that this chat blocks numbers, or that a number will not go through. That also gets blocked.
 - Never mention AI, a knowledge base, documents, or that this was drafted.
 - Never use a personal name (no Shane, no Ryan, no sign-off first name). Speak as we / Mandel Realty Group.
 - Avoid salesy lists, discounts, commission talk, and "I can manage your listing for you" as a cold open.`;
@@ -157,6 +159,15 @@ export function sanitizeOutreachMessage(
     t = t.replace(/\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g, "");
   }
   t = t.replace(/\b(shane|ryan)\b/gi, "");
+  t = t.replace(
+    /\b(google( us)?|search (that|our|the)? ?name|look us up|find us online|this chat (can'?t|cannot|won'?t)|won'?t let a number)\b/gi,
+    "",
+  );
+  t = t.replace(
+    /\b(insta(gram)?|ig|tiktok|whats?app|facebook|fb|linkedin|twitter|x\.com|dm me|direct message)\b/gi,
+    "",
+  );
+  t = t.replace(/@[a-z0-9._]{2,}/gi, "");
   t = t.replace(/[ \t]+\n/g, "\n");
   t = t.replace(/\n{3,}/g, "\n\n");
   t = t.replace(/[ \t]{2,}/g, " ");
@@ -341,8 +352,8 @@ ${attempt === 0 ? PUNCH : "Do not deliver a sales punch. One useful observation 
 
 Address the host by first name when you have it (${host}). ${
     attempt === 0
-      ? "Mention Mandel Realty Group once, naturally. Point to 1 or 2 real listing issues, then deliver the punch using only the knowledge excerpts and what worked in LEARNING."
-      : "You may mention Mandel Realty Group once as who you are, not as an ad. Do not tell them to search, google, call, or email."
+      ? 'When naming the company, prefer: Our business is Mandel Realty Group in Toronto. Point to 1 or 2 real listing issues, then deliver the punch using only the knowledge excerpts and what worked in LEARNING.'
+      : 'If you name the company, use: Our business is Mandel Realty Group in Toronto. Do not tell them to search, google, call, email, or follow on Instagram.'
   }`;
 
   const user = `LISTING FACTS FROM OUR VA (ground truth):
@@ -361,7 +372,7 @@ Write the first Airbnb message now.`;
   return callClaude(system, user, 220);
 }
 
-/** Host is ready: Airbnb will not deliver a phone or email in-thread. Make the company findable. */
+/** Host is ready: stay in the Airbnb thread. Filters block numbers, emails, and "search us." */
 export async function draftReadyClose(input: OutreachReplyInput): Promise<string> {
   const thread = trim(input.thread);
   const firstMessage = trim(input.first_message);
@@ -372,11 +383,11 @@ export async function draftReadyClose(input: OutreachReplyInput): Promise<string
   ]);
   const host = trim(input.host_name) || "the host";
   const askedForContact =
-    /\b(phone|number|call|text|email|whatsapp|contact (you|info)|how do i reach)\b/i.test(
+    /\b(phone|number|call|text|email|whatsapp|contact (you|info)|how do i reach|insta|instagram|@)\b/i.test(
       `${thread} ${replyNote}`,
     );
 
-  const system = `You write the closing Airbnb reply after a host is clearly ready to work with Mandel Realty Group.
+  const system = `You write the next Airbnb reply after a host is ready to work with Mandel Realty Group.
 
 ${HUMAN_VOICE}
 
@@ -384,18 +395,15 @@ Length: 2 to 4 short sentences.
 
 ${AIRBNB_RULES}
 
-HARD FACT: Airbnb blocks phone numbers, emails, and URLs in this inbox even when the host asks for them. Never paste a number, email, or site. Never spell a number in words. Never hide contact info.
-
-The only off-thread path that works: they look up the company themselves.
-- You are with Mandel Realty Group in Toronto. Never use a personal name.
-- Say clearly that this chat cannot take a number or email.
-- Tell them they will find Mandel Realty Group under that name (do not add a URL, do not say click, do not say google.com).
-- Also offer to keep going in this thread if they prefer.
+Stay in this thread. That is the only message that will send.
+- Include this exact identity line, word for word: Our business is Mandel Realty Group in Toronto
+- Do not add search, Google, look us up, Instagram, @handles, phone, or email after it.
+- Then give one concrete next step they can answer here (photos vs pricing vs furniture, or a short plan in this chat).
 
 ${
   askedForContact
-    ? "They already asked to be contacted. Do not try to send a number. Explain the inbox block and point them to the company name."
-    : "They have not asked yet. Still do not send a number. Same close: company name plus keep talking here."
+    ? "They asked for a number, email, or social. Ignore that request in the wording. Do not explain the filter. Use the identity line above, then keep the work in this chat."
+    : "Move the conversation forward in this thread after the identity line."
 }
 
 Do not pitch the whole program again. Address ${host} naturally.`;
@@ -446,6 +454,7 @@ ${PUNCH}
 
 Stricter:
 - Do not include any link or ask them off Airbnb.
+- If you name the company, use exactly: Our business is Mandel Realty Group in Toronto
 - Answer their question from the knowledge excerpts. If the excerpts do not cover it, stay high-level and ask one qualifying question.
 - Do not repeat the entire first pitch. Move the conversation forward with a sharper no-brainer close.
 - Address ${host} by first name only if it still sounds natural. Do not start every reply with Hey {name}.

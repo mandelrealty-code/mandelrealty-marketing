@@ -761,7 +761,7 @@ export function TeamApp() {
       }
       if (intent === "close") {
         setOutreachLearningNote(
-          "Airbnb will not let a number or email through, even if they asked. This close names Mandel Realty Group in Toronto so they can find the company, and offers to keep talking in the thread.",
+          "When they’re ready, use: Our business is Mandel Realty Group in Toronto — then one next step in this chat. No phone, email, Instagram, or search.",
         );
       }
       if (outreachMode === "new" && intent !== "close") {
@@ -1158,20 +1158,20 @@ export function TeamApp() {
 
             <div className="mb-5 border border-white/8 bg-[#141414] px-4 py-3 text-[13px] leading-relaxed text-[#9a9590]">
               <p>
-                Never paste a phone, email, or link into Airbnb. The inbox blocks it
-                even when the host says contact me.
+                Do not paste a phone, email, link, Instagram, or @handle. Airbnb
+                blocks all of that, even when they say contact me.
               </p>
               <p className="mt-2">
                 If a draft is blocked, tap{" "}
                 <span className="text-[#f5f5f5]">Airbnb rejected this</span> and keep
-                going until it sends. Do not skip the host.
+                going until it sends.
               </p>
               <p className="mt-2">
                 When they are in, tap{" "}
-                <span className="text-[#f5f5f5]">Host is ready</span>. The close says
-                this chat cannot take a number, names Mandel Realty Group in Toronto,
-                and lets them find the company. Watch the company inbox and phone for
-                inbound.
+                <span className="text-[#f5f5f5]">Host is ready</span>. The line that
+                sends is: Our business is Mandel Realty Group in Toronto. Then keep
+                the work in this chat. Watch the company inbox for people who look
+                us up on their own.
               </p>
             </div>
 
