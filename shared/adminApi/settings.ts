@@ -127,11 +127,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       patch.lead_notify_phone = body.lead_notify_phone;
     }
     if (typeof body.operator_callback_phone === "string") {
-      const {
-        toE164,
-        isPublicBusinessPhone,
-        isTwilioSenderPhone,
-      } = await import("../followUpSequences.js");
+      const { toE164, isTwilioSenderPhone } = await import("../followUpSequences.js");
       const raw = body.operator_callback_phone.trim();
       if (!raw) {
         patch.operator_callback_phone = "";
@@ -139,19 +135,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const e164 = toE164(raw);
         if (!e164) {
           return res.status(400).json({
-            error: "Enter a valid CA/US cell number for the callback phone.",
+            error: "Enter a valid CA/US phone number for the callback.",
           });
         }
         if (isTwilioSenderPhone(e164)) {
           return res.status(400).json({
             error:
-              "Callback phone must be your personal cell — not the Twilio SMS/voice number.",
-          });
-        }
-        if (isPublicBusinessPhone(e164)) {
-          return res.status(400).json({
-            error:
-              "Callback phone must be your personal cell — not the public business line (647-381-7325).",
+              "Callback cannot be the Twilio SMS/voice number. Use the MRG business line (647-381-7325) or a personal cell.",
           });
         }
         patch.operator_callback_phone = e164;

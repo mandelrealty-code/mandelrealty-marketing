@@ -132,9 +132,9 @@ function leadPhoneUsable(phone: string | null | undefined): boolean {
   return Boolean(telHref(p));
 }
 
-function isBadOperatorCallback(phone: string | null | undefined): boolean {
+function isTwilioSenderDigits(phone: string | null | undefined): boolean {
   const digits = (phone || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
-  return digits === "6473817325" || digits === "2896724026";
+  return digits === "2896724026";
 }
 
 function leadHadPreCallSms(
@@ -2033,13 +2033,13 @@ export function AdminPage() {
                                 : "CRM call (recorded)"}
                           </span>
                           <span className="text-sm font-semibold text-[#dcc084]">
-                            Your cell {operatorCallbackPhone || "—"}
+                            You {operatorCallbackPhone || "—"}
                           </span>
                         </span>
                         <span className="text-[12.5px] leading-snug text-[#7d7873]">
                           {selectedPreCallDone
-                            ? `Rings your cell (${operatorCallbackPhone || "Settings"}), then connects the lead ${selected.phone}. No new text.`
-                            : `Texts the lead once, rings your cell (${operatorCallbackPhone || "set in Settings"}), then connects them. Recorded.`}
+                            ? `Rings you (${operatorCallbackPhone || "Settings"}), then connects the lead ${selected.phone}. No new text.`
+                            : `Texts the lead once, rings you (${operatorCallbackPhone || "set in Settings"}), then connects them. Recorded.`}
                         </span>
                       </button>
                       <a
@@ -2048,10 +2048,10 @@ export function AdminPage() {
                       >
                         <span className="flex w-full items-center justify-between gap-3">
                           <span className="text-sm font-medium text-[#f0eeea]">
-                            Dial lead from this phone
+                            Dial from this phone
                           </span>
                           <span className="text-sm font-medium text-[#9a9590]">
-                            Lead {selected.phone}
+                            {selected.phone}
                           </span>
                         </span>
                         <span className="text-[12.5px] leading-snug text-[#7d7873]">
@@ -2067,14 +2067,13 @@ export function AdminPage() {
                   )}
                   {leadPhoneUsable(selected.phone) && !operatorCallbackPhone && (
                     <p className="bg-[#1a1a1a] px-3.5 py-2.5 text-[12.5px] text-[#d9ac63]">
-                      Set your personal cell in Settings → CRM calls first (not the Twilio
-                      number or public business line).
+                      Set your callback phone in Settings → CRM calls first.
                     </p>
                   )}
-                  {isBadOperatorCallback(operatorCallbackPhone) && (
+                  {isTwilioSenderDigits(operatorCallbackPhone) && (
                     <p className="bg-[#1a1a1a] px-3.5 py-2.5 text-[12.5px] text-[#cf7f7b]">
-                      Callback is set to a Mandel Realty company number. Change it to your
-                      personal cell in Settings → CRM calls, or CRM calls will be blocked.
+                      Callback is set to the Twilio SMS number. Use the MRG business line
+                      (647-381-7325) or a cell instead.
                     </p>
                   )}
                   {selected.email && (
@@ -2883,13 +2882,13 @@ export function AdminPage() {
                 {callBusy ? "Starting…" : selectedPreCallDone ? "CRM call again" : "CRM call"}
               </span>
               <span className="text-[12.5px] font-semibold text-[#dcc084]">
-                Your cell {operatorCallbackPhone || "—"}
+                You {operatorCallbackPhone || "—"}
               </span>
             </span>
             <span className="mt-1 block text-[12px] leading-snug text-[#7d7873]">
               {selectedPreCallDone
-                ? `Rings your cell, then connects lead ${selected.phone}. No new text.`
-                : `Texts lead once, rings your cell, then connects ${selected.phone}. Recorded.`}
+                ? `Rings you, then connects lead ${selected.phone}. No new text.`
+                : `Texts lead once, rings you, then connects ${selected.phone}. Recorded.`}
             </span>
           </button>
           <a
@@ -2897,8 +2896,8 @@ export function AdminPage() {
             className="px-5 py-3.5 text-left hover:bg-[#141414]"
           >
             <span className="flex items-center justify-between gap-3">
-              <span className="text-sm font-medium">Dial lead from this phone</span>
-              <span className="text-[12.5px] text-[#9a9590]">Lead {selected.phone}</span>
+              <span className="text-sm font-medium">Dial from this phone</span>
+              <span className="text-[12.5px] text-[#9a9590]">{selected.phone}</span>
             </span>
           </a>
           {callMsg ? (
@@ -3472,18 +3471,18 @@ export function AdminPage() {
                 </h2>
                 <div className="rounded-2xl border border-white/8 bg-[#1a1a1a] p-3.5 lg:rounded-[18px] lg:p-5">
                   <p className="text-[14.5px] font-semibold text-[#f0eeea]">
-                    Whose phone rings first (your cell)
+                    Whose phone rings first (operator)
                   </p>
                   <p className="mt-1 text-[12.5px] leading-snug text-[#9a9590]">
-                    CRM call rings this number first — use your personal cell (or Ryan&apos;s).
-                    Do not use the Twilio SMS number (+1 289-672-4026) or the public business
-                    line (647-381-7325). Whoever answers is connected to the lead.
-                    &quot;Dial lead from this phone&quot; opens the normal phone app to the
+                    CRM call rings this number first — typically the MRG business line
+                    (647-381-7325) or your cell. Do not use the Twilio SMS number
+                    (+1 289-672-4026). Whoever answers is connected to the lead.
+                    &quot;Dial from this phone&quot; opens the normal phone app to the
                     client&apos;s number with no recording.
                   </p>
                   <label className="mt-3 block">
                     <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
-                      Your callback cell
+                      Callback phone
                     </span>
                     <input
                       type="tel"
@@ -3957,14 +3956,14 @@ export function AdminPage() {
                       </span>
                       <span className="text-[13px] font-normal text-[#6f6a65]">
                         {operatorCallbackPhone
-                          ? `Your cell ${operatorCallbackPhone}`
+                          ? `You ${operatorCallbackPhone}`
                           : "Set phone in Settings"}
                       </span>
                     </span>
                     <span className="text-[12.5px] leading-snug text-[#7d7873]">
                       {actionLeadPreCallDone
-                        ? `Rings your cell first, then connects lead ${actionLead.phone}. No new text. Recorded.`
-                        : `Texts lead once, rings your cell first, then connects them. Recorded for notes.`}
+                        ? `Rings you first, then connects ${actionLead.phone}. No new text. Recorded.`
+                        : `Texts lead once, rings you first, then connects them. Recorded for notes.`}
                     </span>
                   </button>
                 )}
@@ -3976,10 +3975,10 @@ export function AdminPage() {
                   >
                     <span className="flex w-full items-center justify-between gap-3">
                       <span className="text-[14.5px] font-medium text-[#e8e4de]">
-                        Dial lead from this phone
+                        Dial from this phone
                       </span>
                       <span className="text-[13px] font-normal text-[#6f6a65]">
-                        Lead {actionLead.phone}
+                        {actionLead.phone}
                       </span>
                     </span>
                     <span className="text-[12.5px] leading-snug text-[#7d7873]">

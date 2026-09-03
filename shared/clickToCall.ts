@@ -4,7 +4,6 @@
 import { getCrmSettings } from "./crmSettings.js";
 import {
   isNonClientCompanyPhone,
-  isPublicBusinessPhone,
   isTwilioConfigured,
   isTwilioSenderPhone,
   toE164,
@@ -88,18 +87,13 @@ export async function startClickToCall(input: {
       error: "Set your callback phone in Settings (CRM calls) first.",
     };
   }
+  // Callback may be the public MRG business line (647…) — that was the working setup.
+  // Only block the Twilio sender itself (can't ring the SMS number as the operator).
   if (isTwilioSenderPhone(operatorPhone)) {
     return {
       ok: false,
       error:
-        "Callback phone cannot be the Twilio SMS/voice number. Set your personal cell in Settings → CRM calls.",
-    };
-  }
-  if (isPublicBusinessPhone(operatorPhone)) {
-    return {
-      ok: false,
-      error:
-        "Callback phone cannot be the public business line (647-381-7325). Set your personal cell in Settings → CRM calls.",
+        "Callback phone cannot be the Twilio SMS/voice number. Use the MRG business line or your cell.",
     };
   }
 
