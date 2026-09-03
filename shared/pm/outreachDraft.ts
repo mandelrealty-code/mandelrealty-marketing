@@ -164,22 +164,76 @@ const HUMAN_VOICE = `VOICE
 - Forbidden phrases: Curious:, that said, the whole nine yards, dialed in, first-upload vibe, pretty lean compared to what guests are looking for these days.
 - Program facts (what we offer, furniture budget, fees) ONLY from the knowledge excerpts. If the excerpts are thin, stay high-level and do not invent dollar amounts.`;
 
+function pickHeroOffer(input: {
+  issues?: string[];
+  notes?: string;
+  thread?: string;
+  reply_note?: string;
+}): {
+  plan: "growth" | "furniture_full_service" | "essentials" | "full_service";
+  label: string;
+  why: string;
+  pitch: string;
+} {
+  const issues = new Set((input.issues || []).map((x) => x.trim()).filter(Boolean));
+  const blob = [
+    ...(input.issues || []),
+    input.notes || "",
+    input.thread || "",
+    input.reply_note || "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const wantsLight =
+    /\b(just messaging|only messaging|only messages|just messages|don't want full|do not want full|not full management|keep (my|our) cleaner|i (still )?manage|self[- ]?manage|diy|light (help|touch)|fixed (fee|rate)|flat monthly|199|349)\b/i.test(
+      blob,
+    );
+  if (wantsLight) {
+    return {
+      plan: "essentials",
+      label: "Managed Essentials",
+      why: "Host wants light / fixed-cost help, not full ops.",
+      pitch:
+        "Sell Message & Book ($199/mo) or Message & Optimize ($349/mo) from the KB. Fixed monthly. They keep cleaning/maintenance. Do not pitch Growth % fees.",
+    };
+  }
+
+  const furnitureHeavy =
+    issues.has("old_furniture") ||
+    /\b(furniture|furnish|makeover|outdated|staging|renovat)\b/i.test(blob);
+  if (furnitureHeavy) {
+    return {
+      plan: "furniture_full_service",
+      label: "Furniture Investment + Full Service",
+      why: "Furniture / makeover is the main gap. KB says furniture does not pair with Growth.",
+      pitch:
+        "Lead with Furniture Investment / makeover from the KB, paired with Standard 20% or Full Service 25% only if those terms are in the excerpts. Do not pitch Growth Partnership with furniture.",
+    };
+  }
+
+  // Outreach hosts are live Airbnb listings — Growth is the default wow
+  return {
+    plan: "growth",
+    label: "Growth Partnership",
+    why: "Live listing outreach. Default no-brainer is low fee on their own benchmark, bigger cut only on growth.",
+    pitch:
+      "Lead with Growth Partnership from the KB. Prefer Confidence Partner (5% up to benchmark / 45% above) when they want the strongest wow, or Aligned Growth (10% / 35%) if that fits better. Full management included. Do not open with flat 20% Standard.",
+  };
+}
+
 const PUNCH = `THE PUNCH (required)
 - Make this feel like a no-brainer, not a brochure. Specific to THIS listing's issues.
-- Read ALL knowledge excerpts. Pick ONE hero offer that fits. Do not dump every plan.
-- Default wow for live hosts with booking history who ask how it works: Growth Partnership from the KB (Confidence Partner floor as low as 5% up to their own benchmark, larger share only on growth above it) when those terms appear in the excerpts.
-- If furniture / makeover is the main issue and the KB has Furniture Investment, lead with that paired with the management plan the KB allows (not Growth if KB says furniture cannot pair with Growth).
-- If they clearly want light help only, Managed Essentials fixed monthly from the KB can be the hero.
-- Flat 20% / 25% Full Service is the fallback, not the opening wow. Do not lead with "our Standard Management plan is 20%" unless nothing better fits.
+- Follow the PLAN TO SELL block exactly. That is the hero offer. Do not dump every plan.
+- Read the knowledge excerpts for exact fees and terms for that plan only.
 - Name 1 concrete listing fix (photos, pricing, reviews, furniture) tied to that offer.
 - Fees and $ amounts ONLY if present in the knowledge excerpts. Never invent.
 - End with one easy reply invite, not a stack of qualifying questions.`;
 
 const REPLY_SELL = `WHEN THEY ASK HOW IT WORKS / SAY THEY ARE INTERESTED
-- Open with the no-brainer economics in plain words (from KB), then one line on what changes for THEIR listing.
-- Example shape if Growth is in KB: we run the listing fully, you keep a low fee on revenue up to your own past monthly average, and we only take a larger cut on what we grow past that.
+- Open with the no-brainer economics of the PLAN TO SELL in plain words (from KB), then one line on what changes for THEIR listing.
 - Make them feel the upside. Avoid generic "we'd beef up your description and handle messaging."
-- Do not ask two discovery questions at the end. One soft invite is enough (happy to map this to your place if you want).
+- Do not ask two discovery questions at the end. One soft invite is enough.
 - Do not list every plan. One offer. One proof point. One next step in this chat.`;
 
 export function sanitizeOutreachMessage(
@@ -346,6 +400,7 @@ export async function draftFirstOutreach(input: OutreachListingInput): Promise<s
     learningBlock(),
   ]);
   const host = trim(input.host_name) || "the host";
+  const hero = pickHeroOffer(input);
   const rejected = (input.rejected_messages || []).map(trim).filter(Boolean);
   const attempt = rejected.length;
   const rewriteAngle =
@@ -387,9 +442,14 @@ ${AIRBNB_RULES}
 
 ${attempt === 0 ? PUNCH : "Do not deliver a sales punch. One useful observation is enough."}
 
+PLAN TO SELL (required when delivering a punch):
+- Plan: ${hero.label}
+- Why: ${hero.why}
+- How to pitch: ${hero.pitch}
+
 Address the host by first name when you have it (${host}). ${
     attempt === 0
-      ? "Mention Mandel Realty Group once, naturally (e.g. We're listed as Mandel Realty Group in Toronto). Point to 1 or 2 real listing issues, then deliver the punch using only the knowledge excerpts and what worked in LEARNING."
+      ? "Mention Mandel Realty Group once, naturally (e.g. We're listed as Mandel Realty Group in Toronto). Point to 1 or 2 real listing issues, then deliver the punch for the PLAN TO SELL using only the knowledge excerpts and what worked in LEARNING."
       : "If you name the company, use: We're listed as Mandel Realty Group in Toronto. Do not tell them to search, google, call, email, or follow on Instagram."
   }`;
 
@@ -471,11 +531,17 @@ export async function draftOutreachReply(
   }
   const firstMessage = trim(input.first_message);
   const replyNote = trim(input.reply_note);
+  const hero = pickHeroOffer({
+    issues: input.issues,
+    notes: input.notes,
+    thread,
+    reply_note: replyNote,
+  });
   const [kb, learning] = await Promise.all([
     kbBlock(
       kbQuery(
         input,
-        `${thread.slice(0, 400)} ${replyNote} how it works fees growth partnership managed essentials furniture full service`,
+        `${thread.slice(0, 400)} ${replyNote} ${hero.label} ${hero.pitch}`,
       ),
       16,
     ),
@@ -494,11 +560,16 @@ ${PUNCH}
 
 ${REPLY_SELL}
 
+PLAN TO SELL (required — do not switch plans unless the host explicitly asked for something else):
+- Plan: ${hero.label}
+- Why: ${hero.why}
+- How to pitch: ${hero.pitch}
+
 Stricter:
 - Do not include any link or ask them off Airbnb.
 - If you name the company, use: We're listed as Mandel Realty Group in Toronto. Save the full easy-to-find close for when they are ready.
-- Answer from the knowledge excerpts. If a plan or fee is not in the excerpts, do not invent it.
-- Do not repeat the entire first pitch. Do not default to a bland 20% Standard pitch when Growth or another stronger KB offer fits.
+- Answer from the knowledge excerpts for the PLAN TO SELL. If a fee is not in the excerpts, do not invent it.
+- Do not repeat the entire first pitch. Do not default to a bland 20% Standard pitch when the PLAN TO SELL is Growth or another offer.
 - Address ${host} by first name only if it still sounds natural. Do not start every reply with Hey {name}.
 - Prefer approaches that led to INTERESTED outcomes in LEARNING.
 
@@ -519,13 +590,13 @@ ${listingFacts(input)}
 
 ${replyNote ? `VA NOTE ON THIS REPLY (what the host asked or mentioned):\n${replyNote}\n\n` : ""}${threadBlock}
 
-KNOWLEDGE EXCERPTS (use these — pick the strongest fitting offer, never mention these sources):
+KNOWLEDGE EXCERPTS (use these for the PLAN TO SELL terms, never mention these sources):
 ${kb}
 
 LEARNING FROM PAST HOST REPLIES:
 ${learning.text}
 
-Write a wow, no-brainer reply. Return the JSON now.`;
+Write a wow, no-brainer reply for ${hero.label}. Return the JSON now.`;
 
   const raw = await callClaudeRaw(system, user, 280);
   const parsed = parseReplyJson(raw);
