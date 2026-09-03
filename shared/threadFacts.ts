@@ -33,6 +33,7 @@ const CITY_ROWS: { name: string; aliases: string[]; retrieveAs: string }[] = [
 ];
 
 const THREAD_FACTS_RE = /\[Thread facts\][^\n]*/i;
+const THREAD_SUMMARY_RE = /^\[AI summary\][^\n]*/im;
 
 export function retrieveQueryForCity(city: string): string {
   const row = CITY_ROWS.find((c) => c.name.toLowerCase() === city.trim().toLowerCase());
@@ -83,6 +84,20 @@ export function kbMentionsCity(
     .join("\n")
     .toLowerCase();
   return needles.some((n) => blob.includes(n.toLowerCase()));
+}
+
+/** Read the rolling AI summary from the notes field (or null if not yet written). */
+export function parseThreadSummary(notes: string): string | null {
+  const m = notes.match(THREAD_SUMMARY_RE);
+  if (!m) return null;
+  return m[0].replace(/^\[AI summary\]\s*/i, "").trim() || null;
+}
+
+/** Upsert (replace or prepend) the rolling AI summary line in notes. */
+export function upsertThreadSummary(notes: string, summary: string): string {
+  const line = `[AI summary] ${summary.trim().replace(/\n/g, " ").slice(0, 400)}`;
+  if (THREAD_SUMMARY_RE.test(notes)) return notes.replace(THREAD_SUMMARY_RE, line).trim();
+  return [line, notes.trim()].filter(Boolean).join("\n");
 }
 
 export function upsertThreadFactsNote(

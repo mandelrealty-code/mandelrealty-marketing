@@ -21,8 +21,10 @@ import { sendTwilioSms } from "./twilioSms.js";
 import {
   kbMentionsCity,
   parseThreadFacts,
+  parseThreadSummary,
   retrieveQueryForCity,
   upsertThreadFactsNote,
+  upsertThreadSummary,
   workingCityFromThread,
 } from "./threadFacts.js";
 
@@ -81,6 +83,7 @@ function leadAdAngle(lead: LeadRow) {
 
 function leadContextBlock(lead: LeadRow): string {
   const facts = parseThreadFacts(lead.notes || "");
+  const summary = parseThreadSummary(lead.notes || "");
   const workingCity = facts.city || lead.address || "unknown";
   const angle = leadAdAngle(lead);
   return [
@@ -88,6 +91,7 @@ function leadContextBlock(lead: LeadRow): string {
     `Form city/area (may be WRONG if they corrected in thread): ${lead.address || "unknown"}`,
     `WORKING CITY (thread facts beat the form): ${workingCity}`,
     `Thread bedrooms: ${facts.bedrooms || "unknown"}`,
+    `AI conversation summary (key facts learned so far — treat as ground truth): ${summary || "none yet"}`,
     `Email: ${lead.email}`,
     `Phone: ${lead.phone}`,
     `Has Airbnb listing: ${lead.has_listing}`,
@@ -595,7 +599,7 @@ async function buildUserPrompt(
     : "";
 
   const recent = thread
-    .slice(-12)
+    .slice(-10)
     .map((m) => `${m.direction === "inbound" ? "Lead" : "MRG"}: ${m.body}`)
     .join("\n");
 
@@ -692,6 +696,67 @@ ${
     ? "NOTE: Lead is in nurturing — they re-engaged. Answer; keep selling in-thread (stop_ai=false)."
     : ""
 }`;
+}
+
+/**
+ * After each reply, generate a 2-3 sentence rolling summary of key facts learned
+ * from the conversation. This replaces reading 30+ raw messages next time.
+ */
+async function generateAndStoreSummary(lead: LeadRow): Promise<void> {
+  try {
+    const thread = await listSmsForLead(lead.id);
+    if (thread.length < 2) return; // not enough to summarize yet
+
+    const key = process.env.ANTHROPIC_API_KEY?.trim();
+    if (!key) return;
+
+    const threadText = thread
+      .slice(-20) // use up to last 20 for summary generation — this is a one-time cost
+      .map((m) => `${m.direction === "inbound" ? "Lead" : "MRG"}: ${m.body}`)
+      .join("\n");
+
+    const existingSummary = parseThreadSummary(lead.notes || "");
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_ANTHROPIC_MODEL,
+        max_tokens: 120,
+        system:
+          "You are a CRM assistant. Write a 2-3 sentence plain-text summary of key facts learned from this SMS conversation. Include: property city/area, property type/bedrooms if mentioned, STR permit status if mentioned, where they are in the decision process, and any key objections or commitments. Do NOT include pleasantries or meta-commentary. Output only the summary sentences, nothing else.",
+        messages: [
+          {
+            role: "user",
+            content: `${existingSummary ? `Previous summary: ${existingSummary}\n\n` : ""}Recent thread:\n${threadText}`,
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) return;
+    const data = (await res.json().catch(() => ({}))) as {
+      content?: { type: string; text?: string }[];
+    };
+    const summary = (data.content ?? [])
+      .filter((c) => c.type === "text")
+      .map((c) => c.text ?? "")
+      .join("")
+      .trim()
+      .slice(0, 400);
+
+    if (!summary) return;
+
+    const updatedNotes = upsertThreadSummary(lead.notes || "", summary);
+    await updateLeadCrm(lead.id, { notes: updatedNotes });
+  } catch (err) {
+    // Summary is best-effort — never block the main reply flow
+    console.error("[aiSms] summary generation failed (non-fatal)", err);
+  }
 }
 
 async function applyDecision(lead: LeadRow, decision: ClaudeDecision): Promise<void> {
@@ -1092,6 +1157,10 @@ export async function sendAiReplyToInbound(input: {
     await updateLeadCrm(lead.id, { status: "engaging" });
   }
 
+  // Fire-and-forget — never delays the reply
+  const freshLead = await getLeadById(lead.id);
+  if (freshLead) generateAndStoreSummary(freshLead).catch(() => undefined);
+
   return {
     ok: true,
     reply: body,
@@ -1229,6 +1298,10 @@ export async function sendAiNudgeOnSilence(input: {
   }
 
   await applyDecision(lead, decision);
+
+  // Fire-and-forget summary update after nudge
+  const freshLead = await getLeadById(lead.id);
+  if (freshLead) generateAndStoreSummary(freshLead).catch(() => undefined);
 
   return {
     ok: true,
