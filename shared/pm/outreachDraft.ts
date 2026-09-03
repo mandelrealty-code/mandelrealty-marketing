@@ -76,10 +76,13 @@ function listingFacts(input: OutreachListingInput): string {
 function kbQuery(input: OutreachListingInput, extra = ""): string {
   const issues = issueLabels(input.issues).join(" ");
   return [
-    "STR management makeover furniture photos pricing reviews guest communication",
-    "Airbnb host outreach Mandel Realty Group",
-    "furniture upgrade program renovation cohost full management dynamic pricing professional photos",
-    "growth fee badge Superhost self-managed no upfront cost what we offer hosts",
+    "Mandel Realty Group host offer plans",
+    "Growth Partnership Aligned Growth Confidence Partner 5% 10% benchmark revenue",
+    "Managed Essentials Message and Book Message and Optimize fixed rate 199 349",
+    "Full Service Standard management 20% 25% cohost",
+    "furniture upgrade makeover renovation investment program",
+    "dynamic pricing professional photos guest messaging reviews Superhost",
+    "STR Airbnb management no upfront cost what we offer hosts",
     trim(input.neighborhood),
     issues,
     trim(input.notes),
@@ -89,12 +92,34 @@ function kbQuery(input: OutreachListingInput, extra = ""): string {
     .join(" ");
 }
 
-async function kbBlock(query: string): Promise<string> {
-  const chunks = await matchKnowledgeChunks(query, 8);
+async function kbBlock(query: string, matchCount = 14): Promise<string> {
+  const chunks = await matchKnowledgeChunks(query, Math.max(matchCount, 16));
   if (!chunks.length) {
     return "(No knowledge base excerpts retrieved. Stay high-level. Do not invent fees, dollar amounts, timelines, or contract terms. Never mention a knowledge base.)";
   }
-  return chunks
+  // Spread across different KB docs so Growth / Essentials / Furniture all have a chance
+  const byDoc = new Map<string, typeof chunks>();
+  for (const c of chunks) {
+    const key = c.doc_title || c.doc_id || "note";
+    const list = byDoc.get(key) || [];
+    list.push(c);
+    byDoc.set(key, list);
+  }
+  const picked: typeof chunks = [];
+  let round = 0;
+  while (picked.length < matchCount) {
+    let added = false;
+    for (const list of byDoc.values()) {
+      if (list[round]) {
+        picked.push(list[round]);
+        added = true;
+        if (picked.length >= matchCount) break;
+      }
+    }
+    if (!added) break;
+    round += 1;
+  }
+  return picked
     .map((c, i) => `[${i + 1}] ${c.doc_title || "Note"}\n${c.content}`)
     .join("\n\n");
 }
@@ -140,11 +165,22 @@ const HUMAN_VOICE = `VOICE
 - Program facts (what we offer, furniture budget, fees) ONLY from the knowledge excerpts. If the excerpts are thin, stay high-level and do not invent dollar amounts.`;
 
 const PUNCH = `THE PUNCH (required)
-- After the due-diligence observation, land a clear no-brainer: what Mandel Realty Group can do for them.
-- Pull options from the knowledge excerpts (examples when present there: full management / co-hosting, professional photos, dynamic pricing, guest communication and reviews, furniture upgrade or makeover / renovation support, growth plans).
-- Do not list every option like a brochure. Pick the 2 to 3 that match THIS listing's issues and make them feel easy to say yes to.
-- The close should feel like an obvious next step, not a sales pitch. Invite a reply, not a call off-platform.
-- Prefer patterns from INTERESTED outcomes in LEARNING. Avoid patterns that show up often under NOT INTERESTED or NO REPLY.`;
+- Make this feel like a no-brainer, not a brochure. Specific to THIS listing's issues.
+- Read ALL knowledge excerpts. Pick ONE hero offer that fits. Do not dump every plan.
+- Default wow for live hosts with booking history who ask how it works: Growth Partnership from the KB (Confidence Partner floor as low as 5% up to their own benchmark, larger share only on growth above it) when those terms appear in the excerpts.
+- If furniture / makeover is the main issue and the KB has Furniture Investment, lead with that paired with the management plan the KB allows (not Growth if KB says furniture cannot pair with Growth).
+- If they clearly want light help only, Managed Essentials fixed monthly from the KB can be the hero.
+- Flat 20% / 25% Full Service is the fallback, not the opening wow. Do not lead with "our Standard Management plan is 20%" unless nothing better fits.
+- Name 1 concrete listing fix (photos, pricing, reviews, furniture) tied to that offer.
+- Fees and $ amounts ONLY if present in the knowledge excerpts. Never invent.
+- End with one easy reply invite, not a stack of qualifying questions.`;
+
+const REPLY_SELL = `WHEN THEY ASK HOW IT WORKS / SAY THEY ARE INTERESTED
+- Open with the no-brainer economics in plain words (from KB), then one line on what changes for THEIR listing.
+- Example shape if Growth is in KB: we run the listing fully, you keep a low fee on revenue up to your own past monthly average, and we only take a larger cut on what we grow past that.
+- Make them feel the upside. Avoid generic "we'd beef up your description and handle messaging."
+- Do not ask two discovery questions at the end. One soft invite is enough (happy to map this to your place if you want).
+- Do not list every plan. One offer. One proof point. One next step in this chat.`;
 
 export function sanitizeOutreachMessage(
   raw: string,
@@ -306,7 +342,7 @@ export class OutreachDraftError extends Error {
 
 export async function draftFirstOutreach(input: OutreachListingInput): Promise<string> {
   const [kb, learning] = await Promise.all([
-    kbBlock(kbQuery(input)),
+    kbBlock(kbQuery(input), 14),
     learningBlock(),
   ]);
   const host = trim(input.host_name) || "the host";
@@ -436,7 +472,13 @@ export async function draftOutreachReply(
   const firstMessage = trim(input.first_message);
   const replyNote = trim(input.reply_note);
   const [kb, learning] = await Promise.all([
-    kbBlock(kbQuery(input, `${thread.slice(0, 400)} ${replyNote}`)),
+    kbBlock(
+      kbQuery(
+        input,
+        `${thread.slice(0, 400)} ${replyNote} how it works fees growth partnership managed essentials furniture full service`,
+      ),
+      16,
+    ),
     learningBlock(),
   ]);
   const host = trim(input.host_name) || "the host";
@@ -444,17 +486,19 @@ export async function draftOutreachReply(
 
 ${HUMAN_VOICE}
 
-Length: 2 to 4 short sentences. One or two short paragraphs.
+Length: 3 to 5 short sentences. One or two short paragraphs. Make it feel sharp and easy to say yes to.
 
 ${AIRBNB_RULES}
 
 ${PUNCH}
 
+${REPLY_SELL}
+
 Stricter:
 - Do not include any link or ask them off Airbnb.
 - If you name the company, use: We're listed as Mandel Realty Group in Toronto. Save the full easy-to-find close for when they are ready.
-- Answer their question from the knowledge excerpts. If the excerpts do not cover it, stay high-level and ask one qualifying question.
-- Do not repeat the entire first pitch. Move the conversation forward with a sharper no-brainer close.
+- Answer from the knowledge excerpts. If a plan or fee is not in the excerpts, do not invent it.
+- Do not repeat the entire first pitch. Do not default to a bland 20% Standard pitch when Growth or another stronger KB offer fits.
 - Address ${host} by first name only if it still sounds natural. Do not start every reply with Hey {name}.
 - Prefer approaches that led to INTERESTED outcomes in LEARNING.
 
@@ -475,15 +519,15 @@ ${listingFacts(input)}
 
 ${replyNote ? `VA NOTE ON THIS REPLY (what the host asked or mentioned):\n${replyNote}\n\n` : ""}${threadBlock}
 
-KNOWLEDGE EXCERPTS (program / offer facts only, never mention these sources):
+KNOWLEDGE EXCERPTS (use these — pick the strongest fitting offer, never mention these sources):
 ${kb}
 
 LEARNING FROM PAST HOST REPLIES:
 ${learning.text}
 
-Return the JSON now.`;
+Write a wow, no-brainer reply. Return the JSON now.`;
 
-  const raw = await callClaudeRaw(system, user, 220);
+  const raw = await callClaudeRaw(system, user, 280);
   const parsed = parseReplyJson(raw);
   if (!parsed.message) {
     throw new OutreachDraftError("No message generated.", 500);
