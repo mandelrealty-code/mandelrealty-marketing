@@ -208,6 +208,7 @@ export function EmployeesPanel({
     try {
       const data = await pmPost<{
         team_url: string;
+        temp_password?: string;
         email_sent: boolean;
         email_error: string | null;
         staff_user: StaffRow;
@@ -220,11 +221,25 @@ export function EmployeesPanel({
       setEmail("");
       setDisplayName("");
       await loadList();
+      const code = data.temp_password?.trim();
+      if (code) {
+        try {
+          await navigator.clipboard.writeText(code);
+        } catch {
+          /* ignore */
+        }
+      }
       if (data.email_sent) {
-        onToast?.(`Invite sent · ${data.team_url}`);
+        onToast?.(
+          code
+            ? `Invite sent. Code ${code} (copied) · ${data.team_url}`
+            : `Invite sent · ${data.team_url}`,
+        );
       } else {
         onToast?.(
-          `Portal ready (${data.team_url}) — email failed: ${data.email_error || "unknown"}`,
+          code
+            ? `Email failed. Code ${code} (copied) · ${data.team_url}`
+            : `Portal ready (${data.team_url}) — email failed: ${data.email_error || "unknown"}`,
         );
       }
       if (data.staff_user?.id) onSelect(data.staff_user.id);
@@ -240,6 +255,7 @@ export function EmployeesPanel({
     try {
       const data = await pmPost<{
         team_url: string;
+        temp_password?: string;
         email_sent: boolean;
         email_error: string | null;
       }>("staff_invite", {
@@ -249,8 +265,23 @@ export function EmployeesPanel({
         slug: u.slug,
       });
       await loadList();
-      if (data.email_sent) onToast?.("Invite resent");
-      else onToast?.(data.email_error || "Email failed — portal link ready");
+      const code = data.temp_password?.trim();
+      if (code) {
+        try {
+          await navigator.clipboard.writeText(code);
+        } catch {
+          /* ignore */
+        }
+        onToast?.(
+          data.email_sent
+            ? `Invite resent. Sign-in code ${code} (copied). Send her this code + ${data.team_url}`
+            : `Email failed. Sign-in code ${code} (copied). Portal: ${data.team_url}`,
+        );
+      } else if (data.email_sent) {
+        onToast?.("Invite resent");
+      } else {
+        onToast?.(data.email_error || "Email failed — portal link ready");
+      }
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not resend invite.");
     } finally {

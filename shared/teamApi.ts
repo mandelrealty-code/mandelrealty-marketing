@@ -202,7 +202,7 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
     if (op === "login") {
       const slug = str(body.slug);
       const email = str(body.email).toLowerCase();
-      const password = typeof body.password === "string" ? body.password : "";
+      const password = typeof body.password === "string" ? body.password.trim() : "";
       if (!slug || !email || !password) {
         return res.status(400).json({ error: "slug, email, and password required." });
       }

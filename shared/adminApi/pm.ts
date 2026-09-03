@@ -1351,6 +1351,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             created: invited.created,
             staff_user: publicStaffUser(invited.user),
             team_url: teamPortalUrl(invited.user.slug),
+            temp_password: invited.tempPassword,
             email_sent: mail.ok,
             email_error: mail.ok ? null : mail.message || "Email failed",
           });

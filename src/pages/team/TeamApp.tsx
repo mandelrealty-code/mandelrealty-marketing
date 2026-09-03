@@ -878,6 +878,11 @@ export function TeamApp() {
                   className="tracking-[0.18em]"
                 />
               </Field>
+              <p className="text-[12px] leading-relaxed text-[#6f6a65]">
+                Use the short code from your invite email (like ab12-9f3c), not a
+                password you invented yet. After that you&apos;ll choose your own
+                password.
+              </p>
               {error ? <p className="text-sm text-[#cf7f7b]">{error}</p> : null}
               <GoldButton disabled={busy || !email || !password} onClick={login}>
                 {busy ? "Signing in…" : "Continue"}
