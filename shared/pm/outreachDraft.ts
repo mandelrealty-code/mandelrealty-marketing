@@ -122,6 +122,7 @@ const AIRBNB_RULES = `AIRBNB MESSAGE RULES
 - Do not say take a look, check this out, check out, click here, visit our website, or similar.
 - Do not ask them to leave Airbnb, Google us, call us, email us, or continue off the platform.
 - Never mention AI, a knowledge base, documents, or that this was drafted.
+- Never use a personal name (no Shane, no Ryan, no sign-off first name). Speak as we / Mandel Realty Group.
 - Avoid salesy lists, discounts, commission talk, and "I can manage your listing for you" as a cold open.`;
 
 const HUMAN_VOICE = `VOICE
@@ -155,6 +156,7 @@ export function sanitizeOutreachMessage(
     t = t.replace(/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, "");
     t = t.replace(/\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g, "");
   }
+  t = t.replace(/\b(shane|ryan)\b/gi, "");
   t = t.replace(/[ \t]+\n/g, "\n");
   t = t.replace(/\n{3,}/g, "\n\n");
   t = t.replace(/[ \t]{2,}/g, " ");
@@ -297,24 +299,51 @@ export async function draftFirstOutreach(input: OutreachListingInput): Promise<s
   ]);
   const host = trim(input.host_name) || "the host";
   const rejected = (input.rejected_messages || []).map(trim).filter(Boolean);
+  const attempt = rejected.length;
+  const rewriteAngle =
+    attempt === 0
+      ? ""
+      : attempt === 1
+        ? `REWRITE ANGLE: Airbnb blocked the first draft. Keep going. Write a new message that can actually send.
+- 2 or 3 short sentences. One paragraph.
+- One specific listing fact only.
+- You are a person at Mandel Realty Group. Do not pitch a menu of services.
+- End by inviting a reply here. Do not ask them off Airbnb.`
+        : attempt === 2
+          ? `REWRITE ANGLE: Second block. Go even smaller and more human.
+- 2 sentences max.
+- Sound like a host talking to a host, not a company.
+- Mention one thing you'd actually fix. No fees, no program names, no "we manage listings."
+- Ask a simple question they can answer on Airbnb.`
+          : `REWRITE ANGLE: Keep iterating. Attempt ${attempt + 1}. Do not give up on this host.
+- Brand new opening. New sentence rhythm. None of the rejected lines.
+- 1 or 2 sentences.
+- Zero sales language. Just a useful observation and "happy to share more here if you want."`;
   const rewriteBlock = rejected.length
-    ? `AIRBNB REJECTED the previous draft(s). Write a DIFFERENT message. Do not reuse phrases, structure, or the same opening. Be shorter, more human, less promotional. Stay fully on-platform.
+    ? `${rewriteAngle}
 
-REJECTED DRAFTS (do not copy):
+REJECTED DRAFTS (do not copy a single phrase):
 ${rejected.map((m, i) => `--- rejected ${i + 1} ---\n${m}`).join("\n\n")}`
     : "";
   const system = `You write first-touch Airbnb host messages for Mandel Realty Group.
 
 ${HUMAN_VOICE}
 
-Length: 3 to 5 short sentences. Two short paragraphs maximum. Prefer one blank line between them.
-Do not stack a rhetorical question at the end. A simple invite to reply is enough.
+${
+  attempt === 0
+    ? "Length: 3 to 5 short sentences. Two short paragraphs maximum. Prefer one blank line between them.\nDo not stack a rhetorical question at the end. A simple invite to reply is enough."
+    : "This is a rewrite after Airbnb blocked a draft. Keep drafting until it can send. Different words every time."
+}
 
 ${AIRBNB_RULES}
 
-${PUNCH}
+${attempt === 0 ? PUNCH : "Do not deliver a sales punch. One useful observation is enough."}
 
-Address the host by first name when you have it (${host}). Mention Mandel Realty Group once, naturally. Point to 1 or 2 real listing issues, then deliver the punch using only the knowledge excerpts and what worked in LEARNING.`;
+Address the host by first name when you have it (${host}). ${
+    attempt === 0
+      ? "Mention Mandel Realty Group once, naturally. Point to 1 or 2 real listing issues, then deliver the punch using only the knowledge excerpts and what worked in LEARNING."
+      : "You may mention Mandel Realty Group once as who you are, not as an ad. Do not tell them to search, google, call, or email."
+  }`;
 
   const user = `LISTING FACTS FROM OUR VA (ground truth):
 ${listingFacts(input)}
@@ -332,7 +361,7 @@ Write the first Airbnb message now.`;
   return callClaude(system, user, 220);
 }
 
-/** Host is ready to work with us: stay on Airbnb until THEY ask for a number/email. */
+/** Host is ready: Airbnb will not deliver a phone or email in-thread. Make the company findable. */
 export async function draftReadyClose(input: OutreachReplyInput): Promise<string> {
   const thread = trim(input.thread);
   const firstMessage = trim(input.first_message);
@@ -355,19 +384,18 @@ Length: 2 to 4 short sentences.
 
 ${AIRBNB_RULES}
 
-Goal: get the HOST to keep talking here, or to ask how to reach us. We must not volunteer a phone, email, or website.
+HARD FACT: Airbnb blocks phone numbers, emails, and URLs in this inbox even when the host asks for them. Never paste a number, email, or site. Never spell a number in words. Never hide contact info.
 
-Allowed close:
-- Confirm we can help.
-- Ask them to reply yes here if they want next steps.
-- Invite them to say the best way they want to keep chatting on Airbnb.
+The only off-thread path that works: they look up the company themselves.
+- You are with Mandel Realty Group in Toronto. Never use a personal name.
+- Say clearly that this chat cannot take a number or email.
+- Tell them they will find Mandel Realty Group under that name (do not add a URL, do not say click, do not say google.com).
+- Also offer to keep going in this thread if they prefer.
 
 ${
   askedForContact
-    ? `The host already asked how to reach us. You MAY include exactly:
-Call or text 647-381-7325, or email info@mandelrealtygroup.com
-Do not add a website.`
-    : `They have NOT asked for contact info. Do not include a phone, email, URL, or "google us".`
+    ? "They already asked to be contacted. Do not try to send a number. Explain the inbox block and point them to the company name."
+    : "They have not asked yet. Still do not send a number. Same close: company name plus keep talking here."
 }
 
 Do not pitch the whole program again. Address ${host} naturally.`;
@@ -389,7 +417,7 @@ ${learning.text}
 
 Write the close now.`;
 
-  return callClaude(system, user, 180, { allowContact: askedForContact });
+  return callClaude(system, user, 180);
 }
 
 export async function draftOutreachReply(

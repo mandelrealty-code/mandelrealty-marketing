@@ -756,12 +756,12 @@ export function TeamApp() {
         setOutreachLearningNote(
           data.learning_saved
             ? "Saved the blocked wording. This rewrite stays on-platform and uses different language."
-            : "Rewrite ready. Paste this instead. If Airbnb blocks twice, skip this host.",
+            : `Rewrite ready (attempt ${rejected.length + 1}). Copy this and try again. Keep tapping Airbnb rejected this until it sends.`,
         );
       }
       if (intent === "close") {
         setOutreachLearningNote(
-          "Stay on Airbnb. Do not send a phone or email unless the host asked for it. If they asked, this draft may include 647-381-7325 and info@mandelrealtygroup.com.",
+          "Airbnb will not let a number or email through, even if they asked. This close names Mandel Realty Group in Toronto so they can find the company, and offers to keep talking in the thread.",
         );
       }
       if (outreachMode === "new" && intent !== "close") {
@@ -1158,18 +1158,20 @@ export function TeamApp() {
 
             <div className="mb-5 border border-white/8 bg-[#141414] px-4 py-3 text-[13px] leading-relaxed text-[#9a9590]">
               <p>
-                Stay on Airbnb. Never put a phone, email, or website in a first message.
+                Never paste a phone, email, or link into Airbnb. The inbox blocks it
+                even when the host says contact me.
               </p>
               <p className="mt-2">
-                If Airbnb blocks a draft, tap{" "}
-                <span className="text-[#f5f5f5]">Airbnb rejected this</span> for a
-                safer rewrite. If they block twice, skip the host.
+                If a draft is blocked, tap{" "}
+                <span className="text-[#f5f5f5]">Airbnb rejected this</span> and keep
+                going until it sends. Do not skip the host.
               </p>
               <p className="mt-2">
-                When the host is clearly in, tap{" "}
-                <span className="text-[#f5f5f5]">Host is ready</span>. We only share{" "}
-                647-381-7325 or info@mandelrealtygroup.com if they asked how to reach
-                us.
+                When they are in, tap{" "}
+                <span className="text-[#f5f5f5]">Host is ready</span>. The close says
+                this chat cannot take a number, names Mandel Realty Group in Toronto,
+                and lets them find the company. Watch the company inbox and phone for
+                inbound.
               </p>
             </div>
 
@@ -1409,7 +1411,7 @@ export function TeamApp() {
                     disabled={outreachBusy}
                     className="text-[13px] font-semibold text-[#e8a48a] hover:text-[#f5f5f5] disabled:opacity-40"
                   >
-                    Airbnb rejected this
+                    Airbnb rejected this — try another
                   </button>
                   <button
                     type="button"
