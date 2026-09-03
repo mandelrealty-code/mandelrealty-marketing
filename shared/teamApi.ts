@@ -280,8 +280,8 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
       }
       const entry = await createTimeEntry({
         staff_user_id: user.id,
-        work_date: str(body.work_date),
-        hours: Number(body.hours),
+        started_at: str(body.started_at) || str(body.start_at),
+        ended_at: str(body.ended_at) || str(body.end_at),
         note: str(body.note),
         task_id: taskId,
       });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { pmGet, pmPost } from "./api";
+import { pmGet, pmPost, type TaskRow } from "./api";
 
 type StaffRow = {
   id: string;
@@ -18,12 +18,62 @@ type TimeRow = {
   work_date: string;
   hours: number;
   note: string;
+  started_at?: string | null;
+  ended_at?: string | null;
   staff_display_name?: string;
   task_title?: string;
 };
 
 function fmtHours(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1);
+}
+
+function taskAssignees(t: TaskRow): string[] {
+  if (Array.isArray(t.assignees) && t.assignees.length) {
+    return [...new Set(t.assignees.map((n) => n.trim()).filter(Boolean))];
+  }
+  return (t.assignee || "")
+    .split(/\s*·\s*|\s*,\s*/)
+    .map((n) => n.trim())
+    .filter(Boolean);
+}
+
+function assignedTo(t: TaskRow, displayName: string): boolean {
+  const needle = displayName.trim().toLowerCase();
+  if (!needle) return false;
+  return taskAssignees(t).some((a) => a.toLowerCase() === needle);
+}
+
+function statusLabel(status: TaskRow["status"]): string {
+  if (status === "in_progress") return "in progress";
+  return status;
+}
+
+function fmtWorkRange(e: TimeRow): string {
+  if (e.started_at && e.ended_at) {
+    const start = new Date(e.started_at);
+    const end = new Date(e.ended_at);
+    if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())) {
+      const opts: Intl.DateTimeFormatOptions = {
+        timeZone: "America/New_York",
+        month: "2-digit",
+        day: "2-digit",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      };
+      const sParts = new Intl.DateTimeFormat("en-US", opts).formatToParts(start);
+      const eParts = new Intl.DateTimeFormat("en-US", opts).formatToParts(end);
+      const get = (parts: Intl.DateTimeFormatPart[], type: string) =>
+        parts.find((p) => p.type === type)?.value || "";
+      const date = `${get(sParts, "year")}-${get(sParts, "month")}-${get(sParts, "day")}`;
+      const sTime = `${get(sParts, "hour")}:${get(sParts, "minute")}${get(sParts, "dayPeriod").toUpperCase()}`;
+      const eTime = `${get(eParts, "hour")}:${get(eParts, "minute")}${get(eParts, "dayPeriod").toUpperCase()}`;
+      return `${date} · ${sTime}–${eTime} · ${fmtHours(e.hours)} hrs`;
+    }
+  }
+  return `${e.work_date} · ${fmtHours(e.hours)} hrs`;
 }
 
 /** Admin-only: last signed-in as `2026-09-02 - 11:04PM EST`. */
@@ -79,6 +129,7 @@ export function EmployeesPanel({
   const [weekSince, setWeekSince] = useState("");
   const [detailEntries, setDetailEntries] = useState<TimeRow[]>([]);
   const [detailTotal, setDetailTotal] = useState(0);
+  const [detailTasks, setDetailTasks] = useState<TaskRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -94,16 +145,25 @@ export function EmployeesPanel({
     setWeekSince(hours.since || "");
   }, []);
 
-  const loadDetail = useCallback(async (staffId: string) => {
-    const hours = await pmGet<{
-      entries: TimeRow[];
-      total_hours: number;
-    }>("time_entries", {
-      staff_user_id: staffId,
-      since: daysAgoIso(90),
-    });
+  const loadDetail = useCallback(async (staff: StaffRow) => {
+    const [hours, tasksData] = await Promise.all([
+      pmGet<{
+        entries: TimeRow[];
+        total_hours: number;
+      }>("time_entries", {
+        staff_user_id: staff.id,
+        since: daysAgoIso(90),
+      }),
+      pmGet<{ tasks: TaskRow[] }>("tasks", {
+        status: "all",
+        assignee: staff.display_name,
+      }),
+    ]);
     setDetailEntries(hours.entries ?? []);
     setDetailTotal(hours.total_hours ?? 0);
+    setDetailTasks(
+      (tasksData.tasks ?? []).filter((t) => assignedTo(t, staff.display_name)),
+    );
   }, []);
 
   useEffect(() => {
@@ -112,16 +172,19 @@ export function EmployeesPanel({
     );
   }, [loadList, onError]);
 
+  const selected = users.find((u) => u.id === selectedId) ?? null;
+
   useEffect(() => {
-    if (!selectedId) {
+    if (!selected) {
       setDetailEntries([]);
       setDetailTotal(0);
+      setDetailTasks([]);
       return;
     }
-    loadDetail(selectedId).catch((e) =>
-      onError(e instanceof Error ? e.message : "Could not load hours."),
+    loadDetail(selected).catch((e) =>
+      onError(e instanceof Error ? e.message : "Could not load employee detail."),
     );
-  }, [selectedId, loadDetail, onError]);
+  }, [selected, loadDetail, onError]);
 
   const weekByStaff = useMemo(() => {
     const map = new Map<string, number>();
@@ -131,7 +194,14 @@ export function EmployeesPanel({
     return map;
   }, [weekEntries]);
 
-  const selected = users.find((u) => u.id === selectedId) ?? null;
+  const openTasks = useMemo(
+    () => detailTasks.filter((t) => t.status !== "done"),
+    [detailTasks],
+  );
+  const doneTasks = useMemo(
+    () => detailTasks.filter((t) => t.status === "done"),
+    [detailTasks],
+  );
 
   const sendInvite = async () => {
     setBusy(true);
@@ -327,16 +397,18 @@ export function EmployeesPanel({
         <div className="mt-8 border-t border-white/8 px-4 pt-5 lg:px-0">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
-              <h2 className="text-[15px] font-semibold text-[#f5f5f5]">Logged work</h2>
+              <h2 className="text-[15px] font-semibold text-[#f5f5f5]">Assigned tasks</h2>
               <p className="text-[12px] text-[#6f6a65]">
-                Last 90 days ·{" "}
-                <span className="text-[#f5f5f5]">{fmtHours(detailTotal)} hrs</span>
+                Must match assignee name{" "}
+                <span className="text-[#f5f5f5]">{selected.display_name}</span>
+                {" · "}
+                {openTasks.length} open
               </p>
             </div>
             <button
               type="button"
               onClick={() =>
-                loadDetail(selected.id).catch((e) =>
+                loadDetail(selected).catch((e) =>
                   onError(e instanceof Error ? e.message : "Refresh failed."),
                 )
               }
@@ -345,6 +417,44 @@ export function EmployeesPanel({
               Refresh
             </button>
           </div>
+          {detailTasks.length === 0 ? (
+            <p className="border-t border-white/8 py-8 text-[14px] text-[#6f6a65]">
+              No tasks assigned to this name yet. In OPS → Tasks, set Assignees to{" "}
+              <span className="text-[#9a9590]">{selected.display_name}</span> exactly.
+            </p>
+          ) : (
+            <ul className="divide-y divide-white/8 border-t border-white/8">
+              {[...openTasks, ...doneTasks].map((t) => (
+                <li key={t.id} className="py-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-[14px] font-semibold text-[#f5f5f5]">{t.title}</p>
+                    <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9a9590]">
+                      {statusLabel(t.status)}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap gap-x-3 text-[12px] text-[#6f6a65]">
+                    {t.due_on ? <span>Due {t.due_on}</span> : null}
+                    {t.task_type ? <span className="capitalize">{t.task_type}</span> : null}
+                    {t.priority === "high" ? (
+                      <span className="text-[#c4a35a]">High</span>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="mt-8 border-t border-white/8 px-4 pt-5 lg:px-0">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-[15px] font-semibold text-[#f5f5f5]">Logged work</h2>
+              <p className="text-[12px] text-[#6f6a65]">
+                Last 90 days ·{" "}
+                <span className="text-[#f5f5f5]">{fmtHours(detailTotal)} hrs</span>
+              </p>
+            </div>
+          </div>
           {detailEntries.length === 0 ? (
             <p className="py-8 text-[14px] text-[#6f6a65]">No hours logged yet.</p>
           ) : (
@@ -352,7 +462,7 @@ export function EmployeesPanel({
               {detailEntries.map((e) => (
                 <li key={e.id} className="py-3.5">
                   <p className="text-[14px] font-semibold text-[#f5f5f5]">
-                    {e.work_date} · {fmtHours(e.hours)} hrs
+                    {fmtWorkRange(e)}
                   </p>
                   {e.note ? (
                     <p className="mt-0.5 text-[13px] text-[#9a9590]">{e.note}</p>

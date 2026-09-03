@@ -17,6 +17,8 @@ export type PmTimeEntry = {
   hours: number;
   note: string;
   task_id: string | null;
+  started_at: string | null;
+  ended_at: string | null;
   staff_display_name?: string;
   task_title?: string;
 };
@@ -34,6 +36,10 @@ function missingTableError(error: { message?: string }): Error | null {
   return null;
 }
 
+function missingRangeColumns(error: { message?: string }): boolean {
+  return /started_at|ended_at|column/i.test(error.message || "");
+}
+
 function mapEntry(
   row: Record<string, unknown>,
   extra?: { staff_display_name?: string; task_title?: string },
@@ -47,9 +53,39 @@ function mapEntry(
     hours: Number(row.hours) || 0,
     note: str(row.note),
     task_id: row.task_id ? String(row.task_id) : null,
+    started_at: row.started_at ? String(row.started_at) : null,
+    ended_at: row.ended_at ? String(row.ended_at) : null,
     staff_display_name: extra?.staff_display_name,
     task_title: extra?.task_title,
   };
+}
+
+/** Parse local `YYYY-MM-DDTHH:mm` or ISO into Date. */
+export function parseLocalDateTime(raw: string): Date | null {
+  const s = str(raw);
+  if (!s) return null;
+  // datetime-local style (no Z) — treat as local wall time
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    const h = Number(m[4]);
+    const mi = Number(m[5]);
+    const sec = Number(m[6] || 0);
+    const dt = new Date(y, mo, d, h, mi, sec);
+    return Number.isFinite(dt.getTime()) ? dt : null;
+  }
+  const dt = new Date(s);
+  return Number.isFinite(dt.getTime()) ? dt : null;
+}
+
+export function hoursBetween(start: Date, end: Date): number {
+  const ms = end.getTime() - start.getTime();
+  if (!(ms > 0)) return 0;
+  // Round to nearest minute, then to 2 decimal hours
+  const minutes = Math.round(ms / 60000);
+  return Math.round((minutes / 60) * 100) / 100;
 }
 
 export async function listTimeEntriesForStaff(
@@ -136,32 +172,51 @@ export async function listTimeEntriesAdmin(opts?: {
 
 export async function createTimeEntry(input: {
   staff_user_id: string;
-  work_date: string;
-  hours: number;
+  started_at: string;
+  ended_at: string;
   note?: string;
   task_id?: string | null;
 }): Promise<PmTimeEntry> {
-  const workDate = str(input.work_date).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
-    throw new Error("work_date must be YYYY-MM-DD.");
+  const start = parseLocalDateTime(input.started_at);
+  const end = parseLocalDateTime(input.ended_at);
+  if (!start || !end) {
+    throw new Error("Start and end date/time are required.");
   }
-  const hours = Number(input.hours);
-  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
-    throw new Error("Hours must be between 0 and 24.");
+  if (end.getTime() <= start.getTime()) {
+    throw new Error("End must be after start.");
+  }
+  const hours = hoursBetween(start, end);
+  if (!(hours > 0) || hours > 48) {
+    throw new Error("Shift must be between 1 minute and 48 hours.");
   }
 
-  const { data, error } = await db()
+  const workDate = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
+  const startedIso = start.toISOString();
+  const endedIso = end.toISOString();
+
+  const withRange = {
+    staff_user_id: input.staff_user_id,
+    work_date: workDate,
+    hours,
+    note: str(input.note),
+    task_id: input.task_id ? str(input.task_id) || null : null,
+    started_at: startedIso,
+    ended_at: endedIso,
+    updated_at: new Date().toISOString(),
+  };
+
+  let { data, error } = await db()
     .from("pm_time_entries")
-    .insert({
-      staff_user_id: input.staff_user_id,
-      work_date: workDate,
-      hours,
-      note: str(input.note),
-      task_id: input.task_id ? str(input.task_id) || null : null,
-      updated_at: new Date().toISOString(),
-    })
+    .insert(withRange)
     .select("*")
     .single();
+
+  if (error && missingRangeColumns(error)) {
+    throw new Error(
+      "Time range columns missing. Run supabase/staff_portal_v2.sql in Supabase, then retry.",
+    );
+  }
+
   if (error) {
     const mapped = missingTableError(error);
     if (mapped) throw mapped;

@@ -32,10 +32,73 @@ type TimeEntry = {
   hours: number;
   note: string;
   task_id: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
 };
 
 type Screen = "login" | "password" | "app";
 type Tab = "tasks" | "hours";
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/** Local wall time for `<input type="datetime-local">`. */
+function toDatetimeLocalValue(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function defaultStartLocal(): string {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  d.setMinutes(Math.floor(d.getMinutes() / 15) * 15);
+  return toDatetimeLocalValue(d);
+}
+
+function defaultEndLocal(startLocal: string): string {
+  const d = new Date(startLocal);
+  if (!Number.isFinite(d.getTime())) return defaultStartLocal();
+  d.setHours(d.getHours() + 2);
+  return toDatetimeLocalValue(d);
+}
+
+function hoursFromLocalRange(startLocal: string, endLocal: string): number {
+  const start = new Date(startLocal);
+  const end = new Date(endLocal);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return 0;
+  const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+  if (minutes <= 0) return 0;
+  return Math.round((minutes / 60) * 100) / 100;
+}
+
+function fmtEntryRange(e: TimeEntry): string {
+  if (e.started_at && e.ended_at) {
+    const start = new Date(e.started_at);
+    const end = new Date(e.ended_at);
+    if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())) {
+      const opts: Intl.DateTimeFormatOptions = {
+        timeZone: "America/New_York",
+        month: "2-digit",
+        day: "2-digit",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      };
+      const sParts = new Intl.DateTimeFormat("en-US", opts).formatToParts(start);
+      const eParts = new Intl.DateTimeFormat("en-US", opts).formatToParts(end);
+      const get = (parts: Intl.DateTimeFormatPart[], type: string) =>
+        parts.find((p) => p.type === type)?.value || "";
+      const date = `${get(sParts, "year")}-${get(sParts, "month")}-${get(sParts, "day")}`;
+      const sTime = `${get(sParts, "hour")}:${get(sParts, "minute")}${get(sParts, "dayPeriod").toUpperCase()}`;
+      const eTime = `${get(eParts, "hour")}:${get(eParts, "minute")}${get(eParts, "dayPeriod").toUpperCase()}`;
+      const hrs = e.hours % 1 === 0 ? String(e.hours) : e.hours.toFixed(1);
+      return `${date} · ${sTime}–${eTime} · ${hrs} hrs`;
+    }
+  }
+  const hrs = e.hours % 1 === 0 ? String(e.hours) : e.hours.toFixed(1);
+  return `${e.work_date} · ${hrs} hrs`;
+}
 
 async function teamApi<T>(
   op: string,
@@ -98,6 +161,17 @@ function UnderlineInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={`border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base text-[#f5f5f5] outline-none focus:border-[#c4a35a] ${props.className ?? ""}`}
+    />
+  );
+}
+
+/** Dark + gold native date/time pickers (browser calendar chrome). */
+function BrandedDateTimeInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      {...props}
+      type="datetime-local"
+      className={`w-full border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base text-[#f5f5f5] outline-none [color-scheme:dark] accent-[#c4a35a] focus:border-[#c4a35a] ${props.className ?? ""}`}
     />
   );
 }
@@ -170,9 +244,11 @@ export function TeamApp() {
 
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [weekHours, setWeekHours] = useState(0);
-  const [workDate, setWorkDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [hours, setHours] = useState("2");
+  const [startedAt, setStartedAt] = useState(() => defaultStartLocal());
+  const [endedAt, setEndedAt] = useState(() => defaultEndLocal(defaultStartLocal()));
   const [hourNote, setHourNote] = useState("");
+
+  const previewHours = hoursFromLocalRange(startedAt, endedAt);
 
   const goTab = useCallback(
     (next: Tab) => {
@@ -365,14 +441,17 @@ export function TeamApp() {
       }>("log_hours", {
         method: "POST",
         body: {
-          work_date: workDate,
-          hours: Number(hours),
+          started_at: startedAt,
+          ended_at: endedAt,
           note: hourNote,
         },
       });
       setEntries(data.entries ?? []);
       setWeekHours(data.week_hours ?? 0);
       setHourNote("");
+      const nextStart = endedAt;
+      setStartedAt(nextStart);
+      setEndedAt(defaultEndLocal(nextStart));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not log hours.");
     } finally {
@@ -604,23 +683,32 @@ export function TeamApp() {
             </div>
 
             <div className="mb-8 flex flex-col gap-4 border border-white/8 bg-[#141414] p-4">
-              <Field label="Date">
-                <UnderlineInput
-                  type="date"
-                  value={workDate}
-                  onChange={(e) => setWorkDate(e.target.value)}
+              <Field label="Start">
+                <BrandedDateTimeInput
+                  value={startedAt}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setStartedAt(next);
+                    if (endedAt && next && endedAt <= next) {
+                      setEndedAt(defaultEndLocal(next));
+                    }
+                  }}
                 />
               </Field>
-              <Field label="Hours">
-                <UnderlineInput
-                  type="number"
-                  min={0.25}
-                  max={24}
-                  step={0.25}
-                  value={hours}
-                  onChange={(e) => setHours(e.target.value)}
+              <Field label="End">
+                <BrandedDateTimeInput
+                  value={endedAt}
+                  onChange={(e) => setEndedAt(e.target.value)}
                 />
               </Field>
+              <p className="text-[13px] text-[#9a9590]">
+                Duration ·{" "}
+                <span className="font-semibold text-[#f5f5f5]">
+                  {previewHours > 0
+                    ? `${previewHours % 1 === 0 ? previewHours : previewHours.toFixed(1)} hrs`
+                    : "—"}
+                </span>
+              </p>
               <Field label="Note">
                 <UnderlineInput
                   type="text"
@@ -630,7 +718,7 @@ export function TeamApp() {
                 />
               </Field>
               <GoldButton
-                disabled={busy || !workDate || !Number(hours)}
+                disabled={busy || previewHours <= 0}
                 onClick={() => void logHours()}
               >
                 {busy ? "Saving…" : "Log hours"}
@@ -650,9 +738,7 @@ export function TeamApp() {
                     className="flex items-start justify-between gap-3 py-3.5"
                   >
                     <div>
-                      <p className="text-[14px] font-semibold">
-                        {e.work_date} · {e.hours} hrs
-                      </p>
+                      <p className="text-[14px] font-semibold">{fmtEntryRange(e)}</p>
                       {e.note ? (
                         <p className="mt-0.5 text-[13px] text-[#9a9590]">{e.note}</p>
                       ) : null}
