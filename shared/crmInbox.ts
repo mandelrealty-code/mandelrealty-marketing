@@ -130,14 +130,10 @@ export function enrichLeadInbox(
   aiGlobalOn: boolean,
 ): LeadInboxRow {
   const smsLastReadAt = lead.sms_last_read_at ?? null;
-  // Inbound messages (or unreviewed AI outbound) after last read count as unread
+  // Only inbound messages count as unread
   let unread = false;
-  if (lastSms) {
-    if (lastSms.direction === "inbound") {
-      unread = !smsLastReadAt || new Date(lastSms.created_at) > new Date(smsLastReadAt);
-    } else if (lastSms.meta?.ai_generated === true) {
-      unread = !smsLastReadAt || new Date(lastSms.created_at) > new Date(smsLastReadAt);
-    }
+  if (lastSms?.direction === "inbound") {
+    unread = !smsLastReadAt || new Date(lastSms.created_at) > new Date(smsLastReadAt);
   }
   const needs_you = detectNeedsYou({
     lead,
