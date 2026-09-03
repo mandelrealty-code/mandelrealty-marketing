@@ -14,7 +14,7 @@ function pinCaption(pin: SopStepPin): string {
   return String(pin.label || "").trim();
 }
 
-/** Screenshot with pin captions overlaid (numbers may already be baked into the image). */
+/** Screenshot with pin callouts: one pill = number + caption (covers baked pin circles). */
 export function SopAnnotatedImage({
   src,
   alt,
@@ -38,28 +38,28 @@ export function SopAnnotatedImage({
 
         {labeled.map((pin) => {
           const caption = pinCaption(pin);
-          const preferLeft = pin.x > 0.62;
+          const preferLeft = pin.x > 0.72;
           return (
             <div
               key={pin.id}
-              className="pointer-events-none absolute z-10 max-w-[46%] -translate-y-1/2"
+              className="pointer-events-none absolute z-10 max-w-[min(52%,280px)]"
               style={{
-                left: preferLeft ? undefined : `${pin.x * 100}%`,
-                right: preferLeft ? `${(1 - pin.x) * 100}%` : undefined,
+                left: `${pin.x * 100}%`,
                 top: `${pin.y * 100}%`,
-                paddingLeft: preferLeft ? 0 : "1.35rem",
-                paddingRight: preferLeft ? "1.35rem" : 0,
+                transform: preferLeft
+                  ? "translate(-85%, -50%)"
+                  : "translate(-15%, -50%)",
               }}
             >
               <div
-                className={`inline-flex max-w-full items-start gap-1.5 rounded-md border border-[#c4a35a]/55 bg-[#0a0a0a]/92 px-2 py-1 shadow-lg backdrop-blur-sm ${
-                  preferLeft ? "flex-row-reverse text-right" : ""
+                className={`inline-flex max-w-full items-center gap-1.5 rounded-full border border-black/25 bg-[#c4a35a] px-2 py-1 shadow-[0_2px_10px_rgba(0,0,0,0.45)] ${
+                  preferLeft ? "flex-row-reverse" : ""
                 }`}
               >
-                <span className="mt-0.5 flex h-4 min-w-[16px] shrink-0 items-center justify-center rounded-full bg-[#c4a35a] px-1 font-mono text-[9px] font-bold text-black">
+                <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#0a0a0a] px-1.5 font-mono text-[10px] font-bold text-[#c4a35a]">
                   {pin.number}
                 </span>
-                <span className="text-[11px] font-semibold leading-snug text-[#f5f5f5]">
+                <span className="pr-1 text-[11px] font-bold leading-snug text-[#0a0a0a]">
                   {caption}
                 </span>
               </div>

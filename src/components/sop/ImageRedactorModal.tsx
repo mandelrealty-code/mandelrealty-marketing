@@ -516,39 +516,20 @@ export function ImageRedactorModal({
         }
       });
 
-      // 3. Draw non-hidden pins
+      // 3. Draw non-hidden pins — labeled pins bake as one pill (number + caption)
       pins.forEach((pin) => {
         if (hiddenIds[pin.id]) return;
 
         const pinText = String(pin.number ?? "");
+        const caption = String(pin.label || "").trim();
         const px = pin.x * canvas.width;
         const py = pin.y * canvas.height;
-        const radius = Math.max(14, canvas.width * 0.016);
 
-        ctx.beginPath();
-        ctx.arc(px, py, radius, 0, Math.PI * 2);
-        ctx.fillStyle = "#c4a35a";
-        ctx.fill();
-        ctx.lineWidth = Math.max(2, canvas.width * 0.002);
-        ctx.strokeStyle = "#0a0a0a";
-        ctx.stroke();
-
-        const fontSize = Math.round(
-          radius * (pinText.length > 2 ? 0.8 : pinText.length > 1 ? 0.95 : 1.15)
-        );
-        ctx.fillStyle = "#0a0a0a";
-        ctx.font = `bold ${fontSize}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(pinText, px, py + 1);
-
-        const caption = String(pin.label || "").trim();
         if (caption) {
-          const capFont = Math.max(12, Math.round(canvas.width * 0.014));
-          ctx.font = `600 ${capFont}px sans-serif`;
-          ctx.textAlign = "left";
-          ctx.textBaseline = "middle";
-          const maxTextW = Math.min(canvas.width * 0.38, canvas.width - px - radius * 2 - 24);
+          const capFont = Math.max(13, Math.round(canvas.width * 0.015));
+          const numFont = Math.max(11, Math.round(capFont * 0.9));
+          ctx.font = `bold ${capFont}px sans-serif`;
+          const maxTextW = Math.min(canvas.width * 0.42, canvas.width * 0.7);
           const words = caption.split(/\s+/);
           const lines: string[] = [];
           let line = "";
@@ -562,38 +543,81 @@ export function ImageRedactorModal({
             }
           }
           if (line) lines.push(line);
-          const lineH = Math.round(capFont * 1.25);
-          const padX = Math.round(capFont * 0.55);
-          const padY = Math.round(capFont * 0.4);
-          const textW = Math.max(...lines.map((l) => ctx.measureText(l).width));
-          const boxW = textW + padX * 2;
-          const boxH = lines.length * lineH + padY * 2;
-          const preferLeft = px > canvas.width * 0.62;
-          const gap = radius + Math.max(8, canvas.width * 0.008);
-          let boxX = preferLeft ? px - gap - boxW : px + gap;
-          boxX = Math.max(8, Math.min(boxX, canvas.width - boxW - 8));
-          let boxY = py - boxH / 2;
-          boxY = Math.max(8, Math.min(boxY, canvas.height - boxH - 8));
 
-          ctx.fillStyle = "rgba(10, 10, 10, 0.88)";
-          ctx.strokeStyle = "rgba(196, 163, 90, 0.7)";
-          ctx.lineWidth = Math.max(1.5, canvas.width * 0.0015);
-          const r = Math.max(4, capFont * 0.35);
+          ctx.font = `bold ${numFont}px sans-serif`;
+          const numW = Math.max(
+            Math.round(capFont * 1.35),
+            ctx.measureText(pinText).width + Math.round(capFont * 0.7),
+          );
+          ctx.font = `bold ${capFont}px sans-serif`;
+          const textW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+          const padX = Math.round(capFont * 0.45);
+          const padY = Math.round(capFont * 0.35);
+          const gap = Math.round(capFont * 0.35);
+          const lineH = Math.round(capFont * 1.2);
+          const innerH = Math.max(numW, lines.length * lineH);
+          const boxW = padX + numW + gap + textW + padX;
+          const boxH = padY * 2 + innerH;
+          const preferLeft = px > canvas.width * 0.68;
+          let boxX = preferLeft ? px - boxW * 0.15 : px - boxW * 0.12;
+          boxX = Math.max(6, Math.min(boxX, canvas.width - boxW - 6));
+          let boxY = py - boxH / 2;
+          boxY = Math.max(6, Math.min(boxY, canvas.height - boxH - 6));
+          const rr = boxH / 2;
+
+          ctx.fillStyle = "#c4a35a";
           ctx.beginPath();
-          ctx.moveTo(boxX + r, boxY);
-          ctx.arcTo(boxX + boxW, boxY, boxX + boxW, boxY + boxH, r);
-          ctx.arcTo(boxX + boxW, boxY + boxH, boxX, boxY + boxH, r);
-          ctx.arcTo(boxX, boxY + boxH, boxX, boxY, r);
-          ctx.arcTo(boxX, boxY, boxX + boxW, boxY, r);
+          ctx.moveTo(boxX + rr, boxY);
+          ctx.arcTo(boxX + boxW, boxY, boxX + boxW, boxY + boxH, rr);
+          ctx.arcTo(boxX + boxW, boxY + boxH, boxX, boxY + boxH, rr);
+          ctx.arcTo(boxX, boxY + boxH, boxX, boxY, rr);
+          ctx.arcTo(boxX, boxY, boxX + boxW, boxY, rr);
           ctx.closePath();
           ctx.fill();
+          ctx.lineWidth = Math.max(1.5, canvas.width * 0.0015);
+          ctx.strokeStyle = "#0a0a0a";
           ctx.stroke();
 
-          ctx.fillStyle = "#f5f5f5";
+          const numCx = boxX + padX + numW / 2;
+          const numCy = boxY + boxH / 2;
+          ctx.beginPath();
+          ctx.arc(numCx, numCy, numW / 2 - 1, 0, Math.PI * 2);
+          ctx.fillStyle = "#0a0a0a";
+          ctx.fill();
+          ctx.fillStyle = "#c4a35a";
+          ctx.font = `bold ${numFont}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(pinText, numCx, numCy + 0.5);
+
+          ctx.fillStyle = "#0a0a0a";
+          ctx.font = `bold ${capFont}px sans-serif`;
+          ctx.textAlign = "left";
+          const textX = boxX + padX + numW + gap;
+          const textTop = boxY + (boxH - lines.length * lineH) / 2;
           lines.forEach((l, i) => {
-            ctx.fillText(l, boxX + padX, boxY + padY + lineH * i + lineH / 2);
+            ctx.fillText(l, textX, textTop + lineH * i + lineH / 2);
           });
+          return;
         }
+
+        const radius = Math.max(14, canvas.width * 0.016);
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#c4a35a";
+        ctx.fill();
+        ctx.lineWidth = Math.max(2, canvas.width * 0.002);
+        ctx.strokeStyle = "#0a0a0a";
+        ctx.stroke();
+
+        const fontSize = Math.round(
+          radius * (pinText.length > 2 ? 0.8 : pinText.length > 1 ? 0.95 : 1.15),
+        );
+        ctx.fillStyle = "#0a0a0a";
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(pinText, px, py + 1);
       });
 
       const bakedDataUrl = canvas.toDataURL("image/webp", 0.92);
@@ -847,27 +871,31 @@ export function ImageRedactorModal({
                         top: `${pin.y * 100}%`,
                       }}
                     >
-                      {/* Pin Circle Badge */}
-                      <div
-                        className={`flex h-7 min-w-[28px] px-1 items-center justify-center rounded-full border-2 border-black bg-[#c4a35a] font-mono text-xs font-bold text-black shadow-lg transition-transform ${
-                          isSelected
-                            ? "scale-125 ring-4 ring-white shadow-[0_0_15px_rgba(255,255,255,0.7)]"
-                            : "ring-4 ring-[#c4a35a]/25 group-hover/pin:scale-110"
-                        }`}
-                      >
-                        {pinText}
-                      </div>
-
-                      {/* Always-visible caption on the screenshot */}
-                      {!isSelected && pin.label?.trim() ? (
+                      {/* Combined number + caption pill (no standalone pin when caption exists) */}
+                      {pin.label?.trim() && !isSelected ? (
                         <div
-                          className={`pointer-events-none absolute top-1/2 z-10 max-w-[220px] -translate-y-1/2 rounded-md border border-[#c4a35a]/45 bg-[#0a0a0a]/92 px-2 py-1 text-[11px] font-semibold leading-snug text-[#f5f5f5] shadow-lg ${
-                            pin.x > 0.62 ? "right-full mr-2 text-right" : "left-full ml-2"
+                          className={`pointer-events-none absolute top-1/2 z-10 flex max-w-[240px] -translate-y-1/2 items-center gap-1.5 rounded-full border border-black/30 bg-[#c4a35a] px-2 py-1 shadow-lg ${
+                            pin.x > 0.68 ? "right-0 translate-x-1/4 flex-row-reverse" : "left-0 -translate-x-1/4"
                           }`}
                         >
-                          {pin.label.trim()}
+                          <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#0a0a0a] px-1.5 font-mono text-[10px] font-bold text-[#c4a35a]">
+                            {pinText}
+                          </span>
+                          <span className="pr-1 text-[11px] font-bold leading-snug text-[#0a0a0a]">
+                            {pin.label.trim()}
+                          </span>
                         </div>
-                      ) : null}
+                      ) : (
+                        <div
+                          className={`flex h-7 min-w-[28px] px-1 items-center justify-center rounded-full border-2 border-black bg-[#c4a35a] font-mono text-xs font-bold text-black shadow-lg transition-transform ${
+                            isSelected
+                              ? "scale-125 ring-4 ring-white shadow-[0_0_15px_rgba(255,255,255,0.7)]"
+                              : "ring-4 ring-[#c4a35a]/25 group-hover/pin:scale-110"
+                          }`}
+                        >
+                          {pinText}
+                        </div>
+                      )}
 
                       {/* Floating In-Place Caption Popover / Bubble (when selected) */}
                       {isSelected && (

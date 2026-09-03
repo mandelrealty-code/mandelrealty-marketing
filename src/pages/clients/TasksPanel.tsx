@@ -1047,8 +1047,9 @@ export function TasksPanel({
         <TextArea
           value={form.detail}
           onChange={(e) => setForm((f) => ({ ...f, detail: e.target.value }))}
-          placeholder="Add detail — vendor, blocker reason, checklist notes"
-          rows={3}
+          placeholder={"Add detail — vendor, blocker reason, checklist notes\n\n1. First step\n2. Second step"}
+          rows={10}
+          className="min-h-[160px] whitespace-pre-wrap font-normal leading-relaxed"
         />
 
         <div className="flex flex-col gap-1.5">
@@ -1227,7 +1228,7 @@ export function TasksPanel({
         </h1>
 
         {selected.detail ? (
-          <p className="mb-5 text-[14px] leading-relaxed text-[#9a9590]">
+          <p className="mb-5 whitespace-pre-wrap text-[14px] leading-relaxed text-[#9a9590]">
             {selected.detail}
           </p>
         ) : null}
