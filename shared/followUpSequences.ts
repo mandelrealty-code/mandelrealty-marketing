@@ -90,21 +90,37 @@ export function toE164(phone: string): string | null {
   return null;
 }
 
-/** Mandel Realty Twilio / public business line — never a lead or operator callback. */
-const KNOWN_COMPANY_PHONE_DIGITS = new Set(["6473817325"]);
+/** Public marketing / business line (constants.ts) — not Twilio, not a client. */
+export const PUBLIC_BUSINESS_PHONE_DIGITS = "6473817325";
 
-export function companyPhoneDigits(): string[] {
-  const fromEnv = normalizePhoneDigits(process.env.TWILIO_PHONE_NUMBER || "");
-  const out = [...KNOWN_COMPANY_PHONE_DIGITS];
-  if (fromEnv && !out.includes(fromEnv)) out.push(fromEnv);
-  return out;
+/** Digits for our Twilio SMS/voice sender (from env). */
+export function twilioSenderDigits(): string {
+  return normalizePhoneDigits(process.env.TWILIO_PHONE_NUMBER || "");
 }
 
-/** True if this number is our Twilio / public MRG line (not a client, not your cell). */
-export function isCompanyTwilioPhone(phone: string | null | undefined): boolean {
+/** True if this is our Twilio sender number (e.g. +1 289-672-4026). */
+export function isTwilioSenderPhone(phone: string | null | undefined): boolean {
   const digits = normalizePhoneDigits(phone || "");
-  if (!digits) return false;
-  return companyPhoneDigits().includes(digits);
+  const twilio = twilioSenderDigits();
+  return Boolean(digits && twilio && digits === twilio);
+}
+
+/** True if this is the public business line (647-381-7325). */
+export function isPublicBusinessPhone(phone: string | null | undefined): boolean {
+  return normalizePhoneDigits(phone || "") === PUBLIC_BUSINESS_PHONE_DIGITS;
+}
+
+/**
+ * Numbers that must never be stored as a lead phone or used as the CRM
+ * operator callback: Twilio sender + public business line.
+ */
+export function isNonClientCompanyPhone(phone: string | null | undefined): boolean {
+  return isTwilioSenderPhone(phone) || isPublicBusinessPhone(phone);
+}
+
+/** @deprecated use isNonClientCompanyPhone / isTwilioSenderPhone */
+export function isCompanyTwilioPhone(phone: string | null | undefined): boolean {
+  return isNonClientCompanyPhone(phone);
 }
 
 export function isTwilioConfigured(env: {

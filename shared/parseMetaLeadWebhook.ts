@@ -3,7 +3,7 @@ import {
   inferOfferPath,
   type OfferPath,
 } from "./crmTypes.js";
-import { isCompanyTwilioPhone } from "./followUpSequences.js";
+import { isNonClientCompanyPhone } from "./followUpSequences.js";
 import {
   PERMIT_OPTIONS,
   PROPERTY_STAGES,
@@ -276,8 +276,10 @@ export function parseMetaLeadWebhook(
 
   // Never store our Twilio / public MRG line as the lead's phone
   let leadPhone = phone || "unknown";
-  if (phone && isCompanyTwilioPhone(phone)) {
-    warnings.push("Phone looked like Mandel Realty Twilio line — left blank for manual entry");
+  if (phone && isNonClientCompanyPhone(phone)) {
+    warnings.push(
+      "Phone looked like a Mandel Realty company number — left blank for manual entry",
+    );
     leadPhone = "unknown";
   }
 

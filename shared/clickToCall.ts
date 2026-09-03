@@ -2,7 +2,13 @@
  * CRM click-to-call: pre-call SMS → dial operator → bridge to lead → record.
  */
 import { getCrmSettings } from "./crmSettings.js";
-import { isCompanyTwilioPhone, isTwilioConfigured, toE164 } from "./followUpSequences.js";
+import {
+  isNonClientCompanyPhone,
+  isPublicBusinessPhone,
+  isTwilioConfigured,
+  isTwilioSenderPhone,
+  toE164,
+} from "./followUpSequences.js";
 import { getLeadById, updateLeadCrm } from "./leadStore.js";
 import { createLeadCall, getLatestLeadCallForLead, getLeadCallById, listRecentLeadCalls, updateLeadCall } from "./leadCalls.js";
 import { listSmsForLead, logSmsMessage } from "./smsStore.js";
@@ -64,11 +70,11 @@ export async function startClickToCall(input: {
 
   const leadPhone = toE164(lead.phone || "");
   if (!leadPhone) return { ok: false, error: "Lead has no valid phone number." };
-  if (isCompanyTwilioPhone(leadPhone)) {
+  if (isNonClientCompanyPhone(leadPhone)) {
     return {
       ok: false,
       error:
-        "Lead phone is set to the Mandel Realty Twilio number. Enter the client's number, then try again.",
+        "Lead phone is set to a Mandel Realty company number. Enter the client's number, then try again.",
     };
   }
 
@@ -82,11 +88,18 @@ export async function startClickToCall(input: {
       error: "Set your callback phone in Settings (CRM calls) first.",
     };
   }
-  if (isCompanyTwilioPhone(operatorPhone)) {
+  if (isTwilioSenderPhone(operatorPhone)) {
     return {
       ok: false,
       error:
-        "Callback phone cannot be the Mandel Realty Twilio line. Set your personal cell in Settings → CRM calls.",
+        "Callback phone cannot be the Twilio SMS/voice number. Set your personal cell in Settings → CRM calls.",
+    };
+  }
+  if (isPublicBusinessPhone(operatorPhone)) {
+    return {
+      ok: false,
+      error:
+        "Callback phone cannot be the public business line (647-381-7325). Set your personal cell in Settings → CRM calls.",
     };
   }
 

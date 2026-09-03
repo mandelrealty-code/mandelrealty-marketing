@@ -120,14 +120,21 @@ function telHref(phone: string): string | null {
 }
 
 /** CRM sometimes stores literal "unknown" when Make omitted the number.
- *  Never treat the Mandel Realty Twilio line as a usable lead phone. */
+ *  Never treat company lines (public business or Twilio sender) as a client phone. */
 function leadPhoneUsable(phone: string | null | undefined): boolean {
   const p = (phone || "").trim();
   if (!p || /^unknown$/i.test(p) || /^n\/?a$/i.test(p)) return false;
   const digits = p.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
-  // Company Twilio / public MRG line — not a client
+  // Public business line (marketing) — not a client
   if (digits === "6473817325") return false;
+  // Twilio SMS/voice inventory number — not a client
+  if (digits === "2896724026") return false;
   return Boolean(telHref(p));
+}
+
+function isBadOperatorCallback(phone: string | null | undefined): boolean {
+  const digits = (phone || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+  return digits === "6473817325" || digits === "2896724026";
 }
 
 function leadHadPreCallSms(
@@ -2061,13 +2068,12 @@ export function AdminPage() {
                   {leadPhoneUsable(selected.phone) && !operatorCallbackPhone && (
                     <p className="bg-[#1a1a1a] px-3.5 py-2.5 text-[12.5px] text-[#d9ac63]">
                       Set your personal cell in Settings → CRM calls first (not the Twilio
-                      business line).
+                      number or public business line).
                     </p>
                   )}
-                  {operatorCallbackPhone.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "") ===
-                    "6473817325" && (
+                  {isBadOperatorCallback(operatorCallbackPhone) && (
                     <p className="bg-[#1a1a1a] px-3.5 py-2.5 text-[12.5px] text-[#cf7f7b]">
-                      Callback is set to the Mandel Realty Twilio number. Change it to your
+                      Callback is set to a Mandel Realty company number. Change it to your
                       personal cell in Settings → CRM calls, or CRM calls will be blocked.
                     </p>
                   )}
@@ -3469,10 +3475,11 @@ export function AdminPage() {
                     Whose phone rings first (your cell)
                   </p>
                   <p className="mt-1 text-[12.5px] leading-snug text-[#9a9590]">
-                    CRM call rings this number first — use your personal cell (or Ryan&apos;s),
-                    never the Mandel Realty Twilio line (647-381-7325). Whoever answers is
-                    connected to the lead. &quot;Dial lead from this phone&quot; is different —
-                    that opens the normal phone app to the client&apos;s number with no recording.
+                    CRM call rings this number first — use your personal cell (or Ryan&apos;s).
+                    Do not use the Twilio SMS number (+1 289-672-4026) or the public business
+                    line (647-381-7325). Whoever answers is connected to the lead.
+                    &quot;Dial lead from this phone&quot; opens the normal phone app to the
+                    client&apos;s number with no recording.
                   </p>
                   <label className="mt-3 block">
                     <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
