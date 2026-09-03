@@ -121,7 +121,8 @@ const AIRBNB_RULES = `AIRBNB MESSAGE RULES
 - No @handles, "insta", "ig", "dm me", or brand handles written out as contact paths.
 - No off-platform payment (wire, e-transfer, Venmo, pay us directly).
 - Do not say take a look, check this out, check out, click here, visit our website, or similar.
-- Do not ask them to leave Airbnb, search, Google, look us up, find us, call, text, email, DM, or continue off the platform.
+- Do not ask them to leave Airbnb, Google us, look us up, call, text, email, DM, or continue off the platform.
+- Allowed close identity only: We're listed as Mandel Realty Group in Toronto, we're easy to find online. Looking forward to working with you!
 - Do not mention that this chat blocks numbers, or that a number will not go through. That also gets blocked.
 - Never mention AI, a knowledge base, documents, or that this was drafted.
 - Never use a personal name (no Shane, no Ryan, no sign-off first name). Speak as we / Mandel Realty Group.
@@ -352,8 +353,8 @@ ${attempt === 0 ? PUNCH : "Do not deliver a sales punch. One useful observation 
 
 Address the host by first name when you have it (${host}). ${
     attempt === 0
-      ? 'When naming the company, prefer: Our business is Mandel Realty Group in Toronto. Point to 1 or 2 real listing issues, then deliver the punch using only the knowledge excerpts and what worked in LEARNING.'
-      : 'If you name the company, use: Our business is Mandel Realty Group in Toronto. Do not tell them to search, google, call, email, or follow on Instagram.'
+      ? "Mention Mandel Realty Group once, naturally (e.g. We're listed as Mandel Realty Group in Toronto). Point to 1 or 2 real listing issues, then deliver the punch using only the knowledge excerpts and what worked in LEARNING."
+      : "If you name the company, use: We're listed as Mandel Realty Group in Toronto. Do not tell them to search, google, call, email, or follow on Instagram."
   }`;
 
   const user = `LISTING FACTS FROM OUR VA (ground truth):
@@ -381,7 +382,8 @@ export async function draftReadyClose(input: OutreachReplyInput): Promise<string
   const opening = host
     ? `Great to hear you're ready to move forward, ${host}.`
     : "Great to hear you're ready to move forward.";
-  const identity = "Our business is Mandel Realty Group in Toronto.";
+  const identity =
+    "We're listed as Mandel Realty Group in Toronto, we're easy to find online. Looking forward to working with you!";
 
   const system = `You write ONLY the middle sentence of an Airbnb reply.
 
@@ -396,7 +398,7 @@ Rules for this middle line only:
 - Do NOT ask a question.
 - Do NOT include a phone, email, Instagram, @handle, search, Google, or URL.
 - Do NOT include the opening "Great to hear..." line.
-- Do NOT include "Our business is Mandel Realty Group in Toronto."
+- Do NOT include the company listing / easy to find / looking forward closing lines.
 - Never use a personal name for our side (no Shane).`;
 
   const threadBlock = firstMessage
@@ -413,6 +415,9 @@ Write only the middle sentence now.`;
   const middle = sanitizeOutreachMessage(await callClaude(system, user, 80));
   const cleanedMiddle = middle
     .replace(/^great to hear you're ready to move forward[^.]*\.\s*/i, "")
+    .replace(/\s*we'?re listed as mandel realty group in toronto[^.]*\.\s*/i, "")
+    .replace(/\s*we'?re easy to find online[^.]*\.\s*/i, "")
+    .replace(/\s*looking forward to working with you!?\s*$/i, "")
     .replace(/\s*our business is mandel realty group in toronto\.?\s*$/i, "")
     .trim();
 
@@ -447,7 +452,7 @@ ${PUNCH}
 
 Stricter:
 - Do not include any link or ask them off Airbnb.
-- If you name the company, use exactly: Our business is Mandel Realty Group in Toronto
+- If you name the company, use: We're listed as Mandel Realty Group in Toronto. Save the full easy-to-find close for when they are ready.
 - Answer their question from the knowledge excerpts. If the excerpts do not cover it, stay high-level and ask one qualifying question.
 - Do not repeat the entire first pitch. Move the conversation forward with a sharper no-brainer close.
 - Address ${host} by first name only if it still sounds natural. Do not start every reply with Hey {name}.

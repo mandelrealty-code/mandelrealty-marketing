@@ -761,7 +761,7 @@ export function TeamApp() {
       }
       if (intent === "close") {
         setOutreachLearningNote(
-          "Always: Great to hear you're ready to move forward, {Name}. Then one short middle line. Then: Our business is Mandel Realty Group in Toronto.",
+          "Always: Great to hear you're ready to move forward, {Name}. Then one short middle line. Then: We're listed as Mandel Realty Group in Toronto, we're easy to find online. Looking forward to working with you!",
         );
       }
       if (outreachMode === "new" && intent !== "close") {
@@ -1170,8 +1170,9 @@ export function TeamApp() {
                 When they are in, tap{" "}
                 <span className="text-[#f5f5f5]">Host is ready</span>. It always
                 sends: Great to hear you&apos;re ready to move forward, {"{Name}"}.
-                Then one short middle line. Then: Our business is Mandel Realty Group
-                in Toronto. No next-step pitch. No phone, email, or Instagram.
+                Then one short middle line. Then: We&apos;re listed as Mandel Realty
+                Group in Toronto, we&apos;re easy to find online. Looking forward to
+                working with you! No phone, email, or Instagram.
               </p>
             </div>
 
