@@ -3,6 +3,7 @@ import {
   extractAirbnbRoomId,
   sameAirbnbListing,
 } from "../../../shared/airbnbListingUrl";
+import { filterRecentBadReviews } from "../../../shared/reviewRecency";
 import { MrgMark } from "../owner/OwnerChrome";
 
 type StaffPublic = {
@@ -1473,13 +1474,27 @@ export function TeamApp() {
                       value={outreachBadReviews}
                       onChange={(e) => setOutreachBadReviews(e.target.value)}
                       rows={4}
-                      placeholder="Paste a few 4★ or under reviews (or key lines). The draft will only use what's here — no invented complaints."
+                      placeholder="Paste a few 4★ or under reviews (or key lines). Include dates when possible."
                       className="resize-y border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
                     />
                     <p className="mt-2 text-[12px] leading-relaxed text-[#6f6a65]">
-                      Tip: paste the guest wording for cleaning, broken items, noise, etc. That&apos;s
-                      what makes the opener feel real.
+                      Paste 4★-or-under wording (cleaning, broken items, noise, etc.). Include the
+                      review date when you can — anything older than 3 months is ignored automatically.
                     </p>
+                    {(() => {
+                      const filtered = filterRecentBadReviews(outreachBadReviews);
+                      if (!filtered.droppedCount) return null;
+                      return (
+                        <p className="mt-2 text-[13px] leading-relaxed text-[#c99a4b]">
+                          {filtered.droppedCount === 1
+                            ? "1 pasted review looks over 3 months old and will be ignored."
+                            : `${filtered.droppedCount} pasted reviews look over 3 months old and will be ignored.`}
+                          {!filtered.kept
+                            ? " None left are recent — the draft will use issues/notes only."
+                            : null}
+                        </p>
+                      );
+                    })()}
                   </Field>
 
                   <Field label="Anything else you noticed (optional)">

@@ -1,6 +1,7 @@
 /** Airbnb host outreach drafts for the staff portal. Grounded in CRM KB + outcome learning. */
 
 import { matchKnowledgeChunks } from "../knowledgeStore.js";
+import { filterRecentBadReviews } from "../reviewRecency.js";
 import {
   autoSaveReplyOutcome,
   formatLearningBlock,
@@ -60,6 +61,7 @@ function issueLabels(issues: string[] | undefined): string[] {
 
 function listingFacts(input: OutreachListingInput): string {
   const issues = issueLabels(input.issues);
+  const filtered = filterRecentBadReviews(trim(input.bad_reviews));
   const lines = [
     trim(input.host_name) ? `Host first name: ${trim(input.host_name)}` : null,
     trim(input.neighborhood)
@@ -68,8 +70,13 @@ function listingFacts(input: OutreachListingInput): string {
     trim(input.star_rating) ? `Star rating shown: ${trim(input.star_rating)}` : null,
     issues.length ? `Issues the VA actually observed:\n- ${issues.join("\n- ")}` : null,
     trim(input.notes) ? `VA notes (use these as observed facts): ${trim(input.notes)}` : null,
-    trim(input.bad_reviews)
-      ? `Bad guest reviews the VA pasted (4★ or under — quote or paraphrase ONLY these, do not invent complaints):\n${trim(input.bad_reviews)}`
+    filtered.kept
+      ? `Recent bad guest reviews ONLY (last 3 months — quote or paraphrase ONLY these; ignore any older reviews even if mentioned elsewhere):\n${filtered.kept}`
+      : trim(input.bad_reviews)
+        ? `No usable recent bad reviews (pasted reviews were older than 3 months or empty after filtering). Do NOT cite guest review complaints.`
+        : null,
+    filtered.droppedCount > 0
+      ? `(Internal: ${filtered.droppedCount} pasted review(s) were dropped for being over 3 months old. Do not mention them.)`
       : null,
     trim(input.listing_url)
       ? `Listing URL (internal only, never put in the message): ${trim(input.listing_url)}`
@@ -91,6 +98,7 @@ function kbQuery(input: OutreachListingInput, extra = ""): string {
     trim(input.neighborhood),
     issues,
     trim(input.notes),
+    filterRecentBadReviews(trim(input.bad_reviews)).kept,
     extra,
   ]
     .filter(Boolean)
@@ -158,23 +166,24 @@ const AIRBNB_RULES = `AIRBNB MESSAGE RULES
 - Never use a personal name (no Shane, no Ryan, no sign-off first name). Speak as we / Mandel Realty Group.
 - Avoid salesy lists, discounts, commission talk, and "I can manage your listing for you" as a cold open.`;
 
-const HUMAN_VOICE = `VOICE — match this energy (do not invent the stats in the sample)
-Sample shape to emulate:
-"Hey! Your place looks lovely — the skyline views and location right by TIFF, MTCC, and Rogers Centre are hard to beat. That said, compared to similar units nearby, we think we could lift your revenue…"
-(We NEVER invent revenue % or comps. Use real VA notes + pasted reviews for the gap instead.)
+const HUMAN_VOICE = `VOICE — match this sample LENGTH and rhythm (do not invent the stats)
+Sample (target length — about this long, not longer):
+"Hey! Your place looks lovely — the skyline views and location right by TIFF, MTCC, and Rogers Centre are hard to beat. That said, compared to similar units nearby, we think we could lift your revenue by about 126% — comps in the same building tier are earning way more than you are right now. A recent review flagged a broken bed frame and the unit not being cleaned between guests, which is likely hurting your bookings.
+
+We run a free furniture program — we'll refurnish and refresh the space at no cost to you, then help manage the listing and split the extra revenue we help generate. Want me to send over some details?"
 
 - Warm, conversational Airbnb host-to-host energy. Friendly, not stiff or corporate.
 - Open with "Hey!" or "Hey {FirstName}," — never bare "{Name}," and never "{Name}, your listing…"
-- Lead with a genuine compliment grounded in listing facts (neighborhood, vibe, views, location cues from VA notes). Then pivot with "That said," into a real gap.
-- The gap MUST come from VA issues, notes, or pasted bad reviews. Quote or paraphrase real review complaints (broken items, cleaning, noise, etc.).
+- Lead with a genuine compliment grounded in listing facts. Then pivot with "That said," into a real gap.
+- The gap MUST come from VA issues, notes, or RECENT (≤3 months) pasted bad reviews only.
+- NEVER use or paraphrase a review that is more than 3 months old. If only old reviews were pasted, do not invent review complaints — use VA issues/notes instead.
 - NEVER fabricate: revenue lift %, "comps earning way more", dollar earnings, occupancy, ADR, or review text that was not provided.
-- If no bad reviews were pasted, lean on observed issues only. Do not invent guest complaints.
-- Do not use em dashes or en dashes. Use a comma, period, or " — " style is fine as a spaced hyphen if needed, but prefer commas/periods.
+- Do not use em dashes or en dashes as punctuation. Prefer commas or periods.
 - No markdown, asterisks, underscores, or bold.
 - No emoji.
-- Forbidden phrases: Curious:, the whole nine yards, dialed in, first-upload vibe, pretty lean compared to what guests are looking for these days, Does that sound like something worth exploring.
+- Forbidden phrases: Curious:, the whole nine yards, dialed in, first-upload vibe, pretty lean compared to what guests are looking for these days, Does that sound like something worth exploring, nothing slips through the cracks, booking momentum, professional polish it needs.
 - Preferred close: Want me to send over some details?
-- Program facts ONLY from knowledge excerpts. Prefer "free furniture program" / "refurnish at no cost to you" language when furniture is the plan and the KB supports it.`;
+- Program facts ONLY from knowledge excerpts. Prefer "free furniture program" / "refurnish at no cost to you" when furniture is the plan and the KB supports it.`;
 
 function pickHeroOffer(input: {
   issues?: string[];
@@ -189,10 +198,11 @@ function pickHeroOffer(input: {
   pitch: string;
 } {
   const issues = new Set((input.issues || []).map((x) => x.trim()).filter(Boolean));
+  const recentReviews = filterRecentBadReviews(input.bad_reviews || "").kept;
   const blob = [
     ...(input.issues || []),
     input.notes || "",
-    input.bad_reviews || "",
+    recentReviews,
     input.thread || "",
     input.reply_note || "",
   ]
@@ -209,7 +219,7 @@ function pickHeroOffer(input: {
       label: "Managed Essentials",
       why: "Host wants light / fixed-cost help, not full ops.",
       pitch:
-        "Hint Message & Book or Message & Optimize from the KB. Fixed monthly. They keep cleaning. No Growth % fees. End with Want me to send over some details?",
+        "One short offer line from KB (Message & Book / Optimize). No fee dump. End with Want me to send over some details?",
     };
   }
 
@@ -222,7 +232,7 @@ function pickHeroOffer(input: {
       label: "Furniture Investment + Full Service",
       why: "Furniture / makeover is the main gap. KB says furniture does not pair with Growth.",
       pitch:
-        'First-touch offer line in this spirit: "We run a free furniture program — we\'ll refurnish and refresh the space at no cost to you, then help manage the listing…" Only if the KB supports no-upfront furniture. Do not dump 20% fee math. Never pair with Growth. End with Want me to send over some details?',
+        'ONE short offer paragraph in this spirit: "We run a free furniture program — we\'ll refurnish and refresh the space at no cost to you, then help manage the listing…" Do NOT list messaging + reviews + pricing + turnovers + maintenance as a menu. Do NOT mention 20% Standard. Never pair with Growth. End with Want me to send over some details?',
     };
   }
 
@@ -231,32 +241,32 @@ function pickHeroOffer(input: {
     label: "Growth Partnership",
     why: "Live listing outreach. Default no-brainer is low fee on their own benchmark, bigger cut only on growth.",
     pitch:
-      "First touch: hint we can help grow revenue with pricing/ops, and only take a bigger cut on growth past their own number if KB supports Growth. No invented % lifts. No flat 20% Standard cold open. End with Want me to send over some details?",
+      "ONE short offer line about helping grow the listing / ops. No invented % lifts. No flat 20% Standard. No service-menu dump. End with Want me to send over some details?",
   };
 }
 
 const PUNCH = `THE PUNCH (first touch)
-- Follow PLAN TO SELL. Write a real opener, not a tiny teaser.
-- Pattern: compliment (real) → That said + gap (real reviews/issues only) → offer (furniture program / management from KB) → Want me to send over some details?
-- NEVER invent revenue percentages, comps, or earnings. Upside language must stay qualitative unless a real number was provided in VA notes (it almost never is).
-- Fees / $ only from knowledge excerpts, and skip fee math on first touch when the offer line is enough.
-- One clear CTA. Prefer: Want me to send over some details?`;
+- Follow PLAN TO SELL with ONE short offer paragraph — not a brochure.
+- Pattern: compliment → That said + gap (recent reviews/issues only) → short offer → Want me to send over some details?
+- NEVER invent revenue percentages, comps, or earnings.
+- Do NOT dump: guest messaging + reviews + dynamic pricing + turnovers + maintenance + "Standard Management plan is 20%". That is too long and salesy for first touch.
+- Fees / % only if essential and in the KB — prefer skipping fee math on first touch.`;
 
-const FORMAT_FIRST = `FORMAT (required — Airbnb shows line breaks)
-- Use real blank lines between paragraphs. Never one dense wall of text.
-- Target length: similar to a strong cold outreach note — about 90–160 words, usually 2 paragraphs then a short CTA line (or CTA at the end of paragraph 2).
+const FORMAT_FIRST = `FORMAT (required — match the SAMPLE length)
+- Hard cap: about 70–110 words total. Two paragraphs max. CTA can sit at the end of paragraph 2.
+- Blank line between the two paragraphs. Never one dense wall, and never three long paragraphs.
 - Structure:
-  1) Greeting: "Hey!" or "Hey {FirstName}," then continue into the compliment in the same paragraph OR on the next line — either is fine, keep it natural.
-  2) Paragraph 1: compliment something specific, then "That said," into the real gap (reviews / issues from the VA).
-  3) blank line
-  4) Paragraph 2: the offer (furniture program / how you'd help) in plain spoken language.
-  5) Close with: Want me to send over some details?
-- Do not chop this into 6 tiny one-liners. Full sentences, human rhythm, readable spacing.`;
+  1) Paragraph 1: "Hey!" or "Hey {FirstName}," + compliment + "That said," + 1–2 real gaps from recent reviews / VA notes.
+  2) blank line
+  3) Paragraph 2: one short offer (furniture program OR light management help) + Want me to send over some details?
+- If you are writing a third paragraph, you are too long — cut it.
+- Do not list every service we offer.`;
 
 const REPLY_SELL = `WHEN THEY ASK HOW IT WORKS / SAY THEY ARE INTERESTED
-- Now you can go deeper on PLAN TO SELL economics from the KB.
+- Now you can go a bit deeper on PLAN TO SELL from the KB.
 - Still no invented revenue %. Still short paragraphs with blank lines.
-- One soft invite is enough. Prefer Want me to send over some details? or a natural follow-up question in-thread.`;
+- Still skip reviews older than 3 months.
+- One soft invite is enough. Prefer Want me to send over some details?`;
 
 export function sanitizeOutreachMessage(
   raw: string,
@@ -498,9 +508,10 @@ PLAN TO SELL:
 Host first name (optional in greeting): ${host}.
 ${
     attempt === 0
-      ? `REQUIRED: Match the sample energy — compliment → That said + real gap from reviews/notes → free furniture / management offer when relevant → Want me to send over some details?
-NEVER invent revenue %, comps, or review complaints. If bad reviews were pasted, use them. If not, use VA issues/notes only.
-Mention Mandel Realty Group at most once, or skip if the note already feels human.`
+      ? `REQUIRED: Match the SAMPLE length and energy — 2 paragraphs, ~70–110 words.
+compliment → That said + real gap from RECENT reviews/notes only → ONE short offer → Want me to send over some details?
+Never cite reviews older than 3 months. Never invent revenue %. Never dump a full service menu or "Standard Management is 20%".
+Mention Mandel Realty Group at most once, or skip it.`
       : "If you name the company, use: We're listed as Mandel Realty Group in Toronto. Do not tell them to search, google, call, email, or follow on Instagram."
   }`;
 
@@ -516,10 +527,9 @@ ${learning.text}
 ${rewriteBlock}
 
 Write the first Airbnb message now.
-Length and rhythm like the sample: fuller paragraphs, blank line between them, friendly Hey, real review/issue pivot, soft offer, Want me to send over some details?
-Do not invent revenue percentages or comps.`;
+Keep it about as long as the sample (2 short paragraphs). Ignore any review older than 3 months. No revenue % invention. No service-menu dump.`;
 
-  const drafted = await callClaude(system, user, 480);
+  const drafted = await callClaude(system, user, 320);
   return formatFirstTouchMessage(drafted, host === "the host" ? "" : host);
 }
 
