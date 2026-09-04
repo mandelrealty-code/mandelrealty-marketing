@@ -37,7 +37,11 @@ import {
   draftOutreachReply,
   draftReadyClose,
 } from "./pm/outreachDraft.js";
-import { autoSaveReplyOutcome } from "./pm/outreachOutcomeStore.js";
+import {
+  autoSaveReplyOutcome,
+  findOutcomesByListingUrl,
+} from "./pm/outreachOutcomeStore.js";
+import { extractAirbnbRoomId } from "./airbnbListingUrl.js";
 
 function readBody(req: VercelRequest): Record<string, unknown> {
   const raw = req.body;
@@ -330,6 +334,18 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
         week_start: weekStart,
         week_hours: sumHoursThisWeek(entries, weekStart),
       });
+    }
+
+    if (op === "check_listing_url") {
+      const user = await requireStaff(req, res);
+      if (!user) return;
+      const listing_url = str(body.listing_url);
+      const room_id = extractAirbnbRoomId(listing_url);
+      if (!listing_url || !room_id) {
+        return res.status(200).json({ room_id: null, matches: [] });
+      }
+      const matches = await findOutcomesByListingUrl({ listing_url });
+      return res.status(200).json({ room_id, matches });
     }
 
     if (op === "draft_outreach" || op === "draft_outreach_reply") {

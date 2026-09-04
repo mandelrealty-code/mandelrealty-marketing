@@ -1,5 +1,6 @@
 /** Host reply outcomes for outreach learning loop. */
 
+import { extractAirbnbRoomId, sameAirbnbListing } from "../airbnbListingUrl.js";
 import { getSupabaseAdmin } from "../supabase.js";
 
 function db() {
@@ -128,6 +129,78 @@ export async function createOutreachOutcome(input: {
     throw error;
   }
   return mapRow(data as Record<string, unknown>);
+}
+
+/**
+ * Find prior outreach rows that used the same Airbnb listing (/rooms/{id}).
+ * Used so VAs don't create a "New host" for a listing already worked.
+ */
+export async function findOutcomesByListingUrl(input: {
+  listing_url: string;
+  limit?: number;
+}): Promise<
+  Array<{
+    host_name: string;
+    listing_url: string;
+    neighborhood: string;
+    created_at: string;
+    outcome: OutreachOutcomeKind;
+  }>
+> {
+  const url = str(input.listing_url);
+  const roomId = extractAirbnbRoomId(url);
+  if (!url || (!roomId && url.length < 12)) return [];
+
+  const limit = Math.min(Math.max(input.limit ?? 5, 1), 20);
+
+  let query = db()
+    .from("pm_outreach_outcomes")
+    .select("host_name, listing_url, neighborhood, created_at, outcome")
+    .neq("listing_url", "")
+    .order("created_at", { ascending: false })
+    .limit(80);
+
+  if (roomId) {
+    query = query.ilike("listing_url", `%/rooms/${roomId}%`);
+  } else {
+    query = query.ilike("listing_url", `%${url.slice(0, 80)}%`);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    const mapped = missingTableError(error);
+    if (mapped) return [];
+    console.warn("[outreachOutcome] listing url check failed", error.message);
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const matches: Array<{
+    host_name: string;
+    listing_url: string;
+    neighborhood: string;
+    created_at: string;
+    outcome: OutreachOutcomeKind;
+  }> = [];
+
+  for (const raw of data ?? []) {
+    const listing_url = str(raw.listing_url);
+    if (!sameAirbnbListing(url, listing_url)) continue;
+    const key = `${extractAirbnbRoomId(listing_url) || listing_url}|${str(raw.host_name)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const outcomeRaw = str(raw.outcome) as OutreachOutcomeKind;
+    matches.push({
+      host_name: str(raw.host_name) || "Host",
+      listing_url,
+      neighborhood: str(raw.neighborhood),
+      created_at: String(raw.created_at || ""),
+      outcome: OUTCOMES.has(outcomeRaw) ? outcomeRaw : "no_reply",
+    });
+    if (matches.length >= limit) break;
+  }
+
+  return matches;
 }
 
 export async function findRecentDuplicateOutcome(input: {

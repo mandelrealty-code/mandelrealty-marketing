@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  extractAirbnbRoomId,
+  sameAirbnbListing,
+} from "../../../shared/airbnbListingUrl";
 import { MrgMark } from "../owner/OwnerChrome";
 
 type StaffPublic = {
@@ -102,6 +106,20 @@ function sessionDetail(s: OutreachSession): string {
     s.first_message ? "First message saved" : null,
   ].filter(Boolean);
   return parts.join(" · ") || "Listing saved";
+}
+
+function findLocalListingDupes(
+  listingUrl: string,
+  sessions: OutreachSession[],
+  excludeSessionId: string | null,
+): OutreachSession[] {
+  if (!extractAirbnbRoomId(listingUrl) && listingUrl.trim().length < 12) return [];
+  return sessions.filter(
+    (s) =>
+      s.id !== excludeSessionId &&
+      s.listing_url.trim() &&
+      sameAirbnbListing(listingUrl, s.listing_url),
+  );
 }
 
 function newSessionId(): string {
@@ -380,6 +398,8 @@ export function TeamApp() {
   const [outreachFirstMessage, setOutreachFirstMessage] = useState("");
   const [outreachLearningNote, setOutreachLearningNote] = useState("");
   const [outreachRejectedHistory, setOutreachRejectedHistory] = useState<string[]>([]);
+  const [listingUrlWarning, setListingUrlWarning] = useState<string | null>(null);
+  const [listingUrlDupSessionId, setListingUrlDupSessionId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState(() => defaultStartLocal());
   const [endedAt, setEndedAt] = useState(() => defaultEndLocal(defaultStartLocal()));
   const [hourNote, setHourNote] = useState("");
@@ -506,8 +526,66 @@ export function TeamApp() {
     setOutreachEditContext(false);
     setOutreachLearningNote("");
     setOutreachRejectedHistory([]);
+    setListingUrlWarning(null);
+    setListingUrlDupSessionId(null);
     setOutreachMode("new");
   }, []);
+
+  useEffect(() => {
+    const url = outreachListingUrl.trim();
+    const roomId = extractAirbnbRoomId(url);
+    if (!url || !roomId) {
+      setListingUrlWarning(null);
+      setListingUrlDupSessionId(null);
+      return;
+    }
+
+    const localDupes = findLocalListingDupes(url, outreachSessions, activeSessionId);
+    if (localDupes.length > 0) {
+      const first = localDupes[0];
+      const label = first.host_name.trim() || "another saved host";
+      const place = first.neighborhood.trim();
+      setListingUrlWarning(
+        `This Airbnb URL has already been added${place ? ` (${label} · ${place})` : ` (${label})`}. Open that host instead of starting a new one.`,
+      );
+      setListingUrlDupSessionId(first.id);
+      return;
+    }
+
+    setListingUrlDupSessionId(null);
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const data = await teamApi<{
+            room_id: string | null;
+            matches: Array<{ host_name: string; neighborhood: string; listing_url: string }>;
+          }>("check_listing_url", {
+            method: "POST",
+            body: { listing_url: url },
+          });
+          if (cancelled) return;
+          const match = data.matches?.[0];
+          if (match) {
+            const label = match.host_name.trim() || "a previous host";
+            const place = match.neighborhood.trim();
+            setListingUrlWarning(
+              `This Airbnb URL has already been added${place ? ` (${label} · ${place})` : ` (${label})`}. Same room link was used before — don't create a duplicate New host.`,
+            );
+          } else {
+            setListingUrlWarning(null);
+          }
+        } catch {
+          if (!cancelled) setListingUrlWarning(null);
+        }
+      })();
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [outreachListingUrl, outreachSessions, activeSessionId]);
 
   const activeSession = useMemo(
     () => outreachSessions.find((s) => s.id === activeSessionId) ?? null,
@@ -1352,6 +1430,29 @@ export function TeamApp() {
                       onChange={(e) => setOutreachListingUrl(e.target.value)}
                       placeholder="https://www.airbnb.com/rooms/..."
                     />
+                    {listingUrlWarning ? (
+                      <div className="mt-2 space-y-2">
+                        <p className="text-[13px] leading-relaxed text-[#c99a4b]">
+                          {listingUrlWarning}
+                        </p>
+                        {listingUrlDupSessionId ? (
+                          <button
+                            type="button"
+                            className="text-[13px] font-semibold text-[#c4a35a] hover:text-[#dcc084]"
+                            onClick={() => {
+                              const session = outreachSessions.find(
+                                (s) => s.id === listingUrlDupSessionId,
+                              );
+                              if (session) applyOutreachSession(session);
+                              setListingUrlWarning(null);
+                              setListingUrlDupSessionId(null);
+                            }}
+                          >
+                            Open saved host →
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </Field>
 
                   <Field label="Anything else you noticed (optional)">
