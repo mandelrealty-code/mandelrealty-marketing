@@ -154,14 +154,15 @@ const AIRBNB_RULES = `AIRBNB MESSAGE RULES
 - Avoid salesy lists, discounts, commission talk, and "I can manage your listing for you" as a cold open.`;
 
 const HUMAN_VOICE = `VOICE
-- Sound like a real person who reviewed this listing. Short, warm, confident.
+- Sound like a real person who actually looked at this listing. Warm, casual, confident. Not a pitch deck.
 - Use only facts from the VA notes. Do not invent observations, ratings, or neighborhood details.
-- Use 2 to 3 concrete facts (name, city, rating, a specific issue, a VA note).
+- Use 2 to 3 concrete facts (name, city, rating, a specific issue, a VA note). Make it feel noticed, not templated.
+- Opening (required when you have a first name): start with "Hey {FirstName}," on its own line. Never open with bare "{Name}," or "{Name}, your listing…". Hi is fine too. Never skip the greeting when a name is provided.
 - Do not open with I came across your listing and love the potential.
 - Do not use em dashes or en dashes. Use a period or a comma.
 - No markdown, asterisks, underscores, or bold.
 - No emoji.
-- Forbidden phrases: Curious:, that said, the whole nine yards, dialed in, first-upload vibe, pretty lean compared to what guests are looking for these days.
+- Forbidden phrases: Curious:, that said, the whole nine yards, dialed in, first-upload vibe, pretty lean compared to what guests are looking for these days, holding you back from the bookings and rates you could be getting, Does that sound like something worth exploring.
 - Program facts (what we offer, furniture budget, fees) ONLY from the knowledge excerpts. If the excerpts are thin, stay high-level and do not invent dollar amounts.`;
 
 function pickHeroOffer(input: {
@@ -208,7 +209,7 @@ function pickHeroOffer(input: {
       label: "Furniture Investment + Full Service",
       why: "Furniture / makeover is the main gap. KB says furniture does not pair with Growth.",
       pitch:
-        "Lead with Furniture Investment / makeover from the KB, paired with Standard 20% or Full Service 25% only if those terms are in the excerpts. Do not pitch Growth Partnership with furniture.",
+        "On first touch, lightly mention refreshing furniture / makeover with no upfront cost if that is in the KB — do not dump Standard 20% and the whole service list. Save fee details for when they ask how it works. Never pair furniture with Growth.",
     };
   }
 
@@ -218,23 +219,36 @@ function pickHeroOffer(input: {
     label: "Growth Partnership",
     why: "Live listing outreach. Default no-brainer is low fee on their own benchmark, bigger cut only on growth.",
     pitch:
-      "Lead with Growth Partnership from the KB. Prefer Confidence Partner (5% up to benchmark / 45% above) when they want the strongest wow, or Aligned Growth (10% / 35%) if that fits better. Full management included. Do not open with flat 20% Standard.",
+      "On first touch, hint that fees stay low on their current number and only rise on growth past their own benchmark — no full fee dump. Prefer Confidence Partner or Aligned Growth language only when they ask how it works. Do not open with flat 20% Standard.",
   };
 }
 
-const PUNCH = `THE PUNCH (required)
-- Make this feel like a no-brainer, not a brochure. Specific to THIS listing's issues.
-- Follow the PLAN TO SELL block exactly. That is the hero offer. Do not dump every plan.
-- Read the knowledge excerpts for exact fees and terms for that plan only.
-- Name 1 concrete listing fix (photos, pricing, reviews, furniture) tied to that offer.
-- Fees and $ amounts ONLY if present in the knowledge excerpts. Never invent.
-- End with one easy reply invite, not a stack of qualifying questions.`;
+const PUNCH = `THE PUNCH (required on first touch, but keep it light)
+- This is a cold Airbnb message. Do NOT dump the whole plan, fees, and service list into one wall of text.
+- Follow PLAN TO SELL for which offer to hint at, but soft-sell: one concrete fix for THIS listing + one short line on how you'd help.
+- Save full fee math / plan menus for when they ask how it works.
+- Fees and $ amounts ONLY if present in the knowledge excerpts, and only if you can fit one clean number without turning the note into a brochure. Prefer no fee line on first touch when the observation is strong enough.
+- End with one easy, human invite (e.g. Happy to share more here if useful.). Never "Does that sound like something worth exploring?"`;
+
+const FORMAT_FIRST = `FORMAT (required — Airbnb shows line breaks)
+- Use real blank lines between short paragraphs. Never one long paragraph.
+- Structure exactly:
+  1) Greeting line alone: Hey {FirstName},
+  2) blank line
+  3) 1–2 short sentences noticing something specific about THEIR listing (city, rating, one issue from VA notes)
+  4) blank line
+  5) 1–2 short sentences on what you'd help with (tied to PLAN TO SELL, still conversational)
+  6) blank line
+  7) One soft invite to reply here
+- Total length: about 4 to 6 short sentences across those paragraphs. Easy to skim on a phone.
+- Do not stack clauses with "and" into a run-on.`;
 
 const REPLY_SELL = `WHEN THEY ASK HOW IT WORKS / SAY THEY ARE INTERESTED
 - Open with the no-brainer economics of the PLAN TO SELL in plain words (from KB), then one line on what changes for THEIR listing.
 - Make them feel the upside. Avoid generic "we'd beef up your description and handle messaging."
 - Do not ask two discovery questions at the end. One soft invite is enough.
-- Do not list every plan. One offer. One proof point. One next step in this chat.`;
+- Do not list every plan. One offer. One proof point. One next step in this chat.
+- Use short paragraphs with a blank line between them. Never one dense block.`;
 
 export function sanitizeOutreachMessage(
   raw: string,
@@ -270,6 +284,44 @@ export function sanitizeOutreachMessage(
     "",
   );
   return t.trim();
+}
+
+/** Nudge first-touch drafts toward Hey {Name}, + readable paragraphs. */
+export function formatFirstTouchMessage(raw: string, hostName?: string): string {
+  let t = sanitizeOutreachMessage(raw);
+  const first = trim(hostName).split(/\s+/)[0] || "";
+  if (first && first.toLowerCase() !== "the") {
+    const escaped = first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // "Eric, your…" / "Eric —" → "Hey Eric,"
+    const bareOpen = new RegExp(`^${escaped}\\s*[,\\-–—]\\s*`, "i");
+    if (bareOpen.test(t) && !/^(hey|hi|hello)\b/i.test(t)) {
+      t = t.replace(bareOpen, `Hey ${first},\n\n`);
+    } else if (!new RegExp(`^(hey|hi|hello)\\s+${escaped}\\b`, "i").test(t)) {
+      // Missing greeting entirely
+      if (!/^(hey|hi|hello)\b/i.test(t)) {
+        t = `Hey ${first},\n\n${t}`;
+      }
+    } else {
+      // "Hey Eric, rest of sentence…" → put greeting on its own line
+      t = t.replace(
+        new RegExp(`^(hey|hi)\\s+${escaped}\\s*,\\s*`, "i"),
+        `Hey ${first},\n\n`,
+      );
+    }
+  }
+
+  // If still one dense block, break after first 1–2 sentences
+  if (!t.includes("\n\n")) {
+    const parts = t.split(/(?<=[.!?])\s+/);
+    if (parts.length >= 3) {
+      const greet = parts[0];
+      const mid = parts.slice(1, Math.ceil(parts.length * 0.55)).join(" ");
+      const end = parts.slice(Math.ceil(parts.length * 0.55)).join(" ");
+      t = [greet, mid, end].filter(Boolean).join("\n\n");
+    }
+  }
+
+  return t.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function parseReplyJson(raw: string): {
@@ -434,22 +486,25 @@ ${HUMAN_VOICE}
 
 ${
   attempt === 0
-    ? "Length: 3 to 5 short sentences. Two short paragraphs maximum. Prefer one blank line between them.\nDo not stack a rhetorical question at the end. A simple invite to reply is enough."
-    : "This is a rewrite after Airbnb blocked a draft. Keep drafting until it can send. Different words every time."
+    ? FORMAT_FIRST
+    : "This is a rewrite after Airbnb blocked a draft. Keep drafting until it can send. Different words every time. Still open with Hey {FirstName}, when you have a name, and keep short paragraphs with blank lines."
 }
 
 ${AIRBNB_RULES}
 
 ${attempt === 0 ? PUNCH : "Do not deliver a sales punch. One useful observation is enough."}
 
-PLAN TO SELL (required when delivering a punch):
+PLAN TO SELL (hint only on first touch — do not dump the full pitch):
 - Plan: ${hero.label}
 - Why: ${hero.why}
 - How to pitch: ${hero.pitch}
 
-Address the host by first name when you have it (${host}). ${
+Host first name: ${host}.
+${
     attempt === 0
-      ? "Mention Mandel Realty Group once, naturally (e.g. We're listed as Mandel Realty Group in Toronto). Point to 1 or 2 real listing issues, then deliver the punch for the PLAN TO SELL using only the knowledge excerpts and what worked in LEARNING."
+      ? `REQUIRED OPENING: first line must be exactly "Hey ${host === "the host" ? "{FirstName}" : host}," then a blank line. Never "Eric, your listing…" style.
+Then point to 1 real listing issue from the VA facts, lightly hint the PLAN TO SELL fix, and invite a reply.
+Mention Mandel Realty Group at most once, naturally (e.g. We're with Mandel Realty Group in Toronto), or skip it if the note already feels human without it.`
       : "If you name the company, use: We're listed as Mandel Realty Group in Toronto. Do not tell them to search, google, call, email, or follow on Instagram."
   }`;
 
@@ -464,9 +519,11 @@ ${learning.text}
 
 ${rewriteBlock}
 
-Write the first Airbnb message now.`;
+Write the first Airbnb message now.
+Remember: Hey ${host === "the host" ? "there" : host}, on line 1, blank lines between short paragraphs, no wall of text, no full fee brochure.`;
 
-  return callClaude(system, user, 220);
+  const drafted = await callClaude(system, user, 320);
+  return formatFirstTouchMessage(drafted, host === "the host" ? "" : host);
 }
 
 /** Host is ready: fixed open + short middle + business identity. No next-step menu. */
@@ -552,7 +609,7 @@ export async function draftOutreachReply(
 
 ${HUMAN_VOICE}
 
-Length: 3 to 5 short sentences. One or two short paragraphs. Make it feel sharp and easy to say yes to.
+Length: 3 to 5 short sentences across short paragraphs with a blank line between them. Never one dense wall of text. Make it feel sharp and easy to say yes to.
 
 ${AIRBNB_RULES}
 
