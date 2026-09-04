@@ -61,6 +61,7 @@ type OutreachSession = {
   star_rating: string;
   listing_url: string;
   notes: string;
+  bad_reviews: string;
   issues: IssueId[];
   first_message: string;
   updated_at: string;
@@ -78,6 +79,10 @@ function loadOutreachSessions(slug: string): OutreachSession[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((s) => s && typeof s.id === "string")
+      .map((s) => ({
+        ...s,
+        bad_reviews: typeof s.bad_reviews === "string" ? s.bad_reviews : "",
+      }))
       .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
   } catch {
     return [];
@@ -384,6 +389,7 @@ export function TeamApp() {
   const [outreachStarRating, setOutreachStarRating] = useState("");
   const [outreachListingUrl, setOutreachListingUrl] = useState("");
   const [outreachNotes, setOutreachNotes] = useState("");
+  const [outreachBadReviews, setOutreachBadReviews] = useState("");
   const [outreachIssues, setOutreachIssues] = useState<Set<IssueId>>(new Set());
   const [outreachMessage, setOutreachMessage] = useState("");
   const [outreachBusy, setOutreachBusy] = useState(false);
@@ -464,6 +470,7 @@ export function TeamApp() {
     setOutreachStarRating(session.star_rating);
     setOutreachListingUrl(session.listing_url);
     setOutreachNotes(session.notes);
+    setOutreachBadReviews(session.bad_reviews || "");
     setOutreachIssues(new Set(session.issues || []));
     setOutreachFirstMessage(session.first_message || "");
   }, []);
@@ -483,6 +490,7 @@ export function TeamApp() {
         star_rating: patch.star_rating ?? existing?.star_rating ?? outreachStarRating,
         listing_url: patch.listing_url ?? existing?.listing_url ?? outreachListingUrl,
         notes: patch.notes ?? existing?.notes ?? outreachNotes,
+        bad_reviews: patch.bad_reviews ?? existing?.bad_reviews ?? outreachBadReviews,
         issues: patch.issues ?? existing?.issues ?? Array.from(outreachIssues),
         first_message: patch.first_message ?? existing?.first_message ?? outreachFirstMessage,
         updated_at: now,
@@ -504,6 +512,7 @@ export function TeamApp() {
       outreachStarRating,
       outreachListingUrl,
       outreachNotes,
+      outreachBadReviews,
       outreachIssues,
       outreachFirstMessage,
     ],
@@ -516,6 +525,7 @@ export function TeamApp() {
     setOutreachStarRating("");
     setOutreachListingUrl("");
     setOutreachNotes("");
+    setOutreachBadReviews("");
     setOutreachIssues(new Set());
     setOutreachFirstMessage("");
     setOutreachThread("");
@@ -596,7 +606,8 @@ export function TeamApp() {
     Boolean(outreachHostName.trim()) ||
     Boolean(outreachNeighborhood.trim()) ||
     outreachIssues.size > 0 ||
-    Boolean(outreachNotes.trim());
+    Boolean(outreachNotes.trim()) ||
+    Boolean(outreachBadReviews.trim());
 
   useEffect(() => {
     if (!slug) return;
@@ -812,6 +823,7 @@ export function TeamApp() {
                   .filter(Boolean)
                   .join("\n\n")
               : outreachNotes,
+          bad_reviews: outreachBadReviews,
           thread:
             outreachMode === "reply" || intent === "close"
               ? outreachThread
@@ -851,6 +863,7 @@ export function TeamApp() {
           star_rating: outreachStarRating,
           listing_url: outreachListingUrl,
           notes: outreachNotes,
+          bad_reviews: outreachBadReviews,
           issues: Array.from(outreachIssues),
           first_message: message,
         });
@@ -1455,12 +1468,26 @@ export function TeamApp() {
                     ) : null}
                   </Field>
 
+                  <Field label="Bad reviews to reference (optional)">
+                    <textarea
+                      value={outreachBadReviews}
+                      onChange={(e) => setOutreachBadReviews(e.target.value)}
+                      rows={4}
+                      placeholder="Paste a few 4★ or under reviews (or key lines). The draft will only use what's here — no invented complaints."
+                      className="resize-y border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
+                    />
+                    <p className="mt-2 text-[12px] leading-relaxed text-[#6f6a65]">
+                      Tip: paste the guest wording for cleaning, broken items, noise, etc. That&apos;s
+                      what makes the opener feel real.
+                    </p>
+                  </Field>
+
                   <Field label="Anything else you noticed (optional)">
                     <textarea
                       value={outreachNotes}
                       onChange={(e) => setOutreachNotes(e.target.value)}
                       rows={2}
-                      placeholder="e.g. same price every night for 6 months, photos look like 2015"
+                      placeholder="e.g. skyline views, by Rogers Centre, furniture looks dated, same price every night"
                       className="resize-none border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
                     />
                   </Field>
@@ -1476,7 +1503,9 @@ export function TeamApp() {
                   outreachBusy ||
                   (outreachMode === "reply"
                     ? !outreachThread.trim() || !hasListingContext
-                    : outreachIssues.size === 0 && !outreachNotes.trim())
+                    : outreachIssues.size === 0 &&
+                      !outreachNotes.trim() &&
+                      !outreachBadReviews.trim())
                 }
                 onClick={() => void draftOutreach()}
               >

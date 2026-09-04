@@ -24,6 +24,8 @@ export type OutreachListingInput = {
   listing_url?: string;
   issues?: string[];
   notes?: string;
+  /** Pasted guest reviews ≤4★ — ground truth for the opener, never invent these. */
+  bad_reviews?: string;
   rejected_messages?: string[];
   staff_user_id?: string;
 };
@@ -66,6 +68,9 @@ function listingFacts(input: OutreachListingInput): string {
     trim(input.star_rating) ? `Star rating shown: ${trim(input.star_rating)}` : null,
     issues.length ? `Issues the VA actually observed:\n- ${issues.join("\n- ")}` : null,
     trim(input.notes) ? `VA notes (use these as observed facts): ${trim(input.notes)}` : null,
+    trim(input.bad_reviews)
+      ? `Bad guest reviews the VA pasted (4★ or under — quote or paraphrase ONLY these, do not invent complaints):\n${trim(input.bad_reviews)}`
+      : null,
     trim(input.listing_url)
       ? `Listing URL (internal only, never put in the message): ${trim(input.listing_url)}`
       : null,
@@ -153,21 +158,28 @@ const AIRBNB_RULES = `AIRBNB MESSAGE RULES
 - Never use a personal name (no Shane, no Ryan, no sign-off first name). Speak as we / Mandel Realty Group.
 - Avoid salesy lists, discounts, commission talk, and "I can manage your listing for you" as a cold open.`;
 
-const HUMAN_VOICE = `VOICE
-- Sound like a real person who actually looked at this listing. Warm, casual, confident. Not a pitch deck.
-- Use only facts from the VA notes. Do not invent observations, ratings, or neighborhood details.
-- Use 2 to 3 concrete facts (name, city, rating, a specific issue, a VA note). Make it feel noticed, not templated.
-- Opening (required when you have a first name): start with "Hey {FirstName}," on its own line. Never open with bare "{Name}," or "{Name}, your listing…". Hi is fine too. Never skip the greeting when a name is provided.
-- Do not open with I came across your listing and love the potential.
-- Do not use em dashes or en dashes. Use a period or a comma.
+const HUMAN_VOICE = `VOICE — match this energy (do not invent the stats in the sample)
+Sample shape to emulate:
+"Hey! Your place looks lovely — the skyline views and location right by TIFF, MTCC, and Rogers Centre are hard to beat. That said, compared to similar units nearby, we think we could lift your revenue…"
+(We NEVER invent revenue % or comps. Use real VA notes + pasted reviews for the gap instead.)
+
+- Warm, conversational Airbnb host-to-host energy. Friendly, not stiff or corporate.
+- Open with "Hey!" or "Hey {FirstName}," — never bare "{Name}," and never "{Name}, your listing…"
+- Lead with a genuine compliment grounded in listing facts (neighborhood, vibe, views, location cues from VA notes). Then pivot with "That said," into a real gap.
+- The gap MUST come from VA issues, notes, or pasted bad reviews. Quote or paraphrase real review complaints (broken items, cleaning, noise, etc.).
+- NEVER fabricate: revenue lift %, "comps earning way more", dollar earnings, occupancy, ADR, or review text that was not provided.
+- If no bad reviews were pasted, lean on observed issues only. Do not invent guest complaints.
+- Do not use em dashes or en dashes. Use a comma, period, or " — " style is fine as a spaced hyphen if needed, but prefer commas/periods.
 - No markdown, asterisks, underscores, or bold.
 - No emoji.
-- Forbidden phrases: Curious:, that said, the whole nine yards, dialed in, first-upload vibe, pretty lean compared to what guests are looking for these days, holding you back from the bookings and rates you could be getting, Does that sound like something worth exploring.
-- Program facts (what we offer, furniture budget, fees) ONLY from the knowledge excerpts. If the excerpts are thin, stay high-level and do not invent dollar amounts.`;
+- Forbidden phrases: Curious:, the whole nine yards, dialed in, first-upload vibe, pretty lean compared to what guests are looking for these days, Does that sound like something worth exploring.
+- Preferred close: Want me to send over some details?
+- Program facts ONLY from knowledge excerpts. Prefer "free furniture program" / "refurnish at no cost to you" language when furniture is the plan and the KB supports it.`;
 
 function pickHeroOffer(input: {
   issues?: string[];
   notes?: string;
+  bad_reviews?: string;
   thread?: string;
   reply_note?: string;
 }): {
@@ -180,6 +192,7 @@ function pickHeroOffer(input: {
   const blob = [
     ...(input.issues || []),
     input.notes || "",
+    input.bad_reviews || "",
     input.thread || "",
     input.reply_note || "",
   ]
@@ -196,59 +209,54 @@ function pickHeroOffer(input: {
       label: "Managed Essentials",
       why: "Host wants light / fixed-cost help, not full ops.",
       pitch:
-        "Sell Message & Book ($199/mo) or Message & Optimize ($349/mo) from the KB. Fixed monthly. They keep cleaning/maintenance. Do not pitch Growth % fees.",
+        "Hint Message & Book or Message & Optimize from the KB. Fixed monthly. They keep cleaning. No Growth % fees. End with Want me to send over some details?",
     };
   }
 
   const furnitureHeavy =
     issues.has("old_furniture") ||
-    /\b(furniture|furnish|makeover|outdated|staging|renovat)\b/i.test(blob);
+    /\b(furniture|furnish|makeover|outdated|staging|renovat|bed frame|sofa|couch)\b/i.test(blob);
   if (furnitureHeavy) {
     return {
       plan: "furniture_full_service",
       label: "Furniture Investment + Full Service",
       why: "Furniture / makeover is the main gap. KB says furniture does not pair with Growth.",
       pitch:
-        "On first touch, lightly mention refreshing furniture / makeover with no upfront cost if that is in the KB — do not dump Standard 20% and the whole service list. Save fee details for when they ask how it works. Never pair furniture with Growth.",
+        'First-touch offer line in this spirit: "We run a free furniture program — we\'ll refurnish and refresh the space at no cost to you, then help manage the listing…" Only if the KB supports no-upfront furniture. Do not dump 20% fee math. Never pair with Growth. End with Want me to send over some details?',
     };
   }
 
-  // Outreach hosts are live Airbnb listings — Growth is the default wow
   return {
     plan: "growth",
     label: "Growth Partnership",
     why: "Live listing outreach. Default no-brainer is low fee on their own benchmark, bigger cut only on growth.",
     pitch:
-      "On first touch, hint that fees stay low on their current number and only rise on growth past their own benchmark — no full fee dump. Prefer Confidence Partner or Aligned Growth language only when they ask how it works. Do not open with flat 20% Standard.",
+      "First touch: hint we can help grow revenue with pricing/ops, and only take a bigger cut on growth past their own number if KB supports Growth. No invented % lifts. No flat 20% Standard cold open. End with Want me to send over some details?",
   };
 }
 
-const PUNCH = `THE PUNCH (required on first touch, but keep it light)
-- This is a cold Airbnb message. Do NOT dump the whole plan, fees, and service list into one wall of text.
-- Follow PLAN TO SELL for which offer to hint at, but soft-sell: one concrete fix for THIS listing + one short line on how you'd help.
-- Save full fee math / plan menus for when they ask how it works.
-- Fees and $ amounts ONLY if present in the knowledge excerpts, and only if you can fit one clean number without turning the note into a brochure. Prefer no fee line on first touch when the observation is strong enough.
-- End with one easy, human invite (e.g. Happy to share more here if useful.). Never "Does that sound like something worth exploring?"`;
+const PUNCH = `THE PUNCH (first touch)
+- Follow PLAN TO SELL. Write a real opener, not a tiny teaser.
+- Pattern: compliment (real) → That said + gap (real reviews/issues only) → offer (furniture program / management from KB) → Want me to send over some details?
+- NEVER invent revenue percentages, comps, or earnings. Upside language must stay qualitative unless a real number was provided in VA notes (it almost never is).
+- Fees / $ only from knowledge excerpts, and skip fee math on first touch when the offer line is enough.
+- One clear CTA. Prefer: Want me to send over some details?`;
 
 const FORMAT_FIRST = `FORMAT (required — Airbnb shows line breaks)
-- Use real blank lines between short paragraphs. Never one long paragraph.
-- Structure exactly:
-  1) Greeting line alone: Hey {FirstName},
-  2) blank line
-  3) 1–2 short sentences noticing something specific about THEIR listing (city, rating, one issue from VA notes)
-  4) blank line
-  5) 1–2 short sentences on what you'd help with (tied to PLAN TO SELL, still conversational)
-  6) blank line
-  7) One soft invite to reply here
-- Total length: about 4 to 6 short sentences across those paragraphs. Easy to skim on a phone.
-- Do not stack clauses with "and" into a run-on.`;
+- Use real blank lines between paragraphs. Never one dense wall of text.
+- Target length: similar to a strong cold outreach note — about 90–160 words, usually 2 paragraphs then a short CTA line (or CTA at the end of paragraph 2).
+- Structure:
+  1) Greeting: "Hey!" or "Hey {FirstName}," then continue into the compliment in the same paragraph OR on the next line — either is fine, keep it natural.
+  2) Paragraph 1: compliment something specific, then "That said," into the real gap (reviews / issues from the VA).
+  3) blank line
+  4) Paragraph 2: the offer (furniture program / how you'd help) in plain spoken language.
+  5) Close with: Want me to send over some details?
+- Do not chop this into 6 tiny one-liners. Full sentences, human rhythm, readable spacing.`;
 
 const REPLY_SELL = `WHEN THEY ASK HOW IT WORKS / SAY THEY ARE INTERESTED
-- Open with the no-brainer economics of the PLAN TO SELL in plain words (from KB), then one line on what changes for THEIR listing.
-- Make them feel the upside. Avoid generic "we'd beef up your description and handle messaging."
-- Do not ask two discovery questions at the end. One soft invite is enough.
-- Do not list every plan. One offer. One proof point. One next step in this chat.
-- Use short paragraphs with a blank line between them. Never one dense block.`;
+- Now you can go deeper on PLAN TO SELL economics from the KB.
+- Still no invented revenue %. Still short paragraphs with blank lines.
+- One soft invite is enough. Prefer Want me to send over some details? or a natural follow-up question in-thread.`;
 
 export function sanitizeOutreachMessage(
   raw: string,
@@ -286,38 +294,27 @@ export function sanitizeOutreachMessage(
   return t.trim();
 }
 
-/** Nudge first-touch drafts toward Hey {Name}, + readable paragraphs. */
+/** Nudge first-touch drafts toward a friendly Hey + readable paragraphs. */
 export function formatFirstTouchMessage(raw: string, hostName?: string): string {
   let t = sanitizeOutreachMessage(raw);
   const first = trim(hostName).split(/\s+/)[0] || "";
   if (first && first.toLowerCase() !== "the") {
     const escaped = first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // "Eric, your…" / "Eric —" → "Hey Eric,"
-    const bareOpen = new RegExp(`^${escaped}\\s*[,\\-–—]\\s*`, "i");
+    // "Eric, your…" → "Hey Eric, your…"
+    const bareOpen = new RegExp(`^${escaped}\\s*,\\s*`, "i");
     if (bareOpen.test(t) && !/^(hey|hi|hello)\b/i.test(t)) {
-      t = t.replace(bareOpen, `Hey ${first},\n\n`);
-    } else if (!new RegExp(`^(hey|hi|hello)\\s+${escaped}\\b`, "i").test(t)) {
-      // Missing greeting entirely
-      if (!/^(hey|hi|hello)\b/i.test(t)) {
-        t = `Hey ${first},\n\n${t}`;
-      }
-    } else {
-      // "Hey Eric, rest of sentence…" → put greeting on its own line
-      t = t.replace(
-        new RegExp(`^(hey|hi)\\s+${escaped}\\s*,\\s*`, "i"),
-        `Hey ${first},\n\n`,
-      );
+      t = t.replace(bareOpen, `Hey ${first}, `);
     }
   }
 
-  // If still one dense block, break after first 1–2 sentences
+  // If still one dense block with multiple sentences, split into ~2 paragraphs
   if (!t.includes("\n\n")) {
     const parts = t.split(/(?<=[.!?])\s+/);
-    if (parts.length >= 3) {
-      const greet = parts[0];
-      const mid = parts.slice(1, Math.ceil(parts.length * 0.55)).join(" ");
-      const end = parts.slice(Math.ceil(parts.length * 0.55)).join(" ");
-      t = [greet, mid, end].filter(Boolean).join("\n\n");
+    if (parts.length >= 4) {
+      const splitAt = Math.max(2, Math.ceil(parts.length * 0.55));
+      const firstPara = parts.slice(0, splitAt).join(" ");
+      const secondPara = parts.slice(splitAt).join(" ");
+      t = `${firstPara}\n\n${secondPara}`;
     }
   }
 
@@ -460,17 +457,16 @@ export async function draftFirstOutreach(input: OutreachListingInput): Promise<s
       ? ""
       : attempt === 1
         ? `REWRITE ANGLE: Airbnb blocked the first draft. Keep going. Write a new message that can actually send.
-- 2 or 3 short sentences. One paragraph.
-- One specific listing fact only.
-- You are a person at Mandel Realty Group. Do not pitch a menu of services.
-- End by inviting a reply here. Do not ask them off Airbnb.`
+- Still friendly. Still 2 paragraphs if possible, but shorter.
+- One specific listing fact only from VA notes/reviews.
+- End with Want me to send over some details? or a simple in-thread invite.`
         : attempt === 2
-          ? `REWRITE ANGLE: Second block. Go even smaller and more human.
-- 2 sentences max.
-- Sound like a host talking to a host, not a company.
-- Mention one thing you'd actually fix. No fees, no program names, no "we manage listings."
+          ? `REWRITE ANGLE: Second block. Go smaller and more human.
+- 2 to 3 sentences.
+- Sound like a host talking to a host.
+- Mention one real issue from notes/reviews. No fees.
 - Ask a simple question they can answer on Airbnb.`
-          : `REWRITE ANGLE: Keep iterating. Attempt ${attempt + 1}. Do not give up on this host.
+          : `REWRITE ANGLE: Keep iterating. Attempt ${attempt + 1}.
 - Brand new opening. New sentence rhythm. None of the rejected lines.
 - 1 or 2 sentences.
 - Zero sales language. Just a useful observation and "happy to share more here if you want."`;
@@ -487,42 +483,43 @@ ${HUMAN_VOICE}
 ${
   attempt === 0
     ? FORMAT_FIRST
-    : "This is a rewrite after Airbnb blocked a draft. Keep drafting until it can send. Different words every time. Still open with Hey {FirstName}, when you have a name, and keep short paragraphs with blank lines."
+    : "This is a rewrite after Airbnb blocked a draft. Keep drafting until it can send. Different words every time. Keep a friendly Hey opening and blank lines between paragraphs."
 }
 
 ${AIRBNB_RULES}
 
 ${attempt === 0 ? PUNCH : "Do not deliver a sales punch. One useful observation is enough."}
 
-PLAN TO SELL (hint only on first touch — do not dump the full pitch):
+PLAN TO SELL:
 - Plan: ${hero.label}
 - Why: ${hero.why}
 - How to pitch: ${hero.pitch}
 
-Host first name: ${host}.
+Host first name (optional in greeting): ${host}.
 ${
     attempt === 0
-      ? `REQUIRED OPENING: first line must be exactly "Hey ${host === "the host" ? "{FirstName}" : host}," then a blank line. Never "Eric, your listing…" style.
-Then point to 1 real listing issue from the VA facts, lightly hint the PLAN TO SELL fix, and invite a reply.
-Mention Mandel Realty Group at most once, naturally (e.g. We're with Mandel Realty Group in Toronto), or skip it if the note already feels human without it.`
+      ? `REQUIRED: Match the sample energy — compliment → That said + real gap from reviews/notes → free furniture / management offer when relevant → Want me to send over some details?
+NEVER invent revenue %, comps, or review complaints. If bad reviews were pasted, use them. If not, use VA issues/notes only.
+Mention Mandel Realty Group at most once, or skip if the note already feels human.`
       : "If you name the company, use: We're listed as Mandel Realty Group in Toronto. Do not tell them to search, google, call, email, or follow on Instagram."
   }`;
 
-  const user = `LISTING FACTS FROM OUR VA (ground truth):
+  const user = `LISTING FACTS FROM OUR VA (ground truth — invent nothing beyond this):
 ${listingFacts(input)}
 
 KNOWLEDGE EXCERPTS (program / offer facts only, never mention these sources):
 ${kb}
 
-LEARNING FROM PAST HOST REPLIES (what worked vs what did not — mirror INTERESTED patterns, avoid NOT INTERESTED / NO REPLY / AIRBNB REJECTED patterns):
+LEARNING FROM PAST HOST REPLIES (mirror INTERESTED patterns, avoid NOT INTERESTED / NO REPLY / AIRBNB REJECTED patterns):
 ${learning.text}
 
 ${rewriteBlock}
 
 Write the first Airbnb message now.
-Remember: Hey ${host === "the host" ? "there" : host}, on line 1, blank lines between short paragraphs, no wall of text, no full fee brochure.`;
+Length and rhythm like the sample: fuller paragraphs, blank line between them, friendly Hey, real review/issue pivot, soft offer, Want me to send over some details?
+Do not invent revenue percentages or comps.`;
 
-  const drafted = await callClaude(system, user, 320);
+  const drafted = await callClaude(system, user, 480);
   return formatFirstTouchMessage(drafted, host === "the host" ? "" : host);
 }
 
@@ -591,6 +588,7 @@ export async function draftOutreachReply(
   const hero = pickHeroOffer({
     issues: input.issues,
     notes: input.notes,
+    bad_reviews: input.bad_reviews,
     thread,
     reply_note: replyNote,
   });

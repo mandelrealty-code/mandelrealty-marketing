@@ -374,6 +374,7 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
         listing_url: str(body.listing_url),
         issues,
         notes: str(body.notes),
+        bad_reviews: str(body.bad_reviews),
       };
 
       try {
