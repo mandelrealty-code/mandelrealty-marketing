@@ -274,9 +274,13 @@ function extractCompsArray(data: Record<string, unknown>): Record<string, unknow
   return [];
 }
 
-export async function lookupListingAudit(listingUrlOrId: string): Promise<RevenueAuditLookupResult> {
+export async function lookupListingAudit(
+  listingUrlOrId: string,
+  opts?: { includeComps?: boolean },
+): Promise<RevenueAuditLookupResult> {
   const listingId = extractAirbnbListingId(listingUrlOrId);
   if (!listingId) throw new Error("Paste a valid Airbnb listing URL (airbnb.com/rooms/…).");
+  const includeComps = opts?.includeComps !== false;
 
   const listingData = await airroiGet("/listings", {
     listing_id: listingId,
@@ -286,7 +290,7 @@ export async function lookupListingAudit(listingUrlOrId: string): Promise<Revenu
   if (!subject.listingId) subject.listingId = listingId;
 
   let comps: AirroiComp[] = [];
-  if (subject.latitude != null && subject.longitude != null) {
+  if (includeComps && subject.latitude != null && subject.longitude != null) {
     const compsData = await airroiGet("/listings/comparables", {
       latitude: subject.latitude,
       longitude: subject.longitude,
@@ -301,11 +305,6 @@ export async function lookupListingAudit(listingUrlOrId: string): Promise<Revenu
       .filter((c) => c.listingId !== subject.listingId && c.monthlyRevenue != null)
       .sort((a, b) => (b.monthlyRevenue ?? 0) - (a.monthlyRevenue ?? 0))
       .slice(0, 5);
-  }
-
-  // Pad if API returned fewer than 5 usable comps
-  if (comps.length < 3 && subject.monthlyRevenue != null) {
-    // leave as-is; frontend can fall back to template multipliers
   }
 
   return { source: "airroi", subject, comps };

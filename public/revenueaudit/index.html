@@ -324,7 +324,7 @@
         <div class="field"><label for="in-email">Email</label><input id="in-email" type="email" placeholder="you@email.com" /></div>
       </div>
       <div id="path-live-fields">
-        <div class="field"><label for="in-url">Airbnb listing link</label><input id="in-url" type="text" placeholder="airbnb.com/rooms/..." oninput="scheduleLiveFetch(); recalc()" /></div>
+        <div class="field"><label for="in-url">Airbnb listing link</label><input id="in-url" type="text" placeholder="airbnb.com/rooms/..." oninput="recalc()" /></div>
         <div class="field">
           <label for="in-revenue">Current average monthly revenue <span style="font-weight:400; color:var(--muted);">(optional)</span></label>
           <input id="in-revenue" type="number" placeholder="3500" oninput="recalc()" />
@@ -335,7 +335,7 @@
         <div class="grid-2">
           <div class="field">
             <label for="in-address">Property address</label>
-            <input id="in-address" type="text" list="address-suggest" placeholder="Start typing your street or neighborhood…" oninput="scheduleLiveFetch(); recalc()" />
+            <input id="in-address" type="text" list="address-suggest" placeholder="Start typing your street or neighborhood…" oninput="recalc()" />
             <datalist id="address-suggest"></datalist>
             <p class="field-hint">Address suggestions shown here are a small demo list — full autocomplete is a fast follow once this is on a real site with its own hosting.</p>
           </div>
@@ -351,13 +351,13 @@
         <div class="grid-2">
           <div class="field">
             <label for="in-beds">Bedrooms</label>
-            <select id="in-beds" oninput="scheduleLiveFetch(); recalc()">
+            <select id="in-beds" oninput="recalc()">
               <option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4+</option>
             </select>
           </div>
           <div class="field">
             <label for="in-baths">Bathrooms</label>
-            <select id="in-baths" oninput="scheduleLiveFetch(); recalc()">
+            <select id="in-baths" oninput="recalc()">
               <option value="1">1</option><option value="1.5">1.5</option><option value="2" selected>2</option><option value="2.5">2.5</option><option value="3">3+</option>
             </select>
           </div>
@@ -374,6 +374,10 @@
           <option value="average">Average — livable, nothing special</option>
           <option value="updated">Recently updated / professionally styled</option>
         </select>
+      </div>
+      <div style="margin-top:1rem; display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center;">
+        <button type="button" class="unlock-btn" style="width:auto; min-width:220px; margin:0;" onclick="runLiveFetch()">Pull live market data</button>
+        <span class="field-hint" style="margin:0; max-width:42ch;">Uses 1 API credit. Free preview uses your listing revenue only — full comps load when you unlock. Or skip and type monthly revenue.</span>
       </div>
     </div>
   </div>
@@ -838,72 +842,68 @@
     }).filter(function (c) { return c.revenue != null && c.revenue > 0; });
   }
 
-  function scheduleLiveFetch() {
-    clearTimeout(liveFetchTimer);
-    liveFetchTimer = setTimeout(runLiveFetch, 550);
+  function scheduleLiveFetch() { /* disabled — only runLiveFetch on button click to control API cost */ }
+
+  function applyLivePayload(data, inputs, withComps) {
+    var comps = mapApiComps(data.comps);
+    var subjectMonthly = null;
+    if (inputs.path === 'live' && data.subject) {
+      subjectMonthly = data.subject.monthlyRevenue;
+      if (data.subject.bedrooms) {
+        var bedsEl = document.getElementById('in-beds');
+        if (bedsEl) bedsEl.value = String(Math.min(4, Math.max(1, Math.round(data.subject.bedrooms))));
+      }
+      if (subjectMonthly != null && !document.getElementById('in-revenue').value) {
+        document.getElementById('in-revenue').value = String(Math.round(subjectMonthly));
+      }
+    } else if (data.monthlyRevenue != null) {
+      subjectMonthly = data.monthlyRevenue;
+    }
+    liveMarket = {
+      mode: inputs.path,
+      source: data.source || 'airroi',
+      subjectMonthly: subjectMonthly,
+      comps: comps,
+      subject: data.subject || null
+    };
+    var cachedNote = data.cached ? ' (cached · $0)' : '';
+    if (withComps && comps.length) setDataStatus('Live comps loaded · ' + comps.length + ' nearby' + cachedNote);
+    else if (inputs.path === 'live') setDataStatus('Listing revenue loaded' + cachedNote + ' · model comps until unlock');
+    else setDataStatus('Market estimate loaded' + cachedNote);
+    recalc();
   }
 
-  function runLiveFetch() {
+  function runLiveFetch(opts) {
+    opts = opts || {};
+    var withComps = !!opts.includeComps;
     var inputs = getInputs();
-    var key;
     if (inputs.path === 'live') {
       var url = (inputs.url || '').trim();
       if (!url || !/rooms\/\d+/i.test(url)) {
-        if (liveMarket && liveMarket.mode === 'live') { liveMarket = null; recalc(); }
-        setDataStatus('');
+        setDataStatus('Paste a valid Airbnb listing URL first.', true);
         return;
       }
-      key = 'live:' + url;
     } else {
       var address = (inputs.address || '').trim();
       if (address.length < 5) {
-        if (liveMarket && liveMarket.mode === 'new') { liveMarket = null; recalc(); }
-        setDataStatus('');
+        setDataStatus('Enter an address or neighborhood first.', true);
         return;
       }
-      key = 'new:' + address + ':' + inputs.beds + ':' + inputs.baths;
     }
-    if (key === liveFetchKey && liveMarket) return;
-    liveFetchKey = key;
     var seq = ++liveFetchSeq;
-    setDataStatus(inputs.path === 'live' ? 'Pulling live listing + comps…' : 'Estimating from nearby market comps…');
+    setDataStatus(withComps ? 'Loading full comps…' : (inputs.path === 'live' ? 'Pulling listing revenue…' : 'Estimating market…'));
 
     var body = inputs.path === 'live'
-      ? { op: 'lookup', listingUrl: inputs.url }
+      ? { op: 'lookup', listingUrl: inputs.url, includeComps: withComps }
       : { op: 'estimate', address: inputs.address, bedrooms: inputs.beds, bathrooms: parseFloat(inputs.baths) || 1 };
 
     fetchJson('/api/audit', body).then(function (data) {
       if (seq !== liveFetchSeq) return;
-      var comps = mapApiComps(data.comps);
-      var subjectMonthly = null;
-      if (inputs.path === 'live' && data.subject) {
-        subjectMonthly = data.subject.monthlyRevenue;
-        if (data.subject.bedrooms) {
-          var bedsEl = document.getElementById('in-beds');
-          if (bedsEl) bedsEl.value = String(Math.min(4, Math.max(1, Math.round(data.subject.bedrooms))));
-        }
-        if (subjectMonthly != null && !document.getElementById('in-revenue').value) {
-          document.getElementById('in-revenue').value = String(Math.round(subjectMonthly));
-        }
-      } else if (data.monthlyRevenue != null) {
-        subjectMonthly = data.monthlyRevenue;
-      }
-      liveMarket = {
-        mode: inputs.path,
-        source: data.source || 'airroi',
-        subjectMonthly: subjectMonthly,
-        comps: comps,
-        subject: data.subject || null
-      };
-      setDataStatus(comps.length
-        ? ('Live data loaded · ' + comps.length + ' nearby comps')
-        : 'Listing/estimate loaded · using model comps until nearby comps return');
-      recalc();
+      applyLivePayload(data, inputs, withComps);
     }).catch(function (err) {
       if (seq !== liveFetchSeq) return;
-      liveMarket = null;
       setDataStatus((err && err.message) ? err.message : 'Could not load live data — enter revenue to continue.', true);
-      recalc();
+      if (!liveMarket) recalc();
     });
   }
 
@@ -936,7 +936,7 @@
     document.getElementById('path-new-fields').style.display = p === 'new' ? '' : 'none';
     liveMarket = null;
     liveFetchKey = '';
-    scheduleLiveFetch();
+    setDataStatus('');
     recalc();
   }
 
@@ -1279,6 +1279,8 @@
       msg.className = 'unlock-msg ok';
       msg.textContent = 'Call requested — click "Send my request to MRG" below to confirm it, and your full audit is unlocked now.';
       setGate(true); updateNudge();
+      var inputs = getInputs();
+      if (inputs.path === 'live' && (inputs.url || '').trim()) runLiveFetch({ includeComps: true });
     }, 400);
   }
   function applyFurniture() {
@@ -1311,6 +1313,8 @@
     fetchJson('/api/audit', { op: 'unlock', code: code }).then(function () {
       msg.className = 'unlock-msg ok'; msg.textContent = 'Code accepted — unlocking your full audit.';
       setGate(true); updateNudge();
+      var inputs = getInputs();
+      if (inputs.path === 'live' && (inputs.url || '').trim()) runLiveFetch({ includeComps: true });
     }).catch(function (err) {
       msg.className = 'unlock-msg err';
       msg.textContent = (err && err.message) ? err.message : 'That code did not match.';

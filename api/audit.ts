@@ -11,9 +11,16 @@ import {
 } from "../shared/auditEmails.js";
 import {
   estimateByAddress,
+  extractAirbnbListingId,
   lookupListingAudit,
   unlockCodeValid,
 } from "../shared/airroi.js";
+import {
+  clientIpFromRequest,
+  consumeAirroiQuota,
+  getCachedAirroi,
+  setCachedAirroi,
+} from "../shared/airroiGuard.js";
 import { buildCallInviteIcs, isValidCallStartIso } from "../shared/callSlots.js";
 import { getBookedStartIsos, tryReserveCallSlot } from "../shared/bookingStore.js";
 import { insertLead } from "../shared/leadStore.js";
@@ -21,6 +28,7 @@ import { parseLeadRequestBody } from "../shared/parseLeadRequest.js";
 
 /** Revenue Audit tool ops — kept on this function so Hobby stays ≤12 serverless functions. */
 async function handleRevenueAuditOp(
+  req: VercelRequest,
   body: Record<string, unknown>,
   res: VercelResponse,
 ): Promise<VercelResponse> {
@@ -42,19 +50,61 @@ async function handleRevenueAuditOp(
       });
     }
 
+    const ip = clientIpFromRequest(req);
+    const includeComps = body.includeComps === true || body.includeComps === "true";
+
     if (op === "estimate") {
+      const address = String(body.address ?? "").trim();
+      const bedrooms = Number(body.bedrooms ?? 2);
+      const bathrooms = Number(body.bathrooms ?? 1);
+      const cacheKey = `estimate:${address.toLowerCase()}:${bedrooms}:${bathrooms}`;
+      const cached = getCachedAirroi<Record<string, unknown>>(cacheKey);
+      if (cached) {
+        return res.status(200).json({ ok: true, cached: true, ...cached });
+      }
+      consumeAirroiQuota(ip);
       const result = await estimateByAddress({
-        address: String(body.address ?? ""),
-        bedrooms: Number(body.bedrooms ?? 2),
-        bathrooms: Number(body.bathrooms ?? 1),
+        address,
+        bedrooms,
+        bathrooms,
         guests: body.guests != null ? Number(body.guests) : undefined,
       });
-      return res.status(200).json({ ok: true, ...result });
+      setCachedAirroi(cacheKey, result);
+      return res.status(200).json({ ok: true, cached: false, ...result });
     }
 
+    // lookup (default)
     const listing = String(body.listingUrl ?? body.url ?? body.listingId ?? "");
-    const result = await lookupListingAudit(listing);
-    return res.status(200).json({ ok: true, ...result });
+    const listingId = extractAirbnbListingId(listing) || listing;
+    const cacheKey = `lookup:${listingId}:comps:${includeComps ? "1" : "0"}`;
+    const cached = getCachedAirroi<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      return res.status(200).json({ ok: true, cached: true, ...cached });
+    }
+    // Reuse listing-only cache when upgrading to comps
+    if (includeComps) {
+      const baseCached = getCachedAirroi<{ subject: unknown; comps?: unknown[] }>(
+        `lookup:${listingId}:comps:0`,
+      );
+      if (baseCached?.subject) {
+        consumeAirroiQuota(ip);
+        const withComps = await lookupListingAudit(listing, { includeComps: true });
+        setCachedAirroi(cacheKey, withComps);
+        return res.status(200).json({ ok: true, cached: false, ...withComps });
+      }
+    }
+    consumeAirroiQuota(ip);
+    const result = await lookupListingAudit(listing, { includeComps });
+    setCachedAirroi(cacheKey, result);
+    // Also store listing-only slice for cheaper later comps upgrade
+    if (includeComps) {
+      setCachedAirroi(`lookup:${listingId}:comps:0`, {
+        source: result.source,
+        subject: result.subject,
+        comps: [],
+      });
+    }
+    return res.status(200).json({ ok: true, cached: false, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not load market data.";
     const status =
@@ -74,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const op = String(body.op ?? "").trim().toLowerCase();
   if (op === "lookup" || op === "estimate" || op === "unlock") {
-    return handleRevenueAuditOp(body, res);
+    return handleRevenueAuditOp(req, body, res);
   }
 
   const apiKey = process.env.RESEND_API_KEY;
