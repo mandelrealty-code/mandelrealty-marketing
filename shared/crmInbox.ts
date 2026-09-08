@@ -3,6 +3,7 @@
  */
 import { isGlobalAiEnabled } from "./crmSettings.js";
 import type { LeadRow, LeadStatus, OfferPath } from "./leadStore.js";
+import type { SmsDraft } from "./smsDraftStore.js";
 import { getSupabaseAdmin } from "./supabase.js";
 import { type NeedsYouReason } from "./crmInboxTypes.js";
 
@@ -162,9 +163,9 @@ export async function listLeadsInbox(limit = 200, q?: string): Promise<LeadInbox
   const aiGlobalOn = await isGlobalAiEnabled();
   const [latest, drafts] = await Promise.all([
     fetchLatestSmsByLeadIds(leads.map((l) => l.id)),
-    listPendingDrafts().catch(() => []),
+    listPendingDrafts().catch((): SmsDraft[] => []),
   ]);
-  const draftByLead = new Map(drafts.map((d) => [d.lead_id, d]));
+  const draftByLead = new Map(drafts.map((d) => [d.lead_id, d] as const));
 
   const enriched = leads.map((lead) => {
     const withRead = lead as LeadRow & { sms_last_read_at?: string | null };
