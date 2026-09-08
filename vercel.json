@@ -96,7 +96,7 @@
       "destination": "/admin-robots.txt"
     },
     {
-      "source": "/((?!api/|robots\\.txt|admin-robots\\.txt|sitemap\\.xml|.*\\..*).*)",
+      "source": "/((?!api/|revenueaudit(?:/|$)|robots\\.txt|admin-robots\\.txt|sitemap\\.xml|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]
