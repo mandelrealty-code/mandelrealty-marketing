@@ -872,7 +872,7 @@
       ? { op: 'lookup', listingUrl: inputs.url }
       : { op: 'estimate', address: inputs.address, bedrooms: inputs.beds, bathrooms: parseFloat(inputs.baths) || 1 };
 
-    fetchJson('/api/revenue-audit', body).then(function (data) {
+    fetchJson('/api/audit', body).then(function (data) {
       if (seq !== liveFetchSeq) return;
       var comps = mapApiComps(data.comps);
       var subjectMonthly = null;
@@ -1308,7 +1308,7 @@
     var msg = document.getElementById('unlock-msg');
     if (!code) { msg.className = 'unlock-msg err'; msg.textContent = 'Enter an access code.'; return; }
     msg.className = 'unlock-msg'; msg.textContent = 'Checking code…';
-    fetchJson('/api/revenue-audit', { op: 'unlock', code: code }).then(function () {
+    fetchJson('/api/audit', { op: 'unlock', code: code }).then(function () {
       msg.className = 'unlock-msg ok'; msg.textContent = 'Code accepted — unlocking your full audit.';
       setGate(true); updateNudge();
     }).catch(function (err) {

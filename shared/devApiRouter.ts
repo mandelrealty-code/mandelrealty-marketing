@@ -8,13 +8,8 @@ import handlePm from "./adminApi/pm.js";
 import {
   AUDIT_UNAVAILABLE_MESSAGE,
   LEAD_INBOX,
-  buildCustomerConfirmationHtml,
-  buildCustomerSubject,
-  buildLeadNotificationHtml,
-  buildLeadSubject,
   buildQualifierUpdateHtml,
   sendResendEmail,
-  toPublicAuditError,
 } from "./auditEmails.js";
 import {
   adminSessionCookie,
@@ -26,14 +21,12 @@ import {
   passwordMatches,
   verifyAdminSessionToken,
 } from "./adminAuth.js";
-import { getBookedStartIsos, tryReserveCallSlot } from "./bookingStore.js";
-import { buildCallInviteIcs, isValidCallStartIso } from "./callSlots.js";
+import { getBookedStartIsos } from "./bookingStore.js";
 import { importMetaLeadPaste, importMetaLeadWebhook, previewMetaLeadPaste } from "./importMetaLead.js";
 import { cancelLeadFollowups, listFollowupsForLead, markLeadBookedAndStopSms, sendCustomSmsToLead, sendManualBumpForLead } from "./followUpStore.js";
 import { listSmsForLead } from "./smsStore.js";
 import { listLeadsInbox, markLeadSmsRead } from "./crmInbox.js";
 import {
-  insertLead,
   deleteLead,
   findLeadsByEmailOrPhone,
   markLeadBooked,
@@ -58,7 +51,6 @@ import {
   uploadAndIndexKnowledgeFile,
   uploadAndIndexKnowledgeText,
 } from "./knowledgeStore.js";
-import { parseLeadRequestBody } from "./parseLeadRequest.js";
 import { isSupabaseConfigured } from "./supabase.js";
 
 function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -198,10 +190,10 @@ export async function handleDevApi(
     return true;
   }
 
-  if (url === "/api/revenue-audit" && method === "POST") {
+  if (url === "/api/audit" && method === "POST") {
     try {
       const body = await readJsonBody(req);
-      const { default: handleRevenueAudit } = await import("../api/revenue-audit.js");
+      const { default: handleAudit } = await import("../api/audit.js");
       const fakeReq = { method: "POST", body } as VercelRequest;
       let statusCode = 200;
       const fakeRes = {
@@ -214,129 +206,7 @@ export async function handleDevApi(
           return fakeRes;
         },
       } as unknown as VercelResponse;
-      await handleRevenueAudit(fakeReq, fakeRes);
-    } catch (err) {
-      console.error("[dev-api revenue-audit]", err);
-      json(res, 500, { error: "Revenue audit API error." });
-    }
-    return true;
-  }
-
-  if (url === "/api/audit" && method === "POST") {
-    const apiKey = env.RESEND_API_KEY;
-    if (!apiKey) {
-      json(res, 503, { error: AUDIT_UNAVAILABLE_MESSAGE });
-      return true;
-    }
-    try {
-      const body = await readJsonBody(req);
-      const { lead, contactConsent, isHoneypot, missingRequired } = parseLeadRequestBody(body);
-
-      if (isHoneypot) {
-        json(res, 200, { ok: true });
-        return true;
-      }
-      if (missingRequired) {
-        json(res, 400, { error: "Please fill in all required fields." });
-        return true;
-      }
-      if (!contactConsent) {
-        json(res, 400, {
-          error: "Please confirm we can contact you about your custom earnings estimate.",
-        });
-        return true;
-      }
-
-      const booked = await getBookedStartIsos();
-      if (!lead.callStartIso || !isValidCallStartIso(lead.callStartIso, new Date(), booked)) {
-        json(res, 400, { error: "Pick a call time at least 24 hours from now." });
-        return true;
-      }
-
-      const reserved = await tryReserveCallSlot(lead.callStartIso, {
-        name: lead.name,
-        email: lead.email,
-        phone: lead.phone,
-      });
-      if (!reserved) {
-        json(res, 409, { error: "That time was just taken — please pick another slot." });
-        return true;
-      }
-
-      const from = env.RESEND_FROM?.trim() || "Mandel Realty Group <onboarding@resend.dev>";
-      const ics = buildCallInviteIcs({
-        startIso: lead.callStartIso,
-        name: lead.name,
-        email: lead.email,
-        phone: lead.phone,
-        address: lead.address,
-        organizerEmail: LEAD_INBOX,
-      });
-      const icsAttachment = {
-        filename: "mrg-call.ics",
-        content: Buffer.from(ics, "utf8").toString("base64"),
-      };
-
-      const leadResult = await sendResendEmail({
-        apiKey,
-        from,
-        to: [LEAD_INBOX],
-        replyTo: lead.email,
-        subject: buildLeadSubject(lead),
-        html: buildLeadNotificationHtml(lead),
-        attachments: [icsAttachment],
-      });
-      if (!leadResult.ok) {
-        json(res, 500, { error: toPublicAuditError(leadResult.message) });
-        return true;
-      }
-
-      await sendResendEmail({
-        apiKey,
-        from,
-        to: [lead.email],
-        replyTo: LEAD_INBOX,
-        subject: buildCustomerSubject(lead),
-        html: buildCustomerConfirmationHtml(lead),
-        attachments: [icsAttachment],
-      });
-
-      const leadId = await insertLead({
-        name: lead.name,
-        email: lead.email,
-        phone: lead.phone,
-        address: lead.address,
-        earnings: lead.earnings,
-        listingTitle: lead.listingTitle,
-        hasListing: lead.hasListing,
-        callStartIso: lead.callStartIso,
-        callBooking: lead.callBooking,
-        source: lead.source,
-        marketingOptIn: lead.marketingOptIn,
-        propertyStage: lead.propertyStage,
-        permitStatus: lead.permitStatus,
-        strAllowed: lead.strAllowed,
-        launchTimeline: lead.launchTimeline,
-      });
-
-      try {
-        if (leadId && lead.phone) {
-          const { isTwilioConfigured } = await import("./followUpSequences.js");
-          const { sendAiFirstSms } = await import("./aiSmsAgent.js");
-          const twilioEnv = {
-            TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
-            TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
-            TWILIO_PHONE_NUMBER: env.TWILIO_PHONE_NUMBER,
-          };
-          if (isTwilioConfigured(twilioEnv)) {
-            await sendAiFirstSms({ leadId, env: twilioEnv });
-          }
-        }
-      } catch (err) {
-        console.warn("[audit-dev] AI first SMS skipped", err);
-      }
-
-      json(res, 200, { ok: true, leadId, hasListing: lead.hasListing });
+      await handleAudit(fakeReq, fakeRes);
     } catch (err) {
       console.error("[audit-dev]", err);
       json(res, 500, { error: AUDIT_UNAVAILABLE_MESSAGE });

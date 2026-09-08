@@ -9,14 +9,72 @@ import {
   sendResendEmail,
   toPublicAuditError,
 } from "../shared/auditEmails.js";
+import {
+  estimateByAddress,
+  lookupListingAudit,
+  unlockCodeValid,
+} from "../shared/airroi.js";
 import { buildCallInviteIcs, isValidCallStartIso } from "../shared/callSlots.js";
 import { getBookedStartIsos, tryReserveCallSlot } from "../shared/bookingStore.js";
 import { insertLead } from "../shared/leadStore.js";
 import { parseLeadRequestBody } from "../shared/parseLeadRequest.js";
 
+/** Revenue Audit tool ops — kept on this function so Hobby stays ≤12 serverless functions. */
+async function handleRevenueAuditOp(
+  body: Record<string, unknown>,
+  res: VercelResponse,
+): Promise<VercelResponse> {
+  const op = String(body.op ?? "lookup").trim().toLowerCase();
+
+  try {
+    if (op === "unlock") {
+      const code = String(body.code ?? "");
+      if (!unlockCodeValid(code)) {
+        return res.status(400).json({ error: "That code did not match." });
+      }
+      return res.status(200).json({ ok: true, unlocked: true });
+    }
+
+    if (!process.env.AIRROI_API_KEY?.trim()) {
+      return res.status(503).json({
+        error:
+          "Live market data is temporarily unavailable. Enter your monthly revenue to continue, or try again later.",
+      });
+    }
+
+    if (op === "estimate") {
+      const result = await estimateByAddress({
+        address: String(body.address ?? ""),
+        bedrooms: Number(body.bedrooms ?? 2),
+        bathrooms: Number(body.bathrooms ?? 1),
+        guests: body.guests != null ? Number(body.guests) : undefined,
+      });
+      return res.status(200).json({ ok: true, ...result });
+    }
+
+    const listing = String(body.listingUrl ?? body.url ?? body.listingId ?? "");
+    const result = await lookupListingAudit(listing);
+    return res.status(200).json({ ok: true, ...result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Could not load market data.";
+    const status =
+      err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number"
+        ? (err as { status: number }).status
+        : 500;
+    console.error("[audit/revenue]", message);
+    return res.status(status >= 400 && status < 600 ? status : 500).json({ error: message });
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const op = String(body.op ?? "").trim().toLowerCase();
+  if (op === "lookup" || op === "estimate" || op === "unlock") {
+    return handleRevenueAuditOp(body, res);
   }
 
   const apiKey = process.env.RESEND_API_KEY;
@@ -25,7 +83,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(503).json({ error: AUDIT_UNAVAILABLE_MESSAGE });
   }
 
-  const body = (req.body ?? {}) as Record<string, unknown>;
   const { lead, contactConsent, isHoneypot, missingRequired } = parseLeadRequestBody(body);
 
   if (isHoneypot) {
