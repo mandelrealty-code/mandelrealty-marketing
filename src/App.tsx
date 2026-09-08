@@ -115,5 +115,11 @@ export default function App() {
     return <MuskokaLandingPage />;
   }
 
+  // Static tool lives at public/revenueaudit/index.html
+  if (path === "/revenueaudit") {
+    window.location.replace("/revenueaudit/");
+    return null;
+  }
+
   return <HomePage />;
 }

@@ -55,6 +55,14 @@
   ],
   "rewrites": [
     {
+      "source": "/revenueaudit",
+      "destination": "/revenueaudit/index.html"
+    },
+    {
+      "source": "/revenueaudit/",
+      "destination": "/revenueaudit/index.html"
+    },
+    {
       "source": "/api/admin/login",
       "destination": "/api/admin?section=session&op=login"
     },

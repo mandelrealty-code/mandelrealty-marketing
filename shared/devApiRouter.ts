@@ -198,6 +198,30 @@ export async function handleDevApi(
     return true;
   }
 
+  if (url === "/api/revenue-audit" && method === "POST") {
+    try {
+      const body = await readJsonBody(req);
+      const { default: handleRevenueAudit } = await import("../api/revenue-audit.js");
+      const fakeReq = { method: "POST", body } as VercelRequest;
+      let statusCode = 200;
+      const fakeRes = {
+        status(code: number) {
+          statusCode = code;
+          return fakeRes;
+        },
+        json(payload: unknown) {
+          json(res, statusCode, (payload ?? {}) as object);
+          return fakeRes;
+        },
+      } as unknown as VercelResponse;
+      await handleRevenueAudit(fakeReq, fakeRes);
+    } catch (err) {
+      console.error("[dev-api revenue-audit]", err);
+      json(res, 500, { error: "Revenue audit API error." });
+    }
+    return true;
+  }
+
   if (url === "/api/audit" && method === "POST") {
     const apiKey = env.RESEND_API_KEY;
     if (!apiKey) {
