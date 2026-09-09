@@ -1,25 +1,14 @@
-import { Header } from "./components/Header";
-import { Hero } from "./components/Hero";
-import { PainSection } from "./components/PainSection";
-import { HowSection } from "./components/HowSection";
-import { ProofSection } from "./components/ProofSection";
-import { TestimonialsSection } from "./components/TestimonialsSection";
-import { FeaturesSection } from "./components/FeaturesSection";
-import { PricingSection } from "./components/PricingSection";
-import { FaqSection } from "./components/FaqSection";
-import { BoutiqueSection } from "./components/BoutiqueSection";
-import { FitCheckSection } from "./components/FitCheckSection";
-import { Footer } from "./components/Footer";
-import { FloatingCtas } from "./components/FloatingCtas";
 import { ThankYouPage } from "./pages/ThankYouPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { AdsLandingPage } from "./pages/AdsLandingPage";
 import { MuskokaLandingPage } from "./pages/MuskokaLandingPage";
+import { ManagementHubPage } from "./pages/ManagementHubPage";
+import { MakeoverPage } from "./pages/MakeoverPage";
+import { PlanStubPage, planIdFromPath } from "./pages/PlanStubPage";
 import { AdminPage } from "./pages/AdminPage";
 import { OwnerApp } from "./pages/owner/OwnerApp";
 import { TeamApp } from "./pages/team/TeamApp";
 import { PublicSopHub } from "./pages/sop/PublicSopHub";
-import { useScrollToHash } from "./hooks/useScrollToHash";
 
 function isAdminHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
@@ -29,30 +18,6 @@ function isAdminHostname(hostname: string): boolean {
     return true;
   }
   return false;
-}
-
-function HomePage() {
-  useScrollToHash();
-
-  return (
-    <>
-      <Header />
-      <main>
-        <Hero />
-        <PainSection />
-        <HowSection />
-        <ProofSection />
-        <TestimonialsSection />
-        <FeaturesSection />
-        <PricingSection />
-        <FaqSection />
-        <BoutiqueSection />
-        <FitCheckSection />
-      </main>
-      <FloatingCtas />
-      <Footer />
-    </>
-  );
 }
 
 export default function App() {
@@ -115,11 +80,20 @@ export default function App() {
     return <MuskokaLandingPage />;
   }
 
+  if (path === "/makeover") {
+    return <MakeoverPage />;
+  }
+
   // Static tool lives at public/revenueaudit/index.html
   if (path === "/revenueaudit") {
     window.location.replace("/revenueaudit/");
     return null;
   }
 
-  return <HomePage />;
+  const planId = planIdFromPath(path);
+  if (planId) {
+    return <PlanStubPage planId={planId} />;
+  }
+
+  return <ManagementHubPage />;
 }

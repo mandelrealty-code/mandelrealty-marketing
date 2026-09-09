@@ -1,0 +1,131 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+html, body { margin: 0; padding: 0; background: #ffffff; }
+.mrg-hub {
+  background: #ffffff;
+  color: #222222;
+  font-family: 'Plus Jakarta Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+.mrg-hub *, .mrg-hub *::before, .mrg-hub *::after { box-sizing: border-box; }
+.mrg-hub a { text-decoration: none; }
+.mrg-hub summary { list-style: none; }
+.mrg-hub summary::-webkit-details-marker { display: none; }
+
+.mrg-plans { display: inline-block; }
+.mrg-plans > summary { user-select: none; }
+.mrg-plans-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  width: min(352px, calc(100vw - 40px));
+  background: #ffffff;
+  border: 1px solid #ebebeb;
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.05);
+  padding: 10px;
+  z-index: 70;
+}
+.mrg-faq > summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.mrg-faq[open] .mrg-faq-plus { transform: rotate(45deg); }
+.mrg-faq-plus { transition: transform 160ms ease; }
+
+.mrg-hub img.mrg-brand-logo {
+  height: 48px;
+  width: auto;
+  display: block;
+}
+
+@media (max-width: 560px) {
+  .mrg-hub img.mrg-brand-logo {
+    height: 40px;
+  }
+}
+
+.mrg-hub img.mrg-ota-logo,
+.mrg-hub img[alt="Airbnb"],
+.mrg-hub img[alt="Expedia"],
+.mrg-hub img[alt="Booking.com"] {
+  height: 32px !important;
+  width: auto !important;
+  max-width: none;
+  object-fit: contain;
+  object-position: center;
+}
+
+.mrg-hero-media {
+  min-height: clamp(280px, 52vw, 600px);
+}
+
+/* Mobile header / nav */
+@media (max-width: 820px) {
+  .mrg-hub header > div {
+    row-gap: 10px;
+  }
+  .mrg-hub header nav {
+    width: 100%;
+    order: 3;
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    flex-wrap: nowrap !important;
+  }
+  .mrg-hub header nav a,
+  .mrg-hub header nav summary {
+    white-space: nowrap;
+  }
+  .mrg-plans-panel {
+    left: 0;
+    right: auto;
+  }
+  .mrg-hub section[id="plans"] {
+    margin-left: 12px !important;
+    margin-right: 12px !important;
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+  }
+  .mrg-hero-media {
+    min-height: min(62vw, 420px);
+  }
+}
+
+@media (max-width: 560px) {
+  .mrg-hub header a[href="tel:+16473817325"] {
+    display: none !important;
+  }
+  .mrg-hub img.mrg-ota-logo,
+  .mrg-hub img[alt="Airbnb"],
+  .mrg-hub img[alt="Expedia"],
+  .mrg-hub img[alt="Booking.com"] {
+    height: 28px !important;
+    max-width: none;
+  }
+}
+
+[data-hover="h3133038"]:hover { background:#f7f7f7; }
+[data-hover="h5432052"]:hover { border-color:#222222; }
+[data-hover="h1483145"]:hover { background:#dcc084;color:#1f1a10; }
+[data-hover="h9785610"]:hover { border-color:#222222;color:#222222; }
+[data-hover="h6686549"]:hover { background:#e00b41;color:#ffffff; }
+[data-hover="h2003191"]:hover { transform:translateY(-3px);background:#2a2a2a;color:#ffffff; }
+[data-hover="h8920495"]:hover { border-color:#ffffff;color:#ffffff; }
+[data-hover="h5110772"]:hover { color:#ffffff; }
+[data-hover="h7061131"]:hover { color:#ff6b86; }
+[data-hover="h1401333"]:hover { color:#8a6f2e; }
+[data-hover="h6212110"]:hover { color:#222222; }
+[data-hover="h4929076"]:hover { color:#2563EB; }
+[data-hover="h8700223"]:hover { color:#067a52; }
+[data-hover="h5112100"]:hover { color:#b8390c; }
+[data-hover="h5526798"]:hover { color:#4F46E5; }
+[data-hover="h2952688"]:hover { color:#FF385C; }
