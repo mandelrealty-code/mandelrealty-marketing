@@ -25,6 +25,33 @@ import { buildCallInviteIcs, isValidCallStartIso } from "../shared/callSlots.js"
 import { getBookedStartIsos, tryReserveCallSlot } from "../shared/bookingStore.js";
 import { insertLead } from "../shared/leadStore.js";
 import { parseLeadRequestBody } from "../shared/parseLeadRequest.js";
+import {
+  loadRevenueAuditReport,
+  persistAndEmailRevenueAudit,
+  type RevenueAuditUnlockMethod,
+} from "../shared/revenueAuditReports.js";
+
+const REVENUE_AUDIT_OPS = new Set([
+  "lookup",
+  "estimate",
+  "unlock",
+  "save_report",
+  "load_report",
+]);
+
+function asUnlockMethod(raw: unknown): RevenueAuditUnlockMethod {
+  const v = String(raw ?? "preview").trim().toLowerCase();
+  if (
+    v === "paid_2499" ||
+    v === "paid_1999" ||
+    v === "code" ||
+    v === "call" ||
+    v === "preview"
+  ) {
+    return v;
+  }
+  return "preview";
+}
 
 /** Revenue Audit tool ops — kept on this function so Hobby stays ≤12 serverless functions. */
 async function handleRevenueAuditOp(
@@ -41,6 +68,72 @@ async function handleRevenueAuditOp(
         return res.status(400).json({ error: "That code did not match." });
       }
       return res.status(200).json({ ok: true, unlocked: true });
+    }
+
+    if (op === "load_report") {
+      const token = String(body.token ?? body.reportId ?? body.r ?? "").trim();
+      if (!token) {
+        return res.status(400).json({ error: "Missing report link." });
+      }
+      const report = await loadRevenueAuditReport(token);
+      if (!report) {
+        return res.status(404).json({ error: "That report link was not found." });
+      }
+      return res.status(200).json({
+        ok: true,
+        id: report.id,
+        email: report.email,
+        name: report.name,
+        phone: report.phone,
+        unlocked: report.unlocked,
+        unlockMethod: report.unlock_method,
+        unlockNote: report.unlock_note,
+        payload: report.payload,
+      });
+    }
+
+    if (op === "save_report") {
+      const email = String(body.email ?? "").trim();
+      if (!email || !email.includes("@")) {
+        return res.status(400).json({ error: "Enter your email so we can send your report link." });
+      }
+      const unlocked =
+        body.unlocked === true ||
+        body.unlocked === "true" ||
+        asUnlockMethod(body.unlockMethod) !== "preview";
+      const unlockMethod = asUnlockMethod(body.unlockMethod);
+      const payload =
+        body.payload && typeof body.payload === "object" && !Array.isArray(body.payload)
+          ? (body.payload as Record<string, unknown>)
+          : {};
+      const result = await persistAndEmailRevenueAudit({
+        email,
+        name: String(body.name ?? "").trim(),
+        phone: String(body.phone ?? "").trim(),
+        unlocked,
+        unlockMethod,
+        unlockNote: String(body.unlockNote ?? "").trim(),
+        payload,
+        reportId: String(body.reportId ?? "").trim() || undefined,
+        address: String(body.address ?? payload.address ?? "").trim(),
+        earnings: String(body.earnings ?? payload.revenue ?? "").trim(),
+        listingUrl: String(body.listingUrl ?? payload.listing ?? "").trim(),
+        hasListing:
+          body.hasListing === "yes" || body.hasListing === "no"
+            ? body.hasListing
+            : String(body.path ?? payload.path ?? "") === "notlisted"
+              ? "no"
+              : "yes",
+      });
+      if (result.error && !result.id) {
+        return res.status(500).json({ error: result.error });
+      }
+      return res.status(200).json({
+        ok: true,
+        id: result.id,
+        emailed: result.emailed,
+        warning: result.emailed ? undefined : result.error,
+      });
     }
 
     if (!process.env.AIRROI_API_KEY?.trim()) {
@@ -123,7 +216,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const body = (req.body ?? {}) as Record<string, unknown>;
   const op = String(body.op ?? "").trim().toLowerCase();
-  if (op === "lookup" || op === "estimate" || op === "unlock") {
+  if (REVENUE_AUDIT_OPS.has(op)) {
     return handleRevenueAuditOp(req, body, res);
   }
 
