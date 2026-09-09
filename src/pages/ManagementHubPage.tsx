@@ -26,25 +26,39 @@ export function ManagementHubPage() {
       });
     }
 
-    // Close Plans dropdown when a link inside is clicked (mobile UX).
     const root = document.querySelector(".mrg-hub");
     if (!root) return;
-    const onClick = (e: Event) => {
+
+    // Plans dropdown: CSS hover on desktop; click toggles is-open for touch.
+    const plans = root.querySelector(".mrg-plans") as HTMLElement | null;
+    const trigger = root.querySelector(".mrg-plans-trigger") as HTMLButtonElement | null;
+    const onPlansClick = (e: Event) => {
+      if (!plans || !trigger) return;
       const t = e.target as HTMLElement | null;
-      const link = t?.closest?.(".mrg-plans-panel a");
-      if (link) {
-        const details = link.closest("details.mrg-plans");
-        if (details) details.removeAttribute("open");
+      if (t?.closest?.(".mrg-plans-panel a")) {
+        plans.classList.remove("is-open");
+        trigger.setAttribute("aria-expanded", "false");
+        return;
+      }
+      if (t?.closest?.(".mrg-plans-trigger")) {
+        e.preventDefault();
+        const open = plans.classList.toggle("is-open");
+        trigger.setAttribute("aria-expanded", open ? "true" : "false");
+      } else if (!t?.closest?.(".mrg-plans")) {
+        plans.classList.remove("is-open");
+        trigger.setAttribute("aria-expanded", "false");
       }
     };
-    root.addEventListener("click", onClick);
-    return () => root.removeEventListener("click", onClick);
+    document.addEventListener("click", onPlansClick);
+
+    return () => {
+      document.removeEventListener("click", onPlansClick);
+    };
   }, []);
 
   return (
     <div
       className="mrg-hub-root"
-      // Exact Claude Design body (cleaned). Interactive bits use <details>.
       dangerouslySetInnerHTML={{ __html: MANAGEMENT_HUB_HTML }}
     />
   );

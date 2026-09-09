@@ -14,20 +14,78 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
 .mrg-hub summary { list-style: none; }
 .mrg-hub summary::-webkit-details-marker { display: none; }
 
-.mrg-plans { display: inline-block; }
-.mrg-plans > summary { user-select: none; }
+.mrg-plans {
+  position: relative;
+  display: inline-block;
+}
+
+.mrg-plans-trigger {
+  font: inherit;
+  font-weight: 600;
+  color: #222222;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.mrg-plans-trigger:hover,
+.mrg-plans.is-open .mrg-plans-trigger,
+.mrg-plans:hover .mrg-plans-trigger {
+  background: #f7f7f7;
+}
+
 .mrg-plans-panel {
   position: absolute;
-  top: calc(100% + 10px);
+  top: 100%;
   left: 0;
   width: min(352px, calc(100vw - 40px));
+  padding: 10px;
+  padding-top: 14px; /* hover bridge under trigger */
+  margin-top: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  z-index: 70;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 140ms ease, transform 140ms ease, visibility 140ms ease;
+}
+
+.mrg-plans-panel::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: #ffffff;
   border: 1px solid #ebebeb;
   border-radius: 18px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.05);
-  padding: 10px;
-  z-index: 70;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+  z-index: -1;
 }
+
+.mrg-plans:hover .mrg-plans-panel,
+.mrg-plans:focus-within .mrg-plans-panel,
+.mrg-plans.is-open .mrg-plans-panel {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+}
+
+.mrg-plans-panel a {
+  position: relative;
+  z-index: 1;
+}
+
 .mrg-faq > summary {
   width: 100%;
   display: flex;
