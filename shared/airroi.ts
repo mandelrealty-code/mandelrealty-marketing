@@ -125,6 +125,84 @@ export type RevenueAuditEstimateResult = {
   ratings: RevenueAuditRatings;
 };
 
+export type AirroiMonthlyMetric = {
+  date: string;
+  monthLabel: string;
+  occupancy: number | null;
+  adr: number | null;
+  revenue: number | null;
+  revpar: number | null;
+  minNights: number | null;
+};
+
+export type AirroiFutureRateDay = {
+  date: string;
+  available: boolean;
+  rate: number | null;
+  minNights: number | null;
+};
+
+export type AirroiMarketSummary = {
+  country: string;
+  region: string;
+  locality: string;
+  fullName: string;
+  occupancy: number | null;
+  adr: number | null;
+  revenue: number | null;
+  revpar: number | null;
+  activeListings: number | null;
+  raw: Record<string, unknown>;
+};
+
+export type AirroiPacingDay = {
+  date: string;
+  fillRate: number | null;
+  booked: number | null;
+  available: number | null;
+  avgRate: number | null;
+};
+
+export type RevenueAuditPaidPack = {
+  source: "airroi";
+  listingId: string;
+  estimatedCostUsd: number;
+  endpointsCalled: string[];
+  monthlyMetrics: AirroiMonthlyMetric[];
+  futureRates: AirroiFutureRateDay[];
+  futureRatesSummary: {
+    days: number;
+    availableDays: number;
+    bookedDays: number;
+    medianRate: number | null;
+    avgRate: number | null;
+    next30Median: number | null;
+    next30Fill: number | null;
+  };
+  market: AirroiMarketSummary | null;
+  marketMonthly: AirroiMonthlyMetric[];
+  pacing: AirroiPacingDay[];
+  pacingSummary: {
+    days: number;
+    avgFill: number | null;
+    highDemandDays: number;
+    lowDemandDays: number;
+  };
+  compFutureRates: {
+    listingId: string;
+    name: string;
+    medianRate: number | null;
+    availableDays: number;
+    days: number;
+  }[];
+  marketEstimate: {
+    annualRevenue: number | null;
+    monthlyRevenue: number | null;
+    adr: number | null;
+    occupancy: number | null;
+  } | null;
+};
+
 function apiKey(): string {
   const key = process.env.AIRROI_API_KEY?.trim();
   if (!key) throw new Error("AIRROI_API_KEY is not configured");
@@ -178,19 +256,7 @@ function pctPoints(rate: number): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-async function airroiGet(path: string, params: Record<string, string | number | undefined>) {
-  const url = new URL(path.startsWith("http") ? path : `${AIRROI_BASE}${path}`);
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null || v === "") continue;
-    url.searchParams.set(k, String(v));
-  }
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      "X-API-KEY": apiKey(),
-      Accept: "application/json",
-    },
-  });
+async function parseAirroiResponse(res: Response): Promise<Record<string, unknown>> {
   const text = await res.text();
   let data: unknown = null;
   try {
@@ -211,7 +277,37 @@ async function airroiGet(path: string, params: Record<string, string | number | 
     (err as Error & { status: number }).status = res.status;
     throw err;
   }
-  return data as Record<string, unknown>;
+  return (data && typeof data === "object" ? data : { value: data }) as Record<string, unknown>;
+}
+
+async function airroiGet(path: string, params: Record<string, string | number | undefined>) {
+  const url = new URL(path.startsWith("http") ? path : `${AIRROI_BASE}${path}`);
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === "") continue;
+    url.searchParams.set(k, String(v));
+  }
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      "X-API-KEY": apiKey(),
+      Accept: "application/json",
+    },
+  });
+  return parseAirroiResponse(res);
+}
+
+async function airroiPost(path: string, body: Record<string, unknown>) {
+  const url = path.startsWith("http") ? path : `${AIRROI_BASE}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "X-API-KEY": apiKey(),
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  return parseAirroiResponse(res);
 }
 
 function pickListingRoot(data: Record<string, unknown>): Record<string, unknown> {
@@ -910,7 +1006,7 @@ export async function lookupListingAudit(
       .map(mapComp)
       .filter((c) => c.listingId !== subject.listingId && c.monthlyRevenue != null)
       .sort((a, b) => (b.monthlyRevenue ?? 0) - (a.monthlyRevenue ?? 0))
-      .slice(0, 5);
+      .slice(0, 12);
   }
 
   return {
@@ -983,7 +1079,7 @@ export async function estimateByAddress(input: {
     .map(mapComp)
     .filter((c) => c.monthlyRevenue != null)
     .sort((a, b) => (b.monthlyRevenue ?? 0) - (a.monthlyRevenue ?? 0))
-    .slice(0, 5);
+    .slice(0, 12);
 
   return {
     source: "airroi",
@@ -1002,6 +1098,481 @@ export async function estimateByAddress(input: {
       comps,
     ),
     ratings: buildRatingCategories(null, comps),
+  };
+}
+
+function monthLabelFromDate(date: string): string {
+  const m = String(date || "").trim();
+  if (/^\d{4}-\d{2}$/.test(m)) {
+    const d = new Date(`${m}-01T12:00:00Z`);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+    }
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(m)) {
+    const d = new Date(`${m}T12:00:00Z`);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    }
+  }
+  return m || "—";
+}
+
+function mapMonthlyMetrics(data: Record<string, unknown>): AirroiMonthlyMetric[] {
+  const rows = Array.isArray(data.results)
+    ? data.results
+    : Array.isArray(data.metrics)
+      ? data.metrics
+      : Array.isArray(data.data)
+        ? data.data
+        : [];
+  return rows
+    .filter((r) => r && typeof r === "object")
+    .map((raw) => {
+      const r = raw as Record<string, unknown>;
+      const date = str(r.date ?? r.month ?? r.period);
+      return {
+        date,
+        monthLabel: monthLabelFromDate(date),
+        occupancy: num(r.occupancy ?? r.occ),
+        adr: num(r.average_daily_rate ?? r.adr ?? r.avg_rate),
+        revenue: num(r.revenue),
+        revpar: num(r.rev_par ?? r.revpar),
+        minNights: num(r.min_nights ?? r.minNights),
+      };
+    })
+    .filter((r) => r.date);
+}
+
+function mapFutureRates(data: Record<string, unknown>): AirroiFutureRateDay[] {
+  const rows = Array.isArray(data.rates)
+    ? data.rates
+    : Array.isArray(data.results)
+      ? data.results
+      : Array.isArray(data.data)
+        ? data.data
+        : [];
+  return rows
+    .filter((r) => r && typeof r === "object")
+    .map((raw) => {
+      const r = raw as Record<string, unknown>;
+      return {
+        date: str(r.date),
+        available: bool(r.available ?? r.is_available ?? true),
+        rate: num(r.rate ?? r.price ?? r.nightly_rate),
+        minNights: num(r.min_nights ?? r.minNights),
+      };
+    })
+    .filter((r) => r.date);
+}
+
+function summarizeFutureRates(rates: AirroiFutureRateDay[]) {
+  const priced = rates.map((r) => r.rate).filter((n): n is number => n != null && n > 0);
+  const availableDays = rates.filter((r) => r.available).length;
+  const bookedDays = rates.filter((r) => !r.available).length;
+  const next30 = rates.slice(0, 30);
+  const next30Rates = next30.map((r) => r.rate).filter((n): n is number => n != null && n > 0);
+  const next30Fill =
+    next30.length > 0 ? next30.filter((r) => !r.available).length / next30.length : null;
+  return {
+    days: rates.length,
+    availableDays,
+    bookedDays,
+    medianRate: median(priced),
+    avgRate: priced.length ? priced.reduce((a, b) => a + b, 0) / priced.length : null,
+    next30Median: median(next30Rates),
+    next30Fill,
+  };
+}
+
+function mapPacing(data: Record<string, unknown>): AirroiPacingDay[] {
+  const rows = Array.isArray(data.results)
+    ? data.results
+    : Array.isArray(data.pacing)
+      ? data.pacing
+      : Array.isArray(data.data)
+        ? data.data
+        : [];
+  return rows
+    .filter((r) => r && typeof r === "object")
+    .map((raw) => {
+      const r = raw as Record<string, unknown>;
+      return {
+        date: str(r.date),
+        fillRate: num(r.fill_rate ?? r.fillRate),
+        booked: num(r.booked ?? r.booked_count),
+        available: num(r.available ?? r.available_count),
+        avgRate: num(r.average_daily_rate ?? r.avg_rate ?? r.adr),
+      };
+    })
+    .filter((r) => r.date);
+}
+
+function summarizePacing(days: AirroiPacingDay[]) {
+  const fills = days.map((d) => d.fillRate).filter((n): n is number => n != null);
+  return {
+    days: days.length,
+    avgFill: fills.length ? fills.reduce((a, b) => a + b, 0) / fills.length : null,
+    highDemandDays: fills.filter((f) => f >= 0.7).length,
+    lowDemandDays: fills.filter((f) => f <= 0.3).length,
+  };
+}
+
+function pickMarketSummaryStats(
+  data: Record<string, unknown>,
+  market: { country: string; region: string; locality: string; fullName: string },
+): AirroiMarketSummary {
+  const root =
+    (data.summary && typeof data.summary === "object"
+      ? (data.summary as Record<string, unknown>)
+      : null) ||
+    (data.metrics && typeof data.metrics === "object"
+      ? (data.metrics as Record<string, unknown>)
+      : null) ||
+    data;
+  return {
+    country: market.country,
+    region: market.region,
+    locality: market.locality,
+    fullName: market.fullName,
+    occupancy: num(root.occupancy ?? root.ttm_occupancy ?? root.avg_occupancy),
+    adr: num(root.average_daily_rate ?? root.adr ?? root.ttm_avg_rate),
+    revenue: num(root.revenue ?? root.ttm_revenue ?? root.avg_revenue),
+    revpar: num(root.rev_par ?? root.revpar ?? root.ttm_revpar),
+    activeListings: num(root.active_listings ?? root.listing_count ?? root.total_listings),
+    raw: data,
+  };
+}
+
+/**
+ * Paid-report enrichment. Standard list pricing ≈ $1.30–$1.70 on top of the free $0.20 audit.
+ * Uses Promise.allSettled so partial AirROI failures still return whatever landed.
+ */
+export async function enrichPaidListingAudit(input: {
+  listingUrlOrId: string;
+  subject?: Partial<AirroiListingSnapshot> | null;
+  comps?: AirroiComp[];
+}): Promise<RevenueAuditPaidPack> {
+  const listingId = extractAirbnbListingId(input.listingUrlOrId) || str(input.subject?.listingId);
+  if (!listingId) throw new Error("Paste a valid Airbnb listing URL to unlock the full AirROI pack.");
+
+  let subject = input.subject ?? null;
+  const endpointsCalled: string[] = [];
+  let estimatedCostUsd = 0;
+
+  if (!subject || subject.latitude == null || subject.longitude == null) {
+    endpointsCalled.push("GET /listings");
+    estimatedCostUsd += 0.1;
+    const listingData = await airroiGet("/listings", {
+      id: listingId,
+      listing_id: listingId,
+      currency: "usd",
+    });
+    subject = mapListing(listingData);
+    if (!subject.listingId) subject.listingId = listingId;
+  }
+
+  let comps = Array.isArray(input.comps) ? input.comps.slice(0, 12) : [];
+  if (!comps.length && subject.latitude != null && subject.longitude != null) {
+    endpointsCalled.push("GET /listings/comparables");
+    estimatedCostUsd += 0.1;
+    const compsData = await airroiGet("/listings/comparables", {
+      latitude: subject.latitude,
+      longitude: subject.longitude,
+      bedrooms: subject.bedrooms,
+      baths: subject.bathrooms,
+      guests: subject.guests || Math.max(2, (subject.bedrooms ?? 0) * 2),
+      currency: "usd",
+      room_type: "entire_home",
+    });
+    comps = extractCompsArray(compsData)
+      .map(mapComp)
+      .filter((c) => c.listingId !== listingId && c.monthlyRevenue != null)
+      .sort((a, b) => (b.monthlyRevenue ?? 0) - (a.monthlyRevenue ?? 0))
+      .slice(0, 12);
+  }
+
+  const topCompIds = comps
+    .map((c) => c.listingId)
+    .filter(Boolean)
+    .slice(0, 3);
+
+  const jobs: {
+    key: string;
+    cost: number;
+    endpoint: string;
+    run: () => Promise<unknown>;
+  }[] = [
+    {
+      key: "monthlyMetrics",
+      cost: 0.1,
+      endpoint: "GET /listings/metrics/all",
+      run: () =>
+        airroiGet("/listings/metrics/all", {
+          listing_id: listingId,
+          id: listingId,
+          currency: "usd",
+          num_months: 12,
+        }),
+    },
+    {
+      key: "futureRates",
+      cost: 0.1,
+      endpoint: "GET /listings/future/rates",
+      run: () =>
+        airroiGet("/listings/future/rates", {
+          listing_id: listingId,
+          id: listingId,
+          currency: "usd",
+        }),
+    },
+  ];
+
+  if (subject.latitude != null && subject.longitude != null) {
+    jobs.push({
+      key: "marketLookup",
+      cost: 0.01,
+      endpoint: "GET /markets/lookup",
+      run: () =>
+        airroiGet("/markets/lookup", {
+          lat: subject!.latitude!,
+          lng: subject!.longitude!,
+        }),
+    });
+    jobs.push({
+      key: "marketEstimate",
+      cost: 0.2,
+      endpoint: "GET /calculator/estimate",
+      run: () =>
+        airroiGet("/calculator/estimate", {
+          lat: subject!.latitude!,
+          lng: subject!.longitude!,
+          bedrooms: subject!.bedrooms ?? 2,
+          baths: subject!.bathrooms ?? 1,
+          guests: subject!.guests || Math.max(2, (subject!.bedrooms ?? 0) * 2),
+          currency: "usd",
+        }),
+    });
+  }
+
+  for (const id of topCompIds) {
+    jobs.push({
+      key: `compRates:${id}`,
+      cost: 0.1,
+      endpoint: `GET /listings/future/rates (${id})`,
+      run: () =>
+        airroiGet("/listings/future/rates", {
+          listing_id: id,
+          id,
+          currency: "usd",
+        }),
+    });
+  }
+
+  const settled = await Promise.allSettled(
+    jobs.map(async (job) => {
+      const data = await job.run();
+      return { ...job, data };
+    }),
+  );
+
+  const got = new Map<string, Record<string, unknown>>();
+  for (const item of settled) {
+    if (item.status !== "fulfilled") {
+      console.error("[airroi/paid]", item.reason);
+      continue;
+    }
+    endpointsCalled.push(item.value.endpoint);
+    estimatedCostUsd += item.value.cost;
+    got.set(item.value.key, item.value.data as Record<string, unknown>);
+  }
+
+  const monthlyMetrics = got.has("monthlyMetrics")
+    ? mapMonthlyMetrics(got.get("monthlyMetrics")!)
+    : [];
+  const futureRates = got.has("futureRates") ? mapFutureRates(got.get("futureRates")!) : [];
+  const futureRatesSummary = summarizeFutureRates(futureRates);
+
+  let market: AirroiMarketSummary | null = null;
+  let marketMonthly: AirroiMonthlyMetric[] = [];
+  let pacing: AirroiPacingDay[] = [];
+
+  const lookup = got.get("marketLookup");
+  if (lookup) {
+    const marketObj = {
+      country: str(lookup.country),
+      region: str(lookup.region),
+      locality: str(lookup.locality),
+      fullName: str(lookup.full_name ?? lookup.fullName),
+    };
+    if (marketObj.country && marketObj.region && marketObj.locality) {
+      const filter =
+        subject.bedrooms != null
+          ? {
+              bedrooms: { eq: subject.bedrooms },
+              room_type: { eq: "entire_home" },
+            }
+          : { room_type: { eq: "entire_home" } };
+
+      const marketJobs = [
+        {
+          key: "marketSummary",
+          cost: 0.1,
+          endpoint: "POST /markets/summary",
+          run: () =>
+            airroiPost("/markets/summary", {
+              market: {
+                country: marketObj.country,
+                region: marketObj.region,
+                locality: marketObj.locality,
+              },
+              filter,
+              currency: "usd",
+              num_months: 12,
+            }),
+        },
+        {
+          key: "marketMonthly",
+          cost: 0.5,
+          endpoint: "POST /markets/metrics/all",
+          run: () =>
+            airroiPost("/markets/metrics/all", {
+              market: {
+                country: marketObj.country,
+                region: marketObj.region,
+                locality: marketObj.locality,
+              },
+              filter,
+              currency: "usd",
+              num_months: 12,
+            }),
+        },
+        {
+          key: "marketPacing",
+          cost: 0.2,
+          endpoint: "POST /markets/metrics/future/pacing",
+          run: () =>
+            airroiPost("/markets/metrics/future/pacing", {
+              market: {
+                country: marketObj.country,
+                region: marketObj.region,
+                locality: marketObj.locality,
+              },
+              filter,
+              currency: "usd",
+              num_months: 3,
+            }),
+        },
+      ] as const;
+
+      const marketSettled = await Promise.allSettled(
+        marketJobs.map(async (job) => {
+          const data = await job.run();
+          return { ...job, data };
+        }),
+      );
+
+      for (const item of marketSettled) {
+        if (item.status !== "fulfilled") {
+          console.error("[airroi/paid/market]", item.reason);
+          continue;
+        }
+        endpointsCalled.push(item.value.endpoint);
+        estimatedCostUsd += item.value.cost;
+        if (item.value.key === "marketSummary") {
+          market = pickMarketSummaryStats(item.value.data as Record<string, unknown>, marketObj);
+        } else if (item.value.key === "marketMonthly") {
+          marketMonthly = mapMonthlyMetrics(item.value.data as Record<string, unknown>);
+        } else if (item.value.key === "marketPacing") {
+          pacing = mapPacing(item.value.data as Record<string, unknown>);
+        }
+      }
+
+      if (!market) {
+        market = {
+          ...marketObj,
+          occupancy: null,
+          adr: null,
+          revenue: null,
+          revpar: null,
+          activeListings: null,
+          raw: lookup,
+        };
+      }
+    }
+  }
+
+  const compFutureRates = topCompIds.map((id) => {
+    const comp = comps.find((c) => c.listingId === id);
+    const rates = got.has(`compRates:${id}`)
+      ? mapFutureRates(got.get(`compRates:${id}`)!)
+      : [];
+    const summary = summarizeFutureRates(rates);
+    return {
+      listingId: id,
+      name: comp?.name || `Comp ${id}`,
+      medianRate: summary.medianRate,
+      availableDays: summary.availableDays,
+      days: summary.days,
+    };
+  });
+
+  let marketEstimate: RevenueAuditPaidPack["marketEstimate"] = null;
+  const est = got.get("marketEstimate");
+  if (est) {
+    const annual =
+      num(est.revenue) ??
+      (() => {
+        const p = est.percentiles as Record<string, unknown> | undefined;
+        const rev = p?.revenue;
+        if (rev && typeof rev === "object") {
+          return num((rev as Record<string, unknown>).p50) ?? num((rev as Record<string, unknown>).avg);
+        }
+        return null;
+      })();
+    const adr =
+      num(est.average_daily_rate) ??
+      num(est.adr) ??
+      (() => {
+        const p = est.percentiles as Record<string, unknown> | undefined;
+        const a = p?.average_daily_rate ?? p?.adr;
+        if (a && typeof a === "object") {
+          return num((a as Record<string, unknown>).p50) ?? num((a as Record<string, unknown>).avg);
+        }
+        return null;
+      })();
+    const occupancy =
+      num(est.occupancy) ??
+      (() => {
+        const p = est.percentiles as Record<string, unknown> | undefined;
+        const o = p?.occupancy;
+        if (o && typeof o === "object") {
+          return num((o as Record<string, unknown>).p50) ?? num((o as Record<string, unknown>).avg);
+        }
+        return null;
+      })();
+    marketEstimate = {
+      annualRevenue: annual,
+      monthlyRevenue: annual != null ? annual / 12 : null,
+      adr,
+      occupancy,
+    };
+  }
+
+  return {
+    source: "airroi",
+    listingId,
+    estimatedCostUsd: Math.round(estimatedCostUsd * 100) / 100,
+    endpointsCalled,
+    monthlyMetrics,
+    futureRates,
+    futureRatesSummary,
+    market,
+    marketMonthly,
+    pacing,
+    pacingSummary: summarizePacing(pacing),
+    compFutureRates,
+    marketEstimate,
   };
 }
 

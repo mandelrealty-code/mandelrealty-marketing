@@ -10,6 +10,7 @@ import {
   toPublicAuditError,
 } from "../shared/auditEmails.js";
 import {
+  enrichPaidListingAudit,
   estimateByAddress,
   extractAirbnbListingId,
   lookupListingAudit,
@@ -33,6 +34,7 @@ import {
 const REVENUE_AUDIT_OPS = new Set([
   "lookup",
   "estimate",
+  "enrich_paid",
   "unlock",
   "save_report",
   "load_report",
@@ -163,6 +165,32 @@ async function handleRevenueAuditOp(
       });
       setCachedAirroi(cacheKey, result);
       return res.status(200).json({ ok: true, cached: false, ...result });
+    }
+
+    if (op === "enrich_paid") {
+      const listing = String(body.listingUrl ?? body.url ?? body.listingId ?? "").trim();
+      const listingId = extractAirbnbListingId(listing) || listing;
+      if (!listingId) {
+        return res.status(400).json({ error: "Paste a valid Airbnb listing URL to load the paid AirROI pack." });
+      }
+      const cacheKey = `enrich_paid:${listingId}`;
+      const cached = getCachedAirroi<Record<string, unknown>>(cacheKey);
+      if (cached) {
+        return res.status(200).json({ ok: true, cached: true, paidPack: cached });
+      }
+      // Paid unlock enrichment — do not burn the free daily visitor quota.
+      const subject =
+        body.subject && typeof body.subject === "object" && !Array.isArray(body.subject)
+          ? (body.subject as Record<string, unknown>)
+          : null;
+      const comps = Array.isArray(body.comps) ? body.comps : [];
+      const paidPack = await enrichPaidListingAudit({
+        listingUrlOrId: listing,
+        subject: subject as never,
+        comps: comps as never,
+      });
+      setCachedAirroi(cacheKey, paidPack);
+      return res.status(200).json({ ok: true, cached: false, paidPack });
     }
 
     // lookup (default)
