@@ -10,11 +10,12 @@ import {
   toPublicAuditError,
 } from "../shared/auditEmails.js";
 import {
+  buildMockPaidPack,
+  classifyUnlockCode,
   enrichPaidListingAudit,
   estimateByAddress,
   extractAirbnbListingId,
   lookupListingAudit,
-  unlockCodeValid,
 } from "../shared/airroi.js";
 import {
   clientIpFromRequest,
@@ -65,10 +66,19 @@ async function handleRevenueAuditOp(
   try {
     if (op === "unlock") {
       const code = String(body.code ?? "");
-      if (!unlockCodeValid(code)) {
+      const kind = classifyUnlockCode(code);
+      if (!kind) {
         return res.status(400).json({ error: "That code did not match." });
       }
-      return res.status(200).json({ ok: true, unlocked: true });
+      return res.status(200).json({
+        ok: true,
+        unlocked: true,
+        mode: kind,
+        unlockNote:
+          kind === "mock"
+            ? "Unlocked with AIRBNB1234 · mock paid pack (no AirROI cost)"
+            : "Unlocked with MRG2026 · live AirROI paid pack",
+      });
     }
 
     if (op === "load_report") {
@@ -169,28 +179,42 @@ async function handleRevenueAuditOp(
 
     if (op === "enrich_paid") {
       const listing = String(body.listingUrl ?? body.url ?? body.listingId ?? "").trim();
-      const listingId = extractAirbnbListingId(listing) || listing;
-      if (!listingId) {
-        return res.status(400).json({ error: "Paste a valid Airbnb listing URL to load the paid AirROI pack." });
-      }
-      const cacheKey = `enrich_paid:${listingId}`;
+      const listingId = extractAirbnbListingId(listing) || listing || "demo-listing";
+      const mode = String(body.mode ?? "live").trim().toLowerCase() === "mock" ? "mock" : "live";
+      const cacheKey = `enrich_paid:${mode}:${listingId}`;
       const cached = getCachedAirroi<Record<string, unknown>>(cacheKey);
       if (cached) {
-        return res.status(200).json({ ok: true, cached: true, paidPack: cached });
+        return res.status(200).json({ ok: true, cached: true, mode, paidPack: cached });
       }
-      // Paid unlock enrichment — do not burn the free daily visitor quota.
+
       const subject =
         body.subject && typeof body.subject === "object" && !Array.isArray(body.subject)
           ? (body.subject as Record<string, unknown>)
           : null;
       const comps = Array.isArray(body.comps) ? body.comps : [];
+
+      if (mode === "mock") {
+        const paidPack = buildMockPaidPack({
+          listingId,
+          subject: subject as never,
+          comps: comps as never,
+        });
+        setCachedAirroi(cacheKey, paidPack);
+        return res.status(200).json({ ok: true, cached: false, mode: "mock", paidPack });
+      }
+
+      if (!extractAirbnbListingId(listing) && !listing) {
+        return res.status(400).json({ error: "Paste a valid Airbnb listing URL to load the paid AirROI pack." });
+      }
+
+      // Live paid unlock enrichment — do not burn the free daily visitor quota.
       const paidPack = await enrichPaidListingAudit({
         listingUrlOrId: listing,
         subject: subject as never,
         comps: comps as never,
       });
       setCachedAirroi(cacheKey, paidPack);
-      return res.status(200).json({ ok: true, cached: false, paidPack });
+      return res.status(200).json({ ok: true, cached: false, mode: "live", paidPack });
     }
 
     // lookup (default)

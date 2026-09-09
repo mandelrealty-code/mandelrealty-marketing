@@ -1576,7 +1576,123 @@ export async function enrichPaidListingAudit(input: {
   };
 }
 
+export function classifyUnlockCode(code: string): "mock" | "live" | null {
+  const c = String(code ?? "").trim().toUpperCase();
+  if (!c) return null;
+  // Temporary test codes — remove when Stripe launches.
+  if (c === "AIRBNB1234") return "mock";
+  if (c === "MRG2026") return "live";
+  const env = (process.env.REVENUE_AUDIT_UNLOCK_CODE?.trim() || "").toUpperCase();
+  if (env && c === env) return "live";
+  return null;
+}
+
 export function unlockCodeValid(code: string): boolean {
-  const expected = (process.env.REVENUE_AUDIT_UNLOCK_CODE?.trim() || "MRGVIP2026").toUpperCase();
-  return String(code ?? "").trim().toUpperCase() === expected;
+  return classifyUnlockCode(code) != null;
+}
+
+/** Deterministic mock paid pack — no AirROI calls. For AIRBNB1234 testing only. */
+export function buildMockPaidPack(input?: {
+  listingId?: string;
+  subject?: Partial<AirroiListingSnapshot> | null;
+  comps?: AirroiComp[];
+}): RevenueAuditPaidPack {
+  const listingId = str(input?.listingId || input?.subject?.listingId, "demo-listing");
+  const baseMonthly = num(input?.subject?.monthlyRevenue) ?? 2800;
+  const baseAdr = num(input?.subject?.adr) ?? 185;
+  const baseOcc = num(input?.subject?.occupancy) ?? 0.62;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const season = [0.82, 0.86, 0.94, 1.0, 1.08, 1.16, 1.22, 1.18, 1.06, 0.98, 0.88, 0.96];
+  const monthlyMetrics: AirroiMonthlyMetric[] = months.map((monthLabel, i) => {
+    const mult = season[i] ?? 1;
+    const adr = Math.round(baseAdr * mult);
+    const occupancy = Math.max(0.35, Math.min(0.92, baseOcc * (0.9 + (mult - 1) * 0.5)));
+    const revenue = Math.round(adr * 30.4 * occupancy);
+    return {
+      date: `2025-${String(i + 1).padStart(2, "0")}`,
+      monthLabel,
+      occupancy,
+      adr,
+      revenue,
+      revpar: Math.round(adr * occupancy),
+      minNights: mult >= 1.15 ? 3 : 2,
+    };
+  });
+  const futureRates: AirroiFutureRateDay[] = Array.from({ length: 60 }, (_, i) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + i);
+    const date = d.toISOString().slice(0, 10);
+    const weekend = d.getUTCDay() === 5 || d.getUTCDay() === 6;
+    const rate = Math.round(baseAdr * (weekend ? 1.18 : 1) * (i < 14 ? 1.05 : 1));
+    return {
+      date,
+      available: i % 7 !== 2 && i % 11 !== 0,
+      rate,
+      minNights: weekend ? 2 : 1,
+    };
+  });
+  const pacing: AirroiPacingDay[] = Array.from({ length: 45 }, (_, i) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + i);
+    const fillRate = Math.max(0.15, Math.min(0.92, 0.35 + (i % 10) * 0.05 + (i < 10 ? 0.2 : 0)));
+    return {
+      date: d.toISOString().slice(0, 10),
+      fillRate,
+      booked: Math.round(40 * fillRate),
+      available: Math.round(40 * (1 - fillRate)),
+      avgRate: Math.round(baseAdr * (0.95 + fillRate * 0.2)),
+    };
+  });
+  const comps = Array.isArray(input?.comps) ? input!.comps!.slice(0, 3) : [];
+  const compFutureRates = (comps.length
+    ? comps
+    : [
+        { listingId: "mock-comp-1", name: "Mock Comp A" },
+        { listingId: "mock-comp-2", name: "Mock Comp B" },
+        { listingId: "mock-comp-3", name: "Mock Comp C" },
+      ]
+  ).map((c, i) => ({
+    listingId: str((c as { listingId?: string }).listingId, `mock-comp-${i + 1}`),
+    name: str((c as { name?: string }).name, `Mock Comp ${String.fromCharCode(65 + i)}`),
+    medianRate: Math.round(baseAdr * (1.08 + i * 0.06)),
+    availableDays: 40 - i * 3,
+    days: 60,
+  }));
+
+  return {
+    source: "airroi",
+    listingId,
+    estimatedCostUsd: 0,
+    endpointsCalled: ["mock://paid-pack (no AirROI calls)"],
+    monthlyMetrics,
+    futureRates,
+    futureRatesSummary: summarizeFutureRates(futureRates),
+    market: {
+      country: "Canada",
+      region: "Ontario",
+      locality: "Toronto",
+      fullName: "Toronto, Ontario, Canada (mock)",
+      occupancy: Math.min(0.9, baseOcc + 0.08),
+      adr: Math.round(baseAdr * 1.12),
+      revenue: Math.round(baseMonthly * 1.25),
+      revpar: Math.round(baseAdr * 1.12 * (baseOcc + 0.08)),
+      activeListings: 1840,
+      raw: { mock: true },
+    },
+    marketMonthly: monthlyMetrics.map((m) => ({
+      ...m,
+      adr: m.adr != null ? Math.round(m.adr * 1.08) : null,
+      revenue: m.revenue != null ? Math.round(m.revenue * 1.12) : null,
+      occupancy: m.occupancy != null ? Math.min(0.95, m.occupancy + 0.04) : null,
+    })),
+    pacing,
+    pacingSummary: summarizePacing(pacing),
+    compFutureRates,
+    marketEstimate: {
+      annualRevenue: Math.round(baseMonthly * 12 * 1.35),
+      monthlyRevenue: Math.round(baseMonthly * 1.35),
+      adr: Math.round(baseAdr * 1.15),
+      occupancy: Math.min(0.9, baseOcc + 0.1),
+    },
+  };
 }

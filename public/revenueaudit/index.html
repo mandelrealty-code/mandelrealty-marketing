@@ -416,12 +416,14 @@
 class Component extends DCLogic {
   constructor(root, template, props) {
     super(root, template, props);
-    this.state = { path: "live", audited: false, revenue: 0, pulling: false, pulled: false, unlocked: false, unlockNote: "", offer: 0, code: "", codeMsg: "", buying: false, lastChanceUsed: false, reportId: "", liveComps: null, subject: null, leaks: null, ratings: null, paidPack: null, enrichingPaid: false, fieldErrors: {} };
+    this.state = { path: "live", audited: false, revenue: 0, pulling: false, pulled: false, unlocked: false, unlockNote: "", unlockMode: "live", offer: 0, code: "", codeMsg: "", buying: false, lastChanceUsed: false, reportId: "", liveComps: null, subject: null, leaks: null, ratings: null, paidPack: null, enrichingPaid: false, fieldErrors: {} };
     this.vals = {};
     try {
       if (sessionStorage.getItem("ra_unlocked") === "1") {
         this.state.unlocked = true;
         this.state.unlockNote = sessionStorage.getItem("ra_unlock_note") || "Unlocked";
+        const mode = sessionStorage.getItem("ra_unlock_mode");
+        if (mode === "mock" || mode === "live") this.state.unlockMode = mode;
         this.state.offer = 0;
         this.state.lastChanceUsed = true;
       }
@@ -724,7 +726,8 @@ class Component extends DCLogic {
             ratings: this.state.ratings || null,
             subject: this.state.subject || null,
             liveComps: Array.isArray(this.state.liveComps) ? this.state.liveComps : [],
-            paidPack: this.state.paidPack || null
+            paidPack: this.state.paidPack || null,
+            unlockMode: this.state.unlockMode || "live"
           }
         })
       });
@@ -734,7 +737,15 @@ class Component extends DCLogic {
         return null;
       }
       this.setState({ reportId: data.id });
-      if (unlocked) this.rememberUnlocked(this.state.unlockNote || "Unlocked");
+      if (unlocked) {
+        try {
+          sessionStorage.setItem("ra_unlocked", "1");
+          sessionStorage.setItem("ra_exit_offer_shown", "1");
+          if (this.state.unlockMode) sessionStorage.setItem("ra_unlock_mode", this.state.unlockMode);
+          if (this.state.unlockNote) sessionStorage.setItem("ra_unlock_note", String(this.state.unlockNote));
+          if (data.id) localStorage.setItem("ra_unlocked_" + data.id, "1");
+        } catch (_) {}
+      }
       try {
         const u = new URL(window.location.href);
         u.searchParams.set("r", data.id);
@@ -775,6 +786,7 @@ class Component extends DCLogic {
       const revenue = Number(payload.revenue) || this.parseRev(vals.revenue);
       const wasUnlocked = Boolean(data.unlocked);
       const restoredPack = payload.paidPack && typeof payload.paidPack === "object" ? payload.paidPack : null;
+      const restoredMode = payload.unlockMode === "mock" ? "mock" : "live";
       this.setState({
         reportId: data.id || token,
         path: payload.path === "notlisted" ? "notlisted" : (payload.path || this.state.path || "live"),
@@ -782,6 +794,7 @@ class Component extends DCLogic {
         revenue: revenue > 0 ? revenue : 0,
         unlocked: wasUnlocked || this.alreadyUnlocked(),
         unlockNote: data.unlockNote || (wasUnlocked ? "Unlocked" : ""),
+        unlockMode: restoredMode,
         offer: 0,
         lastChanceUsed: wasUnlocked || this.alreadyUnlocked() ? true : this.state.lastChanceUsed,
         leaks: Array.isArray(payload.leaks) && payload.leaks.length ? this.enrichLeaks(payload.leaks) : null,
@@ -791,40 +804,56 @@ class Component extends DCLogic {
         paidPack: restoredPack,
         pulled: Boolean(payload.subject || (Array.isArray(payload.liveComps) && payload.liveComps.length) || payload.ratings || restoredPack)
       }, () => {
-        if (wasUnlocked || this.alreadyUnlocked()) this.rememberUnlocked(data.unlockNote || "Unlocked");
+        if (wasUnlocked || this.alreadyUnlocked()) {
+          try {
+            sessionStorage.setItem("ra_unlocked", "1");
+            sessionStorage.setItem("ra_unlock_mode", restoredMode);
+            if (data.unlockNote) sessionStorage.setItem("ra_unlock_note", String(data.unlockNote));
+          } catch (_) {}
+          if (!restoredPack) this.loadPaidPack();
+        }
       });
       this.showToast(wasUnlocked || this.alreadyUnlocked() ? "Loaded your unlocked report." : "Loaded your saved preview.");
     } catch (_) {}
   }
 
 
-  rememberUnlocked(note) {
+  rememberUnlocked(note, mode) {
+    let unlockMode = mode || this.state.unlockMode || "live";
     try {
+      const stored = sessionStorage.getItem("ra_unlock_mode");
+      if (!mode && (stored === "mock" || stored === "live")) unlockMode = stored;
       sessionStorage.setItem("ra_unlocked", "1");
       sessionStorage.setItem("ra_exit_offer_shown", "1");
+      sessionStorage.setItem("ra_unlock_mode", unlockMode);
       if (note) sessionStorage.setItem("ra_unlock_note", String(note));
       const rid = this.state.reportId;
       if (rid) localStorage.setItem("ra_unlocked_" + rid, "1");
     } catch (_) {}
-    this.loadPaidPack();
+    this.setState({ unlockMode, paidPack: null, enrichingPaid: false }, () => this.loadPaidPack());
   }
 
   async loadPaidPack() {
-    if (this.state.enrichingPaid || this.state.paidPack) return;
+    if (this.state.enrichingPaid) return;
+    let mode = this.state.unlockMode || "live";
+    try {
+      const stored = sessionStorage.getItem("ra_unlock_mode");
+      if (stored === "mock" || stored === "live") mode = stored;
+    } catch (_) {}
     const listing = String(this.vals.listing || "").trim();
     const subject = this.state.subject;
-    if (!listing && !(subject && subject.listingId)) return;
-    if (this.state.path === "notlisted" && !(subject && subject.latitude != null)) {
-      // Address-estimate path: still allow enrich if we later have coords; otherwise skip quietly.
+    if (mode === "live" && !listing && !(subject && subject.listingId)) return;
+    if (mode === "live" && this.state.path === "notlisted" && !(subject && subject.latitude != null)) {
       return;
     }
-    this.setState({ enrichingPaid: true });
+    this.setState({ enrichingPaid: true, unlockMode: mode });
     try {
       const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           op: "enrich_paid",
+          mode,
           listingUrl: listing || (subject && subject.listingId) || "",
           subject: subject || null,
           comps: Array.isArray(this.state.liveComps)
@@ -840,8 +869,10 @@ class Component extends DCLogic {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok || !data.paidPack) throw new Error(data.error || "Paid pack unavailable");
-      this.setState({ paidPack: data.paidPack, enrichingPaid: false });
-      this.showToast("Full AirROI pack loaded into your unlocked report.");
+      this.setState({ paidPack: data.paidPack, enrichingPaid: false, unlockMode: mode });
+      this.showToast(mode === "mock"
+        ? "Mock paid pack loaded (no AirROI cost)."
+        : "Full AirROI pack loaded into your unlocked report.");
     } catch (err) {
       this.setState({ enrichingPaid: false });
       this.showToast(err && err.message ? err.message : "Could not load the full AirROI pack yet.");
@@ -1465,8 +1496,10 @@ class Component extends DCLogic {
       calendarSourceNote: paidMonthly.length
         ? "Live 12-month history from AirROI for this listing."
         : "Trailing ADR and occupancy from your listing, held flat until the paid AirROI history pack loads.",
-      paidCostNote: paid && paid.estimatedCostUsd != null
-        ? ("AirROI pack loaded · about $" + Number(paid.estimatedCostUsd).toFixed(2) + " in API cost for this unlock")
+      paidCostNote: paid
+        ? (this.state.unlockMode === "mock" || Number(paid.estimatedCostUsd) === 0
+          ? "Mock paid pack · $0 AirROI cost (AIRBNB1234 test mode)"
+          : ("AirROI pack loaded · about $" + Number(paid.estimatedCostUsd || 0).toFixed(2) + " in API cost for this unlock"))
         : "",
       currentMonthly: this.money(base),
       pendingComps: base <= 0,
@@ -1530,36 +1563,42 @@ class Component extends DCLogic {
       buy: price => {
         this.setState({ buying: true });
         setTimeout(() => {
-          this.rememberUnlocked("Unlocked · $" + price + " paid");
-          this.setState({ buying: false, offer: 0, unlocked: true, unlockNote: "Unlocked · $" + price + " paid", lastChanceUsed: true });
+          this.rememberUnlocked("Unlocked · $" + price + " paid", "live");
+          this.setState({ buying: false, offer: 0, unlocked: true, unlockNote: "Unlocked · $" + price + " paid", unlockMode: "live", lastChanceUsed: true });
         }, 900);
       },
       buy2499: () => {
         this.setState({ buying: true });
         setTimeout(() => {
-          this.rememberUnlocked("Unlocked · $24.99 paid (50% off)");
-          this.setState({ buying: false, offer: 0, unlocked: true, unlockNote: "Unlocked · $24.99 paid (50% off)", lastChanceUsed: true }, () => this.saveAndEmail("paid_2499"));
+          this.rememberUnlocked("Unlocked · $24.99 paid (50% off)", "live");
+          this.setState({ buying: false, offer: 0, unlocked: true, unlockNote: "Unlocked · $24.99 paid (50% off)", unlockMode: "live", lastChanceUsed: true }, () => this.saveAndEmail("paid_2499"));
         }, 900);
       },
       buy1999: () => {
         this.setState({ buying: true });
         setTimeout(() => {
-          this.rememberUnlocked("Unlocked · $19.99 paid (60% off)");
-          this.setState({ buying: false, offer: 0, unlocked: true, unlockNote: "Unlocked · $19.99 paid (60% off)", lastChanceUsed: true }, () => this.saveAndEmail("paid_1999"));
+          this.rememberUnlocked("Unlocked · $19.99 paid (60% off)", "live");
+          this.setState({ buying: false, offer: 0, unlocked: true, unlockNote: "Unlocked · $19.99 paid (60% off)", unlockMode: "live", lastChanceUsed: true }, () => this.saveAndEmail("paid_1999"));
         }, 900);
       },
       onCode: e => { this.vals.code = e.target.value; },
       submitCode: () => {
         this.syncFields();
-        const ok = String(this.vals.code || "").trim().toUpperCase() === "MRGVIP2026";
-        if (ok) this.rememberUnlocked("Unlocked with access code MRGVIP2026");
-        this.setState(ok
-          ? { unlocked: true, offer: 0, codeMsg: "", unlockNote: "Unlocked with access code MRGVIP2026", lastChanceUsed: true }
-          : { codeMsg: "That code is not valid. Check it with MRG, or unlock below." }, () => { if (ok) this.saveAndEmail("code"); });
+        const raw = String(this.vals.code || "").trim().toUpperCase();
+        const mode = raw === "AIRBNB1234" ? "mock" : (raw === "MRG2026" ? "live" : null);
+        if (!mode) {
+          this.setState({ codeMsg: "That code is not valid. Use AIRBNB1234 (mock) or MRG2026 (live)." });
+          return;
+        }
+        const unlockNote = mode === "mock"
+          ? "Unlocked with AIRBNB1234 · mock paid pack (no AirROI cost)"
+          : "Unlocked with MRG2026 · live AirROI paid pack";
+        this.rememberUnlocked(unlockNote, mode);
+        this.setState({ unlocked: true, offer: 0, codeMsg: "", unlockNote, unlockMode: mode, lastChanceUsed: true }, () => this.saveAndEmail("code"));
       },
       callUnlock: () => {
-        this.rememberUnlocked("Unlocked for your free 15-min call — no charge");
-        this.setState({ unlocked: true, offer: 0, unlockNote: "Unlocked for your free 15-min call — no charge", lastChanceUsed: true }, () => this.saveAndEmail("call"));
+        this.rememberUnlocked("Unlocked for your free 15-min call — no charge", "live");
+        this.setState({ unlocked: true, offer: 0, unlockNote: "Unlocked for your free 15-min call — no charge", unlockMode: "live", lastChanceUsed: true }, () => this.saveAndEmail("call"));
       },
       isLive,
       isNew: !isLive,
