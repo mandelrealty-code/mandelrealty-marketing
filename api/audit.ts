@@ -23,7 +23,6 @@ import {
 } from "../shared/airroiGuard.js";
 import { buildCallInviteIcs, isValidCallStartIso } from "../shared/callSlots.js";
 import { getBookedStartIsos, tryReserveCallSlot } from "../shared/bookingStore.js";
-import { insertLead } from "../shared/leadStore.js";
 import { parseLeadRequestBody } from "../shared/parseLeadRequest.js";
 import {
   loadRevenueAuditReport,
@@ -250,6 +249,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     name: lead.name,
     email: lead.email,
     phone: lead.phone,
+    source: lead.source,
   });
   if (!reserved) {
     return res.status(409).json({
@@ -302,71 +302,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("[audit] Resend customer confirmation error", customerResult.message);
   }
 
-  const leadId = await insertLead({
-    name: lead.name,
-    email: lead.email,
-    phone: lead.phone,
-    address: lead.address,
-    earnings: lead.earnings,
-    listingTitle: lead.listingTitle,
-    hasListing: lead.hasListing,
-    callStartIso: lead.callStartIso,
-    callBooking: lead.callBooking,
-    source: lead.source,
-    marketingOptIn: lead.marketingOptIn,
-    propertyStage: lead.propertyStage,
-    permitStatus: lead.permitStatus,
-    strAllowed: lead.strAllowed,
-    launchTimeline: lead.launchTimeline,
-  });
-
-  // Website leads with phone: AI first SMS when enabled (same as Meta paste).
-  if (leadId && lead.phone) {
-    try {
-      const { isTwilioConfigured } = await import("../shared/followUpSequences.js");
-      const { sendAiFirstSms } = await import("../shared/aiSmsAgent.js");
-      const twilioEnv = {
-        TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
-        TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-        TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
-      };
-      if (isTwilioConfigured(twilioEnv)) {
-        await sendAiFirstSms({ leadId, env: twilioEnv });
-      }
-    } catch (err) {
-      console.warn("[audit] AI first SMS skipped", err);
-    }
-  }
-
-  if (leadId) {
-    try {
-      const { notifyOperatorsNewLead } = await import("../shared/leadNotifySms.js");
-      await notifyOperatorsNewLead(
-        {
-          leadId,
-          name: lead.name,
-          phone: lead.phone,
-          email: lead.email,
-          city: lead.address,
-          hasListing: lead.hasListing,
-          propertyStage: lead.propertyStage ?? null,
-          offerPath: "unknown",
-          source: lead.source,
-        },
-        {
-          TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
-          TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-          TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
-        },
-      );
-    } catch (err) {
-      console.warn("[audit] operator notify skipped", err);
-    }
-  }
-
+  // Website forms email the inbox + book the slot only — do not create CRM leads.
   return res.status(200).json({
     ok: true,
-    leadId,
+    leadId: null,
     hasListing: lead.hasListing,
   });
 }

@@ -1,5 +1,4 @@
 import { LEAD_INBOX, sendResendEmail } from "./auditEmails.js";
-import { insertLead } from "./leadStore.js";
 import { publicSiteOrigin } from "./ownerEmails.js";
 import { getSupabaseAdmin } from "./supabase.js";
 
@@ -251,7 +250,7 @@ export async function notifyInboxRevenueAudit(input: {
   });
 }
 
-/** Persist report, email the host a unique link, notify inbox, soft-insert CRM lead. */
+/** Persist report, email the host a unique link, notify inbox. Does not create CRM leads. */
 export async function persistAndEmailRevenueAudit(input: {
   email: string;
   name?: string;
@@ -292,28 +291,6 @@ export async function persistAndEmailRevenueAudit(input: {
     });
   } catch (err) {
     console.error("[revenue-audit] inbox notify", err);
-  }
-
-  try {
-    await insertLead({
-      name,
-      email,
-      phone,
-      address: (input.address || "").trim(),
-      earnings: (input.earnings || "").trim(),
-      listingTitle: (input.listingUrl || "").trim(),
-      hasListing: input.hasListing ?? "unknown",
-      callStartIso: "",
-      callBooking: "",
-      source: "revenue_audit",
-      marketingOptIn: true,
-      status: input.unlocked ? "interested" : "new",
-      notes: `Revenue Audit link: ${revenueAuditReportUrl(saved.id)} · ${methodLabel(input.unlockMethod)}`,
-      offerPath: "unknown",
-      aiPaused: true,
-    });
-  } catch (err) {
-    console.error("[revenue-audit] lead insert", err);
   }
 
   return {

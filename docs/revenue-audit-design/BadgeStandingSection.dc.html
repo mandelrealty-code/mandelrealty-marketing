@@ -41,7 +41,7 @@
         <div style="padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; border-right: 1px solid {{ r.cardBorder }}">
           <div style="display: flex; align-items: center; gap: 12px">
             <sc-if value="{{ r.hasIcon }}" hint-placeholder-val="{{ true }}">
-              <img src="{{ r.iconSrc }}" alt="" style="height: 34px; width: 34px; object-fit: contain; display: block; opacity: {{ r.iconOpacity }}" />
+              <img src="{{ r.iconSrc }}" alt="" style="height: {{ r.iconH }}px; width: {{ r.iconW }}px; object-fit: contain; display: block; flex: none; opacity: {{ r.iconOpacity }}" />
             </sc-if>
             <sc-if value="{{ r.textMark }}" hint-placeholder-val="{{ false }}">
               <span style="height: 34px; width: 34px; flex: none; border-radius: 999px; border: 2px solid {{ r.markInk }}; color: {{ r.markInk }}; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; letter-spacing: -0.02em">10%</span>
@@ -103,6 +103,8 @@ class Component extends DCLogic {
         name: "Superhost",
         binding: "subject.superhost",
         iconSrc: "assets/badge-superhost.png",
+        iconH: "34",
+        iconW: "34",
         criteria: "4.8+ overall rating · 10+ completed stays · under 1% cancellation · 90% response rate. Re-checked every quarter.",
         yes: {
           note: "Live listing data shows the Superhost badge active on your listing.",
@@ -124,6 +126,8 @@ class Component extends DCLogic {
         name: "Guest Favorite",
         binding: "subject.guestFavorite",
         iconSrc: "assets/badge-guest-favorite.png",
+        iconH: "42",
+        iconW: "76",
         criteria: "Top slice of listings by ratings, review volume and reliability. Recalculated continuously, not on a review cycle.",
         yes: {
           note: "Live listing data shows the Guest Favorite label on your listing.",
@@ -172,6 +176,8 @@ class Component extends DCLogic {
         hasIcon: !!d.iconSrc,
         textMark: !d.iconSrc,
         iconSrc: d.iconSrc || "",
+        iconH: d.iconH || "34",
+        iconW: d.iconW || "34",
         iconOpacity: on ? "1" : "0.5",
         markInk: on ? "#00806f" : "#8a8a8a",
         glyph: on ? "✓" : "✕",
