@@ -182,7 +182,7 @@ We run a free furniture program — we'll refurnish and refresh the space at no 
 - No markdown, asterisks, underscores, or bold.
 - No emoji.
 - Forbidden phrases: Curious:, the whole nine yards, dialed in, first-upload vibe, pretty lean compared to what guests are looking for these days, Does that sound like something worth exploring, nothing slips through the cracks, booking momentum, professional polish it needs.
-- Preferred close: Want me to send over some details?
+- Preferred first-touch close: Want me to send over some details? Never reuse that close once the host already said yes.
 - Program facts ONLY from knowledge excerpts. Prefer "free furniture program" / "refurnish at no cost to you" when furniture is the plan and the KB supports it.`;
 
 function pickHeroOffer(input: {
@@ -219,7 +219,7 @@ function pickHeroOffer(input: {
       label: "Managed Essentials",
       why: "Host wants light / fixed-cost help, not full ops.",
       pitch:
-        "One short offer line from KB (Message & Book / Optimize). No fee dump. End with Want me to send over some details?",
+        "One short offer line from KB (Message & Book / Optimize). No fee dump.",
     };
   }
 
@@ -232,7 +232,7 @@ function pickHeroOffer(input: {
       label: "Furniture Investment + Full Service",
       why: "Furniture / makeover is the main gap. KB says furniture does not pair with Growth.",
       pitch:
-        'ONE short offer paragraph in this spirit: "We run a free furniture program — we\'ll refurnish and refresh the space at no cost to you, then help manage the listing…" Do NOT list messaging + reviews + pricing + turnovers + maintenance as a menu. Do NOT mention 20% Standard. Never pair with Growth. End with Want me to send over some details?',
+        'ONE short offer paragraph in this spirit: "We run a free furniture program — we\'ll refurnish and refresh the space at no cost to you, then help manage the listing…" Do NOT list messaging + reviews + pricing + turnovers + maintenance as a menu. Do NOT mention 20% Standard. Never pair with Growth.',
     };
   }
 
@@ -241,7 +241,7 @@ function pickHeroOffer(input: {
     label: "Growth Partnership",
     why: "Live listing outreach. Default no-brainer is low fee on their own benchmark, bigger cut only on growth.",
     pitch:
-      "ONE short offer line about helping grow the listing / ops. No invented % lifts. No flat 20% Standard. No service-menu dump. End with Want me to send over some details?",
+      "ONE short offer line about helping grow the listing / ops. No invented % lifts. No flat 20% Standard. No service-menu dump.",
   };
 }
 
@@ -262,11 +262,17 @@ const FORMAT_FIRST = `FORMAT (required — match the SAMPLE length)
 - If you are writing a third paragraph, you are too long — cut it.
 - Do not list every service we offer.`;
 
-const REPLY_SELL = `WHEN THEY ASK HOW IT WORKS / SAY THEY ARE INTERESTED
-- Now you can go a bit deeper on PLAN TO SELL from the KB.
+const REPLY_SELL = `WHEN THEY SAY YES TO DETAILS / ASK HOW IT WORKS / SAY THEY ARE INTERESTED
+- If our earlier message already asked "Want me to send over some details?" (or similar) and they said yes / sure / please / send it / sounds good — DO NOT ask that again. Deliver the details now.
+- Go deeper on PLAN TO SELL from the KB: how it works, fee structure only if in the KB, what we handle. Keep it short.
 - Still no invented revenue %. Still short paragraphs with blank lines.
 - Still skip reviews older than 3 months.
-- One soft invite is enough. Prefer Want me to send over some details?`;
+- Close with a different soft next step (e.g. any questions, or if they'd like to move forward) — never reuse "Want me to send over some details?" once they already agreed.
+- Never repeat the same closing question we already asked in this thread.
+
+WHEN THEY ARE ONLY SOFT / CURIOUS / NOT YET SAYING YES
+- Answer briefly, stay light.
+- One soft invite is enough. Prefer Want me to send over some details? only if we have not already asked that in this thread.`;
 
 export function sanitizeOutreachMessage(
   raw: string,
@@ -376,9 +382,10 @@ function heuristicHostInterest(
     return "not_interested";
   }
   if (
-    /\b(tell me more|more info|how (does|do) (it|this) work|what (are|is) (your|the) (fee|fees|cost|rate)|interested|sounds good|sounds interesting|yes[,.]? (please|i'?d like)|send (me )?details|happy to (chat|learn)|when can we)\b/i.test(
+    /\b(tell me more|more info|how (does|do) (it|this) work|what (are|is) (your|the) (fee|fees|cost|rate)|interested|sounds good|sounds interesting|yes[,.]? (please|sure|i'?d like)|yeah[,.]? (sure|please)|yep|absolutely|send (it|them|me )?details|happy to (chat|learn)|when can we)\b/i.test(
       t,
-    )
+    ) ||
+    /^(yes|yeah|yep|sure|ok|okay|sounds good)[.!]?\s*$/i.test(t.trim())
   ) {
     return "interested";
   }
@@ -613,6 +620,13 @@ export async function draftOutreachReply(
     learningBlock(),
   ]);
   const host = trim(input.host_name) || "the host";
+  const askedToSendDetails =
+    /want me to send over some details|send (you |over )?some details|happy to share (more )?details/i.test(
+      firstMessage,
+    );
+  const hostAcceptedDetails =
+    askedToSendDetails &&
+    heuristicHostInterest(thread) === "interested";
   const system = `You write the NEXT Airbnb reply for Mandel Realty Group after a host has responded.
 
 ${HUMAN_VOICE}
@@ -620,8 +634,6 @@ ${HUMAN_VOICE}
 Length: 3 to 5 short sentences across short paragraphs with a blank line between them. Never one dense wall of text. Make it feel sharp and easy to say yes to.
 
 ${AIRBNB_RULES}
-
-${PUNCH}
 
 ${REPLY_SELL}
 
@@ -635,6 +647,7 @@ Stricter:
 - If you name the company, use: We're listed as Mandel Realty Group in Toronto. Save the full easy-to-find close for when they are ready.
 - Answer from the knowledge excerpts for the PLAN TO SELL. If a fee is not in the excerpts, do not invent it.
 - Do not repeat the entire first pitch. Do not default to a bland 20% Standard pitch when the PLAN TO SELL is Growth or another offer.
+- If OUR FIRST MESSAGE already ended with "Want me to send over some details?" and the host said yes/sure/please, your reply MUST send those details — never ask "Want me to send over some details?" again.
 - Address ${host} by first name only if it still sounds natural. Do not start every reply with Hey {name}.
 - Prefer approaches that led to INTERESTED outcomes in LEARNING.
 
@@ -650,10 +663,16 @@ Return STRICT JSON only (no markdown fences):
     ? `OUR FIRST MESSAGE TO THEM:\n${firstMessage}\n\nHOST THREAD (paste from Airbnb, most recent last):\n${thread}`
     : `HOST THREAD (most recent is last):\n${thread}`;
 
+  const acceptedBlock = hostAcceptedDetails
+    ? `CRITICAL FOR THIS REPLY: We already asked to send details, and the host said yes. Deliver the ${hero.label} details from the knowledge excerpts now. Do NOT write "Want me to send over some details?" again. End with a different soft next step (questions, or ready to move forward).\n\n`
+    : askedToSendDetails
+      ? `NOTE: Our first message already offered to send details. Do not ask that same question again unless they have not answered it yet.\n\n`
+      : "";
+
   const user = `LISTING CONTEXT (saved from when we first reviewed this listing):
 ${listingFacts(input)}
 
-${replyNote ? `VA NOTE ON THIS REPLY (what the host asked or mentioned):\n${replyNote}\n\n` : ""}${threadBlock}
+${replyNote ? `VA NOTE ON THIS REPLY (what the host asked or mentioned):\n${replyNote}\n\n` : ""}${acceptedBlock}${threadBlock}
 
 KNOWLEDGE EXCERPTS (use these for the PLAN TO SELL terms, never mention these sources):
 ${kb}
