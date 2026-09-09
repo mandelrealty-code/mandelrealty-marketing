@@ -328,7 +328,16 @@ async function handleRevenueAuditOp(
         ? (err as { status: number }).status
         : 500;
     console.error("[audit/revenue]", message);
-    return res.status(status >= 400 && status < 600 ? status : 500).json({ error: message });
+    const listingMissing =
+      op === "lookup" &&
+      (status === 404 ||
+        /listing not found|not been added to our system|invalid id/i.test(message));
+    const publicError = listingMissing
+      ? "We couldn't load that listing yet. Enter your monthly revenue, or try the address path."
+      : message;
+    return res
+      .status(status >= 400 && status < 600 ? status : 500)
+      .json({ error: publicError, code: listingMissing ? "listing_not_found" : undefined });
   }
 }
 
