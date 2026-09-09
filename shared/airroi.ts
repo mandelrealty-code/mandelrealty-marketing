@@ -1934,9 +1934,9 @@ export async function enrichPaidMarketAudit(input: {
 export function classifyUnlockCode(code: string): "mock" | "live" | null {
   const c = String(code ?? "").trim().toUpperCase();
   if (!c) return null;
-  // Temporary test codes — remove when Stripe launches.
+  // Internal mock pack only (not a client gift code).
   if (c === "AIRBNB1234") return "mock";
-  if (c === "MRG2026") return "live";
+  // Optional multi-use staff override from env (not for clients).
   const env = (process.env.REVENUE_AUDIT_UNLOCK_CODE?.trim() || "").toUpperCase();
   if (env && c === env) return "live";
   return null;

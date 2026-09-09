@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "./supabase.js";
 
 export type RevenueAuditUnlockMethod =
   | "preview"
+  | "paid_3999"
   | "paid_2499"
   | "paid_1999"
   | "code"
@@ -57,6 +58,8 @@ export function revenueAuditReportUrl(token: string): string {
 
 function methodLabel(method: RevenueAuditUnlockMethod): string {
   switch (method) {
+    case "paid_3999":
+      return "Paid unlock · $39.99";
     case "paid_2499":
       return "Paid unlock · $24.99";
     case "paid_1999":

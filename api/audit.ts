@@ -33,6 +33,13 @@ import {
   type RevenueAuditUnlockMethod,
 } from "../shared/revenueAuditReports.js";
 import { handlePlacesOp } from "../shared/googlePlaces.js";
+import {
+  createRevenueAuditCheckoutSession,
+  confirmRevenueAuditCheckoutSession,
+  checkoutTierConfigured,
+  type RevenueAuditCheckoutTier,
+} from "../shared/stripeCheckout.js";
+import { redeemRevenueAuditUnlockCode } from "../shared/revenueAuditUnlockCodes.js";
 
 const REVENUE_AUDIT_OPS = new Set([
   "lookup",
@@ -42,20 +49,27 @@ const REVENUE_AUDIT_OPS = new Set([
   "save_report",
   "load_report",
   "places",
+  "create_checkout",
+  "confirm_checkout",
 ]);
 
 function asUnlockMethod(raw: unknown): RevenueAuditUnlockMethod {
   const v = String(raw ?? "preview").trim().toLowerCase();
   if (
-    v === "paid_2499" ||
+    v === "paid_3999" ||
     v === "paid_1999" ||
+    v === "paid_2499" ||
     v === "code" ||
     v === "call" ||
     v === "preview"
   ) {
-    return v;
+    return v as RevenueAuditUnlockMethod;
   }
   return "preview";
+}
+
+function asCheckoutTier(raw: unknown): RevenueAuditCheckoutTier {
+  return String(raw ?? "").trim().toLowerCase() === "half" ? "half" : "full";
 }
 
 /** Revenue Audit tool ops — kept on this function so Hobby stays ≤12 serverless functions. */
@@ -71,17 +85,87 @@ async function handleRevenueAuditOp(
       return handlePlacesOp(body, res);
     }
 
+    if (op === "create_checkout") {
+      if (!checkoutTierConfigured()) {
+        return res.status(503).json({
+          error: "Card payments are not set up yet. Use an access code or book a call.",
+        });
+      }
+      const tier = asCheckoutTier(body.tier);
+      const result = await createRevenueAuditCheckoutSession({
+        tier,
+        email: String(body.email ?? "").trim() || undefined,
+        reportId: String(body.reportId ?? "").trim() || undefined,
+        listingUrl: String(body.listingUrl ?? "").trim() || undefined,
+        address: String(body.address ?? "").trim() || undefined,
+      });
+      return res.status(200).json({ ok: true, ...result });
+    }
+
+    if (op === "confirm_checkout") {
+      if (!checkoutTierConfigured()) {
+        return res.status(503).json({
+          error: "Card payments are not set up yet.",
+        });
+      }
+      const confirmed = await confirmRevenueAuditCheckoutSession(
+        String(body.sessionId ?? body.checkout_session_id ?? ""),
+      );
+      const unlockMethod: RevenueAuditUnlockMethod =
+        confirmed.tier === "half" ? "paid_1999" : "paid_3999";
+      const unlockNote =
+        confirmed.tier === "half"
+          ? "Unlocked · $19.99 paid (50% off)"
+          : "Unlocked · $39.99 paid";
+      return res.status(200).json({
+        ok: true,
+        unlocked: true,
+        mode: "live",
+        tier: confirmed.tier,
+        reportId: confirmed.reportId,
+        email: confirmed.email,
+        unlockMethod,
+        unlockNote,
+        amountCents: confirmed.amountCents,
+      });
+    }
+
     if (op === "unlock") {
       const code = String(body.code ?? "");
+      const email = String(body.email ?? "").trim();
+      const reportId = String(body.reportId ?? "").trim();
+
+      // 1) Built-in / env staff codes (non-client)
       const kind = classifyUnlockCode(code);
-      if (!kind) {
-        return res.status(400).json({ error: "That code did not match." });
+      if (kind) {
+        return res.status(200).json({
+          ok: true,
+          unlocked: true,
+          mode: kind,
+          unlockNote: "Unlocked",
+          oneTime: false,
+        });
+      }
+
+      // 2) One-time client gift codes
+      const redeemed = await redeemRevenueAuditUnlockCode({
+        code,
+        email,
+        reportId,
+      });
+      if (!redeemed.ok) {
+        return res.status(400).json({
+          error: redeemed.error,
+          alreadyUsed: Boolean(redeemed.alreadyUsed),
+        });
       }
       return res.status(200).json({
         ok: true,
         unlocked: true,
-        mode: kind,
-        unlockNote: "Unlocked",
+        mode: redeemed.mode,
+        unlockNote: "Unlocked with access code",
+        oneTime: true,
+        code: redeemed.code,
       });
     }
 

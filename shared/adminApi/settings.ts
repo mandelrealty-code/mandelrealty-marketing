@@ -13,6 +13,10 @@ import {
   removeLeadNotifyRecipient,
   saveLeadNotifyRecipient,
 } from "../leadNotifySms.js";
+import {
+  createRevenueAuditUnlockCode,
+  listRevenueAuditUnlockCodes,
+} from "../revenueAuditUnlockCodes.js";
 import { isSupabaseConfigured } from "../supabase.js";
 
 function unauthorized(res: VercelResponse) {
@@ -69,11 +73,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     const settings = await getCrmSettings();
-    return res.status(200).json(settingsPayload(settings));
+    const unlockCodes = await listRevenueAuditUnlockCodes(40);
+    return res.status(200).json(
+      settingsPayload(settings, {
+        unlock_codes: unlockCodes,
+      }),
+    );
   }
 
   if (req.method === "PATCH") {
     const body = readBody(req);
+
+    if (body.action === "create_unlock_code") {
+      const result = await createRevenueAuditUnlockCode({
+        code: String(body.code ?? ""),
+        label: String(body.label ?? ""),
+        note: String(body.note ?? ""),
+        createdBy: "admin",
+      });
+      const unlockCodes = await listRevenueAuditUnlockCodes(40);
+      if (!result.ok) {
+        return res.status(400).json({
+          error: result.error,
+          unlock_codes: unlockCodes,
+        });
+      }
+      return res.status(200).json({
+        ok: true,
+        code: result.row,
+        unlock_codes: unlockCodes,
+      });
+    }
 
     if (body.action === "add_notify_recipient") {
       const result = await saveLeadNotifyRecipient(
@@ -151,7 +181,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({
         error:
-          "Provide ai_responses_enabled, lead_notify_sms_enabled, operator_callback_phone, add_notify_recipient, or remove_notify_recipient.",
+          "Provide ai_responses_enabled, lead_notify_sms_enabled, operator_callback_phone, add_notify_recipient, remove_notify_recipient, or create_unlock_code.",
       });
     }
 

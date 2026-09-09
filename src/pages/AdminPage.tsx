@@ -373,6 +373,21 @@ export function AdminPage() {
   const [operatorPhoneDraft, setOperatorPhoneDraft] = useState("");
   const [operatorBusy, setOperatorBusy] = useState(false);
   const [operatorMsg, setOperatorMsg] = useState<string | null>(null);
+  const [unlockCodes, setUnlockCodes] = useState<
+    {
+      id: string;
+      code: string;
+      label: string;
+      note: string;
+      created_at: string;
+      redeemed_at: string | null;
+      redeemed_by_email: string;
+    }[]
+  >([]);
+  const [unlockCodeDraft, setUnlockCodeDraft] = useState("");
+  const [unlockLabelDraft, setUnlockLabelDraft] = useState("");
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [unlockMsg, setUnlockMsg] = useState<string | null>(null);
   const [callBusy, setCallBusy] = useState(false);
   const [callMsg, setCallMsg] = useState<string | null>(null);
   const callLock = useRef(false);
@@ -454,6 +469,15 @@ export function AdminPage() {
         }[];
         lead_notify_phone?: string;
         operator_callback_phone?: string;
+        unlock_codes?: {
+          id: string;
+          code: string;
+          label: string;
+          note: string;
+          created_at: string;
+          redeemed_at: string | null;
+          redeemed_by_email: string;
+        }[];
       };
       setAiEnabled(Boolean(data.ai_responses_enabled));
       setAiEffective(Boolean(data.effective_ai_enabled));
@@ -462,6 +486,7 @@ export function AdminPage() {
       const opPhone = String(data.operator_callback_phone ?? "").trim();
       setOperatorCallbackPhone(opPhone);
       setOperatorPhoneDraft(opPhone);
+      if (Array.isArray(data.unlock_codes)) setUnlockCodes(data.unlock_codes);
       if (Array.isArray(data.lead_notify_recipients) && data.lead_notify_recipients.length > 0) {
         setNotifyRecipients(data.lead_notify_recipients);
       } else if (data.lead_notify_phone?.trim()) {
@@ -1410,6 +1435,37 @@ export function AdminPage() {
       setSaveMsg(err instanceof Error ? err.message : "AI toggle failed");
     } finally {
       setAiBusy(false);
+    }
+  };
+
+  const createUnlockCode = async () => {
+    setUnlockBusy(true);
+    setUnlockMsg(null);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "create_unlock_code",
+          code: unlockCodeDraft.trim(),
+          label: unlockLabelDraft.trim(),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        unlock_codes?: typeof unlockCodes;
+        code?: { code: string };
+      };
+      if (!res.ok) throw new Error(data.error || "Could not create code");
+      if (Array.isArray(data.unlock_codes)) setUnlockCodes(data.unlock_codes);
+      setUnlockMsg(`Created ${data.code?.code || unlockCodeDraft.trim().toUpperCase()} — one-time use.`);
+      setUnlockCodeDraft("");
+      setUnlockLabelDraft("");
+    } catch (err) {
+      setUnlockMsg(err instanceof Error ? err.message : "Could not create code");
+    } finally {
+      setUnlockBusy(false);
     }
   };
 
@@ -3462,6 +3518,91 @@ export function AdminPage() {
                     label="Toggle AI responses"
                     onToggle={() => toggleGlobalAi().catch(() => undefined)}
                   />
+                </div>
+              </section>
+
+              </section>
+
+              <section className="space-y-2.5">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
+                  Revenue audit unlock codes
+                </h2>
+                <div className="rounded-2xl border border-white/8 bg-[#1a1a1a] p-3.5 lg:rounded-[18px] lg:p-5">
+                  <p className="text-[14.5px] font-semibold text-[#f0eeea]">
+                    One-time client codes
+                  </p>
+                  <p className="mt-1 text-[12.5px] leading-snug text-[#9a9590]">
+                    Create a unique code (e.g. DANIEL2026). It unlocks the full
+                    audit once — after that it cannot be reused.
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1.2fr_1fr_auto]">
+                    <input
+                      type="text"
+                      value={unlockCodeDraft}
+                      onChange={(e) => setUnlockCodeDraft(e.target.value)}
+                      placeholder="DANIEL2026"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-[#0c0c0c] px-3.5 text-base uppercase outline-none placeholder:normal-case placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+                    />
+                    <input
+                      type="text"
+                      value={unlockLabelDraft}
+                      onChange={(e) => setUnlockLabelDraft(e.target.value)}
+                      placeholder="Client name (optional)"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-[#0c0c0c] px-3.5 text-base outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+                    />
+                    <button
+                      type="button"
+                      disabled={unlockBusy || unlockCodeDraft.trim().length < 4}
+                      onClick={() => createUnlockCode().catch(() => undefined)}
+                      className="h-11 rounded-xl bg-[#c4a35a] px-4 text-sm font-bold text-[#14100a] hover:bg-[#dcc084] disabled:cursor-not-allowed disabled:bg-[#c4a35a]/25 disabled:text-[#8a7c5f]"
+                    >
+                      {unlockBusy ? "Saving…" : "Create"}
+                    </button>
+                  </div>
+                  {unlockMsg && (
+                    <p className="mt-2 text-sm text-[#9a9590]">{unlockMsg}</p>
+                  )}
+                  <div className="mt-4 space-y-2">
+                    {unlockCodes.length === 0 ? (
+                      <p className="text-[12.5px] text-[#7d7873]">No codes yet.</p>
+                    ) : (
+                      unlockCodes.map((row) => (
+                        <div
+                          key={row.id}
+                          className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-white/6 bg-[#0c0c0c] px-3.5 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-mono text-[13.5px] font-semibold tracking-wide text-[#f0eeea]">
+                              {row.code}
+                              {row.label ? (
+                                <span className="ml-2 font-sans text-[12px] font-medium text-[#9a9590]">
+                                  · {row.label}
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="mt-0.5 text-[11.5px] text-[#7d7873]">
+                              {row.redeemed_at
+                                ? `Used ${new Date(row.redeemed_at).toLocaleString()}${
+                                    row.redeemed_by_email
+                                      ? ` · ${row.redeemed_by_email}`
+                                      : ""
+                                  }`
+                                : `Available · created ${new Date(row.created_at).toLocaleDateString()}`}
+                            </p>
+                          </div>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] ${
+                              row.redeemed_at
+                                ? "bg-white/6 text-[#9a9590]"
+                                : "bg-[#c4a35a]/18 text-[#dcc084]"
+                            }`}
+                          >
+                            {row.redeemed_at ? "Used" : "Open"}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </section>
 
