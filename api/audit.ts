@@ -80,10 +80,7 @@ async function handleRevenueAuditOp(
         ok: true,
         unlocked: true,
         mode: kind,
-        unlockNote:
-          kind === "mock"
-            ? "Unlocked with AIRBNB1234 · mock paid pack (no AirROI cost)"
-            : "Unlocked with MRG2026 · live AirROI paid pack",
+        unlockNote: "Unlocked",
       });
     }
 
@@ -223,7 +220,7 @@ async function handleRevenueAuditOp(
       }
 
       if (!extractAirbnbListingId(listing) && !listing) {
-        return res.status(400).json({ error: "Paste a valid Airbnb listing URL to load the paid AirROI pack." });
+        return res.status(400).json({ error: "Paste a valid Airbnb listing URL to unlock full market detail." });
       }
 
       // Live paid unlock enrichment — do not burn the free daily visitor quota.

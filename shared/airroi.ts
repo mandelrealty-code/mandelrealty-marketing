@@ -902,7 +902,7 @@ export function buildBookingLeaks(
           tag: "Needs data",
           vsLabel: "Next step",
           vs: "Paste listing URL",
-          gapLine: "Live gaps appear after AirROI returns listing + comps.",
+          gapLine: "Live gaps appear after your listing and comps load.",
         },
         0,
       ),
@@ -1280,7 +1280,7 @@ export async function enrichPaidListingAudit(input: {
   comps?: AirroiComp[];
 }): Promise<RevenueAuditPaidPack> {
   const listingId = extractAirbnbListingId(input.listingUrlOrId) || str(input.subject?.listingId);
-  if (!listingId) throw new Error("Paste a valid Airbnb listing URL to unlock the full AirROI pack.");
+  if (!listingId) throw new Error("Paste a valid Airbnb listing URL to unlock full market detail.");
 
   let subject = input.subject ?? null;
   const endpointsCalled: string[] = [];
