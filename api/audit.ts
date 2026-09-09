@@ -31,6 +31,7 @@ import {
   persistAndEmailRevenueAudit,
   type RevenueAuditUnlockMethod,
 } from "../shared/revenueAuditReports.js";
+import { handlePlacesOp } from "../shared/googlePlaces.js";
 
 const REVENUE_AUDIT_OPS = new Set([
   "lookup",
@@ -39,6 +40,7 @@ const REVENUE_AUDIT_OPS = new Set([
   "unlock",
   "save_report",
   "load_report",
+  "places",
 ]);
 
 function asUnlockMethod(raw: unknown): RevenueAuditUnlockMethod {
@@ -64,6 +66,10 @@ async function handleRevenueAuditOp(
   const op = String(body.op ?? "lookup").trim().toLowerCase();
 
   try {
+    if (op === "places") {
+      return handlePlacesOp(body, res);
+    }
+
     if (op === "unlock") {
       const code = String(body.code ?? "");
       const kind = classifyUnlockCode(code);

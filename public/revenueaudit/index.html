@@ -482,10 +482,10 @@ class Component extends DCLogic {
   async fetchPlacePredictions(input) {
     const reqId = ++this._placesReq;
     try {
-      const res = await fetch("/api/places", {
+      const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "autocomplete", input })
+        body: JSON.stringify({ op: "places", action: "autocomplete", input })
       });
       const data = await res.json().catch(() => ({}));
       if (reqId !== this._placesReq) return;
@@ -511,10 +511,10 @@ class Component extends DCLogic {
       return;
     }
     try {
-      const res = await fetch("/api/places", {
+      const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "details", placeId })
+        body: JSON.stringify({ op: "places", action: "details", placeId })
       });
       const data = await res.json().catch(() => ({}));
       const place = data && data.place ? data.place : null;

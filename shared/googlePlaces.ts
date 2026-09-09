@@ -1,8 +1,12 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+import type { VercelResponse } from "@vercel/node";
 
-type PlacesAction = "autocomplete" | "details";
+type AddressComponent = {
+  long_name?: string;
+  short_name?: string;
+  types?: string[];
+};
 
-function jsonErr(
+function placesErr(
   res: VercelResponse,
   error: string,
   errorCode: string,
@@ -11,33 +15,20 @@ function jsonErr(
   return res.status(200).json({ error, errorCode, ...extra });
 }
 
-function getComponent(
-  components: Array<{ long_name?: string; short_name?: string; types?: string[] }>,
-  types: string[],
-  short = false,
-): string {
+function getComponent(components: AddressComponent[], types: string[], short = false): string {
   const comp = components.find((c) => (c.types || []).some((t) => types.includes(t)));
   if (!comp) return "";
   return String((short ? comp.short_name : comp.long_name) || "");
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    return res.status(204).end();
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  res.setHeader("Cache-Control", "no-store");
-
+/** Google Places autocomplete + details (server-side; uses GOOGLE_MAPS_API_KEY). */
+export async function handlePlacesOp(
+  body: Record<string, unknown>,
+  res: VercelResponse,
+): Promise<VercelResponse> {
   const apiKey = String(process.env.GOOGLE_MAPS_API_KEY || "").trim();
   if (!apiKey) {
-    return jsonErr(
+    return placesErr(
       res,
       "Google Maps API key not configured on the server.",
       "MISSING_GOOGLE_MAPS_API_KEY",
@@ -45,11 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
   }
 
-  const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<
-    string,
-    unknown
-  >;
-  const action = String(body.action || "").trim().toLowerCase() as PlacesAction;
+  const action = String(body.action || body.placesAction || "").trim().toLowerCase();
 
   try {
     if (action === "autocomplete") {
@@ -65,7 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const response = await fetch(url.toString());
       if (!response.ok) {
-        return jsonErr(res, "Failed to connect to Google Places API", "GOOGLE_PLACES_NETWORK", {
+        return placesErr(res, "Failed to connect to Google Places API", "GOOGLE_PLACES_NETWORK", {
           predictions: [],
         });
       }
@@ -79,7 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ predictions: data.predictions || [] });
       }
 
-      return jsonErr(
+      return placesErr(
         res,
         data.error_message || data.status || "API error",
         "GOOGLE_PLACES_REJECTED",
@@ -90,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === "details") {
       const placeId = String(body.placeId || "").trim();
       if (!placeId) {
-        return jsonErr(res, "placeId is required", "INVALID_REQUEST");
+        return placesErr(res, "placeId is required", "INVALID_REQUEST");
       }
 
       const url = new URL("https://maps.googleapis.com/maps/api/place/details/json");
@@ -100,17 +87,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const response = await fetch(url.toString());
       if (!response.ok) {
-        return jsonErr(res, "Failed to connect to Google Places API", "GOOGLE_PLACES_NETWORK");
+        return placesErr(res, "Failed to connect to Google Places API", "GOOGLE_PLACES_NETWORK");
       }
       const data = (await response.json()) as {
         status?: string;
         error_message?: string;
         result?: {
-          address_components?: Array<{
-            long_name?: string;
-            short_name?: string;
-            types?: string[];
-          }>;
+          address_components?: AddressComponent[];
           formatted_address?: string;
           geometry?: { location?: { lat?: number; lng?: number } };
         };
@@ -143,7 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      return jsonErr(
+      return placesErr(
         res,
         data.error_message || "Details API error",
         "GOOGLE_PLACES_REJECTED",
@@ -151,9 +134,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
     }
 
-    return jsonErr(res, "Invalid action", "INVALID_REQUEST");
+    return placesErr(res, "Invalid action", "INVALID_REQUEST");
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    return jsonErr(res, message, "INTERNAL", { predictions: [] });
+    return placesErr(res, message, "INTERNAL", { predictions: [] });
   }
 }
