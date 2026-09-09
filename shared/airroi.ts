@@ -120,6 +120,8 @@ export type RevenueAuditEstimateResult = {
   monthlyRevenue: number | null;
   adr: number | null;
   occupancy: number | null;
+  latitude: number | null;
+  longitude: number | null;
   comps: AirroiComp[];
   leaks: RevenueAuditLeak[];
   ratings: RevenueAuditRatings;
@@ -1023,21 +1025,40 @@ export async function estimateByAddress(input: {
   bedrooms: number;
   bathrooms: number;
   guests?: number;
+  latitude?: number | null;
+  longitude?: number | null;
 }): Promise<RevenueAuditEstimateResult> {
   const address = String(input.address ?? "").trim();
-  if (!address) throw new Error("Enter an address or neighborhood.");
+  const latitude =
+    input.latitude != null && Number.isFinite(Number(input.latitude))
+      ? Number(input.latitude)
+      : null;
+  const longitude =
+    input.longitude != null && Number.isFinite(Number(input.longitude))
+      ? Number(input.longitude)
+      : null;
+  if (!address && (latitude == null || longitude == null)) {
+    throw new Error("Enter an address or neighborhood.");
+  }
 
   const bedrooms = Math.max(0, Math.min(20, Math.round(input.bedrooms || 2)));
   const baths = Math.max(0.5, Math.min(20, Number(input.bathrooms) || 1));
   const guests = input.guests ?? Math.max(2, bedrooms * 2);
 
-  const data = await airroiGet("/calculator/estimate", {
-    address,
+  const estimateParams: Record<string, string | number> = {
     bedrooms,
     baths,
     guests,
     currency: "usd",
-  });
+  };
+  if (latitude != null && longitude != null) {
+    estimateParams.lat = latitude;
+    estimateParams.lng = longitude;
+  } else {
+    estimateParams.address = address;
+  }
+
+  const data = await airroiGet("/calculator/estimate", estimateParams);
 
   const annual =
     num(data.revenue) ??
@@ -1081,12 +1102,17 @@ export async function estimateByAddress(input: {
     .sort((a, b) => (b.monthlyRevenue ?? 0) - (a.monthlyRevenue ?? 0))
     .slice(0, 12);
 
+  const responseLat = num(data.latitude ?? data.lat) ?? latitude;
+  const responseLng = num(data.longitude ?? data.lng) ?? longitude;
+
   return {
     source: "airroi",
     annualRevenue: annualResolved,
     monthlyRevenue: annualResolved != null ? annualResolved / 12 : null,
     adr,
     occupancy,
+    latitude: responseLat,
+    longitude: responseLng,
     comps,
     leaks: buildBookingLeaks(
       {

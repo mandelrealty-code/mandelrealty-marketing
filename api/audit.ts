@@ -161,7 +161,18 @@ async function handleRevenueAuditOp(
       const address = String(body.address ?? "").trim();
       const bedrooms = Number(body.bedrooms ?? 2);
       const bathrooms = Number(body.bathrooms ?? 1);
-      const cacheKey = `estimate:${address.toLowerCase()}:${bedrooms}:${bathrooms}`;
+      const latitude =
+        body.latitude != null && body.latitude !== "" ? Number(body.latitude) : null;
+      const longitude =
+        body.longitude != null && body.longitude !== "" ? Number(body.longitude) : null;
+      const geoKey =
+        latitude != null &&
+        longitude != null &&
+        Number.isFinite(latitude) &&
+        Number.isFinite(longitude)
+          ? `${latitude.toFixed(5)},${longitude.toFixed(5)}`
+          : "nogeo";
+      const cacheKey = `estimate:${address.toLowerCase()}:${geoKey}:${bedrooms}:${bathrooms}`;
       const cached = getCachedAirroi<Record<string, unknown>>(cacheKey);
       if (cached) {
         return res.status(200).json({ ok: true, cached: true, ...cached });
@@ -172,6 +183,8 @@ async function handleRevenueAuditOp(
         bedrooms,
         bathrooms,
         guests: body.guests != null ? Number(body.guests) : undefined,
+        latitude,
+        longitude,
       });
       setCachedAirroi(cacheKey, result);
       return res.status(200).json({ ok: true, cached: false, ...result });
