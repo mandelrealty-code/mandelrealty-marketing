@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  * { box-sizing: border-box; }
+  body { font-family: "Plus Jakarta Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #222222; }
+  a { color: #e00b41; text-decoration: none; }
+  a:hover { color: #b00832; text-decoration: underline; }
+  @keyframes mrgRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @keyframes mrgGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+</style>
+</helmet>
+
+<section style="width: 100%; padding: 4px 0 0">
+  <h2 style="margin: 0 0 10px; font-size: clamp(26px, 4vw, 34px); font-weight: 800; letter-spacing: -0.03em">Your rating categories</h2>
+  <p style="margin: 0 0 22px; font-size: 16.5px; line-height: 1.55; color: #5e5e5e; max-width: 76ch; text-wrap: pretty">{{ supportLine }}</p>
+
+  <div style="border: 1px solid #ebebeb; border-radius: 20px; background: #fafafa; padding: 22px 24px; margin-bottom: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px 32px; align-items: center; animation: mrgRise .5s cubic-bezier(.2,.7,.2,1) both">
+    <div style="display: flex; align-items: flex-end; gap: 16px">
+      <div>
+        <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171; margin-bottom: 6px">Overall rating</div>
+        <div data-binding="subject.overallRating" style="font-size: 52px; font-weight: 800; letter-spacing: -0.04em; line-height: 0.95">{{ overallScore }}</div>
+      </div>
+      <div style="padding-bottom: 6px; display: flex; flex-direction: column; gap: 7px">
+        <span style="font-size: 13px; font-weight: 800; letter-spacing: -0.01em; border-radius: 999px; padding: 7px 12px; background: {{ overallChipBg }}; color: {{ overallChipInk }}">{{ overallChip }}</span>
+        <span style="font-size: 12.5px; font-weight: 600; color: #717171">{{ reviewCount }}</span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px">
+        <span style="font-size: 12.5px; font-weight: 700; color: #5e5e5e">Nearby comps median</span>
+        <span data-binding="market.overallRating" style="font-size: 20px; font-weight: 800; letter-spacing: -0.02em">{{ overallMarket }}</span>
+      </div>
+      <div style="position: relative; height: 10px; border-radius: 999px; background: #ececec; overflow: hidden">
+        <div style="position: absolute; inset: 0 auto 0 0; width: {{ overallFill }}; border-radius: 999px; background: {{ overallInk }}; transform-origin: left center; animation: mrgGrow .7s cubic-bezier(.2,.7,.2,1) both .1s"></div>
+      </div>
+      <div style="position: relative; height: 14px">
+        <div style="position: absolute; top: -18px; left: {{ overallMark }}; width: 2px; height: 18px; background: #222222"></div>
+        <div style="position: absolute; top: 0; left: {{ overallMark }}; transform: translateX(-50%); font-size: 10.5px; font-weight: 800; letter-spacing: 0.04em; color: #222222; white-space: nowrap">MARKET</div>
+      </div>
+      <div style="font-size: 13.5px; font-weight: 600; color: #5e5e5e; line-height: 1.5; max-width: 44ch; text-wrap: pretty">{{ overallRead }}</div>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 10px; margin: 0 0 12px">
+    <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">{{ listKicker }}</div>
+    <div style="flex: 1; height: 1px; background: #ebebeb"></div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 10px">
+    <sc-for list="{{ cats }}" as="c" hint-placeholder-count="6">
+      <div style="border: 1px solid {{ c.border }}; background: {{ c.bg }}; border-radius: 18px; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 12px; animation: mrgRise .45s cubic-bezier(.2,.7,.2,1) both; animation-delay: {{ c.delay }}">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px">
+          <div style="font-size: 16px; font-weight: 800; letter-spacing: -0.02em; min-width: 120px">{{ c.name }}</div>
+          <span style="font-size: 12.5px; font-weight: 800; border-radius: 999px; padding: 6px 11px; background: {{ c.chipBg }}; color: {{ c.chipInk }}">{{ c.deltaLabel }}</span>
+          <div style="margin-left: auto; display: flex; align-items: baseline; gap: 8px">
+            <span data-binding="{{ c.binding }}" style="font-size: 22px; font-weight: 800; letter-spacing: -0.03em; color: {{ c.ink }}">{{ c.score }}</span>
+            <span style="font-size: 13px; font-weight: 600; color: #717171">vs {{ c.market }} market</span>
+          </div>
+        </div>
+
+        <div>
+          <div style="position: relative; height: 9px; border-radius: 999px; background: #ececec">
+            <div style="position: absolute; inset: 0 auto 0 0; width: {{ c.barFill }}; border-radius: 999px; background: {{ c.ink }}; transform-origin: left center; animation: mrgGrow .7s cubic-bezier(.2,.7,.2,1) both; animation-delay: {{ c.delay }}"></div>
+            <div style="position: absolute; top: -5px; left: {{ c.marketMark }}; width: 2px; height: 19px; background: #222222; border-radius: 2px"></div>
+          </div>
+        </div>
+
+        <div style="font-size: 13.5px; font-weight: 600; color: #5e5e5e; line-height: 1.5; max-width: 74ch; text-wrap: pretty">{{ c.read }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <span style="width: 22px; height: 8px; border-radius: 999px; background: #ff385c; display: block"></span>
+      <span style="font-size: 12.5px; font-weight: 700; color: #5e5e5e">Your score</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px">
+      <span style="width: 2px; height: 14px; background: #222222; display: block"></span>
+      <span style="font-size: 12.5px; font-weight: 700; color: #5e5e5e">Comps median</span>
+    </div>
+    <div style="font-size: 12.5px; font-weight: 600; color: #717171">Bars scaled 4.0 – 5.0</div>
+  </div>
+
+  <div style="margin-top: 12px; font-size: 13.5px; color: #717171; font-weight: 500; line-height: 1.5; max-width: 84ch; text-wrap: pretty">{{ footnote }}</div>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1120,&quot;height&quot;:900},&quot;variant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;mixed&quot;,&quot;trailing&quot;,&quot;ahead&quot;],&quot;default&quot;:&quot;mixed&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;ratingsLive&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const variant = this.props.variant ?? "mixed";
+    const ratingsLive = this.props.ratingsLive ?? true;
+
+    const sets = {
+      mixed: {
+        overall: 4.72, market: 4.91, reviews: "18 reviews",
+        rows: [
+          ["Cleanliness", 4.60, 4.90, "rating_cleanliness", "The widest gap you have, and the one guests mention first in ratings. Nearby comps with your bed count sit three tenths higher."],
+          ["Value", 4.50, 4.85, "rating_value", "Value tracks price against what the stay delivered — it moves when nightly rate outruns the rest of the listing."],
+          ["Communication", 4.90, 4.92, "rating_communication", "Effectively level with the market. Response speed and pre-arrival detail are holding."],
+          ["Accuracy", 4.85, 4.90, "rating_accuracy", "Marginally behind. Usually a listing-description or photo-expectation mismatch rather than the stay itself."],
+          ["Check-in", 4.90, 4.91, "rating_checkin", "On par with comps. Arrival instructions and access are not a drag on your overall."],
+          ["Location", 4.95, 4.88, "rating_location", "Ahead of the market — your strongest category and the one worth leading with in your listing copy."]
+        ]
+      },
+      trailing: {
+        overall: 4.58, market: 4.90, reviews: "31 reviews",
+        rows: [
+          ["Cleanliness", 4.40, 4.92, "rating_cleanliness", "Half a point behind comps. At this spread it is the single biggest pull on your overall rating."],
+          ["Value", 4.45, 4.86, "rating_value", "Guests are rating the stay below what they paid for it. Rate and delivery are out of step."],
+          ["Accuracy", 4.55, 4.90, "rating_accuracy", "Behind the market. Expectations set by the listing are not matching the stay."],
+          ["Check-in", 4.62, 4.91, "rating_checkin", "Trailing comps. Arrival friction shows up here before it shows up in reviews."],
+          ["Communication", 4.80, 4.93, "rating_communication", "Slightly behind — the closest of your gaps, and typically the fastest to move."],
+          ["Location", 4.90, 4.87, "rating_location", "Ahead of comps. Nothing here is holding you back."]
+        ]
+      },
+      ahead: {
+        overall: 4.94, market: 4.88, reviews: "64 reviews",
+        rows: [
+          ["Accuracy", 4.88, 4.90, "rating_accuracy", "The only category where comps edge you out, and by two hundredths — noise at this review count."],
+          ["Value", 4.91, 4.85, "rating_value", "Ahead of the market, which is the signal that says you have room on nightly rate."],
+          ["Cleanliness", 4.95, 4.91, "rating_cleanliness", "Ahead of comps. Your turnover process is working."],
+          ["Communication", 4.97, 4.92, "rating_communication", "Top of the set. Response time and pre-arrival detail are a genuine advantage."],
+          ["Check-in", 4.97, 4.90, "rating_checkin", "Ahead of comps — arrival is frictionless for guests."],
+          ["Location", 4.98, 4.88, "rating_location", "Your highest category and clear of the market."]
+        ]
+      }
+    };
+    const set = sets[variant] || sets.mixed;
+
+    const pct = v => Math.max(0, Math.min(100, (v - 4) * 100)).toFixed(1) + "%";
+
+    const cats = set.rows.map((r, i) => {
+      const [name, score, market, field, read] = r;
+      const d = score - market;
+      const below = d <= -0.02;
+      const ahead = d >= 0.02;
+      return {
+        name,
+        binding: "subject." + field,
+        score: score.toFixed(2),
+        market: market.toFixed(2),
+        deltaLabel: below ? d.toFixed(2) + " below market" : (ahead ? "+" + d.toFixed(2) + " ahead" : "On par"),
+        below,
+        barFill: pct(score),
+        marketMark: pct(market),
+        ink: below ? "#ff385c" : "#00806f",
+        chipBg: below ? "#fdeef1" : "#e6f5f2",
+        chipInk: below ? "#b8072f" : "#00655a",
+        bg: below ? "#fffbfc" : "#ffffff",
+        border: below ? "#f6dbe1" : "#ebebeb",
+        read,
+        delay: (0.06 + i * 0.06).toFixed(2) + "s"
+      };
+    });
+
+    const belowCount = cats.filter(c => c.below).length;
+    const od = set.overall - set.market;
+    const oBelow = od <= -0.02;
+
+    return {
+      cats,
+      overallScore: set.overall.toFixed(2),
+      overallMarket: set.market.toFixed(2),
+      reviewCount: set.reviews,
+      overallFill: pct(set.overall),
+      overallMark: pct(set.market),
+      overallInk: oBelow ? "#ff385c" : "#00806f",
+      overallChip: oBelow ? od.toFixed(2) + " vs comps" : (od >= 0.02 ? "+" + od.toFixed(2) + " vs comps" : "Level with comps"),
+      overallChipBg: oBelow ? "#fdeef1" : "#e6f5f2",
+      overallChipInk: oBelow ? "#b8072f" : "#00655a",
+      overallRead: oBelow
+        ? "You sit " + Math.abs(od).toFixed(2) + " below the comps median, and " + belowCount + " of six categories are carrying that gap."
+        : "You sit at or above the comps median across " + (6 - belowCount) + " of six categories.",
+      listKicker: belowCount > 0 ? "Weakest categories first" : "Every category, strongest gap first",
+      supportLine: ratingsLive
+        ? "Every category Airbnb scores you on, next to the median for nearby comps with the same bed count. Same guests, same market, different numbers."
+        : "Category scores are pulled from your Airbnb listing when the audit runs. The numbers below are illustrative until yours load.",
+      footnote: "Your scores come straight from the Airbnb URL you submitted. The market bar is the median of nearby comps with the same bed count — a rating gap is a signal to look at, not a revenue promise."
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -59,6 +59,12 @@ export type AirroiComp = {
   superhost: boolean;
   guestFavorite: boolean;
   ratingOverall: number | null;
+  ratingCleanliness: number | null;
+  ratingCommunication: number | null;
+  ratingAccuracy: number | null;
+  ratingCheckin: number | null;
+  ratingValue: number | null;
+  ratingLocation: number | null;
   reviewCount: number | null;
   photosCount: number | null;
   amenities: string[];
@@ -86,11 +92,26 @@ export type RevenueAuditLeak = {
   hasTag?: boolean;
 };
 
+export type RevenueAuditRatingRow = {
+  key: string;
+  name: string;
+  score: number;
+  market: number;
+};
+
+export type RevenueAuditRatings = {
+  overall: number | null;
+  overallMarket: number | null;
+  reviewCount: number | null;
+  rows: RevenueAuditRatingRow[];
+};
+
 export type RevenueAuditLookupResult = {
   source: "airroi";
   subject: AirroiListingSnapshot;
   comps: AirroiComp[];
   leaks: RevenueAuditLeak[];
+  ratings: RevenueAuditRatings;
 };
 
 export type RevenueAuditEstimateResult = {
@@ -101,6 +122,7 @@ export type RevenueAuditEstimateResult = {
   occupancy: number | null;
   comps: AirroiComp[];
   leaks: RevenueAuditLeak[];
+  ratings: RevenueAuditRatings;
 };
 
 function apiKey(): string {
@@ -361,6 +383,12 @@ function mapComp(raw: Record<string, unknown>): AirroiComp {
     superhost,
     guestFavorite,
     ratingOverall: num(ratings.rating_overall ?? raw.rating_overall),
+    ratingCleanliness: num(ratings.rating_cleanliness ?? raw.rating_cleanliness),
+    ratingCommunication: num(ratings.rating_communication ?? raw.rating_communication),
+    ratingAccuracy: num(ratings.rating_accuracy ?? raw.rating_accuracy),
+    ratingCheckin: num(ratings.rating_checkin ?? raw.rating_checkin),
+    ratingValue: num(ratings.rating_value ?? raw.rating_value),
+    ratingLocation: num(ratings.rating_location ?? raw.rating_location),
     reviewCount,
     photosCount: num(info.photos_count ?? raw.photos_count),
     amenities: asStringList(prop.amenities ?? raw.amenities),
@@ -741,10 +769,11 @@ export function buildBookingLeaks(
     });
   }
 
+  const subjectBedrooms = subject?.bedrooms ?? 0;
   if (
     subject?.beds != null &&
-    subject.guests != null &&
-    subject.bedrooms >= 1 &&
+    subject?.guests != null &&
+    subjectBedrooms >= 1 &&
     subject.guests - subject.beds >= 2
   ) {
     drafts.push({
@@ -784,6 +813,72 @@ export function buildBookingLeaks(
   return top.map((d, i) => finalizeLeak(d, i));
 }
 
+const RATING_CATEGORIES: {
+  key: keyof Pick<
+    AirroiListingSnapshot,
+    | "ratingCleanliness"
+    | "ratingCommunication"
+    | "ratingAccuracy"
+    | "ratingCheckin"
+    | "ratingValue"
+    | "ratingLocation"
+  >;
+  compKey: keyof Pick<
+    AirroiComp,
+    | "ratingCleanliness"
+    | "ratingCommunication"
+    | "ratingAccuracy"
+    | "ratingCheckin"
+    | "ratingValue"
+    | "ratingLocation"
+  >;
+  name: string;
+}[] = [
+  { key: "ratingCleanliness", compKey: "ratingCleanliness", name: "Cleanliness" },
+  { key: "ratingValue", compKey: "ratingValue", name: "Value" },
+  { key: "ratingAccuracy", compKey: "ratingAccuracy", name: "Accuracy" },
+  { key: "ratingCheckin", compKey: "ratingCheckin", name: "Check-in" },
+  { key: "ratingCommunication", compKey: "ratingCommunication", name: "Communication" },
+  { key: "ratingLocation", compKey: "ratingLocation", name: "Location" },
+];
+
+/** Category scores for the subject vs median of nearby comps — no extra API calls. */
+export function buildRatingCategories(
+  subject: Partial<AirroiListingSnapshot> | null | undefined,
+  comps: AirroiComp[],
+): RevenueAuditRatings {
+  const live = comps.filter((c) => c.ratingOverall != null || c.monthlyRevenue != null);
+  const overallMarket = median(
+    live.map((c) => c.ratingOverall).filter((n): n is number => n != null && n > 0),
+  );
+
+  const rows: RevenueAuditRatingRow[] = [];
+  for (const cat of RATING_CATEGORIES) {
+    const score = subject?.[cat.key] ?? null;
+    if (score == null || !Number.isFinite(score)) continue;
+    const market =
+      median(live.map((c) => c[cat.compKey]).filter((n): n is number => n != null && n > 0)) ??
+      overallMarket;
+    if (market == null) continue;
+    rows.push({
+      key: cat.key,
+      name: cat.name,
+      score: Math.round(score * 100) / 100,
+      market: Math.round(market * 100) / 100,
+    });
+  }
+
+  // Weakest gaps first so the section reads as a diagnosis
+  rows.sort((a, b) => a.score - a.market - (b.score - b.market));
+
+  return {
+    overall: subject?.ratingOverall != null ? Math.round(subject.ratingOverall * 100) / 100 : null,
+    overallMarket: overallMarket != null ? Math.round(overallMarket * 100) / 100 : null,
+    reviewCount: subject?.reviewCount ?? null,
+    rows,
+  };
+}
+
 export async function lookupListingAudit(
   listingUrlOrId: string,
   opts?: { includeComps?: boolean },
@@ -807,7 +902,7 @@ export async function lookupListingAudit(
       longitude: subject.longitude,
       bedrooms: subject.bedrooms,
       baths: subject.bathrooms,
-      guests: subject.guests || Math.max(2, subject.bedrooms * 2),
+      guests: subject.guests || Math.max(2, (subject.bedrooms ?? 0) * 2),
       currency: "usd",
       room_type: "entire_home",
     });
@@ -823,6 +918,7 @@ export async function lookupListingAudit(
     subject,
     comps,
     leaks: buildBookingLeaks(subject, comps),
+    ratings: buildRatingCategories(subject, comps),
   };
 }
 
@@ -905,6 +1001,7 @@ export async function estimateByAddress(input: {
       },
       comps,
     ),
+    ratings: buildRatingCategories(null, comps),
   };
 }
 
