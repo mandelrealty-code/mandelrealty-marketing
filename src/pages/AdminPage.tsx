@@ -3521,8 +3521,6 @@ export function AdminPage() {
                 </div>
               </section>
 
-              </section>
-
               <section className="space-y-2.5">
                 <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5e5a56]">
                   Revenue audit unlock codes
