@@ -34,6 +34,8 @@ export type OutreachListingInput = {
 export type OutreachReplyInput = OutreachListingInput & {
   thread: string;
   first_message?: string;
+  /** Our follow-up drafts already sent in this thread (after first_message). */
+  prior_messages?: string[];
   reply_note?: string;
   staff_user_id?: string;
 };
@@ -370,6 +372,28 @@ function parseReplyJson(raw: string): {
   return { message: sanitizeOutreachMessage(cleaned), host_interest: null };
 }
 
+function ourConversationSoFar(
+  firstMessage: string,
+  priorMessages: string[],
+): string {
+  const parts: string[] = [];
+  if (firstMessage) parts.push(`OUR FIRST MESSAGE TO THEM:\n${firstMessage}`);
+  priorMessages.forEach((m, i) => {
+    parts.push(`OUR FOLLOW-UP ${i + 1} (already sent):\n${m}`);
+  });
+  return parts.join("\n\n");
+}
+
+function weAlreadyAskedForDetails(
+  firstMessage: string,
+  priorMessages: string[],
+): boolean {
+  const blob = [firstMessage, ...priorMessages].join("\n");
+  return /want me to send over some details|send (you |over )?some details|happy to share (more )?details/i.test(
+    blob,
+  );
+}
+
 function heuristicHostInterest(
   thread: string,
 ): "interested" | "soft" | "not_interested" | null {
@@ -544,6 +568,7 @@ Keep it about as long as the sample (2 short paragraphs). Ignore any review olde
 export async function draftReadyClose(input: OutreachReplyInput): Promise<string> {
   const thread = trim(input.thread);
   const firstMessage = trim(input.first_message);
+  const priorMessages = (input.prior_messages || []).map(trim).filter(Boolean);
   const replyNote = trim(input.reply_note);
   const host = trim(input.host_name);
   const opening = host
@@ -568,8 +593,9 @@ Rules for this middle line only:
 - Do NOT include the company listing / easy to find / looking forward closing lines.
 - Never use a personal name for our side (no Shane).`;
 
-  const threadBlock = firstMessage
-    ? `OUR EARLIER MESSAGE:\n${firstMessage}\n\nHOST THREAD:\n${thread || "(Host is ready to move forward.)"}`
+  const ourSide = ourConversationSoFar(firstMessage, priorMessages);
+  const threadBlock = ourSide
+    ? `${ourSide}\n\nHOST THREAD:\n${thread || "(Host is ready to move forward.)"}`
     : `HOST THREAD:\n${thread || "(Host is ready to move forward.)"}`;
 
   const user = `LISTING CONTEXT:
@@ -601,6 +627,7 @@ export async function draftOutreachReply(
     throw new OutreachDraftError("Paste the host reply or thread.", 400);
   }
   const firstMessage = trim(input.first_message);
+  const priorMessages = (input.prior_messages || []).map(trim).filter(Boolean);
   const replyNote = trim(input.reply_note);
   const hero = pickHeroOffer({
     issues: input.issues,
@@ -620,10 +647,7 @@ export async function draftOutreachReply(
     learningBlock(),
   ]);
   const host = trim(input.host_name) || "the host";
-  const askedToSendDetails =
-    /want me to send over some details|send (you |over )?some details|happy to share (more )?details/i.test(
-      firstMessage,
-    );
+  const askedToSendDetails = weAlreadyAskedForDetails(firstMessage, priorMessages);
   const hostAcceptedDetails =
     askedToSendDetails &&
     heuristicHostInterest(thread) === "interested";
@@ -647,7 +671,8 @@ Stricter:
 - If you name the company, use: We're listed as Mandel Realty Group in Toronto. Save the full easy-to-find close for when they are ready.
 - Answer from the knowledge excerpts for the PLAN TO SELL. If a fee is not in the excerpts, do not invent it.
 - Do not repeat the entire first pitch. Do not default to a bland 20% Standard pitch when the PLAN TO SELL is Growth or another offer.
-- If OUR FIRST MESSAGE already ended with "Want me to send over some details?" and the host said yes/sure/please, your reply MUST send those details — never ask "Want me to send over some details?" again.
+- Read the full conversation. Match your reply to their latest message. Do not repeat a question we already asked once they answered it.
+- If we already asked "Want me to send over some details?" and the host said yes/sure/please, your reply MUST send those details — never ask that again.
 - Address ${host} by first name only if it still sounds natural. Do not start every reply with Hey {name}.
 - Prefer approaches that led to INTERESTED outcomes in LEARNING.
 
@@ -659,14 +684,15 @@ Also classify how the HOST reacted to our first outreach (for learning only):
 Return STRICT JSON only (no markdown fences):
 {"host_interest":"interested"|"soft"|"not_interested","message":"<airbnb reply body only>"}`;
 
-  const threadBlock = firstMessage
-    ? `OUR FIRST MESSAGE TO THEM:\n${firstMessage}\n\nHOST THREAD (paste from Airbnb, most recent last):\n${thread}`
+  const ourSide = ourConversationSoFar(firstMessage, priorMessages);
+  const threadBlock = ourSide
+    ? `${ourSide}\n\nLATEST HOST REPLY / THREAD (most recent last — this is what you are answering):\n${thread}`
     : `HOST THREAD (most recent is last):\n${thread}`;
 
   const acceptedBlock = hostAcceptedDetails
     ? `CRITICAL FOR THIS REPLY: We already asked to send details, and the host said yes. Deliver the ${hero.label} details from the knowledge excerpts now. Do NOT write "Want me to send over some details?" again. End with a different soft next step (questions, or ready to move forward).\n\n`
     : askedToSendDetails
-      ? `NOTE: Our first message already offered to send details. Do not ask that same question again unless they have not answered it yet.\n\n`
+      ? `NOTE: We already offered to send details earlier in this thread. Do not ask that same question again unless they have not answered it yet.\n\n`
       : "";
 
   const user = `LISTING CONTEXT (saved from when we first reviewed this listing):

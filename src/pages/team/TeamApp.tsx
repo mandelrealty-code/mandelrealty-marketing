@@ -65,6 +65,8 @@ type OutreachSession = {
   bad_reviews: string;
   issues: IssueId[];
   first_message: string;
+  /** Follow-ups we already drafted/sent after the first message. */
+  our_follow_ups: string[];
   updated_at: string;
 };
 
@@ -83,6 +85,9 @@ function loadOutreachSessions(slug: string): OutreachSession[] {
       .map((s) => ({
         ...s,
         bad_reviews: typeof s.bad_reviews === "string" ? s.bad_reviews : "",
+        our_follow_ups: Array.isArray(s.our_follow_ups)
+          ? s.our_follow_ups.filter((m): m is string => typeof m === "string" && m.trim().length > 0)
+          : [],
       }))
       .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
   } catch {
@@ -106,10 +111,12 @@ function sessionSummary(s: OutreachSession): string {
 
 function sessionDetail(s: OutreachSession): string {
   const issueCount = s.issues?.length ?? 0;
+  const followUps = s.our_follow_ups?.length ?? 0;
   const parts = [
     s.star_rating.trim() ? `${s.star_rating}★` : null,
     issueCount ? `${issueCount} issues noted` : null,
     s.first_message ? "First message saved" : null,
+    followUps ? `${followUps} follow-up${followUps === 1 ? "" : "s"} saved` : null,
   ].filter(Boolean);
   return parts.join(" · ") || "Listing saved";
 }
@@ -403,6 +410,7 @@ export function TeamApp() {
   const [outreachSessions, setOutreachSessions] = useState<OutreachSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [outreachFirstMessage, setOutreachFirstMessage] = useState("");
+  const [outreachOurFollowUps, setOutreachOurFollowUps] = useState<string[]>([]);
   const [outreachLearningNote, setOutreachLearningNote] = useState("");
   const [outreachRejectedHistory, setOutreachRejectedHistory] = useState<string[]>([]);
   const [listingUrlWarning, setListingUrlWarning] = useState<string | null>(null);
@@ -474,6 +482,7 @@ export function TeamApp() {
     setOutreachBadReviews(session.bad_reviews || "");
     setOutreachIssues(new Set(session.issues || []));
     setOutreachFirstMessage(session.first_message || "");
+    setOutreachOurFollowUps(session.our_follow_ups || []);
   }, []);
 
   const persistOutreachSession = useCallback(
@@ -494,6 +503,8 @@ export function TeamApp() {
         bad_reviews: patch.bad_reviews ?? existing?.bad_reviews ?? outreachBadReviews,
         issues: patch.issues ?? existing?.issues ?? Array.from(outreachIssues),
         first_message: patch.first_message ?? existing?.first_message ?? outreachFirstMessage,
+        our_follow_ups:
+          patch.our_follow_ups ?? existing?.our_follow_ups ?? outreachOurFollowUps,
         updated_at: now,
       };
       const next = [session, ...outreachSessions.filter((s) => s.id !== id)].slice(
@@ -516,6 +527,7 @@ export function TeamApp() {
       outreachBadReviews,
       outreachIssues,
       outreachFirstMessage,
+      outreachOurFollowUps,
     ],
   );
 
@@ -529,6 +541,7 @@ export function TeamApp() {
     setOutreachBadReviews("");
     setOutreachIssues(new Set());
     setOutreachFirstMessage("");
+    setOutreachOurFollowUps([]);
     setOutreachThread("");
     setOutreachReplyNote("");
     setOutreachMessage("");
@@ -833,6 +846,12 @@ export function TeamApp() {
             outreachMode === "reply" || intent === "close"
               ? outreachFirstMessage || activeSession?.first_message
               : undefined,
+          prior_messages:
+            outreachMode === "reply" || intent === "close"
+              ? outreachOurFollowUps.length
+                ? outreachOurFollowUps
+                : activeSession?.our_follow_ups
+              : undefined,
           reply_note:
             outreachMode === "reply" || intent === "close"
               ? outreachReplyNote
@@ -857,6 +876,7 @@ export function TeamApp() {
       }
       if (outreachMode === "new" && intent !== "close") {
         setOutreachFirstMessage(message);
+        setOutreachOurFollowUps([]);
         persistOutreachSession({
           id: activeSessionId || undefined,
           host_name: outreachHostName,
@@ -867,6 +887,7 @@ export function TeamApp() {
           bad_reviews: outreachBadReviews,
           issues: Array.from(outreachIssues),
           first_message: message,
+          our_follow_ups: [],
         });
       } else if (intent !== "rewrite" && intent !== "close") {
         persistOutreachSession({ id: activeSessionId || undefined });
@@ -899,6 +920,18 @@ export function TeamApp() {
       await navigator.clipboard.writeText(outreachMessage);
       setOutreachCopied(true);
       setTimeout(() => setOutreachCopied(false), 2000);
+      const trimmed = outreachMessage.trim();
+      if (trimmed && outreachFirstMessage && trimmed !== outreachFirstMessage) {
+        const last = outreachOurFollowUps[outreachOurFollowUps.length - 1];
+        if (last !== trimmed) {
+          const nextFollowUps = [...outreachOurFollowUps, trimmed].slice(-8);
+          setOutreachOurFollowUps(nextFollowUps);
+          persistOutreachSession({
+            id: activeSessionId || undefined,
+            our_follow_ups: nextFollowUps,
+          });
+        }
+      }
       if (outreachMode === "reply") {
         setOutreachThread("");
         setOutreachReplyNote("");
@@ -1240,7 +1273,7 @@ export function TeamApp() {
                 <h1 className="text-xl font-semibold tracking-tight">Craft outreach message</h1>
                 <p className="mt-1 max-w-lg text-[13px] text-[#9a9590]">
                   {outreachMode === "reply"
-                    ? "Paste the host reply. Listing details stay saved from your first message."
+                    ? "Paste each new host reply. We keep what we already sent so the AI knows the full conversation."
                     : "Fill in what you saw once. We save it for follow-ups."}
                 </p>
               </div>
@@ -1262,6 +1295,12 @@ export function TeamApp() {
                 If a draft is blocked, tap{" "}
                 <span className="text-[#f5f5f5]">Airbnb rejected this</span> and keep
                 going until it sends.
+              </p>
+              <p className="mt-2">
+                When the host replies, open{" "}
+                <span className="text-[#f5f5f5]">Host replied</span>, pick the saved
+                host, and paste their latest message (or the whole Airbnb thread).
+                Copy your draft to save it into the conversation for the next turn.
               </p>
               <p className="mt-2">
                 When they are in, tap{" "}
@@ -1365,12 +1404,43 @@ export function TeamApp() {
             <div className="flex flex-col gap-5 border border-white/8 bg-[#141414] p-4">
               {outreachMode === "reply" ? (
                 <>
-                  <Field label="Paste the host reply or full Airbnb thread">
+                  {(outreachFirstMessage || outreachOurFollowUps.length > 0) && (
+                    <div className="border border-white/8 bg-[#0f0f0f] px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6f6a65]">
+                        Conversation so far (we send this to the AI)
+                      </p>
+                      {outreachFirstMessage ? (
+                        <div className="mt-3">
+                          <p className="text-[11px] font-semibold text-[#c4a35a]">
+                            Our first message
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-[#9a9590]">
+                            {outreachFirstMessage}
+                          </p>
+                        </div>
+                      ) : null}
+                      {outreachOurFollowUps.map((msg, i) => (
+                        <div key={`${i}-${msg.slice(0, 24)}`} className="mt-3">
+                          <p className="text-[11px] font-semibold text-[#c4a35a]">
+                            Our follow-up {i + 1}
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-[#9a9590]">
+                            {msg}
+                          </p>
+                        </div>
+                      ))}
+                      <p className="mt-3 text-[12px] leading-relaxed text-[#6f6a65]">
+                        After you copy a draft, it is saved here for the next host
+                        reply.
+                      </p>
+                    </div>
+                  )}
+                  <Field label="Paste their latest reply">
                     <textarea
                       value={outreachThread}
                       onChange={(e) => setOutreachThread(e.target.value)}
-                      rows={6}
-                      placeholder="Paste what the host wrote, or copy the whole thread from Airbnb"
+                      rows={5}
+                      placeholder="Paste what the host just wrote — or the whole Airbnb thread if easier"
                       className="resize-none border-0 border-b border-white/16 bg-transparent px-0.5 py-2.5 text-base leading-relaxed text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
                     />
                   </Field>

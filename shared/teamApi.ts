@@ -379,10 +379,17 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
 
       try {
         if (op === "draft_outreach_reply") {
+          const priorRaw = Array.isArray(body.prior_messages)
+            ? (body.prior_messages as unknown[])
+                .filter((x): x is string => typeof x === "string")
+                .map((x) => x.trim())
+                .filter(Boolean)
+            : [];
           const result = await draftOutreachReply({
             ...listing,
             thread: str(body.thread) || str(body.reply),
             first_message: str(body.first_message),
+            prior_messages: priorRaw,
             reply_note: str(body.reply_note),
             staff_user_id: user.id,
           });
@@ -402,10 +409,17 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
             ? [str(body.rejected_message)]
             : [];
         if (intent === "close") {
+          const priorRaw = Array.isArray(body.prior_messages)
+            ? (body.prior_messages as unknown[])
+                .filter((x): x is string => typeof x === "string")
+                .map((x) => x.trim())
+                .filter(Boolean)
+            : [];
           const message = await draftReadyClose({
             ...listing,
             thread: str(body.thread) || str(body.reply),
             first_message: str(body.first_message),
+            prior_messages: priorRaw,
             reply_note: str(body.reply_note),
             staff_user_id: user.id,
           });
