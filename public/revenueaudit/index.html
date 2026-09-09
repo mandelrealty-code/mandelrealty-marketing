@@ -146,6 +146,7 @@
   }
 
   @keyframes mrgRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes mrgGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
   @keyframes mrgShimmer { from { background-position: -420px 0; } to { background-position: 420px 0; } }
   .ra-stack-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(238px, 1fr)); gap: 16px; align-items: stretch; }
   .ra-badge-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
@@ -1580,6 +1581,8 @@ class Component extends DCLogic {
         below,
         barFill: scorePct.toFixed(1) + "%",
         marketMark: marketPct.toFixed(1) + "%",
+        barStyle: "position: absolute; inset: 0 auto 0 0; width: " + scorePct.toFixed(1) + "%; height: 100%; border-radius: 999px; background: " + (below ? "#ff385c" : "#00806f") + "; transform-origin: left center;",
+        markStyle: "position: absolute; top: -4px; left: " + marketPct.toFixed(1) + "%; width: 2px; height: 18px; background: #222222; border-radius: 2px;",
         ink: below ? "#ff385c" : "#00806f",
         chipBg: below ? "#fdeef1" : "#e6f5f2",
         chipInk: below ? "#b8072f" : "#00655a",
