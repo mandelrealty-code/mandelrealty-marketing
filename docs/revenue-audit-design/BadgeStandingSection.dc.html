@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  * { box-sizing: border-box; }
+  body { font-family: "Plus Jakarta Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #222222; }
+  a { color: #e00b41; text-decoration: none; }
+  a:hover { color: #b00832; text-decoration: underline; }
+  @keyframes mrgRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+<section style="width: 100%; padding: 4px 0 0">
+  <h2 style="margin: 0 0 10px; font-size: clamp(26px, 4vw, 34px); font-weight: 800; letter-spacing: -0.03em">Your badge standing</h2>
+  <p style="margin: 0 0 22px; font-size: 16.5px; line-height: 1.55; color: #5e5e5e; max-width: 76ch; text-wrap: pretty">Superhost, Guest Favorite and Top 10% are all rule-based, all measurable, and all change how often your listing gets seen at all. Here is where yours actually stands.</p>
+
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 18px; border: 1px solid #ebebeb; border-radius: 16px; background: #fafafa; margin-bottom: 16px">
+    <div style="font-size: 14.5px; font-weight: 800; letter-spacing: -0.01em">{{ summaryLine }}</div>
+    <div style="display: flex; gap: 7px; margin-left: auto">
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="3">
+        <span style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.03em; border-radius: 999px; padding: 6px 11px; background: {{ r.pillBg }}; color: {{ r.pillInk }}">{{ r.pillLabel }}</span>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px">
+    <sc-for list="{{ rows }}" as="r" hint-placeholder-count="3">
+      <div style="border: 1px solid {{ r.cardBorder }}; background: {{ r.cardBg }}; border-radius: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.04); overflow: hidden; display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); animation: mrgRise .5s cubic-bezier(.2,.7,.2,1) both; animation-delay: {{ r.delay }}">
+
+        <div style="padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; border-right: 1px solid {{ r.cardBorder }}">
+          <div style="display: flex; align-items: center; gap: 12px">
+            <sc-if value="{{ r.hasIcon }}" hint-placeholder-val="{{ true }}">
+              <img src="{{ r.iconSrc }}" alt="" style="height: 34px; width: 34px; object-fit: contain; display: block; opacity: {{ r.iconOpacity }}" />
+            </sc-if>
+            <sc-if value="{{ r.textMark }}" hint-placeholder-val="{{ false }}">
+              <span style="height: 34px; width: 34px; flex: none; border-radius: 999px; border: 2px solid {{ r.markInk }}; color: {{ r.markInk }}; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; letter-spacing: -0.02em">10%</span>
+            </sc-if>
+            <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2">{{ r.name }}</div>
+          </div>
+
+          <div data-binding="{{ r.binding }}" style="display: flex; align-items: center; gap: 9px; align-self: flex-start; background: {{ r.chipBg }}; color: {{ r.chipInk }}; border-radius: 999px; padding: 9px 15px 9px 12px">
+            <span style="font-size: 14px; font-weight: 800; line-height: 1">{{ r.glyph }}</span>
+            <span style="font-size: 14.5px; font-weight: 800; letter-spacing: -0.01em">{{ r.statusLabel }}</span>
+          </div>
+
+          <div style="font-size: 14px; font-weight: 600; color: #444444; line-height: 1.5; max-width: 42ch; text-wrap: pretty">{{ r.statusNote }}</div>
+
+          <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid {{ r.cardBorder }}">
+            <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171; margin-bottom: 6px">How it's earned</div>
+            <div style="font-size: 12.5px; font-weight: 600; color: #717171; line-height: 1.5">{{ r.criteria }}</div>
+          </div>
+        </div>
+
+        <div style="padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; background: #ffffff">
+          <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">{{ r.impactKicker }}</div>
+          <div style="font-size: 19px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.3; max-width: 30ch; text-wrap: pretty">{{ r.impactHeadline }}</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <sc-for list="{{ r.stats }}" as="s" hint-placeholder-count="2">
+              <span style="font-size: 12.5px; font-weight: 800; border-radius: 10px; padding: 7px 11px; background: #f4f4f4; color: #222222">{{ s.text }}</span>
+            </sc-for>
+          </div>
+          <div style="font-size: 14px; font-weight: 500; color: #5e5e5e; line-height: 1.55; max-width: 46ch; text-wrap: pretty">{{ r.impactBody }}</div>
+        </div>
+
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="margin-top: 14px; font-size: 13.5px; color: #717171; font-weight: 500; line-height: 1.5; max-width: 84ch; text-wrap: pretty">{{ footnote }}</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1120,&quot;height&quot;:760},&quot;variant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;mixed&quot;,&quot;none&quot;,&quot;most&quot;,&quot;all&quot;],&quot;default&quot;:&quot;mixed&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;superhost&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;guestFavorite&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;topTenPercent&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const variant = this.props.variant ?? "mixed";
+    const preset = {
+      mixed: { superhost: true, guestFavorite: false, topTenPercent: false },
+      none: { superhost: false, guestFavorite: false, topTenPercent: false },
+      most: { superhost: true, guestFavorite: true, topTenPercent: false },
+      all: { superhost: true, guestFavorite: true, topTenPercent: true }
+    }[variant] || { superhost: true, guestFavorite: false, topTenPercent: false };
+
+    const have = {
+      superhost: this.props.superhost ?? preset.superhost,
+      guestFavorite: this.props.guestFavorite ?? preset.guestFavorite,
+      topTenPercent: this.props.topTenPercent ?? preset.topTenPercent
+    };
+
+    const defs = [
+      {
+        key: "superhost",
+        name: "Superhost",
+        binding: "subject.superhost",
+        iconSrc: "assets/badge-superhost.png",
+        criteria: "4.8+ overall rating · 10+ completed stays · under 1% cancellation · 90% response rate. Re-checked every quarter.",
+        yes: {
+          note: "Live listing data shows the Superhost badge active on your listing.",
+          kicker: "What you're protecting",
+          headline: "+29% more annual revenue than comparable non-Superhosts.",
+          stats: ["+29% annual revenue", "5–15% dip if lost"],
+          body: "The badge is re-evaluated quarterly, and hosts who drop it typically see bookings fall 5–15% the following month. Holding it is the cheapest revenue you have."
+        },
+        no: {
+          note: "Live listing data shows no Superhost badge on your listing today.",
+          kicker: "What it's costing you",
+          headline: "Comparable Superhosts earn about 29% more per year.",
+          stats: ["+29% annual revenue", "Quarterly review"],
+          body: "You are competing against listings that clear the same rating and reliability bar you already work to — without the ranking and trust credit that comes with the badge."
+        }
+      },
+      {
+        key: "guestFavorite",
+        name: "Guest Favorite",
+        binding: "subject.guestFavorite",
+        iconSrc: "assets/badge-guest-favorite.png",
+        criteria: "Top slice of listings by ratings, review volume and reliability. Recalculated continuously, not on a review cycle.",
+        yes: {
+          note: "Live listing data shows the Guest Favorite label on your listing.",
+          kicker: "What you're protecting",
+          headline: "Guest Favorite listings see 52% higher click-through.",
+          stats: ["52% higher CTR", "23% vs 9% conversion"],
+          body: "The label is doing work before a guest ever opens your page. Keep the rating and reliability inputs steady and it keeps compounding."
+        },
+        no: {
+          note: "Live listing data shows no Guest Favorite label on your listing today.",
+          kicker: "What it's costing you",
+          headline: "Listings with the label get 52% more clicks than yours.",
+          stats: ["52% higher CTR", "23% vs 9% conversion"],
+          body: "Same search results, same photos, different conversion: labelled listings book at roughly 23% versus 9%. The gap shows up in every search you already appear in."
+        }
+      },
+      {
+        key: "topTenPercent",
+        name: "Top 10% in the area",
+        binding: "subject.topTenPercent",
+        iconSrc: null,
+        criteria: "Ranked against active listings in your area by Airbnb, then surfaced on the listing when the ranking holds.",
+        yes: {
+          note: "Your listing is currently surfacing the top-of-area callout.",
+          kicker: "What you're protecting",
+          headline: "Guests see you flagged as top of the area before they compare.",
+          stats: ["Area callout active"],
+          body: "It is the one signal here that says something about your competition, not just about you — and it moves as nearby listings improve."
+        },
+        no: {
+          note: "Your listing is not currently surfacing the top-of-area callout.",
+          kicker: "What it's costing you",
+          headline: "Stronger listings near you carry a callout yours doesn't.",
+          stats: ["Area callout missing"],
+          body: "Guests scanning your area see that flag on comps and not on you. It is a visibility and demand signal — we don't have a clean percentage on it, so we won't pretend to."
+        }
+      }
+    ];
+
+    const rows = defs.map((d, i) => {
+      const on = have[d.key] === true;
+      const c = on ? d.yes : d.no;
+      return {
+        name: d.name,
+        binding: d.binding,
+        hasIcon: !!d.iconSrc,
+        textMark: !d.iconSrc,
+        iconSrc: d.iconSrc || "",
+        iconOpacity: on ? "1" : "0.5",
+        markInk: on ? "#00806f" : "#8a8a8a",
+        glyph: on ? "✓" : "✕",
+        statusLabel: on ? "You have this" : "You don't have this",
+        statusNote: c.note,
+        criteria: d.criteria,
+        impactKicker: c.kicker,
+        impactHeadline: c.headline,
+        impactBody: c.body,
+        stats: c.stats.map(text => ({ text })),
+        chipBg: on ? "#e6f5f2" : "#fdeef1",
+        chipInk: on ? "#00655a" : "#b8072f",
+        cardBg: on ? "#fbfefd" : "#ffffff",
+        cardBorder: on ? "#d6ece7" : "#ebebeb",
+        pillLabel: d.name === "Top 10% in the area" ? "Top 10%" : d.name,
+        pillBg: on ? "#e6f5f2" : "#f0f0f0",
+        pillInk: on ? "#00655a" : "#5e5e5e",
+        delay: (0.05 + i * 0.09).toFixed(2) + "s"
+      };
+    });
+
+    const held = rows.filter(r => r.statusLabel === "You have this").length;
+    const summary = held === 0
+      ? "You hold none of the three standing signals."
+      : (held === 3 ? "You hold all three standing signals." : "You hold " + held + " of the three standing signals.");
+
+    return {
+      rows,
+      summaryLine: summary,
+      footnote: held === 3
+        ? "Status is pulled from your live listing after the audit runs. Everything above is yours to keep — the paid audit covers the inputs most likely to put it at risk."
+        : "Status is pulled from your live listing after the audit runs. The paid audit below breaks down the specific gaps between your listing and the badge thresholds."
+    };
+  }
+}
+</script>
+</body>
+</html>

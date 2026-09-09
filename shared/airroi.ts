@@ -22,6 +22,8 @@ export type AirroiListingSnapshot = {
   reviewCount: number | null;
   ratingOverall: number | null;
   photoUrl: string | null;
+  /** Airbnb sometimes surfaces a top-of-area callout on the listing */
+  topTenPercent: boolean;
 };
 
 export type AirroiComp = {
@@ -30,6 +32,7 @@ export type AirroiComp = {
   url: string;
   bedrooms: number;
   bathrooms: number;
+  guests: number | null;
   annualRevenue: number | null;
   monthlyRevenue: number | null;
   adr: number | null;
@@ -37,6 +40,7 @@ export type AirroiComp = {
   distanceMiles: number | null;
   superhost: boolean;
   guestFavorite: boolean;
+  ratingOverall: number | null;
   badges: string[];
   diffs: string[];
   photoUrl: string | null;
@@ -176,7 +180,24 @@ function mapListing(data: Record<string, unknown>): AirroiListingSnapshot {
     guestFavorite,
     reviewCount: num(ratings.num_reviews ?? root.num_reviews),
     ratingOverall: num(ratings.rating_overall ?? root.rating_overall),
-    photoUrl: str(info.cover_photo_url ?? root.cover_photo_url) || null,
+    photoUrl:
+      str(
+        info.cover_photo_url ??
+          root.cover_photo_url ??
+          info.thumbnail_url ??
+          root.thumbnail_url ??
+          (Array.isArray(info.photo_urls) ? info.photo_urls[0] : "") ??
+          (Array.isArray(root.photo_urls) ? root.photo_urls[0] : ""),
+      ) || null,
+    topTenPercent: bool(
+      info.top_10_percent ??
+        info.top10_percent ??
+        info.is_top_10_percent ??
+        root.top_10_percent ??
+        root.top10_percent ??
+        info.rare_find ??
+        root.rare_find,
+    ),
   };
 }
 
@@ -240,6 +261,7 @@ function mapComp(raw: Record<string, unknown>): AirroiComp {
     url: listingId ? `https://www.airbnb.com/rooms/${listingId}` : "",
     bedrooms: num(prop.bedrooms ?? raw.bedrooms) ?? 0,
     bathrooms: num(prop.baths ?? prop.bathrooms ?? raw.baths ?? raw.bathrooms) ?? 0,
+    guests: num(prop.guests ?? raw.guests),
     annualRevenue: annual,
     monthlyRevenue: annual != null ? annual / 12 : null,
     adr,
@@ -247,6 +269,7 @@ function mapComp(raw: Record<string, unknown>): AirroiComp {
     distanceMiles,
     superhost,
     guestFavorite,
+    ratingOverall: num(ratings.rating_overall ?? raw.rating_overall),
     badges,
     diffs: buildCompDiffs({
       superhost,
@@ -256,7 +279,15 @@ function mapComp(raw: Record<string, unknown>): AirroiComp {
       distanceMiles,
       reviewCount,
     }),
-    photoUrl: str(info.cover_photo_url ?? raw.cover_photo_url) || null,
+    photoUrl:
+      str(
+        info.cover_photo_url ??
+          raw.cover_photo_url ??
+          info.thumbnail_url ??
+          raw.thumbnail_url ??
+          (Array.isArray(info.photo_urls) ? info.photo_urls[0] : "") ??
+          (Array.isArray(raw.photo_urls) ? raw.photo_urls[0] : ""),
+      ) || null,
   };
 }
 
