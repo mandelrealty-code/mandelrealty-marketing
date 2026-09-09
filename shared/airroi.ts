@@ -8,6 +8,7 @@ export type AirroiListingSnapshot = {
   url: string;
   bedrooms: number;
   bathrooms: number;
+  beds: number | null;
   guests: number;
   locality: string;
   latitude: number | null;
@@ -17,10 +18,27 @@ export type AirroiListingSnapshot = {
   monthlyRevenue: number | null;
   adr: number | null;
   occupancy: number | null;
+  l90dRevenue: number | null;
+  l90dOccupancy: number | null;
+  l90dAdr: number | null;
+  ttmBlockedDays: number | null;
+  ttmAvgMinNights: number | null;
   superhost: boolean;
   guestFavorite: boolean;
   reviewCount: number | null;
   ratingOverall: number | null;
+  ratingCleanliness: number | null;
+  ratingCommunication: number | null;
+  ratingAccuracy: number | null;
+  ratingCheckin: number | null;
+  ratingValue: number | null;
+  ratingLocation: number | null;
+  photosCount: number | null;
+  amenities: string[];
+  instantBook: boolean | null;
+  minNights: number | null;
+  cancellationPolicy: string | null;
+  cleaningFee: number | null;
   photoUrl: string | null;
   /** Airbnb sometimes surfaces a top-of-area callout on the listing */
   topTenPercent: boolean;
@@ -41,15 +59,38 @@ export type AirroiComp = {
   superhost: boolean;
   guestFavorite: boolean;
   ratingOverall: number | null;
+  reviewCount: number | null;
+  photosCount: number | null;
+  amenities: string[];
+  instantBook: boolean | null;
   badges: string[];
   diffs: string[];
   photoUrl: string | null;
+};
+
+export type RevenueAuditLeak = {
+  n: string;
+  title: string;
+  body: string;
+  key: string;
+  metricLabel?: string;
+  metric?: string;
+  vsLabel?: string;
+  vs?: string;
+  /** Subject value / benchmark, 0–1, for the comparison bar */
+  fill?: number;
+  metricFill?: string;
+  tag?: string;
+  gapLine?: string;
+  hasMetric?: boolean;
+  hasTag?: boolean;
 };
 
 export type RevenueAuditLookupResult = {
   source: "airroi";
   subject: AirroiListingSnapshot;
   comps: AirroiComp[];
+  leaks: RevenueAuditLeak[];
 };
 
 export type RevenueAuditEstimateResult = {
@@ -59,6 +100,7 @@ export type RevenueAuditEstimateResult = {
   adr: number | null;
   occupancy: number | null;
   comps: AirroiComp[];
+  leaks: RevenueAuditLeak[];
 };
 
 function apiKey(): string {
@@ -90,6 +132,28 @@ function bool(v: unknown): boolean {
 function str(v: unknown, fallback = ""): string {
   const s = String(v ?? "").trim();
   return s || fallback;
+}
+
+function asStringList(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((x) => String(x ?? "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function median(nums: number[]): number | null {
+  const xs = nums.filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+  if (!xs.length) return null;
+  const mid = Math.floor(xs.length / 2);
+  return xs.length % 2 ? xs[mid]! : (xs[mid - 1]! + xs[mid]!) / 2;
+}
+
+function money(n: number): string {
+  return `$${Math.round(n).toLocaleString("en-US")}`;
+}
+
+function pctPoints(rate: number): string {
+  return `${Math.round(rate * 100)}%`;
 }
 
 async function airroiGet(path: string, params: Record<string, string | number | undefined>) {
@@ -147,6 +211,8 @@ function mapListing(data: Record<string, unknown>): AirroiListingSnapshot {
   const prop = (root.property_details ?? root) as Record<string, unknown>;
   const ratings = (root.ratings ?? {}) as Record<string, unknown>;
   const perf = (root.performance_metrics ?? root) as Record<string, unknown>;
+  const booking = (root.booking_settings ?? root) as Record<string, unknown>;
+  const pricing = (root.pricing_info ?? root) as Record<string, unknown>;
 
   const listingId = str(info.listing_id ?? root.listing_id, "");
   const annual =
@@ -161,6 +227,9 @@ function mapListing(data: Record<string, unknown>): AirroiListingSnapshot {
 
   const guestFavorite = bool(info.guest_favorite ?? root.guest_favorite);
   const superhost = bool(host.superhost ?? root.superhost);
+  const instantRaw = booking.instant_book ?? root.instant_book;
+  const instantBook =
+    instantRaw === undefined || instantRaw === null ? null : bool(instantRaw);
 
   return {
     listingId,
@@ -168,6 +237,7 @@ function mapListing(data: Record<string, unknown>): AirroiListingSnapshot {
     url: listingId ? `https://www.airbnb.com/rooms/${listingId}` : "",
     bedrooms: num(prop.bedrooms ?? root.bedrooms) ?? 2,
     bathrooms: num(prop.baths ?? prop.bathrooms ?? root.baths ?? root.bathrooms) ?? 1,
+    beds: num(prop.beds ?? root.beds),
     guests: num(prop.guests ?? root.guests) ?? 4,
     locality: [str(loc.locality), str(loc.region), str(loc.country)].filter(Boolean).join(", "),
     latitude: num(loc.latitude ?? root.latitude),
@@ -176,10 +246,27 @@ function mapListing(data: Record<string, unknown>): AirroiListingSnapshot {
     monthlyRevenue: annual != null ? annual / 12 : null,
     adr,
     occupancy: occ,
+    l90dRevenue: num(perf.l90d_revenue),
+    l90dOccupancy: num(perf.l90d_occupancy),
+    l90dAdr: num(perf.l90d_avg_rate),
+    ttmBlockedDays: num(perf.ttm_blocked_days),
+    ttmAvgMinNights: num(perf.ttm_avg_min_nights),
     superhost,
     guestFavorite,
     reviewCount: num(ratings.num_reviews ?? root.num_reviews),
     ratingOverall: num(ratings.rating_overall ?? root.rating_overall),
+    ratingCleanliness: num(ratings.rating_cleanliness),
+    ratingCommunication: num(ratings.rating_communication),
+    ratingAccuracy: num(ratings.rating_accuracy),
+    ratingCheckin: num(ratings.rating_checkin),
+    ratingValue: num(ratings.rating_value),
+    ratingLocation: num(ratings.rating_location),
+    photosCount: num(info.photos_count ?? root.photos_count),
+    amenities: asStringList(prop.amenities ?? root.amenities),
+    instantBook,
+    minNights: num(booking.min_nights ?? root.min_nights),
+    cancellationPolicy: str(booking.cancellation_policy ?? root.cancellation_policy) || null,
+    cleaningFee: num(pricing.cleaning_fee ?? root.cleaning_fee),
     photoUrl:
       str(
         info.cover_photo_url ??
@@ -233,6 +320,7 @@ function mapComp(raw: Record<string, unknown>): AirroiComp {
   const prop = (raw.property_details ?? raw) as Record<string, unknown>;
   const perf = (raw.performance_metrics ?? raw) as Record<string, unknown>;
   const ratings = (raw.ratings ?? {}) as Record<string, unknown>;
+  const booking = (raw.booking_settings ?? raw) as Record<string, unknown>;
 
   const listingId = str(info.listing_id ?? raw.listing_id, "");
   const annual =
@@ -254,6 +342,9 @@ function mapComp(raw: Record<string, unknown>): AirroiComp {
   if (guestFavorite) badges.push("Guest Favorite");
   const distanceMiles = num(raw.distance_miles ?? raw.distance);
   const reviewCount = num(ratings.num_reviews ?? raw.num_reviews);
+  const instantRaw = booking.instant_book ?? host.instant_book ?? raw.instant_book;
+  const instantBook =
+    instantRaw === undefined || instantRaw === null ? null : bool(instantRaw);
 
   return {
     listingId,
@@ -270,6 +361,10 @@ function mapComp(raw: Record<string, unknown>): AirroiComp {
     superhost,
     guestFavorite,
     ratingOverall: num(ratings.rating_overall ?? raw.rating_overall),
+    reviewCount,
+    photosCount: num(info.photos_count ?? raw.photos_count),
+    amenities: asStringList(prop.amenities ?? raw.amenities),
+    instantBook,
     badges,
     diffs: buildCompDiffs({
       superhost,
@@ -305,6 +400,390 @@ function extractCompsArray(data: Record<string, unknown>): Record<string, unknow
   return [];
 }
 
+/** High-intent search filters guests actually use on Airbnb. */
+const FILTER_AMENITIES: { key: string; label: string }[] = [
+  { key: "free_parking_on_premises", label: "free parking" },
+  { key: "dedicated_workspace", label: "dedicated workspace" },
+  { key: "washer", label: "washer" },
+  { key: "dryer", label: "dryer" },
+  { key: "air_conditioning", label: "air conditioning" },
+  { key: "pool", label: "pool" },
+  { key: "hot_tub", label: "hot tub" },
+  { key: "crib", label: "crib" },
+  { key: "pets_allowed", label: "pets allowed" },
+  { key: "ev_charger", label: "EV charger" },
+  { key: "gym", label: "gym" },
+  { key: "bbq_grill", label: "BBQ grill" },
+];
+
+type LeakDraft = {
+  key: string;
+  title: string;
+  body: string;
+  weight: number;
+  metricLabel?: string;
+  metric?: string;
+  vsLabel?: string;
+  vs?: string;
+  fill?: number;
+  tag?: string;
+  gapLine?: string;
+};
+
+function finalizeLeak(d: LeakDraft, i: number): RevenueAuditLeak {
+  const hasMetric = Boolean(d.metric);
+  const hasTag = !hasMetric && Boolean(d.tag);
+  const fill = d.fill != null && Number.isFinite(d.fill) ? Math.max(0, Math.min(1, d.fill)) : undefined;
+  return {
+    key: d.key,
+    n: String(i + 1).padStart(2, "0"),
+    title: d.title,
+    body: d.body,
+    metricLabel: d.metricLabel,
+    metric: d.metric,
+    vsLabel: d.vsLabel,
+    vs: d.vs,
+    fill,
+    metricFill: fill != null ? `${Math.max(8, Math.round(fill * 100))}%` : undefined,
+    tag: d.tag,
+    gapLine: d.gapLine,
+    hasMetric,
+    hasTag,
+  };
+}
+
+/**
+ * Build evidence-backed booking leaks from AirROI listing + comps.
+ * Only claims what the API can support (no response-time / multi-OTB guesses).
+ */
+export function buildBookingLeaks(
+  subject: Partial<AirroiListingSnapshot> | null | undefined,
+  comps: AirroiComp[],
+): RevenueAuditLeak[] {
+  const drafts: LeakDraft[] = [];
+  const live = comps.filter((c) => c.monthlyRevenue != null && c.monthlyRevenue > 0);
+  const subjectMonthly = subject?.monthlyRevenue ?? null;
+  const subjectAdr = subject?.adr ?? null;
+  const subjectOcc = subject?.occupancy ?? null;
+
+  const compMonthly = live.map((c) => c.monthlyRevenue!).filter((n) => n > 0);
+  const medMonthly = median(compMonthly);
+  const topMonthly = compMonthly.length ? Math.max(...compMonthly) : null;
+
+  if (subjectMonthly != null && medMonthly != null && medMonthly > subjectMonthly * 1.08) {
+    const gap = medMonthly - subjectMonthly;
+    drafts.push({
+      key: "revenue_gap",
+      weight: 100 + gap / 100,
+      title: "Trailing revenue sits below nearby comps",
+      body: `Your listing is at about ${money(subjectMonthly)} / mo over the trailing twelve months. Nearby comps run a median of ${money(medMonthly)} / mo${topMonthly != null && topMonthly > medMonthly ? `, and the strongest in your set is at ${money(topMonthly)} / mo` : ""}.`,
+      metricLabel: "Your trailing revenue",
+      metric: `${money(subjectMonthly)} / mo`,
+      vsLabel: "Comps median",
+      vs: `${money(medMonthly)} / mo`,
+      fill: subjectMonthly / medMonthly,
+      gapLine: `About ${money(gap)} / mo between you and the median.${topMonthly != null && topMonthly > medMonthly ? ` Strongest comp: ${money(topMonthly)} / mo.` : ""}`,
+    });
+  } else if (subjectMonthly == null && medMonthly != null) {
+    drafts.push({
+      key: "comp_benchmark",
+      weight: 70,
+      title: "Nearby comps set a clear earnings bar",
+      body: `Similar listings nearby are trailing about ${money(medMonthly)} / mo. Until your listing is optimized against that set, you are guessing at rate, occupancy, and amenities.`,
+      metricLabel: "Your listing",
+      tag: "No TTM yet",
+      vsLabel: "Comps median",
+      vs: `${money(medMonthly)} / mo`,
+      gapLine: "Benchmark from nearby comps with a similar bed count.",
+    });
+  }
+
+  const compAdr = live.map((c) => c.adr).filter((n): n is number => n != null && n > 0);
+  const medAdr = median(compAdr);
+  if (subjectAdr != null && medAdr != null && medAdr > subjectAdr * 1.1) {
+    const gap = medAdr - subjectAdr;
+    drafts.push({
+      key: "adr_gap",
+      weight: 90 + gap / 10,
+      title: "Average nightly rate trails the local set",
+      body: `Your average nightly rate is about ${money(subjectAdr)}. The nearby median is ${money(medAdr)} — so even the nights you do book are priced under the market you compete in.`,
+      metricLabel: "Your average rate",
+      metric: money(subjectAdr),
+      vsLabel: "Comps median",
+      vs: money(medAdr),
+      fill: subjectAdr / medAdr,
+      gapLine: `${money(gap)} per booked night left on the table.`,
+    });
+  }
+
+  const compOcc = live.map((c) => c.occupancy).filter((n): n is number => n != null && n > 0);
+  const medOcc = median(compOcc);
+  if (subjectOcc != null && medOcc != null && medOcc - subjectOcc >= 0.05) {
+    const pts = Math.round((medOcc - subjectOcc) * 100);
+    drafts.push({
+      key: "occupancy_gap",
+      weight: 88 + pts,
+      title: "Occupancy lags the nearby set",
+      body: `You booked about ${pctPoints(subjectOcc)} of available nights. Comparable listings nearby booked a median of ${pctPoints(medOcc)} over the same window.`,
+      metricLabel: "Your occupancy",
+      metric: pctPoints(subjectOcc),
+      vsLabel: "Comps median",
+      vs: pctPoints(medOcc),
+      fill: subjectOcc / medOcc,
+      gapLine: `${pts} points of occupancy, on the same calendar.`,
+    });
+  }
+
+  if (subject && !subject.guestFavorite) {
+    const gfComps = live.filter((c) => c.guestFavorite).length;
+    if (gfComps > 0) {
+      drafts.push({
+        key: "guest_favorite",
+        weight: 82 + gfComps,
+        title: "Missing Guest Favorite while comps carry it",
+        body: `${gfComps} of the nearby comps in your set hold Guest Favorite. Your listing does not, so you are competing against a badge you cannot currently show on the same search results page.`,
+        metricLabel: "Your listing",
+        tag: "Not held",
+        vsLabel: "Nearby comps",
+        vs: `${gfComps} hold it`,
+        gapLine: "Badge is earned on ratings and reliability, not spend.",
+      });
+    }
+  }
+
+  if (subject && !subject.superhost) {
+    const shComps = live.filter((c) => c.superhost).length;
+    if (shComps > 0) {
+      drafts.push({
+        key: "superhost",
+        weight: 78 + shComps,
+        title: "No Superhost badge against Superhost comps",
+        body: `${shComps} nearby comps hold Superhost. You do not. Ranking and trust credit compound every quarter you stay without it.`,
+        metricLabel: "Your listing",
+        tag: "Not held",
+        vsLabel: "Nearby comps",
+        vs: `${shComps} hold it`,
+        gapLine: "Re-checked quarterly on rating, response rate, and cancellations.",
+      });
+    }
+  }
+
+  const subjectPhotos = subject?.photosCount ?? null;
+  const compPhotos = live.map((c) => c.photosCount).filter((n): n is number => n != null && n > 0);
+  const medPhotos = median(compPhotos);
+  if (subjectPhotos != null && medPhotos != null && subjectPhotos < medPhotos * 0.75) {
+    drafts.push({
+      key: "photos_count",
+      weight: 74 + (medPhotos - subjectPhotos) / 2,
+      title: "Photo set is thinner than nearby comps",
+      body: `Your listing shows ${Math.round(subjectPhotos)} photos. Nearby comps median ${Math.round(medPhotos)}. Guests decide in the grid — fewer angles usually means fewer clicks.`,
+      metricLabel: "Your photos",
+      metric: String(Math.round(subjectPhotos)),
+      vsLabel: "Comps median",
+      vs: String(Math.round(medPhotos)),
+      fill: subjectPhotos / medPhotos,
+      gapLine: `${Math.round(medPhotos - subjectPhotos)} fewer photos than the local median.`,
+    });
+  } else if (subjectPhotos != null && subjectPhotos > 0 && subjectPhotos < 15) {
+    drafts.push({
+      key: "photos_low",
+      weight: 68,
+      title: "Photo count is below a competitive floor",
+      body: `Your listing has ${Math.round(subjectPhotos)} photos. Strong local listings usually show a denser set across rooms, amenities, and neighborhood context.`,
+      metricLabel: "Your photos",
+      metric: String(Math.round(subjectPhotos)),
+      vsLabel: "Competitive floor",
+      vs: "15+",
+      fill: subjectPhotos / 15,
+      gapLine: "Thin galleries lose clicks before the guest opens the page.",
+    });
+  }
+
+  if (subject?.amenities) {
+    const subjectSet = new Set(subject.amenities);
+    const missing: string[] = [];
+    for (const a of FILTER_AMENITIES) {
+      if (subjectSet.has(a.key)) continue;
+      const have = live.filter((c) => c.amenities.includes(a.key)).length;
+      if (live.length >= 2 && have / live.length >= 0.5) missing.push(a.label);
+    }
+    if (missing.length) {
+      drafts.push({
+        key: "amenities",
+        weight: 72 + missing.length,
+        title: "Filter amenities comps list that you do not",
+        body: `Nearby comps commonly list ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? ", and more" : ""}. Guests search those filters — if it is not on the listing, you never enter the results.`,
+        metricLabel: "Missing on yours",
+        tag: missing.slice(0, 2).join(" · "),
+        vsLabel: "Common on comps",
+        vs: `${missing.length} filters`,
+        gapLine: "Unlisted amenities never enter guest search filters.",
+      });
+    }
+  }
+
+  const subjectReviews = subject?.reviewCount ?? null;
+  const compReviews = live.map((c) => c.reviewCount).filter((n): n is number => n != null && n > 0);
+  const medReviews = median(compReviews);
+  if (subjectReviews != null && medReviews != null && medReviews > subjectReviews * 1.6 && medReviews >= 20) {
+    drafts.push({
+      key: "review_volume",
+      weight: 66 + Math.min(20, (medReviews - subjectReviews) / 5),
+      title: "Review volume trails the local pack",
+      body: `You have ${Math.round(subjectReviews)} reviews on record. Nearby comps median ${Math.round(medReviews)}. Thin social proof hurts conversion even when the stay itself is strong.`,
+      metricLabel: "Your reviews",
+      metric: String(Math.round(subjectReviews)),
+      vsLabel: "Comps median",
+      vs: String(Math.round(medReviews)),
+      fill: subjectReviews / medReviews,
+      gapLine: `${Math.round(medReviews - subjectReviews)} fewer reviews than the local median.`,
+    });
+  }
+
+  const ratingGaps: string[] = [];
+  const ratingPairs: [string, number | null | undefined][] = [
+    ["cleanliness", subject?.ratingCleanliness],
+    ["communication", subject?.ratingCommunication],
+    ["accuracy", subject?.ratingAccuracy],
+    ["check-in", subject?.ratingCheckin],
+    ["value", subject?.ratingValue],
+  ];
+  for (const [label, score] of ratingPairs) {
+    if (score != null && score < 4.8) ratingGaps.push(`${label} ${score.toFixed(2)}`);
+  }
+  if (subject?.ratingOverall != null && subject.ratingOverall < 4.8) {
+    const score = subject.ratingOverall;
+    drafts.push({
+      key: "rating_overall",
+      weight: 85 + (4.9 - score) * 40,
+      title: "Overall rating sits under the Superhost bar",
+      body: `Your overall rating is ${score.toFixed(2)}. Superhost standing requires 4.8 or higher, so the badge — and the placement that comes with it — stays out of reach until the average moves.`,
+      metricLabel: "Your rating",
+      metric: score.toFixed(2),
+      vsLabel: "Superhost bar",
+      vs: "4.80",
+      fill: score / 4.8,
+      gapLine: `${(4.8 - score).toFixed(2)} under the threshold.`,
+    });
+  } else if (ratingGaps.length) {
+    drafts.push({
+      key: "rating_subs",
+      weight: 76 + ratingGaps.length * 3,
+      title: "Sub-scores are dragging the listing",
+      body: `Category scores below 4.8: ${ratingGaps.join(", ")}. Those feed ranking and badge eligibility even when the overall number looks fine.`,
+      metricLabel: "Weak categories",
+      tag: `${ratingGaps.length} below 4.8`,
+      vsLabel: "Target",
+      vs: "4.80+",
+      gapLine: ratingGaps.slice(0, 3).join(" · "),
+    });
+  }
+
+  if (subject?.instantBook === false) {
+    const ibComps = live.filter((c) => c.instantBook === true).length;
+    if (ibComps >= Math.ceil(live.length / 2) && live.length >= 2) {
+      drafts.push({
+        key: "instant_book",
+        weight: 64,
+        title: "Instant Book is off while comps use it",
+        body: `${ibComps} of ${live.length} nearby comps have Instant Book on. You do not. That adds friction on every mobile search that could have booked immediately.`,
+        metricLabel: "Your listing",
+        tag: "Off",
+        vsLabel: "Nearby comps",
+        vs: `${ibComps} on`,
+        gapLine: "Instant Book removes a step between search and booked.",
+      });
+    }
+  }
+
+  const subjectMin = subject?.minNights ?? subject?.ttmAvgMinNights ?? null;
+  if (subjectMin != null && subjectMin >= 4) {
+    drafts.push({
+      key: "min_nights",
+      weight: 60 + subjectMin,
+      title: "Minimum stay is filtering out short trips",
+      body: `Your minimum stay is about ${Math.round(subjectMin)} nights. That blocks 1–3 night demand that fills calendars for comps with looser rules on shoulder nights.`,
+      metricLabel: "Your minimum",
+      metric: `${Math.round(subjectMin)} nights`,
+      vsLabel: "Short-trip demand",
+      vs: "1–3 nights",
+      fill: 3 / subjectMin,
+      gapLine: "High minimums protect weekends and empty midweeks.",
+    });
+  }
+
+  if (subject?.ttmBlockedDays != null && subject.ttmBlockedDays >= 40) {
+    drafts.push({
+      key: "blocked_days",
+      weight: 62 + subject.ttmBlockedDays / 10,
+      title: "Blocked calendar days are cutting inventory",
+      body: `Trailing-12 data shows about ${Math.round(subject.ttmBlockedDays)} blocked days. Every blocked night is revenue you cannot earn — tighten personal blocks and owner holds where you can.`,
+      metricLabel: "Blocked days (TTM)",
+      metric: String(Math.round(subject.ttmBlockedDays)),
+      vsLabel: "Healthy range",
+      vs: "< 40",
+      fill: 40 / subject.ttmBlockedDays,
+      gapLine: "Blocked nights never compete for a booking.",
+    });
+  }
+
+  if (subject?.cancellationPolicy && /strict/i.test(subject.cancellationPolicy)) {
+    drafts.push({
+      key: "cancellation",
+      weight: 55,
+      title: "Strict cancellation is on the listing",
+      body: `Your cancellation policy is set to ${subject.cancellationPolicy}. Against flexible or moderate comps, that can lose guests who want an easy exit on a first booking.`,
+      metricLabel: "Your policy",
+      tag: subject.cancellationPolicy,
+      vsLabel: "Common comps",
+      vs: "Flexible / moderate",
+      gapLine: "Strict policies add friction on first-time bookers.",
+    });
+  }
+
+  if (
+    subject?.beds != null &&
+    subject.guests != null &&
+    subject.bedrooms >= 1 &&
+    subject.guests - subject.beds >= 2
+  ) {
+    drafts.push({
+      key: "sleep_capacity",
+      weight: 58,
+      title: "Guest capacity outruns listed beds",
+      body: `The listing sleeps ${subject.guests} but shows ${subject.beds} beds. Guests searching by sleep count may bounce if the bed layout is unclear — or you may be under-selling a sofa bed / den setup comps already use.`,
+      metricLabel: "Listed beds",
+      metric: String(subject.beds),
+      vsLabel: "Sleeps",
+      vs: String(subject.guests),
+      fill: subject.beds / subject.guests,
+      gapLine: "Clarify sleep layout or add inventory that matches capacity.",
+    });
+  }
+
+  drafts.sort((a, b) => b.weight - a.weight);
+  const top = drafts.slice(0, 5);
+  if (!top.length) {
+    return [
+      finalizeLeak(
+        {
+          key: "needs_data",
+          weight: 0,
+          title: "Not enough live signals yet",
+          body: "We could not pull enough listing or comp metrics to name specific gaps. Re-run with a full Airbnb URL, or book a call and we will dig into the listing settings directly.",
+          metricLabel: "Status",
+          tag: "Needs data",
+          vsLabel: "Next step",
+          vs: "Paste listing URL",
+          gapLine: "Live gaps appear after AirROI returns listing + comps.",
+        },
+        0,
+      ),
+    ];
+  }
+  return top.map((d, i) => finalizeLeak(d, i));
+}
+
 export async function lookupListingAudit(
   listingUrlOrId: string,
   opts?: { includeComps?: boolean },
@@ -314,6 +793,7 @@ export async function lookupListingAudit(
   const includeComps = opts?.includeComps !== false;
 
   const listingData = await airroiGet("/listings", {
+    id: listingId,
     listing_id: listingId,
     currency: "usd",
   });
@@ -338,7 +818,12 @@ export async function lookupListingAudit(
       .slice(0, 5);
   }
 
-  return { source: "airroi", subject, comps };
+  return {
+    source: "airroi",
+    subject,
+    comps,
+    leaks: buildBookingLeaks(subject, comps),
+  };
 }
 
 export async function estimateByAddress(input: {
@@ -411,6 +896,15 @@ export async function estimateByAddress(input: {
     adr,
     occupancy,
     comps,
+    leaks: buildBookingLeaks(
+      {
+        monthlyRevenue: annualResolved != null ? annualResolved / 12 : null,
+        adr,
+        occupancy,
+        amenities: [],
+      },
+      comps,
+    ),
   };
 }
 

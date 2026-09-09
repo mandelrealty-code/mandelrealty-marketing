@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  * { box-sizing: border-box; }
+  body { font-family: "Plus Jakarta Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #222222; }
+  a { color: #e00b41; text-decoration: none; }
+  a:hover { color: #b00832; text-decoration: underline; }
+  @keyframes mrgRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+<section style="width: 100%; padding: 4px 0 0">
+  <h2 style="margin: 0 0 10px; font-size: clamp(26px, 4vw, 34px); font-weight: 800; letter-spacing: -0.03em; text-wrap: pretty">What is quietly costing you bookings</h2>
+  <sc-if value="{{ leaksLive }}" hint-placeholder-val="{{ true }}">
+    <p style="margin: 0 0 26px; font-size: 16.5px; line-height: 1.55; color: #5e5e5e; max-width: 76ch; text-wrap: pretty">Pulled from your Airbnb URL and nearby comps — trailing revenue, rate, occupancy, badges, photos, amenities, and ratings.</p>
+  </sc-if>
+  <sc-if value="{{ leaksStatic }}" hint-placeholder-val="{{ false }}">
+    <p style="margin: 0 0 26px; font-size: 16.5px; line-height: 1.55; color: #5e5e5e; max-width: 76ch; text-wrap: pretty">The gaps below are ordered by how much they move revenue, heaviest first.</p>
+  </sc-if>
+
+  <div style="border: 1px solid #ebebeb; border-radius: 20px; background: #ffffff; box-shadow: 0 8px 24px rgba(0,0,0,0.04); overflow: hidden">
+    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 18px 24px; border-bottom: 1px solid #ebebeb; background: #fafafa">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Ranked by revenue impact</div>
+      <div style="font-size: 13px; font-weight: 600; color: #717171">{{ countLine }}</div>
+    </div>
+
+    <sc-for list="{{ leaks }}" as="l" hint-placeholder-count="5">
+      <div style="display: flex; align-items: flex-start; gap: 18px; padding: 26px 24px; border-top: 1px solid #f2f2f2; background: {{ l.rowBg }}; animation: mrgRise .5s cubic-bezier(.2,.7,.2,1) both; animation-delay: {{ l.delay }}">
+
+        <div style="flex: none; width: 46px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px">
+          <div style="font-size: 22px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: {{ l.nColor }}">{{ l.n }}</div>
+          <div style="width: 22px; height: 3px; border-radius: 2px; background: {{ l.rule }}"></div>
+        </div>
+
+        <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 20px 28px; align-items: flex-start">
+
+          <div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 9px">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+              <span style="font-size: 11px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: {{ l.sevColor }}; background: {{ l.sevBg }}; border-radius: 999px; padding: 5px 10px">{{ l.severity }}</span>
+              <span style="font-size: 11.5px; font-weight: 700; color: #717171; font-family: ui-monospace, SFMono-Regular, Menlo, monospace">{{ l.key }}</span>
+            </div>
+            <div style="font-size: {{ l.titleSize }}; font-weight: 800; letter-spacing: -0.02em; line-height: 1.28; text-wrap: pretty">{{ l.title }}</div>
+            <div style="font-size: 15px; font-weight: 500; line-height: 1.6; color: #5e5e5e; max-width: 62ch; text-wrap: pretty">{{ l.body }}</div>
+          </div>
+
+          <div style="flex: 1 1 260px; min-width: 240px; max-width: 340px; border: 1px solid #ebebeb; border-radius: 16px; padding: 16px 18px; background: #ffffff; display: flex; flex-direction: column; gap: 12px">
+            <sc-if value="{{ l.hasMetric }}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+                  <span style="font-size: 11.5px; font-weight: 700; color: #717171">{{ l.metricLabel }}</span>
+                  <span style="font-size: 21px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: #b8072f">{{ l.metric }}</span>
+                </div>
+                <div style="height: 8px; border-radius: 999px; background: #f2f2f2; overflow: hidden">
+                  <div style="height: 100%; width: {{ l.metricFill }}; border-radius: 999px; background: #ff385c"></div>
+                </div>
+                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+                  <span style="font-size: 11.5px; font-weight: 700; color: #717171">{{ l.vsLabel }}</span>
+                  <span style="font-size: 21px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: #00655a">{{ l.vs }}</span>
+                </div>
+                <div style="height: 8px; border-radius: 999px; background: #f2f2f2; overflow: hidden">
+                  <div style="height: 100%; width: 100%; border-radius: 999px; background: #00806f"></div>
+                </div>
+              </div>
+              <div style="padding-top: 4px; font-size: 12.5px; font-weight: 700; color: #444444; line-height: 1.45">{{ l.gapLine }}</div>
+            </sc-if>
+            <sc-if value="{{ l.hasTag }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; gap: 12px">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+                  <span style="font-size: 11.5px; font-weight: 700; color: #717171">{{ l.metricLabel }}</span>
+                  <span style="font-size: 12.5px; font-weight: 800; color: #b8072f; background: #fdeef1; border-radius: 999px; padding: 6px 11px">{{ l.tag }}</span>
+                </div>
+                <div style="height: 1px; background: #f2f2f2"></div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+                  <span style="font-size: 11.5px; font-weight: 700; color: #717171">{{ l.vsLabel }}</span>
+                  <span style="font-size: 12.5px; font-weight: 800; color: #00655a; background: #e6f5f2; border-radius: 999px; padding: 6px 11px">{{ l.vs }}</span>
+                </div>
+                <div style="font-size: 12.5px; font-weight: 700; color: #444444; line-height: 1.45">{{ l.gapLine }}</div>
+              </div>
+            </sc-if>
+          </div>
+
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="margin-top: 14px; font-size: 13.5px; color: #717171; font-weight: 500; line-height: 1.5; max-width: 84ch; text-wrap: pretty">{{ footnote }}</div>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1120,&quot;height&quot;:900},&quot;variant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;primary&quot;,&quot;secondary&quot;],&quot;default&quot;:&quot;primary&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;leaksLive&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  sev(i) {
+    if (i === 0) return { severity: "Highest impact", sevColor: "#b8072f", sevBg: "#fdeef1", rule: "#ff385c", nColor: "#222222", rowBg: "#fffafb", titleSize: "20.5px" };
+    if (i === 1) return { severity: "Elevated", sevColor: "#8a3b00", sevBg: "#fdf2e8", rule: "#e08a3c", nColor: "#222222", rowBg: "#ffffff", titleSize: "18.5px" };
+    return { severity: "Moderate", sevColor: "#5e5e5e", sevBg: "#f4f4f4", rule: "#dddddd", nColor: "#717171", rowBg: "#ffffff", titleSize: "17.5px" };
+  }
+
+  primary() {
+    return [
+      {
+        n: "01", key: "revenue_gap",
+        title: "Trailing revenue sits below nearby comps",
+        body: "Your listing is at about $2,300 / mo over the trailing twelve months. Nearby comps run a median of $4,100 / mo, and the strongest in your set is at $4,800 / mo.",
+        metricLabel: "Your trailing revenue", metric: "$2,300 / mo",
+        vsLabel: "Comps median", vs: "$4,100 / mo",
+        fill: 2300 / 4100, gapLine: "About $1,800 / mo between you and the median. Strongest comp: $4,800 / mo."
+      },
+      {
+        n: "02", key: "occupancy_gap",
+        title: "Occupancy lags the nearby set",
+        body: "You booked about 48% of available nights. Comparable listings nearby booked a median of 68% over the same window — roughly six more booked nights a month.",
+        metricLabel: "Your occupancy", metric: "48%",
+        vsLabel: "Comps median", vs: "68%",
+        fill: 48 / 68, gapLine: "20 points of occupancy, on the same calendar."
+      },
+      {
+        n: "03", key: "adr_gap",
+        title: "Average nightly rate trails the local set",
+        body: "Your average nightly rate is about $145. The nearby median is $195 — so even the nights you do book are priced under the market you compete in.",
+        metricLabel: "Your average rate", metric: "$145",
+        vsLabel: "Comps median", vs: "$195",
+        fill: 145 / 195, gapLine: "$50 per booked night left on the table."
+      },
+      {
+        n: "04", key: "rating_overall",
+        title: "Overall rating sits under the Superhost bar",
+        body: "Your overall rating is 4.72. Superhost standing requires 4.8 or higher, so the badge — and the placement that comes with it — stays out of reach until the average moves.",
+        metricLabel: "Your rating", metric: "4.72",
+        vsLabel: "Superhost bar", vs: "4.80",
+        fill: 4.72 / 4.8, gapLine: "0.08 under the threshold."
+      },
+      {
+        n: "05", key: "guest_favorite",
+        title: "Missing Guest Favorite while comps carry it",
+        body: "Three of the nearby comps in your set hold Guest Favorite. Your listing does not, so you are competing against a badge you cannot currently show on the same search results page.",
+        metricLabel: "Your listing", tag: "Not held",
+        vsLabel: "Nearby comps", vs: "3 hold it",
+        gapLine: "Badge is earned on ratings and reliability, not spend."
+      }
+    ];
+  }
+
+  secondary() { return this.primary().slice(0, 3).map((l, i) => ({ ...l, n: "0" + (i + 1) })); }
+
+  renderVals() {
+    const variant = this.props.variant ?? "primary";
+    const live = (this.props.leaksLive ?? true) === true;
+    const src = variant === "secondary" ? this.secondary() : this.primary();
+
+    const leaks = src.map((l, i) => ({
+      ...l,
+      ...this.sev(i),
+      hasMetric: !!l.metric,
+      hasTag: !l.metric,
+      metricFill: Math.max(8, Math.round((l.fill || 0) * 100)) + "%",
+      delay: (0.04 + i * 0.07).toFixed(2) + "s"
+    }));
+
+    return {
+      leaks,
+      leaksLive: live,
+      leaksStatic: !live,
+      countLine: leaks.length + (leaks.length === 1 ? " gap found" : " gaps found"),
+      footnote: live
+        ? "Figures come straight from your listing and the nearby comp set — nothing here is modelled or projected. Each gap is a place where the market is already paying more for a similar night."
+        : "Each gap is a place where the market is already paying more for a similar night."
+    };
+  }
+}
+
+</script>
+</body>
+</html>
