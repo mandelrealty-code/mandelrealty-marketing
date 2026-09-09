@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="abd767df-dfba-45d4-9b75-199aeb148649"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("851d29ff-82c9-405c-b81f-86c06049518b") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("ad0723e8-e8dc-4746-ba2a-ae8dc916fa0c") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("a266cd68-e257-4e83-aadd-7f99943092a7") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("bd301ddd-9276-459f-8d21-d6e81bdd62cc") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("851d29ff-82c9-405c-b81f-86c06049518b") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("ad0723e8-e8dc-4746-ba2a-ae8dc916fa0c") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("a266cd68-e257-4e83-aadd-7f99943092a7") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("bd301ddd-9276-459f-8d21-d6e81bdd62cc") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("851d29ff-82c9-405c-b81f-86c06049518b") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("ad0723e8-e8dc-4746-ba2a-ae8dc916fa0c") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("a266cd68-e257-4e83-aadd-7f99943092a7") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("bd301ddd-9276-459f-8d21-d6e81bdd62cc") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("851d29ff-82c9-405c-b81f-86c06049518b") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("ad0723e8-e8dc-4746-ba2a-ae8dc916fa0c") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("a266cd68-e257-4e83-aadd-7f99943092a7") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("bd301ddd-9276-459f-8d21-d6e81bdd62cc") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("851d29ff-82c9-405c-b81f-86c06049518b") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("ad0723e8-e8dc-4746-ba2a-ae8dc916fa0c") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("a266cd68-e257-4e83-aadd-7f99943092a7") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("bd301ddd-9276-459f-8d21-d6e81bdd62cc") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  * { box-sizing: border-box; }
+  body { font-family: "Plus Jakarta Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #222222; }
+  a { color: #e00b41; text-decoration: none; }
+  a:hover { color: #b00832; text-decoration: underline; }
+  input, button { font-family: inherit; }
+  input::placeholder { color: #b0b0b0; }
+  input:focus { outline: none; border-color: #222222 !important; box-shadow: 0 0 0 3px rgba(34,34,34,0.08); }
+</style>
+
+</helmet>
+
+<div style="max-width: 1120px; margin: 0 auto; padding: 0 20px 96px">
+
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; padding: 18px 0 16px; border-bottom: 1px solid #ebebeb">
+    <div style="display: flex; align-items: center; gap: 14px; margin-right: auto; min-width: 0">
+      <img src="f79f6114-350d-4feb-ba33-2ef4d189b238" alt="Mandel Realty Group" style="height: 34px; width: auto; display: block">
+      <span style="height: 24px; width: 1px; background: #dddddd; flex: none"></span>
+      <div style="font-size: 13px; font-weight: 600; color: #717171; letter-spacing: 0.01em; white-space: nowrap">Market Launch Brief</div>
+    </div>
+    <a href="tel:+16473817325" style="font-size: 14px; font-weight: 700; color: #222222; border: 1px solid #dddddd; border-radius: 999px; padding: 10px 18px">(647) 381-7325</a>
+  </header>
+
+  <section style="padding: 44px 0 0">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 20px">
+      <span style="font-size: 13px; font-weight: 700; color: #00655a; background: #f0fbfa; border-radius: 999px; padding: 8px 14px">{{ addressLabel }}</span>
+      <span style="font-size: 13px; font-weight: 600; color: #444444; background: #f7f7f7; border-radius: 999px; padding: 8px 14px">{{ bedLabel }}</span>
+      <span style="font-size: 13px; font-weight: 600; color: #444444; background: #f7f7f7; border-radius: 999px; padding: 8px 14px">Not listed yet</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 40px; align-items: start">
+      <div style="min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <h1 style="margin: 0; font-size: clamp(32px, 4.6vw, 50px); line-height: 1.05; font-weight: 800; letter-spacing: -0.035em; text-wrap: balance">What this address can earn on Airbnb</h1>
+        <p style="margin: 0; font-size: 17.5px; line-height: 1.55; color: #5e5e5e; max-width: 60ch; text-wrap: pretty">A location estimate for a {{ bedPhrase }} at this address, built from what comparable units nearby are actually booking right now — not asking prices.</p>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <div style="font-size: clamp(46px, 7vw, 68px); font-weight: 800; letter-spacing: -0.04em; line-height: 1">{{ estimateMonthlyFmt }}</div>
+          <div style="font-size: 15px; font-weight: 700; color: #717171">estimated per month · {{ estimateAnnualFmt }} a year</div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; padding-top: 4px">
+          <a href="#unlock" style="background: #ff385c; color: #ffffff; font-size: 16px; font-weight: 700; border-radius: 14px; padding: 15px 26px; box-shadow: 0 8px 20px rgba(255,56,92,0.28)" style-hover="background: #e00b41; color: #ffffff; text-decoration: none">See the full market picture</a>
+          <a href="tel:+16473817325" style="background: #ffffff; color: #222222; font-size: 16px; font-weight: 700; border: 1px solid #dddddd; border-radius: 14px; padding: 15px 26px" style-hover="border-color: #222222; color: #222222; text-decoration: none">Book a walkthrough</a>
+        </div>
+      </div>
+
+      <div style="min-width: 0; background: #ffffff; border: 1px solid #ebebeb; border-radius: 22px; padding: 26px; box-shadow: 0 12px 40px rgba(0,0,0,0.07)">
+        <div style="font-size: 16.5px; font-weight: 800; letter-spacing: -0.01em; margin-bottom: 4px">The estimate behind that number</div>
+        <div style="font-size: 13px; color: #717171; font-weight: 500; margin-bottom: 20px">Location estimate for this bed count — one number, used everywhere in this brief.</div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px">
+          <div style="background: #f7f7f7; border-radius: 16px; padding: 18px">
+            <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171">Nightly rate</div>
+            <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.03em; margin-top: 7px">{{ estimateAdr }}</div>
+          </div>
+          <div style="background: #f7f7f7; border-radius: 16px; padding: 18px">
+            <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171">Occupancy</div>
+            <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.03em; margin-top: 7px">{{ estimateOcc }}</div>
+          </div>
+          <div style="background: #f7f7f7; border-radius: 16px; padding: 18px">
+            <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171">Booked nights</div>
+            <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.03em; margin-top: 7px">{{ nightsPerMonth }}</div>
+          </div>
+        </div>
+        <div style="margin-top: 18px; padding-top: 18px; border-top: 1px solid #f0f0f0; font-size: 13px; color: #717171; font-weight: 500; line-height: 1.55">Estimates reflect current market performance for this bed count at this location. Your unit's finish, layout and sleep capacity move it up or down — that is what the walkthrough is for.</div>
+      </div>
+    </div>
+  </section>
+
+  <section style="margin-top: 72px">
+    <h2 style="margin: 0 0 10px; font-size: clamp(25px, 3.6vw, 33px); font-weight: 800; letter-spacing: -0.03em">Nearby listings already clearing this</h2>
+    <p style="margin: 0 0 24px; font-size: 16.5px; line-height: 1.55; color: #5e5e5e; max-width: 74ch; text-wrap: pretty">The three closest comparable units to this address. Real listings, real monthly revenue — proof the demand is not theoretical.</p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px">
+      <sc-for list="{{ comps }}" as="c" hint-placeholder-count="3">
+        <div style="background: #ffffff; border: 1px solid #ebebeb; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.05); display: flex; flex-direction: column">
+          <div style="position: relative; aspect-ratio: 4 / 3; background: repeating-linear-gradient(135deg, #f4f4f4 0 9px, #ebebeb 9px 18px); display: flex; align-items: flex-end; justify-content: space-between; padding: 12px">
+            <span style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 600; color: #8a8a8a; background: #ffffff; border-radius: 8px; padding: 5px 9px">comp photo</span>
+            <span style="font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #222222; background: #ffffff; border-radius: 999px; padding: 6px 11px">{{ c.badge }}</span>
+          </div>
+          <div style="padding: 20px 22px 22px; display: flex; flex-direction: column; gap: 6px; flex: 1">
+            <div style="font-size: 15.5px; font-weight: 700; line-height: 1.35">{{ c.title }}</div>
+            <div style="font-size: 13.5px; font-weight: 500; color: #717171">{{ c.meta }}</div>
+            <div style="margin-top: auto; padding-top: 16px; display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap">
+              <span style="font-size: 27px; font-weight: 800; letter-spacing: -0.03em">{{ c.monthly }}</span>
+              <span style="font-size: 12.5px; font-weight: 700; color: #717171">/ month</span>
+            </div>
+            <div style="font-size: 13px; font-weight: 700; color: #00806f">{{ c.rateLine }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top: 16px; background: #f7f7f7; border: 1px dashed #d6d6d6; border-radius: 20px; padding: 24px 26px; display: flex; flex-wrap: wrap; align-items: center; gap: 20px">
+      <div style="flex: 1; min-width: 260px">
+        <div style="font-size: 17.5px; font-weight: 800; letter-spacing: -0.015em; margin-bottom: 7px">{{ lockedCompsLine }}</div>
+        <div style="font-size: 14.5px; font-weight: 500; color: #5e5e5e; line-height: 1.55; max-width: 62ch; text-wrap: pretty">The full comp set, the market's demand calendar for the next window, and the launch plan for this unit all unlock below.</div>
+      </div>
+      <a href="#unlock" style="background: #222222; color: #ffffff; font-size: 15px; font-weight: 700; border-radius: 13px; padding: 14px 24px" style-hover="background: #000000; color: #ffffff; text-decoration: none">Unlock the full brief</a>
+    </div>
+  </section>
+
+  <section style="margin-top: 80px">
+    <div style="border-top: 2px solid #222222; padding-top: 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px">
+      <div style="min-width: 0">
+        <div style="font-size: 15.5px; font-weight: 800; margin-bottom: 8px">Everything above is the market signal — free.</div>
+        <div style="font-size: 14.5px; font-weight: 500; color: #5e5e5e; line-height: 1.55">What the address can earn, and three units nearby already earning it.</div>
+      </div>
+      <div style="min-width: 0">
+        <div style="font-size: 15.5px; font-weight: 800; margin-bottom: 8px">Everything below is the launch brief.</div>
+        <div style="font-size: 14.5px; font-weight: 500; color: #5e5e5e; line-height: 1.55">Supply, seasonality, live demand, what top comps are pricing, and how MRG would launch against that bar.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="unlock" style="margin-top: 40px; scroll-margin-top: 24px">
+    <div style="background: #222222; color: #ffffff; border-radius: 26px; padding: clamp(24px, 4vw, 40px)">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 34px">
+        <div style="min-width: 0">
+          <h2 style="margin: 0 0 12px; font-size: clamp(25px, 3.8vw, 35px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1">The full market picture for this address</h2>
+          <p style="margin: 0 0 22px; font-size: 16px; line-height: 1.6; color: #d4d4d4; max-width: 56ch; text-wrap: pretty">Already built for this location and bed count. It is on this page, blurred, waiting.</p>
+          <div style="display: flex; flex-direction: column; gap: 11px">
+            <sc-for list="{{ unlockList }}" as="u" hint-placeholder-count="6">
+              <div style="display: flex; align-items: flex-start; gap: 11px">
+                <span style="flex: none; width: 18px; height: 18px; border-radius: 999px; background: #ff385c; color: #ffffff; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-top: 2px">✓</span>
+                <div style="font-size: 14.5px; font-weight: 600; line-height: 1.45; color: #f0f0f0; min-width: 0">{{ u }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="background: #2e2e2e; border-radius: 20px; padding: 26px; min-width: 0; align-self: start">
+          <sc-if value="{{ locked }}" hint-placeholder-val="{{ true }}">
+            <div>
+              <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap">
+                <div style="font-size: 20px; font-weight: 700; color: #8a8a8a; text-decoration: line-through">$49.99</div>
+                <div style="font-size: 42px; font-weight: 800; letter-spacing: -0.035em">{{ priceFmt }}</div>
+              </div>
+              <div style="font-size: 13.5px; font-weight: 600; color: #a5a5a5; margin-top: 6px">One-time, this address</div>
+              <button type="button" sc-camel-on-click="{{ openOffer }}" style="margin-top: 18px; width: 100%; background: #ff385c; color: #ffffff; border: none; font-size: 16px; font-weight: 700; border-radius: 14px; padding: 16px; cursor: pointer" style-hover="background: #e00b41">{{ buyLabel }}</button>
+              <div style="margin-top: 22px; padding-top: 20px; border-top: 1px solid #3f3f3f">
+                <div style="font-size: 13px; font-weight: 700; color: #d4d4d4; margin-bottom: 9px">Have an access code?</div>
+                <div style="display: flex; gap: 9px; flex-wrap: wrap">
+                  <input type="text" name="code" sc-camel-on-change="{{ onCode }}" placeholder="MRGVIP2026" style="flex: 1; min-width: 150px; background: #222222; border: 1px solid #4a4a4a; color: #ffffff; border-radius: 12px; padding: 13px 15px; font-size: 15px; font-weight: 600; letter-spacing: 0.04em">
+                  <button type="button" sc-camel-on-click="{{ submitCode }}" style="background: #ffffff; color: #222222; border: none; font-size: 15px; font-weight: 700; border-radius: 12px; padding: 13px 20px; cursor: pointer" style-hover="background: #e8e8e8">Apply</button>
+                </div>
+                <div style="font-size: 12.5px; font-weight: 600; color: #ff8fa4; margin-top: 9px; line-height: 1.45; min-height: 1px">{{ codeMsg }}</div>
+              </div>
+              <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #3f3f3f">
+                <div style="font-size: 13.5px; line-height: 1.55; color: #a5a5a5; font-weight: 500; margin-bottom: 12px">Booking a walkthrough? MRG opens the full brief for you at no cost.</div>
+                <button type="button" sc-camel-on-click="{{ callUnlock }}" style="width: 100%; background: transparent; color: #ffffff; border: 1px solid #5a5a5a; font-size: 15px; font-weight: 700; border-radius: 12px; padding: 14px; cursor: pointer" style-hover="border-color: #ffffff">Book the call · (647) 381-7325</button>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ unlocked }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="display: inline-flex; align-items: center; gap: 9px; background: #0d3d38; color: #7ce0d5; border-radius: 999px; padding: 8px 14px; font-size: 12.5px; font-weight: 700">
+                <span style="width: 7px; height: 7px; border-radius: 999px; background: #00a699"></span>
+                Full brief unlocked
+              </div>
+              <div style="font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-top: 16px; line-height: 1.25">Everything below is yours.</div>
+              <div style="font-size: 13.5px; font-weight: 600; color: #a5a5a5; margin-top: 8px">{{ unlockNote }}</div>
+              <a href="tel:+16473817325" style="display: block; text-align: center; margin-top: 20px; background: #ff385c; color: #ffffff; font-size: 15px; font-weight: 700; border-radius: 12px; padding: 14px" style-hover="background: #e00b41; color: #ffffff; text-decoration: none">Map your unit to this set — free 15 min</a>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <div style="position: relative; margin-top: 20px">
+      <sc-if value="{{ locked }}" hint-placeholder-val="{{ true }}">
+        <div style="position: absolute; inset: 0; z-index: 3; display: flex; align-items: flex-start; justify-content: center; padding-top: 90px; pointer-events: none">
+          <div style="background: #ffffff; border: 1px solid #e4e4e4; border-radius: 22px; padding: 28px; box-shadow: 0 24px 60px rgba(0,0,0,0.2); max-width: 420px; pointer-events: auto; position: sticky; top: 70px">
+            <div style="font-size: 19px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; line-height: 1.25">The launch brief is written. It is just blurred.</div>
+            <div style="font-size: 14px; line-height: 1.5; color: #5e5e5e; font-weight: 500; margin-bottom: 18px">Still locked below:</div>
+            <div style="display: flex; flex-direction: column; gap: 9px; margin-bottom: 20px">
+              <sc-for list="{{ lockedBullets }}" as="b" hint-placeholder-count="6">
+                <div style="display: flex; gap: 10px; font-size: 13.5px; font-weight: 600; line-height: 1.4"><span style="color: #ff385c">·</span><span>{{ b }}</span></div>
+              </sc-for>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px">
+              <span style="font-size: 18px; font-weight: 700; color: #b0b0b0; text-decoration: line-through">$49.99</span>
+              <span style="font-size: 34px; font-weight: 800; letter-spacing: -0.03em">{{ priceFmt }}</span>
+            </div>
+            <button type="button" sc-camel-on-click="{{ openOffer }}" style="width: 100%; background: #ff385c; color: #ffffff; border: none; font-size: 16px; font-weight: 700; border-radius: 13px; padding: 15px; cursor: pointer" style-hover="background: #e00b41">Unlock the full brief</button>
+            <div style="margin-top: 12px; font-size: 12.5px; font-weight: 600; color: #717171; line-height: 1.5; text-align: center">Or book a walkthrough and MRG opens it at no cost — <a href="#unlock">both are just above</a>.</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="{{ lockedStyle }}">
+        <div style="display: flex; flex-direction: column; gap: 16px">
+
+          <div style="background: #ffffff; border: 1px solid #ebebeb; border-radius: 20px; padding: 26px">
+            <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.015em; margin-bottom: 4px">Where this is · market snapshot</div>
+            <div style="font-size: 13.5px; color: #717171; font-weight: 500; margin-bottom: 20px">{{ marketName }} — the short-term rental market this address competes in.</div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px">
+              <div style="background: #f7f7f7; border-radius: 16px; padding: 18px">
+                <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171">Active listings</div>
+                <div style="font-size: 25px; font-weight: 800; letter-spacing: -0.03em; margin-top: 7px">{{ activeListings }}</div>
+              </div>
+              <div style="background: #f7f7f7; border-radius: 16px; padding: 18px">
+                <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171">Market nightly rate</div>
+                <div style="font-size: 25px; font-weight: 800; letter-spacing: -0.03em; margin-top: 7px">{{ marketAdr }}</div>
+              </div>
+              <div style="background: #f7f7f7; border-radius: 16px; padding: 18px">
+                <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171">Market occupancy</div>
+                <div style="font-size: 25px; font-weight: 800; letter-spacing: -0.03em; margin-top: 7px">{{ marketOcc }}</div>
+              </div>
+              <div style="background: #f7f7f7; border-radius: 16px; padding: 18px">
+                <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171">Market revenue / mo</div>
+                <div style="font-size: 25px; font-weight: 800; letter-spacing: -0.03em; margin-top: 7px">{{ marketRevenue }}</div>
+              </div>
+            </div>
+            <div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px">
+              <sc-for list="{{ marketNotes }}" as="n" hint-placeholder-count="3">
+                <span style="font-size: 13.5px; font-weight: 600; color: #333333; background: #f0fbfa; border-radius: 999px; padding: 9px 15px">{{ n }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="background: #ffffff; border: 1px solid #ebebeb; border-radius: 20px; padding: 26px">
+            <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.015em; margin-bottom: 4px">What already wins here — full comp set</div>
+            <div style="font-size: 13.5px; color: #717171; font-weight: 500; margin-bottom: 20px">Every comparable unit nearby, and the specific thing it does. Read this as the launch standard your unit has to clear.</div>
+            <div style="display: flex; flex-direction: column; gap: 10px">
+              <sc-for list="{{ fullComps }}" as="c" hint-placeholder-count="8">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; padding: 16px 0; border-top: 1px solid #f0f0f0">
+                  <div style="display: flex; align-items: center; gap: 12px; min-width: 0">
+                    <span style="flex: none; width: 46px; height: 46px; border-radius: 12px; background: repeating-linear-gradient(135deg, #f4f4f4 0 7px, #ebebeb 7px 14px)"></span>
+                    <div style="font-size: 15px; font-weight: 700; line-height: 1.4; min-width: 0">{{ c.title }}</div>
+                  </div>
+                  <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.02em; min-width: 0; align-self: center">{{ c.monthly }}<span style="font-size: 12.5px; font-weight: 600; color: #717171"> / mo</span></div>
+                  <div style="font-size: 13.5px; font-weight: 500; color: #5e5e5e; line-height: 1.5; min-width: 0; align-self: center">{{ c.diffs }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top: 18px; padding-top: 18px; border-top: 1px solid #f0f0f0; display: flex; flex-wrap: wrap; gap: 10px">
+              <sc-for list="{{ launchStandards }}" as="s" hint-placeholder-count="5">
+                <span style="font-size: 13.5px; font-weight: 700; color: #222222; background: #f7f7f7; border-radius: 999px; padding: 9px 15px">{{ s }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="background: #ffffff; border: 1px solid #ebebeb; border-radius: 20px; padding: 26px">
+            <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 4px">
+              <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.015em">Seasonality — the market, last 12 months</div>
+              <span style="font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #00655a; background: #f0fbfa; border-radius: 999px; padding: 6px 11px">Market data, not a listing</span>
+            </div>
+            <div style="font-size: 13.5px; color: #717171; font-weight: 500; margin-bottom: 24px">Occupancy and nightly rate across {{ marketName }}. This is the shape of the year a launch has to be priced for.</div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 10px 8px">
+              <sc-for list="{{ marketMonthly }}" as="m" hint-placeholder-count="12">
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0">
+                  <div style="display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 7px; width: 100%; height: 170px">
+                    <div style="font-size: 11.5px; font-weight: 800; color: #222222; white-space: nowrap">{{ m.occupancy }}</div>
+                    <div style="{{ m.barStyle }}"></div>
+                  </div>
+                  <div style="text-align: center; min-width: 0">
+                    <div style="font-size: 12px; font-weight: 800; color: #717171">{{ m.monthLabel }}</div>
+                    <div style="font-size: 11.5px; font-weight: 600; color: #717171; margin-top: 3px; white-space: nowrap">{{ m.adr }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top: 20px; padding-top: 18px; border-top: 1px solid #f0f0f0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px">
+              <div>
+                <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171">Peak window</div>
+                <div style="font-size: 15px; font-weight: 700; margin-top: 6px">{{ peakWindow }}</div>
+              </div>
+              <div>
+                <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171">Softest window</div>
+                <div style="font-size: 15px; font-weight: 700; margin-top: 6px">{{ softWindow }}</div>
+              </div>
+              <div>
+                <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171">Peak vs trough rate</div>
+                <div style="font-size: 15px; font-weight: 700; margin-top: 6px">{{ swingLine }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px">
+            <div style="background: #ffffff; border: 1px solid #ebebeb; border-radius: 20px; padding: 26px">
+              <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.015em; margin-bottom: 4px">Demand right now</div>
+              <div style="font-size: 13.5px; color: #717171; font-weight: 500; margin-bottom: 20px">How the next 30 nights are filling across nearby units.</div>
+              <div style="font-size: 44px; font-weight: 800; letter-spacing: -0.04em; line-height: 1">{{ paceAvgFill }}</div>
+              <div style="font-size: 13.5px; font-weight: 700; color: #717171; margin-top: 6px">of the next 30 nights already booked nearby</div>
+              <div style="margin-top: 22px; display: flex; flex-direction: column; gap: 16px">
+                <div>
+                  <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #00655a; margin-bottom: 9px">High-demand days — price up</div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                    <sc-for list="{{ highDemandDays }}" as="d" hint-placeholder-count="5">
+                      <span style="font-size: 13px; font-weight: 700; color: #00655a; background: #f0fbfa; border: 1px solid #cdeeeb; border-radius: 10px; padding: 8px 12px">{{ d }}</span>
+                    </sc-for>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #8f2440; margin-bottom: 9px">Soft days — fill with length-of-stay</div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                    <sc-for list="{{ lowDemandDays }}" as="d" hint-placeholder-count="4">
+                      <span style="font-size: 13px; font-weight: 700; color: #8f2440; background: #fff0f3; border: 1px solid #ffd3dd; border-radius: 10px; padding: 8px 12px">{{ d }}</span>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="background: #ffffff; border: 1px solid #ebebeb; border-radius: 20px; padding: 26px">
+              <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.015em; margin-bottom: 4px">What the market is pricing next</div>
+              <div style="font-size: 13.5px; color: #717171; font-weight: 500; margin-bottom: 20px">Median nightly rate the three strongest comps have loaded into the coming window.</div>
+              <div style="display: flex; flex-direction: column; gap: 12px">
+                <sc-for list="{{ compForward }}" as="f" hint-placeholder-count="3">
+                  <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid #f0f0f0">
+                    <div style="min-width: 0">
+                      <div style="font-size: 14.5px; font-weight: 700; line-height: 1.4">{{ f.name }}</div>
+                      <div style="font-size: 12.5px; font-weight: 600; color: #717171; margin-top: 3px">{{ f.window }}</div>
+                    </div>
+                    <div style="font-size: 20px; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap">{{ f.medianRate }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="margin-top: 16px; background: #f7f7f7; border-radius: 16px; padding: 18px; font-size: 14px; font-weight: 600; color: #333333; line-height: 1.5">{{ forwardTakeaway }}</div>
+            </div>
+          </div>
+
+          <div style="background: #ffffff; border: 1px solid #ebebeb; border-radius: 20px; padding: 26px">
+            <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 4px">
+              <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.015em">How MRG would launch this unit</div>
+              <span style="font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #717171; background: #f7f7f7; border-radius: 999px; padding: 6px 11px">How we'd approach it — not a measured result</span>
+            </div>
+            <div style="font-size: 13.5px; color: #717171; font-weight: 500; margin-bottom: 20px">Sequenced against the standards above: cheapest and highest-leverage first, capital last.</div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px">
+              <sc-for list="{{ phases }}" as="p" hint-placeholder-count="4">
+                <div style="background: #f7f7f7; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 9px">
+                  <div style="font-size: 11.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #d90b41">{{ p.n }}</div>
+                  <div style="font-size: 17px; font-weight: 800; letter-spacing: -0.015em">{{ p.name }}</div>
+                  <div style="font-size: 14px; line-height: 1.5; color: #444444; font-weight: 500">{{ p.focus }}</div>
+                  <div style="font-size: 13px; line-height: 1.45; color: #717171; font-weight: 700; margin-top: auto; padding-top: 8px">{{ p.note }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top: 16px; background: #fff0f3; border: 1px solid #ffd3dd; border-radius: 20px; padding: 26px">
+              <div style="font-size: 21px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 10px">The MRG Furniture Program</div>
+              <p style="margin: 0 0 18px; font-size: 15.5px; line-height: 1.6; color: #7a2338; max-width: 68ch; text-wrap: pretty">For an unfurnished or under-furnished unit, MRG funds the furnish. $0 upfront from you, you keep the furniture, tied to a 24-month management term — no vesting schedule, no buyback.</p>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px">
+                <sc-for list="{{ furnitureFacts }}" as="f" hint-placeholder-count="4">
+                  <div style="background: #ffffff; border-radius: 14px; padding: 16px; font-size: 14px; font-weight: 700; color: #222222">{{ f }}</div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="background: #222222; color: #ffffff; border-radius: 24px; padding: clamp(26px, 4vw, 40px); display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; align-items: center">
+            <div style="min-width: 0">
+              <h3 style="margin: 0 0 12px; font-size: clamp(24px, 3.4vw, 32px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1">Book a walkthrough to map your unit to this set</h3>
+              <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #d4d4d4; max-width: 54ch; text-wrap: pretty">15 minutes. We take the comp standards above and go line by line through what your specific unit clears today, and what it needs to clear the top of this market.</p>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 12px">
+              <a href="tel:+16473817325" style="background: #ff385c; color: #ffffff; font-size: 16px; font-weight: 700; border-radius: 14px; padding: 16px 26px" style-hover="background: #e00b41; color: #ffffff; text-decoration: none">Book the 15-min call</a>
+              <a href="mailto:info@mandelrealtygroup.com" style="background: rgba(255,255,255,0.12); color: #ffffff; font-size: 16px; font-weight: 700; border-radius: 14px; padding: 16px 26px" style-hover="background: rgba(255,255,255,0.22); color: #ffffff; text-decoration: none">Email the brief to me</a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer style="margin-top: 60px; padding-top: 26px; border-top: 1px solid #ebebeb; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px">
+    <div>
+      <div style="font-size: 15px; font-weight: 700; margin-bottom: 6px">Mandel Realty Group · Market Launch Brief</div>
+      <div style="font-size: 13.5px; font-weight: 600; color: #5e5e5e; line-height: 1.6">
+        <a href="tel:+16473817325">(647) 381-7325</a><br>
+        <a href="mailto:info@mandelrealtygroup.com">info@mandelrealtygroup.com</a>
+      </div>
+    </div>
+    <div style="font-size: 12.5px; color: #8a8a8a; font-weight: 500; line-height: 1.6">Revenue, rate, occupancy and comp figures are current market estimates for this location and bed count — not a guarantee of your unit's performance. Launch phases and the furniture program describe how MRG would approach this property, not a measured outcome. MRG reviews every figure before it is presented as a plan.</div>
+  </footer>
+
+  <sc-if value="{{ offer1 }}" hint-placeholder-val="{{ false }}">
+    <div style="position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; padding: 20px">
+      <div style="background: #ffffff; border-radius: 24px; padding: clamp(24px, 4vw, 36px); max-width: 440px; width: 100%; box-shadow: 0 30px 80px rgba(0,0,0,0.35)">
+        <div style="display: inline-flex; align-items: center; gap: 8px; background: #fff0f3; color: #d90b41; border-radius: 999px; padding: 7px 14px; font-size: 12.5px; font-weight: 800; margin-bottom: 16px">50% off · today only</div>
+        <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.15; margin-bottom: 10px">Take half off the full launch brief</div>
+        <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.55; color: #5e5e5e">Full comps, seasonality, live demand, forward pricing and the launch plan. One address, one-time.</p>
+        <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px">
+          <span style="font-size: 36px; font-weight: 800; letter-spacing: -0.035em">{{ priceFmt }}</span>
+          <span style="font-size: 17px; font-weight: 600; color: #b0b0b0; text-decoration: line-through">$49.99</span>
+        </div>
+        <button type="button" sc-camel-on-click="{{ buyMain }}" style="width: 100%; background: #ff385c; color: #ffffff; border: none; font-size: 16px; font-weight: 700; border-radius: 14px; padding: 16px; cursor: pointer" style-hover="background: #e00b41">{{ modalBuyLabel }}</button>
+        <button type="button" sc-camel-on-click="{{ declineOffer }}" style="width: 100%; margin-top: 10px; background: transparent; color: #717171; border: none; font-size: 14.5px; font-weight: 700; padding: 12px; cursor: pointer" style-hover="color: #222222">No thanks</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ offer2 }}" hint-placeholder-val="{{ false }}">
+    <div style="position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; padding: 20px">
+      <div style="background: #222222; color: #ffffff; border-radius: 24px; padding: clamp(24px, 4vw, 36px); max-width: 440px; width: 100%; box-shadow: 0 30px 80px rgba(0,0,0,0.45)">
+        <div style="display: inline-flex; align-items: center; gap: 8px; background: #3a2b30; color: #ff8fa4; border-radius: 999px; padding: 7px 14px; font-size: 12.5px; font-weight: 800; margin-bottom: 16px">Last chance · 60% off</div>
+        <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.15; margin-bottom: 10px">Final offer on this brief</div>
+        <p style="margin: 0 0 20px; font-size: 15px; line-height: 1.55; color: #c4c4c4">This is the lowest MRG goes. After this the page keeps the free preview only.</p>
+        <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px">
+          <span style="font-size: 36px; font-weight: 800; letter-spacing: -0.035em">$19.99</span>
+          <span style="font-size: 17px; font-weight: 600; color: #8a8a8a; text-decoration: line-through">$49.99</span>
+        </div>
+        <button type="button" sc-camel-on-click="{{ buyLast }}" style="width: 100%; background: #ff385c; color: #ffffff; border: none; font-size: 16px; font-weight: 700; border-radius: 14px; padding: 16px; cursor: pointer" style-hover="background: #e00b41">Unlock for $19.99</button>
+        <button type="button" sc-camel-on-click="{{ callUnlock }}" style="width: 100%; margin-top: 10px; background: transparent; color: #ffffff; border: 1px solid #5a5a5a; font-size: 15px; font-weight: 700; border-radius: 12px; padding: 14px; cursor: pointer" style-hover="border-color: #ffffff">Book the walkthrough instead — MRG unlocks it</button>
+        <button type="button" sc-camel-on-click="{{ closeOffer }}" style="width: 100%; margin-top: 8px; background: transparent; color: #8a8a8a; border: none; font-size: 14px; font-weight: 700; padding: 10px; cursor: pointer" style-hover="color: #ffffff">Maybe later</button>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;estimateMonthly&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:5850,&quot;min&quot;:1500,&quot;max&quot;:20000,&quot;step&quot;:50,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Estimate&quot;},&quot;estimateOccupancy&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:0.68,&quot;min&quot;:0.45,&quot;max&quot;:0.92,&quot;step&quot;:0.01,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Estimate&quot;},&quot;bedrooms&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;2 bedroom&quot;,&quot;options&quot;:[&quot;Studio&quot;,&quot;1 bedroom&quot;,&quot;1 bedroom + den&quot;,&quot;2 bedroom&quot;,&quot;2 bedroom + den&quot;,&quot;3+ bedroom&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Estimate&quot;},&quot;address&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;88 Blue Jays Way, Toronto&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Subject&quot;},&quot;marketName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;King West &amp; Entertainment District&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Subject&quot;},&quot;unlockPrice&quot;:{&quot;editor&quot;:&quot;float&quot;,&quot;default&quot;:24.99,&quot;min&quot;:9.99,&quot;max&quot;:49.99,&quot;step&quot;:1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Unlock&quot;},&quot;previewUnlocked&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Unlock&quot;}}">
+class Component extends DCLogic {
+  state = { unlocked: false, offer: 0, lastChanceUsed: false, codeMsg: "", buying: false, unlockNote: "" };
+  vals = {};
+
+  money(n) { return "$" + Math.round(n).toLocaleString("en-US"); }
+
+  renderVals() {
+    const monthly = this.props.estimateMonthly ?? 5850;
+    const occ = this.props.estimateOccupancy ?? 0.68;
+    const beds = this.props.bedrooms ?? "2 bedroom";
+    const address = this.props.address ?? "88 Blue Jays Way, Toronto";
+    const marketName = this.props.marketName ?? "King West & Entertainment District";
+    const price = this.props.unlockPrice ?? 24.99;
+    const adr = monthly / (30.4 * occ);
+
+    const comps = [
+      { title: "2BR · 2BA · King West condo", meta: "Sleeps 5 · 4.92 · 182 reviews", badge: "Guest Favorite", mult: 1.16, rate: 1.1 },
+      { title: "2BR · 1BA · Entertainment District", meta: "Sleeps 4 · 4.88 · 240 reviews", badge: "Superhost", mult: 1.05, rate: 1.02 },
+      { title: "1BR + den · Liberty Village", meta: "Sleeps 4 · 4.95 · 134 reviews", badge: "Guest Favorite", mult: 0.93, rate: 0.95 }
+    ].map(c => ({
+      title: c.title,
+      meta: c.meta,
+      badge: c.badge,
+      monthly: this.money(monthly * c.mult),
+      rateLine: this.money(adr * c.rate) + " / night · " + Math.round(occ * 100 * (c.mult / c.rate)) + "% occupancy"
+    }));
+
+    const fullComps = [
+      { mult: 1.16, title: "2BR · 2BA · King West", diffs: "Den converted to a second sleep space · 34-photo pro set · self check-in · crib and blackout blinds listed" },
+      { mult: 1.11, title: "2BR · 2BA · Fort York", diffs: "Parking listed as an amenity · pet-friendly filter · event-weekend pricing loaded 90 days out" },
+      { mult: 1.05, title: "2BR · 1BA · Entertainment District", diffs: "No minimum stay · title leads with walking distance to the arena · five amenity filters most units skip" },
+      { mult: 1.0, title: "2BR + den · Distillery District", diffs: "Balcony staged and shot · three upsells offered at booking · unbroken 12-month review streak" },
+      { mult: 0.96, title: "2BR · 2BA · St. Lawrence", diffs: "Weekday dynamic floor · workspace tagged · same-day turnover team" },
+      { mult: 0.93, title: "1BR + den · Liberty Village", diffs: "Sofa bed listed as a bed · refreshed furniture and a re-shot photo set" },
+      { mult: 0.88, title: "1BR · 1BA · Queen West", diffs: "Strong reviews, thin photo set — the floor of this market, not the bar" },
+      { mult: 0.84, title: "1BR · 1BA · Corktown", diffs: "Dated furnish, no dynamic pricing — what an unmanaged launch looks like here" }
+    ].map(c => ({ title: c.title, diffs: c.diffs, monthly: this.money(monthly * c.mult) }));
+
+    const seasons = [
+      ["Oct", 0.98, 0.72], ["Nov", 0.86, 0.64], ["Dec", 1.02, 0.7], ["Jan", 0.78, 0.58],
+      ["Feb", 0.82, 0.62], ["Mar", 0.9, 0.68], ["Apr", 0.96, 0.72], ["May", 1.06, 0.78],
+      ["Jun", 1.16, 0.84], ["Jul", 1.24, 0.88], ["Aug", 1.22, 0.87], ["Sep", 1.08, 0.8]
+    ];
+    const marketAdrBase = adr * 0.94;
+    const marketMonthly = seasons.map(([monthLabel, rm, o]) => {
+      const rate = marketAdrBase * rm;
+      const h = Math.round(((o - 0.5) / 0.45) * 100);
+      const peak = o >= 0.84;
+      return {
+        monthLabel,
+        adr: this.money(rate),
+        occupancy: Math.round(o * 100) + "%",
+        revenue: this.money(rate * 30.4 * o),
+        barStyle: "width: 100%; height: " + Math.max(10, Math.min(100, h)) + "%; border-radius: 8px 8px 4px 4px; background: " + (peak ? "#00806f" : "#dddddd") + ";"
+      };
+    });
+
+    const compForward = [
+      { name: "2BR · 2BA · King West", window: "Next 60 nights, median", medianRate: this.money(adr * 1.18) },
+      { name: "2BR · 2BA · Fort York", window: "Next 60 nights, median", medianRate: this.money(adr * 1.12) },
+      { name: "2BR · 1BA · Entertainment District", window: "Next 60 nights, median", medianRate: this.money(adr * 1.04) }
+    ];
+
+    const locked = !(this.state.unlocked || this.props.previewUnlocked);
+
+    return {
+      marketName,
+      addressLabel: address,
+      bedLabel: beds + " · estimate",
+      bedPhrase: beds.toLowerCase(),
+      estimateMonthlyFmt: this.money(monthly) + " / mo",
+      estimateAnnualFmt: this.money(monthly * 12),
+      estimateAdr: this.money(adr),
+      estimateOcc: Math.round(occ * 100) + "%",
+      nightsPerMonth: Math.round(30.4 * occ) + " nights",
+      comps,
+      fullComps,
+      marketMonthly,
+      compForward,
+      lockedCompsLine: fullComps.length + " comparable units nearby — you are seeing 3",
+      activeListings: "1,340 active",
+      marketAdr: this.money(marketAdrBase),
+      marketOcc: Math.round(occ * 100 * 0.96) + "%",
+      marketRevenue: this.money(marketAdrBase * 30.4 * occ * 0.96),
+      marketNotes: [
+        "Entire-home units are " + 72 + "% of supply",
+        "2-bed inventory is the tightest band",
+        "Event calendar drives the top decile of nights"
+      ],
+      peakWindow: "June – August · 84–88% occupancy",
+      softWindow: "January – February · 58–62% occupancy",
+      swingLine: this.money(marketAdrBase * 1.24) + " vs " + this.money(marketAdrBase * 0.78),
+      paceAvgFill: "72%",
+      highDemandDays: ["Fri Oct 3", "Sat Oct 4", "Fri Oct 10", "Sat Oct 11", "Sat Oct 25"],
+      lowDemandDays: ["Mon Oct 6", "Tue Oct 7", "Wed Oct 14", "Tue Oct 21"],
+      forwardTakeaway: "Top comps are holding a floor near " + this.money(adr * 1.12) + " into the next window. A launch priced under that reads as the cheap option in the grid — which is where occupancy comes from, and where rate goes to die.",
+      launchStandards: ["30+ photo pro set", "A listed second sleep space", "Full amenity filter coverage", "No minimum stay at launch", "Dynamic weekday floor"],
+      phases: [
+        { n: "Phase 1", name: "Position the launch", focus: "Title, photo brief, amenity set, stay rules and a dynamic pricing floor built off the comps above.", note: "Before a single booking — this is what the grid judges." },
+        { n: "Phase 2", name: "Furnish to the bar", focus: "Furnish or refresh to the standard the top comps hold, including sleep capacity where the floor plan allows.", note: "Where the MRG furniture program usually comes in." },
+        { n: "Phase 3", name: "Go live and season the listing", focus: "Photo set live, first reviews prioritised, response and turnover held to badge criteria from night one.", note: "Reviews compound — the first 60 days set the ceiling." },
+        { n: "Phase 4", name: "Distribute and scale", focus: "VRBO, Booking.com, MRG direct booking, upsells and a repeat-guest engine.", note: "Locks the gains in and compounds them." }
+      ],
+      furnitureFacts: ["$0 upfront", "You keep the furniture", "24-month management term", "No vesting, no buyback"],
+      unlockList: [
+        "Full comp set — every nearby unit and what it does differently",
+        "Market snapshot — supply, nightly rate, occupancy, revenue",
+        "12-month market seasonality, month by month",
+        "Live demand — how the next 30 nights are filling",
+        "What top comps are pricing into the coming window",
+        "How MRG would launch this unit, phase by phase"
+      ],
+      lockedBullets: [
+        "All " + fullComps.length + " comps, and the differentiator on each",
+        "Market supply, rate, occupancy and revenue",
+        "12-month seasonality for this market",
+        "Next-30-night demand: high vs soft days",
+        "Forward median rates from the top 3 comps",
+        "The 4-phase launch plan and furniture program"
+      ],
+      locked,
+      unlocked: !locked,
+      unlockNote: this.state.unlockNote || "Full market picture for " + address,
+      lockedStyle: locked ? "filter: blur(9px); opacity: 0.55; pointer-events: none; user-select: none;" : "",
+      priceFmt: "$" + price.toFixed(2),
+      buyLabel: this.state.buying ? "Processing…" : "Unlock the full brief — $" + price.toFixed(2),
+      modalBuyLabel: this.state.buying ? "Processing…" : "Unlock for $" + price.toFixed(2),
+      codeMsg: this.state.codeMsg,
+      offer1: this.state.offer === 1,
+      offer2: this.state.offer === 2,
+      openOffer: () => this.setState({ offer: 1 }),
+      declineOffer: () => this.setState(s => ({ offer: s.lastChanceUsed ? 0 : 2, lastChanceUsed: true })),
+      closeOffer: () => this.setState({ offer: 0 }),
+      buyMain: () => this.pay("$" + price.toFixed(2) + " paid (50% off)"),
+      buyLast: () => this.pay("$19.99 paid (60% off)"),
+      onCode: e => { this.vals.code = e.target.value; },
+      submitCode: () => {
+        const ok = String(this.vals.code || "").trim().toUpperCase() === "MRGVIP2026";
+        this.setState(ok
+          ? { unlocked: true, offer: 0, codeMsg: "", unlockNote: "Unlocked with access code MRGVIP2026" }
+          : { codeMsg: "That code is not valid. Check it with MRG, or unlock below." });
+      },
+      callUnlock: () => this.setState({ unlocked: true, offer: 0, unlockNote: "Unlocked for your free 15-min walkthrough — no charge" })
+    };
+  }
+
+  pay(note) {
+    this.setState({ buying: true });
+    setTimeout(() => this.setState({ buying: false, offer: 0, unlocked: true, unlockNote: "Unlocked · " + note }), 900);
+  }
+}
+</script>
+
+
+</body></html>

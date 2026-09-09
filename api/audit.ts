@@ -13,6 +13,7 @@ import {
   buildMockPaidPack,
   classifyUnlockCode,
   enrichPaidListingAudit,
+  enrichPaidMarketAudit,
   estimateByAddress,
   extractAirbnbListingId,
   lookupListingAudit,
@@ -195,23 +196,41 @@ async function handleRevenueAuditOp(
 
     if (op === "enrich_paid") {
       const listing = String(body.listingUrl ?? body.url ?? body.listingId ?? "").trim();
-      const listingId = extractAirbnbListingId(listing) || listing || "demo-listing";
+      const listingIdFromUrl = extractAirbnbListingId(listing);
       const mode = String(body.mode ?? "live").trim().toLowerCase() === "mock" ? "mock" : "live";
-      const cacheKey = `enrich_paid:${mode}:${listingId}`;
-      const cached = getCachedAirroi<Record<string, unknown>>(cacheKey);
-      if (cached) {
-        return res.status(200).json({ ok: true, cached: true, mode, paidPack: cached });
-      }
 
       const subject =
         body.subject && typeof body.subject === "object" && !Array.isArray(body.subject)
           ? (body.subject as Record<string, unknown>)
           : null;
       const comps = Array.isArray(body.comps) ? body.comps : [];
+      const latitude =
+        body.latitude != null && body.latitude !== ""
+          ? Number(body.latitude)
+          : subject?.latitude != null
+            ? Number(subject.latitude)
+            : NaN;
+      const longitude =
+        body.longitude != null && body.longitude !== ""
+          ? Number(body.longitude)
+          : subject?.longitude != null
+            ? Number(subject.longitude)
+            : NaN;
+      const hasGeo = Number.isFinite(latitude) && Number.isFinite(longitude);
+      const cacheId = listingIdFromUrl
+        ? listingIdFromUrl
+        : hasGeo
+          ? `market:${latitude.toFixed(5)},${longitude.toFixed(5)}`
+          : "unknown";
+      const cacheKey = `enrich_paid:${mode}:${cacheId}`;
+      const cached = getCachedAirroi<Record<string, unknown>>(cacheKey);
+      if (cached) {
+        return res.status(200).json({ ok: true, cached: true, mode, paidPack: cached });
+      }
 
       if (mode === "mock") {
         const paidPack = buildMockPaidPack({
-          listingId,
+          listingId: cacheId,
           subject: subject as never,
           comps: comps as never,
         });
@@ -219,18 +238,55 @@ async function handleRevenueAuditOp(
         return res.status(200).json({ ok: true, cached: false, mode: "mock", paidPack });
       }
 
-      if (!extractAirbnbListingId(listing) && !listing) {
-        return res.status(400).json({ error: "Paste a valid Airbnb listing URL to unlock full market detail." });
+      if (listingIdFromUrl) {
+        const paidPack = await enrichPaidListingAudit({
+          listingUrlOrId: listing,
+          subject: subject as never,
+          comps: comps as never,
+        });
+        setCachedAirroi(cacheKey, paidPack);
+        return res.status(200).json({ ok: true, cached: false, mode: "live", paidPack });
       }
 
-      // Live paid unlock enrichment — do not burn the free daily visitor quota.
-      const paidPack = await enrichPaidListingAudit({
-        listingUrlOrId: listing,
-        subject: subject as never,
-        comps: comps as never,
+      if (hasGeo) {
+        const estimateFromSubject =
+          subject &&
+          (subject.monthlyRevenue != null || subject.adr != null || subject.occupancy != null)
+            ? {
+                annualRevenue:
+                  subject.monthlyRevenue != null ? Number(subject.monthlyRevenue) * 12 : null,
+                monthlyRevenue:
+                  subject.monthlyRevenue != null ? Number(subject.monthlyRevenue) : null,
+                adr: subject.adr != null ? Number(subject.adr) : null,
+                occupancy: subject.occupancy != null ? Number(subject.occupancy) : null,
+              }
+            : null;
+        const paidPack = await enrichPaidMarketAudit({
+          latitude,
+          longitude,
+          bedrooms:
+            body.bedrooms != null
+              ? Number(body.bedrooms)
+              : subject?.bedrooms != null
+                ? Number(subject.bedrooms)
+                : 2,
+          bathrooms:
+            body.bathrooms != null
+              ? Number(body.bathrooms)
+              : subject?.bathrooms != null
+                ? Number(subject.bathrooms)
+                : 1,
+          guests: body.guests != null ? Number(body.guests) : undefined,
+          comps: comps as never,
+          marketEstimate: estimateFromSubject,
+        });
+        setCachedAirroi(cacheKey, paidPack);
+        return res.status(200).json({ ok: true, cached: false, mode: "live", paidPack });
+      }
+
+      return res.status(400).json({
+        error: "Paste an Airbnb listing URL, or choose an address, to unlock full market detail.",
       });
-      setCachedAirroi(cacheKey, paidPack);
-      return res.status(200).json({ ok: true, cached: false, mode: "live", paidPack });
     }
 
     // lookup (default)

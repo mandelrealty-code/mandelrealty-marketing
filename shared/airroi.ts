@@ -124,7 +124,7 @@ export type RevenueAuditEstimateResult = {
   longitude: number | null;
   comps: AirroiComp[];
   leaks: RevenueAuditLeak[];
-  ratings: RevenueAuditRatings;
+  ratings: RevenueAuditRatings | null;
 };
 
 export type AirroiMonthlyMetric = {
@@ -1123,7 +1123,7 @@ export async function estimateByAddress(input: {
       },
       comps,
     ),
-    ratings: buildRatingCategories(null, comps),
+    ratings: null,
   };
 }
 
@@ -1593,6 +1593,294 @@ export async function enrichPaidListingAudit(input: {
     monthlyMetrics,
     futureRates,
     futureRatesSummary,
+    market,
+    marketMonthly,
+    pacing,
+    pacingSummary: summarizePacing(pacing),
+    compFutureRates,
+    marketEstimate,
+  };
+}
+
+function emptyFutureRatesSummary() {
+  return {
+    days: 0,
+    availableDays: 0,
+    bookedDays: 0,
+    medianRate: null as number | null,
+    avgRate: null as number | null,
+    next30Median: null as number | null,
+    next30Fill: null as number | null,
+  };
+}
+
+function parseEstimateSnapshot(data: Record<string, unknown> | null | undefined): {
+  annualRevenue: number | null;
+  monthlyRevenue: number | null;
+  adr: number | null;
+  occupancy: number | null;
+} | null {
+  if (!data) return null;
+  const annual =
+    num(data.revenue) ??
+    (() => {
+      const p = data.percentiles as Record<string, unknown> | undefined;
+      const rev = p?.revenue;
+      if (rev && typeof rev === "object") {
+        return num((rev as Record<string, unknown>).p50) ?? num((rev as Record<string, unknown>).avg);
+      }
+      return null;
+    })();
+  const adr =
+    num(data.average_daily_rate) ??
+    num(data.adr) ??
+    (() => {
+      const p = data.percentiles as Record<string, unknown> | undefined;
+      const a = p?.average_daily_rate ?? p?.adr;
+      if (a && typeof a === "object") {
+        return num((a as Record<string, unknown>).p50) ?? num((a as Record<string, unknown>).avg);
+      }
+      return null;
+    })();
+  const occupancy =
+    num(data.occupancy) ??
+    (() => {
+      const p = data.percentiles as Record<string, unknown> | undefined;
+      const o = p?.occupancy;
+      if (o && typeof o === "object") {
+        return num((o as Record<string, unknown>).p50) ?? num((o as Record<string, unknown>).avg);
+      }
+      return null;
+    })();
+  if (annual == null && adr == null && occupancy == null) return null;
+  return {
+    annualRevenue: annual,
+    monthlyRevenue: annual != null ? annual / 12 : null,
+    adr,
+    occupancy,
+  };
+}
+
+/**
+ * Paid enrichment for address / not-listed audits (no subject listing ID).
+ * Free path should already have spent ~$0.20 on calculator/estimate.
+ * This pack adds market + pacing + comp forward rates (~$1.00–$1.40).
+ */
+export async function enrichPaidMarketAudit(input: {
+  latitude: number;
+  longitude: number;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  guests?: number | null;
+  comps?: AirroiComp[];
+  marketEstimate?: RevenueAuditPaidPack["marketEstimate"];
+}): Promise<RevenueAuditPaidPack> {
+  const latitude = Number(input.latitude);
+  const longitude = Number(input.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    throw new Error("Choose an address so we can pin the market.");
+  }
+
+  const bedrooms = Math.max(0, Math.min(20, Math.round(Number(input.bedrooms) || 2)));
+  const baths = Math.max(0.5, Math.min(20, Number(input.bathrooms) || 1));
+  const guests = input.guests ?? Math.max(2, bedrooms * 2);
+  const listingId = `market:${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+  const endpointsCalled: string[] = [];
+  let estimatedCostUsd = 0;
+
+  let comps = Array.isArray(input.comps) ? input.comps.slice(0, 12) : [];
+  if (comps.length < 3) {
+    endpointsCalled.push("GET /listings/comparables");
+    estimatedCostUsd += 0.1;
+    const compsData = await airroiGet("/listings/comparables", {
+      latitude,
+      longitude,
+      bedrooms,
+      baths,
+      guests,
+      currency: "usd",
+      room_type: "entire_home",
+    });
+    comps = extractCompsArray(compsData)
+      .map(mapComp)
+      .filter((c) => c.monthlyRevenue != null)
+      .sort((a, b) => (b.monthlyRevenue ?? 0) - (a.monthlyRevenue ?? 0))
+      .slice(0, 12);
+  }
+
+  const topCompIds = comps
+    .map((c) => c.listingId)
+    .filter(Boolean)
+    .slice(0, 3);
+
+  endpointsCalled.push("GET /markets/lookup");
+  estimatedCostUsd += 0.01;
+  const lookup = (await airroiGet("/markets/lookup", {
+    lat: latitude,
+    lng: longitude,
+  })) as Record<string, unknown>;
+
+  const marketObj = {
+    country: str(lookup.country),
+    region: str(lookup.region),
+    locality: str(lookup.locality),
+    fullName: str(lookup.full_name ?? lookup.fullName),
+  };
+
+  let market: AirroiMarketSummary | null = null;
+  let marketMonthly: AirroiMonthlyMetric[] = [];
+  let pacing: AirroiPacingDay[] = [];
+  const got = new Map<string, Record<string, unknown>>();
+
+  if (marketObj.country && marketObj.region && marketObj.locality) {
+    const filter = {
+      bedrooms: { eq: bedrooms },
+      room_type: { eq: "entire_home" },
+    };
+    const marketJobs = [
+      {
+        key: "marketSummary",
+        cost: 0.1,
+        endpoint: "POST /markets/summary",
+        run: () =>
+          airroiPost("/markets/summary", {
+            market: {
+              country: marketObj.country,
+              region: marketObj.region,
+              locality: marketObj.locality,
+            },
+            filter,
+            currency: "usd",
+            num_months: 12,
+          }),
+      },
+      {
+        key: "marketMonthly",
+        cost: 0.5,
+        endpoint: "POST /markets/metrics/all",
+        run: () =>
+          airroiPost("/markets/metrics/all", {
+            market: {
+              country: marketObj.country,
+              region: marketObj.region,
+              locality: marketObj.locality,
+            },
+            filter,
+            currency: "usd",
+            num_months: 12,
+          }),
+      },
+      {
+        key: "marketPacing",
+        cost: 0.2,
+        endpoint: "POST /markets/metrics/future/pacing",
+        run: () =>
+          airroiPost("/markets/metrics/future/pacing", {
+            market: {
+              country: marketObj.country,
+              region: marketObj.region,
+              locality: marketObj.locality,
+            },
+            filter,
+            currency: "usd",
+            num_months: 3,
+          }),
+      },
+    ] as const;
+
+    const marketSettled = await Promise.allSettled(
+      marketJobs.map(async (job) => {
+        const data = await job.run();
+        return { ...job, data };
+      }),
+    );
+
+    for (const item of marketSettled) {
+      if (item.status !== "fulfilled") {
+        console.error("[airroi/paid/market-only]", item.reason);
+        continue;
+      }
+      endpointsCalled.push(item.value.endpoint);
+      estimatedCostUsd += item.value.cost;
+      if (item.value.key === "marketSummary") {
+        market = pickMarketSummaryStats(item.value.data as Record<string, unknown>, marketObj);
+      } else if (item.value.key === "marketMonthly") {
+        marketMonthly = mapMonthlyMetrics(item.value.data as Record<string, unknown>);
+      } else if (item.value.key === "marketPacing") {
+        pacing = mapPacing(item.value.data as Record<string, unknown>);
+      }
+    }
+  }
+
+  if (!market) {
+    market = {
+      ...marketObj,
+      occupancy: null,
+      adr: null,
+      revenue: null,
+      revpar: null,
+      activeListings: null,
+      raw: lookup,
+    };
+  }
+
+  const rateJobs = topCompIds.map((id) => ({
+    key: `compRates:${id}`,
+    cost: 0.1,
+    endpoint: `GET /listings/future/rates (${id})`,
+    run: () =>
+      airroiGet("/listings/future/rates", {
+        listing_id: id,
+        id,
+        currency: "usd",
+      }),
+  }));
+
+  const rateSettled = await Promise.allSettled(
+    rateJobs.map(async (job) => {
+      const data = await job.run();
+      return { ...job, data };
+    }),
+  );
+  for (const item of rateSettled) {
+    if (item.status !== "fulfilled") {
+      console.error("[airroi/paid/comp-rates]", item.reason);
+      continue;
+    }
+    endpointsCalled.push(item.value.endpoint);
+    estimatedCostUsd += item.value.cost;
+    got.set(item.value.key, item.value.data as Record<string, unknown>);
+  }
+
+  const compFutureRates = topCompIds.map((id) => {
+    const comp = comps.find((c) => c.listingId === id);
+    const rates = got.has(`compRates:${id}`) ? mapFutureRates(got.get(`compRates:${id}`)!) : [];
+    const summary = summarizeFutureRates(rates);
+    return {
+      listingId: id,
+      name: comp?.name || `Comp ${id}`,
+      medianRate: summary.medianRate,
+      availableDays: summary.availableDays,
+      days: summary.days,
+    };
+  });
+
+  const marketEstimate =
+    input.marketEstimate &&
+    (input.marketEstimate.monthlyRevenue != null ||
+      input.marketEstimate.annualRevenue != null ||
+      input.marketEstimate.adr != null)
+      ? input.marketEstimate
+      : parseEstimateSnapshot(null);
+
+  return {
+    source: "airroi",
+    listingId,
+    estimatedCostUsd: Math.round(estimatedCostUsd * 100) / 100,
+    endpointsCalled,
+    monthlyMetrics: [],
+    futureRates: [],
+    futureRatesSummary: emptyFutureRatesSummary(),
     market,
     marketMonthly,
     pacing,
