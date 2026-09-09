@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  * { box-sizing: border-box; }
+  body { font-family: "Plus Jakarta Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #222222; }
+  a { color: #e00b41; text-decoration: none; }
+  a:hover { color: #b00832; text-decoration: underline; }
+  @keyframes mrgRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+<div style="width: 100%; display: flex; flex-direction: column; gap: 46px; padding: 4px 0 8px">
+
+  <div style="display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 14px 18px; border: 1px solid #ebebeb; border-radius: 16px; background: #fafafa">
+    <span style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">How to read this report</span>
+    <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: #00655a; background: #e6f5f2; border: 1px solid #cbe8e2; border-radius: 999px; padding: 6px 12px">Live audit<span style="font-weight: 600; color: #4f7f78">measured from your listing + comps</span></span>
+    <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: #222222; background: #ffffff; border: 1px dashed #b9b9b9; border-radius: 999px; padding: 6px 12px">Modeled<span style="font-weight: 600; color: #717171">scenario, based on assumptions</span></span>
+    <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: #8a3b00; background: #fdf2e8; border: 1px solid #f2ddc6; border-radius: 999px; padding: 6px 12px">Advisor-led<span style="font-weight: 600; color: #97653c">illustrative, set with your MRG advisor</span></span>
+  </div>
+
+  <section data-binding="metrics[]" style="display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Audit index</span>
+      <h2 style="margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -0.03em; text-wrap: pretty">Every signal we looked at</h2>
+      <p style="margin: 0; font-size: 15.5px; line-height: 1.55; color: #5e5e5e; max-width: 70ch; text-wrap: pretty">Each item below maps to a section of this report. The dot tells you whether the number came from your listing, from a model, or from your advisor.</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 10px">
+      <sc-for list="{{ signals }}" as="s" hint-placeholder-count="12">
+        <div style="display: flex; align-items: center; gap: 10px; border: 1px solid #ebebeb; border-radius: 14px; padding: 12px 14px; background: #ffffff; min-width: 0">
+          <span style="flex: none; width: 9px; height: 9px; border-radius: 999px; background: {{ s.dot }}; border: 1px solid {{ s.dotRing }}"></span>
+          <span style="flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3">{{ s.label }}</span>
+          <span style="flex: none; font-size: 11px; font-weight: 700; color: #9a9a9a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace">{{ s.short }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section data-binding="scenarios / moderateUplift / optimizedUplift" style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Scenario planner</span>
+      <h2 style="margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -0.03em; text-wrap: pretty">What the same property could earn</h2>
+      <p style="margin: 0; font-size: 15.5px; line-height: 1.55; color: #5e5e5e; max-width: 70ch; text-wrap: pretty">Your current pace is measured. The two scenarios after it are modeled from the gaps found in this audit — they are planning targets, not forecasts.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 14px; align-items: stretch">
+      <div style="border-radius: 20px; background: #222222; color: #ffffff; padding: 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.12)">
+        <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #7ce0cf; background: rgba(0,128,111,0.28); border-radius: 999px; padding: 6px 11px">Live audit</span>
+        <div style="font-size: 15px; font-weight: 800; letter-spacing: -0.01em">Current pace</div>
+        <div data-binding="currentRevenue" style="font-size: 38px; font-weight: 800; letter-spacing: -0.04em; line-height: 1">$2,300<span style="font-size: 17px; font-weight: 700; color: #b8b8b8"> / mo</span></div>
+        <div style="display: flex; flex-direction: column; gap: 9px; padding-top: 4px">
+          <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; font-weight: 700"><span style="color: #a8a8a8">Nightly rate</span><span data-binding="currentADR">$168</span></div>
+          <div style="height: 1px; background: #3a3a3a"></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; font-weight: 700"><span style="color: #a8a8a8">Occupancy</span><span data-binding="currentOccupancy">46%</span></div>
+          <div style="height: 1px; background: #3a3a3a"></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; font-weight: 700"><span style="color: #a8a8a8">Trailing window</span><span>12 months</span></div>
+        </div>
+        <div style="margin-top: auto; padding-top: 14px; font-size: 12.5px; font-weight: 600; color: #9a9a9a; line-height: 1.5">Pulled from your Airbnb URL. This is the only column in this section that is measured.</div>
+      </div>
+
+      <sc-for list="{{ scenarios }}" as="s" hint-placeholder-count="2">
+        <div style="border: 1px dashed {{ s.border }}; border-radius: 20px; background: {{ s.bg }}; padding: 24px; display: flex; flex-direction: column; gap: 14px; animation: mrgRise .5s cubic-bezier(.2,.7,.2,1) both; animation-delay: {{ s.delay }}">
+          <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #222222; background: #ffffff; border: 1px dashed #b9b9b9; border-radius: 999px; padding: 6px 11px">Modeled scenario</span>
+          <div style="font-size: 15px; font-weight: 800; letter-spacing: -0.01em">{{ s.name }}</div>
+          <div style="font-size: 38px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; color: {{ s.ink }}">{{ s.revenue }}<span style="font-size: 17px; font-weight: 700; color: #717171"> / mo</span></div>
+          <div style="align-self: flex-start; font-size: 12.5px; font-weight: 800; color: {{ s.ink }}; background: #ffffff; border: 1px solid {{ s.border }}; border-radius: 999px; padding: 6px 11px">{{ s.delta }}</div>
+          <div style="padding-top: 4px; display: flex; flex-direction: column; gap: 9px">
+            <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Assumes</div>
+            <sc-for list="{{ s.assumptions }}" as="a" hint-placeholder-count="3">
+              <div style="display: flex; gap: 9px; font-size: 13px; font-weight: 600; color: #5e5e5e; line-height: 1.45">
+                <span style="flex: none; color: #b9b9b9">—</span>
+                <span style="min-width: 0">{{ a.text }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid #ebebeb; font-size: 12.5px; font-weight: 600; color: #717171; line-height: 1.5">{{ s.caveat }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size: 13px; font-weight: 500; color: #717171; line-height: 1.5; max-width: 84ch; text-wrap: pretty">Scenario outputs are derived by applying optimization assumptions to your measured rate and occupancy. Actual results depend on execution, season and market conditions. No result is guaranteed.</div>
+  </section>
+
+  <section data-binding="lossRows[]" style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Gap → change</span>
+      <h2 style="margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -0.03em; text-wrap: pretty">What it costs you, and what we change</h2>
+      <p style="margin: 0; font-size: 15.5px; line-height: 1.55; color: #5e5e5e; max-width: 70ch; text-wrap: pretty">Each row carries its own evidence label, so you can tell a measured gap from a pattern we see across the portfolio.</p>
+    </div>
+
+    <div style="border: 1px solid #ebebeb; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.04)">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr))">
+        <div style="padding: 14px 22px; background: #fff5f7; border-bottom: 1px solid #ebebeb; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #b8072f">Costing you bookings</div>
+        <div style="padding: 14px 22px; background: #f3faf8; border-bottom: 1px solid #ebebeb; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #00655a">What MRG changes</div>
+      </div>
+      <sc-for list="{{ lossRows }}" as="r" hint-placeholder-count="4">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); border-top: 1px solid #f2f2f2">
+          <div style="padding: 22px; display: flex; flex-direction: column; gap: 10px; min-width: 0">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 9px">
+              <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: {{ r.tagInk }}; background: {{ r.tagBg }}; border: 1px {{ r.tagStroke }} {{ r.tagBorder }}; border-radius: 999px; padding: 5px 10px">{{ r.tag }}</span>
+              <span style="font-size: 11px; font-weight: 700; color: #9a9a9a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace">{{ r.key }}</span>
+            </div>
+            <div style="font-size: 17px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.3; text-wrap: pretty">{{ r.loss }}</div>
+            <div style="font-size: 14px; font-weight: 500; color: #5e5e5e; line-height: 1.55; max-width: 46ch; text-wrap: pretty">{{ r.lossBody }}</div>
+          </div>
+          <div style="padding: 22px; display: flex; flex-direction: column; gap: 10px; background: #fcfdfd; min-width: 0">
+            <div style="font-size: 15.5px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.35; color: #00655a; text-wrap: pretty">{{ r.fix }}</div>
+            <div style="font-size: 14px; font-weight: 500; color: #5e5e5e; line-height: 1.55; max-width: 46ch; text-wrap: pretty">{{ r.fixBody }}</div>
+            <div style="margin-top: auto; padding-top: 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px">
+              <span style="font-size: 11px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #717171">{{ r.impactLabel }}</span>
+              <span style="font-size: 14.5px; font-weight: 800; letter-spacing: -0.01em; color: #222222">{{ r.impact }}</span>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section data-binding="phases[]" style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Typical rollout</span>
+      <h2 style="margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -0.03em; text-wrap: pretty">Four phases, in the order they usually pay off</h2>
+      <p style="margin: 0; font-size: 15.5px; line-height: 1.55; color: #5e5e5e; max-width: 70ch; text-wrap: pretty">Upside is shown as a directional band, not a promise. Sequencing shifts with what your listing already does well.</p>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <sc-for list="{{ phases }}" as="p" hint-placeholder-count="4">
+        <div style="border: 1px solid #ebebeb; border-radius: 20px; background: #ffffff; box-shadow: 0 6px 20px rgba(0,0,0,0.035); display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); overflow: hidden; animation: mrgRise .5s cubic-bezier(.2,.7,.2,1) both; animation-delay: {{ p.delay }}">
+          <div style="padding: 22px; display: flex; flex-direction: column; gap: 10px; min-width: 0">
+            <div style="display: flex; align-items: center; gap: 12px">
+              <span style="flex: none; width: 34px; height: 34px; border-radius: 999px; background: #222222; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800">{{ p.n }}</span>
+              <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.25; min-width: 0">{{ p.name }}</div>
+            </div>
+            <div style="font-size: 14px; font-weight: 500; color: #5e5e5e; line-height: 1.55; max-width: 48ch; text-wrap: pretty">{{ p.what }}</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 7px; padding-top: 2px">
+              <sc-for list="{{ p.items }}" as="i" hint-placeholder-count="3">
+                <span style="font-size: 12px; font-weight: 700; color: #444444; background: #f4f4f4; border-radius: 9px; padding: 6px 10px">{{ i.text }}</span>
+              </sc-for>
+            </div>
+          </div>
+          <div style="padding: 22px; background: #fafafa; border-left: 1px solid #ebebeb; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 18px; align-content: start; min-width: 0">
+            <div style="display: flex; flex-direction: column; gap: 7px; min-width: 0">
+              <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Spend posture</div>
+              <div style="align-self: flex-start; font-size: 13px; font-weight: 800; color: {{ p.spendInk }}; background: {{ p.spendBg }}; border-radius: 999px; padding: 7px 12px">{{ p.spend }}</div>
+              <div style="font-size: 12.5px; font-weight: 600; color: #717171; line-height: 1.5">{{ p.spendNote }}</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 7px; min-width: 0">
+              <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">{{ p.upsideLabel }}</div>
+              <div style="font-size: 20px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; color: #222222">{{ p.upside }}</div>
+              <div style="font-size: 12.5px; font-weight: 600; color: #717171; line-height: 1.5; text-wrap: pretty">{{ p.upsideNote }}</div>
+              <div style="align-self: flex-start; margin-top: 2px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: {{ p.confInk }}; background: {{ p.confBg }}; border: 1px dashed {{ p.confBorder }}; border-radius: 999px; padding: 5px 9px">{{ p.conf }}</div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section data-binding="complaints[]" style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Pattern library</span>
+      <h2 style="margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -0.03em; text-wrap: pretty">Review risks that suppress conversion</h2>
+      <p style="margin: 0; font-size: 15.5px; line-height: 1.55; color: #5e5e5e; max-width: 70ch; text-wrap: pretty">These are not quotes from your reviews. They are the recurring themes that most often drag a listing's category scores down, each paired with the operational fix.</p>
+    </div>
+    <div style="display: flex; align-items: flex-start; gap: 10px; padding: 13px 16px; border: 1px dashed #dddddd; border-radius: 14px; background: #fafafa; font-size: 13px; font-weight: 600; color: #5e5e5e; line-height: 1.5; max-width: 88ch">
+      <span style="flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 999px; background: #b9b9b9"></span>
+      <span>Guest review text is not ingested in this audit. Use this board as a diagnostic checklist against your own operation.</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 12px">
+      <sc-for list="{{ risks }}" as="r" hint-placeholder-count="4">
+        <div style="border: 1px solid #ebebeb; border-radius: 18px; background: #ffffff; padding: 20px; display: flex; flex-direction: column; gap: 11px; min-width: 0">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+            <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #717171">{{ r.area }}</span>
+            <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: {{ r.freqInk }}; background: {{ r.freqBg }}; border-radius: 999px; padding: 5px 9px">{{ r.freq }}</span>
+          </div>
+          <div style="font-size: 16.5px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.3; text-wrap: pretty">{{ r.theme }}</div>
+          <div style="font-size: 13.5px; font-weight: 500; color: #5e5e5e; line-height: 1.55; text-wrap: pretty">{{ r.why }}</div>
+          <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #f2f2f2; display: flex; flex-direction: column; gap: 6px">
+            <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #00655a">Operational fix</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #222222; line-height: 1.5; text-wrap: pretty">{{ r.fix }}</div>
+            <div style="font-size: 12px; font-weight: 600; color: #717171; line-height: 1.45">Affects: {{ r.affects }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section data-binding="rooms[]" style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #8a3b00">Illustrative scope</span>
+      <h2 style="margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -0.03em; text-wrap: pretty">A refresh plan, room by room</h2>
+      <p style="margin: 0; font-size: 15.5px; line-height: 1.55; color: #5e5e5e; max-width: 70ch; text-wrap: pretty">Scope and ranges below are planning bands drawn from comparable refreshes — not a quote. Final budget depends on level of finish and what you already own.</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px">
+      <sc-for list="{{ rooms }}" as="rm" hint-placeholder-count="3">
+        <div style="border: 1px solid #f2ddc6; border-radius: 20px; background: #fffdfa; padding: 22px; display: flex; flex-direction: column; gap: 14px; min-width: 0">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+            <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.02em">{{ rm.name }}</div>
+            <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #8a3b00; background: #fdf2e8; border-radius: 999px; padding: 5px 10px">{{ rm.priority }}</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 14px">
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+              <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Stays</div>
+              <div style="font-size: 13.5px; font-weight: 600; color: #5e5e5e; line-height: 1.5">{{ rm.stays }}</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+              <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #222222">Changes</div>
+              <div style="font-size: 13.5px; font-weight: 700; color: #222222; line-height: 1.5">{{ rm.changes }}</div>
+            </div>
+          </div>
+          <div style="margin-top: auto; padding-top: 14px; border-top: 1px dashed #f2ddc6; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px">
+            <div style="display: flex; flex-direction: column; gap: 3px">
+              <span style="font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Typical refresh range</span>
+              <span style="font-size: 12px; font-weight: 600; color: #97653c">Planning band, not a quote</span>
+            </div>
+            <div style="font-size: 21px; font-weight: 800; letter-spacing: -0.03em; color: #222222">{{ rm.range }}</div>
+          </div>
+          <div style="font-size: 12.5px; font-weight: 600; color: #717171; line-height: 1.5; text-wrap: pretty">{{ rm.guestImpact }}</div>
+        </div>
+      </sc-for>
+
+      <div style="position: relative; border: 1px dashed #dddddd; border-radius: 20px; background: #fafafa; padding: 22px; display: flex; flex-direction: column; gap: 12px; justify-content: center; min-height: 240px; min-width: 0">
+        <span style="align-self: flex-start; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #717171; background: #ffffff; border: 1px solid #ebebeb; border-radius: 999px; padding: 5px 10px">Advisor-led</span>
+        <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.3; text-wrap: pretty">Remaining rooms scoped on your walkthrough</div>
+        <div style="font-size: 13.5px; font-weight: 500; color: #5e5e5e; line-height: 1.55; text-wrap: pretty">Kitchen, bathrooms and any secondary bedrooms are scoped with photos and measurements once your MRG advisor walks the property. MRG funds eligible items.</div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding-top: 4px">
+          <div style="height: 11px; width: 88%; border-radius: 999px; background: #ececec"></div>
+          <div style="height: 11px; width: 64%; border-radius: 999px; background: #ececec"></div>
+          <div style="height: 11px; width: 76%; border-radius: 999px; background: #ececec"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-binding="exec30 / exec60" style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Activation</span>
+      <h2 style="margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -0.03em; text-wrap: pretty">How the first 60 days usually run</h2>
+      <p style="margin: 0; font-size: 15.5px; line-height: 1.55; color: #5e5e5e; max-width: 70ch; text-wrap: pretty">A typical sequence, not a fixed template. Your advisor reorders it around season, current bookings and what needs the least lead time.</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(288px, 1fr)); gap: 12px">
+      <sc-for list="{{ stages }}" as="st" hint-placeholder-count="2">
+        <div style="border: 1px solid {{ st.border }}; border-radius: 20px; background: {{ st.bg }}; padding: 24px; display: flex; flex-direction: column; gap: 14px; min-width: 0">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+            <div style="font-size: 22px; font-weight: 800; letter-spacing: -0.03em">{{ st.window }}</div>
+            <div style="font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: {{ st.kickerInk }}; background: #ffffff; border: 1px solid {{ st.border }}; border-radius: 999px; padding: 5px 10px">{{ st.kicker }}</div>
+          </div>
+          <div style="font-size: 14.5px; font-weight: 700; color: #222222; line-height: 1.5; text-wrap: pretty">{{ st.summary }}</div>
+          <div style="display: flex; flex-direction: column; gap: 12px; padding-top: 2px">
+            <sc-for list="{{ st.steps }}" as="sp" hint-placeholder-count="4">
+              <div style="display: flex; gap: 12px; min-width: 0">
+                <span style="flex: none; width: 7px; height: 7px; margin-top: 7px; border-radius: 999px; background: {{ st.dot }}"></span>
+                <div style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <div style="font-size: 14px; font-weight: 700; line-height: 1.45; text-wrap: pretty">{{ sp.text }}</div>
+                  <div style="font-size: 12.5px; font-weight: 600; color: #717171; line-height: 1.45">{{ sp.qual }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid {{ st.border }}; font-size: 12.5px; font-weight: 600; color: #717171; line-height: 1.5">{{ st.note }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section data-binding="listings[]" style="display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #717171">Portfolio</span>
+      <h2 style="margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -0.03em; text-wrap: pretty">Properties we run this playbook on</h2>
+      <p style="margin: 0; font-size: 15.5px; line-height: 1.55; color: #5e5e5e; max-width: 70ch; text-wrap: pretty">Positioning first, numbers second — cards read the same whether or not each listing's stats are shown.</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(252px, 1fr)); gap: 14px">
+      <sc-for list="{{ listings }}" as="l" hint-placeholder-count="3">
+        <div style="border: 1px solid #ebebeb; border-radius: 20px; background: #ffffff; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.04); display: flex; flex-direction: column; min-width: 0">
+          <div style="position: relative; aspect-ratio: 4 / 3; background: repeating-linear-gradient(135deg, #f4f4f4 0 10px, #ececec 10px 20px); display: flex; align-items: flex-end; justify-content: flex-start; padding: 12px">
+            <span style="font-size: 10.5px; font-weight: 700; color: #8f8f8f; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: rgba(255,255,255,0.86); border-radius: 8px; padding: 5px 8px">{{ l.photoHint }}</span>
+            <sc-if value="{{ l.hasBadge }}" hint-placeholder-val="{{ true }}">
+              <span style="position: absolute; top: 12px; left: 12px; display: inline-flex; align-items: center; gap: 7px; background: #ffffff; border-radius: 999px; padding: 6px 11px; font-size: 11.5px; font-weight: 800; color: #222222; box-shadow: 0 3px 10px rgba(0,0,0,0.12)">{{ l.badge }}</span>
+            </sc-if>
+          </div>
+          <div style="padding: 18px; display: flex; flex-direction: column; gap: 9px; flex: 1 1 auto">
+            <div style="font-size: 16.5px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.3; text-wrap: pretty">{{ l.name }}</div>
+            <div style="font-size: 13px; font-weight: 600; color: #717171">{{ l.meta }}</div>
+            <div style="font-size: 13.5px; font-weight: 600; color: #444444; line-height: 1.5; text-wrap: pretty">{{ l.cue }}</div>
+            <sc-if value="{{ l.hasStats }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #f2f2f2; display: flex; flex-wrap: wrap; gap: 7px">
+                <sc-for list="{{ l.stats }}" as="s" hint-placeholder-count="2">
+                  <span style="font-size: 12px; font-weight: 700; color: #444444; background: #f6f6f6; border-radius: 9px; padding: 6px 10px">{{ s.text }}</span>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size: 13px; font-weight: 500; color: #717171; line-height: 1.5; max-width: 84ch">Portfolio examples. Performance shown is for those properties and is not a projection for your listing.</div>
+  </section>
+
+  <section data-binding="offer" style="display: flex; flex-direction: column; gap: 18px">
+    <div style="border-radius: 22px; background: #222222; color: #ffffff; overflow: hidden; display: grid; grid-template-columns: repeat(auto-fit, minmax(292px, 1fr)); box-shadow: 0 14px 40px rgba(0,0,0,0.16)">
+      <div style="padding: 30px; display: flex; flex-direction: column; gap: 14px">
+        <span style="align-self: flex-start; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #b8b8b8">Full audit access</span>
+        <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.2; max-width: 26ch; text-wrap: pretty">Unlock the complete report and the advisor walkthrough</div>
+        <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 4px">
+          <sc-for list="{{ unlocks }}" as="u" hint-placeholder-count="4">
+            <div style="display: flex; gap: 11px; font-size: 14px; font-weight: 600; color: #dcdcdc; line-height: 1.5">
+              <span style="flex: none; color: #7ce0cf; font-weight: 800">+</span>
+              <span style="min-width: 0">{{ u.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="padding: 30px; background: #1a1a1a; display: flex; flex-direction: column; gap: 16px; border-left: 1px solid #313131">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap">
+            <span data-binding="offerPrice" style="font-size: 46px; font-weight: 800; letter-spacing: -0.04em; line-height: 0.95">$19.99</span>
+            <span data-binding="listPrice" style="font-size: 19px; font-weight: 700; color: #8f8f8f; text-decoration: line-through; padding-bottom: 6px">$49.99</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 9px">
+            <span style="font-size: 12px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #ffffff; background: #ff385c; border-radius: 999px; padding: 6px 11px">{{ discountLabel }}</span>
+            <span style="font-size: 12.5px; font-weight: 600; color: #9a9a9a">{{ offerTerms }}</span>
+          </div>
+        </div>
+        <div style="height: 1px; background: #313131"></div>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; font-weight: 700"><span style="color: #a8a8a8">This report</span><span>One-time</span></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; font-weight: 700"><span style="color: #a8a8a8">Advisor walkthrough</span><span style="color: #7ce0cf">Included</span></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; font-weight: 700"><span style="color: #a8a8a8">Renovation scoping</span><span style="color: #7ce0cf">Included</span></div>
+        </div>
+        <div style="margin-top: auto; padding-top: 8px; display: flex; flex-direction: column; gap: 10px">
+          <div style="text-align: center; background: #ff385c; color: #ffffff; border-radius: 14px; padding: 16px; font-size: 15.5px; font-weight: 800; letter-spacing: -0.01em; cursor: pointer" style-hover="background: #e00b41; transform: translateY(-1px)">Unlock the full audit</div>
+          <div style="text-align: center; font-size: 12.5px; font-weight: 600; color: #8f8f8f">No subscription. Secure checkout.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1120,&quot;height&quot;:4200},&quot;discountLabel&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;60% off this report&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;offerTerms&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Applies to this audit only. Priced per property.&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const live = { dot: "#00806f", dotRing: "#00655a" };
+    const modeled = { dot: "#ffffff", dotRing: "#9a9a9a" };
+    const advisor = { dot: "#e08a3c", dotRing: "#c4762f" };
+
+    const signals = [
+      { label: "Trailing revenue", short: "live", ...live },
+      { label: "Nightly rate", short: "live", ...live },
+      { label: "Occupancy", short: "live", ...live },
+      { label: "Nearby comps", short: "live", ...live },
+      { label: "Booking leaks", short: "live", ...live },
+      { label: "Badge standing", short: "live", ...live },
+      { label: "Rating categories", short: "live", ...live },
+      { label: "Revenue scenarios", short: "model", ...modeled },
+      { label: "Phase upside bands", short: "model", ...modeled },
+      { label: "Review-risk patterns", short: "pattern", ...modeled },
+      { label: "Refresh scope + budget", short: "advisor", ...advisor },
+      { label: "60-day activation", short: "advisor", ...advisor }
+    ];
+
+    const scenarios = [
+      {
+        name: "Moderate improvement", revenue: "$3,000", delta: "+30% vs current pace",
+        ink: "#8a3b00", border: "#f2ddc6", bg: "#fffdfa", delay: "60ms",
+        assumptions: [
+          { text: "Occupancy moves from 46% to roughly 56%" },
+          { text: "Rate held at today's $168 average" },
+          { text: "Listing content, photos and amenities corrected" }
+        ],
+        caveat: "The lift here comes from fixing what the audit already found — no renovation assumed."
+      },
+      {
+        name: "Fully optimized", revenue: "$4,250", delta: "+85% vs current pace",
+        ink: "#00655a", border: "#cbe8e2", bg: "#fbfefd", delay: "120ms",
+        assumptions: [
+          { text: "Occupancy near the comp median for your set" },
+          { text: "Rate repositioned toward comparable ADR" },
+          { text: "Refresh completed and badges earned" }
+        ],
+        caveat: "Assumes the full rollout lands. Treat as a ceiling to plan against, not a forecast."
+      }
+    ];
+
+    const tag = k => k === "live"
+      ? { tag: "Live gap", tagInk: "#00655a", tagBg: "#e6f5f2", tagBorder: "#cbe8e2", tagStroke: "solid", impactLabel: "Measured gap" }
+      : k === "model"
+        ? { tag: "Modeled upside", tagInk: "#222222", tagBg: "#ffffff", tagBorder: "#b9b9b9", tagStroke: "dashed", impactLabel: "Modeled range" }
+        : { tag: "Client pattern", tagInk: "#8a3b00", tagBg: "#fdf2e8", tagBorder: "#f2ddc6", tagStroke: "solid", impactLabel: "Where upside usually lands" };
+
+    const lossRows = [
+      {
+        key: "rate_position", ...tag("live"),
+        loss: "Your nightly rate sits under comparable listings",
+        lossBody: "Measured against the comp set pulled for your area and layout — the gap is in the audit above.",
+        fix: "Rate repositioning against your live comp set",
+        fixBody: "We reset your base rate, then tune weekday, weekend and lead-time pricing separately.",
+        impact: "Largest single measured gap in this report"
+      },
+      {
+        key: "conversion", ...tag("model"),
+        loss: "Views are not converting to bookings",
+        lossBody: "Photo order, title, amenity coverage and first-screen copy all suppress conversion before price ever matters.",
+        fix: "Listing rebuild: photo sequence, title, amenities, house rules",
+        fixBody: "A single pass on the listing page, then a second look after two weeks of booking data.",
+        impact: "Commonly a 10–40% swing in booked nights"
+      },
+      {
+        key: "badges", ...tag("live"),
+        loss: "Missing badges cut how often you're surfaced",
+        lossBody: "Superhost and Guest Favorite are rule-based. Your current standing is measured in the badge section.",
+        fix: "Close the specific criteria you're short on",
+        fixBody: "We work the shortest path to each badge — usually response time, cancellations and category scores.",
+        impact: "Placement effect, not a fixed percentage"
+      },
+      {
+        key: "operations", ...tag("pattern"),
+        loss: "Turnover and guest comms eat the margin",
+        lossBody: "Slow replies, inconsistent cleans and manual scheduling show up in scores long before they show up in revenue.",
+        fix: "Managed operations: cleaning, comms, maintenance cadence",
+        fixBody: "Standard playbook with vendors we already run in your market.",
+        impact: "Across our portfolio, the most reliable compounding gain"
+      }
+    ];
+
+    const spend = k => k === "none"
+      ? { spend: "No-cost", spendInk: "#00655a", spendBg: "#e6f5f2" }
+      : k === "light"
+        ? { spend: "Light spend", spendInk: "#8a3b00", spendBg: "#fdf2e8" }
+        : { spend: "MRG-funded when eligible", spendInk: "#ffffff", spendBg: "#222222" };
+
+    const conf = k => k === "high"
+      ? { conf: "Often the first lift", confInk: "#00655a", confBg: "#f3faf8", confBorder: "#cbe8e2" }
+      : { conf: "Directional", confInk: "#717171", confBg: "#fafafa", confBorder: "#dddddd" };
+
+    const phases = [
+      {
+        n: "01", name: "Fix what's free", delay: "0ms",
+        what: "Everything that can change today without spending a dollar: pricing rules, listing copy, photo order, amenity coverage.",
+        items: [{ text: "Rate reset" }, { text: "Photo sequence" }, { text: "Title + copy" }, { text: "Amenity audit" }],
+        upsideLabel: "Typical upside range", upside: "10–25%", upsideNote: "Often where the first lift comes from, because nothing has to be bought or built.",
+        spendNote: "Same-week turnaround.", ...spend("none"), ...conf("high")
+      },
+      {
+        n: "02", name: "Tighten operations", delay: "60ms",
+        what: "Response time, cleaning standard, turnover reliability and the review recovery loop.",
+        items: [{ text: "Comms SLA" }, { text: "Cleaning standard" }, { text: "Vendor bench" }, { text: "Review loop" }],
+        upsideLabel: "Typical upside range", upside: "8–15%", upsideNote: "Usually the highest-leverage operational fixes, and what makes badge criteria reachable.",
+        spendNote: "Vendor cost only.", ...spend("light"), ...conf("high")
+      },
+      {
+        n: "03", name: "Refresh the space", delay: "120ms",
+        what: "Targeted furnishing and styling on the rooms that carry the listing photos.",
+        items: [{ text: "Room scoping" }, { text: "Furnishing" }, { text: "Reshoot" }],
+        upsideLabel: "Directional upside", upside: "Rate + conversion", upsideNote: "Moves both what you can charge and how the listing photographs. Sized after the walkthrough.",
+        spendNote: "Eligibility confirmed with your advisor.", ...spend("mrg"), ...conf("dir")
+      },
+      {
+        n: "04", name: "Hold the gains", delay: "180ms",
+        what: "Seasonal rate management, badge maintenance and quarterly listing review.",
+        items: [{ text: "Seasonal pricing" }, { text: "Badge upkeep" }, { text: "Quarterly review" }],
+        upsideLabel: "Directional upside", upside: "Compounding", upsideNote: "Protects the earlier phases rather than adding a separate lift of its own.",
+        spendNote: "Ongoing management.", ...spend("light"), ...conf("dir")
+      }
+    ];
+
+    const freq = k => k === "high"
+      ? { freq: "Very common", freqInk: "#b8072f", freqBg: "#fdeef1" }
+      : k === "mid"
+        ? { freq: "Common", freqInk: "#8a3b00", freqBg: "#fdf2e8" }
+        : { freq: "Situational", freqInk: "#5e5e5e", freqBg: "#f4f4f4" };
+
+    const risks = [
+      { area: "Cleanliness", theme: "Clean, but not photo-clean", why: "Guests grade against the listing photos, not against a normal home. Grout, vents and linens are where the point comes off.", fix: "Photo-standard checklist per turnover, spot-audited monthly.", affects: "Cleanliness, Value", ...freq("high") },
+      { area: "Accuracy", theme: "The space didn't match the listing", why: "Overstated room counts, dated photos or missing amenities drive the sharpest single-category drops.", fix: "Re-verify amenities and reshoot after any change.", affects: "Accuracy, Value", ...freq("high") },
+      { area: "Check-in", theme: "Instructions arrived late or unclear", why: "Arrival friction is remembered as the whole stay, and it lands in the review even when everything else was fine.", fix: "Pre-arrival sequence with codes, parking and access in one message.", affects: "Check-in, Communication", ...freq("mid") },
+      { area: "Communication", theme: "Replies slowed down mid-stay", why: "Response time is both a review theme and a badge criterion, so it costs twice.", fix: "Managed inbox with a one-hour target during stays.", affects: "Communication, Superhost", ...freq("mid") },
+      { area: "Value", theme: "Fees felt higher than expected", why: "Cleaning and service fees at checkout reframe a fair nightly rate as expensive.", fix: "Rebalance fee structure into the nightly rate.", affects: "Value, Conversion", ...freq("mid") },
+      { area: "Location", theme: "Noise or access surprised the guest", why: "Location can't be fixed, but expectation can — unmanaged, it reads as a bait-and-switch.", fix: "Name the trade-off in the listing and pre-arrival note.", affects: "Location, Accuracy", ...freq("low") }
+    ];
+
+    const rooms = [
+      {
+        name: "Living room", priority: "Highest photo weight",
+        stays: "Layout, flooring, window treatments", changes: "Seating, rug, lighting, art, styling for the reshoot",
+        range: "$3,500–6,000", guestImpact: "Usually the cover photo. Carries more conversion weight than any other room.",
+      },
+      {
+        name: "Primary bedroom", priority: "Second photo slot",
+        stays: "Bed frame if sound, closet", changes: "Mattress and bedding, nightstands, lamps, blackout layer",
+        range: "$2,000–3,800", guestImpact: "Sleep quality drives review language more than any single amenity."
+      },
+      {
+        name: "Den / flex space", priority: "Listing differentiator",
+        stays: "Shell and built-ins", changes: "Convert to workspace or second sleeping area, add seating",
+        range: "$1,200–2,600", guestImpact: "Often what lets the listing claim an extra guest or a work-friendly tag."
+      }
+    ];
+
+    const stages = [
+      {
+        window: "First 30 days", kicker: "First wins", kickerInk: "#00655a",
+        border: "#cbe8e2", bg: "#fbfefd", dot: "#00806f",
+        summary: "Everything reversible, cheap and fast — the changes that show up in the booking calendar first.",
+        steps: [
+          { text: "Rate and minimum-stay reset", qual: "Often completed in the first week" },
+          { text: "Listing rebuild and photo reorder", qual: "Typically live by day 10" },
+          { text: "Amenity and accuracy corrections", qual: "Same pass as the rebuild" },
+          { text: "Comms and cleaning standard in place", qual: "Vendors confirmed in your market" }
+        ],
+        note: "Sequence shifts if you have bookings on the calendar we shouldn't disturb."
+      },
+      {
+        window: "Days 30–60", kicker: "Compounding systems", kickerInk: "#8a3b00",
+        border: "#f2ddc6", bg: "#fffdfa", dot: "#e08a3c",
+        summary: "Slower-moving work that needs the first 30 days of data, or a walkthrough, before it can be scoped.",
+        steps: [
+          { text: "Pricing tuned against real booking data", qual: "Uses the first four weeks of demand" },
+          { text: "Refresh scope agreed and ordered", qual: "If the property qualifies for MRG funding" },
+          { text: "Professional reshoot", qual: "Typically after the refresh lands" },
+          { text: "Badge criteria pushed to close", qual: "Depends on your current standing" }
+        ],
+        note: "Renovation timing depends on lead times and your occupancy — some of this can run into month three."
+      }
+    ];
+
+    const listings = [
+      { name: "Lakeview two-bedroom", meta: "2 bed · 2 bath · sleeps 5", cue: "Repositioned and reshot before relisting.", badge: "Guest Favorite", hasBadge: true, hasStats: true, stats: [{ text: "4.94 rating" }, { text: "128 reviews" }], photoHint: "portfolio photo" },
+      { name: "Downtown loft", meta: "1 bed · 1 bath · sleeps 3", cue: "Work-friendly conversion of an unused den.", badge: "Superhost", hasBadge: true, hasStats: true, stats: [{ text: "Top 10% in market" }], photoHint: "portfolio photo" },
+      { name: "Ridgeline cabin", meta: "3 bed · 2 bath · sleeps 7", cue: "Full furnishing refresh, MRG-funded.", badge: "Superhost", hasBadge: true, hasStats: false, stats: [], photoHint: "portfolio photo" }
+    ];
+
+    const unlocks = [
+      { text: "Full comp set with revenue, rate and occupancy per listing" },
+      { text: "Your complete booking-leak ranking with the fix for each" },
+      { text: "Room-by-room refresh scope and planning budget" },
+      { text: "60-day activation plan built with an MRG advisor" }
+    ];
+
+    return {
+      signals, scenarios, lossRows, phases, risks, rooms, stages, listings, unlocks,
+      discountLabel: this.props.discountLabel ?? "60% off this report",
+      offerTerms: this.props.offerTerms ?? "Applies to this audit only. Priced per property."
+    };
+  }
+}
+</script>
+</body>
+</html>
