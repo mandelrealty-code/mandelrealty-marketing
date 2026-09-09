@@ -63,6 +63,11 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
   object-position: center;
 }
 
+/* Booking wordmark fills its crop taller optically than Airbnb/Expedia */
+.mrg-hub img[alt="Booking.com"] {
+  height: 26px !important;
+}
+
 .mrg-hero-media {
   min-height: clamp(280px, 52vw, 600px);
 }
@@ -106,9 +111,12 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
   }
   .mrg-hub img.mrg-ota-logo,
   .mrg-hub img[alt="Airbnb"],
-  .mrg-hub img[alt="Expedia"],
-  .mrg-hub img[alt="Booking.com"] {
+  .mrg-hub img[alt="Expedia"] {
     height: 28px !important;
+    max-width: none;
+  }
+  .mrg-hub img[alt="Booking.com"] {
+    height: 22px !important;
     max-width: none;
   }
 }
