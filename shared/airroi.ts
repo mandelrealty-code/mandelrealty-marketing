@@ -243,6 +243,52 @@ function asStringList(v: unknown): string[] {
     .filter(Boolean);
 }
 
+/** Count photos from URL lists (array or comma-separated string). */
+function countPhotoUrls(v: unknown): number | null {
+  if (Array.isArray(v)) {
+    const n = v.map((x) => String(x ?? "").trim()).filter(Boolean).length;
+    return n > 0 ? n : null;
+  }
+  if (typeof v === "string" && v.trim()) {
+    const t = v.trim();
+    if (t.startsWith("[")) {
+      try {
+        return countPhotoUrls(JSON.parse(t));
+      } catch {
+        /* fall through to CSV */
+      }
+    }
+    const n = t.split(",").map((s) => s.trim()).filter(Boolean).length;
+    return n > 0 ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Prefer the strongest photo count signal.
+ * AirROI often truncates `photo_urls` in payloads while `photos_count` is full —
+ * and sometimes the reverse is true — so take the max of declared count vs URL count.
+ */
+function resolvePhotosCount(...sources: Array<Record<string, unknown> | null | undefined>): number | null {
+  let declared: number | null = null;
+  let fromUrls: number | null = null;
+  for (const src of sources) {
+    if (!src || typeof src !== "object") continue;
+    const d = num(
+      src.photos_count ??
+        src.photo_count ??
+        src.num_photos ??
+        src.number_of_photos ??
+        src.pictures_count,
+    );
+    if (d != null && d > 0) declared = Math.max(declared ?? 0, d);
+    const u = countPhotoUrls(src.photo_urls ?? src.photos ?? src.pictures ?? src.images);
+    if (u != null) fromUrls = Math.max(fromUrls ?? 0, u);
+  }
+  if (declared != null && fromUrls != null) return Math.max(declared, fromUrls);
+  return declared ?? fromUrls;
+}
+
 function median(nums: number[]): number | null {
   const xs = nums.filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
   if (!xs.length) return null;
@@ -381,7 +427,7 @@ function mapListing(data: Record<string, unknown>): AirroiListingSnapshot {
     ratingCheckin: num(ratings.rating_checkin),
     ratingValue: num(ratings.rating_value),
     ratingLocation: num(ratings.rating_location),
-    photosCount: num(info.photos_count ?? root.photos_count),
+    photosCount: resolvePhotosCount(info, root, prop),
     amenities: asStringList(prop.amenities ?? root.amenities),
     instantBook,
     minNights: num(booking.min_nights ?? root.min_nights),
@@ -488,7 +534,7 @@ function mapComp(raw: Record<string, unknown>): AirroiComp {
     ratingValue: num(ratings.rating_value ?? raw.rating_value),
     ratingLocation: num(ratings.rating_location ?? raw.rating_location),
     reviewCount,
-    photosCount: num(info.photos_count ?? raw.photos_count),
+    photosCount: resolvePhotosCount(info, raw, prop),
     amenities: asStringList(prop.amenities ?? raw.amenities),
     instantBook,
     badges,
@@ -697,7 +743,15 @@ export function buildBookingLeaks(
   const subjectPhotos = subject?.photosCount ?? null;
   const compPhotos = live.map((c) => c.photosCount).filter((n): n is number => n != null && n > 0);
   const medPhotos = median(compPhotos);
-  if (subjectPhotos != null && medPhotos != null && subjectPhotos < medPhotos * 0.75) {
+  // Only flag photo count vs nearby comps — never an absolute floor.
+  // Market feeds sometimes under-count photos; a hard "15+" rule creates false gaps.
+  if (
+    subjectPhotos != null &&
+    subjectPhotos > 0 &&
+    medPhotos != null &&
+    medPhotos >= 10 &&
+    subjectPhotos < medPhotos * 0.75
+  ) {
     drafts.push({
       key: "photos_count",
       weight: 74 + (medPhotos - subjectPhotos) / 2,
@@ -709,19 +763,6 @@ export function buildBookingLeaks(
       vs: String(Math.round(medPhotos)),
       fill: subjectPhotos / medPhotos,
       gapLine: `${Math.round(medPhotos - subjectPhotos)} fewer photos than the local median.`,
-    });
-  } else if (subjectPhotos != null && subjectPhotos > 0 && subjectPhotos < 15) {
-    drafts.push({
-      key: "photos_low",
-      weight: 68,
-      title: "Photo count is below a competitive floor",
-      body: `Your listing has ${Math.round(subjectPhotos)} photos. Strong local listings usually show a denser set across rooms, amenities, and neighborhood context.`,
-      metricLabel: "Your photos",
-      metric: String(Math.round(subjectPhotos)),
-      vsLabel: "Competitive floor",
-      vs: "15+",
-      fill: subjectPhotos / 15,
-      gapLine: "Thin galleries lose clicks before the guest opens the page.",
     });
   }
 
