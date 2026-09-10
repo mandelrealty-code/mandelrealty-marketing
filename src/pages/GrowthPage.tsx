@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { setPageSeo } from "../lib/pageSeo";
 import { GROWTH_HTML } from "./growthContent";
 import "./growth.css";
 
@@ -10,14 +11,12 @@ import "./growth.css";
  */
 export function GrowthPage() {
   useEffect(() => {
-    document.title = "Growth Partnership | Mandel Realty Group";
-    const desc = document.querySelector('meta[name="description"]');
-    if (desc) {
-      desc.setAttribute(
-        "content",
+    setPageSeo({
+      title: "Growth Partnership | Mandel Realty Group",
+      description:
         "Growth Partnership by Mandel Realty Group. Lower fee on your current number, bigger share only on growth. Aligned 10%/35% or Confidence 5%/45%. Live listing with history required.",
-      );
-    }
+      path: "/growth",
+    });
 
     const hash = window.location.hash.replace(/^#/, "");
     if (hash) {

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { setPageSeo } from "../lib/pageSeo";
 import { MUSKOKA_HTML } from "./muskokaContent";
 import "./muskoka.css";
 
@@ -10,21 +11,12 @@ import "./muskoka.css";
  */
 export function MuskokaPage() {
   useEffect(() => {
-    document.title = "Muskoka Cottage Management | Mandel Realty Group";
-    const desc = document.querySelector('meta[name="description"]');
-    if (desc) {
-      desc.setAttribute(
-        "content",
+    setPageSeo({
+      title: "Muskoka Cottage Management | Mandel Realty Group",
+      description:
         "Muskoka cottage and short-term rental management by Mandel Realty Group. Dynamic pricing, turnovers, and 5-star guest ops for Bracebridge, Gravenhurst, Huntsville, Lake of Bays and Port Carling. Call (647) 381-7325.",
-      );
-    }
-    let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
-    if (!canonical) {
-      canonical = document.createElement("link");
-      canonical.rel = "canonical";
-      document.head.appendChild(canonical);
-    }
-    canonical.setAttribute("href", "https://www.mandelrealtygroup.com/muskoka");
+      path: "/muskoka",
+    });
 
     const hash = window.location.hash.replace(/^#/, "");
     if (hash) {

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { setPageSeo } from "../lib/pageSeo";
 import { ESSENTIALS_HTML } from "./essentialsContent";
 import "./essentials.css";
 
@@ -10,14 +11,12 @@ import "./essentials.css";
  */
 export function EssentialsPage() {
   useEffect(() => {
-    document.title = "Managed Essentials | Mandel Realty Group";
-    const desc = document.querySelector('meta[name="description"]');
-    if (desc) {
-      desc.setAttribute(
-        "content",
+    setPageSeo({
+      title: "Managed Essentials | Mandel Realty Group",
+      description:
         "Managed Essentials by Mandel Realty Group. Fixed monthly fee: Message & Book $199 or Message & Optimize $349. You keep cleaning and ops. Book a free 15-minute call.",
-      );
-    }
+      path: "/essentials",
+    });
 
     const hash = window.location.hash.replace(/^#/, "");
     if (hash) {

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { setPageSeo } from "../lib/pageSeo";
 import { FULL_SERVICE_HTML } from "./fullServiceContent";
 import "./full-service.css";
 
@@ -10,14 +11,12 @@ import "./full-service.css";
  */
 export function FullServicePage() {
   useEffect(() => {
-    document.title = "Full Service Management | Mandel Realty Group";
-    const desc = document.querySelector('meta[name="description"]');
-    if (desc) {
-      desc.setAttribute(
-        "content",
+    setPageSeo({
+      title: "Full Service Management | Mandel Realty Group",
+      description:
         "Hands-off short-term rental management by Mandel Realty Group. Standard 20% or Full Service 25% of gross booking revenue. Book a free 15-minute call.",
-      );
-    }
+      path: "/full-service",
+    });
 
     const hash = window.location.hash.replace(/^#/, "");
     if (hash) {

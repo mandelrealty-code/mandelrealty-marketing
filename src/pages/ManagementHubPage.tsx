@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { setPageSeo } from "../lib/pageSeo";
 import { MANAGEMENT_HUB_HTML } from "./managementHubContent";
 import "./management-hub.css";
 
@@ -11,15 +12,12 @@ import "./management-hub.css";
  */
 export function ManagementHubPage() {
   useEffect(() => {
-    document.title =
-      "Mandel Realty Group | Short-Term Rental Management · Canada & U.S.";
-    const desc = document.querySelector('meta[name="description"]');
-    if (desc) {
-      desc.setAttribute(
-        "content",
-        "We manage your short-term rental for you on Airbnb, Expedia, and Booking.com. Full Service, Growth, Essentials, and Furniture Investment. Book a free 15-minute call.",
-      );
-    }
+    setPageSeo({
+      title: "Mandel Realty Group | Short-Term Rental Management · Canada & U.S.",
+      description:
+        "Short-term rental management by Mandel Realty Group. Full Service, Growth, Essentials, Furniture Investment, and Muskoka cottage ops. Book a free 15-minute call.",
+      path: "/",
+    });
 
     const hash = window.location.hash.replace(/^#/, "");
     if (hash) {

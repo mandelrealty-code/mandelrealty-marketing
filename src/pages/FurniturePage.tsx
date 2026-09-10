@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { setPageSeo } from "../lib/pageSeo";
 import { FURNITURE_HTML } from "./furnitureContent";
 import "./furniture.css";
 
@@ -10,14 +11,12 @@ import "./furniture.css";
  */
 export function FurniturePage() {
   useEffect(() => {
-    document.title = "Furniture Investment | Mandel Realty Group";
-    const desc = document.querySelector('meta[name="description"]');
-    if (desc) {
-      desc.setAttribute(
-        "content",
+    setPageSeo({
+      title: "Furniture Investment | Mandel Realty Group",
+      description:
         "Furniture Investment by Mandel Realty Group. $0 upfront furnish if approved. 24-month free transfer. Pairs with Standard 20% or Full Service 25% only. Book a free 15-minute call.",
-      );
-    }
+      path: "/furniture",
+    });
 
     const hash = window.location.hash.replace(/^#/, "");
     if (hash) {

@@ -8,6 +8,7 @@ import {
   WHATSAPP_HREF,
 } from "../lib/constants";
 import { submitAuditLead, LEAD_HANDOFF_KEY } from "../lib/submitAuditLead";
+import { setPageSeo } from "../lib/pageSeo";
 import { formatCallSlotLabel } from "../../shared/callSlots";
 import {
   PERMIT_OPTIONS,
@@ -78,9 +79,13 @@ export function AdsLandingPage() {
   const formCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    document.title = "Book a Call | Mandel Realty Group";
-    const robots = document.querySelector('meta[name="robots"]');
-    if (robots) robots.setAttribute("content", "noindex, nofollow");
+    // Indexable so Google can use this URL as an organic sitelink / brand shortcut.
+    setPageSeo({
+      title: "Book a Free 15-Minute Call | Mandel Realty Group",
+      description:
+        "Book a free 15-minute call with Mandel Realty Group. Get a plan recommendation for Full Service, Growth, Essentials, Furniture Investment, or Muskoka cottage management.",
+      path: "/book-a-call",
+    });
 
     try {
       const raw = sessionStorage.getItem(FIT_CHECK_HANDOFF_KEY);
