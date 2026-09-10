@@ -130,6 +130,66 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
   min-height: clamp(280px, 52vw, 600px);
 }
 
+/* Proof: light earnings chart (mounted via React) */
+.mrg-hub-proof-earnings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mrg-hub-proof-card {
+  background: #ffffff;
+  border: 1px solid #ebebeb;
+  border-radius: 22px;
+  padding: 22px 20px 20px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+}
+
+.mrg-hub-proof-thumbs {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #ebebeb;
+}
+
+.mrg-hub-proof-callout {
+  margin: 0;
+  padding: 16px 18px;
+  background: #fbf7ee;
+  border: 1px solid #f0e6d0;
+  border-radius: 16px;
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #5e5e5e;
+}
+
+.mrg-hub-proof-callout strong {
+  font-weight: 800;
+  color: #8a6f2e;
+}
+
+.mrg-hub-proof-earnings--blue .mrg-hub-proof-callout {
+  background: #eef3ff;
+  border-color: #d4e0ff;
+}
+
+.mrg-hub-proof-earnings--blue .mrg-hub-proof-callout strong {
+  color: #1b4fd6;
+}
+
+.mrg-hub-proof-note {
+  margin: 0;
+  font-weight: 500;
+  font-size: 14px;
+  color: #717171;
+}
+
+@media (min-width: 640px) {
+  .mrg-hub-proof-card {
+    padding: 26px 28px 24px;
+  }
+}
+
 /* Mobile header / nav */
 @media (max-width: 820px) {
   .mrg-hub header > div {

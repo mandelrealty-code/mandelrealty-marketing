@@ -8,6 +8,51 @@ const innerW = W - PAD.left - PAD.right;
 const innerH = H - PAD.top - PAD.bottom;
 const maxY = 12000;
 
+const THEMES = {
+  dark: {
+    muted: "text-mrg-muted",
+    strong: "text-mrg-text",
+    goldText: "text-mrg-gold",
+    legend2025: "bg-white/35",
+    legend2026: "bg-mrg-gold",
+    grid: "rgba(255,255,255,0.06)",
+    axis: "rgba(154,154,154,0.9)",
+    bar2025: "rgba(255,255,255,0.28)",
+    bar2026Pre: "rgba(245,197,24,0.35)",
+    goldTop: "#f5c518",
+    goldBottom: "#f5c518",
+    goldBottomOpacity: "0.55",
+  },
+  light: {
+    muted: "text-[#717171]",
+    strong: "text-[#222222]",
+    goldText: "text-[#8a6f2e]",
+    legend2025: "bg-[#222222]/30",
+    legend2026: "bg-[#c4a35a]",
+    grid: "rgba(34,34,34,0.08)",
+    axis: "rgba(113,113,113,0.95)",
+    bar2025: "rgba(34,34,34,0.22)",
+    bar2026Pre: "rgba(196,163,90,0.38)",
+    goldTop: "#c4a35a",
+    goldBottom: "#a8883f",
+    goldBottomOpacity: "1",
+  },
+  lightBlue: {
+    muted: "text-[#717171]",
+    strong: "text-[#222222]",
+    goldText: "text-[#1b4fd6]",
+    legend2025: "bg-[#222222]/30",
+    legend2026: "bg-[#2F6BFF]",
+    grid: "rgba(34,34,34,0.08)",
+    axis: "rgba(113,113,113,0.95)",
+    bar2025: "rgba(34,34,34,0.22)",
+    bar2026Pre: "rgba(47,107,255,0.35)",
+    goldTop: "#2F6BFF",
+    goldBottom: "#1b4fd6",
+    goldBottomOpacity: "1",
+  },
+} as const;
+
 function yScale(v: number) {
   return PAD.top + innerH - (v / maxY) * innerH;
 }
@@ -15,24 +60,31 @@ function yScale(v: number) {
 /**
  * Clean dual-series bar chart — marketing visual, not a cropped dashboard.
  */
-export function EarningsComparisonChart({ className = "" }: { className?: string }) {
+export function EarningsComparisonChart({
+  className = "",
+  variant = "dark",
+}: {
+  className?: string;
+  variant?: "dark" | "light" | "lightBlue";
+}) {
   const gid = useId().replace(/:/g, "");
   const groupW = innerW / EARNINGS_BY_MONTH.length;
   const barW = Math.max(4, groupW * 0.32);
+  const t = THEMES[variant];
 
   return (
     <div className={className}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-mrg-muted">
+        <p className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${t.muted}`}>
           {EARNINGS_SUMMARY.note}
         </p>
-        <div className="flex items-center gap-4 text-xs text-mrg-muted">
+        <div className={`flex items-center gap-4 text-xs ${t.muted}`}>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-sm bg-white/35" aria-hidden />
+            <span className={`h-2 w-2 rounded-sm ${t.legend2025}`} aria-hidden />
             2025
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-sm bg-mrg-gold" aria-hidden />
+            <span className={`h-2 w-2 rounded-sm ${t.legend2026}`} aria-hidden />
             2026 · MRG from {EARNINGS_SUMMARY.mrgStart}
           </span>
         </div>
@@ -46,12 +98,15 @@ export function EarningsComparisonChart({ className = "" }: { className?: string
       >
         <defs>
           <linearGradient id={`${gid}-gold`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f5c518" stopOpacity="1" />
-            <stop offset="100%" stopColor="#f5c518" stopOpacity="0.55" />
+            <stop offset="0%" stopColor={t.goldTop} stopOpacity="1" />
+            <stop
+              offset="100%"
+              stopColor={t.goldBottom}
+              stopOpacity={t.goldBottomOpacity}
+            />
           </linearGradient>
         </defs>
 
-        {/* Grid */}
         {[0, 3000, 6000, 9000, 12000].map((tick) => (
           <g key={tick}>
             <line
@@ -59,14 +114,14 @@ export function EarningsComparisonChart({ className = "" }: { className?: string
               x2={W - PAD.right}
               y1={yScale(tick)}
               y2={yScale(tick)}
-              stroke="rgba(255,255,255,0.06)"
+              stroke={t.grid}
               strokeWidth="1"
             />
             <text
               x={PAD.left - 8}
               y={yScale(tick) + 3}
               textAnchor="end"
-              fill="rgba(154,154,154,0.9)"
+              fill={t.axis}
               fontSize="9"
               fontFamily="system-ui, sans-serif"
             >
@@ -90,7 +145,7 @@ export function EarningsComparisonChart({ className = "" }: { className?: string
                 width={barW}
                 height={Math.max(h25, row.y2025 > 0 ? 2 : 0)}
                 rx="2"
-                fill="rgba(255,255,255,0.28)"
+                fill={t.bar2025}
               />
               {row.y2026 != null && (
                 <rect
@@ -99,14 +154,14 @@ export function EarningsComparisonChart({ className = "" }: { className?: string
                   width={barW}
                   height={Math.max(h26, y2026 > 0 ? 2 : 0)}
                   rx="2"
-                  fill={isMrg ? `url(#${gid}-gold)` : "rgba(245,197,24,0.35)"}
+                  fill={isMrg ? `url(#${gid}-gold)` : t.bar2026Pre}
                 />
               )}
               <text
                 x={cx}
                 y={H - 12}
                 textAnchor="middle"
-                fill="rgba(154,154,154,0.95)"
+                fill={t.axis}
                 fontSize="9"
                 fontFamily="system-ui, sans-serif"
               >
@@ -117,14 +172,14 @@ export function EarningsComparisonChart({ className = "" }: { className?: string
         })}
       </svg>
 
-      <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-mrg-muted">
+      <div className={`mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs ${t.muted}`}>
         <span>
           2025 total:{" "}
-          <strong className="text-mrg-text">${EARNINGS_SUMMARY.year2025.toLocaleString()}</strong>
+          <strong className={t.strong}>${EARNINGS_SUMMARY.year2025.toLocaleString()}</strong>
         </span>
         <span>
           May–Aug 2026:{" "}
-          <strong className="text-mrg-gold">
+          <strong className={t.goldText}>
             ${EARNINGS_SUMMARY.mayAug2026.toLocaleString()}
           </strong>
         </span>

@@ -4,6 +4,7 @@ import { AdsLandingPage } from "./pages/AdsLandingPage";
 import { MuskokaLandingPage } from "./pages/MuskokaLandingPage";
 import { ManagementHubPage } from "./pages/ManagementHubPage";
 import { MakeoverPage } from "./pages/MakeoverPage";
+import { FullServicePage } from "./pages/FullServicePage";
 import { PlanStubPage, planIdFromPath } from "./pages/PlanStubPage";
 import { AdminPage } from "./pages/AdminPage";
 import { OwnerApp } from "./pages/owner/OwnerApp";
@@ -88,6 +89,10 @@ export default function App() {
   if (path === "/revenueaudit") {
     window.location.replace("/revenueaudit/");
     return null;
+  }
+
+  if (path === "/full-service") {
+    return <FullServicePage />;
   }
 
   const planId = planIdFromPath(path);
