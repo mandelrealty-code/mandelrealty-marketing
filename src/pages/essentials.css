@@ -5,7 +5,10 @@
   color: #222222;
   font-family: "Plus Jakarta Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+}
+
+.mrg-es-header {
+  overflow: visible;
 }
 
 .mrg-es *,
@@ -280,10 +283,22 @@
     order: 3;
     justify-content: flex-start;
     overflow-x: auto;
+    overflow-y: visible;
     -webkit-overflow-scrolling: touch;
     padding-bottom: 2px;
     flex-wrap: nowrap !important;
     scrollbar-width: none;
+  }
+
+  /* Open dropdown must escape the scroll clip */
+  .mrg-es-header:has(.mrg-es-plans.is-open) nav {
+    overflow: visible;
+  }
+
+  .mrg-es-plans-panel {
+    left: 0;
+    right: auto;
+    width: min(344px, calc(100vw - 40px));
   }
 
   .mrg-es-header nav::-webkit-scrollbar {

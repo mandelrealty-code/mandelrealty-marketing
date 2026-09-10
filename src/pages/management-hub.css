@@ -7,7 +7,9 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
   color: #222222;
   font-family: 'Plus Jakarta Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+}
+.mrg-hub header {
+  overflow: visible;
 }
 .mrg-hub *, .mrg-hub *::before, .mrg-hub *::after { box-sizing: border-box; }
 .mrg-hub a { text-decoration: none; }
@@ -209,9 +211,13 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
     order: 3;
     justify-content: flex-start;
     overflow-x: auto;
+    overflow-y: visible;
     -webkit-overflow-scrolling: touch;
     padding-bottom: 4px;
     flex-wrap: nowrap !important;
+  }
+  .mrg-hub header:has(.mrg-plans.is-open) nav {
+    overflow: visible;
   }
   .mrg-hub header nav a,
   .mrg-hub header nav summary {
@@ -220,6 +226,7 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
   .mrg-plans-panel {
     left: 0;
     right: auto;
+    width: min(344px, calc(100vw - 40px));
   }
   .mrg-hub section[id="plans"] {
     margin-left: 12px !important;

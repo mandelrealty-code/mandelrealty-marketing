@@ -48,6 +48,7 @@ export function FullServicePage() {
       }
       if (t?.closest?.(".mrg-fs-plans-trigger")) {
         e.preventDefault();
+        e.stopPropagation();
         const open = plans.classList.toggle("is-open");
         trigger.setAttribute("aria-expanded", open ? "true" : "false");
       } else if (!t?.closest?.(".mrg-fs-plans")) {
@@ -55,10 +56,10 @@ export function FullServicePage() {
         trigger.setAttribute("aria-expanded", "false");
       }
     };
-    document.addEventListener("click", onPlansClick);
+    document.addEventListener("click", onPlansClick, true);
 
     return () => {
-      document.removeEventListener("click", onPlansClick);
+      document.removeEventListener("click", onPlansClick, true);
       chartRoot?.unmount();
     };
   }, []);

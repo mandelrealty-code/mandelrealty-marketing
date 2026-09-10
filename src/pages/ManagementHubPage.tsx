@@ -52,6 +52,7 @@ export function ManagementHubPage() {
       }
       if (t?.closest?.(".mrg-plans-trigger")) {
         e.preventDefault();
+        e.stopPropagation();
         const open = plans.classList.toggle("is-open");
         trigger.setAttribute("aria-expanded", open ? "true" : "false");
       } else if (!t?.closest?.(".mrg-plans")) {
@@ -59,10 +60,10 @@ export function ManagementHubPage() {
         trigger.setAttribute("aria-expanded", "false");
       }
     };
-    document.addEventListener("click", onPlansClick);
+    document.addEventListener("click", onPlansClick, true);
 
     return () => {
-      document.removeEventListener("click", onPlansClick);
+      document.removeEventListener("click", onPlansClick, true);
       chartRoot?.unmount();
     };
   }, []);
