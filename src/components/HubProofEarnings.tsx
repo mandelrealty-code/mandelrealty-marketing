@@ -17,11 +17,11 @@ const DASHBOARD_SHOTS = [
   },
 ] as const;
 
-/** Light-theme earnings proof — gold on hub, blue / green / orange on plan LPs. */
+/** Light-theme earnings proof — gold on hub; blue / green / orange / yellow on plan LPs. */
 export function HubProofEarnings({
   accent = "gold",
 }: {
-  accent?: "gold" | "blue" | "green" | "orange";
+  accent?: "gold" | "blue" | "green" | "orange" | "yellow";
 }) {
   const mayAug = EARNINGS_SUMMARY.mayAug2026.toLocaleString();
   const year2025 = EARNINGS_SUMMARY.year2025.toLocaleString();
@@ -32,7 +32,9 @@ export function HubProofEarnings({
         ? "lightGreen"
         : accent === "orange"
           ? "lightOrange"
-          : "light";
+          : accent === "yellow"
+            ? "lightYellow"
+            : "light";
   const rootCls =
     accent === "blue"
       ? "mrg-hub-proof-earnings mrg-hub-proof-earnings--blue"
@@ -40,7 +42,9 @@ export function HubProofEarnings({
         ? "mrg-hub-proof-earnings mrg-hub-proof-earnings--green"
         : accent === "orange"
           ? "mrg-hub-proof-earnings mrg-hub-proof-earnings--orange"
-          : "mrg-hub-proof-earnings";
+          : accent === "yellow"
+            ? "mrg-hub-proof-earnings mrg-hub-proof-earnings--yellow"
+            : "mrg-hub-proof-earnings";
 
   return (
     <div className={rootCls}>

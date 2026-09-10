@@ -7,6 +7,7 @@ import { MakeoverPage } from "./pages/MakeoverPage";
 import { FullServicePage } from "./pages/FullServicePage";
 import { GrowthPage } from "./pages/GrowthPage";
 import { EssentialsPage } from "./pages/EssentialsPage";
+import { FurniturePage } from "./pages/FurniturePage";
 import { PlanStubPage, planIdFromPath } from "./pages/PlanStubPage";
 import { AdminPage } from "./pages/AdminPage";
 import { OwnerApp } from "./pages/owner/OwnerApp";
@@ -103,6 +104,10 @@ export default function App() {
 
   if (path === "/essentials") {
     return <EssentialsPage />;
+  }
+
+  if (path === "/furniture") {
+    return <FurniturePage />;
   }
 
   const planId = planIdFromPath(path);

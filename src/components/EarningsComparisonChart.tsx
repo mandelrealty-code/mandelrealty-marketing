@@ -79,6 +79,20 @@ const THEMES = {
     goldBottom: "#d63a10",
     goldBottomOpacity: "1",
   },
+  lightYellow: {
+    muted: "text-[#717171]",
+    strong: "text-[#222222]",
+    goldText: "text-[#8a6d05]",
+    legend2025: "bg-[#222222]/30",
+    legend2026: "bg-[#F5C518]",
+    grid: "rgba(34,34,34,0.08)",
+    axis: "rgba(113,113,113,0.95)",
+    bar2025: "rgba(34,34,34,0.22)",
+    bar2026Pre: "rgba(245,197,24,0.35)",
+    goldTop: "#F5C518",
+    goldBottom: "#d4a60f",
+    goldBottomOpacity: "1",
+  },
 } as const;
 
 function yScale(v: number) {
@@ -93,7 +107,7 @@ export function EarningsComparisonChart({
   variant = "dark",
 }: {
   className?: string;
-  variant?: "dark" | "light" | "lightBlue" | "lightGreen" | "lightOrange";
+  variant?: "dark" | "light" | "lightBlue" | "lightGreen" | "lightOrange" | "lightYellow";
 }) {
   const gid = useId().replace(/:/g, "");
   const groupW = innerW / EARNINGS_BY_MONTH.length;
