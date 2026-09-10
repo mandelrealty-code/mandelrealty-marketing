@@ -1245,6 +1245,8 @@ class Component extends DCLogic {
     if (this._exitBound) return;
     this._exitBound = true;
     const trigger = () => {
+      // Only after they've run an audit and still haven't paid
+      if (!this.state.audited) return;
       if (this.alreadyUnlocked()) return;
       try {
         if (sessionStorage.getItem("ra_exit_offer_shown") === "1") return;
