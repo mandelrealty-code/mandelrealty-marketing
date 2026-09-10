@@ -17,13 +17,22 @@ const DASHBOARD_SHOTS = [
   },
 ] as const;
 
-/** Light-theme earnings proof — gold on hub, blue on Full Service. */
-export function HubProofEarnings({ accent = "gold" }: { accent?: "gold" | "blue" }) {
+/** Light-theme earnings proof — gold on hub, blue on Full Service, green on Growth. */
+export function HubProofEarnings({
+  accent = "gold",
+}: {
+  accent?: "gold" | "blue" | "green";
+}) {
   const mayAug = EARNINGS_SUMMARY.mayAug2026.toLocaleString();
   const year2025 = EARNINGS_SUMMARY.year2025.toLocaleString();
-  const blue = accent === "blue";
-  const chartVariant = blue ? "lightBlue" : "light";
-  const rootCls = blue ? "mrg-hub-proof-earnings mrg-hub-proof-earnings--blue" : "mrg-hub-proof-earnings";
+  const chartVariant =
+    accent === "blue" ? "lightBlue" : accent === "green" ? "lightGreen" : "light";
+  const rootCls =
+    accent === "blue"
+      ? "mrg-hub-proof-earnings mrg-hub-proof-earnings--blue"
+      : accent === "green"
+        ? "mrg-hub-proof-earnings mrg-hub-proof-earnings--green"
+        : "mrg-hub-proof-earnings";
 
   return (
     <div className={rootCls}>

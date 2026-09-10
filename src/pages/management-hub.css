@@ -177,6 +177,15 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
   color: #1b4fd6;
 }
 
+.mrg-hub-proof-earnings--green .mrg-hub-proof-callout {
+  background: #eaf8f1;
+  border-color: #c6ebd8;
+}
+
+.mrg-hub-proof-earnings--green .mrg-hub-proof-callout strong {
+  color: #0d8f53;
+}
+
 .mrg-hub-proof-note {
   margin: 0;
   font-weight: 500;

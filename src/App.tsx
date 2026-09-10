@@ -5,6 +5,7 @@ import { MuskokaLandingPage } from "./pages/MuskokaLandingPage";
 import { ManagementHubPage } from "./pages/ManagementHubPage";
 import { MakeoverPage } from "./pages/MakeoverPage";
 import { FullServicePage } from "./pages/FullServicePage";
+import { GrowthPage } from "./pages/GrowthPage";
 import { PlanStubPage, planIdFromPath } from "./pages/PlanStubPage";
 import { AdminPage } from "./pages/AdminPage";
 import { OwnerApp } from "./pages/owner/OwnerApp";
@@ -93,6 +94,10 @@ export default function App() {
 
   if (path === "/full-service") {
     return <FullServicePage />;
+  }
+
+  if (path === "/growth") {
+    return <GrowthPage />;
   }
 
   const planId = planIdFromPath(path);
