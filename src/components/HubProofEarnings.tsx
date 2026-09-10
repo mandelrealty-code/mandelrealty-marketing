@@ -17,22 +17,30 @@ const DASHBOARD_SHOTS = [
   },
 ] as const;
 
-/** Light-theme earnings proof — gold on hub, blue on Full Service, green on Growth. */
+/** Light-theme earnings proof — gold on hub, blue / green / orange on plan LPs. */
 export function HubProofEarnings({
   accent = "gold",
 }: {
-  accent?: "gold" | "blue" | "green";
+  accent?: "gold" | "blue" | "green" | "orange";
 }) {
   const mayAug = EARNINGS_SUMMARY.mayAug2026.toLocaleString();
   const year2025 = EARNINGS_SUMMARY.year2025.toLocaleString();
   const chartVariant =
-    accent === "blue" ? "lightBlue" : accent === "green" ? "lightGreen" : "light";
+    accent === "blue"
+      ? "lightBlue"
+      : accent === "green"
+        ? "lightGreen"
+        : accent === "orange"
+          ? "lightOrange"
+          : "light";
   const rootCls =
     accent === "blue"
       ? "mrg-hub-proof-earnings mrg-hub-proof-earnings--blue"
       : accent === "green"
         ? "mrg-hub-proof-earnings mrg-hub-proof-earnings--green"
-        : "mrg-hub-proof-earnings";
+        : accent === "orange"
+          ? "mrg-hub-proof-earnings mrg-hub-proof-earnings--orange"
+          : "mrg-hub-proof-earnings";
 
   return (
     <div className={rootCls}>
