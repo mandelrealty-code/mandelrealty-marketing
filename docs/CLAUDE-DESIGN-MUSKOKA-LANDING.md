@@ -70,14 +70,15 @@ Muskoka is the **place** LP inside the same system. Feel specific through photog
 2. Cottage-country reality as a **numbered typographic list** (not 5 identical pain cards)
 3. How it works as a **horizontal or stacked step chain** with mono `STEP 01` labels and hairlines
 4. Capability strip as a simple text/list row under the chain (no icon soup)
-5. Photo gallery for “What guests book” — real images, short captions, no sticker overlays
+5. **Seasonal operating map** (replaces any “cottages we run” gallery) — typographic year board, not property photos we claim to manage
 6. Four plan teaser tiles with **bold colour swatches** linking to `/full-service`, `/growth`, `/essentials`, `/furniture` (Spellbook-style: colour on swatch/edge only; don’t paint whole cards)
 7. Proof band ready for engineering chart mount: empty `#mrg-mu-proof-chart` white band is fine; show the Toronto numbers once in copy
 8. Owner quotes as typographic blocks, not testimonial card soup
 9. FAQ as native `<details>` / accordion
 10. Final dark conversion band `#222222` + gold Book + phone / email / WhatsApp
 
-**Do not use:** glass frost panels, pine-needle textures as UI chrome, cartoon docks, floating “+40%” stickers on photos, purple gradients, 3D icons.
+**Do not use:** glass frost panels, pine-needle textures as UI chrome, cartoon docks, floating “+40%” stickers on photos, purple gradients, 3D icons.  
+**Do not** show a gallery of Muskoka cottages captioned as properties MRG runs. We do not have Muskoka inventory live yet.
 
 Keep graphics sparse. White space wins.
 
@@ -122,35 +123,55 @@ Steps:
 Capability strip (plain text / compact list, not icon grid):
 Dynamic daily pricing · Listing + photo optimization · 24/7 guest communication · Cleaning & turnover coordination · Inventory & restock · Review & reputation · Monthly performance reporting · Guest ID & screening · Furniture makeover (Standard / Full Service) · Growth Partnership for hosts with history
 
-### 03 — What guests book
-**Eyebrow:** 03 — What guests book  
-**Headline:** Cottages we run, photographed the way they rent.  
-**Intro:** Every listing we take on gets re-shot, re-sequenced and re-written before its first night on market.
+### 03 — Muskoka season (REWRITE THIS SECTION — do not use a “cottages we run” gallery)
 
-Gallery captions (pair with photos above):
-- Great room · Lake of Bays — Sleeps 10 · 4 br · dock
-- Private dock · Port Carling
-- Kitchen & dining
-- Primary suite
-- Boathouse · Gravenhurst
-- Evening shoreline
-- February · still booked
+**Why:** MRG does not have live Muskoka cottages on the books yet. Do **not** show property photos as inventory we manage. Do **not** use captions like “Great room · Lake of Bays · Sleeps 10” as if they were our listings.
+
+**Replace the old “What guests book” gallery with a seasonal operating map.**
+
+**Eyebrow:** 03 — Muskoka season  
+**Headline:** Eleven weeks of peak. The rest of the year still has to work.  
+**Intro:** Muskoka is not a flat calendar. The weekends that matter, the soft mid-weeks, and the winter weeks each need a different rate and a different turnover plan.
+
+**Layout:** Typographic board / timeline with hairline rules (not photo cards). Mono labels OK. Keep the gold bar metaphors if already designed (full / half / dashed / mid-winter), but **shorten each body to one sentence**.
+
+Rows:
+- **Victoria Day → Labour Day · Peak** — Eleven weeks carry the year. Rates set early, minimum stays enforced, Saturday turnovers booked before the season starts.
+- **June & September · Shoulder mid-weeks** — Real demand if you market them as their own product, not leftover discounts.
+- **Civic · Canada Day · Thanksgiving · Long weekends** — Open early at holiday rates. Book turnover crews first. (Vary this row slightly: three weekend chips instead of the same title/body/bar stack if the other rows already use that pattern.)
+- **December → March · Ski and ice season** — Winter stays book when heat, water lines, plowing and response times are on the operating calendar.
+
+**Closing line (keep visible):** Lakeside photography elsewhere on this page is place atmosphere, not a portfolio we manage.
+
+Reuse existing `/muskoka/*.jpg` only as optional quiet background / section atmosphere if needed — never as “a listing we run.”
+
+### 03b — Coverage and fit (ADD THIS SECTION)
+
+**Eyebrow:** Coverage and fit  
+**Headline:** Built for lake country. Honest about what we need from you.  
+**Intro:** We cover Bracebridge, Gravenhurst, Huntsville, Lake of Bays, Port Carling and surrounding lakes. Toronto-based operators, local cleaners and lake-road logistics.
+
+**Fit checklist** (typographic list, not cards):
+1. Livable cottage — furnishing is not a renovation
+2. STR allowed — permit or licensing where the township requires it
+3. Photo-ready, or open to Furniture Investment with Standard 20% / Full Service 25%
+4. Willing to grant the platform access the plan needs
+5. Open to a 15-minute fit call
+
+**CTA:** Check fit for my cottage → `/book-a-call`
 
 ### 04 — What we offer
 **Eyebrow:** 04 — What we offer  
 **Headline:** Four ways to work with us.  
 **Intro:** Pick the one that matches how much you want to keep. All fees are on gross booking revenue — nightly plus upsells, excluding cleaning and pass-throughs. HST applies to fees.
 
-Four plan teasers (link out):
-- **Full Service / Standard** — 20% – 25% of revenue → `/full-service`
-- **Growth Partnership** — Performance-tied · history required → `/growth`
-- **Managed Essentials** — $199 or $349 / month → `/essentials`
-- **Furniture Investment** — Pairs with Standard / Full Service → `/furniture`
+Four plan teasers (link out) with **bold colour swatches only** (Spellbook-style — do not paint whole cards):
+- **Full Service / Standard** `#2F6BFF` — 20% – 25% of revenue → `/full-service`
+- **Growth Partnership** `#12B76A` — Performance-tied · history required → `/growth`
+- **Managed Essentials** `#FF4716` — $199 or $349 / month → `/essentials`
+- **Furniture Investment** `#F5C518` — Pairs with Standard / Full Service only → `/furniture`
 
 **Note:** Not sure which fits? The 15-minute call ends with a recommendation, not a pitch.
-
-Optional expanded Full Service blurb (keep short; details live on `/full-service`):
-Hands-off hosting. We run the cottage as a business and you get a monthly report and a deposit. 20–25% of gross revenue. Includes 24/7 guest messaging, cleaning & turnover coordination, dynamic daily pricing, inventory & restock, listing optimization & photo direction, review protection & reputation, guest ID & screening, monthly performance reporting. Furniture Investment can pair with Standard (~20%) or Full Service (~25%) only. CTA: Book a free 15-minute call. New or existing listings · HST on fees.
 
 ### 05 — Proof of systems
 **Eyebrow:** 05 — Proof of systems  
@@ -162,23 +183,21 @@ Numbers (once):
 - May–Aug 2026 · with MRG — **$33,713**
 - Four months beat the entire previous year — +159% against the same months a year earlier.
 
-Disclaimer: Verified Airbnb host dashboard · Toronto client. Same playbook we run for Muskoka cottages — we don't publish Muskoka dashboards we haven't earned yet.
+**Disclaimer (required, visible):** Verified Airbnb host dashboard · Toronto client. Same playbook we would bring to a Muskoka cottage. We do not publish Muskoka dashboards we have not earned yet.
 
 Include empty mount: `<div id="mrg-mu-proof-chart"></div>` for engineering.
 
-Optional month callouts from copy (MAY / JUNE / JULY / AUGUST) as typographic labels only — not fake chart chrome.
+### 06 — Owners (CHANGE)
 
-### 06 — Owners
-**Eyebrow:** 06 — Owners  
-**Headline:** What cottage owners say after a season.
+**Remove** Muskoka-named fake testimonials (Lake Muskoka, Lake of Bays, Gravenhurst, Huntsville cottage-owner quotes) unless they are real verified owners.
 
-Quotes (typographic, not card soup):
-1. “I assumed a manager meant giving up a fifth of the revenue for nothing. First quarter with MRG came in meaningfully ahead of what I was doing alone, and I have not touched the calendar since April.” — Dan R. · Lake Muskoka, Port Carling · +40% REVENUE
-2. “Guests used to wait until morning for an answer. Now they get one in minutes, at 11pm, from someone who knows which key opens the boathouse. We went from 4.6 to 4.9 in one summer.” — Priya M. · Lake of Bays, Dwight · 4.9★
-3. “Three cottages on two lakes, one cleaner shared between them. MRG untangled the schedule and sends one report a month I can actually read. My accountant is happier than I am.” — Marc & Ellen T. · Gravenhurst + Bracebridge · 3 COTTAGES
-4. “Civic weekend used to be four turnovers and a fight with the cleaning schedule. This year I spent it on the dock with my kids and found out afterwards it was our best week ever.” — Sarah K. · Huntsville, Peninsula Lake · HANDS-OFF SUMMERS
+**Replace with one of:**
+- Skip the section entirely, **or**
+- A short “Who this is for / not for” two-column typographic block (cottage owners who want systems + local cleaners; not owners who want a franchise call centre or a guaranteed ADR).
 
-### 07 — Boutique capacity
+Do not invent cottage-owner quotes.
+
+### 07 — Boutique capacity (KEEP, place near CTA)
 **Eyebrow:** 07 — Boutique capacity  
 **Headline:** We partner with about twenty listings at a time.  
 **Body:** Not a franchise, not a call centre. Twenty is the number where every owner still gets a named operator, a weekly eye on their calendar and a real conversation each month. A small number of Muskoka spots open ahead of next season — when they are taken, the list is closed until one frees up.  
@@ -191,12 +210,13 @@ Quotes (typographic, not card soup):
 
 FAQ items:
 1. **What does it cost — percentage or fixed?** Both exist. Full Service / Standard management runs 20–25% of gross booking revenue — you pay only when the cottage earns. Managed Essentials is fixed at $199 or $349 a month and you keep cleaning and on-site work. Growth Partnership ties our fee to growth above a benchmark. HST applies to fees on every plan.
-2. **Are you actually in Muskoka, or managing from Toronto?** (Answer honestly from product truth: Toronto-based operator with Muskoka focus / local cleaners and lake logistics — do not invent a Muskoka storefront. Keep short and concrete.)
+2. **Are you actually in Muskoka, or managing from Toronto?** Toronto-based operators with a Muskoka focus. Local cleaners and lake-road logistics. We do not claim a Muskoka storefront we do not have.
 3. **My cottage has never been rented. Can you still take it?** Yes via Full Service / Standard or Essentials depending on scope. Growth needs live history. Furniture may pair with 20%/25% if approved.
 4. **How fast can we onboard?** An existing listing can move in days. A new launch depends on photography and makeover scope; we give a dated plan on the call rather than a promise here.
 5. **Do you cover Bracebridge, Gravenhurst, Huntsville, Port Carling?** Yes, and surrounding lakes including Lake of Bays.
 6. **Who pays cleaning, maintenance, insurance and taxes?** Cleaning/pass-throughs and property expenses sit outside management fees as described on the plan pages. Owner remains responsible for insurance and taxes.
 7. **Can I get the furniture makeover on any plan?** No. Furniture Investment pairs with Standard (~20%) or Full Service (~25%) only — not Growth or Essentials.
+8. **Do you already manage cottages in Muskoka?** Not yet on the books. This page is the offer and the operating plan. Lakeside photos are place atmosphere, not our current portfolio.
 
 Use native accordion / `<details>`.
 
@@ -206,10 +226,10 @@ Use native accordion / `<details>`.
 **Body:** Tell us the lake, the bedrooms and roughly what it earns now. We come back with what we would change first, which plan fits, and what the season could realistically look like.  
 **Contacts:** 647-381-7325 · info@mandelrealtygroup.com · Prefer WhatsApp? Text the same number for an estimate.  
 **Primary CTA:** gold Book a free 15-minute call → `/book-a-call`  
-Do **not** rebuild the full calendar booking widget in Design Canvas. Link to `/book-a-call`. Optional simple fields (name / email / lake) as a visual mock only if useful — engineering already has the live booker.
+Do **not** rebuild the full calendar booking widget in Design Canvas. Link to `/book-a-call`.
 
 ### Footer
-Logo only (no duplicate wordmark text). Muskoka cottage & short-term rental management. Toronto-based · portfolios across Canada and the US. Contact phone + email. Links: Plans (`/#plans`), FAQ (`#faq`), Book a call, Privacy, main site `/`. © 2026 Mandel Realty Group. Fees quoted exclude HST. No revenue guarantees. Bracebridge · Gravenhurst · Huntsville · Lake of Bays · Port Carling
+Logo only (no duplicate wordmark text). Muskoka cottage & short-term rental management. Toronto-based · portfolios across Canada and the US. Contact phone + email. Links: Plans (`/#plans`), FAQ (`#faq`), Book a call, Privacy, main site `/`. No “Airbnb makeover” footer link. © 2026 Mandel Realty Group. Fees quoted exclude HST. No revenue guarantees. Bracebridge · Gravenhurst · Huntsville · Lake of Bays · Port Carling
 
 ---
 
@@ -222,6 +242,7 @@ Logo only (no duplicate wordmark text). Muskoka cottage & short-term rental mana
 - Boutique ~20 listings
 - Platforms: Airbnb, Expedia, Booking.com
 - Never invent Muskoka earnings guarantees
+- Never claim live Muskoka inventory you do not have
 
 ---
 

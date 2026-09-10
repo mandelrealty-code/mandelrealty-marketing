@@ -1,7 +1,7 @@
 import { ThankYouPage } from "./pages/ThankYouPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { AdsLandingPage } from "./pages/AdsLandingPage";
-import { MuskokaLandingPage } from "./pages/MuskokaLandingPage";
+import { MuskokaPage } from "./pages/MuskokaPage";
 import { ManagementHubPage } from "./pages/ManagementHubPage";
 import { MakeoverPage } from "./pages/MakeoverPage";
 import { FullServicePage } from "./pages/FullServicePage";
@@ -81,7 +81,7 @@ export default function App() {
   }
 
   if (path === "/muskoka") {
-    return <MuskokaLandingPage />;
+    return <MuskokaPage />;
   }
 
   if (path === "/makeover") {
