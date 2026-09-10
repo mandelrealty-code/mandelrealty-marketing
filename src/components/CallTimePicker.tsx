@@ -8,7 +8,7 @@ type Props = {
 
 /**
  * Native MRG time picker — exact half-hour slots, 24h+ notice, Toronto time.
- * Fetches booked times so taken slots disappear.
+ * Light theme to match hub / book-a-call chrome.
  */
 export function CallTimePicker({ value, onChange }: Props) {
   const [booked, setBooked] = useState<string[]>([]);
@@ -54,33 +54,24 @@ export function CallTimePicker({ value, onChange }: Props) {
 
   if (!loading && slots.length === 0) {
     return (
-      <p className="rounded-2xl bg-mrg-bg px-4 py-5 text-sm text-mrg-muted ring-1 ring-white/10">
+      <p className="rounded-2xl border border-[#ebebeb] bg-white px-4 py-5 text-sm text-[#717171]">
         No call times available right now. Please try again tomorrow or call us.
       </p>
     );
   }
 
   return (
-    <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl bg-mrg-bg ring-1 ring-white/10">
-      <div className="flex items-center gap-3 border-b border-white/8 bg-mrg-surface px-3 py-3 sm:px-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <img
-            src="/mrg-logo-white.png"
-            alt=""
-            aria-hidden
-            className="h-5 w-auto shrink-0 opacity-90"
-          />
-          <div className="min-w-0">
-            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-mrg-gold sm:text-xs">
-              Mandel Realty Group
-            </p>
-            <p className="truncate text-sm text-mrg-text">We&apos;ll call your phone</p>
-          </div>
+    <div className="w-full min-w-0 max-w-full overflow-hidden rounded-[18px] border border-[#ebebeb] bg-white">
+      <div className="flex items-center gap-3 border-b border-[#ebebeb] bg-[#f7f7f7] px-3 py-3 sm:px-4">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#8a6f2e] sm:text-[11px]">
+            We’ll call your phone
+          </p>
+          <p className="truncate text-sm font-medium text-[#5e5e5e]">30 min · Eastern Time</p>
         </div>
-        <p className="shrink-0 text-[11px] text-mrg-muted">30 min · ET</p>
       </div>
 
-      <div className="min-w-0 overflow-x-auto overscroll-x-contain border-b border-white/8 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="min-w-0 overflow-x-auto overscroll-x-contain border-b border-[#ebebeb] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex w-max gap-1.5 px-3 py-3">
           {days.map(([dayKey, day], i) => {
             const active = i === dayIndex;
@@ -90,10 +81,10 @@ export function CallTimePicker({ value, onChange }: Props) {
                 type="button"
                 onClick={() => setDayIndex(i)}
                 title={day.label}
-                className={`shrink-0 rounded-xl px-3 py-2 text-left text-xs font-semibold transition-colors ${
+                className={`shrink-0 rounded-xl px-3 py-2 text-left text-xs font-bold transition-colors ${
                   active
-                    ? "bg-mrg-gold text-black"
-                    : "bg-white/5 text-mrg-muted hover:bg-white/10 hover:text-mrg-text"
+                    ? "bg-[#c4a35a] text-[#1f1a10]"
+                    : "border border-[#ebebeb] bg-white text-[#717171] hover:border-[#c4a35a] hover:text-[#222222]"
                 }`}
               >
                 {day.short}
@@ -108,7 +99,7 @@ export function CallTimePicker({ value, onChange }: Props) {
           ? Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="h-11 animate-pulse rounded-xl bg-white/5"
+                className="h-11 animate-pulse rounded-xl bg-[#f0f0f0]"
                 aria-hidden
               />
             ))
@@ -119,10 +110,10 @@ export function CallTimePicker({ value, onChange }: Props) {
                   key={slot.startIso}
                   type="button"
                   onClick={() => onChange(slot.startIso)}
-                  className={`min-w-0 rounded-xl px-2 py-2.5 text-sm font-semibold tabular-nums transition-all sm:px-3 sm:py-3 ${
+                  className={`min-w-0 rounded-xl px-2 py-2.5 text-sm font-bold tabular-nums transition-all sm:px-3 sm:py-3 ${
                     active
-                      ? "bg-mrg-gold text-black ring-2 ring-mrg-gold"
-                      : "bg-mrg-surface text-mrg-text ring-1 ring-white/10 hover:ring-mrg-gold/40"
+                      ? "bg-[#c4a35a] text-[#1f1a10] ring-2 ring-[#c4a35a]"
+                      : "border border-[#ebebeb] bg-white text-[#222222] hover:border-[#c4a35a]"
                   }`}
                 >
                   {slot.timeLabel}

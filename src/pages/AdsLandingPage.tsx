@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   CONTACT_CONSENT_ERROR,
+  EARNINGS_SUMMARY,
   FIT_CHECK_HANDOFF_KEY,
   PHONE,
   PHONE_HREF,
@@ -11,11 +12,17 @@ import { submitAuditLead, LEAD_HANDOFF_KEY } from "../lib/submitAuditLead";
 import { setPageSeo } from "../lib/pageSeo";
 import { formatCallSlotLabel } from "../../shared/callSlots";
 import {
+  BOOK_CALL_PLANS,
+  bookCallPlanLabel,
+  normalizeBookCallPlanId,
+  type BookCallPlanId,
+} from "../../shared/bookCallPlans";
+import {
   PERMIT_OPTIONS,
   PROPERTY_STAGES,
   STR_ALLOWED_OPTIONS,
 } from "../../shared/qualifierOptions";
-import { EarningsWheel } from "../components/FitCheckSection";
+import { EARNINGS_OPTIONS } from "../components/FitCheckSection";
 import { EarningsComparisonChart } from "../components/EarningsComparisonChart";
 import { DashboardScreenshotThumbs } from "../components/DashboardScreenshotThumbs";
 import { CallTimePicker } from "../components/CallTimePicker";
@@ -59,17 +66,19 @@ const EMPTY: FormState = {
   permitStatus: "",
 };
 
-type Stage = "qualify" | "yes_details" | "no_details" | "book";
+type Stage = "interest" | "qualify" | "yes_details" | "no_details" | "book";
 
-const STEP_LABELS = ["Listing", "Details", "Book call"] as const;
+const STEP_LABELS = ["Plan", "Listing", "Details", "Book"] as const;
 
 const trustQuote = TESTIMONIALS[0];
 
 /**
- * Ads lander — Instant Form–style funnel, then book the call.
+ * Book a call funnel — white hub chrome, Instant Form–style steps.
+ * Visual language from Claude Design `docs/MRG-Book-A-Call.dc.html`.
  */
 export function AdsLandingPage() {
-  const [stage, setStage] = useState<Stage>("qualify");
+  const [stage, setStage] = useState<Stage>("interest");
+  const [interestedPlan, setInterestedPlan] = useState<BookCallPlanId | null>(null);
   const [hasListing, setHasListing] = useState<"yes" | "no" | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [contactConsent, setContactConsent] = useState(false);
@@ -79,17 +88,28 @@ export function AdsLandingPage() {
   const formCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Indexable so Google can use this URL as an organic sitelink / brand shortcut.
     setPageSeo({
       title: "Book a Free 15-Minute Call | Mandel Realty Group",
       description:
-        "Book a free 15-minute call with Mandel Realty Group. Get a plan recommendation for Full Service, Growth, Essentials, Furniture Investment, or Muskoka cottage management.",
+        "Book a free 15-minute call with Mandel Realty Group. Tell us which plan you’re interested in — Full Service, Growth, Essentials, or Furniture Investment.",
       path: "/book-a-call",
     });
 
+    let planFromUrl: BookCallPlanId | null = null;
+    try {
+      const q = new URLSearchParams(window.location.search);
+      planFromUrl = normalizeBookCallPlanId(q.get("plan"));
+      if (planFromUrl) setInterestedPlan(planFromUrl);
+    } catch {
+      /* ignore */
+    }
+
     try {
       const raw = sessionStorage.getItem(FIT_CHECK_HANDOFF_KEY);
-      if (!raw) return;
+      if (!raw) {
+        if (planFromUrl) setStage("qualify");
+        return;
+      }
       sessionStorage.removeItem(FIT_CHECK_HANDOFF_KEY);
       const data = JSON.parse(raw) as {
         hasListing?: "yes" | "no";
@@ -102,7 +122,12 @@ export function AdsLandingPage() {
         propertyStage?: string;
         strAllowed?: string;
         permitStatus?: string;
+        interestedPlan?: string;
       };
+      const handoffPlan = normalizeBookCallPlanId(data.interestedPlan);
+      if (handoffPlan) setInterestedPlan(handoffPlan);
+      else if (planFromUrl) setInterestedPlan(planFromUrl);
+
       if (data.hasListing === "yes" || data.hasListing === "no") {
         setHasListing(data.hasListing);
       }
@@ -120,13 +145,14 @@ export function AdsLandingPage() {
       }));
       if (data.hasListing === "yes") setStage("yes_details");
       else if (data.hasListing === "no") setStage("no_details");
+      else if (handoffPlan || planFromUrl) setStage("qualify");
     } catch {
-      /* ignore bad handoff */
+      if (planFromUrl) setStage("qualify");
     }
   }, []);
 
   useEffect(() => {
-    if (stage === "qualify") return;
+    if (stage === "interest") return;
     formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [stage]);
 
@@ -141,11 +167,16 @@ export function AdsLandingPage() {
       return;
     }
     if (!callStartIso) {
-      setError("Pick a call time — we’ll call the number you entered.");
+      setError("Pick a call time. We’ll call the number you entered.");
       return;
     }
     setSubmitting(true);
     setError(null);
+    const planLabel = bookCallPlanLabel(interestedPlan);
+    const source =
+      interestedPlan && interestedPlan !== "not-sure"
+        ? `/book-a-call?plan=${interestedPlan}`
+        : "/book-a-call";
     try {
       const result = await submitAuditLead({
         name: form.name,
@@ -157,12 +188,13 @@ export function AdsLandingPage() {
         hasListing: hasListing === "yes" ? "yes" : hasListing === "no" ? "no" : "unknown",
         callStartIso,
         callBooking: formatCallSlotLabel(callStartIso),
-        source: "/book-a-call",
+        source,
         contactConsent,
         marketingOptIn: false,
         propertyStage: hasListing === "no" ? form.propertyStage : undefined,
         permitStatus: hasListing === "no" ? form.permitStatus : undefined,
         strAllowed: hasListing === "no" ? form.strAllowed : undefined,
+        interestedPlan: interestedPlan || undefined,
       });
       try {
         sessionStorage.setItem(
@@ -171,6 +203,7 @@ export function AdsLandingPage() {
             leadId: result.leadId,
             hasListing: result.hasListing,
             name: form.name.trim(),
+            interestedPlan: planLabel || undefined,
           }),
         );
       } catch {
@@ -184,482 +217,623 @@ export function AdsLandingPage() {
   };
 
   const fieldClass =
-    "w-full min-h-12 rounded-2xl border border-transparent bg-mrg-bg px-4 py-3.5 text-base text-mrg-text outline-none ring-1 ring-white/10 transition-all placeholder:text-mrg-muted/45 focus:ring-2 focus:ring-mrg-gold/50";
-
-  const choiceClass =
-    "min-h-[5.5rem] rounded-2xl border border-white/10 bg-mrg-bg px-4 py-5 text-center transition-all hover:border-mrg-gold/40 hover:bg-mrg-gold/5 active:scale-[0.98] sm:px-5 sm:py-6";
-
-  const optionClass = (active: boolean) =>
-    `w-full min-h-12 rounded-2xl px-4 py-3.5 text-left text-[15px] font-medium leading-snug transition-all ring-1 sm:text-sm ${
-      active
-        ? "bg-mrg-gold text-black ring-mrg-gold"
-        : "bg-mrg-bg text-mrg-text ring-white/10 hover:ring-mrg-gold/40"
-    }`;
+    "w-full rounded-[14px] border border-[#dddddd] bg-white px-[15px] py-[13px] text-[15px] font-medium text-[#222222] outline-none transition-colors placeholder:text-[#a0a0a0] focus:border-[#c4a35a]";
 
   const primaryBtn =
-    "flex min-h-12 flex-1 items-center justify-center rounded-full bg-mrg-gold px-5 text-sm font-semibold text-black transition-colors hover:bg-mrg-gold-light disabled:opacity-40";
+    "ml-auto inline-flex min-h-12 items-center justify-center rounded-full bg-[#c4a35a] px-6 py-3.5 text-[15px] font-bold text-[#1f1a10] transition-colors hover:bg-[#dcc084] disabled:cursor-not-allowed disabled:opacity-40";
 
   const backBtn =
-    "inline-flex min-h-12 shrink-0 items-center justify-center rounded-full px-4 text-sm font-semibold text-mrg-muted hover:text-mrg-text sm:px-5";
+    "inline-flex min-h-12 items-center justify-center border-0 bg-transparent px-0 text-sm font-bold text-[#717171] transition-colors hover:text-[#222222]";
 
   const stepIndex =
-    stage === "qualify" ? 0 : stage === "yes_details" || stage === "no_details" ? 1 : 2;
+    stage === "interest"
+      ? 0
+      : stage === "qualify"
+        ? 1
+        : stage === "yes_details" || stage === "no_details"
+          ? 2
+          : 3;
 
   const yesReady = Boolean(form.listingTitle.trim() && form.address.trim());
   const noReady = Boolean(
     form.propertyStage && form.strAllowed && form.permitStatus && form.address.trim(),
   );
 
-  return (
-    <div className="min-h-dvh bg-mrg-bg text-mrg-text">
-      <div
-        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(245,197,24,0.07),_transparent_55%)]"
-        aria-hidden
-      />
+  const pickPlan = (id: BookCallPlanId) => {
+    setInterestedPlan(id);
+    setStage("qualify");
+  };
 
-      <header className="relative z-10 border-b border-white/8 bg-mrg-bg/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3.5 sm:px-5 sm:py-4">
-          <a href="/book-a-call" className="flex min-w-0 items-center gap-2.5">
-            <img src="/mrg-logo-white.png" alt="" aria-hidden className="h-7 w-auto shrink-0" />
-            <div className="min-w-0">
-              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-mrg-gold sm:text-[11px]">
-                Mandel Realty Group
-              </p>
-              <p className="truncate text-xs text-mrg-muted sm:text-sm">Book a free call</p>
-            </div>
+  const planAccent =
+    BOOK_CALL_PLANS.find((p) => p.id === interestedPlan)?.accent || "#8a8a8a";
+
+  const mayAug = EARNINGS_SUMMARY.mayAug2026.toLocaleString();
+  const year2025 = EARNINGS_SUMMARY.year2025.toLocaleString();
+
+  const bookSupport = [
+    interestedPlan && interestedPlan !== "not-sure"
+      ? `We’ll focus on ${bookCallPlanLabel(interestedPlan)}.`
+      : null,
+    hasListing === "yes"
+      ? "MRG will review your listing before we call."
+      : "No listing yet is fine. We’ll cover fit and next steps.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const optionClass = (active: boolean) =>
+    `w-full min-h-12 rounded-2xl px-4 py-3.5 text-left text-[15px] font-medium leading-snug transition-all ${
+      active
+        ? "border border-[#c4a35a] bg-[#fbf9f4] text-[#222222]"
+        : "border border-[#dddddd] bg-white text-[#222222] hover:border-[#c4a35a]"
+    }`;
+
+  const proofBlock = (
+    <div className="flex flex-col gap-3.5 rounded-[20px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
+      <span className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+        Proof
+      </span>
+      <div className="overflow-hidden rounded-[14px] border border-[#ebebeb] bg-white p-3">
+        <EarningsComparisonChart variant="light" />
+        <div className="mt-3 border-t border-[#ebebeb] pt-3">
+          <DashboardScreenshotThumbs variant="light" shots={[...DASHBOARD_SHOTS]} />
+        </div>
+      </div>
+      <p className="text-sm font-medium leading-[1.55] text-[#5e5e5e]">
+        Just <strong className="text-[#222222]">4 months</strong> of 2026 ({`$${mayAug}`}) already
+        beat the host&apos;s <strong className="text-[#222222]">entire 2025</strong> ({`$${year2025}`}
+        ). Same unit, same platform.
+      </p>
+      <p className="text-sm font-medium leading-[1.55] text-[#5e5e5e]">
+        “{trustQuote.quote}” · {trustQuote.name}, {trustQuote.location}
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="min-h-dvh bg-white font-sans text-[#222222]">
+      <header className="sticky top-0 z-20 border-b border-[#ebebeb] bg-white">
+        <div className="mx-auto flex max-w-[1120px] flex-wrap items-center gap-3 px-5 py-3.5 sm:gap-5 sm:px-6">
+          <a href="/" className="mr-auto block" aria-label="Mandel Realty Group home">
+            <img
+              src="/hub/mrg-logo.png"
+              alt="Mandel Realty Group"
+              className="block h-10 w-auto sm:h-11"
+            />
           </a>
-          <a
-            href={PHONE_HREF}
-            className="shrink-0 rounded-full bg-white/5 px-3 py-2 text-xs font-medium text-mrg-text ring-1 ring-white/10 transition-colors hover:bg-white/10 sm:px-4 sm:text-sm"
-          >
-            {PHONE}
-          </a>
+          <nav className="hidden items-center gap-1 text-[14.5px] font-semibold sm:flex">
+            <a
+              href="/#plans"
+              className="rounded-full px-3 py-2 text-[#5e5e5e] transition-colors hover:text-[#222222]"
+            >
+              Plans
+            </a>
+            <a
+              href="/revenueaudit/"
+              className="rounded-full px-3 py-2 text-[#5e5e5e] transition-colors hover:text-[#222222]"
+            >
+              Revenue audit
+            </a>
+          </nav>
+          <div className="flex items-center gap-2.5">
+            <a
+              href={PHONE_HREF}
+              className="whitespace-nowrap rounded-full border border-[#dddddd] px-3.5 py-2 text-sm font-bold text-[#222222] transition-colors hover:border-[#222222] sm:px-4"
+            >
+              {PHONE}
+            </a>
+            <span className="hidden whitespace-nowrap rounded-full border border-[#ecdfc2] bg-[#f7f2e6] px-4 py-2 text-sm font-bold text-[#8a6f2e] sm:inline">
+              Book a call
+            </span>
+          </div>
         </div>
       </header>
 
-      <main className="relative z-10">
-        <section className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-5 sm:py-14 lg:py-16">
-          <div className="mb-6 max-w-xl lg:hidden">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-mrg-gold">
-              Toronto-based · Canada &amp; U.S.
+      <main>
+        <section className="mx-auto grid max-w-[1120px] gap-10 px-5 pb-16 pt-8 sm:px-6 sm:pt-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-start lg:gap-14 lg:pb-16 lg:pt-14">
+          <div className="flex flex-col gap-5 lg:gap-[22px] lg:pt-1.5">
+            <p className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#8a6f2e]">
+              Free 15-minute call
             </p>
-            <h1 className="mt-2 text-[clamp(1.75rem,7vw,2.35rem)] font-bold leading-[1.08] tracking-tight">
-              How much is your listing leaving on the table?
+            <h1 className="text-[clamp(1.85rem,4.5vw,3rem)] font-extrabold leading-[1.03] tracking-[-0.04em] text-balance">
+              Book a call. We will show you the fit.
             </h1>
-            <p className="mt-2.5 text-[15px] leading-relaxed text-mrg-muted">
-              Book a free 15-minute call with{" "}
-              <span className="text-mrg-text">Mandel Realty Group</span>.
+            <p className="max-w-[40ch] text-[17px] font-medium leading-[1.55] text-[#5e5e5e]">
+              Short call. Toronto based, working across Canada and the U.S. No pressure, no
+              obligation.
             </p>
-          </div>
 
-          <div className="grid min-w-0 gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-start lg:gap-12">
-            <div className="hidden min-w-0 lg:block">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-mrg-gold">
-                Mandel Realty Group · Toronto
-              </p>
-              <h1 className="mt-4 text-[clamp(2rem,4.8vw,3.25rem)] font-bold leading-[1.08] tracking-tight">
-                How much is your listing leaving on the table?
-              </h1>
-              <p className="mt-4 max-w-md text-base leading-relaxed text-mrg-muted sm:text-lg">
-                Book a free 15-minute call. We&apos;ll show you — and how to earn more.
-              </p>
+            <div className="hidden lg:block">{proofBlock}</div>
 
-              <div className="mt-8 rounded-2xl bg-mrg-surface p-5 ring-1 ring-white/8">
-                <EarningsComparisonChart />
-                <div className="mt-4 border-t border-white/8 pt-4">
-                  <DashboardScreenshotThumbs shots={[...DASHBOARD_SHOTS]} />
-                </div>
-              </div>
-
-              <blockquote className="mt-6 flex gap-4 rounded-2xl bg-mrg-surface-elevated p-5 ring-1 ring-white/8">
-                <img
-                  src="/hero-unit.png"
-                  alt=""
-                  className="h-14 w-14 shrink-0 rounded-full object-cover ring-1 ring-white/15"
-                />
-                <div className="min-w-0">
-                  <p className="text-sm leading-relaxed text-mrg-text">
-                    &ldquo;{trustQuote.quote}&rdquo;
-                  </p>
-                  <p className="mt-3 text-xs text-mrg-muted">
-                    {trustQuote.name} · {trustQuote.location} · {trustQuote.badge}
-                  </p>
-                </div>
-              </blockquote>
-
-              <p className="mt-8 text-sm text-mrg-muted">
-                Or reach us:{" "}
-                <a href={PHONE_HREF} className="text-mrg-gold hover:text-mrg-gold-light">
+            <div className="hidden flex-col gap-2 border-t border-[#ebebeb] pt-[18px] lg:flex">
+              <span className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                Prefer to talk now
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={PHONE_HREF}
+                  className="rounded-full border border-[#dddddd] px-4 py-2.5 text-sm font-bold text-[#222222] transition-colors hover:border-[#222222]"
+                >
                   {PHONE}
                 </a>
-                {" · "}
                 <a
                   href={WHATSAPP_HREF}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-mrg-gold hover:text-mrg-gold-light"
+                  className="rounded-full border border-[#dddddd] px-4 py-2.5 text-sm font-bold text-[#222222] transition-colors hover:border-[#222222]"
                 >
                   WhatsApp
                 </a>
-              </p>
+              </div>
             </div>
+          </div>
 
-            <div
-              id="book"
-              ref={formCardRef}
-              className="min-w-0 scroll-mt-20 lg:sticky lg:top-6 lg:scroll-mt-6"
-            >
-              <div className="w-full min-w-0 overflow-hidden rounded-[1.5rem] bg-mrg-surface-elevated shadow-[0_24px_60px_rgba(0,0,0,0.5)] ring-1 ring-white/12 sm:rounded-[1.75rem]">
-                <div className="flex items-center gap-3 border-b border-white/8 bg-mrg-bg/60 px-4 py-3.5 sm:px-6">
-                  <img
-                    src="/mrg-logo-white.png"
-                    alt=""
-                    aria-hidden
-                    className="h-8 w-auto shrink-0"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mrg-gold">
-                      Mandel Realty Group
-                    </p>
-                    <p className="truncate text-sm font-medium text-mrg-text">
-                      Free 15-minute call
-                    </p>
-                  </div>
-                </div>
+          <aside id="book" ref={formCardRef} className="min-w-0 scroll-mt-24 lg:sticky lg:top-6">
+            <div className="overflow-hidden rounded-[26px] border border-[#ebebeb] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.05)]">
+              <div className="flex items-center gap-3 border-b border-[#ebebeb] bg-white px-5 py-[18px] sm:px-[26px]">
+                <img
+                  src="/hub/mrg-logo.png"
+                  alt=""
+                  aria-hidden
+                  className="block h-[30px] w-auto"
+                />
+                <span className="ml-auto text-sm font-bold tracking-[-0.01em] text-[#222222]">
+                  Free 15-minute call
+                </span>
+              </div>
 
-                <div className="p-4 sm:p-7">
-                  <div className="mb-5" aria-hidden>
-                    <div className="flex gap-1.5 sm:gap-2">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className={`h-1.5 flex-1 rounded-full ${
-                            i <= stepIndex ? "bg-mrg-gold" : "bg-white/10"
-                          }`}
-                        />
-                      ))}
+              <div className="flex gap-2.5 px-5 pt-[18px] sm:px-[26px]">
+                {STEP_LABELS.map((label, i) => (
+                  <div key={label} className="flex flex-1 flex-col gap-[7px]">
+                    <div className="h-1 overflow-hidden rounded-full bg-[#ebebeb]">
+                      <div
+                        className="h-full rounded-full bg-[#c4a35a] transition-[width] duration-[420ms] ease-out"
+                        style={{ width: i <= stepIndex ? "100%" : "0%" }}
+                      />
                     </div>
-                    <div className="mt-2 flex justify-between text-[10px] font-medium uppercase tracking-wider text-mrg-muted">
-                      {STEP_LABELS.map((label, i) => (
+                    <span
+                      className={`text-[11.5px] font-bold uppercase tracking-[0.06em] ${
+                        i === stepIndex ? "text-[#8a6f2e]" : "text-[#a0a0a0]"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-5 sm:p-[26px]">
+                {stage === "interest" && (
+                  <div className="flex flex-col gap-[18px]">
+                    <div className="flex flex-col gap-[7px]">
+                      <h2 className="text-[clamp(1.35rem,3vw,1.625rem)] font-extrabold tracking-[-0.035em]">
+                        What are you interested in?
+                      </h2>
+                      <p className="text-[15px] font-medium leading-[1.5] text-[#717171]">
+                        Pick a plan so we prep the right conversation, or choose not sure.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2.5">
+                      {BOOK_CALL_PLANS.map((plan) => {
+                        const active = interestedPlan === plan.id;
+                        return (
+                          <button
+                            key={plan.id}
+                            type="button"
+                            onClick={() => pickPlan(plan.id)}
+                            className={`flex w-full items-stretch gap-3.5 rounded-2xl border px-4 py-3.5 text-left transition-colors ${
+                              active
+                                ? "border-[#c4a35a] bg-[#fbf9f4] shadow-[0_8px_24px_rgba(0,0,0,0.05)]"
+                                : "border-[#ebebeb] bg-white hover:border-[#c4a35a] hover:bg-[#fbf9f4]"
+                            }`}
+                          >
+                            <span
+                              className="w-[7px] shrink-0 rounded-full"
+                              style={{ background: plan.accent }}
+                              aria-hidden
+                            />
+                            <span className="block min-w-0">
+                              <span className="block text-[15.5px] font-bold tracking-[-0.015em] text-[#222222]">
+                                {plan.label}
+                              </span>
+                              <span className="mt-[3px] block text-[13.5px] font-medium text-[#717171]">
+                                {plan.blurb}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {stage === "qualify" && (
+                  <div className="flex flex-col gap-[18px]">
+                    {interestedPlan && (
+                      <button
+                        type="button"
+                        onClick={() => setStage("interest")}
+                        className="inline-flex w-fit items-center gap-[9px] rounded-full border border-[#ebebeb] bg-[#f7f7f7] px-3.5 py-[7px] text-[13px] font-bold text-[#222222] transition-colors hover:border-[#c4a35a]"
+                      >
                         <span
-                          key={label}
-                          className={i === stepIndex ? "text-mrg-gold" : undefined}
-                        >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {stage === "qualify" && (
-                    <div className="text-center">
-                      <h2 className="text-lg font-bold tracking-tight sm:text-2xl">
+                          className="h-2 w-2 rounded-full"
+                          style={{ background: planAccent }}
+                          aria-hidden
+                        />
+                        {bookCallPlanLabel(interestedPlan)}{" "}
+                        <span className="text-[#8a6f2e]">. change</span>
+                      </button>
+                    )}
+                    <div className="flex flex-col gap-[7px]">
+                      <h2 className="text-[clamp(1.35rem,3vw,1.625rem)] font-extrabold tracking-[-0.035em]">
                         Do you have an Airbnb listing live right now?
                       </h2>
-                      <p className="mt-2 text-sm text-mrg-muted">
-                        No pressure — just a quick look at your numbers with MRG.
+                      <p className="text-[15px] font-medium leading-[1.5] text-[#717171]">
+                        This changes what we prep before the call.
                       </p>
-                      <div className="mt-6 grid gap-3 sm:mt-8 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          className={choiceClass}
-                          onClick={() => {
-                            setHasListing("yes");
-                            setForm((f) => ({
-                              ...f,
-                              earnings: f.earnings || "$2,500 – $5,000 / mo",
-                            }));
-                            setStage("yes_details");
-                          }}
-                        >
-                          <span className="block font-semibold text-mrg-text">
-                            Yes — it&apos;s live
-                          </span>
-                          <span className="mt-1 block text-xs text-mrg-muted">Has a listing</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={choiceClass}
-                          onClick={() => {
-                            setHasListing("no");
-                            setForm((f) => ({ ...f, earnings: "", listingTitle: "" }));
-                            setStage("no_details");
-                          }}
-                        >
-                          <span className="block font-semibold text-mrg-text">No — not yet</span>
-                          <span className="mt-1 block text-xs text-mrg-muted">Starting out</span>
-                        </button>
-                      </div>
                     </div>
-                  )}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        className="rounded-[18px] border border-[#ebebeb] bg-white p-5 text-left transition-colors hover:border-[#c4a35a]"
+                        onClick={() => {
+                          setHasListing("yes");
+                          setForm((f) => ({
+                            ...f,
+                            earnings: f.earnings || "$2,500 – $5,000 / mo",
+                          }));
+                          setStage("yes_details");
+                        }}
+                      >
+                        <span className="block text-[17px] font-extrabold tracking-[-0.02em]">
+                          Yes, it is live
+                        </span>
+                        <span className="mt-[5px] block text-[13.5px] font-medium text-[#717171]">
+                          Already hosting guests
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-[18px] border border-[#ebebeb] bg-white p-5 text-left transition-colors hover:border-[#c4a35a]"
+                        onClick={() => {
+                          setHasListing("no");
+                          setForm((f) => ({ ...f, earnings: "", listingTitle: "" }));
+                          setStage("no_details");
+                        }}
+                      >
+                        <span className="block text-[17px] font-extrabold tracking-[-0.02em]">
+                          No, not yet
+                        </span>
+                        <span className="mt-[5px] block text-[13.5px] font-medium text-[#717171]">
+                          Launching or exploring
+                        </span>
+                      </button>
+                    </div>
+                    {!interestedPlan && (
+                      <button type="button" onClick={() => setStage("interest")} className={backBtn}>
+                        Back
+                      </button>
+                    )}
+                  </div>
+                )}
 
-                  {stage === "yes_details" && (
-                    <div>
-                      <h2 className="text-center text-lg font-bold tracking-tight sm:text-2xl">
+                {stage === "yes_details" && (
+                  <div className="flex flex-col gap-[18px]">
+                    <div className="flex flex-col gap-[7px]">
+                      <h2 className="text-[clamp(1.35rem,3vw,1.625rem)] font-extrabold tracking-[-0.035em]">
                         Tell us about the listing
                       </h2>
-                      <p className="mt-2 text-center text-sm text-mrg-muted">
-                        So MRG can look it up before the call — no link needed.
+                      <p className="text-[15px] font-medium leading-[1.5] text-[#717171]">
+                        So MRG can look it up before the call. No link needed.
                       </p>
-                      <div className="mt-5 space-y-3 sm:mt-6">
-                        <input
-                          type="text"
-                          value={form.listingTitle}
-                          onChange={(e) => setForm((f) => ({ ...f, listingTitle: e.target.value }))}
-                          placeholder="Airbnb listing title"
-                          className={fieldClass}
-                          enterKeyHint="next"
-                        />
+                    </div>
+                    <label className="flex flex-col gap-[7px]">
+                      <span className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                        Airbnb listing title
+                      </span>
+                      <input
+                        type="text"
+                        value={form.listingTitle}
+                        onChange={(e) => setForm((f) => ({ ...f, listingTitle: e.target.value }))}
+                        placeholder="Bright 2 bed near the lake"
+                        className={fieldClass}
+                        enterKeyHint="next"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-[7px]">
+                      <span className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                        Property address
+                      </span>
+                      <input
+                        type="text"
+                        value={form.address}
+                        onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                        placeholder="Street, city"
+                        className={fieldClass}
+                        autoComplete="street-address"
+                        enterKeyHint="next"
+                      />
+                    </label>
+                    <div className="flex flex-col gap-[9px]">
+                      <span className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                        Typical monthly revenue
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {EARNINGS_OPTIONS.map((opt) => {
+                          const active = form.earnings === opt;
+                          return (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setForm((f) => ({ ...f, earnings: opt }))}
+                              className={`rounded-full border px-[15px] py-[9px] text-[13.5px] font-bold transition-colors ${
+                                active
+                                  ? "border-[#c4a35a] bg-[#fbf9f4] text-[#222222]"
+                                  : "border-[#dddddd] bg-white text-[#222222] hover:border-[#c4a35a]"
+                              }`}
+                            >
+                              {opt.replace(" / mo", "")}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3.5 pt-1">
+                      <button type="button" onClick={() => setStage("qualify")} className={backBtn}>
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!yesReady}
+                        onClick={() => setStage("book")}
+                        className={primaryBtn}
+                      >
+                        Continue
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {stage === "no_details" && (
+                  <div className="flex flex-col gap-[18px]">
+                    <div className="flex flex-col gap-[7px]">
+                      <h2 className="text-[clamp(1.35rem,3vw,1.625rem)] font-extrabold tracking-[-0.035em]">
+                        A few quick questions
+                      </h2>
+                      <p className="text-[15px] font-medium leading-[1.5] text-[#717171]">
+                        Helps MRG know if we’re the right fit before the call.
+                      </p>
+                    </div>
+
+                    <div className="max-h-[min(58dvh,32rem)] space-y-5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-none sm:overflow-visible">
+                      <fieldset className="space-y-2">
+                        <legend className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                          Where are you in the process?
+                        </legend>
+                        {PROPERTY_STAGES.map((o) => (
+                          <button
+                            key={o.value}
+                            type="button"
+                            className={optionClass(form.propertyStage === o.value)}
+                            onClick={() => setForm((f) => ({ ...f, propertyStage: o.value }))}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </fieldset>
+
+                      <fieldset className="space-y-2">
+                        <legend className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                          Does your building or area allow Airbnb?
+                        </legend>
+                        {STR_ALLOWED_OPTIONS.map((o) => (
+                          <button
+                            key={o.value}
+                            type="button"
+                            className={optionClass(form.strAllowed === o.value)}
+                            onClick={() => setForm((f) => ({ ...f, strAllowed: o.value }))}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </fieldset>
+
+                      <fieldset className="space-y-2">
+                        <legend className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                          STR permit status
+                        </legend>
+                        {PERMIT_OPTIONS.map((o) => (
+                          <button
+                            key={o.value}
+                            type="button"
+                            className={optionClass(form.permitStatus === o.value)}
+                            onClick={() => setForm((f) => ({ ...f, permitStatus: o.value }))}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </fieldset>
+
+                      <label className="flex flex-col gap-[7px]">
+                        <span className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                          Property address
+                        </span>
                         <input
                           type="text"
                           value={form.address}
                           onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                          placeholder="Property address (street, city)"
+                          placeholder="e.g. 123 King St W, Toronto"
                           className={fieldClass}
                           autoComplete="street-address"
-                          enterKeyHint="next"
+                          enterKeyHint="done"
                         />
-                      </div>
-                      <EarningsWheel
-                        value={form.earnings}
-                        onChange={(earnings) => setForm((f) => ({ ...f, earnings }))}
-                      />
-                      <div className="mt-6 flex gap-2 sm:mt-8 sm:gap-3">
-                        <button type="button" onClick={() => setStage("qualify")} className={backBtn}>
-                          Back
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!yesReady}
-                          onClick={() => setStage("book")}
-                          className={primaryBtn}
-                        >
-                          Continue
-                        </button>
-                      </div>
+                      </label>
                     </div>
-                  )}
 
-                  {stage === "no_details" && (
-                    <div>
-                      <h2 className="text-center text-lg font-bold tracking-tight sm:text-2xl">
-                        A few quick questions
-                      </h2>
-                      <p className="mt-2 text-center text-sm text-mrg-muted">
-                        Helps MRG know if we&apos;re the right fit before the call.
-                      </p>
-
-                      <div className="mt-5 max-h-[min(58dvh,32rem)] space-y-5 overflow-y-auto overscroll-contain pr-0.5 sm:mt-6 sm:max-h-none sm:overflow-visible">
-                        <fieldset className="space-y-2">
-                          <legend className="text-sm font-semibold text-mrg-gold">
-                            Where are you in the process?
-                          </legend>
-                          {PROPERTY_STAGES.map((o) => (
-                            <button
-                              key={o.value}
-                              type="button"
-                              className={optionClass(form.propertyStage === o.value)}
-                              onClick={() => setForm((f) => ({ ...f, propertyStage: o.value }))}
-                            >
-                              {o.label}
-                            </button>
-                          ))}
-                        </fieldset>
-
-                        <fieldset className="space-y-2">
-                          <legend className="text-sm font-semibold text-mrg-gold">
-                            Does your building or area allow Airbnb?
-                          </legend>
-                          {STR_ALLOWED_OPTIONS.map((o) => (
-                            <button
-                              key={o.value}
-                              type="button"
-                              className={optionClass(form.strAllowed === o.value)}
-                              onClick={() => setForm((f) => ({ ...f, strAllowed: o.value }))}
-                            >
-                              {o.label}
-                            </button>
-                          ))}
-                        </fieldset>
-
-                        <fieldset className="space-y-2">
-                          <legend className="text-sm font-semibold text-mrg-gold">
-                            STR permit status
-                          </legend>
-                          {PERMIT_OPTIONS.map((o) => (
-                            <button
-                              key={o.value}
-                              type="button"
-                              className={optionClass(form.permitStatus === o.value)}
-                              onClick={() => setForm((f) => ({ ...f, permitStatus: o.value }))}
-                            >
-                              {o.label}
-                            </button>
-                          ))}
-                        </fieldset>
-
-                        <div>
-                          <label className="text-sm font-semibold text-mrg-gold">
-                            What&apos;s the property address?
-                          </label>
-                          <input
-                            type="text"
-                            value={form.address}
-                            onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                            placeholder="e.g. 123 King St W, Toronto"
-                            className={`${fieldClass} mt-2`}
-                            autoComplete="street-address"
-                            enterKeyHint="done"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="mt-5 flex gap-2 border-t border-white/8 pt-4 sm:mt-8 sm:gap-3 sm:border-0 sm:pt-0">
-                        <button type="button" onClick={() => setStage("qualify")} className={backBtn}>
-                          Back
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!noReady}
-                          onClick={() => setStage("book")}
-                          className={primaryBtn}
-                        >
-                          Continue
-                        </button>
-                      </div>
+                    <div className="flex items-center gap-3.5 border-t border-[#ebebeb] pt-4 sm:border-0 sm:pt-1">
+                      <button type="button" onClick={() => setStage("qualify")} className={backBtn}>
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!noReady}
+                        onClick={() => setStage("book")}
+                        className={primaryBtn}
+                      >
+                        Continue
+                      </button>
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {stage === "book" && (
-                    <form onSubmit={handleSubmit} className="space-y-3">
-                      <h2 className="text-center text-lg font-bold tracking-tight sm:text-2xl">
+                {stage === "book" && (
+                  <form onSubmit={handleSubmit} className="flex flex-col gap-[18px]">
+                    <div className="flex flex-col gap-[7px]">
+                      <h2 className="text-[clamp(1.35rem,3vw,1.625rem)] font-extrabold tracking-[-0.035em]">
                         Lock in your call
                       </h2>
-                      <p className="text-center text-sm text-mrg-muted">
-                        {hasListing === "yes"
-                          ? "MRG will review your listing before we call."
-                          : "No listing yet is fine — we’ll cover fit and next steps."}
+                      <p className="text-[15px] font-medium leading-[1.5] text-[#717171]">
+                        {bookSupport}
                       </p>
+                    </div>
 
-                      <input
-                        type="text"
-                        name="_gotcha"
-                        tabIndex={-1}
-                        autoComplete="off"
-                        className="hidden"
-                        aria-hidden
-                      />
+                    <input
+                      type="text"
+                      name="_gotcha"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      className="hidden"
+                      aria-hidden
+                    />
 
-                      <div className="space-y-3 pt-1">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="flex flex-col gap-[7px] sm:col-span-2">
+                        <span className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                          Name
+                        </span>
                         <input
                           required
                           value={form.name}
                           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                          placeholder="Your name"
+                          placeholder="First and last"
                           className={fieldClass}
                           autoComplete="name"
                           enterKeyHint="next"
                         />
+                      </label>
+                      <label className="flex flex-col gap-[7px]">
+                        <span className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                          Phone
+                        </span>
                         <input
                           required
                           type="tel"
                           inputMode="tel"
                           value={form.phone}
                           onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                          placeholder="Phone number"
+                          placeholder="(647) 000-0000"
                           className={fieldClass}
                           autoComplete="tel"
                           enterKeyHint="next"
                         />
+                      </label>
+                      <label className="flex flex-col gap-[7px]">
+                        <span className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                          Email
+                        </span>
                         <input
                           required
                           type="email"
                           inputMode="email"
                           value={form.email}
                           onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                          placeholder="Email"
+                          placeholder="you@email.com"
                           className={fieldClass}
                           autoComplete="email"
                           enterKeyHint="next"
                         />
-                      </div>
-
-                      <label className="flex cursor-pointer items-start gap-3 px-0.5 pt-2">
-                        <input
-                          type="checkbox"
-                          required
-                          checked={contactConsent}
-                          onChange={(e) => setContactConsent(e.target.checked)}
-                          className="mt-1 h-5 w-5 shrink-0 accent-mrg-gold"
-                        />
-                        <span className="text-sm leading-snug text-mrg-muted">
-                          Mandel Realty Group can call me about Airbnb management.{" "}
-                          <span className="text-mrg-text/70">(required)</span>
-                        </span>
                       </label>
+                    </div>
 
-                      <div className="mt-1 min-w-0 space-y-3">
-                        <p className="text-sm font-medium text-mrg-text">
-                          Pick when we should call you
-                        </p>
-                        <CallTimePicker value={callStartIso} onChange={setCallStartIso} />
-                        {callStartIso && (
-                          <p className="break-words text-sm text-mrg-gold">
-                            Selected: {formatCallSlotLabel(callStartIso)}
-                          </p>
-                        )}
+                    <div className="flex flex-col gap-3 rounded-[18px] border border-[#ebebeb] bg-[#fcfcfc] p-4">
+                      <div className="flex items-baseline gap-2.5">
+                        <span className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#717171]">
+                          Pick a time
+                        </span>
                       </div>
-
-                      {error && (
-                        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                          {error}
+                      <CallTimePicker value={callStartIso} onChange={setCallStartIso} />
+                      {callStartIso && (
+                        <p className="text-sm font-medium text-[#8a6f2e]">
+                          Selected: {formatCallSlotLabel(callStartIso)}
                         </p>
                       )}
+                    </div>
 
-                      <div className="flex gap-2 pt-2 sm:gap-3">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setStage(hasListing === "yes" ? "yes_details" : "no_details")
-                          }
-                          className={backBtn}
-                        >
-                          Back
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={submitting || !callStartIso}
-                          className={primaryBtn}
-                        >
-                          {submitting ? "Booking…" : "Confirm my call →"}
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </div>
+                    <label className="flex cursor-pointer items-start gap-3">
+                      <input
+                        type="checkbox"
+                        required
+                        checked={contactConsent}
+                        onChange={(e) => setContactConsent(e.target.checked)}
+                        className="mt-1 h-5 w-5 shrink-0 accent-[#c4a35a]"
+                      />
+                      <span className="text-sm font-medium leading-snug text-[#5e5e5e]">
+                        Mandel Realty Group can call me about Airbnb management.{" "}
+                        <span className="text-[#222222]">(required)</span>
+                      </span>
+                    </label>
+
+                    {error && (
+                      <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        {error}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-3.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setStage(hasListing === "yes" ? "yes_details" : "no_details")
+                        }
+                        className={backBtn}
+                      >
+                        Back
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={submitting || !callStartIso}
+                        className={primaryBtn}
+                      >
+                        {submitting ? "Booking…" : "Book my free call"}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
-
-              <p className="mt-4 text-center text-xs text-mrg-muted lg:hidden">
-                Or call{" "}
-                <a href={PHONE_HREF} className="font-medium text-mrg-gold">
-                  {PHONE}
-                </a>
-              </p>
             </div>
 
-            <div className="space-y-4 lg:hidden">
-              <div className="rounded-2xl bg-mrg-surface p-4 ring-1 ring-white/8 sm:p-5">
-                <EarningsComparisonChart />
-                <div className="mt-4 border-t border-white/8 pt-4">
-                  <DashboardScreenshotThumbs shots={[...DASHBOARD_SHOTS]} />
-                </div>
-              </div>
-            </div>
-          </div>
+            <p className="mt-4 text-center text-xs text-[#717171] lg:hidden">
+              Or call{" "}
+              <a href={PHONE_HREF} className="font-bold text-[#8a6f2e]">
+                {PHONE}
+              </a>
+              {" · "}
+              <a
+                href={WHATSAPP_HREF}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-[#8a6f2e]"
+              >
+                WhatsApp
+              </a>
+            </p>
+          </aside>
+
+          <div className="lg:hidden">{proofBlock}</div>
         </section>
       </main>
 
-      <footer className="relative z-10 border-t border-white/8 px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] text-center text-xs text-mrg-muted">
+      <footer className="border-t border-[#ebebeb] px-5 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] text-center text-xs text-[#717171]">
         © {new Date().getFullYear()} Mandel Realty Group · Toronto · Canada &amp; U.S.
       </footer>
     </div>

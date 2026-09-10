@@ -1,5 +1,9 @@
 import type { HasListing, LeadEmailInput } from "./auditEmails.js";
 import { normalizeHasListing } from "./auditEmails.js";
+import {
+  bookCallPlanLabel,
+  normalizeBookCallPlanId,
+} from "./bookCallPlans.js";
 import { formatCallSlotLabel } from "./callSlots.js";
 import {
   PERMIT_SET,
@@ -35,6 +39,10 @@ export function parseLeadRequestBody(body: Record<string, unknown>): {
   const permitStatusRaw = String(body.permitStatus ?? "").trim();
   const strAllowedRaw = String(body.strAllowed ?? "").trim();
   const launchTimelineRaw = String(body.launchTimeline ?? "").trim();
+  const planId = normalizeBookCallPlanId(
+    body.interestedPlan ?? body.planInterest ?? body.plan,
+  );
+  const interestedPlan = planId ? bookCallPlanLabel(planId) : null;
 
   const propertyStage = PROPERTY_STAGE_SET.has(propertyStageRaw) ? propertyStageRaw : null;
   const permitStatus = PERMIT_SET.has(permitStatusRaw) ? permitStatusRaw : null;
@@ -57,6 +65,7 @@ export function parseLeadRequestBody(body: Record<string, unknown>): {
     permitStatus,
     strAllowed,
     launchTimeline,
+    interestedPlan,
   };
 
   return {

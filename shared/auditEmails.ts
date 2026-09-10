@@ -43,6 +43,8 @@ export type LeadEmailInput = {
   permitStatus?: string | null;
   strAllowed?: string | null;
   launchTimeline?: string | null;
+  /** Plan they tapped on /book-a-call (display label) */
+  interestedPlan?: string | null;
 };
 
 export function normalizeHasListing(value: unknown): HasListing {
@@ -61,13 +63,16 @@ export function listingLabel(hasListing: HasListing): string {
 }
 
 export function buildLeadSubject(input: LeadEmailInput): string {
+  const planBit = input.interestedPlan?.trim()
+    ? ` · ${input.interestedPlan.trim()}`
+    : "";
   if (input.callStartIso || input.callBooking) {
     const when = input.callStartIso
       ? formatCallSlotLabel(input.callStartIso)
       : input.callBooking;
-    return `New call — ${input.name} — ${when}`;
+    return `New call — ${input.name} — ${when}${planBit}`;
   }
-  return `New Meta lead — ${input.name} — ${listingLabel(input.hasListing)}`;
+  return `New Meta lead — ${input.name} — ${listingLabel(input.hasListing)}${planBit}`;
 }
 
 export function buildCustomerSubject(input: LeadEmailInput): string {
@@ -152,6 +157,11 @@ export function buildLeadNotificationHtml(input: LeadEmailInput): string {
                       : ""
                   }
                   ${row("Call time", when)}
+                  ${
+                    input.interestedPlan
+                      ? row("Interested plan", input.interestedPlan)
+                      : ""
+                  }
                   ${row("Marketing", input.marketingOptIn ? "Opted in" : "Not opted in")}
                   ${row("Source", input.source || "—")}
                 </table>

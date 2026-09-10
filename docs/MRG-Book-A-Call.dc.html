@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="29e465de-0f19-494f-a333-8b2d71dd9cd4.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("ddae0451-9f41-43fc-8da8-f360c6c58159.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("85b28230-04b0-4772-acac-7bd875dbb278.woff2") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("7e03375e-4133-41b0-baae-2440e51789eb.woff2") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("c912b838-e132-4a3a-8b9a-6f437a8261c9.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("700c3848-747c-4374-ad58-d031fc073dc9.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("88a8bdd2-4ac6-4c11-b952-220e35cf6ca3.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("f77e5871-cfe3-450b-a597-a7db2beec691.woff2") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("7e43910d-7bcb-4dd3-b98b-829b5dff19c7.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("f7179c75-9468-4fff-a890-4c9756768af7.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("88a8bdd2-4ac6-4c11-b952-220e35cf6ca3.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("f77e5871-cfe3-450b-a597-a7db2beec691.woff2") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("7e43910d-7bcb-4dd3-b98b-829b5dff19c7.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("f7179c75-9468-4fff-a890-4c9756768af7.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("88a8bdd2-4ac6-4c11-b952-220e35cf6ca3.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("f77e5871-cfe3-450b-a597-a7db2beec691.woff2") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("7e43910d-7bcb-4dd3-b98b-829b5dff19c7.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("f7179c75-9468-4fff-a890-4c9756768af7.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("88a8bdd2-4ac6-4c11-b952-220e35cf6ca3.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("f77e5871-cfe3-450b-a597-a7db2beec691.woff2") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("7e43910d-7bcb-4dd3-b98b-829b5dff19c7.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("f7179c75-9468-4fff-a890-4c9756768af7.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("88a8bdd2-4ac6-4c11-b952-220e35cf6ca3.woff2") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("f77e5871-cfe3-450b-a597-a7db2beec691.woff2") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("7e43910d-7bcb-4dd3-b98b-829b5dff19c7.woff2") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("f7179c75-9468-4fff-a890-4c9756768af7.woff2") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+<style>
+  html, body { margin: 0; padding: 0; background: #f2f2f2; }
+  body { font-family: 'Plus Jakarta Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #222222; -webkit-font-smoothing: antialiased; }
+  * { box-sizing: border-box; }
+  a { color: #8a6f2e; text-decoration: none; }
+  a:hover { color: #c4a35a; }
+  input, button, select, textarea { font-family: inherit; }
+  input:focus { outline: none; border-color: #c4a35a !important; box-shadow: 0 0 0 3px rgba(196,163,90,0.16); }
+  @keyframes stepIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+
+<section style="padding:56px 48px 80px;display:flex;flex-direction:column;gap:28px">
+  <div style="display:flex;align-items:baseline;gap:14px">
+    <h2 style="margin:0;font-weight:800;font-size:20px;letter-spacing:-0.03em">Turn 1 . Book a free call</h2>
+    <p style="margin:0;font-weight:500;font-size:14px;color:#717171">Live funnel. Click through the four steps in either frame. <a href="#1a">1a</a> desktop 1280, <a href="#1b">1b</a> mobile 390, <a href="#1c">1c</a> confirmation handoff.</p>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:40px">
+
+    <div id="1a" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="background:#222222;color:#ffffff;border-radius:999px;padding:4px 11px;font-weight:800;font-size:11.5px;letter-spacing:0.06em">1A</span>
+        <span style="font-weight:700;font-size:13.5px;letter-spacing:-0.01em">Desktop 1280 . /book-a-call</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8a8a8a">deep link preselects plan and opens step 2</span>
+      </div>
+
+      <div style="width:1280px;background:#ffffff;border:1px solid #ebebeb;border-radius:22px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.05)">
+
+        <header style="background:#ffffff;border-bottom:1px solid #ebebeb">
+          <div style="max-width:1120px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:22px">
+            <a href="/" style="display:block;margin-right:auto"><img src="/hub/mrg-logo.png" alt="Mandel Realty Group" style="height:44px;width:auto;display:block"></a>
+            <nav style="display:flex;align-items:center;gap:4px;font-weight:600;font-size:14.5px">
+              <a href="/#plans" style="color:#5e5e5e;padding:8px 12px;border-radius:999px" style-hover="color:#222222">Plans</a>
+              <a href="/revenueaudit/" style="color:#5e5e5e;padding:8px 12px;border-radius:999px" style-hover="color:#222222">Revenue audit</a>
+            </nav>
+            <div style="display:flex;align-items:center;gap:10px">
+              <a href="tel:+16473817325" style="border:1px solid #dddddd;border-radius:999px;padding:9px 15px;font-weight:700;font-size:14px;color:#222222;white-space:nowrap" style-hover="border-color:#222222;color:#222222">(647) 381-7325</a>
+              <span style="background:#f7f2e6;color:#8a6f2e;border:1px solid #ecdfc2;border-radius:999px;padding:9px 17px;font-weight:700;font-size:14px;white-space:nowrap">Book a call</span>
+            </div>
+          </div>
+        </header>
+
+        <div style="max-width:1120px;margin:0 auto;padding:56px 24px 64px;display:grid;grid-template-columns:0.9fr 1.1fr;gap:56px;align-items:start">
+
+          <div style="display:flex;flex-direction:column;gap:22px;padding-top:6px">
+            <p style="margin:0;font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#8a6f2e">Free 15-minute call</p>
+            <h1 style="margin:0;font-weight:800;font-size:48px;line-height:1.03;letter-spacing:-0.04em;text-wrap:balance">Book a call. We will show you the fit.</h1>
+            <p style="margin:0;font-weight:500;font-size:17px;line-height:1.55;color:#5e5e5e;max-width:40ch">Short call. Toronto based, working across Canada and the U.S. No pressure, no obligation.</p>
+
+            <div style="border:1px solid #ebebeb;border-radius:20px;background:#f7f7f7;padding:20px;display:flex;flex-direction:column;gap:14px">
+              <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Proof block</span>
+              <div style="height:150px;border-radius:14px;background:repeating-linear-gradient(135deg,#f0f0f0 0 12px,#e6e6e6 12px 24px);display:flex;align-items:flex-end;padding:12px">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#717171;background:#ffffff;border:1px solid #ebebeb;border-radius:8px;padding:5px 9px">proof-swap: earnings comparison chart</span>
+              </div>
+              <p style="margin:0;font-weight:500;font-size:14px;line-height:1.55;color:#5e5e5e">Owner quote goes here once approved. One sentence, name and city only.</p>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid #ebebeb;padding-top:18px">
+              <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Prefer to talk now</span>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <a href="tel:+16473817325" style="border:1px solid #dddddd;border-radius:999px;padding:10px 16px;font-weight:700;font-size:14px;color:#222222" style-hover="border-color:#222222;color:#222222">(647) 381-7325</a>
+                <a href="https://wa.me/16473817325" style="border:1px solid #dddddd;border-radius:999px;padding:10px 16px;font-weight:700;font-size:14px;color:#222222" style-hover="border-color:#222222;color:#222222">WhatsApp</a>
+              </div>
+            </div>
+          </div>
+
+          <aside style="position:sticky;top:24px">
+            <div style="background:#ffffff;border:1px solid #ebebeb;border-radius:26px;box-shadow:0 8px 24px rgba(0,0,0,0.05);overflow:hidden">
+
+              <div style="display:flex;align-items:center;gap:12px;padding:18px 26px;border-bottom:1px solid #ebebeb;background:#ffffff">
+                <img src="/hub/mrg-logo.png" alt="Mandel Realty Group" style="height:30px;width:auto;display:block">
+                <span style="font-weight:700;font-size:14px;letter-spacing:-0.01em;color:#222222;margin-left:auto">Free 15-minute call</span>
+              </div>
+
+              <div style="display:flex;gap:10px;padding:18px 26px 0">
+                <sc-for list="{{ d.segs }}" as="s" hint-placeholder-count="4">
+                  <div style="flex:1;display:flex;flex-direction:column;gap:7px">
+                    <div style="height:4px;border-radius:999px;background:#ebebeb;overflow:hidden">
+                      <div style="height:100%;border-radius:999px;background:#c4a35a;width:{{ s.w }};transition:width 420ms ease"></div>
+                    </div>
+                    <span style="font-weight:700;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:{{ s.c }}">{{ s.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="padding:26px">
+
+                <sc-if value="{{ d.isPlan }}" hint-placeholder-val="{{ true }}">
+                  <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:18px">
+                    <div style="display:flex;flex-direction:column;gap:7px">
+                      <h2 style="margin:0;font-weight:800;font-size:26px;letter-spacing:-0.035em">What are you interested in?</h2>
+                      <p style="margin:0;font-weight:500;font-size:15px;line-height:1.5;color:#717171">Pick a plan so we prep the right conversation, or choose not sure.</p>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:10px">
+                      <sc-for list="{{ d.plans }}" as="p" hint-placeholder-count="5">
+                        <button type="button" sc-camel-on-click="{{ p.pick }}" style="display:flex;align-items:stretch;gap:14px;text-align:left;width:100%;cursor:pointer;padding:14px 16px;border-radius:16px;border:1px solid {{ p.bd }};background:{{ p.bg }};box-shadow:{{ p.sh }};transition:border-color 160ms ease, background 160ms ease" style-hover="border-color:#c4a35a;background:#fbf9f4">
+                          <span style="width:7px;border-radius:999px;flex:none;background:{{ p.color }}"></span>
+                          <span style="display:block">
+                            <span style="display:block;font-weight:700;font-size:15.5px;letter-spacing:-0.015em;color:#222222">{{ p.name }}</span>
+                            <span style="display:block;font-weight:500;font-size:13.5px;color:#717171;margin-top:3px">{{ p.blurb }}</span>
+                          </span>
+                        </button>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ d.isListing }}" hint-placeholder-val="{{ false }}">
+                  <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:18px">
+                    <button type="button" sc-camel-on-click="{{ d.changePlan }}" style="align-self:flex-start;display:flex;align-items:center;gap:9px;cursor:pointer;border:1px solid #ebebeb;background:#f7f7f7;border-radius:999px;padding:7px 14px;font-weight:700;font-size:13px;color:#222222" style-hover="border-color:#c4a35a">
+                      <span style="width:8px;height:8px;border-radius:999px;background:{{ d.planColor }}"></span>
+                      {{ d.planName }} <span style="color:#8a6f2e">. change</span>
+                    </button>
+                    <div style="display:flex;flex-direction:column;gap:7px">
+                      <h2 style="margin:0;font-weight:800;font-size:26px;letter-spacing:-0.035em">Do you have an Airbnb listing live right now?</h2>
+                      <p style="margin:0;font-weight:500;font-size:15px;line-height:1.5;color:#717171">This changes what we prep before the call.</p>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                      <button type="button" sc-camel-on-click="{{ d.pickLive }}" style="cursor:pointer;text-align:left;padding:20px;border-radius:18px;border:1px solid {{ d.liveYesBd }};background:{{ d.liveYesBg }}" style-hover="border-color:#c4a35a">
+                        <span style="display:block;font-weight:800;font-size:17px;letter-spacing:-0.02em">Yes, it is live</span>
+                        <span style="display:block;font-weight:500;font-size:13.5px;color:#717171;margin-top:5px">Already hosting guests</span>
+                      </button>
+                      <button type="button" sc-camel-on-click="{{ d.pickNotLive }}" style="cursor:pointer;text-align:left;padding:20px;border-radius:18px;border:1px solid {{ d.liveNoBd }};background:{{ d.liveNoBg }}" style-hover="border-color:#c4a35a">
+                        <span style="display:block;font-weight:800;font-size:17px;letter-spacing:-0.02em">No, not yet</span>
+                        <span style="display:block;font-weight:500;font-size:13.5px;color:#717171;margin-top:5px">Starting out</span>
+                      </button>
+                    </div>
+                    <button type="button" sc-camel-on-click="{{ d.changePlan }}" style="align-self:flex-start;cursor:pointer;border:0;background:transparent;padding:0;font-weight:700;font-size:14px;color:#717171" style-hover="color:#222222">Back</button>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ d.isDetailsYes }}" hint-placeholder-val="{{ false }}">
+                  <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:18px">
+                    <div style="display:flex;flex-direction:column;gap:7px">
+                      <h2 style="margin:0;font-weight:800;font-size:26px;letter-spacing:-0.035em">Tell us about the listing</h2>
+                      <p style="margin:0;font-weight:500;font-size:15px;line-height:1.5;color:#717171">So MRG can look it up before the call. No link needed.</p>
+                    </div>
+                    <label style="display:flex;flex-direction:column;gap:7px">
+                      <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Airbnb listing title</span>
+                      <input value="{{ d.f.title }}" sc-camel-on-change="{{ d.on.title }}" placeholder="Bright 2 bed near the lake" style="width:100%;border:1px solid #dddddd;border-radius:14px;padding:13px 15px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:7px">
+                      <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Property address</span>
+                      <input value="{{ d.f.address }}" sc-camel-on-change="{{ d.on.address }}" placeholder="Street, city" style="width:100%;border:1px solid #dddddd;border-radius:14px;padding:13px 15px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                    </label>
+                    <div style="display:flex;flex-direction:column;gap:9px">
+                      <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Typical monthly revenue</span>
+                      <div style="display:flex;flex-wrap:wrap;gap:8px">
+                        <sc-for list="{{ d.earnings }}" as="e" hint-placeholder-count="5">
+                          <button type="button" sc-camel-on-click="{{ e.pick }}" style="cursor:pointer;border-radius:999px;padding:9px 15px;font-weight:700;font-size:13.5px;border:1px solid {{ e.bd }};background:{{ e.bg }};color:#222222" style-hover="border-color:#c4a35a">{{ e.label }}</button>
+                        </sc-for>
+                      </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:14px;padding-top:4px">
+                      <button type="button" sc-camel-on-click="{{ d.backToListing }}" style="cursor:pointer;border:0;background:transparent;padding:0;font-weight:700;font-size:14px;color:#717171" style-hover="color:#222222">Back</button>
+                      <button type="button" sc-camel-on-click="{{ d.toBook }}" style="margin-left:auto;border:0;border-radius:999px;padding:14px 26px;font-weight:700;font-size:15px;background:{{ d.yesCtaBg }};color:{{ d.yesCtaFg }};cursor:{{ d.yesCtaCur }}">Continue</button>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ d.isDetailsNo }}" hint-placeholder-val="{{ false }}">
+                  <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:18px">
+                    <div style="display:flex;flex-direction:column;gap:7px">
+                      <h2 style="margin:0;font-weight:800;font-size:26px;letter-spacing:-0.035em">A few quick questions</h2>
+                      <p style="margin:0;font-weight:500;font-size:15px;line-height:1.5;color:#717171">Helps MRG know if we are the right fit before the call.</p>
+                    </div>
+                    <sc-for list="{{ d.groups }}" as="g" hint-placeholder-count="3">
+                      <div style="display:flex;flex-direction:column;gap:9px">
+                        <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">{{ g.label }}</span>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px">
+                          <sc-for list="{{ g.options }}" as="o" hint-placeholder-count="3">
+                            <button type="button" sc-camel-on-click="{{ o.pick }}" style="cursor:pointer;border-radius:999px;padding:9px 15px;font-weight:700;font-size:13.5px;border:1px solid {{ o.bd }};background:{{ o.bg }};color:#222222" style-hover="border-color:#c4a35a">{{ o.label }}</button>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-for>
+                    <label style="display:flex;flex-direction:column;gap:7px">
+                      <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Property address</span>
+                      <input value="{{ d.f.address }}" sc-camel-on-change="{{ d.on.address }}" placeholder="Street, city" style="width:100%;border:1px solid #dddddd;border-radius:14px;padding:13px 15px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                    </label>
+                    <div style="display:flex;align-items:center;gap:14px;padding-top:4px">
+                      <button type="button" sc-camel-on-click="{{ d.backToListing }}" style="cursor:pointer;border:0;background:transparent;padding:0;font-weight:700;font-size:14px;color:#717171" style-hover="color:#222222">Back</button>
+                      <button type="button" sc-camel-on-click="{{ d.toBook }}" style="margin-left:auto;border:0;border-radius:999px;padding:14px 26px;font-weight:700;font-size:15px;background:{{ d.noCtaBg }};color:{{ d.noCtaFg }};cursor:{{ d.noCtaCur }}">Continue</button>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ d.isBook }}" hint-placeholder-val="{{ false }}">
+                  <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:18px">
+                    <div style="display:flex;flex-direction:column;gap:7px">
+                      <h2 style="margin:0;font-weight:800;font-size:26px;letter-spacing:-0.035em">Lock in your call</h2>
+                      <p style="margin:0;font-weight:500;font-size:15px;line-height:1.5;color:#717171">{{ d.bookSupport }}</p>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                      <label style="display:flex;flex-direction:column;gap:7px;grid-column:span 2">
+                        <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Name</span>
+                        <input value="{{ d.f.name }}" sc-camel-on-change="{{ d.on.name }}" placeholder="First and last" style="width:100%;border:1px solid #dddddd;border-radius:14px;padding:13px 15px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:7px">
+                        <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Phone</span>
+                        <input value="{{ d.f.phone }}" sc-camel-on-change="{{ d.on.phone }}" placeholder="(647) 000-0000" style="width:100%;border:1px solid #dddddd;border-radius:14px;padding:13px 15px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:7px">
+                        <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Email</span>
+                        <input value="{{ d.f.email }}" sc-camel-on-change="{{ d.on.email }}" placeholder="you@email.com" style="width:100%;border:1px solid #dddddd;border-radius:14px;padding:13px 15px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                      </label>
+                    </div>
+                    <div style="border:1px solid #ebebeb;border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px;background:#fcfcfc">
+                      <div style="display:flex;align-items:baseline;gap:10px">
+                        <span style="font-weight:800;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Pick a time</span>
+                        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#a0a0a0;margin-left:auto">slots wired by engineering</span>
+                      </div>
+                      <div style="display:flex;gap:8px">
+                        <sc-for list="{{ d.days }}" as="day" hint-placeholder-count="3">
+                          <button type="button" sc-camel-on-click="{{ day.pick }}" style="flex:1;cursor:pointer;border-radius:14px;padding:11px 8px;text-align:center;border:1px solid {{ day.bd }};background:{{ day.bg }}" style-hover="border-color:#c4a35a">
+                            <span style="display:block;font-weight:700;font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">{{ day.dow }}</span>
+                            <span style="display:block;font-weight:800;font-size:16px;letter-spacing:-0.02em;margin-top:3px">{{ day.date }}</span>
+                          </button>
+                        </sc-for>
+                      </div>
+                      <div style="display:flex;flex-wrap:wrap;gap:8px">
+                        <sc-for list="{{ d.times }}" as="t" hint-placeholder-count="4">
+                          <button type="button" sc-camel-on-click="{{ t.pick }}" style="cursor:pointer;border-radius:999px;padding:9px 15px;font-weight:700;font-size:13.5px;border:1px solid {{ t.bd }};background:{{ t.bg }};color:#222222" style-hover="border-color:#c4a35a">{{ t.label }}</button>
+                        </sc-for>
+                      </div>
+                    </div>
+                    <button type="button" sc-camel-on-click="{{ d.toggleConsent }}" style="display:flex;align-items:flex-start;gap:11px;text-align:left;cursor:pointer;border:0;background:transparent;padding:0">
+                      <span style="width:20px;height:20px;flex:none;border-radius:6px;border:1px solid {{ d.consentBd }};background:{{ d.consentBg }};display:flex;align-items:center;justify-content:center;margin-top:1px">
+                        <svg width="11" height="9" sc-camel-view-box="0 0 11 9" fill="none" style="opacity:{{ d.consentTick }}"><path d="M1 4.6L4 7.5L10 1.3" stroke="#1f1a10" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                      </span>
+                      <span style="font-weight:500;font-size:13.5px;line-height:1.5;color:#5e5e5e">Yes, MRG can contact me about this call and my estimate by phone, text, or email.</span>
+                    </button>
+                    <div style="display:flex;align-items:center;gap:14px;padding-top:4px">
+                      <button type="button" sc-camel-on-click="{{ d.backToDetails }}" style="cursor:pointer;border:0;background:transparent;padding:0;font-weight:700;font-size:14px;color:#717171" style-hover="color:#222222">Back</button>
+                      <button type="button" sc-camel-on-click="{{ d.submit }}" style="margin-left:auto;border:0;border-radius:999px;padding:15px 28px;font-weight:700;font-size:15.5px;background:{{ d.bookCtaBg }};color:{{ d.bookCtaFg }};cursor:{{ d.bookCtaCur }}">Book my free call</button>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ d.isDone }}" hint-placeholder-val="{{ false }}">
+                  <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:14px;padding:14px 0 6px">
+                    <h2 style="margin:0;font-weight:800;font-size:26px;letter-spacing:-0.035em">Your call is booked</h2>
+                    <p style="margin:0;font-weight:500;font-size:15px;line-height:1.55;color:#5e5e5e">{{ d.doneLine }}</p>
+                    <button type="button" sc-camel-on-click="{{ d.reset }}" style="align-self:flex-start;cursor:pointer;border:1px solid #dddddd;background:#ffffff;border-radius:999px;padding:11px 18px;font-weight:700;font-size:14px;color:#222222" style-hover="border-color:#222222">Start over</button>
+                  </div>
+                </sc-if>
+
+              </div>
+            </div>
+            <p style="margin:12px 4px 0;font-weight:500;font-size:13px;color:#8a8a8a">Takes about 60 seconds. We reply the same day.</p>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <div id="1b" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="background:#222222;color:#ffffff;border-radius:999px;padding:4px 11px;font-weight:800;font-size:11.5px;letter-spacing:0.06em">1B</span>
+        <span style="font-weight:700;font-size:13.5px;letter-spacing:-0.01em">Mobile 390</span>
+      </div>
+      <div style="width:390px;background:#ffffff;border:1px solid #ebebeb;border-radius:22px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.05)">
+        <header style="background:#ffffff;border-bottom:1px solid #ebebeb;padding:12px 18px;display:flex;align-items:center;gap:10px">
+          <a href="/" style="display:block;margin-right:auto"><img src="/hub/mrg-logo.png" alt="Mandel Realty Group" style="height:34px;width:auto;display:block"></a>
+          <a href="tel:+16473817325" style="border:1px solid #dddddd;border-radius:999px;padding:8px 13px;font-weight:700;font-size:13px;color:#222222">Call</a>
+        </header>
+        <div style="padding:24px 18px 30px;display:flex;flex-direction:column;gap:18px">
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <p style="margin:0;font-weight:800;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#8a6f2e">Free 15-minute call</p>
+            <h1 style="margin:0;font-weight:800;font-size:29px;line-height:1.05;letter-spacing:-0.04em">Book a call. We will show you the fit.</h1>
+            <p style="margin:0;font-weight:500;font-size:14.5px;line-height:1.5;color:#5e5e5e">Toronto based. Canada and the U.S. No pressure.</p>
+          </div>
+
+          <div style="background:#ffffff;border:1px solid #ebebeb;border-radius:22px;box-shadow:0 8px 24px rgba(0,0,0,0.05);overflow:hidden">
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #ebebeb">
+              <img src="/hub/mrg-logo.png" alt="Mandel Realty Group" style="height:24px;width:auto;display:block">
+              <span style="font-weight:700;font-size:12.5px;color:#222222;margin-left:auto">Free 15-minute call</span>
+            </div>
+            <div style="display:flex;gap:7px;padding:14px 18px 0">
+              <sc-for list="{{ m.segs }}" as="s" hint-placeholder-count="4">
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                  <div style="height:4px;border-radius:999px;background:#ebebeb;overflow:hidden">
+                    <div style="height:100%;border-radius:999px;background:#c4a35a;width:{{ s.w }};transition:width 420ms ease"></div>
+                  </div>
+                  <span style="font-weight:700;font-size:9.5px;letter-spacing:0.05em;text-transform:uppercase;color:{{ s.c }}">{{ s.label }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="padding:18px">
+
+              <sc-if value="{{ m.isPlan }}" hint-placeholder-val="{{ true }}">
+                <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:14px">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <h2 style="margin:0;font-weight:800;font-size:21px;letter-spacing:-0.035em">What are you interested in?</h2>
+                    <p style="margin:0;font-weight:500;font-size:13.5px;line-height:1.5;color:#717171">Pick a plan so we prep the right conversation.</p>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:9px">
+                    <sc-for list="{{ m.plans }}" as="p" hint-placeholder-count="5">
+                      <button type="button" sc-camel-on-click="{{ p.pick }}" style="display:flex;align-items:stretch;gap:12px;text-align:left;width:100%;cursor:pointer;padding:13px 14px;border-radius:15px;border:1px solid {{ p.bd }};background:{{ p.bg }};box-shadow:{{ p.sh }}">
+                        <span style="width:6px;border-radius:999px;flex:none;background:{{ p.color }}"></span>
+                        <span style="display:block">
+                          <span style="display:block;font-weight:700;font-size:14.5px;letter-spacing:-0.015em;color:#222222">{{ p.name }}</span>
+                          <span style="display:block;font-weight:500;font-size:12.5px;color:#717171;margin-top:2px">{{ p.blurb }}</span>
+                        </span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ m.isListing }}" hint-placeholder-val="{{ false }}">
+                <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:14px">
+                  <button type="button" sc-camel-on-click="{{ m.changePlan }}" style="align-self:flex-start;display:flex;align-items:center;gap:8px;cursor:pointer;border:1px solid #ebebeb;background:#f7f7f7;border-radius:999px;padding:6px 12px;font-weight:700;font-size:12.5px;color:#222222">
+                    <span style="width:8px;height:8px;border-radius:999px;background:{{ m.planColor }}"></span>
+                    {{ m.planName }} <span style="color:#8a6f2e">. change</span>
+                  </button>
+                  <h2 style="margin:0;font-weight:800;font-size:21px;letter-spacing:-0.035em">Do you have an Airbnb listing live right now?</h2>
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <button type="button" sc-camel-on-click="{{ m.pickLive }}" style="cursor:pointer;text-align:left;padding:16px;border-radius:16px;border:1px solid {{ m.liveYesBd }};background:{{ m.liveYesBg }}">
+                      <span style="display:block;font-weight:800;font-size:16px;letter-spacing:-0.02em">Yes, it is live</span>
+                      <span style="display:block;font-weight:500;font-size:12.5px;color:#717171;margin-top:4px">Already hosting guests</span>
+                    </button>
+                    <button type="button" sc-camel-on-click="{{ m.pickNotLive }}" style="cursor:pointer;text-align:left;padding:16px;border-radius:16px;border:1px solid {{ m.liveNoBd }};background:{{ m.liveNoBg }}">
+                      <span style="display:block;font-weight:800;font-size:16px;letter-spacing:-0.02em">No, not yet</span>
+                      <span style="display:block;font-weight:500;font-size:12.5px;color:#717171;margin-top:4px">Starting out</span>
+                    </button>
+                  </div>
+                  <button type="button" sc-camel-on-click="{{ m.changePlan }}" style="align-self:flex-start;cursor:pointer;border:0;background:transparent;padding:0;font-weight:700;font-size:13.5px;color:#717171">Back</button>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ m.isDetailsYes }}" hint-placeholder-val="{{ false }}">
+                <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:14px">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <h2 style="margin:0;font-weight:800;font-size:21px;letter-spacing:-0.035em">Tell us about the listing</h2>
+                    <p style="margin:0;font-weight:500;font-size:13.5px;line-height:1.5;color:#717171">So MRG can look it up before the call.</p>
+                  </div>
+                  <label style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-weight:800;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Airbnb listing title</span>
+                    <input value="{{ m.f.title }}" sc-camel-on-change="{{ m.on.title }}" placeholder="Bright 2 bed near the lake" style="width:100%;border:1px solid #dddddd;border-radius:13px;padding:12px 14px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-weight:800;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Property address</span>
+                    <input value="{{ m.f.address }}" sc-camel-on-change="{{ m.on.address }}" placeholder="Street, city" style="width:100%;border:1px solid #dddddd;border-radius:13px;padding:12px 14px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                  </label>
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <span style="font-weight:800;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Typical monthly revenue</span>
+                    <div style="display:flex;flex-wrap:wrap;gap:7px">
+                      <sc-for list="{{ m.earnings }}" as="e" hint-placeholder-count="5">
+                        <button type="button" sc-camel-on-click="{{ e.pick }}" style="cursor:pointer;border-radius:999px;padding:8px 13px;font-weight:700;font-size:12.5px;border:1px solid {{ e.bd }};background:{{ e.bg }};color:#222222">{{ e.label }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <button type="button" sc-camel-on-click="{{ m.backToListing }}" style="cursor:pointer;border:0;background:transparent;padding:0;font-weight:700;font-size:13.5px;color:#717171">Back</button>
+                    <button type="button" sc-camel-on-click="{{ m.toBook }}" style="margin-left:auto;border:0;border-radius:999px;padding:13px 24px;font-weight:700;font-size:14.5px;background:{{ m.yesCtaBg }};color:{{ m.yesCtaFg }};cursor:{{ m.yesCtaCur }}">Continue</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ m.isDetailsNo }}" hint-placeholder-val="{{ false }}">
+                <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:14px">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <h2 style="margin:0;font-weight:800;font-size:21px;letter-spacing:-0.035em">A few quick questions</h2>
+                    <p style="margin:0;font-weight:500;font-size:13.5px;line-height:1.5;color:#717171">Helps MRG know if we are the right fit.</p>
+                  </div>
+                  <sc-for list="{{ m.groups }}" as="g" hint-placeholder-count="3">
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <span style="font-weight:800;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">{{ g.label }}</span>
+                      <div style="display:flex;flex-wrap:wrap;gap:7px">
+                        <sc-for list="{{ g.options }}" as="o" hint-placeholder-count="3">
+                          <button type="button" sc-camel-on-click="{{ o.pick }}" style="cursor:pointer;border-radius:999px;padding:8px 13px;font-weight:700;font-size:12.5px;border:1px solid {{ o.bd }};background:{{ o.bg }};color:#222222">{{ o.label }}</button>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                  <label style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-weight:800;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Property address</span>
+                    <input value="{{ m.f.address }}" sc-camel-on-change="{{ m.on.address }}" placeholder="Street, city" style="width:100%;border:1px solid #dddddd;border-radius:13px;padding:12px 14px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                  </label>
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <button type="button" sc-camel-on-click="{{ m.backToListing }}" style="cursor:pointer;border:0;background:transparent;padding:0;font-weight:700;font-size:13.5px;color:#717171">Back</button>
+                    <button type="button" sc-camel-on-click="{{ m.toBook }}" style="margin-left:auto;border:0;border-radius:999px;padding:13px 24px;font-weight:700;font-size:14.5px;background:{{ m.noCtaBg }};color:{{ m.noCtaFg }};cursor:{{ m.noCtaCur }}">Continue</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ m.isBook }}" hint-placeholder-val="{{ false }}">
+                <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:14px">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <h2 style="margin:0;font-weight:800;font-size:21px;letter-spacing:-0.035em">Lock in your call</h2>
+                    <p style="margin:0;font-weight:500;font-size:13.5px;line-height:1.5;color:#717171">{{ m.bookSupport }}</p>
+                  </div>
+                  <label style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-weight:800;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Name</span>
+                    <input value="{{ m.f.name }}" sc-camel-on-change="{{ m.on.name }}" placeholder="First and last" style="width:100%;border:1px solid #dddddd;border-radius:13px;padding:12px 14px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-weight:800;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Phone</span>
+                    <input value="{{ m.f.phone }}" sc-camel-on-change="{{ m.on.phone }}" placeholder="(647) 000-0000" style="width:100%;border:1px solid #dddddd;border-radius:13px;padding:12px 14px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-weight:800;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Email</span>
+                    <input value="{{ m.f.email }}" sc-camel-on-change="{{ m.on.email }}" placeholder="you@email.com" style="width:100%;border:1px solid #dddddd;border-radius:13px;padding:12px 14px;font-size:15px;font-weight:500;color:#222222;background:#ffffff">
+                  </label>
+                  <div style="border:1px solid #ebebeb;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;background:#fcfcfc">
+                    <span style="font-weight:800;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#717171">Pick a time</span>
+                    <div style="display:flex;gap:7px">
+                      <sc-for list="{{ m.days }}" as="day" hint-placeholder-count="3">
+                        <button type="button" sc-camel-on-click="{{ day.pick }}" style="flex:1;cursor:pointer;border-radius:13px;padding:10px 6px;text-align:center;border:1px solid {{ day.bd }};background:{{ day.bg }}">
+                          <span style="display:block;font-weight:700;font-size:10.5px;letter-spacing:0.05em;text-transform:uppercase;color:#717171">{{ day.dow }}</span>
+                          <span style="display:block;font-weight:800;font-size:15px;letter-spacing:-0.02em;margin-top:2px">{{ day.date }}</span>
+                        </button>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:7px">
+                      <sc-for list="{{ m.times }}" as="t" hint-placeholder-count="4">
+                        <button type="button" sc-camel-on-click="{{ t.pick }}" style="cursor:pointer;border-radius:999px;padding:8px 13px;font-weight:700;font-size:12.5px;border:1px solid {{ t.bd }};background:{{ t.bg }};color:#222222">{{ t.label }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <button type="button" sc-camel-on-click="{{ m.toggleConsent }}" style="display:flex;align-items:flex-start;gap:10px;text-align:left;cursor:pointer;border:0;background:transparent;padding:0">
+                    <span style="width:20px;height:20px;flex:none;border-radius:6px;border:1px solid {{ m.consentBd }};background:{{ m.consentBg }};display:flex;align-items:center;justify-content:center;margin-top:1px">
+                      <svg width="11" height="9" sc-camel-view-box="0 0 11 9" fill="none" style="opacity:{{ m.consentTick }}"><path d="M1 4.6L4 7.5L10 1.3" stroke="#1f1a10" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    </span>
+                    <span style="font-weight:500;font-size:12.5px;line-height:1.5;color:#5e5e5e">Yes, MRG can contact me about this call and my estimate.</span>
+                  </button>
+                  <button type="button" sc-camel-on-click="{{ m.submit }}" style="width:100%;border:0;border-radius:999px;padding:15px 24px;font-weight:700;font-size:15px;background:{{ m.bookCtaBg }};color:{{ m.bookCtaFg }};cursor:{{ m.bookCtaCur }}">Book my free call</button>
+                  <button type="button" sc-camel-on-click="{{ m.backToDetails }}" style="align-self:center;cursor:pointer;border:0;background:transparent;padding:0;font-weight:700;font-size:13.5px;color:#717171">Back</button>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ m.isDone }}" hint-placeholder-val="{{ false }}">
+                <div style="animation:stepIn 300ms ease-out both;display:flex;flex-direction:column;gap:12px;padding:10px 0 4px">
+                  <h2 style="margin:0;font-weight:800;font-size:21px;letter-spacing:-0.035em">Your call is booked</h2>
+                  <p style="margin:0;font-weight:500;font-size:13.5px;line-height:1.55;color:#5e5e5e">{{ m.doneLine }}</p>
+                  <button type="button" sc-camel-on-click="{{ m.reset }}" style="align-self:flex-start;cursor:pointer;border:1px solid #dddddd;background:#ffffff;border-radius:999px;padding:10px 16px;font-weight:700;font-size:13.5px;color:#222222">Start over</button>
+                </div>
+              </sc-if>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="1c" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="background:#222222;color:#ffffff;border-radius:999px;padding:4px 11px;font-weight:800;font-size:11.5px;letter-spacing:0.06em">1C</span>
+        <span style="font-weight:700;font-size:13.5px;letter-spacing:-0.01em">Confirmation . engineering handoff</span>
+      </div>
+      <div style="width:520px;background:#ffffff;border:1px solid #ebebeb;border-radius:22px;box-shadow:0 8px 24px rgba(0,0,0,0.05);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:12px;padding:16px 24px;border-bottom:1px solid #ebebeb">
+          <img src="/hub/mrg-logo.png" alt="Mandel Realty Group" style="height:28px;width:auto;display:block">
+          <span style="font-weight:700;font-size:13.5px;color:#222222;margin-left:auto">Free 15-minute call</span>
+        </div>
+        <div style="padding:28px 24px 30px;display:flex;flex-direction:column;gap:16px">
+          <span style="width:40px;height:40px;border-radius:999px;background:#f7f2e6;border:1px solid #ecdfc2;display:flex;align-items:center;justify-content:center">
+            <svg width="15" height="12" sc-camel-view-box="0 0 11 9" fill="none"><path d="M1 4.6L4 7.5L10 1.3" stroke="#8a6f2e" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          </span>
+          <h2 style="margin:0;font-weight:800;font-size:28px;letter-spacing:-0.035em">Your call is booked</h2>
+          <p style="margin:0;font-weight:500;font-size:15px;line-height:1.55;color:#5e5e5e">Thursday, September 17 at 11:00 AM. We will call the number you gave us. A confirmation is on its way by email and text.</p>
+          <div style="border:1px solid #ebebeb;border-radius:16px;background:#f7f7f7;padding:16px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="width:7px;height:22px;border-radius:999px;background:#2F6BFF"></span>
+              <span style="font-weight:700;font-size:14.5px">Full Service Management</span>
+            </div>
+            <p style="margin:0;font-weight:500;font-size:13.5px;line-height:1.5;color:#717171">Listing is live. We will review it before the call and bring notes.</p>
+          </div>
+          <p style="margin:0;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#a0a0a0">live site routes to /thank-you . posts interestedPlan, listing fields, slot, consent</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script="">
+const PLANS = [
+  { key: 'full-service', name: 'Full Service', blurb: 'Hands off ops. 20% or 25%.', color: '#2F6BFF' },
+  { key: 'growth', name: 'Growth Partnership', blurb: 'Live hosts. Lower fee plus upside.', color: '#12B76A' },
+  { key: 'essentials', name: 'Managed Essentials', blurb: 'Listing and pricing. Fixed monthly.', color: '#FF4716' },
+  { key: 'furniture', name: 'Furniture Investment', blurb: '$0 upfront furnish if approved.', color: '#F5C518' },
+  { key: 'unsure', name: 'Not sure yet', blurb: 'Help me pick on the call.', color: '#8a8a8a' }
+];
+const SEGS = ['Plan', 'Listing', 'Details', 'Book'];
+const EARNINGS = ['$0 to $2.5k', '$2.5k to $5k', '$5k to $8k', '$8k and up', 'Not sure'];
+const GROUPS = [
+  { key: 'stage', label: 'Where are you in the process?', options: ['I own it', 'Closing soon', 'Still shopping', 'Rental I lease'] },
+  { key: 'allowed', label: 'Does your building or area allow Airbnb?', options: ['Yes', 'No', 'Not sure'] },
+  { key: 'permit', label: 'Short term rental permit', options: ['Have one', 'Applying', 'None yet', 'Not sure'] }
+];
+const DAYS = [
+  { key: 'tue', dow: 'Tue', date: 'Sep 15' },
+  { key: 'wed', dow: 'Wed', date: 'Sep 16' },
+  { key: 'thu', dow: 'Thu', date: 'Sep 17' }
+];
+const TIMES = ['9:00 AM', '11:00 AM', '1:30 PM', '4:00 PM'];
+
+const BLANK = {
+  step: 'plan', plan: null, live: null, consent: false, day: null, time: null,
+  earnings: null, stage: null, allowed: null, permit: null,
+  f: { title: '', address: '', name: '', phone: '', email: '' }
+};
+
+class Component extends DCLogic {
+  state = {
+    d: Object.assign({}, BLANK, { plan: 'full-service', step: 'listing', f: Object.assign({}, BLANK.f) }),
+    m: Object.assign({}, BLANK, { f: Object.assign({}, BLANK.f) })
+  };
+
+  mk(k) {
+    const s = this.state[k];
+    const set = (p) => this.setState((st) => ({ [k]: Object.assign({}, st[k], p) }));
+    const setF = (key) => (e) => this.setState((st) => ({ [k]: Object.assign({}, st[k], { f: Object.assign({}, st[k].f, { [key]: e.target.value }) }) }));
+    const plan = PLANS.find((p) => p.key === s.plan);
+    const idx = { plan: 0, listing: 1, details: 2, book: 3, done: 4 }[s.step];
+    const chip = (on) => ({ bd: on ? '#c4a35a' : '#dddddd', bg: on ? '#f7f2e6' : '#ffffff' });
+    const cta = (ok, go) => ({ bg: ok ? '#c4a35a' : '#f0f0f0', fg: ok ? '#1f1a10' : '#b0b0b0', cur: ok ? 'pointer' : 'not-allowed', go: ok ? go : () => {} });
+
+    const yesOk = s.f.title.trim() && s.f.address.trim();
+    const noOk = s.stage && s.allowed && s.permit && s.f.address.trim();
+    const bookOk = s.f.name.trim() && s.f.phone.trim() && s.f.email.trim() && s.consent && s.day && s.time;
+    const y = cta(yesOk, () => set({ step: 'book' }));
+    const n = cta(noOk, () => set({ step: 'book' }));
+    const b = cta(bookOk, () => set({ step: 'done' }));
+
+    const planLine = plan ? (plan.key === 'unsure' ? 'We will help you pick the right plan.' : 'We will focus on ' + plan.name + '.') : '';
+    const liveLine = s.live === true ? ' We will review your live listing first.' : (s.live === false ? ' We will talk through getting set up.' : '');
+
+    return {
+      isPlan: s.step === 'plan',
+      isListing: s.step === 'listing',
+      isDetailsYes: s.step === 'details' && s.live === true,
+      isDetailsNo: s.step === 'details' && s.live === false,
+      isBook: s.step === 'book',
+      isDone: s.step === 'done',
+      f: s.f,
+      on: { title: setF('title'), address: setF('address'), name: setF('name'), phone: setF('phone'), email: setF('email') },
+      planName: plan ? plan.name : 'No plan picked',
+      planColor: plan ? plan.color : '#8a8a8a',
+      bookSupport: planLine + liveLine + ' Pick a time that works.',
+      doneLine: (s.day && s.time ? DAYS.find((x) => x.key === s.day).dow + ' ' + DAYS.find((x) => x.key === s.day).date + ' at ' + s.time + '. ' : '') + 'We will call the number you gave us. Confirmation on its way.',
+      segs: SEGS.map((label, i) => ({ label, w: i < idx ? '100%' : (i === idx ? '55%' : '0%'), c: i <= idx ? '#222222' : '#a0a0a0' })),
+      plans: PLANS.map((p) => Object.assign({}, p, {
+        bd: s.plan === p.key ? '#c4a35a' : '#ebebeb',
+        bg: s.plan === p.key ? '#fbf7ee' : '#ffffff',
+        sh: s.plan === p.key ? '0 0 0 3px rgba(196,163,90,0.16)' : 'none',
+        pick: () => set({ plan: p.key, step: 'listing' })
+      })),
+      earnings: EARNINGS.map((label) => Object.assign({ label, pick: () => set({ earnings: label }) }, chip(s.earnings === label))),
+      groups: GROUPS.map((g) => ({
+        label: g.label,
+        options: g.options.map((label) => Object.assign({ label, pick: () => set({ [g.key]: label }) }, chip(s[g.key] === label)))
+      })),
+      days: DAYS.map((day) => Object.assign({}, day, chip(s.day === day.key), { pick: () => set({ day: day.key }) })),
+      times: TIMES.map((label) => Object.assign({ label, pick: () => set({ time: label }) }, chip(s.time === label))),
+      liveYesBd: s.live === true ? '#c4a35a' : '#ebebeb',
+      liveYesBg: s.live === true ? '#fbf7ee' : '#ffffff',
+      liveNoBd: s.live === false ? '#c4a35a' : '#ebebeb',
+      liveNoBg: s.live === false ? '#fbf7ee' : '#ffffff',
+      consentBd: s.consent ? '#c4a35a' : '#dddddd',
+      consentBg: s.consent ? '#c4a35a' : '#ffffff',
+      consentTick: s.consent ? 1 : 0,
+      yesCtaBg: y.bg, yesCtaFg: y.fg, yesCtaCur: y.cur,
+      noCtaBg: n.bg, noCtaFg: n.fg, noCtaCur: n.cur,
+      bookCtaBg: b.bg, bookCtaFg: b.fg, bookCtaCur: b.cur,
+      changePlan: () => set({ step: 'plan' }),
+      pickLive: () => set({ live: true, step: 'details' }),
+      pickNotLive: () => set({ live: false, step: 'details' }),
+      backToListing: () => set({ step: 'listing' }),
+      backToDetails: () => set({ step: 'details' }),
+      toBook: s.live === true ? y.go : n.go,
+      toggleConsent: () => set({ consent: !s.consent }),
+      submit: b.go,
+      reset: () => this.setState({ [k]: Object.assign({}, BLANK, { f: Object.assign({}, BLANK.f) }) })
+    };
+  }
+
+  renderVals() {
+    return { d: this.mk('d'), m: this.mk('m') };
+  }
+}
+
+</script>
+
+
+</body></html>

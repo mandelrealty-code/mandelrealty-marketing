@@ -19,6 +19,8 @@ export type AuditLeadPayload = {
   permitStatus?: string;
   strAllowed?: string;
   launchTimeline?: string;
+  /** Plan id from /book-a-call picker, e.g. full-service */
+  interestedPlan?: string;
 };
 
 export type AuditLeadResult = {

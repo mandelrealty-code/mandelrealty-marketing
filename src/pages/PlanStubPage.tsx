@@ -104,7 +104,7 @@ export function PlanStubPage({ planId }: { planId: PlanStubId }) {
           </a>
           <nav className="plan-stub__nav">
             <a href="/#plans">All plans</a>
-            <a href="/book-a-call" className="plan-stub__book">
+            <a href={`/book-a-call?plan=${plan.id}`} className="plan-stub__book">
               Book a call
             </a>
           </nav>
@@ -144,7 +144,7 @@ export function PlanStubPage({ planId }: { planId: PlanStubId }) {
         </p>
 
         <div className="plan-stub__ctas">
-          <a href="/book-a-call" className="plan-stub__cta-gold">
+          <a href={`/book-a-call?plan=${plan.id}`} className="plan-stub__cta-gold">
             Book a free 15-minute call
           </a>
           <a href={WHATSAPP_HREF} className="plan-stub__cta-outline">

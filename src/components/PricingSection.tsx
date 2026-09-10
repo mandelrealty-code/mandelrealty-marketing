@@ -46,7 +46,13 @@ export function PricingSection() {
                   ))}
                 </ul>
                 <a
-                  href="/book-a-call"
+                  href={
+                    tier.id === "full-service"
+                      ? "/book-a-call?plan=full-service"
+                      : tier.id === "essentials"
+                        ? "/book-a-call?plan=essentials"
+                        : "/book-a-call"
+                  }
                   className={`mt-8 inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition-all active:scale-[0.98] ${
                     tier.popular
                       ? "bg-mrg-gold text-black hover:bg-mrg-gold-light"
