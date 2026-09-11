@@ -1,11 +1,13 @@
 # Connect all MRG properties — what you do vs what we built
 
-## How connection works now (no hand-invented UUIDs)
+## How connection works now
 
-1. **Hospitable** is the catalog of real units.
-2. Each app **imports or links** a unit from Hospitable (picker). That writes the shared UUID.
-3. Units can exist on Cleaner **without** Guidebook (or the reverse). Admin App links leave optional IDs blank = “not onboarded”.
-4. After each app is linked, paste the **local** Cleaner / Guidebook ids into Admin **App links** so the registry can deep-link. (Cross-DB auto-discovery comes later.)
+1. **Hospitable** is the catalog of real units (API uses **UUID**; the website URL uses a separate **numeric** id).
+2. **Admin OPS** imports a unit → stores the Hospitable UUID.
+3. Click **Create / open in Cleaner Hub** on the property — Admin creates or finds the Cleaner property, saves the Cleaner id, and opens it. Adjust rooms / checklists / inventory there.
+4. Guidebook stays optional: connect in Guidebook when needed, then paste `/editor/…` id (or leave blank).
+5. For Hospitable **Open** in Admin: paste the numeric dashboard id (or full property URL) under Edit links once — e.g. `2063888` from  
+   `https://my.hospitable.com/properties/property/2063888/overview`
 
 ---
 
@@ -19,16 +21,23 @@ SQL Editor → run **both** (if not already):
 2. `owner_integrations` table — file:  
    `property-cleaner-hub/supabase/migrations/20260911130000_owner_integrations_hospitable.sql`
 
-### A2. Deploy Cleaner edge function
+### A1b. Admin OPS SQL (Hospitable Open link)
+
+In Admin Supabase SQL Editor run:
+
+`mandelrealty-marketing/supabase/pm_hospitable_dashboard_id_v1.sql`
+
+### A2. Deploy Cleaner edge functions
 
 From `property-cleaner-hub`:
 
 ```bash
 npx supabase functions deploy hospitable-proxy --project-ref hyndmdjvjlsbthlqrxge
+npx supabase functions deploy ops-hub-sync --project-ref hyndmdjvjlsbthlqrxge
+npx supabase secrets set OPS_HUB_SYNC_KEY=<same as Admin CLEANER_HUB_SYNC_KEY> --project-ref hyndmdjvjlsbthlqrxge
 ```
 
-(Use your real project ref if different.)  
-If the CLI isn’t logged in, say so and we’ll connect Supabase CLI / Cursor.
+(Optional) `OPS_HUB_OWNER_USER_ID` = your Cleaner login user uuid. If unset, new properties inherit `owner_id` from an existing Cleaner property.
 
 ### A3. Run Guidebook SQL (if not done)
 
@@ -43,17 +52,17 @@ If the CLI isn’t logged in, say so and we’ll connect Supabase CLI / Cursor.
 
 See `docs/HOSPITABLE_MCP_OPS_MAP.md` for what MCP can do for your spreadsheet.
 
-### A5. Env (marketing Admin Open links)
-
-Already documented; local `.env.local` should include:
+### A5. Env (Admin)
 
 ```bash
 VITE_CLEANER_HUB_URL=https://portal.stravo.ai
 VITE_GUIDEBOOK_URL=https://guidebook.stravo.ai
 VITE_COHOST_URL=https://chat.stravo.ai
+CLEANER_HUB_SYNC_KEY=<shared secret>
+CLEANER_HUB_SYNC_URL=https://hyndmdjvjlsbthlqrxge.supabase.co/functions/v1/ops-hub-sync
 ```
 
-Restart `npm run dev` after changing. Mirror the same on Vercel for Admin production.
+Restart `npm run dev` after changing. Mirror on Vercel for Admin production.
 
 ### A6. Hospitable PAT in each product
 
@@ -68,20 +77,19 @@ Same Hospitable account PAT is fine.
 
 ---
 
-## B. Per-unit connect order (repeat for every live property)
+## B. Per-unit connect order
 
-### B1. Admin OPS (registry)
+### B1. Admin OPS
 
 1. Properties → **Import** from Hospitable (or open existing).  
-2. Confirm Hospitable is linked.  
-3. Later: App links → fill Cleaner / Guidebook ids after B2/B3.
+2. Confirm Hospitable UUID is linked.  
+3. **Edit links** → paste Hospitable dashboard numeric id (or property URL) so **Open** hits the right page.  
+4. Click **Create / open in Cleaner Hub** — no manual Cleaner UUID paste for new units.
 
 ### B2. Cleaner Hub
 
-**New unit:** Properties → Hospitable card → Connect PAT → select unit → **Import as new Cleaner property**.  
-**Existing unit (already in Cleaner, no Guidebook needed):** open property → Settings → Hospitable → select matching unit → **Link this property**.
-
-Copy URL id `/properties/{id}` → Admin App links → Cleaner Hub ID.
+Land on the property from Admin. Set rooms, checklists, inventory.  
+(If the unit already existed only in Cleaner: still use Create/open — it matches on Hospitable UUID and links Admin.)
 
 ### B3. Guidebook (only if you want a guest guidebook)
 
@@ -92,10 +100,6 @@ Skip units that don’t need a guidebook.
 ### B4. CohostAI
 
 Properties sync from Hospitable (ids already = Hospitable UUID). Confirm the unit appears.
-
-### B5. Admin App links
-
-Open property → App links → Hospitable picker (should match) + paste Cleaner / Guidebook ids if onboarded → Save.
 
 ---
 

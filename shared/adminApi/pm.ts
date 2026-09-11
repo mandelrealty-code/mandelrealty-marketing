@@ -103,6 +103,7 @@ import {
   type TaskStatus,
   type TaskType,
 } from "../pm/taskStore.js";
+import { pushPropertyToCleanerHub } from "../pm/cleanerHubSync.js";
 import {
   ensureNegativeReviewTasks,
   ensureSupplyReorderTask,
@@ -703,6 +704,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 : undefined,
             hub_property_id:
               body.hub_property_id != null ? str(body.hub_property_id) : undefined,
+            hospitable_dashboard_id:
+              body.hospitable_dashboard_id != null
+                ? str(body.hospitable_dashboard_id)
+                : undefined,
             active: typeof body.active === "boolean" ? body.active : undefined,
             cleaning_fee_keeper: keeper,
             commission_base_mode: baseMode,
@@ -825,8 +830,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 : undefined,
             hub_property_id:
               body.hub_property_id != null ? str(body.hub_property_id) : undefined,
+            hospitable_dashboard_id:
+              body.hospitable_dashboard_id != null
+                ? str(body.hospitable_dashboard_id)
+                : undefined,
           });
           return res.status(200).json({ property });
+        }
+        if (op === "push_to_cleaner") {
+          const id = str(body.id || body.property_id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          const result = await pushPropertyToCleanerHub(id);
+          const property = await getPmPropertyDetail(id);
+          return res.status(200).json({ ...result, property });
         }
         if (op === "link_health") {
           const links = await listPmPropertyLinkHealth();

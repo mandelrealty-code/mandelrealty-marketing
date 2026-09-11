@@ -24,6 +24,8 @@ export type PmProperty = {
   hospitable_property_id: string;
   guidebook_property_id: string;
   hub_property_id: string;
+  /** Numeric id for my.hospitable.com/properties/property/{id}/… deep links only. */
+  hospitable_dashboard_id?: string;
   currency: string;
   active: boolean;
   cleaning_fee_keeper: "mrg" | "host";

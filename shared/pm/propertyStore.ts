@@ -29,6 +29,9 @@ function normalizePropertyRow(p: PmProperty): PmProperty {
     hospitable_property_id: (p.hospitable_property_id || "").trim(),
     guidebook_property_id: (p.guidebook_property_id || "").trim(),
     hub_property_id: (p.hub_property_id || "").trim(),
+    hospitable_dashboard_id: String(
+      (p as { hospitable_dashboard_id?: string }).hospitable_dashboard_id || "",
+    ).trim(),
     cleaning_fee_keeper: p.cleaning_fee_keeper === "host" ? "host" : "mrg",
     commission_base_mode: normalizeCommissionBaseMode(
       (p as { commission_base_mode?: string }).commission_base_mode,
@@ -238,6 +241,7 @@ export async function updatePmProperty(
     hospitable_property_id?: string;
     guidebook_property_id?: string;
     hub_property_id?: string;
+    hospitable_dashboard_id?: string;
     active?: boolean;
     cleaning_fee_keeper?: "mrg" | "host";
     commission_base_mode?: "nightly" | "nightly_minus_host_fee";
@@ -270,6 +274,9 @@ export async function updatePmProperty(
   }
   if (patch.hub_property_id != null) {
     updates.hub_property_id = patch.hub_property_id.trim();
+  }
+  if (patch.hospitable_dashboard_id != null) {
+    updates.hospitable_dashboard_id = patch.hospitable_dashboard_id.trim();
   }
   if (patch.active != null) updates.active = patch.active;
   if (patch.cleaning_fee_keeper != null) {
