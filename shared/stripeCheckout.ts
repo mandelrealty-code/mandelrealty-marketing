@@ -4,8 +4,9 @@ import { publicSiteOrigin } from "./ownerEmails.js";
 export type RevenueAuditCheckoutTier = "full" | "half";
 
 const TIER_CENTS: Record<RevenueAuditCheckoutTier, number> = {
-  full: 3999, // $39.99
-  half: 1999, // $19.99 — 50% off when they decline the full price
+  // TEMP TEST — real-card checkout smoke. Restore to 3999 / 1999 after.
+  full: 1, // $0.01
+  half: 1, // $0.01
 };
 
 const TIER_LABEL: Record<RevenueAuditCheckoutTier, string> = {
