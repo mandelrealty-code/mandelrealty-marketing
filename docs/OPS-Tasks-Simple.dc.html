@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#050505; color:#f5f5f5; font-family:'Manrope',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  * { box-sizing:border-box; }
+</style>
+</helmet>
+
+
+
+
+<section style="display:flex; flex-direction:column; gap:28px; padding:48px">
+  <div style="display:flex; align-items:baseline; gap:14px; color:#9a9590; font-size:13px; letter-spacing:0.02em">
+    <span style="display:inline-flex; align-items:center; height:22px; padding:0 9px; border:1px solid #c4a35a; border-radius:11px; color:#c4a35a; font-size:11px; font-weight:700; letter-spacing:0.08em">1a</span>
+    <span style="color:#f5f5f5; font-size:15px; font-weight:600">MRG Admin OPS · Tasks</span>
+    <span>T1–T4 Tasks content · OPS left tabs + mobile nav preserved from live shell</span>
+  </div>
+
+  <div id="1a" style="display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start">
+
+    <!-- T1 — LIST 390 -->
+    <div style="display:flex; flex-direction:column; gap:10px">
+      <div style="color:#6f6a65; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase">T1 · List</div>
+      <div data-screen-label="T1 List" style="width:390px; height:844px; background:#0a0a0a; border:1px solid #232323; border-radius:30px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="height:52px; flex:none; padding:0 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">M</div>
+            <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+              <div style="padding:5px 12px; border-radius:6px; color:#9a9590; font-size:11px; font-weight:600; letter-spacing:0.04em">CRM</div>
+              <div style="padding:5px 12px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:11px; font-weight:700; letter-spacing:0.04em">OPS</div>
+            </div>
+          </div>
+        </div>
+        <div style="flex:none; padding:10px 20px 14px; display:flex; align-items:center; justify-content:space-between">
+          <div style="color:#f5f5f5; font-size:28px; font-weight:700; letter-spacing:-0.02em">Tasks</div>
+          <div style="width:36px; height:36px; border-radius:18px; background:rgba(196,163,90,0.12); color:#c4a35a; font-size:24px; font-weight:500; display:flex; align-items:center; justify-content:center; line-height:1">+</div>
+        </div>
+
+        <div style="flex:none; padding:0 20px 12px; display:flex; gap:8px">
+          <div style="height:32px; padding:0 14px; border-radius:16px; background:#c4a35a; color:#0a0a0a; font-size:13px; font-weight:600; display:flex; align-items:center">Mine</div>
+          <div style="height:32px; padding:0 14px; border-radius:16px; background:#141414; color:#f5f5f5; font-size:13px; font-weight:500; display:flex; align-items:center">Open</div>
+          <div style="height:32px; padding:0 14px; border-radius:16px; background:#141414; color:#9a9590; font-size:13px; font-weight:500; display:flex; align-items:center">Done</div>
+          
+            <div style="height:32px; padding:0 14px; border-radius:16px; background:#141414; color:#9a9590; font-size:13px; font-weight:500; display:flex; align-items:center">Blocked</div>
+          
+        </div>
+
+        
+          <div style="flex:none; padding:0 20px 14px; display:flex; gap:14px; color:#9a9590; font-size:13px; font-weight:500">
+            <span style="color:#cf7f7b">3 overdue</span>
+            <span>2 supply</span>
+            <span>1 QA</span>
+          </div>
+        
+
+        <div style="flex:1; overflow:hidden; border-top:1px solid #1c1c1c">
+
+          <div style="padding:16px 20px 6px; color:#cf7f7b; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase">Overdue</div>
+
+          <div style="display:flex; gap:14px; padding:11px 20px; align-items:flex-start">
+            <div style="width:20px; height:20px; flex:none; margin-top:1px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="display:flex; align-items:center; gap:8px">
+                <div style="color:#f5f5f5; font-size:15px; font-weight:600; letter-spacing:-0.01em">Review 3★ reply</div>
+                
+                  <div style="width:6px; height:6px; flex:none; border-radius:3px; background:#c4a35a"></div>
+                
+              </div>
+              <div style="color:#6f6a65; font-size:13px">King West · <span style="color:#cf7f7b">2d late</span> · Unassigned</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:14px; padding:11px 20px; align-items:flex-start">
+            <div style="width:20px; height:20px; flex:none; margin-top:1px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; letter-spacing:-0.01em">Restock paper towels</div>
+              <div style="color:#6f6a65; font-size:13px">Bala Cottage · <span style="color:#cf7f7b">1d late</span> · Alex</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:14px; padding:11px 20px; align-items:flex-start">
+            <div style="width:20px; height:20px; flex:none; margin-top:1px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; letter-spacing:-0.01em">Fix lock delay note</div>
+              <div style="color:#6f6a65; font-size:13px">Distillery Loft · <span style="color:#cf7f7b">Yesterday</span> · Unassigned</div>
+            </div>
+          </div>
+
+          <div style="padding:18px 20px 6px; color:#6f6a65; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase">This week</div>
+
+          <div style="display:flex; gap:14px; padding:11px 20px; align-items:flex-start">
+            <div style="width:20px; height:20px; flex:none; margin-top:1px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; letter-spacing:-0.01em">Reorder TP</div>
+              <div style="color:#6f6a65; font-size:13px">Charlotte 606 · <span style="color:#9a9590">Today</span> · Alex</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:14px; padding:11px 20px; align-items:flex-start">
+            <div style="width:20px; height:20px; flex:none; margin-top:1px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="display:flex; align-items:center; gap:8px">
+                <div style="color:#f5f5f5; font-size:15px; font-weight:600; letter-spacing:-0.01em">Turnover QC</div>
+                
+                  <div style="width:6px; height:6px; flex:none; border-radius:3px; background:#c4a35a"></div>
+                
+              </div>
+              <div style="color:#6f6a65; font-size:13px">Shaw St · <span style="color:#9a9590">Today</span> · Shane</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:14px; padding:11px 20px; align-items:flex-start">
+            <div style="width:20px; height:20px; flex:none; margin-top:1px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; letter-spacing:-0.01em">Owner call</div>
+              <div style="color:#6f6a65; font-size:13px">Lake Rosseau · Tomorrow · Shane</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:14px; padding:11px 20px; align-items:flex-start">
+            <div style="width:20px; height:20px; flex:none; margin-top:1px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; letter-spacing:-0.01em">Replace shower curtain</div>
+              <div style="color:#6f6a65; font-size:13px">Bala Cottage · Wed · Alex</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:14px; padding:11px 20px; align-items:flex-start">
+            <div style="width:20px; height:20px; flex:none; margin-top:1px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; letter-spacing:-0.01em">Statement prep</div>
+              <div style="color:#6f6a65; font-size:13px">King West · Thu · Shane</div>
+            </div>
+          </div>
+
+          <div style="padding:18px 20px 6px; color:#6f6a65; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase">Later</div>
+
+          <div style="display:flex; gap:14px; padding:11px 20px; align-items:flex-start">
+            <div style="width:20px; height:20px; flex:none; margin-top:1px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; letter-spacing:-0.01em">Deep clean patio</div>
+              <div style="color:#6f6a65; font-size:13px">Lake Rosseau · Next week · Alex</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:14px; padding:11px 20px; align-items:flex-start">
+            <div style="width:20px; height:20px; flex:none; margin-top:1px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; letter-spacing:-0.01em">Battery swap · lock</div>
+              <div style="color:#6f6a65; font-size:13px">Distillery Loft · Later · Unassigned</div>
+            </div>
+          </div>
+
+        </div>
+      
+        <div style="height:62px; flex:none; border-top:1px solid rgba(255,255,255,0.08); background:#0c0c0c; display:grid; grid-template-columns:repeat(7,1fr); align-items:center; padding:0 2px">
+          <div style="text-align:center; font-size:9.5px; font-weight:700; color:#c4a35a">Tasks</div>
+          <div style="text-align:center; font-size:9.5px; font-weight:500; color:#6f6a65">SOPs</div>
+          <div style="text-align:center; font-size:9.5px; font-weight:500; color:#6f6a65">Team</div>
+          <div style="text-align:center; font-size:9.5px; font-weight:500; color:#6f6a65">Clients</div>
+          <div style="text-align:center; font-size:9.5px; font-weight:500; color:#6f6a65">Properties</div>
+          <div style="text-align:center; font-size:9.5px; font-weight:500; color:#6f6a65">Month</div>
+          <div style="text-align:center; font-size:9.5px; font-weight:500; color:#6f6a65">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- T2 — DETAIL -->
+    <div style="display:flex; flex-direction:column; gap:10px">
+      <div style="color:#6f6a65; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase">T2 · Detail</div>
+      <div data-screen-label="T2 Detail" style="width:390px; height:844px; background:#0a0a0a; border:1px solid #232323; border-radius:30px; overflow:hidden; display:flex; flex-direction:column">
+        <div style="height:44px; flex:none"></div>
+        <div style="flex:none; padding:4px 20px 24px; color:#9a9590; font-size:15px; font-weight:500">← Tasks</div>
+
+        <div style="flex:none; padding:0 20px; display:flex; flex-direction:column; gap:10px">
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="color:#f5f5f5; font-size:26px; font-weight:700; letter-spacing:-0.02em; line-height:1.15">Reorder TP</div>
+            
+              <div style="width:7px; height:7px; flex:none; border-radius:4px; background:#c4a35a"></div>
+            
+          </div>
+          <div style="color:#9a9590; font-size:14px; font-weight:500">Charlotte 606 · Today · Alex</div>
+          <div style="color:#6f6a65; font-size:14px; line-height:1.5; max-width:300px; text-wrap:pretty">Low stock flagged after last clean. 12-pack, hall closet.</div>
+        </div>
+
+        <div style="flex:1"></div>
+
+        <div style="flex:none; padding:0 20px 20px; display:flex; flex-direction:column; gap:10px">
+          <div style="height:34px; display:flex; align-items:center; justify-content:space-between; color:#6f6a65; font-size:14px">
+            <span>Due</span><span style="color:#9a9590">Today</span>
+          </div>
+          <div style="height:34px; display:flex; align-items:center; justify-content:space-between; color:#6f6a65; font-size:14px; border-top:1px solid #1c1c1c">
+            <span>Property</span><span style="color:#9a9590">Charlotte 606</span>
+          </div>
+        </div>
+
+        <div style="flex:none; padding:16px 20px 34px; border-top:1px solid #1c1c1c; display:flex; flex-direction:column; gap:10px">
+          <div style="height:56px; border-radius:14px; background:#4ea882; color:#062018; font-size:17px; font-weight:700; display:flex; align-items:center; justify-content:center">Done</div>
+          <div style="display:flex; gap:10px">
+            <div style="flex:1; height:52px; border-radius:14px; background:#141414; color:#f5f5f5; font-size:15px; font-weight:600; display:flex; align-items:center; justify-content:center">Blocked</div>
+            <div style="flex:1; height:52px; border-radius:14px; background:#141414; color:#f5f5f5; font-size:15px; font-weight:600; display:flex; align-items:center; justify-content:center">Assign</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- T3 — ADD SHEET -->
+    <div style="display:flex; flex-direction:column; gap:10px">
+      <div style="color:#6f6a65; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase">T3 · Add</div>
+      <div data-screen-label="T3 Add" style="width:390px; height:844px; background:#0a0a0a; border:1px solid #232323; border-radius:30px; overflow:hidden; display:flex; flex-direction:column; justify-content:flex-end">
+        <div style="flex:1; background:rgba(0,0,0,0.55)"></div>
+        <div style="flex:none; background:#141414; border-radius:24px 24px 0 0; padding:20px 20px 34px; display:flex; flex-direction:column; gap:18px">
+          <div style="width:38px; height:4px; border-radius:2px; background:#3d3a37; align-self:center"></div>
+          <div style="color:#f5f5f5; font-size:20px; font-weight:700; letter-spacing:-0.01em">New task</div>
+
+          <div style="display:flex; flex-direction:column; gap:14px">
+            <div style="padding-bottom:12px; border-bottom:1px solid #232323; color:#f5f5f5; font-size:17px; font-weight:600">Restock coffee pods</div>
+            <div style="padding-bottom:12px; border-bottom:1px solid #232323; display:flex; justify-content:space-between; font-size:15px">
+              <span style="color:#6f6a65">Place</span><span style="color:#f5f5f5">Shaw St</span>
+            </div>
+            <div style="padding-bottom:12px; border-bottom:1px solid #232323; display:flex; justify-content:space-between; font-size:15px">
+              <span style="color:#6f6a65">Who</span><span style="color:#f5f5f5">Alex</span>
+            </div>
+            <div style="padding-bottom:12px; border-bottom:1px solid #232323; display:flex; justify-content:space-between; font-size:15px">
+              <span style="color:#6f6a65">Due</span><span style="color:#f5f5f5">Tomorrow</span>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:8px">
+            <div style="height:34px; padding:0 14px; border-radius:17px; background:#1e1e1e; color:#9a9590; font-size:13px; font-weight:500; display:flex; align-items:center">Clean</div>
+            <div style="height:34px; padding:0 14px; border-radius:17px; background:#1e1e1e; color:#9a9590; font-size:13px; font-weight:500; display:flex; align-items:center">Fix</div>
+            <div style="height:34px; padding:0 14px; border-radius:17px; background:#c4a35a; color:#0a0a0a; font-size:13px; font-weight:600; display:flex; align-items:center">Supply</div>
+            <div style="height:34px; padding:0 14px; border-radius:17px; background:#1e1e1e; color:#9a9590; font-size:13px; font-weight:500; display:flex; align-items:center">Other</div>
+          </div>
+
+          <div style="height:56px; border-radius:14px; background:#c4a35a; color:#0a0a0a; font-size:17px; font-weight:700; display:flex; align-items:center; justify-content:center">Save</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- T4 — DESKTOP -->
+    <div style="display:flex; flex-direction:column; gap:10px">
+      <div style="color:#6f6a65; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase">T4 · Desktop 1280</div>
+      <div data-screen-label="T4 Desktop" style="width:1280px; height:820px; background:#0a0a0a; border:1px solid #232323; border-radius:14px; overflow:hidden; display:flex; flex-direction:column">
+
+        <div style="height:56px; flex:none; padding:0 18px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:14px">
+            <div style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">M</div>
+            <div style="font-size:13px; font-weight:600; color:#f5f5f5; letter-spacing:-0.01em">Mandel Realty Group</div>
+            <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+              <div style="padding:5px 14px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600; letter-spacing:0.04em">CRM</div>
+              <div style="padding:5px 14px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700; letter-spacing:0.04em">OPS</div>
+            </div>
+          </div>
+          <div style="font-size:12px; color:#9a9590">Refresh</div>
+        </div>
+
+        <div style="flex:1; min-height:0; display:flex">
+          <div style="width:212px; flex:none; border-right:1px solid rgba(255,255,255,0.08); background:#0e0e0e; padding:16px; display:flex; flex-direction:column; gap:2px">
+            <div style="padding:8px 12px; border-radius:6px; background:#1a1a1a; color:#c4a35a; font-size:14px; font-weight:600">Tasks</div>
+            <div style="padding:8px 12px; border-radius:6px; color:#9a9590; font-size:14px; font-weight:500">SOPs</div>
+            <div style="padding:8px 12px; border-radius:6px; color:#9a9590; font-size:14px; font-weight:500">Employees</div>
+            <div style="padding:8px 12px; border-radius:6px; color:#9a9590; font-size:14px; font-weight:500">Clients</div>
+            <div style="padding:8px 12px; border-radius:6px; color:#9a9590; font-size:14px; font-weight:500">Properties</div>
+            <div style="padding:8px 12px; border-radius:6px; color:#9a9590; font-size:14px; font-weight:500">Revenue</div>
+            <div style="padding:8px 12px; border-radius:6px; color:#9a9590; font-size:14px; font-weight:500">Settings</div>
+          </div>
+          <div style="flex:1; min-width:0; display:flex; flex-direction:column; background:#0a0a0a">
+
+        <div style="flex:none; height:64px; padding:0 28px; border-bottom:1px solid #1c1c1c; display:flex; align-items:center; justify-content:space-between">
+          <div style="display:flex; align-items:center; gap:22px">
+            <div style="color:#f5f5f5; font-size:19px; font-weight:700; letter-spacing:-0.01em">Tasks</div>
+            <div style="display:flex; gap:8px">
+              <div style="height:30px; padding:0 13px; border-radius:15px; background:#c4a35a; color:#0a0a0a; font-size:13px; font-weight:600; display:flex; align-items:center">Mine</div>
+              <div style="height:30px; padding:0 13px; border-radius:15px; background:#141414; color:#f5f5f5; font-size:13px; font-weight:500; display:flex; align-items:center">Open</div>
+              <div style="height:30px; padding:0 13px; border-radius:15px; background:#141414; color:#9a9590; font-size:13px; font-weight:500; display:flex; align-items:center">Done</div>
+              
+                <div style="height:30px; padding:0 13px; border-radius:15px; background:#141414; color:#9a9590; font-size:13px; font-weight:500; display:flex; align-items:center">Blocked</div>
+              
+            </div>
+            
+              <div style="display:flex; gap:14px; color:#9a9590; font-size:13px; font-weight:500">
+                <span style="color:#cf7f7b">3 overdue</span><span>2 supply</span><span>1 QA</span><span>1 link</span>
+              </div>
+            
+          </div>
+          <div style="height:34px; padding:0 16px; border-radius:17px; background:rgba(196,163,90,0.12); color:#c4a35a; font-size:14px; font-weight:600; display:flex; align-items:center; gap:7px">+ Add</div>
+        </div>
+
+        <div style="flex:1; display:grid; grid-template-columns:minmax(0,1fr) 400px; min-height:0">
+
+          <div style="min-width:0; overflow:hidden; padding:18px 0">
+            <div style="padding:0 28px 8px; color:#cf7f7b; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase">Overdue</div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px; background:#111110">
+              <div style="width:20px; height:20px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+              <div style="display:flex; align-items:center; gap:8px; min-width:0">
+                <span style="color:#f5f5f5; font-size:15px; font-weight:600">Review 3★ reply</span>
+                <span style="width:6px; height:6px; border-radius:3px; background:#c4a35a; display:inline-block"></span>
+              </div>
+              <div style="color:#9a9590; font-size:14px">King West</div>
+              <div style="color:#cf7f7b; font-size:14px">2d late</div>
+              <div style="color:#6f6a65; font-size:14px">Unassigned</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px">
+              <div style="width:20px; height:20px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; min-width:0">Restock paper towels</div>
+              <div style="color:#9a9590; font-size:14px">Bala Cottage</div>
+              <div style="color:#cf7f7b; font-size:14px">1d late</div>
+              <div style="color:#6f6a65; font-size:14px">Alex</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px">
+              <div style="width:20px; height:20px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; min-width:0">Fix lock delay note</div>
+              <div style="color:#9a9590; font-size:14px">Distillery Loft</div>
+              <div style="color:#cf7f7b; font-size:14px">Yesterday</div>
+              <div style="color:#6f6a65; font-size:14px">Unassigned</div>
+            </div>
+
+            <div style="padding:20px 28px 8px; color:#6f6a65; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase">This week</div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px; background:rgba(196,163,90,0.06); border-left:2px solid #c4a35a">
+              <div style="width:20px; height:20px; border:1.5px solid #6f6a65; border-radius:6px"></div>
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; min-width:0">Reorder TP</div>
+              <div style="color:#9a9590; font-size:14px">Charlotte 606</div>
+              <div style="color:#9a9590; font-size:14px">Today</div>
+              <div style="color:#6f6a65; font-size:14px">Alex</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px">
+              <div style="width:20px; height:20px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+              <div style="display:flex; align-items:center; gap:8px; min-width:0">
+                <span style="color:#f5f5f5; font-size:15px; font-weight:600">Turnover QC</span>
+                <span style="width:6px; height:6px; border-radius:3px; background:#c4a35a; display:inline-block"></span>
+              </div>
+              <div style="color:#9a9590; font-size:14px">Shaw St</div>
+              <div style="color:#9a9590; font-size:14px">Today</div>
+              <div style="color:#6f6a65; font-size:14px">Shane</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px">
+              <div style="width:20px; height:20px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; min-width:0">Owner call</div>
+              <div style="color:#9a9590; font-size:14px">Lake Rosseau</div>
+              <div style="color:#9a9590; font-size:14px">Tomorrow</div>
+              <div style="color:#6f6a65; font-size:14px">Shane</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px">
+              <div style="width:20px; height:20px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; min-width:0">Replace shower curtain</div>
+              <div style="color:#9a9590; font-size:14px">Bala Cottage</div>
+              <div style="color:#9a9590; font-size:14px">Wed</div>
+              <div style="color:#6f6a65; font-size:14px">Alex</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px">
+              <div style="width:20px; height:20px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; min-width:0">Statement prep</div>
+              <div style="color:#9a9590; font-size:14px">King West</div>
+              <div style="color:#9a9590; font-size:14px">Thu</div>
+              <div style="color:#6f6a65; font-size:14px">Shane</div>
+            </div>
+
+            <div style="padding:20px 28px 8px; color:#6f6a65; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase">Later</div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px">
+              <div style="width:20px; height:20px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; min-width:0">Deep clean patio</div>
+              <div style="color:#9a9590; font-size:14px">Lake Rosseau</div>
+              <div style="color:#9a9590; font-size:14px">Next week</div>
+              <div style="color:#6f6a65; font-size:14px">Alex</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px">
+              <div style="width:20px; height:20px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; min-width:0">Owner call</div>
+              <div style="color:#9a9590; font-size:14px">Charlotte 606</div>
+              <div style="color:#9a9590; font-size:14px">Next week</div>
+              <div style="color:#6f6a65; font-size:14px">Shane</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px">
+              <div style="width:20px; height:20px; border:1.5px solid #3d3a37; border-radius:6px"></div>
+              <div style="color:#f5f5f5; font-size:15px; font-weight:600; min-width:0">Battery swap · lock</div>
+              <div style="color:#9a9590; font-size:14px">Distillery Loft</div>
+              <div style="color:#9a9590; font-size:14px">Later</div>
+              <div style="color:#6f6a65; font-size:14px">Unassigned</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:20px minmax(0,1fr) 150px 120px 110px; align-items:center; gap:16px; padding:10px 28px; opacity:0.45">
+              <div style="width:20px; height:20px; border:1.5px solid #4ea882; border-radius:6px; background:rgba(78,168,130,0.18)"></div>
+              <div style="color:#9a9590; font-size:15px; font-weight:500; text-decoration:line-through; min-width:0">Turnover QC</div>
+              <div style="color:#6f6a65; font-size:14px">King West</div>
+              <div style="color:#4ea882; font-size:14px">Done</div>
+              <div style="color:#6f6a65; font-size:14px">Shane</div>
+            </div>
+          </div>
+
+          <div style="border-left:1px solid #1c1c1c; padding:26px 28px 28px; display:flex; flex-direction:column; min-width:0">
+            <div style="color:#f5f5f5; font-size:22px; font-weight:700; letter-spacing:-0.02em">Reorder TP</div>
+            <div style="color:#9a9590; font-size:14px; font-weight:500; margin-top:10px">Charlotte 606 · Today · Alex</div>
+            <div style="color:#6f6a65; font-size:14px; line-height:1.5; margin-top:14px; text-wrap:pretty">Low stock flagged after last clean. 12-pack, hall closet.</div>
+
+            <div style="flex:1"></div>
+
+            <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:18px">
+              <div style="height:34px; display:flex; align-items:center; justify-content:space-between; color:#6f6a65; font-size:14px">
+                <span>Due</span><span style="color:#9a9590">Today</span>
+              </div>
+              <div style="height:34px; display:flex; align-items:center; justify-content:space-between; color:#6f6a65; font-size:14px; border-top:1px solid #1c1c1c">
+                <span>Property</span><span style="color:#9a9590">Charlotte 606</span>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:10px">
+              <div style="height:52px; border-radius:13px; background:#4ea882; color:#062018; font-size:16px; font-weight:700; display:flex; align-items:center; justify-content:center">Done</div>
+              <div style="display:flex; gap:10px">
+                <div style="flex:1; height:48px; border-radius:13px; background:#141414; color:#f5f5f5; font-size:15px; font-weight:600; display:flex; align-items:center; justify-content:center">Blocked</div>
+                <div style="flex:1; height:48px; border-radius:13px; background:#141414; color:#f5f5f5; font-size:15px; font-weight:600; display:flex; align-items:center; justify-content:center">Assign</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section style="padding:0 48px 64px; max-width:920px">
+  <div style="font-size:13px; color:#6f6a65; line-height:1.55">
+    <strong style="color:#9a9590">Shell preserved:</strong> CRM|OPS switcher, left OPS tabs (Tasks · SOPs · Employees · Clients · Properties · Revenue · Settings), and mobile bottom nav stay exactly as live Admin — Claude only redesigned the Tasks content area.
+  </div>
+</section>
+
+</x-dc>
+</body>
+</html>

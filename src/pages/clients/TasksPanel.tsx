@@ -101,13 +101,6 @@ function formatDueLong(ymd: string | null): string {
   });
 }
 
-function formatMonthLabel(ym: string): string {
-  if (!/^\d{4}-\d{2}$/.test(ym)) return ym;
-  const [y, m] = ym.split("-").map(Number);
-  const d = new Date(y, m - 1, 1);
-  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-}
-
 function dueMeta(
   task: TaskRow,
   today: Date,
@@ -128,15 +121,15 @@ function dueMeta(
     const days = Math.abs(diff);
     return {
       kind: "overdue",
-      label: days === 1 ? "1d overdue" : `${days}d overdue`,
+      label: days === 1 ? "1d late" : `${days}d late`,
       days,
     };
   }
-  if (diff === 0) return { kind: "soon", label: "due today", days: 0 };
-  if (diff === 1) return { kind: "soon", label: "due tomorrow", days: 1 };
+  if (diff === 0) return { kind: "soon", label: "Today", days: 0 };
+  if (diff === 1) return { kind: "soon", label: "Tomorrow", days: 1 };
   if (diff <= 6) {
     const wd = due.toLocaleDateString("en-US", { weekday: "short" });
-    return { kind: "soon", label: `due ${wd}`, days: diff };
+    return { kind: "soon", label: wd, days: diff };
   }
   return { kind: "plain", label: formatDueLong(task.due_on), days: diff };
 }
@@ -218,19 +211,6 @@ function isThisWeek(task: TaskRow, today: Date): boolean {
   const t1 = startOfDay(addDays(today, 7)).getTime();
   const td = startOfDay(due).getTime();
   return td >= t0 && td < t1;
-}
-
-function relativeUpdated(iso: string): string {
-  if (!iso) return "";
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return "";
-  const mins = Math.round((Date.now() - t) / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 48) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
-  return `${days}d ago`;
 }
 
 type StatusFilter = "open" | "blocked" | "done";
@@ -520,6 +500,14 @@ export function TasksPanel({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
+  const [mineOnly, setMineOnly] = useState(false);
+  const [meName, setMeName] = useState(() => {
+    try {
+      return localStorage.getItem("mrg_ops_me") || "";
+    } catch {
+      return "";
+    }
+  });
   const [selectedId, setSelectedId] = useState<string | null>(restoreTaskId);
   const [sheet, setSheet] = useState<null | "create" | "edit">(null);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -730,40 +718,36 @@ export function TasksPanel({
         (t) => t.status === "open" || t.status === "in_progress",
       );
     }
+    if (mineOnly && meName.trim()) {
+      const key = meName.trim().toLowerCase();
+      list = list.filter((t) =>
+        taskAssignees(t).some((n) => n.toLowerCase() === key),
+      );
+    }
     return list.filter(taskMatchesSearch);
-  }, [tasks, statusFilter, taskMatchesSearch]);
+  }, [tasks, statusFilter, taskMatchesSearch, mineOnly, meName]);
 
   const completedTasks = useMemo(() => {
     if (statusFilter !== "open") return [];
-    return tasks
-      .filter((t) => t.status === "done")
+    let list = tasks.filter((t) => t.status === "done");
+    if (mineOnly && meName.trim()) {
+      const key = meName.trim().toLowerCase();
+      list = list.filter((t) =>
+        taskAssignees(t).some((n) => n.toLowerCase() === key),
+      );
+    }
+    return list
       .filter(taskMatchesSearch)
       .sort((a, b) => {
         const tb = Date.parse(b.updated_at) || 0;
         const ta = Date.parse(a.updated_at) || 0;
         return tb - ta;
       });
-  }, [tasks, statusFilter, taskMatchesSearch]);
+  }, [tasks, statusFilter, taskMatchesSearch, mineOnly, meName]);
 
-  const openCount = useMemo(
-    () =>
-      tasks.filter(
-        (t) => t.status === "open" || t.status === "in_progress",
-      ).length,
-    [tasks],
-  );
   const overdueCount = useMemo(
     () => tasks.filter((t) => isOverdue(t, today)).length,
     [tasks, today],
-  );
-  const highCount = useMemo(
-    () =>
-      tasks.filter(
-        (t) =>
-          (t.status === "open" || t.status === "in_progress") &&
-          t.priority === "high",
-      ).length,
-    [tasks],
   );
   const supplyOpen = useMemo(
     () =>
@@ -1104,45 +1088,51 @@ export function TasksPanel({
         <TextInput
           value={form.title}
           onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          placeholder="Task title"
+          placeholder="Title"
           className="font-semibold"
         />
-        <TextArea
-          value={form.detail}
-          onChange={(e) => setForm((f) => ({ ...f, detail: e.target.value }))}
-          placeholder={"Add detail — vendor, blocker reason, checklist notes\n\n1. First step\n2. Second step"}
-          rows={10}
-          className="min-h-[160px] whitespace-pre-wrap font-normal leading-relaxed"
-        />
-
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel>Status</FieldLabel>
-          <SegmentedControl
-            value={form.status}
-            onChange={(status) => setForm((f) => ({ ...f, status }))}
-            options={[
-              { value: "open", label: "Open" },
-              { value: "in_progress", label: "In progress" },
-              { value: "blocked", label: "Blocked" },
-              { value: "done", label: "Done" },
-            ]}
+        {sheet === "edit" ? (
+          <TextArea
+            value={form.detail}
+            onChange={(e) => setForm((f) => ({ ...f, detail: e.target.value }))}
+            placeholder="Notes"
+            rows={4}
+            className="min-h-[96px] whitespace-pre-wrap font-normal leading-relaxed"
           />
-        </div>
+        ) : null}
+
+        {sheet === "edit" ? (
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel>Status</FieldLabel>
+            <SegmentedControl
+              value={form.status}
+              onChange={(status) => setForm((f) => ({ ...f, status }))}
+              options={[
+                { value: "open", label: "Open" },
+                { value: "in_progress", label: "Doing" },
+                { value: "blocked", label: "Blocked" },
+                { value: "done", label: "Done" },
+              ]}
+            />
+          </div>
+        ) : null}
+
+        {sheet === "edit" ? (
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel>Priority</FieldLabel>
+            <SegmentedControl
+              value={form.priority}
+              onChange={(priority) => setForm((f) => ({ ...f, priority }))}
+              options={[
+                { value: "normal", label: "Normal" },
+                { value: "high", label: "High" },
+              ]}
+            />
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-1.5">
-          <FieldLabel>Priority</FieldLabel>
-          <SegmentedControl
-            value={form.priority}
-            onChange={(priority) => setForm((f) => ({ ...f, priority }))}
-            options={[
-              { value: "normal", label: "Normal" },
-              { value: "high", label: "High" },
-            ]}
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel optional>Assignees</FieldLabel>
+          <FieldLabel>Who</FieldLabel>
           <AssigneeMultiSelect
             value={form.assignees}
             members={members}
@@ -1163,7 +1153,7 @@ export function TasksPanel({
             />
           </label>
           <label className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#1c1c1c] px-3.5 py-3 text-[13.5px]">
-            <span className="text-[#9a9590]">Property</span>
+            <span className="text-[#9a9590]">Place</span>
             <select
               value={form.property_id}
               onChange={(e) => {
@@ -1185,40 +1175,44 @@ export function TasksPanel({
               ))}
             </select>
           </label>
-          <div className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#1c1c1c] px-3.5 py-3 text-[13.5px]">
-            <span className="text-[#9a9590]">Client</span>
-            <span className="truncate font-semibold text-[#6f6a65]">
-              {form.client_id
-                ? clients.find((c) => c.id === form.client_id)?.name || "—"
-                : form.property_id
-                  ? "auto"
-                  : "—"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#1c1c1c] px-3.5 py-3 text-[13.5px]">
-            <span className="text-[#9a9590]">Month</span>
-            <MonthPicker
-              value={form.year_month || currentYearMonth()}
-              onChange={(year_month) => setForm((f) => ({ ...f, year_month }))}
-            />
-          </div>
-          <label className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#1c1c1c] px-3.5 py-3 text-[13.5px]">
-            <span className="text-[#9a9590]">Repeat</span>
-            <select
-              value={form.repeat_rule}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  repeat_rule: e.target.value as TaskRepeat,
-                }))
-              }
-              className="bg-transparent text-right font-semibold text-[#6f6a65] outline-none"
-            >
-              <option value="off">Off</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </label>
+          {sheet === "edit" ? (
+            <>
+              <div className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#1c1c1c] px-3.5 py-3 text-[13.5px]">
+                <span className="text-[#9a9590]">Client</span>
+                <span className="truncate font-semibold text-[#6f6a65]">
+                  {form.client_id
+                    ? clients.find((c) => c.id === form.client_id)?.name || "—"
+                    : form.property_id
+                      ? "auto"
+                      : "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#1c1c1c] px-3.5 py-3 text-[13.5px]">
+                <span className="text-[#9a9590]">Month</span>
+                <MonthPicker
+                  value={form.year_month || currentYearMonth()}
+                  onChange={(year_month) => setForm((f) => ({ ...f, year_month }))}
+                />
+              </div>
+              <label className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#1c1c1c] px-3.5 py-3 text-[13.5px]">
+                <span className="text-[#9a9590]">Repeat</span>
+                <select
+                  value={form.repeat_rule}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      repeat_rule: e.target.value as TaskRepeat,
+                    }))
+                  }
+                  className="bg-transparent text-right font-semibold text-[#6f6a65] outline-none"
+                >
+                  <option value="off">Off</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </label>
+            </>
+          ) : null}
           <label className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#1c1c1c] px-3.5 py-3 text-[13.5px]">
             <span className="text-[#9a9590]">Type</span>
             <select
@@ -1241,7 +1235,7 @@ export function TasksPanel({
         </div>
 
         <GoldButton type="button" disabled={busy} onClick={() => void saveTask()}>
-          {sheet === "create" ? "Save task" : "Save changes"}
+          {sheet === "create" ? "Save" : "Save"}
         </GoldButton>
       </div>
     </Sheet>
@@ -1249,15 +1243,17 @@ export function TasksPanel({
 
   if (selected) {
     const meta = dueMeta(selected, today);
+    const who = formatAssigneeLabel(taskAssignees(selected)) || "Unassigned";
+    const place = placeLabel(selected);
     return (
       <div className="flex min-h-full flex-col px-4 pb-8 pt-3 lg:px-10 lg:pt-6">
-        <div className="mb-5 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between">
           <button
             type="button"
             onClick={() => setSelectedId(null)}
-            className="text-[13px] text-[#9a9590] hover:text-[#f5f5f5]"
+            className="text-[14px] font-semibold text-[#c4a35a]"
           >
-            ‹ Tasks
+            ←
           </button>
           <button
             type="button"
@@ -1270,95 +1266,51 @@ export function TasksPanel({
 
         <div className="mb-2 flex flex-wrap items-center gap-2">
           {meta.kind === "overdue" ? (
-            <span className="rounded-[5px] bg-[rgba(207,127,123,0.14)] px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#cf7f7b]">
-              {meta.label}
+            <span className="rounded-[5px] bg-[rgba(207,127,123,0.14)] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.05em] text-[#cf7f7b]">
+              Overdue
             </span>
           ) : null}
           {selected.priority === "high" ? (
-            <span className="rounded-[5px] bg-[rgba(196,163,90,0.14)] px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#c4a35a]">
+            <span className="rounded-[5px] bg-[rgba(196,163,90,0.14)] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.05em] text-[#c4a35a]">
               High
             </span>
           ) : null}
           {selected.status === "blocked" ? (
-            <span className="rounded-[5px] bg-[rgba(201,154,75,0.14)] px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#c99a4b]">
+            <span className="rounded-[5px] bg-[rgba(201,154,75,0.14)] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.05em] text-[#c99a4b]">
               Blocked
             </span>
           ) : null}
         </div>
 
-        <h1 className="mb-5 text-[24px] font-bold leading-tight tracking-[-0.02em] text-[#f5f5f5]">
+        <h1 className="mb-2 text-[22px] font-bold leading-tight tracking-[-0.02em] text-[#f5f5f5]">
           {selected.title}
         </h1>
+        <p className="mb-3 text-[13px] text-[#9a9590]">
+          {place}
+          <span className="text-[#6f6a65]"> · </span>
+          <span className={meta.kind === "overdue" ? "text-[#cf7f7b]" : undefined}>
+            {formatDueLong(selected.due_on)}
+          </span>
+          <span className="text-[#6f6a65]"> · </span>
+          {who}
+        </p>
 
         {selected.detail ? (
-          <p className="mb-5 whitespace-pre-wrap text-[14px] leading-relaxed text-[#9a9590]">
+          <p className="mb-6 line-clamp-3 whitespace-pre-wrap text-[13px] leading-snug text-[#6f6a65]">
             {selected.detail}
           </p>
-        ) : null}
+        ) : (
+          <div className="mb-6" />
+        )}
 
-        <div className="mb-4 overflow-hidden rounded-[10px] border border-white/8">
-          <div className="flex items-center justify-between bg-[#141414] px-3.5 py-3 text-[13.5px]">
-            <span className="text-[#6f6a65]">Status</span>
-            <span className="font-semibold text-[#f5f5f5]">
-              {STATUS_LABEL[selected.status]}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t border-white/8 bg-[#141414] px-3.5 py-3 text-[13.5px]">
-            <span className="shrink-0 text-[#6f6a65]">Assignees</span>
-            <AssigneeChips names={taskAssignees(selected)} />
-          </div>
-          <div className="flex items-center justify-between border-t border-white/8 bg-[#141414] px-3.5 py-3 text-[13.5px]">
-            <span className="text-[#6f6a65]">Due</span>
-            <span
-              className={`font-semibold ${
-                meta.kind === "overdue" ? "text-[#cf7f7b]" : "text-[#f5f5f5]"
-              }`}
-            >
-              {formatDueLong(selected.due_on)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between border-t border-white/8 bg-[#141414] px-3.5 py-3 text-[13.5px]">
-            <span className="text-[#6f6a65]">Type</span>
-            <span className="font-semibold text-[#f5f5f5]">
-              {TYPE_LABEL[selected.task_type]}
-            </span>
-          </div>
-          <div className="flex items-center justify-between border-t border-white/8 bg-[#141414] px-3.5 py-3 text-[13.5px]">
-            <span className="text-[#6f6a65]">Property</span>
-            {selected.property_id ? (
-              <button
-                type="button"
-                onClick={() => onOpenProperty(selected.property_id!)}
-                className="font-semibold text-[#c4a35a]"
-              >
-                {selected.property_name || "Open"} ›
-              </button>
-            ) : (
-              <span className="font-semibold text-[#6f6a65]">—</span>
-            )}
-          </div>
-          <div className="flex items-center justify-between border-t border-white/8 bg-[#141414] px-3.5 py-3 text-[13.5px]">
-            <span className="text-[#6f6a65]">Client</span>
-            <span className="font-semibold text-[#f5f5f5]">
-              {selected.client_name || "—"}
-            </span>
-          </div>
-        </div>
-
-        {selected.year_month ? (
-          <p className="mb-5 font-mono text-[11px] text-[#6f6a65]">
-            For {formatMonthLabel(selected.year_month)} statement
-          </p>
-        ) : null}
-
-        <div className="mb-8 flex flex-col gap-2.5">
+        <div className="mt-auto flex flex-col gap-2.5">
           {selected.status === "done" ? (
             <GoldButton
               type="button"
               disabled={busy}
               onClick={() => void reopenTask(selected.id)}
             >
-              Reopen task
+              Reopen
             </GoldButton>
           ) : (
             <GoldButton
@@ -1366,17 +1318,17 @@ export function TasksPanel({
               disabled={busy}
               onClick={() => void markDone(selected.id)}
             >
-              Mark done
+              Done
             </GoldButton>
           )}
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5">
             <button
               type="button"
               disabled={busy || selected.status === "blocked" || selected.status === "done"}
               onClick={() => void markBlocked(selected.id)}
-              className="rounded-[10px] border border-white/10 bg-[#141414] py-3 text-[13px] font-semibold text-[#c99a4b] disabled:opacity-50"
+              className="rounded-xl border border-white/12 py-[13px] text-[14px] font-semibold text-[#f5f5f5] disabled:opacity-50"
             >
-              Mark blocked
+              Blocked
             </button>
             <button
               type="button"
@@ -1385,45 +1337,42 @@ export function TasksPanel({
                 setReassignNames(taskAssignees(selected));
                 setReassignOpen(true);
               }}
-              className="rounded-[10px] border border-white/10 bg-[#141414] py-3 text-[13px] font-semibold text-[#f5f5f5]"
+              className="rounded-xl border border-white/12 py-[13px] text-[14px] font-semibold text-[#f5f5f5]"
             >
-              Reassign
+              Assign
             </button>
+          </div>
+          <div className="flex items-center justify-center gap-5 pt-1">
             <button
               type="button"
               disabled={busy}
               onClick={() => setDueOpen(true)}
-              className="rounded-[10px] border border-white/10 bg-[#141414] py-3 text-[13px] font-semibold text-[#f5f5f5]"
+              className="text-[12px] font-semibold text-[#9a9590]"
             >
-              Change due
+              Due
+            </button>
+            {selected.property_id ? (
+              <button
+                type="button"
+                onClick={() => onOpenProperty(selected.property_id!)}
+                className="text-[12px] font-semibold text-[#9a9590]"
+              >
+                Property
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void deleteTask(selected.id)}
+              className="text-[12px] font-semibold text-[#cf7f7b]/80"
+            >
+              Delete
             </button>
           </div>
         </div>
 
-        <div className="mt-auto flex flex-col gap-1.5">
-          <p className="font-mono text-[10.5px] text-[#6f6a65]">
-            Created{" "}
-            {selected.created_at
-              ? formatDueLong(selected.created_at.slice(0, 10))
-              : "—"}
-            {selected.created_by ? ` by ${selected.created_by}` : ""}
-            {selected.updated_at
-              ? ` · updated ${relativeUpdated(selected.updated_at)}`
-              : ""}
-          </p>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void deleteTask(selected.id)}
-            className="self-start text-[12.5px] text-[#cf7f7b]"
-          >
-            Delete task
-          </button>
-        </div>
-
-        {reassignOpen ? (
           <Sheet
-            title="Assignees"
+            title="Who"
             onCancel={() => setReassignOpen(false)}
             desktop={desktop}
           >
@@ -1451,7 +1400,7 @@ export function TasksPanel({
                   });
                 }}
               >
-                Save assignees
+                Save
               </GoldButton>
             </div>
           </Sheet>
@@ -1459,7 +1408,7 @@ export function TasksPanel({
 
         {dueOpen ? (
           <Sheet
-            title="Change due"
+            title="Due"
             onCancel={() => setDueOpen(false)}
             desktop={desktop}
           >
@@ -1481,11 +1430,11 @@ export function TasksPanel({
                     due_on: el?.value || null,
                   }).then(() => {
                     setDueOpen(false);
-                    onToast("Due date updated");
+                    onToast("Due updated");
                   });
                 }}
               >
-                Save due date
+                Save
               </GoldButton>
             </div>
           </Sheet>
@@ -1500,110 +1449,152 @@ export function TasksPanel({
   return (
     <div className="relative flex min-h-full flex-col">
       <div className="flex flex-col gap-3 px-4 pb-3 pt-4 lg:px-10 lg:pt-6">
-        <div className="flex items-baseline justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="text-[22px] font-bold tracking-[-0.02em]">Tasks</h1>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="text-[12px] text-[#9a9590] hover:text-[#f5f5f5]"
-            >
-              Refresh
-            </button>
-            <span className="font-mono text-[11px] text-[#6f6a65]">
-              {statusFilter === "done"
-                ? `${filtered.length} done`
-                : `${openCount} open${overdueCount ? ` · ${overdueCount} overdue` : ""}`}
-            </span>
-            <button
-              type="button"
-              onClick={openCreate}
-              className="rounded-lg bg-[#c4a35a] px-3.5 py-1.5 text-[13px] font-bold text-[#0a0a0a] hover:bg-[#dcc084]"
-            >
-              + Task
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#c4a35a] text-[22px] font-bold leading-none text-[#0a0a0a] hover:bg-[#dcc084]"
+            aria-label="New task"
+          >
+            +
+          </button>
         </div>
 
         {(overdueCount > 0 ||
-          highCount > 0 ||
           supplyOpen > 0 ||
           cleaningQaOpen > 0 ||
           (linkSummary && linkSummary.needs_ops_link > 0)) && (
-          <div className="rounded-xl border border-white/8 bg-[#141414] px-3.5 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65]">
-              Attention
-            </p>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-[13px] text-[#9a9590]">
-              {overdueCount > 0 ? (
-                <span>
-                  <span className="font-semibold text-[#cf7f7b]">{overdueCount}</span> overdue
-                </span>
-              ) : null}
-              {highCount > 0 ? (
-                <span>
-                  <span className="font-semibold text-[#c4a35a]">{highCount}</span> high priority
-                </span>
-              ) : null}
-              {supplyOpen > 0 ? (
-                <span>
-                  <span className="font-semibold text-[#f5f5f5]">{supplyOpen}</span> supply
-                </span>
-              ) : null}
-              {cleaningQaOpen > 0 ? (
-                <span>
-                  <span className="font-semibold text-[#f5f5f5]">{cleaningQaOpen}</span> cleaning QA
-                </span>
-              ) : null}
-              {linkSummary && linkSummary.needs_ops_link > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => onOpenProperties?.()}
-                  className="text-left hover:text-[#c4a35a]"
-                >
-                  <span className="font-semibold text-[#c99a4b]">
-                    {linkSummary.needs_ops_link}
-                  </span>{" "}
-                  need Hospitable / Cleaner link
-                </button>
-              ) : null}
-            </div>
-            <p className="mt-2 text-[12px] leading-snug text-[#6f6a65]">
-              Work this list top-down. Open a task for detail, or use property App links to jump
-              into Cleaner / Hospitable.
-            </p>
+          <div className="rounded-[10px] border border-white/8 bg-[#141414] px-3 py-2 text-[12px] text-[#9a9590]">
+            {overdueCount > 0 ? (
+              <span>
+                <span className="font-bold text-[#cf7f7b]">{overdueCount}</span> overdue
+              </span>
+            ) : null}
+            {overdueCount > 0 && supplyOpen > 0 ? (
+              <span className="text-[#6f6a65]"> · </span>
+            ) : null}
+            {supplyOpen > 0 ? (
+              <span>
+                <span className="font-bold text-[#f5f5f5]">{supplyOpen}</span> supply
+              </span>
+            ) : null}
+            {(overdueCount > 0 || supplyOpen > 0) && cleaningQaOpen > 0 ? (
+              <span className="text-[#6f6a65]"> · </span>
+            ) : null}
+            {cleaningQaOpen > 0 ? (
+              <span>
+                <span className="font-bold text-[#f5f5f5]">{cleaningQaOpen}</span> QA
+              </span>
+            ) : null}
+            {(overdueCount > 0 || supplyOpen > 0 || cleaningQaOpen > 0) &&
+            linkSummary &&
+            linkSummary.needs_ops_link > 0 ? (
+              <span className="text-[#6f6a65]"> · </span>
+            ) : null}
+            {linkSummary && linkSummary.needs_ops_link > 0 ? (
+              <button
+                type="button"
+                onClick={() => onOpenProperties?.()}
+                className="font-bold text-[#c99a4b] hover:text-[#c4a35a]"
+              >
+                {linkSummary.needs_ops_link} link
+              </button>
+            ) : null}
           </div>
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-0.5 rounded-lg border border-white/8 bg-[#141414] p-0.5">
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (!meName.trim() && members[0]?.name) {
+                  const n = members[0].name;
+                  setMeName(n);
+                  try {
+                    localStorage.setItem("mrg_ops_me", n);
+                  } catch {
+                    /* ignore */
+                  }
+                }
+                setMineOnly(true);
+                setStatusFilter("open");
+              }}
+              className={`rounded-lg px-3 py-[7px] text-[12px] font-bold ${
+                mineOnly
+                  ? "bg-[#1c1c1c] text-[#f5f5f5]"
+                  : "font-semibold text-[#9a9590]"
+              }`}
+            >
+              Mine
+            </button>
             {(
               [
                 ["open", "Open"],
-                ["blocked", "Blocked"],
                 ["done", "Done"],
               ] as const
             ).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
-                onClick={() => setStatusFilter(id)}
-                className={`rounded-md px-3 py-1.5 text-[12px] font-semibold ${
-                  statusFilter === id
-                    ? "bg-[#1c1c1c] text-[#f5f5f5]"
-                    : "font-medium text-[#9a9590]"
+                onClick={() => {
+                  setMineOnly(false);
+                  setStatusFilter(id);
+                }}
+                className={`rounded-lg px-3 py-[7px] text-[12px] font-bold ${
+                  !mineOnly && statusFilter === id
+                    ? "bg-[#c4a35a] text-[#0a0a0a]"
+                    : "font-semibold text-[#9a9590]"
                 }`}
               >
                 {label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => {
+                setMineOnly(false);
+                setStatusFilter("blocked");
+              }}
+              className={`rounded-lg px-3 py-[7px] text-[12px] font-bold ${
+                !mineOnly && statusFilter === "blocked"
+                  ? "bg-[#1c1c1c] text-[#f5f5f5]"
+                  : "font-semibold text-[#9a9590]"
+              }`}
+            >
+              Blocked
+            </button>
           </div>
-          <div className="relative min-w-[180px] flex-1 lg:max-w-[320px]">
+          {members.length > 0 ? (
+            <select
+              value={meName}
+              onChange={(e) => {
+                const v = e.target.value;
+                setMeName(v);
+                try {
+                  localStorage.setItem("mrg_ops_me", v);
+                } catch {
+                  /* ignore */
+                }
+              }}
+              className="h-[34px] max-w-[140px] rounded-lg border border-white/8 bg-[#141414] px-2 text-[12px] text-[#9a9590] outline-none"
+              title="Who is Mine"
+            >
+              <option value="">I’m…</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.name}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <div className="relative min-w-[140px] flex-1 lg:max-w-[280px]">
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tasks…"
+              placeholder="Search"
               className="h-[34px] w-full rounded-lg border border-white/8 bg-[#141414] px-3 text-[13px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
             />
           </div>
@@ -1616,26 +1607,18 @@ export function TasksPanel({
             Loading…
           </p>
         ) : filtered.length === 0 && completedTasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-4 px-10 py-16 text-center">
-            <div className="h-11 w-11 rounded-xl border border-dashed border-white/16" />
-            <div className="flex flex-col gap-1.5">
-              <p className="text-[16px] font-semibold">
-                {searchNeedle
-                  ? "No matching tasks"
-                  : statusFilter === "done"
-                    ? "No done tasks"
-                    : statusFilter === "blocked"
-                      ? "No blocked tasks"
+          <div className="flex flex-col items-center justify-center gap-3 px-10 py-16 text-center">
+            <p className="text-[15px] font-semibold">
+              {searchNeedle
+                ? "No matches"
+                : statusFilter === "done"
+                  ? "No done tasks"
+                  : statusFilter === "blocked"
+                    ? "No blocked"
+                    : mineOnly
+                      ? "Nothing for you"
                       : "No open tasks"}
-              </p>
-              <p className="max-w-xs text-[13.5px] leading-relaxed text-[#6f6a65]">
-                {searchNeedle
-                  ? "Try a different name, property, or type."
-                  : statusFilter === "open"
-                    ? "Add one for the team — turnover QC, owner follow-ups, statement prep."
-                    : "Switch filters or create a new task."}
-              </p>
-            </div>
+            </p>
             {!searchNeedle ? (
               <GoldButton type="button" size="sm" onClick={openCreate}>
                 + Task
@@ -1646,7 +1629,7 @@ export function TasksPanel({
                 onClick={() => setSearchQuery("")}
                 className="text-[13px] font-semibold text-[#c4a35a]"
               >
-                Clear search
+                Clear
               </button>
             )}
           </div>
