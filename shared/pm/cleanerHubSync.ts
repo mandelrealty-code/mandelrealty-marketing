@@ -33,18 +33,21 @@ function parseAddressBits(address: string): {
   const a = address.trim();
   if (!a) return {};
   // "606, 8 Charlotte Street, Toronto, ON, M5V 0K4, CA"
-  const parts = a.split(",").map((p) => p.trim()).filter(Boolean);
+  const parts = a.split(",").map((part) => part.trim()).filter(Boolean);
   const out: {
     city?: string;
     state_province?: string;
     postal_code?: string;
     unit?: string;
   } = {};
-  if (parts.length >= 1 && /^\d+[A-Za-z]?$/.test(parts[0]!)) {
+  if (parts.length >= 1 && /^[0-9]+[A-Za-z]?$/.test(parts[0]!)) {
     out.unit = parts[0];
   }
-  // Heuristic: city often third-to-last before province
-  const postalIdx = parts.findIndex((p) => /^[A-Z]\d[A-Z]/?\d[A-Z]\d$/i.test(p.replace(/\s/g, "")));
+  // Heuristic: city often third-to-last before province (CA postal A1A1A1)
+  const postalRe = new RegExp("^[A-Z][0-9][A-Z][0-9][A-Z][0-9]$", "i");
+  const postalIdx = parts.findIndex((part) =>
+    postalRe.test(part.replace(/[ \t]/g, "")),
+  );
   if (postalIdx >= 0) {
     out.postal_code = parts[postalIdx];
     if (postalIdx >= 1) out.state_province = parts[postalIdx - 1];
