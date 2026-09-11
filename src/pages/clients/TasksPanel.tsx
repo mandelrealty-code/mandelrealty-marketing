@@ -1371,6 +1371,7 @@ export function TasksPanel({
           </div>
         </div>
 
+        {reassignOpen ? (
           <Sheet
             title="Who"
             onCancel={() => setReassignOpen(false)}
