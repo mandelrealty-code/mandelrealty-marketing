@@ -4,9 +4,9 @@ import { publicSiteOrigin } from "./ownerEmails.js";
 export type RevenueAuditCheckoutTier = "full" | "half";
 
 const TIER_CENTS: Record<RevenueAuditCheckoutTier, number> = {
-  // TEMP TEST — real-card checkout smoke. Restore to 3999 / 1999 after.
-  full: 1, // $0.01
-  half: 1, // $0.01
+  // TEMP TEST — Stripe CAD minimum is $0.50. Restore to 3999 / 1999 after.
+  full: 50, // $0.50
+  half: 50, // $0.50
 };
 
 const TIER_LABEL: Record<RevenueAuditCheckoutTier, string> = {
