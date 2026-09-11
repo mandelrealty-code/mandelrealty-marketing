@@ -1478,6 +1478,23 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                 <StatusDot active={Boolean(propertyDetail.hospitable_property_id)} />
                 {propertyDetail.hospitable_property_id ? "Hospitable linked" : "Link Hospitable"}
               </button>
+              {propertyDetail.hospitable_property_id ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard
+                      .writeText(propertyDetail.hospitable_property_id)
+                      .then(() => setToast("Hospitable UUID copied"))
+                      .catch(() =>
+                        setLoadError("Could not copy — select the id under App links."),
+                      );
+                  }}
+                  className="text-[12px] font-semibold text-[#c4a35a]"
+                  title={propertyDetail.hospitable_property_id}
+                >
+                  Copy UUID
+                </button>
+              ) : null}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <input
@@ -1527,8 +1544,10 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           </button>
         </div>
         <p className="mt-2 text-[12.5px] leading-relaxed text-[#6f6a65]">
-          This panel only records the shared Hospitable UUID and each app’s local id. Connect inside
-          each product first, then paste the Cleaner / Guidebook ids here (or use Edit links).
+          Hospitable <span className="text-[#9a9590]">UUID</span> is the shared key for every app
+          (API + MCP). In Hospitable UI use <span className="text-[#dcc084]">Copy UUID</span>, never
+          the numeric <span className="text-[#9a9590]">Copy ID</span> from the URL. Cleaner Hub /
+          Guidebook stay “Not linked” until you paste each app’s local property id from its URL.
         </p>
         <div className="mt-3 space-y-3">
           {(() => {
@@ -1544,19 +1563,30 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
               (import.meta.env.VITE_COHOST_URL as string | undefined)?.replace(/\/$/, "") ||
               "https://chat.stravo.ai";
             const hid = propertyDetail.hospitable_property_id || "";
+            const copyValue = async (label: string, value: string) => {
+              if (!value) return;
+              try {
+                await navigator.clipboard.writeText(value);
+                setToast(`${label} copied`);
+              } catch {
+                setLoadError("Could not copy — select the id and copy manually.");
+              }
+            };
             const rows: Array<{
               label: string;
               ok: boolean;
               value: string;
               href: string;
               how: string;
+              copyable: boolean;
             }> = [
               {
-                label: "Hospitable",
+                label: "Hospitable UUID",
                 ok: Boolean(hid),
                 value: hid,
                 href: hid ? `https://my.hospitable.com/properties/${hid}` : "",
-                how: "Admin → Properties → Import, or Edit links → pick unit.",
+                how: "Must look like 7dd47609-… (UUID). Ignore Hospitable’s numeric Copy ID / URL number.",
+                copyable: Boolean(hid),
               },
               {
                 label: "Cleaner Hub",
@@ -1565,7 +1595,8 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                 href: propertyDetail.hub_property_id
                   ? `${cleanerBase}/properties/${propertyDetail.hub_property_id}`
                   : cleanerBase,
-                how: `Open ${cleanerBase.replace(/^https?:\/\//, "")} → Properties → Hospitable card → Connect PAT → select this unit → Import or Link. Then paste /properties/… id here.`,
+                how: `1) In Cleaner, link this Hospitable unit (Settings → Hospitable). 2) Copy the Cleaner URL id after /properties/ — that is NOT the Hospitable UUID. 3) Edit links → paste into Cleaner Hub field.`,
+                copyable: Boolean(propertyDetail.hub_property_id),
               },
               {
                 label: "Guidebook",
@@ -1575,14 +1606,16 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                   propertyDetail.guidebook_property_id && guidebookBase
                     ? `${guidebookBase}/editor/${propertyDetail.guidebook_property_id}`
                     : guidebookBase || "",
-                how: "Guidebook → Setup / Connect Hospitable (or Guests tab) → pick same listing. Skip if this unit has no guidebook. Paste /editor/… id here.",
+                how: "Connect in Guidebook, then paste the /editor/… id here (optional).",
+                copyable: Boolean(propertyDetail.guidebook_property_id),
               },
               {
                 label: "CohostAI",
                 ok: Boolean(hid),
-                value: hid ? "Uses Hospitable UUID" : "",
+                value: hid ? "Same as Hospitable UUID" : "",
                 href: `${cohostBase}/`,
-                how: "chat.stravo.ai → Setup → paste PAT → sync Properties. No extra id — same UUID as Hospitable.",
+                how: "Sync Properties in Cohost Setup. Uses the Hospitable UUID automatically.",
+                copyable: Boolean(hid),
               },
             ];
             return rows.map((row) => (
@@ -1591,7 +1624,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                   <StatusDot active={row.ok} />
                   <div className="min-w-0">
                     <p className="text-[13px] text-[#f5f5f5]">{row.label}</p>
-                    <p className="truncate font-mono text-[11px] text-[#6f6a65]">
+                    <p className="break-all font-mono text-[11px] text-[#6f6a65]">
                       {row.value || "Not linked"}
                     </p>
                     {!row.ok ? (
@@ -1599,16 +1632,36 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                     ) : null}
                   </div>
                 </div>
-                {row.href ? (
-                  <a
-                    href={row.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="shrink-0 pt-0.5 text-[12px] font-semibold text-[#c4a35a]"
-                  >
-                    Open
-                  </a>
-                ) : null}
+                <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
+                  {row.copyable && row.value && row.value !== "Same as Hospitable UUID" ? (
+                    <button
+                      type="button"
+                      onClick={() => void copyValue(row.label, row.value)}
+                      className="text-[12px] font-semibold text-[#c4a35a]"
+                    >
+                      Copy
+                    </button>
+                  ) : null}
+                  {row.label === "CohostAI" && hid ? (
+                    <button
+                      type="button"
+                      onClick={() => void copyValue("Hospitable UUID", hid)}
+                      className="text-[12px] font-semibold text-[#c4a35a]"
+                    >
+                      Copy UUID
+                    </button>
+                  ) : null}
+                  {row.href ? (
+                    <a
+                      href={row.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[12px] font-semibold text-[#9a9590] hover:text-[#c4a35a]"
+                    >
+                      Open
+                    </a>
+                  ) : null}
+                </div>
               </div>
             ));
           })()}
@@ -2631,7 +2684,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
         <Sheet title="App links" onCancel={() => setAppLinksSheet(false)} desktop={desktop}>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <FieldLabel>Hospitable unit</FieldLabel>
+              <FieldLabel>Hospitable UUID</FieldLabel>
               {hospitableAvailable.length > 0 ? (
                 <select
                   className="w-full rounded-lg border border-[#c4a35a]/55 bg-[#141414] px-3 py-2.5 text-sm text-[#f5f5f5]"
@@ -2660,12 +2713,12 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                     hospitable_property_id: e.target.value,
                   }))
                 }
-                placeholder="Or paste UUID"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                 className="border-[#c4a35a]/55 font-mono text-sm"
               />
               <p className="text-[12px] text-[#6f6a65]">
-                Prefer Properties → Import for new units. Connect Hospitable PAT in Settings if the
-                list is empty.
+                Use Hospitable → Copy UUID (dashed id). Do not use Copy ID / the number in the URL
+                (e.g. 2063888).
               </p>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -2675,12 +2728,12 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                 onChange={(e) =>
                   setAppLinksForm((f) => ({ ...f, hub_property_id: e.target.value }))
                 }
-                placeholder="From portal URL /properties/…"
+                placeholder="From portal URL /properties/THIS-ID"
                 className="border-[#c4a35a]/55 font-mono text-sm"
               />
               <p className="text-[12px] text-[#6f6a65]">
-                After importing/linking in Cleaner Hub, copy the id from the URL and paste here.
-                Leave blank if this unit is not on Cleaner yet.
+                This is Cleaner’s own id (looks like a UUID in the portal URL). Do not paste the
+                Hospitable UUID here — that goes in Cleaner Settings / Hospitable link first.
               </p>
             </div>
             <div className="flex flex-col gap-1.5">
