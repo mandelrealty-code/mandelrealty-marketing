@@ -983,7 +983,7 @@ export async function handleDevApi(
   }
 
   if (url === "/api/webhooks/ops-hub" && method === "POST") {
-    const mod = await import("../api/webhooks/ops-hub.js");
+    const mod = await import("./adminApi/opsHubWebhook.js");
     await mod.default(req as unknown as VercelRequest, res as unknown as VercelResponse);
     return true;
   }

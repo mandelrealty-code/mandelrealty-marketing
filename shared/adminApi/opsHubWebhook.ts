@@ -2,22 +2,16 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   ensureSupplyReorderTask,
   ensureTurnoverQaTask,
-} from "../../shared/pm/opsWorkflows.js";
-import { resolveByHospitablePropertyId } from "../../shared/pm/propertyIdentity.js";
-import { isSupabaseConfigured } from "../../shared/supabase.js";
+} from "../pm/opsWorkflows.js";
+import { resolveByHospitablePropertyId } from "../pm/propertyIdentity.js";
+import { isSupabaseConfigured } from "../supabase.js";
 
 /**
  * Cleaner Hub → Admin OPS events.
+ * Served via /api/admin?section=ops_hub (Hobby: no extra serverless function).
+ * Public path kept by vercel rewrite: POST /api/webhooks/ops-hub
  *
- * POST /api/webhooks/ops-hub
- * Auth: Bearer <CLEANER_HUB_SYNC_KEY or OPS_HUB_WEBHOOK_SECRET>
- *    or header x-api-key: same value
- *
- * Body:
- *   { "event": "inventory_low_stock", "hospitable_property_id": "<uuid>",
- *     "items": [{ "item_name": "TP", "detail": "2 left" }], "cleaning_task_id"?: "..." }
- *   { "event": "cleaning_complete", "hospitable_property_id": "<uuid>",
- *     "cleaning_task_id"?: "...", "detail"?: "..." }
+ * Auth: Bearer <CLEANER_HUB_SYNC_KEY or OPS_HUB_WEBHOOK_SECRET> or x-api-key
  */
 function readBody(req: VercelRequest): Record<string, unknown> {
   const raw = req.body;
@@ -50,7 +44,10 @@ function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handleOpsHubWebhook(
+  req: VercelRequest,
+  res: VercelResponse,
+) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }

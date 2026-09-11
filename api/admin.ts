@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import handleKnowledge from "../shared/adminApi/knowledge.js";
 import handleLeads from "../shared/adminApi/leads.js";
+import handleOpsHubWebhook from "../shared/adminApi/opsHubWebhook.js";
 import handlePm from "../shared/adminApi/pm.js";
 import handleSession from "../shared/adminApi/session.js";
 import handleSettings from "../shared/adminApi/settings.js";
@@ -10,6 +11,7 @@ import { rejectIfNotAdminHost } from "../shared/adminHost.js";
  * Single admin serverless function (Hobby plan ≤12 functions).
  * Paths are rewritten in vercel.json:
  *   /api/admin/leads|settings|knowledge|session|pm → /api/admin?section=…
+ *   /api/webhooks/ops-hub → /api/admin?section=ops_hub
  * Bound to admin hostname only — never on marketing www (VA / public).
  */
 
@@ -18,6 +20,7 @@ function sectionOf(req: VercelRequest): string {
   if (typeof q === "string" && q.trim()) return q.trim().toLowerCase();
 
   const url = String(req.url || "");
+  if (url.includes("ops_hub") || url.includes("ops-hub")) return "ops_hub";
   if (url.includes("knowledge")) return "knowledge";
   if (url.includes("settings")) return "settings";
   if (url.includes("session") || url.includes("login") || url.includes("logout")) {
@@ -48,6 +51,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleKnowledge(req, res);
     case "pm":
       return handlePm(req, res);
+    case "ops_hub":
+      return handleOpsHubWebhook(req, res);
     default:
       return res.status(404).json({ error: "Unknown admin section." });
   }

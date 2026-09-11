@@ -91,6 +91,10 @@
       "destination": "/api/admin?section=pm"
     },
     {
+      "source": "/api/webhooks/ops-hub",
+      "destination": "/api/admin?section=ops_hub"
+    },
+    {
       "source": "/robots.txt",
       "has": [{ "type": "host", "value": "admin.mandelrealtygroup.com" }],
       "destination": "/admin-robots.txt"
