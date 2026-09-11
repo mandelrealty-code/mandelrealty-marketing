@@ -153,7 +153,7 @@ async function handleRevenueAuditOp(
         email,
         reportId,
       });
-      if (!redeemed.ok) {
+      if (redeemed.ok === false) {
         return res.status(400).json({
           error: redeemed.error,
           alreadyUsed: Boolean(redeemed.alreadyUsed),

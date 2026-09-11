@@ -92,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdBy: "admin",
       });
       const unlockCodes = await listRevenueAuditUnlockCodes(40);
-      if (!result.ok) {
+      if (result.ok === false) {
         return res.status(400).json({
           error: result.error,
           unlock_codes: unlockCodes,
