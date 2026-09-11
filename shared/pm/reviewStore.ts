@@ -143,6 +143,17 @@ export async function syncHospitableReviews(input?: {
     }
   }
 
+  // Phase 2: open VA tasks for ≤4★ reviews (deduped).
+  try {
+    const { ensureNegativeReviewTasks } = await import("./opsWorkflows.js");
+    await ensureNegativeReviewTasks({
+      propertyId: input?.propertyId,
+      maxStars: 4,
+    });
+  } catch {
+    /* non-blocking — tasks table or reviews may be incomplete */
+  }
+
   return { synced, properties: targets.length };
 }
 

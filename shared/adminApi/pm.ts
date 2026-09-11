@@ -86,10 +86,12 @@ import {
   importHospitableProperty,
   listLinkedHospitableIds,
   listPmProperties,
+  listPmPropertyLinkHealth,
   removePropertyCover,
   updatePmProperty,
   uploadPropertyCover,
 } from "../pm/propertyStore.js";
+import { resolveByHospitablePropertyId } from "../pm/propertyIdentity.js";
 import {
   createPmTask,
   deletePmTask,
@@ -101,6 +103,11 @@ import {
   type TaskStatus,
   type TaskType,
 } from "../pm/taskStore.js";
+import {
+  ensureNegativeReviewTasks,
+  ensureSupplyReorderTask,
+  ensureTurnoverQaTask,
+} from "../pm/opsWorkflows.js";
 import {
   createPmTeamMember,
   deletePmTeamMember,
@@ -685,6 +692,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               body.hospitable_property_id != null
                 ? str(body.hospitable_property_id)
                 : undefined,
+            guidebook_property_id:
+              body.guidebook_property_id != null
+                ? str(body.guidebook_property_id)
+                : undefined,
+            hub_property_id:
+              body.hub_property_id != null ? str(body.hub_property_id) : undefined,
             active: typeof body.active === "boolean" ? body.active : undefined,
             cleaning_fee_keeper: keeper,
             commission_base_mode: baseMode,
@@ -780,6 +793,86 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             hospitable_property_id: hid,
           });
           return res.status(200).json({ property });
+        }
+        if (op === "link_apps") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          if (body.hospitable_property_id != null) {
+            const hid = str(body.hospitable_property_id);
+            if (hid) {
+              const linked = await listLinkedHospitableIds();
+              const existing = await getPmPropertyDetail(id);
+              if (linked.has(hid) && existing?.hospitable_property_id !== hid) {
+                return res.status(400).json({
+                  error: "That Hospitable unit is already linked to another property.",
+                });
+              }
+            }
+          }
+          const property = await updatePmProperty(id, {
+            hospitable_property_id:
+              body.hospitable_property_id != null
+                ? str(body.hospitable_property_id)
+                : undefined,
+            guidebook_property_id:
+              body.guidebook_property_id != null
+                ? str(body.guidebook_property_id)
+                : undefined,
+            hub_property_id:
+              body.hub_property_id != null ? str(body.hub_property_id) : undefined,
+          });
+          return res.status(200).json({ property });
+        }
+        if (op === "link_health") {
+          const links = await listPmPropertyLinkHealth();
+          const summary = {
+            total: links.length,
+            linked: links.filter((l) => l.status === "linked").length,
+            missing_hospitable: links.filter((l) => l.status === "missing_hospitable")
+              .length,
+            missing_hub: links.filter((l) => l.status === "missing_hub").length,
+            missing_guidebook: links.filter((l) => l.status === "missing_guidebook")
+              .length,
+            partial: links.filter((l) => l.status === "partial").length,
+          };
+          return res.status(200).json({ links, summary });
+        }
+        if (op === "resolve_hospitable") {
+          const hid = str(body.hospitable_property_id || body.id);
+          if (!hid) {
+            return res.status(400).json({ error: "hospitable_property_id required." });
+          }
+          const identity = await resolveByHospitablePropertyId(hid);
+          if (!identity) return res.status(404).json({ error: "Property not found." });
+          return res.status(200).json({ identity });
+        }
+        if (op === "workflow_negative_reviews") {
+          const propertyId = str(body.property_id || body.id) || undefined;
+          const result = await ensureNegativeReviewTasks({
+            propertyId,
+            maxStars: typeof body.max_stars === "number" ? body.max_stars : 4,
+          });
+          return res.status(200).json(result);
+        }
+        if (op === "workflow_supply_reorder") {
+          const propertyId = str(body.property_id || body.id);
+          if (!propertyId) return res.status(400).json({ error: "property_id required." });
+          const task = await ensureSupplyReorderTask({
+            propertyId,
+            itemName: str(body.item_name) || "Supply",
+            detail: str(body.detail),
+          });
+          return res.status(200).json({ task });
+        }
+        if (op === "workflow_turnover_qa") {
+          const propertyId = str(body.property_id || body.id);
+          if (!propertyId) return res.status(400).json({ error: "property_id required." });
+          const task = await ensureTurnoverQaTask({
+            propertyId,
+            cleaningTaskId: str(body.cleaning_task_id) || undefined,
+            detail: str(body.detail),
+          });
+          return res.status(200).json({ task });
         }
         if (op === "upload_cover") {
           const id = str(body.id || body.property_id);

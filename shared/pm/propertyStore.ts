@@ -26,6 +26,9 @@ function todayIsoDate(): string {
 function normalizePropertyRow(p: PmProperty): PmProperty {
   return {
     ...p,
+    hospitable_property_id: (p.hospitable_property_id || "").trim(),
+    guidebook_property_id: (p.guidebook_property_id || "").trim(),
+    hub_property_id: (p.hub_property_id || "").trim(),
     cleaning_fee_keeper: p.cleaning_fee_keeper === "host" ? "host" : "mrg",
     commission_base_mode: normalizeCommissionBaseMode(
       (p as { commission_base_mode?: string }).commission_base_mode,
@@ -233,6 +236,8 @@ export async function updatePmProperty(
     address?: string;
     client_id?: string;
     hospitable_property_id?: string;
+    guidebook_property_id?: string;
+    hub_property_id?: string;
     active?: boolean;
     cleaning_fee_keeper?: "mrg" | "host";
     commission_base_mode?: "nightly" | "nightly_minus_host_fee";
@@ -259,6 +264,12 @@ export async function updatePmProperty(
   }
   if (patch.hospitable_property_id != null) {
     updates.hospitable_property_id = patch.hospitable_property_id.trim();
+  }
+  if (patch.guidebook_property_id != null) {
+    updates.guidebook_property_id = patch.guidebook_property_id.trim();
+  }
+  if (patch.hub_property_id != null) {
+    updates.hub_property_id = patch.hub_property_id.trim();
   }
   if (patch.active != null) updates.active = patch.active;
   if (patch.cleaning_fee_keeper != null) {
@@ -342,6 +353,66 @@ export async function updatePmProperty(
   const detail = await getPmPropertyDetail(id);
   if (!detail) throw new Error("Property not found.");
   return detail;
+}
+
+export type PmPropertyLinkHealth = {
+  id: string;
+  name: string;
+  address: string;
+  client_id: string;
+  client_name: string;
+  active: boolean;
+  hospitable_property_id: string;
+  guidebook_property_id: string;
+  hub_property_id: string;
+  has_hospitable: boolean;
+  has_guidebook: boolean;
+  has_hub: boolean;
+  status:
+    | "linked"
+    | "missing_hospitable"
+    | "missing_hub"
+    | "missing_guidebook"
+    | "partial";
+};
+
+export async function listPmPropertyLinkHealth(): Promise<PmPropertyLinkHealth[]> {
+  const rows = await listPmProperties();
+  return rows.map((p) => {
+    const hospitable = (p.hospitable_property_id || "").trim();
+    const guidebook = (p.guidebook_property_id || "").trim();
+    const hub = (p.hub_property_id || "").trim();
+    const has_hospitable = Boolean(hospitable);
+    const has_guidebook = Boolean(guidebook);
+    const has_hub = Boolean(hub);
+    let status: PmPropertyLinkHealth["status"] = "linked";
+    if (!has_hospitable) status = "missing_hospitable";
+    else if (!has_hub && !has_guidebook) status = "partial";
+    else if (!has_hub) status = "missing_hub";
+    else if (!has_guidebook) status = "missing_guidebook";
+    else status = "linked";
+    if (has_hospitable && has_hub && has_guidebook) status = "linked";
+    else if (!has_hospitable) status = "missing_hospitable";
+    else if (!has_hub && has_guidebook) status = "missing_hub";
+    else if (has_hub && !has_guidebook) status = "missing_guidebook";
+    else if (!has_hub && !has_guidebook) status = "partial";
+
+    return {
+      id: p.id,
+      name: p.name,
+      address: p.address || "",
+      client_id: p.client_id,
+      client_name: p.client_name,
+      active: p.active !== false,
+      hospitable_property_id: hospitable,
+      guidebook_property_id: guidebook,
+      hub_property_id: hub,
+      has_hospitable,
+      has_guidebook,
+      has_hub,
+      status,
+    };
+  });
 }
 
 export async function changePmCommission(input: {

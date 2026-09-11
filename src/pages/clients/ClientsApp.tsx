@@ -139,6 +139,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
   const [rateSheet, setRateSheet] = useState(false);
   const [hstSheet, setHstSheet] = useState(false);
   const [linkSheet, setLinkSheet] = useState(false);
+  const [appLinksSheet, setAppLinksSheet] = useState(false);
   const [patSheet, setPatSheet] = useState(false);
   const [settingsSheet, setSettingsSheet] = useState<null | "list" | "edit">(null);
   const [settingsEditSub, setSettingsEditSub] = useState<import("./CompanyPnl").CompanySubscription | null>(null);
@@ -161,6 +162,11 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     note: "",
   });
   const [linkId, setLinkId] = useState("");
+  const [appLinksForm, setAppLinksForm] = useState({
+    hospitable_property_id: "",
+    hub_property_id: "",
+    guidebook_property_id: "",
+  });
   const [patInput, setPatInput] = useState("");
   const [hospitableAvailable, setHospitableAvailable] = useState<
     { id: string; name: string; address: string }[]
@@ -887,6 +893,58 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     setLinkSheet(true);
   };
 
+  const openAppLinks = () => {
+    setAppLinksForm({
+      hospitable_property_id: propertyDetail?.hospitable_property_id || "",
+      hub_property_id: propertyDetail?.hub_property_id || "",
+      guidebook_property_id: propertyDetail?.guidebook_property_id || "",
+    });
+    setAppLinksSheet(true);
+  };
+
+  const saveAppLinks = async () => {
+    if (!propertyDetail) return;
+    setBusy(true);
+    setLoadError("");
+    try {
+      const data = await pmPost<{ property: PropertyDetail }>("properties", {
+        op: "link_apps",
+        id: propertyDetail.id,
+        hospitable_property_id: appLinksForm.hospitable_property_id,
+        hub_property_id: appLinksForm.hub_property_id,
+        guidebook_property_id: appLinksForm.guidebook_property_id,
+      });
+      setAppLinksSheet(false);
+      setPropertyDetail(data.property);
+      setToast("App links saved.");
+      await loadLists();
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runNegativeReviewWorkflow = async () => {
+    if (!propertyDetail) return;
+    setBusy(true);
+    setLoadError("");
+    try {
+      const data = await pmPost<{ created: number; skipped: number }>("properties", {
+        op: "workflow_negative_reviews",
+        property_id: propertyDetail.id,
+        max_stars: 4,
+      });
+      setToast(
+        `Review tasks: ${data.created ?? 0} created, ${data.skipped ?? 0} already open.`,
+      );
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Workflow failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveLink = async () => {
     if (!propertyDetail) return;
     setBusy(true);
@@ -1440,6 +1498,109 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
               ) : null}
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="border-t border-white/8 px-4 py-4 lg:px-0">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65]">
+            App links
+          </p>
+          <button
+            type="button"
+            onClick={openAppLinks}
+            className="text-[13px] font-semibold text-[#c4a35a]"
+          >
+            Edit links
+          </button>
+        </div>
+        <div className="mt-3 space-y-2.5">
+          {(() => {
+            const cleanerBase =
+              (import.meta.env.VITE_CLEANER_HUB_URL as string | undefined)?.replace(
+                /\/$/,
+                "",
+              ) || "https://portal.stravo.ai";
+            const guidebookBase = (
+              import.meta.env.VITE_GUIDEBOOK_URL as string | undefined
+            )?.replace(/\/$/, "");
+            const cohostBase =
+              (import.meta.env.VITE_COHOST_URL as string | undefined)?.replace(/\/$/, "") ||
+              "https://chat.stravo.ai";
+            const rows: Array<{
+              label: string;
+              ok: boolean;
+              value: string;
+              href: string;
+            }> = [
+              {
+                label: "Hospitable",
+                ok: Boolean(propertyDetail.hospitable_property_id),
+                value: propertyDetail.hospitable_property_id || "",
+                href: propertyDetail.hospitable_property_id
+                  ? `https://my.hospitable.com/properties/${propertyDetail.hospitable_property_id}`
+                  : "",
+              },
+              {
+                label: "Cleaner Hub",
+                ok: Boolean(propertyDetail.hub_property_id),
+                value: propertyDetail.hub_property_id || "",
+                href: propertyDetail.hub_property_id
+                  ? `${cleanerBase}/properties/${propertyDetail.hub_property_id}`
+                  : "",
+              },
+              {
+                label: "Guidebook",
+                ok: Boolean(propertyDetail.guidebook_property_id),
+                value: propertyDetail.guidebook_property_id || "",
+                href:
+                  propertyDetail.guidebook_property_id && guidebookBase
+                    ? `${guidebookBase}/editor/${propertyDetail.guidebook_property_id}`
+                    : "",
+              },
+              {
+                label: "CohostAI",
+                ok: Boolean(propertyDetail.hospitable_property_id),
+                value: propertyDetail.hospitable_property_id
+                  ? "Uses Hospitable UUID"
+                  : "",
+                href: propertyDetail.hospitable_property_id ? `${cohostBase}/` : "",
+              },
+            ];
+            return rows.map((row) => (
+              <div key={row.label} className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex items-center gap-2">
+                  <StatusDot active={row.ok} />
+                  <div className="min-w-0">
+                    <p className="text-[13px] text-[#f5f5f5]">{row.label}</p>
+                    <p className="truncate font-mono text-[11px] text-[#6f6a65]">
+                      {row.value || "Not linked"}
+                    </p>
+                  </div>
+                </div>
+                {row.href ? (
+                  <a
+                    href={row.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 text-[12px] font-semibold text-[#c4a35a]"
+                  >
+                    Open
+                  </a>
+                ) : null}
+              </div>
+            ));
+          })()}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void runNegativeReviewWorkflow()}
+            className="text-[13px] font-semibold text-[#9a9590] hover:text-[#f5f5f5] disabled:opacity-50"
+          >
+            Create ≤4★ review tasks
+          </button>
         </div>
       </div>
 
@@ -2430,7 +2591,8 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
               className="border-[#c4a35a]/55"
             />
             <p className="text-[13px] text-[#6f6a65]">
-              Prefer Properties → Import when adding a new unit.
+              Prefer Properties → Import when adding a new unit. For Cleaner/Guidebook IDs use App
+              links.
             </p>
           </div>
           <GoldButton
@@ -2441,6 +2603,64 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           >
             {busy ? "Saving…" : "Save"}
           </GoldButton>
+        </Sheet>
+      ) : null}
+
+      {appLinksSheet && propertyDetail ? (
+        <Sheet title="App links" onCancel={() => setAppLinksSheet(false)} desktop={desktop}>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>Hospitable property ID</FieldLabel>
+              <TextInput
+                value={appLinksForm.hospitable_property_id}
+                onChange={(e) =>
+                  setAppLinksForm((f) => ({
+                    ...f,
+                    hospitable_property_id: e.target.value,
+                  }))
+                }
+                placeholder="UUID from Hospitable"
+                className="border-[#c4a35a]/55 font-mono text-sm"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>Cleaner Hub property ID</FieldLabel>
+              <TextInput
+                value={appLinksForm.hub_property_id}
+                onChange={(e) =>
+                  setAppLinksForm((f) => ({ ...f, hub_property_id: e.target.value }))
+                }
+                placeholder="properties.id from portal.stravo.ai"
+                className="border-[#c4a35a]/55 font-mono text-sm"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <FieldLabel>Guidebook property ID</FieldLabel>
+              <TextInput
+                value={appLinksForm.guidebook_property_id}
+                onChange={(e) =>
+                  setAppLinksForm((f) => ({
+                    ...f,
+                    guidebook_property_id: e.target.value,
+                  }))
+                }
+                placeholder="properties.id from Guidebook"
+                className="border-[#c4a35a]/55 font-mono text-sm"
+              />
+            </div>
+            <p className="text-[13px] text-[#6f6a65]">
+              Same Hospitable UUID must also be saved on Cleaner Hub and Guidebook rows. See
+              docs/PROPERTY_LINK_INVENTORY.md.
+            </p>
+            <GoldButton
+              type="button"
+              className="w-full"
+              disabled={busy}
+              onClick={() => void saveAppLinks()}
+            >
+              {busy ? "Saving…" : "Save links"}
+            </GoldButton>
+          </div>
         </Sheet>
       ) : null}
 

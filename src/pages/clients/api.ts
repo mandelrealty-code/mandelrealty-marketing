@@ -65,6 +65,8 @@ export type PropertyRow = {
   name: string;
   address: string;
   hospitable_property_id: string;
+  guidebook_property_id?: string;
+  hub_property_id?: string;
   client_name: string;
   current_rate_bps: number | null;
   cleaning_fee_keeper?: "mrg" | "host";
