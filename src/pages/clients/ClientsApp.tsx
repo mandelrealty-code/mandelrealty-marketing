@@ -2292,6 +2292,9 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
         onOpenProperty={(id) => {
           navOps({ opsTab: "properties", propertyId: id });
         }}
+        onOpenProperties={() => {
+          navOps({ opsTab: "properties" });
+        }}
         onToast={setToast}
         onError={setLoadError}
         restoreTaskId={route.taskId}

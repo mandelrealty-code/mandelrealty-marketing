@@ -982,6 +982,12 @@ export async function handleDevApi(
     return true;
   }
 
+  if (url === "/api/webhooks/ops-hub" && method === "POST") {
+    const mod = await import("../api/webhooks/ops-hub.js");
+    await mod.default(req as unknown as VercelRequest, res as unknown as VercelResponse);
+    return true;
+  }
+
   if (url === "/api/webhooks/booking" && method === "POST") {
     const secret = env.BOOKING_WEBHOOK_SECRET?.trim() || env.CRON_SECRET?.trim();
     const header = String(req.headers.authorization ?? "");

@@ -497,6 +497,7 @@ type Props = {
   properties: PropertyRow[];
   desktop: boolean;
   onOpenProperty: (id: string) => void;
+  onOpenProperties?: () => void;
   onToast: (msg: string) => void;
   onError: (msg: string) => void;
   restoreTaskId?: string | null;
@@ -508,6 +509,7 @@ export function TasksPanel({
   properties,
   desktop,
   onOpenProperty,
+  onOpenProperties,
   onToast,
   onError,
   restoreTaskId = null,
@@ -532,6 +534,12 @@ export function TasksPanel({
   const [completedOpen, setCompletedOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearch = useDeferredValue(searchQuery);
+  const [linkSummary, setLinkSummary] = useState<{
+    total: number;
+    needs_ops_link: number;
+    missing_hospitable: number;
+    missing_hub: number;
+  } | null>(null);
 
   const loadMembers = useCallback(async () => {
     try {
@@ -581,6 +589,34 @@ export function TasksPanel({
   useEffect(() => {
     void loadMembers();
   }, [loadMembers]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await pmPost<{
+          links: Array<{ status: string }>;
+          summary: {
+            total: number;
+            missing_hospitable: number;
+            missing_hub: number;
+            partial: number;
+          };
+        }>("properties", { op: "link_health" });
+        const needs =
+          (data.summary?.missing_hospitable ?? 0) +
+          (data.summary?.missing_hub ?? 0) +
+          (data.summary?.partial ?? 0);
+        setLinkSummary({
+          total: data.summary?.total ?? 0,
+          needs_ops_link: needs,
+          missing_hospitable: data.summary?.missing_hospitable ?? 0,
+          missing_hub: data.summary?.missing_hub ?? 0,
+        });
+      } catch {
+        /* Attention strip is optional */
+      }
+    })();
+  }, []);
 
   const saveNewMember = async () => {
     const name = addMemberName.trim();
@@ -719,6 +755,33 @@ export function TasksPanel({
   const overdueCount = useMemo(
     () => tasks.filter((t) => isOverdue(t, today)).length,
     [tasks, today],
+  );
+  const highCount = useMemo(
+    () =>
+      tasks.filter(
+        (t) =>
+          (t.status === "open" || t.status === "in_progress") &&
+          t.priority === "high",
+      ).length,
+    [tasks],
+  );
+  const supplyOpen = useMemo(
+    () =>
+      tasks.filter(
+        (t) =>
+          (t.status === "open" || t.status === "in_progress") &&
+          t.task_type === "supplies",
+      ).length,
+    [tasks],
+  );
+  const cleaningQaOpen = useMemo(
+    () =>
+      tasks.filter(
+        (t) =>
+          (t.status === "open" || t.status === "in_progress") &&
+          t.task_type === "cleaning",
+      ).length,
+    [tasks],
   );
 
   const sections = useMemo(() => {
@@ -1461,6 +1524,56 @@ export function TasksPanel({
             </button>
           </div>
         </div>
+
+        {(overdueCount > 0 ||
+          highCount > 0 ||
+          supplyOpen > 0 ||
+          cleaningQaOpen > 0 ||
+          (linkSummary && linkSummary.needs_ops_link > 0)) && (
+          <div className="rounded-xl border border-white/8 bg-[#141414] px-3.5 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6f6a65]">
+              Attention
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-[13px] text-[#9a9590]">
+              {overdueCount > 0 ? (
+                <span>
+                  <span className="font-semibold text-[#cf7f7b]">{overdueCount}</span> overdue
+                </span>
+              ) : null}
+              {highCount > 0 ? (
+                <span>
+                  <span className="font-semibold text-[#c4a35a]">{highCount}</span> high priority
+                </span>
+              ) : null}
+              {supplyOpen > 0 ? (
+                <span>
+                  <span className="font-semibold text-[#f5f5f5]">{supplyOpen}</span> supply
+                </span>
+              ) : null}
+              {cleaningQaOpen > 0 ? (
+                <span>
+                  <span className="font-semibold text-[#f5f5f5]">{cleaningQaOpen}</span> cleaning QA
+                </span>
+              ) : null}
+              {linkSummary && linkSummary.needs_ops_link > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenProperties?.()}
+                  className="text-left hover:text-[#c4a35a]"
+                >
+                  <span className="font-semibold text-[#c99a4b]">
+                    {linkSummary.needs_ops_link}
+                  </span>{" "}
+                  need Hospitable / Cleaner link
+                </button>
+              ) : null}
+            </div>
+            <p className="mt-2 text-[12px] leading-snug text-[#6f6a65]">
+              Work this list top-down. Open a task for detail, or use property App links to jump
+              into Cleaner / Hospitable.
+            </p>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-0.5 rounded-lg border border-white/8 bg-[#141414] p-0.5">

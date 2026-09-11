@@ -24,6 +24,16 @@ Property detail → **Create ≤4★ review tasks**.
 
 ## Next integrations
 
-1. Cleaner Hub low-stock webhook → `workflow_supply_reorder` with Admin property id from `resolve_hospitable`.
-2. Cleaner Hub turnover complete → `workflow_turnover_qa`.
-3. Knowledge Hub write-through from Guidebook/CohostAI (MCP).
+1. ~~Cleaner Hub low-stock webhook → `workflow_supply_reorder`~~ — shipped via `/api/webhooks/ops-hub` + Cleaner `notify-ops-hub`
+2. ~~Cleaner Hub turnover complete → `workflow_turnover_qa`~~ — same path
+3. Knowledge Hub write-through from Guidebook/CohostAI (MCP)
+
+## Webhook
+
+`POST /api/webhooks/ops-hub`  
+Auth: `Authorization: Bearer <CLEANER_HUB_SYNC_KEY>` (or `OPS_HUB_WEBHOOK_SECRET`)
+
+Events: `inventory_low_stock`, `cleaning_complete`.  
+Requires Admin property linked by Hospitable UUID.
+
+VA day-to-day: `docs/OPS_VA_SOP.md`.

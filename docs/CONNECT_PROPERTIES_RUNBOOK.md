@@ -62,7 +62,16 @@ CLEANER_HUB_SYNC_KEY=<shared secret>
 CLEANER_HUB_SYNC_URL=https://hyndmdjvjlsbthlqrxge.supabase.co/functions/v1/ops-hub-sync
 ```
 
-Restart `npm run dev` after changing. Mirror on Vercel for Admin production.
+Restart `npm run dev` after changing. Mirror on Vercel for Admin production (same `CLEANER_HUB_SYNC_KEY` authorizes Cleaner → Admin `/api/webhooks/ops-hub`).
+
+Cleaner Hub edge secrets (for notify):
+
+```bash
+OPS_HUB_SYNC_KEY=<same shared secret>
+OPS_HUB_NOTIFY_URL=https://admin.mandelrealtygroup.com/api/webhooks/ops-hub
+```
+
+Also deploy: `npx supabase functions deploy notify-ops-hub --project-ref hyndmdjvjlsbthlqrxge`
 
 ### A6. Hospitable PAT in each product
 
