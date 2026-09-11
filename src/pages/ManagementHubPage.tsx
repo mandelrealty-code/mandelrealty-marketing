@@ -8,7 +8,7 @@ import "./management-hub.css";
 /**
  * New marketing homepage — markup ported 1:1 from Claude Design export,
  * with Design Canvas interactions converted to native details/summary
- * and user-provided Airbnb / Expedia / Booking.com logos.
+ * and user-provided Airbnb / Vrbo / Expedia / Booking.com / Peerspace logos.
  */
 export function ManagementHubPage() {
   useEffect(() => {

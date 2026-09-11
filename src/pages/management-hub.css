@@ -112,20 +112,51 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
   }
 }
 
-.mrg-hub img.mrg-ota-logo,
-.mrg-hub img[alt="Airbnb"],
-.mrg-hub img[alt="Expedia"],
-.mrg-hub img[alt="Booking.com"] {
-  height: 32px !important;
+.mrg-hub .mrg-ota-marquee {
+  width: 100%;
+  overflow: hidden;
+}
+
+.mrg-hub .mrg-ota-strip {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+}
+
+.mrg-hub .mrg-ota-track {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 28px;
+}
+
+.mrg-hub .mrg-ota-track--clone {
+  display: none;
+}
+
+.mrg-hub .mrg-ota-slot {
+  height: 28px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex: none;
+}
+
+.mrg-hub .mrg-ota-slot img.mrg-ota-logo,
+.mrg-hub img.mrg-ota-logo {
+  height: 28px !important;
   width: auto !important;
   max-width: none;
   object-fit: contain;
-  object-position: center;
+  object-position: bottom center;
+  display: block;
 }
 
-/* Booking wordmark fills its crop taller optically than Airbnb/Expedia */
-.mrg-hub img[alt="Booking.com"] {
-  height: 26px !important;
+@keyframes mrg-ota-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 
 .mrg-hero-media {
@@ -243,15 +274,37 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
   .mrg-hub header a[href="tel:+16473817325"] {
     display: none !important;
   }
-  .mrg-hub img.mrg-ota-logo,
-  .mrg-hub img[alt="Airbnb"],
-  .mrg-hub img[alt="Expedia"] {
-    height: 28px !important;
+  .mrg-hub .mrg-ota-marquee {
+    mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  }
+  .mrg-hub .mrg-ota-strip {
+    display: flex;
+    width: max-content;
+    justify-content: flex-start;
+    animation: mrg-ota-scroll 22s linear infinite;
+  }
+  .mrg-hub .mrg-ota-track {
+    justify-content: flex-start;
+    gap: 28px;
+    padding-right: 28px;
+  }
+  .mrg-hub .mrg-ota-track--clone {
+    display: flex;
+  }
+  .mrg-hub .mrg-ota-slot {
+    height: 24px;
+  }
+  .mrg-hub .mrg-ota-slot img.mrg-ota-logo,
+  .mrg-hub img.mrg-ota-logo {
+    height: 24px !important;
     max-width: none;
   }
-  .mrg-hub img[alt="Booking.com"] {
-    height: 22px !important;
-    max-width: none;
+}
+
+@media (max-width: 560px) and (prefers-reduced-motion: reduce) {
+  .mrg-hub .mrg-ota-strip {
+    animation: none;
   }
 }
 
