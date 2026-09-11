@@ -1526,7 +1526,11 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
             Edit links
           </button>
         </div>
-        <div className="mt-3 space-y-2.5">
+        <p className="mt-2 text-[12.5px] leading-relaxed text-[#6f6a65]">
+          This panel only records the shared Hospitable UUID and each app’s local id. Connect inside
+          each product first, then paste the Cleaner / Guidebook ids here (or use Edit links).
+        </p>
+        <div className="mt-3 space-y-3">
           {(() => {
             const cleanerBase =
               (import.meta.env.VITE_CLEANER_HUB_URL as string | undefined)?.replace(
@@ -1539,19 +1543,20 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
             const cohostBase =
               (import.meta.env.VITE_COHOST_URL as string | undefined)?.replace(/\/$/, "") ||
               "https://chat.stravo.ai";
+            const hid = propertyDetail.hospitable_property_id || "";
             const rows: Array<{
               label: string;
               ok: boolean;
               value: string;
               href: string;
+              how: string;
             }> = [
               {
                 label: "Hospitable",
-                ok: Boolean(propertyDetail.hospitable_property_id),
-                value: propertyDetail.hospitable_property_id || "",
-                href: propertyDetail.hospitable_property_id
-                  ? `https://my.hospitable.com/properties/${propertyDetail.hospitable_property_id}`
-                  : "",
+                ok: Boolean(hid),
+                value: hid,
+                href: hid ? `https://my.hospitable.com/properties/${hid}` : "",
+                how: "Admin → Properties → Import, or Edit links → pick unit.",
               },
               {
                 label: "Cleaner Hub",
@@ -1559,7 +1564,8 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                 value: propertyDetail.hub_property_id || "",
                 href: propertyDetail.hub_property_id
                   ? `${cleanerBase}/properties/${propertyDetail.hub_property_id}`
-                  : "",
+                  : cleanerBase,
+                how: `Open ${cleanerBase.replace(/^https?:\/\//, "")} → Properties → Hospitable card → Connect PAT → select this unit → Import or Link. Then paste /properties/… id here.`,
               },
               {
                 label: "Guidebook",
@@ -1568,26 +1574,29 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                 href:
                   propertyDetail.guidebook_property_id && guidebookBase
                     ? `${guidebookBase}/editor/${propertyDetail.guidebook_property_id}`
-                    : "",
+                    : guidebookBase || "",
+                how: "Guidebook → Setup / Connect Hospitable (or Guests tab) → pick same listing. Skip if this unit has no guidebook. Paste /editor/… id here.",
               },
               {
                 label: "CohostAI",
-                ok: Boolean(propertyDetail.hospitable_property_id),
-                value: propertyDetail.hospitable_property_id
-                  ? "Uses Hospitable UUID"
-                  : "",
-                href: propertyDetail.hospitable_property_id ? `${cohostBase}/` : "",
+                ok: Boolean(hid),
+                value: hid ? "Uses Hospitable UUID" : "",
+                href: `${cohostBase}/`,
+                how: "chat.stravo.ai → Setup → paste PAT → sync Properties. No extra id — same UUID as Hospitable.",
               },
             ];
             return rows.map((row) => (
               <div key={row.label} className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex items-center gap-2">
+                <div className="min-w-0 flex items-start gap-2">
                   <StatusDot active={row.ok} />
                   <div className="min-w-0">
                     <p className="text-[13px] text-[#f5f5f5]">{row.label}</p>
                     <p className="truncate font-mono text-[11px] text-[#6f6a65]">
                       {row.value || "Not linked"}
                     </p>
+                    {!row.ok ? (
+                      <p className="mt-1 text-[12px] leading-snug text-[#9a9590]">{row.how}</p>
+                    ) : null}
                   </div>
                 </div>
                 {row.href ? (
@@ -1595,7 +1604,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                     href={row.href}
                     target="_blank"
                     rel="noreferrer"
-                    className="shrink-0 text-[12px] font-semibold text-[#c4a35a]"
+                    className="shrink-0 pt-0.5 text-[12px] font-semibold text-[#c4a35a]"
                   >
                     Open
                   </a>
