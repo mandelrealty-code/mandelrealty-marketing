@@ -304,9 +304,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           listAllHospitableProperties(pat),
           listLinkedHospitableIds(),
         ]);
-        const available = all.filter((p) => !linked.has(p.id));
+        const includeAll =
+          req.query.include === "all" ||
+          req.query.all === "1" ||
+          req.query.all === "true";
+        const available = includeAll ? all : all.filter((p) => !linked.has(p.id));
         return res.status(200).json({
           available,
+          all,
           total: all.length,
           linked_count: linked.size,
         });

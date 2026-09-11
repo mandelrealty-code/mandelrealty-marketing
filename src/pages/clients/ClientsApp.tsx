@@ -900,6 +900,18 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
       guidebook_property_id: propertyDetail?.guidebook_property_id || "",
     });
     setAppLinksSheet(true);
+    void (async () => {
+      try {
+        const data = await pmGet<{
+          all?: { id: string; name: string; address: string }[];
+          available: { id: string; name: string; address: string }[];
+        }>("hospitable", { include: "all" });
+        const list = data.all ?? data.available ?? [];
+        setHospitableAvailable(list);
+      } catch {
+        /* PAT may be missing — sheet still allows manual IDs */
+      }
+    })();
   };
 
   const saveAppLinks = async () => {
@@ -2610,7 +2622,27 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
         <Sheet title="App links" onCancel={() => setAppLinksSheet(false)} desktop={desktop}>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <FieldLabel>Hospitable property ID</FieldLabel>
+              <FieldLabel>Hospitable unit</FieldLabel>
+              {hospitableAvailable.length > 0 ? (
+                <select
+                  className="w-full rounded-lg border border-[#c4a35a]/55 bg-[#141414] px-3 py-2.5 text-sm text-[#f5f5f5]"
+                  value={appLinksForm.hospitable_property_id}
+                  onChange={(e) =>
+                    setAppLinksForm((f) => ({
+                      ...f,
+                      hospitable_property_id: e.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Select from Hospitable…</option>
+                  {hospitableAvailable.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                      {u.address ? ` — ${u.address}` : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
               <TextInput
                 value={appLinksForm.hospitable_property_id}
                 onChange={(e) =>
@@ -2619,23 +2651,31 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                     hospitable_property_id: e.target.value,
                   }))
                 }
-                placeholder="UUID from Hospitable"
+                placeholder="Or paste UUID"
                 className="border-[#c4a35a]/55 font-mono text-sm"
               />
+              <p className="text-[12px] text-[#6f6a65]">
+                Prefer Properties → Import for new units. Connect Hospitable PAT in Settings if the
+                list is empty.
+              </p>
             </div>
             <div className="flex flex-col gap-1.5">
-              <FieldLabel>Cleaner Hub property ID</FieldLabel>
+              <FieldLabel optional>Cleaner Hub property ID</FieldLabel>
               <TextInput
                 value={appLinksForm.hub_property_id}
                 onChange={(e) =>
                   setAppLinksForm((f) => ({ ...f, hub_property_id: e.target.value }))
                 }
-                placeholder="properties.id from portal.stravo.ai"
+                placeholder="From portal URL /properties/…"
                 className="border-[#c4a35a]/55 font-mono text-sm"
               />
+              <p className="text-[12px] text-[#6f6a65]">
+                After importing/linking in Cleaner Hub, copy the id from the URL and paste here.
+                Leave blank if this unit is not on Cleaner yet.
+              </p>
             </div>
             <div className="flex flex-col gap-1.5">
-              <FieldLabel>Guidebook property ID</FieldLabel>
+              <FieldLabel optional>Guidebook property ID</FieldLabel>
               <TextInput
                 value={appLinksForm.guidebook_property_id}
                 onChange={(e) =>
@@ -2644,14 +2684,14 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                     guidebook_property_id: e.target.value,
                   }))
                 }
-                placeholder="properties.id from Guidebook"
+                placeholder="From /editor/… (optional if not onboarded)"
                 className="border-[#c4a35a]/55 font-mono text-sm"
               />
+              <p className="text-[12px] text-[#6f6a65]">
+                Not every unit needs a Guidebook. Import via Guidebook → Hospitable Connect when
+                ready, then paste the guidebook id here.
+              </p>
             </div>
-            <p className="text-[13px] text-[#6f6a65]">
-              Same Hospitable UUID must also be saved on Cleaner Hub and Guidebook rows. See
-              docs/PROPERTY_LINK_INVENTORY.md.
-            </p>
             <GoldButton
               type="button"
               className="w-full"
