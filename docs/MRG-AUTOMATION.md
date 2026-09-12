@@ -15,11 +15,11 @@ Link Admin OPS, Cleaner Hub (`portal.stravo.ai`), Guidebook, and CohostAI on the
 
 **Not in V1:** merging the four Supabase projects, or building a fifth greenfield hub app.
 
-## Status (2026-09-11 night)
+## Status (2026-09-12)
 
 | Track | Status |
 |-------|--------|
-| Cleaner Hub dogfood (import, photos, schedule windows, invites, cleaner flow) | **In progress** — finish this first |
+| Cleaner Hub dogfood (import, photos, schedule windows, invites, cleaner flow) | **In progress** — Sync is Hospitable-only (no iCal dupes); Overview uses turnover windows; Sync refreshes listing details + lookback. Still dogfood one full turnover before marking done. |
 | Link every MRG unit across 4 apps | Pending |
 | Guidebook V1 | Pending |
 | CohostAI V1 (Knowledge Hub) | Pending |
