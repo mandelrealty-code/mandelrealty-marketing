@@ -112,6 +112,8 @@ export function PortalInviteControls({
   const [signedFile, setSignedFile] = useState<File | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [replaceId, setReplaceId] = useState<string | null>(null);
+  /** True when swapping to a different PDF/template (not same-PDF box edits). */
+  const [newPdfReplace, setNewPdfReplace] = useState(false);
 
   const loadStatus = useCallback(async () => {
     const data = await pmGet<PortalStatus>("portal_user", { client_id: client.id });
@@ -139,6 +141,7 @@ export function PortalInviteControls({
     setKind(draft ? (draft.kind === "existing" ? "existing" : "new") : "new");
     setSignedFile(null);
     setReplaceId(null);
+    setNewPdfReplace(false);
   }, [client.id, client.name, client.email, client.phone]);
 
   useEffect(() => {
@@ -202,7 +205,8 @@ export function PortalInviteControls({
       }
       // Always start blank — never reuse another customer's layout or template leftovers.
       setFields([]);
-      setReplaceId(null);
+      // Keep replaceId when swapping to a new PDF/template so the old awaiting copy is removed.
+      if (replaceId) setNewPdfReplace(true);
       setStep("place");
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not open PDF.");
@@ -211,6 +215,25 @@ export function PortalInviteControls({
     }
   };
 
+  /** Swap in a different PDF/template; removes the old unsigned copy and emails the host. */
+  const startReplace = () => {
+    const awaiting = status?.awaiting_contract;
+    if (!awaiting?.id) {
+      onError("No unsigned agreement to replace.");
+      return;
+    }
+    setReplaceId(awaiting.id);
+    setNewPdfReplace(true);
+    setKind("new");
+    setOneOff(null);
+    setPdfUrl("");
+    setFields([]);
+    setTemplateId("");
+    setOpen(true);
+    setStep("form");
+  };
+
+  /** Same PDF — only move/redraw signature boxes, then replace & resend. */
   const startEdit = async () => {
     const awaiting = status?.awaiting_contract;
     if (!awaiting?.id) {
@@ -229,6 +252,7 @@ export function PortalInviteControls({
       setTemplateId(awaiting.template_id || "");
       setOneOff(null);
       setReplaceId(awaiting.id);
+      setNewPdfReplace(false);
       setKind("new");
       setOpen(true);
       setStep("place");
@@ -307,16 +331,21 @@ export function PortalInviteControls({
       };
       if (replaceId) {
         body.replace_contract_id = replaceId;
-      } else if (oneOff) {
-        body.filename = oneOff.name;
-        body.mime = oneOff.type || "application/pdf";
-        body.contentBase64 = await fileToBase64(oneOff);
-        body.title = oneOff.name.replace(/\.pdf$/i, "");
-        body.save_as_template = saveAsTemplate;
-      } else if (templateId) {
-        body.template_id = templateId;
-      } else {
-        throw new Error("Pick a template or upload a PDF.");
+      }
+      if (newPdfReplace || !replaceId) {
+        // New PDF/template (including full replace). Same-PDF box edits omit these
+        // so the API reuses the prior source file.
+        if (oneOff) {
+          body.filename = oneOff.name;
+          body.mime = oneOff.type || "application/pdf";
+          body.contentBase64 = await fileToBase64(oneOff);
+          body.title = oneOff.name.replace(/\.pdf$/i, "");
+          body.save_as_template = saveAsTemplate;
+        } else if (templateId) {
+          body.template_id = templateId;
+        } else {
+          throw new Error("Pick a template or upload a PDF.");
+        }
       }
       const res = await pmPost<{
         owner_url: string;
@@ -328,6 +357,7 @@ export function PortalInviteControls({
       setOneOff(null);
       setFields([]);
       setReplaceId(null);
+      setNewPdfReplace(false);
       try {
         sessionStorage.removeItem(inviteDraftKey(client.id));
       } catch {
@@ -398,26 +428,52 @@ export function PortalInviteControls({
           ) : null}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setReplaceId(null);
-              setOpen((v) => !v);
-              setStep("form");
-            }}
-            className="rounded-[10px] bg-[#c4a35a] px-3.5 py-2.5 text-[13px] font-bold text-[#0a0a0a]"
-          >
-            {portal?.invited_at ? "Resend invite" : "Send portal invite"}
-          </button>
           {status?.awaiting_contract ? (
             <button
               type="button"
               disabled={busy}
-              onClick={() => void startEdit()}
-              className="text-[12.5px] font-semibold text-[#c4a35a] disabled:opacity-50"
+              onClick={() => startReplace()}
+              className="rounded-[10px] bg-[#c4a35a] px-3.5 py-2.5 text-[13px] font-bold text-[#0a0a0a] disabled:opacity-50"
             >
-              {busy && replaceId ? "Opening…" : "Edit agreement"}
+              Replace contract
             </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setReplaceId(null);
+                setNewPdfReplace(false);
+                setOpen((v) => !v);
+                setStep("form");
+              }}
+              className="rounded-[10px] bg-[#c4a35a] px-3.5 py-2.5 text-[13px] font-bold text-[#0a0a0a]"
+            >
+              {portal?.invited_at ? "Resend invite" : "Send portal invite"}
+            </button>
+          )}
+          {status?.awaiting_contract ? (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void startEdit()}
+                className="text-[12.5px] font-semibold text-[#c4a35a] disabled:opacity-50"
+              >
+                {busy ? "Opening…" : "Edit boxes only"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setReplaceId(null);
+                  setNewPdfReplace(false);
+                  setOpen((v) => !v);
+                  setStep("form");
+                }}
+                className="text-[12.5px] font-semibold text-[#9a9590]"
+              >
+                Resend invite
+              </button>
+            </>
           ) : null}
           <button
             type="button"
@@ -432,6 +488,16 @@ export function PortalInviteControls({
 
       {open && step === "form" ? (
         <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-[#141414] p-4">
+          {replaceId ? (
+            <div className="rounded-lg border border-[#c4a35a]/35 bg-[#c4a35a]/10 px-3.5 py-3">
+              <div className="text-[14px] font-semibold text-[#f5f5f5]">Replace unsigned contract</div>
+              <p className="mt-1 text-[13px] leading-snug text-[#b4aea8]">
+                Pick a template from settings or upload a new PDF. The old unsigned copy is removed from
+                their portal, they keep their login, and they get an email to view the update.
+              </p>
+            </div>
+          ) : (
+            <>
           <div className="flex gap-2">
             <button
               type="button"
@@ -461,6 +527,10 @@ export function PortalInviteControls({
               ? "Already signed offline. Sends portal login only — they will not be asked to sign again. Optionally attach their signed PDF for Documents."
               : `New client. Place boxes for ${hostFirst} to fill later, and MRG boxes for you to sign/type before sending.`}
           </p>
+            </>
+          )}
+          {!replaceId ? (
+            <>
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Name</FieldLabel>
             <TextInput value={name} onChange={(e) => setName(e.target.value)} />
@@ -473,7 +543,9 @@ export function PortalInviteControls({
             <FieldLabel>Phone</FieldLabel>
             <TextInput value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
-          {kind === "existing" ? (
+            </>
+          ) : null}
+          {!replaceId && kind === "existing" ? (
             <>
               <div className="flex flex-col gap-1.5">
                 <FieldLabel optional>Signed contract PDF</FieldLabel>
@@ -497,7 +569,7 @@ export function PortalInviteControls({
               </GoldButton>
             </>
           ) : null}
-          {kind === "new" ? (
+          {(replaceId || kind === "new") ? (
             <>
           <div className="flex flex-col gap-1.5">
             <FieldLabel>Agreement template</FieldLabel>
@@ -516,7 +588,9 @@ export function PortalInviteControls({
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <FieldLabel optional>Or upload PDF for this deal only</FieldLabel>
+            <FieldLabel optional>
+              {replaceId ? "Or upload a new PDF" : "Or upload PDF for this deal only"}
+            </FieldLabel>
             <input
               type="file"
               accept="application/pdf"
@@ -536,14 +610,23 @@ export function PortalInviteControls({
           </div>
           <GoldButton
             type="button"
-            disabled={busy || !email.trim() || (!templateId && !oneOff)}
+            disabled={busy || (!replaceId && !email.trim()) || (!templateId && !oneOff)}
             onClick={() => void startPlace()}
           >
             {busy ? "Opening PDF…" : "Next: place fields & sign"}
           </GoldButton>
             </>
           ) : null}
-          <button type="button" className="text-[13px] text-[#9a9590]" onClick={() => setOpen(false)}>
+          <button
+            type="button"
+            className="text-[13px] text-[#9a9590]"
+            onClick={() => {
+              setOpen(false);
+              setReplaceId(null);
+              setNewPdfReplace(false);
+              setStep("form");
+            }}
+          >
             Cancel
           </button>
         </div>
@@ -554,11 +637,17 @@ export function PortalInviteControls({
           <div className="flex flex-col gap-3 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <div className="text-[15px] font-semibold">
-                {replaceId ? "Edit agreement" : "Prepare agreement"}
+                {replaceId
+                  ? newPdfReplace
+                    ? "Replace contract"
+                    : "Edit agreement"
+                  : "Prepare agreement"}
               </div>
               <div className="hidden text-[12.5px] text-[#6f6a65] sm:block">
                 {replaceId
-                  ? "Same PDF and boxes as the version already sent. Move or redraw, then replace — the host only sees the new one."
+                  ? newPdfReplace
+                    ? "New PDF — place boxes for the host and MRG, then replace. Old unsigned copy is removed; they keep their login and get an update email."
+                    : "Same PDF — move or redraw boxes, then replace. The host only sees the new version."
                   : <>
                 {hostFirst}’s boxes = they fill later. MRG boxes = you sign and type now. Use{" "}
                 <span className="text-[#c4a35a]">Move</span> to grab and reposition · pick a field type
@@ -576,6 +665,7 @@ export function PortalInviteControls({
                     setOpen(false);
                     setStep("form");
                     setReplaceId(null);
+                    setNewPdfReplace(false);
                     setPdfUrl("");
                     return;
                   }
@@ -590,7 +680,13 @@ export function PortalInviteControls({
                 onClick={() => void send()}
                 className="rounded-lg bg-[#c4a35a] px-4 py-2 text-[13px] font-bold text-[#0a0a0a] disabled:opacity-40"
               >
-                {busy ? (replaceId ? "Replacing…" : "Sending…") : replaceId ? "Replace & resend" : "Send invite"}
+                {busy
+                  ? replaceId
+                    ? "Replacing…"
+                    : "Sending…"
+                  : replaceId
+                    ? "Replace & resend"
+                    : "Send invite"}
               </button>
               </div>
               {sendBlocked ? (

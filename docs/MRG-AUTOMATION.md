@@ -19,7 +19,7 @@ Link Admin OPS, Cleaner Hub (`portal.stravo.ai`), Guidebook, and CohostAI on the
 
 | Track | Status |
 |-------|--------|
-| Cleaner Hub dogfood (import, photos, schedule windows, invites, cleaner flow) | **In progress** — Sync is Hospitable-only (no iCal dupes); Overview uses turnover windows; Sync refreshes listing details + lookback. Still dogfood one full turnover before marking done. |
+| Cleaner Hub dogfood (import, photos, schedule windows, invites, cleaner flow) | **In progress** — Slice 13 Overview ops home shipped (`8d255e2`). Dogfood full turnover next. |
 | Link every MRG unit across 4 apps | Pending |
 | Guidebook V1 | Pending |
 | CohostAI V1 (Knowledge Hub) | Pending |

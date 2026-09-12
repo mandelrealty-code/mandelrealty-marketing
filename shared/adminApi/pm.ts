@@ -1111,8 +1111,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body.existing_host === true || str(body.kind) === "existing";
           const replaceId = str(body.replace_contract_id);
           const existingPortal = await getPortalUserByClientId(clientId);
+          // After the host has signed in, never reset their password when sending
+          // a new/replacement agreement — they keep the same portal login.
           const keepPortalLogin = Boolean(
-            replaceId && existingPortal?.last_login_at && !existingHost,
+            existingPortal?.last_login_at && !existingHost,
           );
 
           let user = existingPortal;
@@ -1194,15 +1196,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 error: "This agreement is already signed. Send a new one instead of editing it.",
               });
             }
-            const src = await downloadContractSourceBuffer(replaceId);
-            pdf = {
-              buffer: src.buffer,
-              filename: src.filename,
-              mime: src.mime,
-              title: src.title,
-              template_id: src.template_id,
-            };
-          } else if (templateId) {
+          }
+
+          // Prefer a newly chosen template/PDF. Only reuse the prior source when
+          // replace is field-layout-only (same PDF, no new file/template).
+          if (templateId) {
             const t = await downloadTemplateBuffer(templateId);
             pdf = {
               buffer: t.buffer,
@@ -1218,6 +1216,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               mime: str(body.mime) || "application/pdf",
               title: str(body.title) || oneOffName,
               template_id: null,
+            };
+          } else if (replaceId) {
+            const src = await downloadContractSourceBuffer(replaceId);
+            pdf = {
+              buffer: src.buffer,
+              filename: src.filename,
+              mime: src.mime,
+              title: src.title,
+              template_id: src.template_id,
             };
           } else {
             return res.status(400).json({
@@ -1276,13 +1283,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             sourceBuffer: pdf.buffer,
           });
 
+          // Revised = we replaced an unsigned agreement, or they already use the portal
+          // (no new temp password) — never send a "welcome + new code" in those cases.
+          const revised = Boolean(replaceId) || keepPortalLogin;
           const mail = await sendOwnerInviteEmail({
             to: email,
             firstName: user.first_name || "there",
             propertyLabel,
             slug: user.slug,
             tempPassword,
-            kind: replaceId ? "revised" : "new",
+            kind: revised ? "revised" : "new",
           });
 
           return res.status(200).json({

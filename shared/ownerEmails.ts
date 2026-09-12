@@ -178,11 +178,11 @@ export async function sendOwnerInviteEmail(input: {
     const portalLink = withCode(portal);
     const html = emailShell(`
     <div style="font-family:Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;line-height:1.2;color:#f5f5f5;padding-bottom:12px;">
-      Your agreement was updated
+      MRG updated your contract
     </div>
     <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 16px;">
       We replaced the management agreement in your portal${prop ? ` for <strong style="color:#f5f5f5;font-weight:600">${esc(prop)}</strong>` : ""}.
-      Please open it and sign the new version — the previous unsigned copy is no longer valid.
+      The previous unsigned copy is gone — please open the new version and sign when you’re ready.
     </p>
     ${code ? passwordBlock(code, withCode(portal)) : ""}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -192,23 +192,23 @@ export async function sendOwnerInviteEmail(input: {
       )}
       ${row("Email to sign in with", esc(input.to))}
     </table>
-    ${goldButton(cta, "Review updated agreement")}
+    ${goldButton(cta, "View updated contract")}
     <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0;">
       ${
         code
           ? "Use the sign-in code above, then choose your own password."
-          : "Sign in with the password you already set."
+          : "Sign in with the password you already set — nothing else changes on your account."
       }
       Questions? Reply to this email — it goes to our team at ${esc(replyTo)}.
     </p>
   `);
     const text = [
-      `Your agreement was updated, ${input.firstName}`,
+      `MRG updated your contract, ${input.firstName}`,
       "",
       prop
         ? `We replaced the management agreement in your portal for ${prop}.`
         : "We replaced the management agreement in your portal.",
-      "Please open it and sign the new version — the previous unsigned copy is no longer valid.",
+      "The previous unsigned copy is gone — please open the new version and sign when you're ready.",
       "",
       ...(code
         ? ["Your temporary sign-in code:", "", `    ${code}`, ""]
@@ -223,7 +223,7 @@ export async function sendOwnerInviteEmail(input: {
       apiKey,
       from,
       to: [input.to],
-      subject: `Please review your updated MRG agreement${prop ? ` — ${prop}` : ""}`,
+      subject: `MRG updated your contract${prop ? ` — ${prop}` : ""}`,
       html,
       text,
       replyTo,
