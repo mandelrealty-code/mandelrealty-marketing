@@ -38,7 +38,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     reviews = await processUnansweredReviews({
       notify: true,
       skipSync: false,
-      maxDrafts: 3,
+      syncMode: "full",
+      maxDrafts: 4,
       skipContext: false,
     });
   } catch (err) {

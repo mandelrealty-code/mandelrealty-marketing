@@ -593,12 +593,17 @@ export function normalizeReviewForStore(
 export async function listHospitableReviews(input: {
   pat: string;
   propertyId: string;
+  /** When false, only unanswered reviews (Hospitable `responded=false`). */
+  responded?: boolean;
+  /** Cap pagination — Refresh should stay fast (default 30 for full sync). */
+  maxPages?: number;
 }): Promise<HospitableReviewNormalized[]> {
   const propertyId = input.propertyId.trim();
   if (!propertyId) return [];
 
   // Singular includes only — unknown values are silently ignored by the API.
   const include = "guest,reservation,property";
+  const maxPages = Math.max(1, Math.min(input.maxPages ?? 30, 30));
 
   const byId = new Map<string, HospitableReviewNormalized>();
   const errors: Error[] = [];
@@ -609,23 +614,27 @@ export async function listHospitableReviews(input: {
     }
   };
 
-  // 1) Official property-scoped endpoint (hospitable npm SDK / MCP get-property-reviews).
+  const query: HospitableQuery = { include };
+  if (input.responded === false) query.responded = "false";
+  if (input.responded === true) query.responded = "true";
+
+  // Official property-scoped endpoint (hospitable npm SDK / MCP get-property-reviews).
   try {
     merge(
       await fetchReviewPages(
         input.pat,
         `/properties/${encodeURIComponent(propertyId)}/reviews`,
-        { include },
+        query,
         propertyId,
+        maxPages,
       ),
     );
   } catch (err) {
     errors.push(err instanceof Error ? err : new Error(String(err)));
   }
 
-  // 2) Reservation include=review — documented side-load for review audits.
-  // Skip account-level GET /reviews: it 404s on this PAT and used to hard-fail the sync.
-  if (byId.size === 0) {
+  // Reservation fallback only for full sync when property endpoint returns nothing.
+  if (byId.size === 0 && maxPages >= 5) {
     try {
       merge(await fetchReviewsViaReservations(input.pat, propertyId));
     } catch (err) {
@@ -634,10 +643,8 @@ export async function listHospitableReviews(input: {
   }
 
   if (byId.size === 0 && errors.length > 0) {
-    // Soft-fail empty results. Only throw if every path failed for a non-404 reason.
     const non404 = errors.filter((e) => !/Hospitable API error \(404\)/i.test(e.message));
     if (non404.length >= 1 && non404.length === errors.length) throw non404[0]!;
-    // Any 404 / empty — treat as no reviews for this property rather than aborting Refresh.
   }
 
   return [...byId.values()];
@@ -718,10 +725,12 @@ async function fetchReviewPages(
   path: string,
   query: HospitableQuery,
   fallbackPropertyId: string,
+  maxPages = 30,
 ): Promise<HospitableReviewNormalized[]> {
   const out: HospitableReviewNormalized[] = [];
   let page = 1;
   let lastPage = 1;
+  const pageCap = Math.max(1, Math.min(maxPages, 30));
 
   do {
     const json = (await hospitableFetch(pat, path, {
@@ -749,7 +758,7 @@ async function fetchReviewPages(
       lastPage = page;
     }
     page += 1;
-  } while (page <= lastPage && page <= 30);
+  } while (page <= lastPage && page <= pageCap);
 
   return out;
 }

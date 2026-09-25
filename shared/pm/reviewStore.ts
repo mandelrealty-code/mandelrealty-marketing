@@ -112,9 +112,15 @@ async function upsertReview(
 
 export async function syncHospitableReviews(input?: {
   propertyId?: string;
+  /**
+   * `recent` = unanswered only, 1 page/property, no reservation crawl (Refresh).
+   * `full` = all pages + reservation fallback (cron / statements).
+   */
+  mode?: "recent" | "full";
 }): Promise<{ synced: number; properties: number }> {
   const pat = await getHospitablePat();
   if (!pat) throw new Error("Hospitable is not connected.");
+  const mode = input?.mode || "full";
 
   const props = await listPmProperties();
   const targets = props.filter((p) => {
@@ -137,11 +143,11 @@ export async function syncHospitableReviews(input?: {
       let rows = await listHospitableReviews({
         pat,
         propertyId: target.hospitable_property_id,
+        responded: mode === "recent" ? false : undefined,
+        maxPages: mode === "recent" ? 1 : 30,
       });
 
-      // Last resort: pull review off each cached reservation (GET …/reservations/{id}?include=review).
-      // Cap hard — sequential Hospitable calls will 504 Vercel otherwise.
-      if (!rows.length) {
+      if (mode === "full" && !rows.length) {
         rows = await listReviewsFromCachedReservations(
           pat,
           target.id,
@@ -166,15 +172,16 @@ export async function syncHospitableReviews(input?: {
     );
   }
 
-  // Phase 2: open VA tasks for ≤4★ reviews (deduped).
-  try {
-    const { ensureNegativeReviewTasks } = await import("./opsWorkflows.js");
-    await ensureNegativeReviewTasks({
-      propertyId: input?.propertyId,
-      maxStars: 4,
-    });
-  } catch {
-    /* non-blocking — tasks table or reviews may be incomplete */
+  if (mode === "full") {
+    try {
+      const { ensureNegativeReviewTasks } = await import("./opsWorkflows.js");
+      await ensureNegativeReviewTasks({
+        propertyId: input?.propertyId,
+        maxStars: 4,
+      });
+    } catch {
+      /* non-blocking */
+    }
   }
 
   return { synced, properties: targets.length };

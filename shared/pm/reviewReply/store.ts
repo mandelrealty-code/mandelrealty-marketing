@@ -250,27 +250,34 @@ async function summarizeKnowledge(pat: string, hospitablePropertyId: string): Pr
   }
 }
 
+/** Only draft reviews newer than this (days). Older unanswered stay in pm_reviews but out of queue. */
+const RECENT_REVIEW_DAYS = 60;
+
 /** Sync reviews then create draft jobs for unanswered Airbnb reviews. */
 export async function processUnansweredReviews(input?: {
   propertyId?: string;
   notify?: boolean;
-  /** Skip Hospitable re-fetch (Refresh UI). Default false for cron. */
+  /** Skip Hospitable re-fetch. Default false. */
   skipSync?: boolean;
-  /** Max Claude drafts this tick. Default 1 for Refresh, cron can raise. */
+  /** `recent` = unanswered page only (Refresh). Default recent. */
+  syncMode?: "recent" | "full";
+  /** Max Claude drafts this tick. Default 4 (≈ one per linked unit). */
   maxDrafts?: number;
   /** Skip messages + knowledge hub (saves many Hospitable round-trips). */
   skipContext?: boolean;
-}): Promise<{ synced: number; drafted: number; skipped: number }> {
-  const maxDrafts = Math.max(1, Math.min(input?.maxDrafts ?? 1, 5));
-  const skipContext = input?.skipContext !== false; // default true — fast path
+}): Promise<{ synced: number; drafted: number; skipped: number; held_stale: number }> {
+  const maxDrafts = Math.max(1, Math.min(input?.maxDrafts ?? 4, 8));
+  const skipContext = input?.skipContext !== false;
   const skipSync = input?.skipSync === true;
+  const syncMode = input?.syncMode || "recent";
 
   let sync = { synced: 0, properties: 0 };
   if (!skipSync) {
     try {
-      sync = await syncHospitableReviews(
-        input?.propertyId ? { propertyId: input.propertyId } : undefined,
-      );
+      sync = await syncHospitableReviews({
+        ...(input?.propertyId ? { propertyId: input.propertyId } : {}),
+        mode: syncMode,
+      });
     } catch (err) {
       console.warn(
         "[processUnansweredReviews] sync soft-fail",
@@ -284,19 +291,72 @@ export async function processUnansweredReviews(input?: {
 
   const props = await listPmProperties();
   const propById = new Map(props.map((p) => [p.id, p]));
+  const linkedIds = props
+    .filter((p) => p.hospitable_property_id && p.active !== false)
+    .map((p) => p.id);
+
+  const cutoff = new Date();
+  cutoff.setUTCDate(cutoff.getUTCDate() - RECENT_REVIEW_DAYS);
+  const cutoffIso = cutoff.toISOString();
+
+  // Park pending drafts whose review is older than the recent window.
+  let held_stale = 0;
+  {
+    const { data: oldReviews } = await db()
+      .from("pm_reviews")
+      .select("id")
+      .or(`reviewed_at.lt.${cutoffIso},reviewed_at.is.null`);
+    const oldIds = (oldReviews || [])
+      .map((r) => str((r as { id?: string }).id))
+      .filter(Boolean);
+    if (oldIds.length) {
+      const { data: heldRows } = await db()
+        .from("pm_review_reply_jobs")
+        .update({
+          status: "held",
+          reason_for_escalation: `Auto-held: review older than ${RECENT_REVIEW_DAYS}d`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("status", "pending")
+        .in("review_id", oldIds)
+        .select("id");
+      held_stale = heldRows?.length || 0;
+    }
+  }
 
   let q = db()
     .from("pm_reviews")
     .select("*")
     .or("public_response.eq.,public_response.is.null")
+    .gte("reviewed_at", cutoffIso)
     .order("reviewed_at", { ascending: false })
-    .limit(40);
+    .limit(80);
   if (input?.propertyId) q = q.eq("property_id", input.propertyId);
+  else if (linkedIds.length) q = q.in("property_id", linkedIds);
 
   const { data, error } = await q;
   if (error) throw error;
 
-  const candidates = (data || []).filter((raw) => {
+  // If nothing in the recent window, take the single newest unanswered per linked property
+  // so Refresh still surfaces current can-respond items without dumping a years-long backlog.
+  let rows = data || [];
+  if (!rows.length && linkedIds.length && !input?.propertyId) {
+    const fallback: Record<string, unknown>[] = [];
+    for (const pid of linkedIds) {
+      const { data: one } = await db()
+        .from("pm_reviews")
+        .select("*")
+        .eq("property_id", pid)
+        .or("public_response.eq.,public_response.is.null")
+        .not("reviewed_at", "is", null)
+        .order("reviewed_at", { ascending: false })
+        .limit(1);
+      if (one?.[0]) fallback.push(one[0] as Record<string, unknown>);
+    }
+    rows = fallback;
+  }
+
+  const candidates = rows.filter((raw) => {
     const rev = raw as Record<string, unknown>;
     const platform = str(rev.platform).toLowerCase();
     if (platform && platform !== "airbnb" && !platform.includes("airbnb")) return false;
@@ -318,15 +378,39 @@ export async function processUnansweredReviews(input?: {
     }
   }
 
-  let drafted = 0;
-  let skipped = 0;
-
+  // Round-robin across properties: newest unanswered per listing first, then fill.
+  const byProp = new Map<string, Record<string, unknown>[]>();
   for (const raw of candidates) {
+    const rev = raw as Record<string, unknown>;
+    const hid = str(rev.hospitable_review_id);
+    if (already.has(hid)) continue;
+    const pid = str(rev.property_id) || "_";
+    const list = byProp.get(pid) || [];
+    list.push(rev);
+    byProp.set(pid, list);
+  }
+  const ordered: Record<string, unknown>[] = [];
+  const queues = [...byProp.values()].map((list) => [...list]);
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (const queue of queues) {
+      const next = queue.shift();
+      if (next) {
+        ordered.push(next);
+        progressed = true;
+      }
+    }
+  }
+
+  let drafted = 0;
+  let skipped = candidates.length - ordered.length;
+
+  for (const rev of ordered) {
     if (drafted >= maxDrafts) {
       skipped += 1;
       continue;
     }
-    const rev = raw as Record<string, unknown>;
     const hospitableReviewId = str(rev.hospitable_review_id);
     if (already.has(hospitableReviewId)) {
       skipped += 1;
@@ -375,7 +459,6 @@ export async function processUnansweredReviews(input?: {
       knowledgeSummary,
     });
 
-    // Class F under 5 with no text — still queue for Ryan to skip/hold
     const { data: inserted, error: insErr } = await db()
       .from("pm_review_reply_jobs")
       .insert({
@@ -426,7 +509,7 @@ export async function processUnansweredReviews(input?: {
     }
   }
 
-  return { synced: sync.synced, drafted, skipped };
+  return { synced: sync.synced, drafted, skipped, held_stale };
 }
 
 export async function updateReviewReplyJob(
