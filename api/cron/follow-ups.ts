@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { processDueFollowups } from "../../shared/followUpStore.js";
+import { processUnansweredReviews } from "../../shared/pm/reviewReply/store.js";
 
 function authorized(req: VercelRequest): boolean {
   const secret = process.env.CRON_SECRET?.trim();
@@ -23,12 +24,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const result = await processDueFollowups({
+  const followUps = await processDueFollowups({
     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
     TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
     limit: 30,
   });
 
-  return res.status(200).json({ ok: true, ...result });
+  // Same Hobby function as follow-ups — avoid a 13th serverless route.
+  let reviews: { synced?: number; drafted?: number; skipped?: number; error?: string } =
+    {};
+  try {
+    reviews = await processUnansweredReviews({ notify: true });
+  } catch (err) {
+    reviews = {
+      error: err instanceof Error ? err.message : "Review reply cron failed",
+    };
+    console.error("[cron/follow-ups] review replies", reviews.error);
+  }
+
+  return res.status(200).json({ ok: true, follow_ups: followUps, reviews });
 }
