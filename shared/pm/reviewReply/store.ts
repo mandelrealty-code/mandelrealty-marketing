@@ -127,9 +127,7 @@ export async function listReviewReplyJobs(input?: {
   const status = input?.status || "pending";
   let q = db()
     .from("pm_review_reply_jobs")
-    .select(
-      "*, pm_reviews(public_review, check_in, check_out, reviewed_at, hospitable_reservation_id)",
-    )
+    .select("*")
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -149,10 +147,30 @@ export async function listReviewReplyJobs(input?: {
     throw error;
   }
 
+  const reviewIds = [
+    ...new Set(
+      (data || [])
+        .map((raw) => str((raw as Record<string, unknown>).review_id))
+        .filter(Boolean),
+    ),
+  ];
+  const reviewById = new Map<string, Record<string, unknown>>();
+  if (reviewIds.length) {
+    const { data: revs } = await db()
+      .from("pm_reviews")
+      .select(
+        "id, public_review, check_in, check_out, reviewed_at, hospitable_reservation_id",
+      )
+      .in("id", reviewIds);
+    for (const r of revs || []) {
+      const row = r as Record<string, unknown>;
+      reviewById.set(str(row.id), row);
+    }
+  }
+
   return (data || []).map((raw) => {
     const row = raw as Record<string, unknown>;
-    const rev = (row.pm_reviews || {}) as Record<string, unknown>;
-    delete row.pm_reviews;
+    const rev = reviewById.get(str(row.review_id)) || {};
     return mapJob({
       ...row,
       public_review: rev.public_review,
@@ -237,9 +255,19 @@ export async function processUnansweredReviews(input?: {
   propertyId?: string;
   notify?: boolean;
 }): Promise<{ synced: number; drafted: number; skipped: number }> {
-  const sync = await syncHospitableReviews(
-    input?.propertyId ? { propertyId: input.propertyId } : undefined,
-  );
+  // Soft-fail sync: we already have pm_reviews rows; drafting must proceed even if
+  // Hospitable list endpoints 404 for a given PAT/property path.
+  let sync = { synced: 0, properties: 0 };
+  try {
+    sync = await syncHospitableReviews(
+      input?.propertyId ? { propertyId: input.propertyId } : undefined,
+    );
+  } catch (err) {
+    console.warn(
+      "[processUnansweredReviews] sync soft-fail",
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   const pat = await getHospitablePat();
   if (!pat) throw new Error("Hospitable is not connected.");
@@ -252,7 +280,7 @@ export async function processUnansweredReviews(input?: {
     .select("*")
     .or("public_response.eq.,public_response.is.null")
     .order("reviewed_at", { ascending: false })
-    .limit(80);
+    .limit(40);
   if (input?.propertyId) q = q.eq("property_id", input.propertyId);
 
   const { data, error } = await q;
@@ -260,8 +288,14 @@ export async function processUnansweredReviews(input?: {
 
   let drafted = 0;
   let skipped = 0;
+  // Cap drafts per Refresh/cron tick — Vercel Hobby ~10s; Claude is slow.
+  const maxDrafts = 5;
 
   for (const raw of data || []) {
+    if (drafted >= maxDrafts) {
+      skipped += 1;
+      continue;
+    }
     const rev = raw as Record<string, unknown>;
     const hospitableReviewId = str(rev.hospitable_review_id);
     if (!hospitableReviewId) {

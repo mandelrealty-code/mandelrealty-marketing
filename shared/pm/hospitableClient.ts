@@ -609,7 +609,7 @@ export async function listHospitableReviews(input: {
     }
   };
 
-  // 1) Official property-scoped endpoint (hospitable npm SDK).
+  // 1) Official property-scoped endpoint (hospitable npm SDK / MCP get-property-reviews).
   try {
     merge(
       await fetchReviewPages(
@@ -623,25 +623,8 @@ export async function listHospitableReviews(input: {
     errors.push(err instanceof Error ? err : new Error(String(err)));
   }
 
-  // 2) Account-level /reviews with several property filters (community clients).
-  if (byId.size === 0) {
-    for (const query of [
-      { include, properties: [propertyId] },
-      { include, property_id: propertyId },
-      { include, property: propertyId },
-    ] as HospitableQuery[]) {
-      try {
-        merge(
-          await fetchReviewPages(input.pat, "/reviews", query, propertyId),
-        );
-        if (byId.size > 0) break;
-      } catch (err) {
-        errors.push(err instanceof Error ? err : new Error(String(err)));
-      }
-    }
-  }
-
-  // 3) Reservation include=review — documented side-load for review audits.
+  // 2) Reservation include=review — documented side-load for review audits.
+  // Skip account-level GET /reviews: it 404s on this PAT and used to hard-fail the sync.
   if (byId.size === 0) {
     try {
       merge(await fetchReviewsViaReservations(input.pat, propertyId));
@@ -651,9 +634,10 @@ export async function listHospitableReviews(input: {
   }
 
   if (byId.size === 0 && errors.length > 0) {
-    // Only throw when every path failed hard (not merely empty).
-    const hardFails = errors.length;
-    if (hardFails >= 2) throw errors[0]!;
+    // Soft-fail empty results. Only throw if every path failed for a non-404 reason.
+    const non404 = errors.filter((e) => !/Hospitable API error \(404\)/i.test(e.message));
+    if (non404.length >= 1 && non404.length === errors.length) throw non404[0]!;
+    // Any 404 / empty — treat as no reviews for this property rather than aborting Refresh.
   }
 
   return [...byId.values()];
@@ -784,8 +768,8 @@ export async function respondToHospitableReview(
   const id = reviewUuid.trim();
   if (!id) throw new Error("Review UUID is required.");
 
-  // Public API v2: POST /reviews/{uuid}/response  { response: "..." }
-  return hospitableFetch(pat, `/reviews/${encodeURIComponent(id)}/response`, {}, {
+  // Public API v2: POST /reviews/{uuid}/respond  { response: "..." }
+  return hospitableFetch(pat, `/reviews/${encodeURIComponent(id)}/respond`, {}, {
     method: "POST",
     body: { response: text },
   });

@@ -131,25 +131,38 @@ export async function syncHospitableReviews(input?: {
   }
 
   let synced = 0;
+  const propertyErrors: string[] = [];
   for (const target of targets) {
-    let rows = await listHospitableReviews({
-      pat,
-      propertyId: target.hospitable_property_id,
-    });
-
-    // Last resort: pull review off each cached reservation (GET …/reservations/{id}?include=review).
-    if (!rows.length) {
-      rows = await listReviewsFromCachedReservations(
+    try {
+      let rows = await listHospitableReviews({
         pat,
-        target.id,
-        target.hospitable_property_id,
-      );
-    }
+        propertyId: target.hospitable_property_id,
+      });
 
-    for (const r of rows) {
-      await upsertReview(target.id, r);
-      synced += 1;
+      // Last resort: pull review off each cached reservation (GET …/reservations/{id}?include=review).
+      if (!rows.length) {
+        rows = await listReviewsFromCachedReservations(
+          pat,
+          target.id,
+          target.hospitable_property_id,
+        );
+      }
+
+      for (const r of rows) {
+        await upsertReview(target.id, r);
+        synced += 1;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      propertyErrors.push(`${target.name || target.id}: ${msg}`);
+      console.warn("[syncHospitableReviews]", target.hospitable_property_id, msg);
     }
+  }
+
+  if (synced === 0 && propertyErrors.length === targets.length) {
+    throw new Error(
+      propertyErrors[0] || "Hospitable review sync failed for all properties.",
+    );
   }
 
   // Phase 2: open VA tasks for ≤4★ reviews (deduped).
