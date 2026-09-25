@@ -114,7 +114,7 @@ function mapJob(row: Record<string, unknown>): ReviewReplyJob {
 }
 
 function effectiveReply(job: ReviewReplyJob, override?: string): string {
-  let body = (override ?? job.edited_reply || job.draft_reply || "").trim();
+  let body = (override ?? (job.edited_reply || job.draft_reply || "")).trim();
   if (job.sign_off && body && !/— The MRG team\s*$/.test(body)) {
     body = `${body}${SIGN_OFF}`;
   }
