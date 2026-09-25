@@ -1637,9 +1637,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resource === "review_replies") {
         if (op === "process" || op === "sync") {
           const propertyId = str(body.property_id) || undefined;
+          // UI Refresh is fast-path: draft from cached pm_reviews only (no Hospitable crawl).
+          // Cron can pass skip_sync:false + max_drafts for fuller ingest.
+          const skipSync = body.skip_sync !== false;
+          const maxDrafts =
+            typeof body.max_drafts === "number" && Number.isFinite(body.max_drafts)
+              ? body.max_drafts
+              : skipSync
+                ? 1
+                : 3;
           const result = await processUnansweredReviews({
             propertyId,
-            notify: body.notify !== false,
+            notify: skipSync ? false : body.notify !== false,
+            skipSync,
+            maxDrafts,
+            skipContext: body.skip_context !== false,
           });
           return res.status(200).json(result);
         }

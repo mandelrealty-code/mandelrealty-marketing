@@ -35,7 +35,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let reviews: { synced?: number; drafted?: number; skipped?: number; error?: string } =
     {};
   try {
-    reviews = await processUnansweredReviews({ notify: true });
+    reviews = await processUnansweredReviews({
+      notify: true,
+      skipSync: false,
+      maxDrafts: 3,
+      skipContext: false,
+    });
   } catch (err) {
     reviews = {
       error: err instanceof Error ? err.message : "Review reply cron failed",

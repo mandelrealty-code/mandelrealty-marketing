@@ -140,6 +140,7 @@ export async function syncHospitableReviews(input?: {
       });
 
       // Last resort: pull review off each cached reservation (GET …/reservations/{id}?include=review).
+      // Cap hard — sequential Hospitable calls will 504 Vercel otherwise.
       if (!rows.length) {
         rows = await listReviewsFromCachedReservations(
           pat,
@@ -190,7 +191,7 @@ async function listReviewsFromCachedReservations(
     .select("hospitable_reservation_id, check_in, check_out, platform")
     .eq("property_id", propertyId)
     .order("check_out", { ascending: false })
-    .limit(80);
+    .limit(8);
   if (error) {
     if (/pm_reservations|relation/i.test(error.message || "")) return [];
     throw error;

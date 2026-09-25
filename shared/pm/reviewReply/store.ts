@@ -254,19 +254,29 @@ async function summarizeKnowledge(pat: string, hospitablePropertyId: string): Pr
 export async function processUnansweredReviews(input?: {
   propertyId?: string;
   notify?: boolean;
+  /** Skip Hospitable re-fetch (Refresh UI). Default false for cron. */
+  skipSync?: boolean;
+  /** Max Claude drafts this tick. Default 1 for Refresh, cron can raise. */
+  maxDrafts?: number;
+  /** Skip messages + knowledge hub (saves many Hospitable round-trips). */
+  skipContext?: boolean;
 }): Promise<{ synced: number; drafted: number; skipped: number }> {
-  // Soft-fail sync: we already have pm_reviews rows; drafting must proceed even if
-  // Hospitable list endpoints 404 for a given PAT/property path.
+  const maxDrafts = Math.max(1, Math.min(input?.maxDrafts ?? 1, 5));
+  const skipContext = input?.skipContext !== false; // default true — fast path
+  const skipSync = input?.skipSync === true;
+
   let sync = { synced: 0, properties: 0 };
-  try {
-    sync = await syncHospitableReviews(
-      input?.propertyId ? { propertyId: input.propertyId } : undefined,
-    );
-  } catch (err) {
-    console.warn(
-      "[processUnansweredReviews] sync soft-fail",
-      err instanceof Error ? err.message : err,
-    );
+  if (!skipSync) {
+    try {
+      sync = await syncHospitableReviews(
+        input?.propertyId ? { propertyId: input.propertyId } : undefined,
+      );
+    } catch (err) {
+      console.warn(
+        "[processUnansweredReviews] sync soft-fail",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   const pat = await getHospitablePat();
@@ -286,38 +296,39 @@ export async function processUnansweredReviews(input?: {
   const { data, error } = await q;
   if (error) throw error;
 
+  const candidates = (data || []).filter((raw) => {
+    const rev = raw as Record<string, unknown>;
+    const platform = str(rev.platform).toLowerCase();
+    if (platform && platform !== "airbnb" && !platform.includes("airbnb")) return false;
+    if (str(rev.public_response)) return false;
+    return Boolean(str(rev.hospitable_review_id));
+  });
+
+  const candidateIds = candidates
+    .map((r) => str((r as Record<string, unknown>).hospitable_review_id))
+    .filter(Boolean);
+  const already = new Set<string>();
+  if (candidateIds.length) {
+    const { data: existingRows } = await db()
+      .from("pm_review_reply_jobs")
+      .select("hospitable_review_id")
+      .in("hospitable_review_id", candidateIds);
+    for (const row of existingRows || []) {
+      already.add(str((row as { hospitable_review_id?: string }).hospitable_review_id));
+    }
+  }
+
   let drafted = 0;
   let skipped = 0;
-  // Cap drafts per Refresh/cron tick — Vercel Hobby ~10s; Claude is slow.
-  const maxDrafts = 5;
 
-  for (const raw of data || []) {
+  for (const raw of candidates) {
     if (drafted >= maxDrafts) {
       skipped += 1;
       continue;
     }
     const rev = raw as Record<string, unknown>;
     const hospitableReviewId = str(rev.hospitable_review_id);
-    if (!hospitableReviewId) {
-      skipped += 1;
-      continue;
-    }
-    const platform = str(rev.platform).toLowerCase();
-    if (platform && platform !== "airbnb" && !platform.includes("airbnb")) {
-      skipped += 1;
-      continue;
-    }
-    if (str(rev.public_response)) {
-      skipped += 1;
-      continue;
-    }
-
-    const { data: existing } = await db()
-      .from("pm_review_reply_jobs")
-      .select("id")
-      .eq("hospitable_review_id", hospitableReviewId)
-      .maybeSingle();
-    if (existing) {
+    if (already.has(hospitableReviewId)) {
       skipped += 1;
       continue;
     }
@@ -329,24 +340,27 @@ export async function processUnansweredReviews(input?: {
     const cats = Array.isArray(rev.category_ratings_json)
       ? (rev.category_ratings_json as Array<{ type: string; rating: number }>)
       : [];
+    const platform = str(rev.platform).toLowerCase() || "airbnb";
 
     let messages: Array<{ role: string; at: string | null; body: string }> = [];
-    if (reservationId) {
-      try {
-        const msgs = await listReservationMessages(pat, reservationId);
-        messages = msgs.map((m) => ({
-          role: m.sender_role,
-          at: m.created_at,
-          body: m.body,
-        }));
-      } catch {
-        /* optional */
+    let knowledgeSummary = "";
+    if (!skipContext) {
+      if (reservationId) {
+        try {
+          const msgs = await listReservationMessages(pat, reservationId);
+          messages = msgs.map((m) => ({
+            role: m.sender_role,
+            at: m.created_at,
+            body: m.body,
+          }));
+        } catch {
+          /* optional */
+        }
+      }
+      if (prop?.hospitable_property_id) {
+        knowledgeSummary = await summarizeKnowledge(pat, prop.hospitable_property_id);
       }
     }
-
-    const knowledgeSummary = prop?.hospitable_property_id
-      ? await summarizeKnowledge(pat, prop.hospitable_property_id)
-      : "";
 
     const decision = await draftReviewReply({
       reviewId: hospitableReviewId,
@@ -356,7 +370,7 @@ export async function processUnansweredReviews(input?: {
       publicReview: str(rev.public_review),
       privateFeedback: str(rev.private_feedback),
       categoryRatings: cats,
-      platform: platform || "airbnb",
+      platform,
       messages,
       knowledgeSummary,
     });
@@ -371,23 +385,21 @@ export async function processUnansweredReviews(input?: {
         listing_nickname: listing,
         guest_first_name: str(rev.guest_first_name),
         stars: rev.rating == null ? null : Number(rev.rating),
-        platform: platform || "airbnb",
+        platform,
         class: decision.class,
         status: "pending",
         decision_json: decision,
-        draft_reply: decision.draft_reply,
-        edited_reply: decision.draft_reply,
-        removal_packet_json: decision.removal_packet,
-        confidence: decision.confidence,
-        needs_human: decision.needs_human,
-        reason_for_escalation: decision.reason_for_escalation,
+        draft_reply: decision.draft_reply || "",
+        edited_reply: decision.draft_reply || "",
+        removal_packet_json: decision.removal_packet || null,
+        confidence: decision.confidence || "medium",
+        needs_human: decision.needs_human !== false,
+        reason_for_escalation: decision.reason_for_escalation || "",
         sign_off: true,
         dry_run: dryRunDefault(),
-        updated_at: new Date().toISOString(),
       })
       .select("*")
-      .single();
-
+      .maybeSingle();
     if (insErr) {
       if (/duplicate|unique/i.test(insErr.message || "")) {
         skipped += 1;
@@ -395,11 +407,22 @@ export async function processUnansweredReviews(input?: {
       }
       throw insErr;
     }
-
+    if (!inserted) {
+      skipped += 1;
+      continue;
+    }
     drafted += 1;
-    const job = mapJob(inserted as Record<string, unknown>);
+    already.add(hospitableReviewId);
+
     if (input?.notify !== false) {
-      await notifyRyan(job).catch(() => undefined);
+      try {
+        await notifyRyan(mapJob(inserted as Record<string, unknown>));
+      } catch (err) {
+        console.warn(
+          "[processUnansweredReviews] notify soft-fail",
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
   }
 
