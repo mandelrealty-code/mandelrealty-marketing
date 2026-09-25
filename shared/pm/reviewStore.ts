@@ -37,6 +37,7 @@ export type PmReviewRow = {
   rating_raw: string;
   public_review: string;
   public_response: string;
+  private_feedback?: string;
   guest_first_name: string;
   check_in: string | null;
   check_out: string | null;
@@ -70,8 +71,7 @@ async function upsertReview(
     }
   }
 
-  const { error } = await db().from("pm_reviews").upsert(
-    {
+  const payload = {
       property_id: propertyId,
       hospitable_review_id: r.id,
       hospitable_reservation_id: r.reservation_id,
@@ -80,6 +80,7 @@ async function upsertReview(
       rating_raw: r.rating_raw,
       public_review: r.public_review,
       public_response: r.public_response,
+      private_feedback: r.private_feedback || "",
       guest_first_name: r.guest_first_name,
       check_in: checkIn,
       check_out: checkOut,
@@ -88,9 +89,17 @@ async function upsertReview(
       category_ratings_json: r.category_ratings,
       raw_json: r.raw,
       synced_at: new Date().toISOString(),
-    },
-    { onConflict: "hospitable_review_id" },
-  );
+    };
+
+  let { error } = await db().from("pm_reviews").upsert(payload, {
+    onConflict: "hospitable_review_id",
+  });
+  if (error && /private_feedback/i.test(error.message || "")) {
+    const { private_feedback: _drop, ...withoutPrivate } = payload;
+    ({ error } = await db()
+      .from("pm_reviews")
+      .upsert(withoutPrivate, { onConflict: "hospitable_review_id" }));
+  }
   if (error) {
     if (/pm_reviews|relation|column/i.test(error.message || "")) {
       throw new Error(
@@ -255,6 +264,7 @@ function mapReviewRow(row: Record<string, unknown>): PmReviewRow {
     rating_raw: String(row.rating_raw || ""),
     public_review: String(row.public_review || ""),
     public_response: String(row.public_response || ""),
+    private_feedback: String(row.private_feedback || ""),
     guest_first_name: String(row.guest_first_name || ""),
     check_in: (row.check_in as string) || null,
     check_out: (row.check_out as string) || null,

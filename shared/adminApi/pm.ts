@@ -60,6 +60,13 @@ import {
   syncHospitableReservations,
 } from "../pm/reservationStore.js";
 import { syncHospitableReviews } from "../pm/reviewStore.js";
+import {
+  approveAndPostReviewReply,
+  getReviewReplyJob,
+  listReviewReplyJobs,
+  processUnansweredReviews,
+  updateReviewReplyJob,
+} from "../pm/reviewReply/store.js";
 import { markMatFiling } from "../pm/matCompliance.js";
 import { buildOwnerStatement } from "../pm/ownerStatement.js";
 import {
@@ -560,6 +567,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resource === "company_subscriptions") {
         const subscriptions = await listCompanySubscriptions();
         return res.status(200).json({ subscriptions });
+      }
+      if (resource === "review_replies") {
+        const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
+        if (id) {
+          const job = await getReviewReplyJob(id);
+          if (!job) return res.status(404).json({ error: "Review reply not found." });
+          return res.status(200).json({ job });
+        }
+        const statusRaw =
+          typeof req.query.status === "string" ? req.query.status.trim() : "pending";
+        const status =
+          statusRaw === "all" ||
+          statusRaw === "pending" ||
+          statusRaw === "posted" ||
+          statusRaw === "held" ||
+          statusRaw === "removal"
+            ? statusRaw
+            : "pending";
+        const jobs = await listReviewReplyJobs({ status });
+        return res.status(200).json({ jobs });
       }
       return res.status(400).json({ error: "Unknown resource." });
     }
@@ -1604,6 +1631,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (!id) return res.status(400).json({ error: "id required." });
           await deleteCompanyExpense(id);
           return res.status(200).json({ ok: true });
+        }
+      }
+
+      if (resource === "review_replies") {
+        if (op === "process" || op === "sync") {
+          const propertyId = str(body.property_id) || undefined;
+          const result = await processUnansweredReviews({
+            propertyId,
+            notify: body.notify !== false,
+          });
+          return res.status(200).json(result);
+        }
+        if (op === "update") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          const job = await updateReviewReplyJob(id, {
+            edited_reply:
+              typeof body.edited_reply === "string" ? body.edited_reply : undefined,
+            sign_off:
+              typeof body.sign_off === "boolean" ? body.sign_off : undefined,
+            status:
+              body.status === "held" || body.status === "pending"
+                ? body.status
+                : undefined,
+            removal_filed:
+              typeof body.removal_filed === "boolean"
+                ? body.removal_filed
+                : undefined,
+            removal_outcome:
+              typeof body.removal_outcome === "string"
+                ? body.removal_outcome
+                : undefined,
+          });
+          return res.status(200).json({ job });
+        }
+        if (op === "approve" || op === "post") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          const job = await approveAndPostReviewReply({
+            id,
+            reply: typeof body.reply === "string" ? body.reply : undefined,
+            sign_off:
+              typeof body.sign_off === "boolean" ? body.sign_off : undefined,
+            posted_by: str(body.posted_by) || "ryan",
+          });
+          return res.status(200).json({ job });
+        }
+        if (op === "hold") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          const job = await updateReviewReplyJob(id, { status: "held" });
+          return res.status(200).json({ job });
         }
       }
 

@@ -24,6 +24,7 @@ import { EarningsPanel } from "./EarningsPanel";
 import { MonthClosePanel } from "./MonthClosePanel";
 import { OwnerStatementPanel } from "./OwnerStatementPanel";
 import { TasksPanel } from "./TasksPanel";
+import { ReviewsPanel } from "./ReviewsPanel";
 import { SopsPanel } from "./SopsPanel";
 import { VideoSopStudioModal } from "../../components/sop/VideoSopStudioModal";
 import type { SopItem } from "../../../shared/pm/sopTypes";
@@ -52,7 +53,7 @@ import {
   TextInput,
 } from "./ui";
 
-type Tab = "tasks" | "clients" | "properties" | "month" | "sops" | "employees" | "settings";
+type Tab = "tasks" | "reviews" | "clients" | "properties" | "month" | "sops" | "employees" | "settings";
 
 type Props = {
   onModeChange: (mode: AdminProductMode) => void;
@@ -271,6 +272,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           | "createClient"
           | "hstClientId"
           | "taskId"
+          | "reviewJobId"
           | "employeeId"
         >
       >,
@@ -286,6 +288,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           createClient: Boolean(patch.createClient),
           hstClientId: patch.hstClientId ?? null,
           taskId: patch.taskId ?? null,
+          reviewJobId: patch.reviewJobId ?? null,
           employeeId: patch.employeeId ?? null,
         },
         { push },
@@ -1161,6 +1164,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
 
   const navItems = [
     ["tasks", "Tasks"],
+    ["reviews", "Reviews"],
     ["sops", "SOPs"],
     ["employees", "Employees"],
     ["clients", "Clients"],
@@ -2304,6 +2308,21 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
         }}
       />
     );
+  } else if (tab === "reviews") {
+    main = (
+      <div className="flex h-full min-h-[calc(100dvh-120px)] flex-col lg:min-h-[calc(100dvh-56px)]">
+        <ReviewsPanel
+          desktop={desktop}
+          restoreJobId={route.reviewJobId}
+          onJobIdChange={(id) => {
+            if (id === route.reviewJobId) return;
+            navOps({ opsTab: "reviews", reviewJobId: id || null });
+          }}
+          onToast={setToast}
+          onError={setLoadError}
+        />
+      </div>
+    );
   } else if (tab === "employees") {
     main = (
       <EmployeesPanel
@@ -2345,7 +2364,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
       </div>
       {mobileNav}
 
-      {toast && tab === "tasks" ? (
+      {toast && (tab === "tasks" || tab === "reviews") ? (
         <div className="pointer-events-none fixed bottom-[78px] left-1/2 z-40 -translate-x-1/2 lg:bottom-8">
           <div className="rounded-lg border border-white/10 bg-[#1a1a1a] px-4 py-2.5 text-[13px] text-[#f5f5f5] shadow-lg">
             {toast}

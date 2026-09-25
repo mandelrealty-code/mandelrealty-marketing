@@ -98,10 +98,12 @@ export async function hospitableFetch(
   pat: string,
   path: string,
   query: HospitableQuery = {},
+  init?: { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown },
 ): Promise<unknown> {
   const token = pat.trim();
   if (!token) throw new Error("Hospitable PAT is not configured.");
 
+  const method = init?.method || "GET";
   const url = new URL(`${HOSPITABLE_BASE}${path.startsWith("/") ? path : `/${path}`}`);
   for (const [k, v] of Object.entries(query)) {
     if (v == null || v === "") continue;
@@ -115,13 +117,17 @@ export async function hospitableFetch(
     }
   }
 
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+  let body: string | undefined;
+  if (init?.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(init.body);
+  }
+
+  const res = await fetch(url.toString(), { method, headers, body });
 
   const text = await res.text();
   let json: unknown = null;
@@ -367,11 +373,15 @@ export type HospitableReviewNormalized = {
   rating_raw: string;
   public_review: string;
   public_response: string;
+  /** Guest private note — investigation only; never post publicly. */
+  private_feedback: string;
   guest_first_name: string;
   check_in: string | null;
   check_out: string | null;
   reviewed_at: string | null;
   responded_at: string | null;
+  /** True when Hospitable says a host response can still be posted. */
+  can_respond: boolean;
   /** Category scores with rating in 1–5 only (0 = not collected, dropped). */
   category_ratings: HospitableCategoryRating[];
   raw: Record<string, unknown>;
@@ -463,6 +473,8 @@ function normalizeReview(raw: unknown): HospitableReviewNormalized | null {
     str(r.public_review) ||
     "";
   const publicResponse = str(pub.response) || str(pub.public_response) || "";
+  const privateFeedback =
+    str(priv.feedback) || str(priv.private_feedback) || str(priv.comment) || "";
 
   const categories = normalizeCategoryRatings(
     priv.detailed_ratings ??
@@ -492,6 +504,12 @@ function normalizeReview(raw: unknown): HospitableReviewNormalized | null {
   const reviewedAt =
     str(r.reviewed_at) || str(r.reviewedAt) || str(r.created_at) || null;
   const respondedAt = str(r.responded_at) || str(r.respondedAt) || null;
+  const canRespond =
+    typeof r.can_respond === "boolean"
+      ? r.can_respond
+      : typeof r.canRespond === "boolean"
+        ? (r.canRespond as boolean)
+        : !publicResponse;
 
   return {
     id,
@@ -507,11 +525,13 @@ function normalizeReview(raw: unknown): HospitableReviewNormalized | null {
     rating_raw: rating_raw || (resolvedRating != null ? String(resolvedRating) : ""),
     public_review: publicReview,
     public_response: publicResponse,
+    private_feedback: privateFeedback,
     guest_first_name: str(guest.first_name) || str(guest.firstName) || "",
     check_in: checkIn,
     check_out: checkOut,
     reviewed_at: reviewedAt || null,
     responded_at: respondedAt || null,
+    can_respond: canRespond,
     category_ratings: categories,
     raw: r,
   };
@@ -748,4 +768,97 @@ async function fetchReviewPages(
   } while (page <= lastPage && page <= 30);
 
   return out;
+}
+
+/** Post a public host response to a review. Irreversible; cannot update an existing response. */
+export async function respondToHospitableReview(
+  pat: string,
+  reviewUuid: string,
+  response: string,
+): Promise<unknown> {
+  const text = response.trim();
+  if (!text) throw new Error("Response text is required.");
+  if (text.length > 1000) {
+    throw new Error("Response must be 1000 characters or fewer.");
+  }
+  const id = reviewUuid.trim();
+  if (!id) throw new Error("Review UUID is required.");
+
+  // Public API v2: POST /reviews/{uuid}/response  { response: "..." }
+  return hospitableFetch(pat, `/reviews/${encodeURIComponent(id)}/response`, {}, {
+    method: "POST",
+    body: { response: text },
+  });
+}
+
+export type HospitableMessageNormalized = {
+  id: string;
+  body: string;
+  created_at: string | null;
+  sender_role: "guest" | "host" | "system" | "unknown";
+  author_name: string;
+};
+
+/** Messages for a reservation (Hospitable UUID, not confirmation code). */
+export async function listReservationMessages(
+  pat: string,
+  reservationUuid: string,
+): Promise<HospitableMessageNormalized[]> {
+  const id = reservationUuid.trim();
+  if (!id) return [];
+  const json = (await hospitableFetch(
+    pat,
+    `/reservations/${encodeURIComponent(id)}/messages`,
+  )) as HospitableListResponse;
+  const rows = Array.isArray(json?.data) ? json.data : [];
+  const out: HospitableMessageNormalized[] = [];
+  for (const row of rows) {
+    const m = asRecord(row);
+    const body =
+      str(m.body) || str(m.message) || str(m.content) || str(m.text) || "";
+    if (!body) continue;
+    const author = asRecord(m.author);
+    const sender = asRecord(m.sender);
+    const roleRaw = (
+      str(m.sender_role) ||
+      str(m.role) ||
+      str(sender.type) ||
+      str(m.source) ||
+      ""
+    ).toLowerCase();
+    let sender_role: HospitableMessageNormalized["sender_role"] = "unknown";
+    if (roleRaw.includes("guest") || roleRaw === "traveler") sender_role = "guest";
+    else if (
+      roleRaw.includes("host") ||
+      roleRaw.includes("owner") ||
+      roleRaw.includes("teammate")
+    ) {
+      sender_role = "host";
+    } else if (roleRaw.includes("system") || roleRaw.includes("auto")) {
+      sender_role = "system";
+    } else if (author.name || author.id) {
+      sender_role = "host";
+    }
+    out.push({
+      id: str(m.id) || str(m.uuid) || String(out.length),
+      body,
+      created_at: str(m.created_at) || str(m.sent_at) || str(m.timestamp) || null,
+      sender_role,
+      author_name: str(author.name) || str(sender.name) || "",
+    });
+  }
+  return out;
+}
+
+/** Knowledge Hub topics/items for a property (investigation context). */
+export async function getPropertyKnowledgeHub(
+  pat: string,
+  propertyUuid: string,
+): Promise<unknown> {
+  const id = propertyUuid.trim();
+  if (!id) return null;
+  return hospitableFetch(
+    pat,
+    `/properties/${encodeURIComponent(id)}/knowledge-hub`,
+  );
 }

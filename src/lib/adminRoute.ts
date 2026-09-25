@@ -8,6 +8,7 @@ import {
 export type CrmTab = "contacts" | "pipeline" | "knowledge" | "settings";
 export type OpsTab =
   | "tasks"
+  | "reviews"
   | "clients"
   | "properties"
   | "month"
@@ -26,6 +27,7 @@ export type AdminRoute = {
   createClient: boolean;
   hstClientId: string | null;
   taskId: string | null;
+  reviewJobId: string | null;
   employeeId: string | null;
   sopSlug?: string | null;
 };
@@ -33,6 +35,7 @@ export type AdminRoute = {
 const CRM_TABS: CrmTab[] = ["contacts", "pipeline", "knowledge", "settings"];
 const OPS_TABS: OpsTab[] = [
   "tasks",
+  "reviews",
   "clients",
   "properties",
   "month",
@@ -61,6 +64,7 @@ export function emptyAdminRoute(mode: AdminProductMode = readStoredAdminMode()):
     createClient: false,
     hstClientId: null,
     taskId: null,
+    reviewJobId: null,
     employeeId: null,
   };
 }
@@ -105,6 +109,9 @@ export function parseAdminRoute(
     if (parts[1] === "tasks" && parts[2]) {
       return { ...base, opsTab: "tasks", taskId: parts[2] };
     }
+    if (parts[1] === "reviews" && parts[2]) {
+      return { ...base, opsTab: "reviews", reviewJobId: parts[2] };
+    }
     if (parts[1] === "employees" && parts[2]) {
       return { ...base, opsTab: "employees", employeeId: parts[2] };
     }
@@ -135,6 +142,7 @@ export function adminPath(route: AdminRoute): string {
   }
   if (route.hstClientId) return `/ops/month/hst/${encodeURIComponent(route.hstClientId)}`;
   if (route.taskId) return `/ops/tasks/${encodeURIComponent(route.taskId)}`;
+  if (route.reviewJobId) return `/ops/reviews/${encodeURIComponent(route.reviewJobId)}`;
   if (route.employeeId) return `/ops/employees/${encodeURIComponent(route.employeeId)}`;
   if (route.opsTab === "tasks") return "/ops";
   return `/ops/${route.opsTab}`;

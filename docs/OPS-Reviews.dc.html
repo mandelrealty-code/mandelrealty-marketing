@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#050505; color:#f5f5f5; font-family:'Manrope',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#c4a35a; text-decoration:none; }
+  a:hover { color:#dcc084; }
+  * { box-sizing:border-box; }
+  textarea { font-family:'Manrope',system-ui,sans-serif; }
+  textarea::placeholder { color:#6f6a65; }
+</style>
+</helmet>
+
+<section style="padding:64px 64px 0; display:flex; flex-direction:column; gap:12px">
+  <div style="display:flex; align-items:baseline; gap:16px">
+    <div style="font-size:13px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:#c4a35a">Mandel Realty Group Admin</div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6f6a65">admin.mandelrealtygroup.com/ops/reviews</div>
+  </div>
+  <h1 style="margin:0; font-size:34px; font-weight:700; letter-spacing:-0.02em">OPS · Reviews</h1>
+  <p style="margin:0; max-width:640px; font-size:15px; line-height:1.6; color:#9a9590; text-wrap:pretty">Open the queue, tap the top row, read the draft, approve. A clean 5★ is three taps. The reply is the hero; everything else stays quiet.</p>
+</section>
+
+<section style="padding:56px 64px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-wrap:wrap; gap:28px">
+
+    <div id="1a" style="display:flex; flex-direction:column; gap:10px">
+      <div style="display:flex; align-items:center; gap:10px">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1a · R1</span>
+        <span style="font-size:13px; color:#9a9590">Mobile 390 · queue</span>
+      </div>
+      <div style="width:390px; height:844px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:20px; display:flex; flex-direction:column; overflow:hidden">
+        <div style="height:52px; flex:none; padding:0 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">M</div>
+            <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+              <div style="padding:5px 13px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600; letter-spacing:0.04em">CRM</div>
+              <div style="padding:5px 13px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700; letter-spacing:0.04em">OPS</div>
+            </div>
+          </div>
+          <div onClick="{{ onRefresh }}" style="display:flex; align-items:center; gap:7px; font-size:12px; color:#9a9590; cursor:pointer"><sc-if value="{{ syncing }}" hint-placeholder-val="{{ false }}"><div style="width:5px; height:5px; border-radius:50%; background:#c4a35a"></div></sc-if><span>{{ refreshLabel }}</span></div>
+        </div>
+
+        <div style="flex:none; padding:18px 16px 14px; display:flex; flex-direction:column; gap:14px">
+          <div style="font-size:24px; font-weight:700; letter-spacing:-0.02em">Reviews</div>
+          <div style="display:flex; padding:2px; background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:9px; gap:2px">
+            <sc-for list="{{ mSegments }}" as="s" hint-placeholder-count="4">
+              <div onClick="{{ s.onClick }}" style="flex:{{ s.flex }}; display:flex; align-items:center; justify-content:center; gap:6px; padding:7px 8px; border-radius:7px; background:{{ s.bg }}; color:{{ s.color }}; font-size:12px; font-weight:{{ s.weight }}; cursor:pointer; white-space:nowrap">
+                <span>{{ s.label }}</span>
+                <sc-if value="{{ s.showCount }}" hint-placeholder-val="{{ false }}">
+                  <span style="min-width:18px; padding:1px 6px; border-radius:999px; background:#c4a35a; color:#0a0a0a; font-size:10.5px; font-weight:700; text-align:center">{{ s.count }}</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="flex:1; overflow-y:auto; display:flex; flex-direction:column">
+          <sc-for list="{{ mRows }}" as="r" hint-placeholder-count="9">
+            <div onClick="{{ r.onOpen }}" style="flex:none; padding:13px 16px 13px 10px; display:flex; align-items:center; gap:10px; border-top:1px solid rgba(255,255,255,0.08); cursor:pointer" style-hover="background:#101010">
+              <div style="width:6px; flex:none; display:flex; justify-content:center">
+                <sc-if value="{{ r.danger }}" hint-placeholder-val="{{ false }}"><div style="width:5px; height:5px; border-radius:50%; background:#cf7f7b"></div></sc-if>
+                <sc-if value="{{ r.gold }}" hint-placeholder-val="{{ false }}"><div style="width:5px; height:5px; border-radius:50%; background:#c4a35a"></div></sc-if>
+              </div>
+              <div style="width:34px; flex:none; display:flex; align-items:baseline; gap:1px; font-size:15px; font-weight:700; font-variant-numeric:tabular-nums">{{ r.stars }}<span style="font-size:11px; color:#6f6a65">★</span></div>
+              <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+                <div style="font-size:15px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ r.listing }}</div>
+                <div style="font-size:12.5px; color:#9a9590">{{ r.guest }}</div>
+              </div>
+              <sc-if value="{{ showClass }}" hint-placeholder-val="{{ true }}">
+                <div style="width:20px; height:20px; flex:none; border-radius:5px; border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#9a9590">{{ r.cls }}</div>
+              </sc-if>
+              <div style="width:28px; flex:none; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">{{ r.age }}</div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ mEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:56px 24px; text-align:center; font-size:14px; color:#6f6a65">{{ mEmptyText }}</div></sc-if>
+        </div>
+
+        <div style="flex:none; height:64px; border-top:1px solid rgba(255,255,255,0.08); background:#0c0c0c; display:flex; align-items:center; gap:22px; padding:0 18px; overflow-x:auto; scrollbar-width:none; -webkit-mask-image:linear-gradient(90deg,#000 82%,transparent); mask-image:linear-gradient(90deg,#000 82%,transparent)">
+          <div style="flex:none; font-size:10.5px; font-weight:500; color:#6f6a65">Tasks</div>
+          <div style="flex:none; display:flex; flex-direction:column; align-items:center; gap:5px; margin-top:-7px">
+            <div style="width:16px; height:2px; border-radius:2px; background:#c4a35a"></div>
+            <div style="font-size:10.5px; font-weight:700; color:#c4a35a">Reviews</div>
+          </div>
+          <div style="flex:none; font-size:10.5px; font-weight:500; color:#6f6a65">SOPs</div>
+          <div style="flex:none; font-size:10.5px; font-weight:500; color:#6f6a65">Employees</div>
+          <div style="flex:none; font-size:10.5px; font-weight:500; color:#6f6a65">Clients</div>
+          <div style="flex:none; font-size:10.5px; font-weight:500; color:#6f6a65">Properties</div>
+          <div style="flex:none; font-size:10.5px; font-weight:500; color:#6f6a65">Revenue</div>
+          <div style="flex:none; font-size:10.5px; font-weight:500; color:#6f6a65">Settings</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="1b" style="display:flex; flex-direction:column; gap:10px">
+      <div style="display:flex; align-items:center; gap:10px">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1b · R2</span>
+        <span style="font-size:13px; color:#9a9590">Mobile 390 · clean 5★ detail</span>
+      </div>
+      <div style="width:390px; height:844px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:20px; display:flex; flex-direction:column; overflow:hidden">
+        <div style="height:52px; flex:none; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="font-size:14px; font-weight:600; color:#9a9590">‹ Reviews</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">1 of 10</div>
+        </div>
+
+        <div style="flex:1; min-height:0; padding:20px 18px 16px; display:flex; flex-direction:column; gap:20px">
+          <div style="display:flex; align-items:center; gap:7px; font-size:13px; color:#9a9590; white-space:nowrap">
+            <span style="color:#f5f5f5; font-weight:700">5<span style="color:#c4a35a">★</span></span>
+            <span style="color:#4f4b47">·</span><span style="color:#f5f5f5; font-weight:600">Shaw St</span>
+            <span style="color:#4f4b47">·</span><span>Sarah</span>
+            <span style="color:#4f4b47">·</span><span>Airbnb</span>
+            <span style="color:#4f4b47">·</span><span>2h ago</span>
+          </div>
+
+          <div style="font-size:16px; line-height:1.6; color:#d8d3cd; text-wrap:pretty">“Spotless, bright and exactly as pictured. Check-in was seamless and the guide to Ossington was a lifesaver — we ate our way down the strip. Would stay again in a heartbeat.”</div>
+
+          <div style="flex:1; min-height:0; display:flex; flex-direction:column; gap:10px">
+            <div style="display:flex; align-items:baseline; justify-content:space-between">
+              <div style="font-size:13px; font-weight:700">Your reply</div>
+              <div style="font-size:12px; color:#6f6a65">Tap to edit</div>
+            </div>
+            <textarea value="{{ r2Draft }}" onChange="{{ onR2Draft }}" readOnly="{{ r2Locked }}" style="flex:1; min-height:0; width:100%; resize:none; padding:16px; background:#141414; border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#f5f5f5; font-size:16px; line-height:1.6; outline:none" style-focus="border-color:rgba(196,163,90,0.55)"></textarea>
+            <div style="display:flex; align-items:center; justify-content:space-between">
+              <div onClick="{{ toggleR2Sign }}" style="display:flex; align-items:center; gap:8px; cursor:pointer">
+                <div style="width:26px; height:15px; border-radius:999px; background:{{ r2SignTrack }}; padding:2px; display:flex; justify-content:{{ r2SignAlign }}"><div style="width:11px; height:11px; border-radius:50%; background:#f5f5f5"></div></div>
+                <span style="font-size:12.5px; color:#9a9590">— The MRG team</span>
+              </div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">{{ r2Count }}/1000</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:none; padding:12px 16px 30px; border-top:1px solid rgba(255,255,255,0.08); background:#0a0a0a">
+          <sc-if value="{{ r2Open }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; gap:10px">
+              <div onClick="{{ r2Hold }}" style="flex:1; height:52px; border-radius:12px; border:1px solid rgba(255,255,255,0.12); background:#141414; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; cursor:pointer">Hold</div>
+              <div onClick="{{ r2Approve }}" style="flex:2.2; height:52px; border-radius:12px; background:#c4a35a; color:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:15.5px; font-weight:700; cursor:pointer" style-active="background:#b39350">{{ approveLabel }}</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ r2Posted }}" hint-placeholder-val="{{ false }}">
+            <div style="height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 4px">
+              <div style="display:flex; align-items:center; gap:10px"><div style="width:7px; height:7px; border-radius:50%; background:#4ea882"></div><span style="font-size:15px; font-weight:600; color:#4ea882">Posted to Airbnb</span></div>
+              <div onClick="{{ r2Undo }}" style="font-size:14px; font-weight:600; color:#9a9590; cursor:pointer">Undo</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ r2Held }}" hint-placeholder-val="{{ false }}">
+            <div style="height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 4px">
+              <div style="display:flex; align-items:center; gap:10px"><div style="width:7px; height:7px; border-radius:50%; background:#9a9590"></div><span style="font-size:15px; font-weight:600">Moved to Held</span></div>
+              <div onClick="{{ r2Undo }}" style="font-size:14px; font-weight:600; color:#9a9590; cursor:pointer">Undo</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <div id="1d" style="display:flex; flex-direction:column; gap:10px">
+      <div style="display:flex; align-items:center; gap:10px">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1d · R3</span>
+        <span style="font-size:13px; color:#9a9590">Mobile 390 · negative detail + fact sheet</span>
+      </div>
+      <div style="width:390px; height:844px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:20px; display:flex; flex-direction:column; overflow:hidden">
+        <div style="height:52px; flex:none; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="font-size:14px; font-weight:600; color:#9a9590">‹ Reviews</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">3 of 10</div>
+        </div>
+
+        <div style="flex:1; min-height:0; overflow-y:auto; scrollbar-width:none; padding:20px 18px 16px; display:flex; flex-direction:column; gap:18px">
+          <div style="display:flex; align-items:center; gap:7px; font-size:13px; color:#9a9590; white-space:nowrap">
+            <span style="color:#f5f5f5; font-weight:700">2<span style="color:#cf7f7b">★</span></span>
+            <span style="color:#4f4b47">·</span><span style="color:#f5f5f5; font-weight:600">King West</span>
+            <span style="color:#4f4b47">·</span><span>Jordan</span>
+            <span style="color:#4f4b47">·</span><span>Airbnb</span>
+            <span style="color:#4f4b47">·</span><span>5h ago</span>
+            <span style="margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Class D</span>
+          </div>
+
+          <div style="font-size:16px; line-height:1.6; color:#d8d3cd; text-wrap:pretty">“Wi-Fi didn't work the entire stay and the host never answered when we reached out. Street was loud at night too. Would not book again.”</div>
+
+          <div style="flex:none; display:flex; flex-direction:column; gap:8px">
+            <div style="display:flex; align-items:baseline; justify-content:space-between">
+              <div style="font-size:13px; font-weight:700">Fact sheet</div>
+              <a href="#1d" style="font-size:12px; font-weight:600">Open stay thread</a>
+            </div>
+            <div style="border:1px solid rgba(255,255,255,0.08); border-radius:12px; display:flex; flex-direction:column; overflow:hidden">
+              <sc-for list="{{ r3Facts }}" as="f" hint-placeholder-count="3">
+                <div style="padding:11px 14px; display:flex; flex-direction:column; gap:5px; border-top:{{ f.border }}">
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
+                    <div style="font-size:14px; font-weight:600; letter-spacing:-0.01em">{{ f.claim }}</div>
+                    <div style="flex:none; padding:2px 8px; border-radius:999px; background:{{ f.chipBg }}; color:{{ f.chipColor }}; font-size:11px; font-weight:700; letter-spacing:0.01em">{{ f.rating }}</div>
+                  </div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; line-height:1.5; color:#9a9590">{{ f.evidence }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="flex:none; display:flex; flex-direction:column; gap:10px">
+            <div style="display:flex; align-items:baseline; justify-content:space-between">
+              <div style="font-size:13px; font-weight:700">Your reply</div>
+              <div style="font-size:12px; color:#6f6a65">Calm · factual · {{ r3Words }} words</div>
+            </div>
+            <textarea value="{{ r3Draft }}" onChange="{{ onR3Draft }}" readOnly="{{ r3Locked }}" style="flex:none; height:334px; width:100%; resize:none; padding:16px; background:#141414; border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#f5f5f5; font-size:15px; line-height:1.6; outline:none" style-focus="border-color:rgba(196,163,90,0.55)"></textarea>
+            <div style="display:flex; align-items:center; justify-content:space-between">
+              <div onClick="{{ toggleR3Sign }}" style="display:flex; align-items:center; gap:8px; cursor:pointer">
+                <div style="width:26px; height:15px; border-radius:999px; background:{{ r3SignTrack }}; padding:2px; display:flex; justify-content:{{ r3SignAlign }}"><div style="width:11px; height:11px; border-radius:50%; background:#f5f5f5"></div></div>
+                <span style="font-size:12.5px; color:#9a9590">— The MRG team</span>
+              </div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">{{ r3Count }}/1000</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:none; padding:12px 16px 30px; border-top:1px solid rgba(255,255,255,0.08); background:#0a0a0a">
+          <sc-if value="{{ r3Open }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; gap:10px">
+              <div onClick="{{ r3Hold }}" style="flex:1; height:52px; border-radius:12px; border:1px solid rgba(255,255,255,0.12); background:#141414; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; cursor:pointer">Hold</div>
+              <div onClick="{{ r3Approve }}" style="flex:2.2; height:52px; border-radius:12px; background:#c4a35a; color:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:15.5px; font-weight:700; cursor:pointer" style-active="background:#b39350">{{ approveLabel }}</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ r3Posted }}" hint-placeholder-val="{{ false }}">
+            <div style="height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 4px">
+              <div style="display:flex; align-items:center; gap:10px"><div style="width:7px; height:7px; border-radius:50%; background:#4ea882"></div><span style="font-size:15px; font-weight:600; color:#4ea882">Posted to Airbnb</span></div>
+              <div onClick="{{ r3Undo }}" style="font-size:14px; font-weight:600; color:#9a9590; cursor:pointer">Undo</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ r3Held }}" hint-placeholder-val="{{ false }}">
+            <div style="height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 4px">
+              <div style="display:flex; align-items:center; gap:10px"><div style="width:7px; height:7px; border-radius:50%; background:#9a9590"></div><span style="font-size:15px; font-weight:600">Moved to Held</span></div>
+              <div onClick="{{ r3Undo }}" style="font-size:14px; font-weight:600; color:#9a9590; cursor:pointer">Undo</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <div id="1e" style="display:flex; flex-direction:column; gap:10px">
+      <div style="display:flex; align-items:center; gap:10px">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1e · R4</span>
+        <span style="font-size:13px; color:#9a9590">Mobile 390 · possible removal (scrolls)</span>
+      </div>
+      <div style="width:390px; height:844px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:20px; display:flex; flex-direction:column; overflow:hidden">
+        <div style="height:52px; flex:none; padding:0 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="font-size:14px; font-weight:600; color:#9a9590">‹ Reviews</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Removals · 1 of 2</div>
+        </div>
+
+        <div style="flex:1; min-height:0; overflow-y:auto; scrollbar-width:none; padding:20px 18px 24px; display:flex; flex-direction:column; gap:18px">
+          <div style="display:flex; align-items:center; gap:7px; font-size:13px; color:#9a9590; white-space:nowrap">
+            <span style="color:#f5f5f5; font-weight:700">1<span style="color:#cf7f7b">★</span></span>
+            <span style="color:#4f4b47">·</span><span style="color:#f5f5f5; font-weight:600">Shaw St</span>
+            <span style="color:#4f4b47">·</span><span>Kevin</span>
+            <span style="color:#4f4b47">·</span><span>Airbnb</span>
+            <span style="color:#4f4b47">·</span><span>6h ago</span>
+            <span style="margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#cf7f7b">Class E</span>
+          </div>
+
+          <div style="font-size:16px; line-height:1.6; color:#d8d3cd; text-wrap:pretty">“Dirty unit, broken AC and the host refused to help. Avoid this place.”</div>
+
+          <div style="flex:none; display:flex; flex-direction:column; gap:10px">
+            <div style="display:flex; align-items:baseline; justify-content:space-between">
+              <div style="font-size:13px; font-weight:700">Your public reply</div>
+              <div style="font-size:12px; color:#6f6a65">Posts regardless of removal</div>
+            </div>
+            <textarea value="{{ r4Draft }}" onChange="{{ onR4Draft }}" readOnly="{{ r4Locked }}" style="flex:none; height:340px; width:100%; resize:none; padding:16px; background:#141414; border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#f5f5f5; font-size:15px; line-height:1.6; outline:none" style-focus="border-color:rgba(196,163,90,0.55)"></textarea>
+            <div style="display:flex; align-items:center; justify-content:space-between">
+              <div onClick="{{ toggleR4Sign }}" style="display:flex; align-items:center; gap:8px; cursor:pointer">
+                <div style="width:26px; height:15px; border-radius:999px; background:{{ r4SignTrack }}; padding:2px; display:flex; justify-content:{{ r4SignAlign }}"><div style="width:11px; height:11px; border-radius:50%; background:#f5f5f5"></div></div>
+                <span style="font-size:12.5px; color:#9a9590">— The MRG team</span>
+              </div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">{{ r4Count }}/1000</div>
+            </div>
+          </div>
+
+          <div style="flex:none; border:1px solid rgba(207,127,123,0.28); border-radius:14px; background:#0f0d0d; display:flex; flex-direction:column">
+            <div style="padding:14px 14px 12px; display:flex; flex-direction:column; gap:8px">
+              <div style="display:flex; align-items:center; justify-content:space-between">
+                <div style="font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#cf7f7b">Removal request</div>
+                <div style="display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; color:#f5f5f5"><div style="display:flex; gap:2px"><div style="width:4px; height:10px; border-radius:1px; background:#cf7f7b"></div><div style="width:4px; height:10px; border-radius:1px; background:#cf7f7b"></div><div style="width:4px; height:10px; border-radius:1px; background:#cf7f7b"></div></div>Strong</div>
+              </div>
+              <div style="font-size:16px; font-weight:700; letter-spacing:-0.01em">Extortion</div>
+              <div style="font-size:12.5px; line-height:1.5; color:#9a9590">Review used as leverage to obtain a refund.</div>
+            </div>
+
+            <div style="border-top:1px solid rgba(255,255,255,0.07); padding:12px 14px; display:flex; flex-direction:column; gap:10px">
+              <div style="display:flex; align-items:baseline; justify-content:space-between">
+                <div style="font-size:12px; font-weight:700; color:#9a9590">Packet · {{ r4PacketWords }} words</div>
+                <div onClick="{{ r4Copy }}" style="font-size:12px; font-weight:600; color:{{ r4CopyColor }}; cursor:pointer">{{ r4CopyLabel }}</div>
+              </div>
+              <div style="font-size:13px; line-height:1.6; color:#d8d3cd; text-wrap:pretty">{{ r4Summary }}</div>
+              <div style="display:flex; flex-direction:column; gap:6px">
+                <sc-for list="{{ r4Evidence }}" as="e" hint-placeholder-count="4">
+                  <div style="display:grid; grid-template-columns:92px minmax(0,1fr); gap:8px; font-size:12px; line-height:1.5">
+                    <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65; padding-top:1px">{{ e.t }}</div>
+                    <div style="color:#d8d3cd">{{ e.text }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="border-top:1px solid rgba(255,255,255,0.07); padding:12px 14px 14px; display:flex; flex-direction:column; gap:10px">
+              <div onClick="{{ r4ToggleFiled }}" style="display:flex; align-items:center; gap:10px; cursor:pointer; min-height:28px">
+                <div style="width:18px; height:18px; flex:none; border-radius:5px; border:1px solid {{ r4BoxBorder }}; background:{{ r4BoxBg }}; color:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800">{{ r4Tick }}</div>
+                <span style="font-size:13.5px; font-weight:600">Filed in Airbnb</span>
+                <span style="margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">{{ r4FiledAt }}</span>
+              </div>
+              <div style="display:flex; padding:2px; background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:9px; gap:2px; opacity:{{ r4OutcomeOpacity }}">
+                <sc-for list="{{ r4Outcomes }}" as="o" hint-placeholder-count="3">
+                  <div onClick="{{ o.onClick }}" style="flex:1; padding:7px 8px; border-radius:7px; background:{{ o.bg }}; color:{{ o.color }}; font-size:12px; font-weight:{{ o.weight }}; text-align:center; cursor:pointer">{{ o.label }}</div>
+                </sc-for>
+              </div>
+              <div style="font-size:11.5px; color:#6f6a65">You file in Airbnb. This only tracks the outcome.</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:none; padding:12px 16px 30px; border-top:1px solid rgba(255,255,255,0.08); background:#0a0a0a">
+          <sc-if value="{{ r4Open }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; gap:10px">
+              <div onClick="{{ r4Hold }}" style="flex:1; height:52px; border-radius:12px; border:1px solid rgba(255,255,255,0.12); background:#141414; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; cursor:pointer">Hold</div>
+              <div onClick="{{ r4Approve }}" style="flex:2.2; height:52px; border-radius:12px; background:#c4a35a; color:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:15.5px; font-weight:700; cursor:pointer" style-active="background:#b39350">{{ approveLabel }}</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ r4Posted }}" hint-placeholder-val="{{ false }}">
+            <div style="height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 4px">
+              <div style="display:flex; align-items:center; gap:10px"><div style="width:7px; height:7px; border-radius:50%; background:#4ea882"></div><span style="font-size:15px; font-weight:600; color:#4ea882">Reply posted to Airbnb</span></div>
+              <div onClick="{{ r4Undo }}" style="font-size:14px; font-weight:600; color:#9a9590; cursor:pointer">Undo</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ r4Held }}" hint-placeholder-val="{{ false }}">
+            <div style="height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 4px">
+              <div style="display:flex; align-items:center; gap:10px"><div style="width:7px; height:7px; border-radius:50%; background:#9a9590"></div><span style="font-size:15px; font-weight:600">Moved to Held</span></div>
+              <div onClick="{{ r4Undo }}" style="font-size:14px; font-weight:600; color:#9a9590; cursor:pointer">Undo</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1c" style="display:flex; flex-direction:column; gap:10px">
+    <div style="display:flex; align-items:center; gap:10px">
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:500; color:#0a0a0a; background:#c4a35a; padding:3px 7px; border-radius:4px">1c · R5</span>
+      <span style="font-size:13px; color:#9a9590">Desktop 1280 · split view — click rows, approve moves to the next</span>
+    </div>
+    <div style="width:1280px; height:800px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.09); border-radius:16px; overflow:hidden; display:flex; flex-direction:column">
+      <div style="height:56px; flex:none; padding:0 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08)">
+        <div style="display:flex; align-items:center; gap:18px">
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="width:26px; height:26px; border-radius:6px; border:1px solid rgba(196,163,90,0.5); color:#c4a35a; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700">M</div>
+            <div style="font-size:14px; font-weight:600; letter-spacing:-0.01em">Mandel Realty Group</div>
+          </div>
+          <div style="display:flex; padding:2px; background:#1a1a1a; border-radius:8px; gap:2px">
+            <div style="padding:5px 14px; border-radius:6px; color:#9a9590; font-size:12px; font-weight:600; letter-spacing:0.04em">CRM</div>
+            <div style="padding:5px 14px; border-radius:6px; background:#c4a35a; color:#0a0a0a; font-size:12px; font-weight:700; letter-spacing:0.04em">OPS</div>
+          </div>
+        </div>
+        <div onClick="{{ onRefresh }}" style="display:flex; align-items:center; gap:7px; font-size:12px; color:#9a9590; cursor:pointer"><sc-if value="{{ syncing }}" hint-placeholder-val="{{ false }}"><div style="width:5px; height:5px; border-radius:50%; background:#c4a35a"></div></sc-if><span>{{ refreshLabel }}</span></div>
+      </div>
+
+      <div style="flex:1; min-height:0; display:flex">
+        <div style="width:220px; flex:none; border-right:1px solid rgba(255,255,255,0.08); background:#0c0c0c; padding:16px 12px; display:flex; flex-direction:column; gap:3px">
+          <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Tasks</div>
+          <div style="padding:9px 12px; border-radius:8px; background:#1c1c1c; display:flex; justify-content:space-between; align-items:center">
+            <span style="font-size:13.5px; font-weight:700; color:#c4a35a">Reviews</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#c4a35a">{{ dNeedsCount }}</span>
+          </div>
+          <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">SOPs</div>
+          <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Employees</div>
+          <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Clients</div>
+          <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Properties</div>
+          <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Revenue</div>
+          <div style="padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:500; color:#9a9590">Settings</div>
+          <div style="margin-top:auto; padding:12px; border-top:1px solid rgba(255,255,255,0.08); font-family:'IBM Plex Mono',monospace; font-size:10.5px; line-height:1.6; color:#4f4b47">Signed in<br>ryan@mandelrealtygroup.com</div>
+        </div>
+
+        <div style="width:400px; flex:none; border-right:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; min-height:0">
+          <div style="flex:none; padding:20px 18px 14px; display:flex; flex-direction:column; gap:14px">
+            <div style="font-size:22px; font-weight:700; letter-spacing:-0.02em">Reviews</div>
+            <div style="display:flex; padding:2px; background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:9px; gap:2px">
+              <sc-for list="{{ dSegments }}" as="s" hint-placeholder-count="4">
+                <div onClick="{{ s.onClick }}" style="flex:{{ s.flex }}; display:flex; align-items:center; justify-content:center; gap:6px; padding:6px 8px; border-radius:7px; background:{{ s.bg }}; color:{{ s.color }}; font-size:12px; font-weight:{{ s.weight }}; cursor:pointer; white-space:nowrap">
+                  <span>{{ s.label }}</span>
+                  <sc-if value="{{ s.showCount }}" hint-placeholder-val="{{ false }}">
+                    <span style="min-width:18px; padding:1px 6px; border-radius:999px; background:#c4a35a; color:#0a0a0a; font-size:10.5px; font-weight:700; text-align:center">{{ s.count }}</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <sc-if value="{{ dToast }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:none; margin:0 18px 10px; padding:9px 12px; border-radius:9px; background:rgba(78,168,130,0.1); display:flex; align-items:center; justify-content:space-between; font-size:12.5px">
+              <span style="color:#4ea882; font-weight:600">{{ dToastText }}</span>
+              <span onClick="{{ dUndo }}" style="color:#9a9590; font-weight:600; cursor:pointer">Undo</span>
+            </div>
+          </sc-if>
+          <div style="flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column">
+            <sc-for list="{{ dRows }}" as="r" hint-placeholder-count="9">
+              <div onClick="{{ r.onOpen }}" style="flex:none; padding:12px 18px 12px 10px; display:flex; align-items:center; gap:10px; border-top:1px solid rgba(255,255,255,0.08); background:{{ r.bg }}; box-shadow:{{ r.edge }}; cursor:pointer">
+                <div style="width:6px; flex:none; display:flex; justify-content:center">
+                  <sc-if value="{{ r.danger }}" hint-placeholder-val="{{ false }}"><div style="width:5px; height:5px; border-radius:50%; background:#cf7f7b"></div></sc-if>
+                  <sc-if value="{{ r.gold }}" hint-placeholder-val="{{ false }}"><div style="width:5px; height:5px; border-radius:50%; background:#c4a35a"></div></sc-if>
+                </div>
+                <div style="width:32px; flex:none; display:flex; align-items:baseline; gap:1px; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums">{{ r.stars }}<span style="font-size:10.5px; color:#6f6a65">★</span></div>
+                <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:2px">
+                  <div style="font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ r.listing }}</div>
+                  <div style="font-size:12px; color:#9a9590">{{ r.guest }}</div>
+                </div>
+                <sc-if value="{{ showClass }}" hint-placeholder-val="{{ true }}">
+                  <div style="width:20px; height:20px; flex:none; border-radius:5px; border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#9a9590">{{ r.cls }}</div>
+                </sc-if>
+                <div style="width:28px; flex:none; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">{{ r.age }}</div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ dEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:48px 24px; text-align:center; font-size:13.5px; color:#6f6a65">{{ dEmptyText }}</div>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="flex:1; min-width:0; display:flex; flex-direction:column; min-height:0">
+          <sc-if value="{{ dHasSel }}" hint-placeholder-val="{{ true }}">
+            <div style="flex:1; min-height:0; overflow-y:auto; scrollbar-width:none; padding:28px 40px 24px; display:flex; flex-direction:column; gap:22px; max-width:760px; width:100%">
+              <div style="display:flex; align-items:center; gap:8px; font-size:13.5px; color:#9a9590; white-space:nowrap">
+                <span style="color:#f5f5f5; font-weight:700">{{ sel.stars }}<span style="color:#c4a35a">★</span></span>
+                <span style="color:#4f4b47">·</span><span style="color:#f5f5f5; font-weight:600">{{ sel.listing }}</span>
+                <span style="color:#4f4b47">·</span><span>{{ sel.guest }}</span>
+                <span style="color:#4f4b47">·</span><span>{{ sel.channel }}</span>
+                <span style="color:#4f4b47">·</span><span>{{ sel.ageLong }}</span>
+                <span style="margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">Class {{ sel.cls }}</span>
+              </div>
+              <div style="font-size:17px; line-height:1.6; color:#d8d3cd; text-wrap:pretty">“{{ sel.review }}”</div>
+              <sc-if value="{{ dHasFacts }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:none; display:flex; flex-direction:column; gap:8px">
+                  <div style="display:flex; align-items:baseline; justify-content:space-between">
+                    <div style="font-size:13px; font-weight:700">Fact sheet</div>
+                    <a href="#1c" style="font-size:12px; font-weight:600">Open stay thread</a>
+                  </div>
+                  <div style="border:1px solid rgba(255,255,255,0.08); border-radius:12px; display:flex; flex-direction:column; overflow:hidden">
+                    <sc-for list="{{ dFacts }}" as="f" hint-placeholder-count="2">
+                      <div style="padding:11px 14px; display:grid; grid-template-columns:190px minmax(0,1fr) auto; align-items:center; gap:14px; border-top:{{ f.border }}">
+                        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em">{{ f.claim }}</div>
+                        <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; line-height:1.5; color:#9a9590">{{ f.evidence }}</div>
+                        <div style="padding:2px 8px; border-radius:999px; background:{{ f.chipBg }}; color:{{ f.chipColor }}; font-size:11px; font-weight:700; white-space:nowrap">{{ f.rating }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+              <div style="flex:1 0 auto; min-height:250px; display:flex; flex-direction:column; gap:10px">
+                <div style="display:flex; align-items:baseline; justify-content:space-between">
+                  <div style="font-size:13px; font-weight:700">Your reply</div>
+                  <div style="font-size:12px; color:#6f6a65">{{ dReplyHint }}</div>
+                </div>
+                <textarea value="{{ dDraft }}" onChange="{{ onDDraft }}" readOnly="{{ dLocked }}" style="flex:1; min-height:0; width:100%; resize:none; padding:18px; background:#141414; border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:#f5f5f5; font-size:15.5px; line-height:1.65; outline:none" style-focus="border-color:rgba(196,163,90,0.55)"></textarea>
+                <div style="display:flex; align-items:center; justify-content:space-between">
+                  <div onClick="{{ toggleDSign }}" style="display:flex; align-items:center; gap:8px; cursor:pointer">
+                    <div style="width:26px; height:15px; border-radius:999px; background:{{ dSignTrack }}; padding:2px; display:flex; justify-content:{{ dSignAlign }}"><div style="width:11px; height:11px; border-radius:50%; background:#f5f5f5"></div></div>
+                    <span style="font-size:12.5px; color:#9a9590">— The MRG team</span>
+                  </div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65">{{ dCount }}/1000</div>
+                </div>
+              </div>
+              <sc-if value="{{ dHasRemoval }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:none; border:1px solid rgba(207,127,123,0.28); border-radius:14px; background:#0f0d0d; display:flex; flex-direction:column">
+                  <div style="padding:14px 16px 12px; display:flex; align-items:flex-end; justify-content:space-between; gap:16px">
+                    <div style="display:flex; flex-direction:column; gap:6px">
+                      <div style="font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#cf7f7b">Removal request</div>
+                      <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:16px; font-weight:700; letter-spacing:-0.01em">{{ rem.violation }}</span><span style="font-size:12.5px; color:#9a9590">{{ rem.note }}</span></div>
+                    </div>
+                    <div style="flex:none; display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700"><div style="display:flex; gap:2px"><sc-for list="{{ dRemBars }}" as="b" hint-placeholder-count="3"><div style="width:4px; height:10px; border-radius:1px; background:{{ b.bg }}"></div></sc-for></div>{{ rem.strength }}</div>
+                  </div>
+                  <div style="border-top:1px solid rgba(255,255,255,0.07); padding:12px 16px; display:flex; flex-direction:column; gap:10px">
+                    <div style="display:flex; align-items:baseline; justify-content:space-between">
+                      <div style="font-size:12px; font-weight:700; color:#9a9590">Packet · {{ rem.words }} words</div>
+                      <div onClick="{{ dCopy }}" style="font-size:12px; font-weight:600; color:{{ dCopyColor }}; cursor:pointer">{{ dCopyLabel }}</div>
+                    </div>
+                    <div style="font-size:13.5px; line-height:1.6; color:#d8d3cd; text-wrap:pretty">{{ rem.summary }}</div>
+                    <div style="display:flex; flex-direction:column; gap:6px">
+                      <sc-for list="{{ rem.evidence }}" as="e" hint-placeholder-count="4">
+                        <div style="display:grid; grid-template-columns:120px minmax(0,1fr); gap:10px; font-size:12.5px; line-height:1.5">
+                          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6f6a65; padding-top:1px">{{ e.t }}</div>
+                          <div style="color:#d8d3cd">{{ e.text }}</div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="border-top:1px solid rgba(255,255,255,0.07); padding:12px 16px 14px; display:flex; align-items:center; gap:16px; flex-wrap:wrap">
+                    <div onClick="{{ dToggleFiled }}" style="display:flex; align-items:center; gap:10px; cursor:pointer">
+                      <div style="width:18px; height:18px; flex:none; border-radius:5px; border:1px solid {{ dBoxBorder }}; background:{{ dBoxBg }}; color:#0a0a0a; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800">{{ dTick }}</div>
+                      <span style="font-size:13.5px; font-weight:600">Filed in Airbnb</span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6f6a65">{{ dFiledAt }}</span>
+                    </div>
+                    <div style="margin-left:auto; width:280px; display:flex; padding:2px; background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:9px; gap:2px; opacity:{{ dOutcomeOpacity }}">
+                      <sc-for list="{{ dOutcomes }}" as="o" hint-placeholder-count="3">
+                        <div onClick="{{ o.onClick }}" style="flex:1; padding:6px 8px; border-radius:7px; background:{{ o.bg }}; color:{{ o.color }}; font-size:12px; font-weight:{{ o.weight }}; text-align:center; cursor:pointer">{{ o.label }}</div>
+                      </sc-for>
+                    </div>
+                    <div style="flex-basis:100%; font-size:11.5px; color:#6f6a65">You file in Airbnb. This only tracks the outcome.</div>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+            <div style="flex:none; padding:14px 40px; border-top:1px solid rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:flex-end; gap:10px">
+              <sc-if value="{{ dHasRemoval }}" hint-placeholder-val="{{ false }}"><span style="margin-right:auto; font-size:12.5px; color:#6f6a65">Approve posts the public reply only</span></sc-if>
+              <sc-if value="{{ dActionable }}" hint-placeholder-val="{{ true }}">
+                <div onClick="{{ dHold }}" style="height:42px; padding:0 20px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); background:#141414; display:flex; align-items:center; font-size:13.5px; font-weight:600; cursor:pointer" style-hover="background:#1a1a1a">Hold</div>
+                <div onClick="{{ dApprove }}" style="height:42px; padding:0 26px; border-radius:10px; background:#c4a35a; color:#0a0a0a; display:flex; align-items:center; font-size:14px; font-weight:700; cursor:pointer" style-hover="background:#d0b066">{{ approveLabel }}</div>
+              </sc-if>
+              <sc-if value="{{ dIsHeld }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ dResume }}" style="height:42px; padding:0 20px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); background:#141414; display:flex; align-items:center; font-size:13.5px; font-weight:600; cursor:pointer" style-hover="background:#1a1a1a">Resume</div>
+                <div onClick="{{ dApprove }}" style="height:42px; padding:0 26px; border-radius:10px; background:#c4a35a; color:#0a0a0a; display:flex; align-items:center; font-size:14px; font-weight:700; cursor:pointer" style-hover="background:#d0b066">{{ approveLabel }}</div>
+              </sc-if>
+              <sc-if value="{{ dIsPosted }}" hint-placeholder-val="{{ false }}">
+                <div style="height:42px; display:flex; align-items:center; gap:9px"><div style="width:7px; height:7px; border-radius:50%; background:#4ea882"></div><span style="font-size:13.5px; font-weight:600; color:#4ea882">Posted to {{ sel.channel }}</span></div>
+              </sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ dNoSel }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px">
+              <div style="font-size:16px; font-weight:600">{{ dNoSelTitle }}</div>
+              <div style="font-size:13.5px; color:#6f6a65">{{ dNoSelSub }}</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;approveLabel&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Approve &amp; post&quot;,&quot;Approve&quot;,&quot;Post reply&quot;],&quot;default&quot;:&quot;Approve &amp; post&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Actions&quot;},&quot;signOffDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Reply&quot;},&quot;showClassLetter&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Queue&quot;}}">
+const SIGN = '\n\n— The MRG team';
+const words = t => t.trim().split(/\s+/).filter(Boolean).length;
+const CHIP = { Contradicted: ['rgba(207,127,123,0.14)', '#e09a96'], Accurate: ['rgba(78,168,130,0.14)', '#6cc39e'], 'Not raised': ['rgba(255,255,255,0.06)', '#9a9590'] };
+const factRows = list => list.map((f, i) => ({ ...f, border: i ? '1px solid rgba(255,255,255,0.07)' : 'none', chipBg: CHIP[f.rating][0], chipColor: CHIP[f.rating][1] }));
+const outcomes = (filed, outcome, set) => ['Pending', 'Removed', 'Declined'].map(o => {
+  const on = filed && outcome === o;
+  const c = o === 'Removed' ? '#4ea882' : o === 'Declined' ? '#cf7f7b' : '#f5f5f5';
+  return { label: o, bg: on ? '#262626' : 'transparent', color: on ? c : '#9a9590', weight: on ? 700 : 500, onClick: () => filed && set(o) };
+});
+const EMPTY = { needs: "You're caught up", posted: 'Nothing posted yet', held: 'Nothing on hold', removal: 'No removal requests' };
+const R3_REVIEW = "Wi-Fi didn't work the entire stay and the host never answered when we reached out. Street was loud at night too. Would not book again.";
+const R3_DRAFT = "Hi Jordan, thank you for staying at King West. We take connectivity seriously, so we checked: the network was online throughout your stay, and your device connected shortly after check-in. When you messaged on Friday evening, our team replied within six minutes with the network details. King West faces a busy street, which we note in the listing, and we leave earplugs in the bedroom for that reason. We're sorry the stay didn't feel right, and future guests can expect the same quick support.";
+const R3_FACTS = [
+  { claim: 'Wi-Fi down all stay', rating: 'Contradicted', evidence: 'Router online 99.8% · guest device joined Fri 3:12 PM' },
+  { claim: 'Host unreachable', rating: 'Contradicted', evidence: 'Guest msg Fri 9:41 PM → reply 9:47 PM (6 min)' },
+  { claim: 'Street noise at night', rating: 'Accurate', evidence: 'King St W frontage · disclosed in listing, earplugs left' }
+];
+const R4_REVIEW = "Dirty unit, broken AC and the host refused to help. Avoid this place.";
+const R4_DRAFT = "Hi Kevin, thank you for staying at Shaw St. When you reported the air conditioning on Tuesday afternoon, a technician was on site within two hours and confirmed it running. The unit was cleaned and photo-checked before your arrival. During the stay, a refund was requested in exchange for the review, which is against Airbnb's Reviews Policy, so we've shared the stay details with Airbnb.";
+const R4_SUMMARY = "Guest Kevin (HM4K2XQ9, Shaw St, Sep 21–23) messaged on Sep 22 at 2:14 PM asking for a 50% refund and stated he would leave a 1-star review if it was not issued. We declined and sent an HVAC technician, who confirmed the unit working at 4:05 PM. The guest checked out without further messages and posted a 1-star review citing the same issue. The review was used as leverage for a refund, which falls under Airbnb's Reviews Policy on extortion. The message thread and technician report are attached to the reservation.";
+const R4_EVIDENCE = [
+  { t: 'Sep 22 1:48 PM', text: 'Guest reports AC not cooling' },
+  { t: 'Sep 22 2:14 PM', text: '“Refund 50% or I leave 1 star” — stay thread' },
+  { t: 'Sep 22 2:31 PM', text: 'MRG declines, books technician' },
+  { t: 'Sep 22 4:05 PM', text: 'Technician confirms AC working · report + photos' },
+  { t: 'Sep 23 11:00 AM', text: 'Checkout · no further messages' },
+  { t: 'Sep 25 5:10 AM', text: '1★ review posted' }
+];
+const R4_REMOVAL = { violation: 'Extortion', strength: 'Strong', level: 3, note: 'Review used as leverage to obtain a refund.', summary: R4_SUMMARY, evidence: R4_EVIDENCE };
+const ITEMS = [
+  { id: 1, stars: 5, listing: 'Shaw St', guest: 'Sarah', cls: 'A', age: '2h', ageLong: '2h ago', channel: 'Airbnb', status: 'needs',
+    review: "Spotless, bright and exactly as pictured. Check-in was seamless and the guide to Ossington was a lifesaver — we ate our way down the strip. Would stay again in a heartbeat.",
+    draft: "Hi Sarah, thank you so much for the kind words! We're thrilled Shaw St felt like home and that the Ossington guide came in handy — those patios are hard to beat in late summer. It was a real pleasure hosting you, and we'd love to welcome you back whenever you're next in Toronto." },
+  { id: 2, stars: 2, listing: 'Lake Rosseau', guest: 'Mark', cls: 'D', age: '3h', ageLong: '3h ago', channel: 'Airbnb', status: 'needs',
+    review: "Beautiful spot on the water, but the hot tub was out all weekend and nobody told us before arrival. The dock ladder was loose too. For the price we expected better communication.",
+    draft: "Hi Mark, thank you for the honest feedback, and we're sorry the hot tub was down for your stay. You should have heard about it before arrival, and we've added a pre-arrival equipment check so that doesn't happen again. The heater has since been replaced and the dock ladder secured.",
+    facts: [
+      { claim: 'Hot tub out all weekend', rating: 'Accurate', evidence: 'Heater fault logged Fri 4:20 PM · replaced Mon 11:00 AM' },
+      { claim: 'No notice before arrival', rating: 'Accurate', evidence: 'Guest notified Fri 6:05 PM, 1h after check-in' },
+      { claim: 'Dock ladder loose', rating: 'Accurate', evidence: 'Tightened Mon 10:30 AM · photo in task log' }
+    ] },
+  { id: 3, stars: 2, listing: 'King West', guest: 'Jordan', cls: 'D', age: '5h', ageLong: '5h ago', channel: 'Airbnb', status: 'needs',
+    review: R3_REVIEW, draft: R3_DRAFT, facts: R3_FACTS },
+  { id: 4, stars: 4, listing: 'Charlotte 606', guest: 'Daniel', cls: 'B', age: '9h', ageLong: '9h ago', channel: 'Airbnb', status: 'needs',
+    review: "Great condo and an amazing view. Only knock was some street noise at night, but earplugs were provided, which was thoughtful.",
+    draft: "Hi Daniel, thanks for staying with us and for the thoughtful review. Entertainment District nights can be lively — we're glad the earplugs helped, and we're looking at better window treatments for the bedroom. Hope to see you again soon.",
+    facts: [
+      { claim: 'Street noise at night', rating: 'Accurate', evidence: 'Entertainment District · disclosed in listing' },
+      { claim: 'Earplugs provided', rating: 'Accurate', evidence: 'Stocked per turnover checklist Sep 18 2:40 PM' }
+    ] },
+  { id: 5, stars: 3, listing: 'Distillery Loft', guest: 'Emma', cls: 'C', age: '14h', ageLong: '14h ago', channel: 'Airbnb', status: 'needs',
+    review: "The loft is gorgeous and the area is charming. Check-in instructions were confusing and we waited 30 minutes for the lockbox code. The kitchen could use a deeper clean.",
+    draft: "Hi Emma, thank you for the feedback, and we're sorry about the wait at check-in. We've rewritten the arrival instructions and moved to a smart lock so codes arrive automatically. We've also added a deeper kitchen pass to every turnover. We appreciate you letting us know.",
+    facts: [
+      { claim: '30-min wait for code', rating: 'Accurate', evidence: 'Guest msg 4:02 PM → code resent 4:31 PM' },
+      { claim: 'Confusing instructions', rating: 'Accurate', evidence: 'Arrival guide rewritten Sep 24' },
+      { claim: 'Kitchen needs deeper clean', rating: 'Not raised', evidence: 'No kitchen messages · turnover photos 1:15 PM' }
+    ] },
+  { id: 6, stars: 5, listing: 'Bala Cottage', guest: 'Liam', cls: 'A', age: '1d', ageLong: '1d ago', channel: 'Airbnb', status: 'needs',
+    review: "Everything we hoped for. The kids loved the canoe and the sunsets off the dock were unreal. Really well-stocked kitchen.",
+    draft: "Hi Liam, this made our day — thank you! Nothing beats a Muskoka sunset off that dock. So glad the kids got plenty of canoe time. You're welcome back at Bala any summer." },
+  { id: 7, stars: 5, listing: 'Charlotte 606', guest: 'Chloé', cls: 'A', age: '1d', ageLong: '1d ago', channel: 'Airbnb', status: 'needs',
+    review: "Immaculate, stylish and super central. Quick replies from the host and I loved the coffee setup.",
+    draft: "Hi Chloé, thank you so much! Happy the coffee bar got some use. It was a pleasure hosting you — come back and see us anytime." },
+  { id: 8, stars: 4, listing: 'Lake Rosseau', guest: 'Olivia', cls: 'B', age: '2d', ageLong: '2d ago', channel: 'Airbnb', status: 'needs',
+    review: "Stunning property and very peaceful. The road in was rough after the rain and the Wi-Fi was spotty, but that's cottage life.",
+    draft: "Hi Olivia, thanks for the lovely review. You're right that the road can be rough after a storm — we've added a note to the arrival guide. A Wi-Fi booster is being installed this month. Hope you'll be back on Rosseau soon.",
+    facts: [
+      { claim: 'Rough road after rain', rating: 'Accurate', evidence: 'Storm Sat 3–7 PM · road note added to guide' },
+      { claim: 'Spotty Wi-Fi', rating: 'Accurate', evidence: 'Router log: 3 drops Sat 8:10–9:40 PM' }
+    ] },
+  { id: 9, stars: 5, listing: 'King West', guest: 'Priya', cls: 'A', age: '2d', ageLong: '2d ago', channel: 'Airbnb', status: 'needs',
+    review: "Perfect base for a work trip — walked to every meeting. Fast Wi-Fi, a proper desk and a very comfortable bed.",
+    draft: "Hi Priya, thanks so much! We set King West up with work trips in mind, so it's great to hear the desk and Wi-Fi delivered. Glad the location made your week easier — hope to host you again on your next trip to Toronto." },
+  { id: 10, stars: 5, listing: 'Distillery Loft', guest: 'Noah', cls: 'A', age: '3d', ageLong: '3d ago', channel: 'Airbnb', status: 'needs',
+    review: "Fantastic loft with tons of character. Would definitely book again.",
+    draft: "Hi Noah, thank you! The loft's character is a big part of why we love it too. We'd be happy to have you back in the Distillery anytime." },
+  { id: 11, stars: 5, listing: 'Bala Cottage', guest: 'Grace', cls: 'A', age: '4d', ageLong: '4d ago', channel: 'Airbnb', status: 'posted',
+    review: "Cozy, clean and so peaceful. Perfect long weekend.",
+    draft: "Hi Grace, thank you! A long weekend at Bala is hard to beat. Hope to see you next summer." },
+  { id: 12, stars: 4, listing: 'Shaw St', guest: 'Ethan', cls: 'B', age: '5d', ageLong: '5d ago', channel: 'Airbnb', status: 'posted',
+    review: "Great neighbourhood, comfy beds. Parking was a bit tricky.",
+    draft: "Hi Ethan, thanks for staying with us! We've added Green P options to the guide for next time.",
+    facts: [ { claim: 'Parking was tricky', rating: 'Accurate', evidence: 'Street permit only · Green P added to guide Sep 20' } ] },
+  { id: 13, stars: 3, listing: 'Charlotte 606', guest: 'Ava', cls: 'C', age: '3d', ageLong: '3d ago', channel: 'Airbnb', status: 'held',
+    review: "Nice view but the elevator was out for part of our stay.",
+    draft: "Hi Ava, thank you for the feedback, and we're sorry the elevator was out for part of your stay. Building management has confirmed the repair, and we now message guests as soon as the building posts a service notice.",
+    facts: [ { claim: 'Elevator out part of stay', rating: 'Accurate', evidence: 'Building notice Sep 20 9:00 AM – Sep 21 6:00 PM' } ] },
+  { id: 14, stars: 1, listing: 'Shaw St', guest: 'Kevin', cls: 'E', age: '6h', ageLong: '6h ago', channel: 'Airbnb', status: 'removal',
+    review: R4_REVIEW, draft: R4_DRAFT, removal: R4_REMOVAL },
+  { id: 15, stars: 2, listing: 'Distillery Loft', guest: 'Tyler', cls: 'E', age: '1d', ageLong: '1d ago', channel: 'Airbnb', status: 'removal',
+    review: "Hot tub was filthy and the lake was too cold to swim. Host should be ashamed.",
+    draft: "Hi Tyler, thank you for staying at the Distillery Loft. The loft is a downtown apartment without a hot tub or waterfront, so the details in this review appear to describe a different property, and we've asked Airbnb to take a look. Every stay here includes a same-day clean with a photo check before arrival.",
+    removal: { violation: 'Irrelevant', strength: 'Moderate', level: 2, note: 'Describes a different property.',
+      summary: "Guest Tyler (HMR8Q2LT, Distillery Loft, Sep 21–24) posted a 2-star review describing a hot tub and a lake. The Distillery Loft is a downtown Toronto apartment with neither amenity; the listing, photos and amenity list confirm this. The stay thread contains no reports of cleanliness or amenity issues, and turnover photos from 1:15 PM on arrival day show the unit ready. The review does not describe this stay or this listing, which falls under Airbnb's Reviews Policy on irrelevant content. Listing link and turnover photos are attached to the reservation.",
+      evidence: [
+        { t: 'Sep 21 1:15 PM', text: 'Turnover photos · unit ready' },
+        { t: 'Sep 21 4:00 PM', text: 'Check-in · no messages during stay' },
+        { t: 'Sep 24 11:00 AM', text: 'Checkout' },
+        { t: 'Sep 24 7:42 PM', text: '2★ review cites hot tub and lake' }
+      ] } }
+];
+const TABS = [['needs', 'Needs approval'], ['posted', 'Posted'], ['held', 'Held'], ['removal', 'Removals']];
+
+class Component extends DCLogic {
+  state = {
+    mTab: 'needs',
+    r2Draft: ITEMS[0].draft, r2Sign: null, r2Status: 'open',
+    r3Draft: R3_DRAFT, r3Sign: null, r3Status: 'open',
+    r4Draft: R4_DRAFT, r4Sign: null, r4Status: 'open', r4Filed: false, r4Outcome: 'Pending', r4Copied: false,
+    dTab: 'needs', dSel: 1, dRem: {}, dCopied: null, syncing: false, dStatus: {}, dDrafts: {}, dSign: null, toast: null
+  };
+  componentWillUnmount() { clearTimeout(this.t); clearTimeout(this.ct); clearTimeout(this.dct); clearTimeout(this.st); }
+  segs(tab, counts, set) {
+    return TABS.map(([k, label]) => ({
+      label, count: counts[k], showCount: k === 'needs' && counts[k] > 0,
+      flex: k === 'needs' ? '1.6 1 auto' : '1 1 auto',
+      bg: tab === k ? '#262626' : 'transparent', color: tab === k ? '#f5f5f5' : '#9a9590', weight: tab === k ? 700 : 500,
+      onClick: () => set(k)
+    }));
+  }
+  accents(i) { return { danger: i.status === 'removal' || i.stars <= 2, gold: i.status !== 'removal' && i.stars === 3 }; }
+  renderVals() {
+    const s = this.state;
+    const signDefault = this.props.signOffDefault ?? true;
+    const approveLabel = this.props.approveLabel ?? 'Approve & post';
+    const showClass = this.props.showClassLetter ?? true;
+    const track = on => on ? '#c4a35a' : '#2e2e2e';
+
+    // R1
+    const baseCounts = {}; TABS.forEach(([k]) => baseCounts[k] = ITEMS.filter(i => i.status === k).length);
+    const mRows = ITEMS.filter(i => i.status === s.mTab).map(i => ({ ...i, ...this.accents(i), onOpen: () => {} }));
+
+    // R2
+    const r2Sign = s.r2Sign ?? signDefault;
+    const r2Count = (s.r2Draft + (r2Sign ? SIGN : '')).length;
+
+    // R5
+    const dItems = ITEMS.map(i => ({ ...i, status: s.dStatus[i.id] ?? i.status }));
+    const dCounts = {}; TABS.forEach(([k]) => dCounts[k] = dItems.filter(i => i.status === k).length);
+    const list = dItems.filter(i => i.status === s.dTab);
+    const sel = list.find(i => i.id === s.dSel) || list[0] || null;
+    const dRows = list.map(i => ({
+      ...i, ...this.accents(i),
+      bg: sel && i.id === sel.id ? '#171717' : 'transparent',
+      edge: sel && i.id === sel.id ? 'inset 2px 0 0 #c4a35a' : 'none',
+      onOpen: () => this.setState({ dSel: i.id })
+    }));
+    const dSign = s.dSign ?? signDefault;
+    const dDraft = sel ? (s.dDrafts[sel.id] ?? sel.draft) : '';
+    const act = (status, verb) => {
+      if (!sel) return;
+      const idx = list.findIndex(i => i.id === sel.id);
+      const next = list[idx + 1] || list[idx - 1];
+      clearTimeout(this.t);
+      this.setState(st => ({
+        dStatus: { ...st.dStatus, [sel.id]: status },
+        dSel: next ? next.id : null,
+        toast: { id: sel.id, prev: sel.status, text: `${verb} · ${sel.guest}, ${sel.listing}` }
+      }));
+      this.t = setTimeout(() => this.setState({ toast: null }), 5000);
+    };
+    const isPosted = !!sel && sel.status === 'posted';
+
+    const r3Sign = s.r3Sign ?? signDefault;
+    const r4Sign = s.r4Sign ?? signDefault;
+    const rem = sel && sel.removal;
+    const rst = (sel && s.dRem[sel.id]) || { filed: false, outcome: 'Pending' };
+    const setRem = patch => sel && this.setState(st => ({ dRem: { ...st.dRem, [sel.id]: { ...rst, ...patch } } }));
+    const dCopiedNow = !!sel && s.dCopied === sel.id;
+    const packetText = R4_SUMMARY + '\n\n' + R4_EVIDENCE.map(e => `• ${e.t} — ${e.text}`).join('\n');
+
+    return {
+      r3Facts: factRows(R3_FACTS),
+      r3Draft: s.r3Draft, r3Words: words(s.r3Draft), r3Count: (s.r3Draft + (r3Sign ? SIGN : '')).length, r3Locked: s.r3Status !== 'open',
+      onR3Draft: e => this.setState({ r3Draft: e.target.value.slice(0, 1000) }),
+      r3SignTrack: track(r3Sign), r3SignAlign: r3Sign ? 'flex-end' : 'flex-start',
+      toggleR3Sign: () => this.setState({ r3Sign: !r3Sign }),
+      r3Open: s.r3Status === 'open', r3Posted: s.r3Status === 'posted', r3Held: s.r3Status === 'held',
+      r3Approve: () => this.setState({ r3Status: 'posted' }),
+      r3Hold: () => this.setState({ r3Status: 'held' }),
+      r3Undo: () => this.setState({ r3Status: 'open' }),
+
+      r4Draft: s.r4Draft, r4Count: (s.r4Draft + (r4Sign ? SIGN : '')).length, r4Locked: s.r4Status !== 'open',
+      onR4Draft: e => this.setState({ r4Draft: e.target.value.slice(0, 1000) }),
+      r4SignTrack: track(r4Sign), r4SignAlign: r4Sign ? 'flex-end' : 'flex-start',
+      toggleR4Sign: () => this.setState({ r4Sign: !r4Sign }),
+      r4Open: s.r4Status === 'open', r4Posted: s.r4Status === 'posted', r4Held: s.r4Status === 'held',
+      r4Approve: () => this.setState({ r4Status: 'posted' }),
+      r4Hold: () => this.setState({ r4Status: 'held' }),
+      r4Undo: () => this.setState({ r4Status: 'open' }),
+      r4Summary: R4_SUMMARY, r4Evidence: R4_EVIDENCE, r4PacketWords: words(R4_SUMMARY),
+      r4CopyLabel: s.r4Copied ? 'Copied' : 'Copy packet', r4CopyColor: s.r4Copied ? '#4ea882' : '#c4a35a',
+      r4Copy: () => {
+        try { navigator.clipboard && navigator.clipboard.writeText(packetText); } catch (e) {}
+        clearTimeout(this.ct);
+        this.setState({ r4Copied: true });
+        this.ct = setTimeout(() => this.setState({ r4Copied: false }), 2000);
+      },
+      r4ToggleFiled: () => this.setState({ r4Filed: !s.r4Filed }),
+      r4Tick: s.r4Filed ? '✓' : '', r4BoxBg: s.r4Filed ? '#c4a35a' : 'transparent', r4BoxBorder: s.r4Filed ? '#c4a35a' : 'rgba(255,255,255,0.25)',
+      r4FiledAt: s.r4Filed ? 'Sep 25 · 11:20 AM' : '',
+      r4OutcomeOpacity: s.r4Filed ? 1 : 0.4,
+      r4Outcomes: outcomes(s.r4Filed, s.r4Outcome, o => this.setState({ r4Outcome: o })),
+
+      syncing: s.syncing, refreshLabel: s.syncing ? 'Syncing…' : 'Refresh',
+      onRefresh: () => { clearTimeout(this.st); this.setState({ syncing: true }); this.st = setTimeout(() => this.setState({ syncing: false }), 1400); },
+      mEmpty: mRows.length === 0, mEmptyText: EMPTY[s.mTab],
+      dEmptyText: EMPTY[s.dTab],
+      dNoSelTitle: EMPTY[s.dTab], dNoSelSub: s.dTab === 'needs' ? 'New Airbnb reviews land here as guests post them.' : '',
+      dHasFacts: !!(sel && sel.facts), dFacts: sel && sel.facts ? factRows(sel.facts) : [],
+      dHasRemoval: !!rem, rem: rem ? { ...rem, words: words(rem.summary) } : { evidence: [] },
+      dRemBars: [1, 2, 3].map(n => ({ bg: rem && n <= rem.level ? '#cf7f7b' : '#2e2e2e' })),
+      dCopyLabel: dCopiedNow ? 'Copied' : 'Copy packet', dCopyColor: dCopiedNow ? '#4ea882' : '#c4a35a',
+      dCopy: () => {
+        if (!rem) return;
+        try { navigator.clipboard && navigator.clipboard.writeText(rem.summary + '\n\n' + rem.evidence.map(e => '• ' + e.t + ' — ' + e.text).join('\n')); } catch (e) {}
+        clearTimeout(this.dct); this.setState({ dCopied: sel.id });
+        this.dct = setTimeout(() => this.setState({ dCopied: null }), 2000);
+      },
+      dToggleFiled: () => setRem({ filed: !rst.filed }),
+      dTick: rst.filed ? '✓' : '', dBoxBg: rst.filed ? '#c4a35a' : 'transparent', dBoxBorder: rst.filed ? '#c4a35a' : 'rgba(255,255,255,0.25)',
+      dFiledAt: rst.filed ? 'Sep 25 · 11:20 AM' : '', dOutcomeOpacity: rst.filed ? 1 : 0.4,
+      dOutcomes: outcomes(rst.filed, rst.outcome, o => setRem({ outcome: o })),
+      dIsHeld: !!sel && sel.status === 'held',
+      dResume: () => act('needs', 'Resumed'),
+      showClass, approveLabel,
+      mSegments: this.segs(s.mTab, baseCounts, k => this.setState({ mTab: k })),
+      mRows,
+      r2Draft: s.r2Draft, r2Count, r2Locked: s.r2Status !== 'open',
+      onR2Draft: e => this.setState({ r2Draft: e.target.value.slice(0, 1000) }),
+      r2SignTrack: track(r2Sign), r2SignAlign: r2Sign ? 'flex-end' : 'flex-start',
+      toggleR2Sign: () => this.setState({ r2Sign: !r2Sign }),
+      r2Open: s.r2Status === 'open', r2Posted: s.r2Status === 'posted', r2Held: s.r2Status === 'held',
+      r2Approve: () => this.setState({ r2Status: 'posted' }),
+      r2Hold: () => this.setState({ r2Status: 'held' }),
+      r2Undo: () => this.setState({ r2Status: 'open' }),
+
+      dNeedsCount: dCounts.needs,
+      dSegments: this.segs(s.dTab, dCounts, k => this.setState({ dTab: k, dSel: null })),
+      dRows, dEmpty: list.length === 0,
+      dHasSel: !!sel, dNoSel: !sel,
+      sel: sel || {},
+      dDraft, dCount: (dDraft + (dSign ? SIGN : '')).length,
+      dLocked: isPosted, dIsPosted: isPosted, dActionable: !!sel && !isPosted && sel.status !== 'held',
+      dReplyHint: isPosted ? 'Posted · read-only' : sel && sel.status === 'held' ? 'On hold · editable' : 'Editable',
+      onDDraft: e => sel && this.setState({ dDrafts: { ...s.dDrafts, [sel.id]: e.target.value.slice(0, 1000) } }),
+      dSignTrack: track(dSign), dSignAlign: dSign ? 'flex-end' : 'flex-start',
+      toggleDSign: () => this.setState({ dSign: !dSign }),
+      dApprove: () => act('posted', 'Posted'),
+      dHold: () => act('held', 'Held'),
+      dToast: !!s.toast, dToastText: s.toast ? s.toast.text : '',
+      dUndo: () => {
+        const t = s.toast; if (!t) return;
+        clearTimeout(this.t);
+        this.setState(st => ({ dStatus: { ...st.dStatus, [t.id]: t.prev }, dTab: t.prev, dSel: t.id, toast: null }));
+      }
+    };
+  }
+}
+</script>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0a0a0a"/><text x="50" y="63" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="36" font-weight="700" fill="#c4a35a">R</text></svg></template>
+</body>
+</html>
