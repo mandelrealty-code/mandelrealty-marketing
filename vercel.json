@@ -101,7 +101,24 @@
     },
     {
       "source": "/((?!api/|revenueaudit(?:/|$)|robots\\.txt|admin-robots\\.txt|sitemap\\.xml|.*\\..*).*)",
+      "has": [{ "type": "host", "value": "admin.mandelrealtygroup.com" }],
       "destination": "/index.html"
-    }
+    },
+    { "source": "/thank-you", "destination": "/index.html" },
+    { "source": "/privacy", "destination": "/index.html" },
+    { "source": "/book-a-call", "destination": "/index.html" },
+    { "source": "/get-estimate", "destination": "/index.html" },
+    { "source": "/muskoka", "destination": "/index.html" },
+    { "source": "/makeover", "destination": "/index.html" },
+    { "source": "/full-service", "destination": "/index.html" },
+    { "source": "/growth", "destination": "/index.html" },
+    { "source": "/essentials", "destination": "/index.html" },
+    { "source": "/furniture", "destination": "/index.html" },
+    { "source": "/owner", "destination": "/index.html" },
+    { "source": "/owner/:path*", "destination": "/index.html" },
+    { "source": "/team", "destination": "/index.html" },
+    { "source": "/team/:path*", "destination": "/index.html" },
+    { "source": "/sop", "destination": "/index.html" },
+    { "source": "/sop/:path*", "destination": "/index.html" }
   ]
 }

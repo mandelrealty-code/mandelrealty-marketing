@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { useScrollToHash } from "../hooks/useScrollToHash";
 import { setPageSeo } from "../lib/pageSeo";
 import { MANAGEMENT_HUB_HTML } from "./managementHubContent";
 import "./management-hub.css";
@@ -11,6 +12,8 @@ import "./management-hub.css";
  * and user-provided Airbnb / Vrbo / Expedia / Booking.com / Peerspace logos.
  */
 export function ManagementHubPage() {
+  useScrollToHash();
+
   useEffect(() => {
     setPageSeo({
       title: "Mandel Realty Group | Short-Term Rental Management · Canada & U.S.",
@@ -18,13 +21,6 @@ export function ManagementHubPage() {
         "Short-term rental management by Mandel Realty Group. Full Service, Growth, Essentials, Furniture Investment, and Muskoka cottage ops. Book a free 15-minute call.",
       path: "/",
     });
-
-    const hash = window.location.hash.replace(/^#/, "");
-    if (hash) {
-      requestAnimationFrame(() => {
-        document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
 
     const root = document.querySelector(".mrg-hub");
     if (!root) return;

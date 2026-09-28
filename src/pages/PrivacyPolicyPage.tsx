@@ -1,15 +1,14 @@
 import { useEffect, type ReactNode } from "react";
-import { Footer } from "../components/Footer";
-import { Header } from "../components/Header";
-import { EMAIL, EMAIL_HREF, PHONE, PHONE_HREF } from "../lib/constants";
+import { MarketingFooter, MarketingHeader } from "../components/MarketingChrome";
+import { EMAIL, EMAIL_HREF, PHONE_DISPLAY, PHONE_HREF } from "../lib/constants";
 
 const LAST_UPDATED = "September 1, 2026";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-3">
-      <h2 className="font-display text-xl text-mrg-text sm:text-2xl">{title}</h2>
-      <div className="space-y-3 text-[15px] leading-relaxed text-mrg-muted">{children}</div>
+      <h2 className="text-xl font-extrabold tracking-tight text-[#222222] sm:text-2xl">{title}</h2>
+      <div className="space-y-3 text-[15px] leading-relaxed text-[#5e5e5e]">{children}</div>
     </section>
   );
 }
@@ -22,14 +21,19 @@ export function PrivacyPolicyPage() {
   }, []);
 
   return (
-    <div className="min-h-dvh bg-mrg-bg text-mrg-text">
-      <Header />
+    <div
+      className="min-h-dvh bg-white text-[#222222]"
+      style={{ fontFamily: '"Plus Jakarta Sans", "Helvetica Neue", Helvetica, Arial, sans-serif' }}
+    >
+      <MarketingHeader />
       <main className="mx-auto max-w-3xl px-5 py-12 sm:py-16">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-mrg-gold">
+        <p className="text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-[#8a6f2e]">
           Legal
         </p>
-        <h1 className="mt-3 font-display text-3xl text-mrg-text sm:text-4xl">Privacy Policy</h1>
-        <p className="mt-3 text-sm text-mrg-muted">Last updated: {LAST_UPDATED}</p>
+        <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.04em] text-[#222222] sm:text-4xl">
+          Privacy Policy
+        </h1>
+        <p className="mt-3 text-sm font-medium text-[#717171]">Last updated: {LAST_UPDATED}</p>
 
         <div className="mt-10 space-y-10">
           <Section title="Overview">
@@ -37,7 +41,7 @@ export function PrivacyPolicyPage() {
               Mandel Realty Group (&ldquo;MRG,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or
               &ldquo;our&rdquo;) respects your privacy. This policy explains what personal
               information we collect, how we use it, and the choices you have when you visit{" "}
-              <a href="https://www.mandelrealtygroup.com" className="text-mrg-gold hover:text-mrg-gold-light">
+              <a href="https://www.mandelrealtygroup.com" className="text-[#8a6f2e] hover:text-[#222222]">
                 mandelrealtygroup.com
               </a>
               , submit a form on our website, respond to our ads, or communicate with us about
@@ -49,29 +53,29 @@ export function PrivacyPolicyPage() {
             <p>Depending on how you interact with us, we may collect:</p>
             <ul className="list-disc space-y-2 pl-5">
               <li>
-                <strong className="text-mrg-text">Contact details</strong> — name, email address,
+                <strong className="text-[#222222]">Contact details</strong> — name, email address,
                 and phone number.
               </li>
               <li>
-                <strong className="text-mrg-text">Property and listing information</strong> —
+                <strong className="text-[#222222]">Property and listing information</strong> —
                 property address, Airbnb listing link or title, earnings estimates, and answers
                 you provide about your listing status or goals.
               </li>
               <li>
-                <strong className="text-mrg-text">Booking preferences</strong> — preferred call
+                <strong className="text-[#222222]">Booking preferences</strong> — preferred call
                 times and scheduling details when you book a consultation.
               </li>
               <li>
-                <strong className="text-mrg-text">Communications</strong> — messages you send us by
+                <strong className="text-[#222222]">Communications</strong> — messages you send us by
                 email, phone, text, or WhatsApp, and our replies.
               </li>
               <li>
-                <strong className="text-mrg-text">Client and host records</strong> — if you become
+                <strong className="text-[#222222]">Client and host records</strong> — if you become
                 a client, we also keep business records needed to manage your property, including
                 payout and operational information.
               </li>
               <li>
-                <strong className="text-mrg-text">Usage and device data</strong> — pages viewed,
+                <strong className="text-[#222222]">Usage and device data</strong> — pages viewed,
                 referral source, browser type, IP address, and similar technical data collected
                 through cookies, pixels, and analytics tools.
               </li>
@@ -111,11 +115,11 @@ export function PrivacyPolicyPage() {
             </p>
             <ul className="list-disc space-y-2 pl-5">
               <li>
-                <strong className="text-mrg-text">Meta (Facebook) Pixel</strong> — to measure ad
+                <strong className="text-[#222222]">Meta (Facebook) Pixel</strong> — to measure ad
                 performance and understand visits and lead conversions from Meta ads.
               </li>
               <li>
-                <strong className="text-mrg-text">Google Ads / Google tag</strong> — to measure
+                <strong className="text-[#222222]">Google Ads / Google tag</strong> — to measure
                 conversions and campaign performance.
               </li>
             </ul>
@@ -196,25 +200,25 @@ export function PrivacyPolicyPage() {
             </p>
             <ul className="list-none space-y-2 pl-0">
               <li>
-                <strong className="text-mrg-text">Mandel Realty Group</strong>
+                <strong className="text-[#222222]">Mandel Realty Group</strong>
               </li>
               <li>
                 Email:{" "}
-                <a href={EMAIL_HREF} className="text-mrg-gold hover:text-mrg-gold-light">
+                <a href={EMAIL_HREF} className="text-[#8a6f2e] hover:text-[#222222]">
                   {EMAIL}
                 </a>
               </li>
               <li>
                 Phone:{" "}
-                <a href={PHONE_HREF} className="text-mrg-gold hover:text-mrg-gold-light">
-                  {PHONE}
+                <a href={PHONE_HREF} className="text-[#8a6f2e] hover:text-[#222222]">
+                  {PHONE_DISPLAY}
                 </a>
               </li>
               <li>
                 Website:{" "}
                 <a
                   href="https://www.mandelrealtygroup.com"
-                  className="text-mrg-gold hover:text-mrg-gold-light"
+                  className="text-[#8a6f2e] hover:text-[#222222]"
                 >
                   www.mandelrealtygroup.com
                 </a>
@@ -223,7 +227,7 @@ export function PrivacyPolicyPage() {
           </Section>
         </div>
       </main>
-      <Footer />
+      <MarketingFooter />
     </div>
   );
 }

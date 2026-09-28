@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { MarketingFooter } from "../components/MarketingChrome";
+import { useScrollToHash } from "../hooks/useScrollToHash";
 import {
   CONTACT_CONSENT_ERROR,
   EARNINGS_SUMMARY,
   FIT_CHECK_HANDOFF_KEY,
-  PHONE,
+  PHONE_DISPLAY,
   PHONE_HREF,
   TESTIMONIALS,
   WHATSAPP_HREF,
@@ -77,6 +79,7 @@ const trustQuote = TESTIMONIALS[0];
  * Visual language from Claude Design `docs/MRG-Book-A-Call.dc.html`.
  */
 export function AdsLandingPage() {
+  useScrollToHash();
   const [stage, setStage] = useState<Stage>("interest");
   const [interestedPlan, setInterestedPlan] = useState<BookCallPlanId | null>(null);
   const [hasListing, setHasListing] = useState<"yes" | "no" | null>(null);
@@ -301,18 +304,21 @@ export function AdsLandingPage() {
               className="block h-10 w-auto sm:h-11"
             />
           </a>
-          <nav className="hidden items-center gap-1 text-[14.5px] font-semibold sm:flex">
-            <a
-              href="/#plans"
-              className="rounded-full px-3 py-2 text-[#5e5e5e] transition-colors hover:text-[#222222]"
-            >
-              Plans
+          <nav className="flex flex-wrap items-center gap-1 text-[14.5px] font-semibold">
+            <a href="/#how" className="rounded-full px-3 py-2 text-[#5e5e5e] hover:text-[#222222]">
+              How it works
             </a>
-            <a
-              href="/revenueaudit/"
-              className="rounded-full px-3 py-2 text-[#5e5e5e] transition-colors hover:text-[#222222]"
-            >
-              Revenue audit
+            <a href="/#proof" className="rounded-full px-3 py-2 text-[#5e5e5e] hover:text-[#222222]">
+              Proof
+            </a>
+            <a href="/#faq" className="rounded-full px-3 py-2 text-[#5e5e5e] hover:text-[#222222]">
+              FAQ
+            </a>
+            <a href="/#fit" className="rounded-full px-3 py-2 text-[#5e5e5e] hover:text-[#222222]">
+              Who it fits
+            </a>
+            <a href="/#plans" className="rounded-full px-3 py-2 text-[#5e5e5e] hover:text-[#222222]">
+              Plans
             </a>
           </nav>
           <div className="flex items-center gap-2.5">
@@ -320,7 +326,7 @@ export function AdsLandingPage() {
               href={PHONE_HREF}
               className="whitespace-nowrap rounded-full border border-[#dddddd] px-3.5 py-2 text-sm font-bold text-[#222222] transition-colors hover:border-[#222222] sm:px-4"
             >
-              {PHONE}
+              {PHONE_DISPLAY}
             </a>
             <span className="hidden whitespace-nowrap rounded-full border border-[#ecdfc2] bg-[#f7f2e6] px-4 py-2 text-sm font-bold text-[#8a6f2e] sm:inline">
               Book a call
@@ -339,7 +345,7 @@ export function AdsLandingPage() {
               Book a call. We will show you the fit.
             </h1>
             <p className="max-w-[40ch] text-[17px] font-medium leading-[1.55] text-[#5e5e5e]">
-              Short call. Toronto based, working across Canada and the U.S. No pressure, no
+              Short call. Toronto-based, working across Canada and the U.S. No pressure, no
               obligation.
             </p>
 
@@ -354,7 +360,7 @@ export function AdsLandingPage() {
                   href={PHONE_HREF}
                   className="rounded-full border border-[#dddddd] px-4 py-2.5 text-sm font-bold text-[#222222] transition-colors hover:border-[#222222]"
                 >
-                  {PHONE}
+                  {PHONE_DISPLAY}
                 </a>
                 <a
                   href={WHATSAPP_HREF}
@@ -815,7 +821,7 @@ export function AdsLandingPage() {
             <p className="mt-4 text-center text-xs text-[#717171] lg:hidden">
               Or call{" "}
               <a href={PHONE_HREF} className="font-bold text-[#8a6f2e]">
-                {PHONE}
+                {PHONE_DISPLAY}
               </a>
               {" · "}
               <a
@@ -833,9 +839,7 @@ export function AdsLandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-[#ebebeb] px-5 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] text-center text-xs text-[#717171]">
-        © {new Date().getFullYear()} Mandel Realty Group · Toronto · Canada &amp; U.S.
-      </footer>
+      <MarketingFooter bookHref="/book-a-call" />
     </div>
   );
 }

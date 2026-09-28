@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { useScrollToHash } from "../hooks/useScrollToHash";
 import { setPageSeo } from "../lib/pageSeo";
 import { MUSKOKA_HTML } from "./muskokaContent";
 import "./muskoka.css";
@@ -10,20 +11,16 @@ import "./muskoka.css";
  * FAQ: native details; proof chart in gold (hub accent).
  */
 export function MuskokaPage() {
+  useScrollToHash();
+
   useEffect(() => {
     setPageSeo({
       title: "Muskoka Cottage Management | Mandel Realty Group",
       description:
-        "Muskoka cottage and short-term rental management by Mandel Realty Group. Dynamic pricing, turnovers, and 5-star guest ops for Bracebridge, Gravenhurst, Huntsville, Lake of Bays and Port Carling. Call (647) 381-7325.",
+        "Now accepting Muskoka cottages. Founding-client management from Mandel Realty Group for Bracebridge, Gravenhurst, Huntsville, Lake of Bays and Port Carling. Call (647) 381-7325.",
       path: "/muskoka",
     });
 
-    const hash = window.location.hash.replace(/^#/, "");
-    if (hash) {
-      requestAnimationFrame(() => {
-        document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
   }, []);
 
   // Mount after HTML is in the DOM. Depend on MUSKOKA_HTML so HMR content

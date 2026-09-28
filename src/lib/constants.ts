@@ -1,4 +1,5 @@
 export const PHONE = "647-381-7325";
+export const PHONE_DISPLAY = "(647) 381-7325";
 export const PHONE_HREF = "tel:+16473817325";
 export const WHATSAPP_HREF = "https://wa.me/16473817325";
 export const EMAIL = "info@mandelrealtygroup.com";

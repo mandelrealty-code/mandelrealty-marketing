@@ -1,11 +1,12 @@
-import { PHONE, PHONE_HREF } from "../lib/constants";
+import { PHONE_DISPLAY, PHONE_HREF } from "../lib/constants";
 
 const FOOTER_LINKS = [
-  { href: "/#how", label: "About Us" },
+  { href: "/#how", label: "How it works" },
+  { href: "/#proof", label: "Proof" },
+  { href: "/#fit", label: "Who it fits" },
   { href: "/#faq", label: "FAQ" },
-  { href: "/book-a-call", label: "Get Estimate" },
-  { href: "/#pricing", label: "Pricing" },
-  { href: "/privacy", label: "Privacy Policy" },
+  { href: "/book-a-call", label: "Book a call" },
+  { href: "/privacy", label: "Privacy" },
 ] as const;
 
 export function Footer() {
@@ -19,7 +20,7 @@ export function Footer() {
           </span>
         </a>
         <p className="max-w-md text-sm text-mrg-muted">
-          Hands-on &amp; virtual Airbnb &amp; short-term rental management · Canada &amp; the U.S.
+          Virtual is not distant. Toronto-based, serving Canada and the U.S.
         </p>
         <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-mrg-muted">
           {FOOTER_LINKS.map((link) => (
@@ -30,7 +31,7 @@ export function Footer() {
         </nav>
         <div className="space-y-1 text-sm text-mrg-muted">
           <a href={PHONE_HREF} className="block font-semibold text-mrg-gold hover:text-mrg-gold-light">
-            {PHONE}
+            {PHONE_DISPLAY}
           </a>
           <p>© {new Date().getFullYear()} Mandel Realty Group</p>
         </div>

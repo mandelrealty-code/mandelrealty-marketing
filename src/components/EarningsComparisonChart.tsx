@@ -120,14 +120,22 @@ export function EarningsComparisonChart({
         <p className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${t.muted}`}>
           {EARNINGS_SUMMARY.note}
         </p>
-        <div className={`flex items-center gap-4 text-xs ${t.muted}`}>
+        <div className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs ${t.muted}`}>
           <span className="inline-flex items-center gap-1.5">
             <span className={`h-2 w-2 rounded-sm ${t.legend2025}`} aria-hidden />
             2025
           </span>
           <span className="inline-flex items-center gap-1.5">
+            <span
+              className="h-2 w-2 rounded-sm"
+              style={{ background: t.bar2026Pre }}
+              aria-hidden
+            />
+            2026 before MRG
+          </span>
+          <span className="inline-flex items-center gap-1.5">
             <span className={`h-2 w-2 rounded-sm ${t.legend2026}`} aria-hidden />
-            2026 · MRG from {EARNINGS_SUMMARY.mrgStart}
+            2026 with MRG, from {EARNINGS_SUMMARY.mrgStart}
           </span>
         </div>
       </div>

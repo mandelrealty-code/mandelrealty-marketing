@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { useScrollToHash } from "../hooks/useScrollToHash";
 import { setPageSeo } from "../lib/pageSeo";
 import { FULL_SERVICE_HTML } from "./fullServiceContent";
 import "./full-service.css";
@@ -10,6 +11,8 @@ import "./full-service.css";
  * Plans dropdown uses CSS hover + touch toggle; FAQ uses native details.
  */
 export function FullServicePage() {
+  useScrollToHash();
+
   useEffect(() => {
     setPageSeo({
       title: "Full Service Management | Mandel Realty Group",
@@ -18,13 +21,6 @@ export function FullServicePage() {
       path: "/full-service",
     });
 
-    const hash = window.location.hash.replace(/^#/, "");
-    if (hash) {
-      requestAnimationFrame(() => {
-        document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-
     const root = document.querySelector(".mrg-fs");
     if (!root) return;
 
@@ -32,7 +28,7 @@ export function FullServicePage() {
     let chartRoot: Root | null = null;
     if (chartMount) {
       chartRoot = createRoot(chartMount);
-      chartRoot.render(<HubProofEarnings accent="blue" />);
+      chartRoot.render(<HubProofEarnings />);
     }
 
     const plans = root.querySelector(".mrg-fs-plans") as HTMLElement | null;

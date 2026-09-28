@@ -1,3 +1,4 @@
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { ThankYouPage } from "./pages/ThankYouPage";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { AdsLandingPage } from "./pages/AdsLandingPage";
@@ -115,5 +116,9 @@ export default function App() {
     return <PlanStubPage planId={planId} />;
   }
 
-  return <ManagementHubPage />;
+  if (path === "/") {
+    return <ManagementHubPage />;
+  }
+
+  return <NotFoundPage />;
 }

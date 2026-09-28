@@ -37,6 +37,16 @@
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: 88px;
+}
+
+.mrg-hub section[id],
+.mrg-fs section[id],
+.mrg-gr section[id],
+.mrg-es section[id],
+.mrg-fu section[id],
+.mrg-mu section[id] {
+  scroll-margin-top: 88px;
 }
 
 body {

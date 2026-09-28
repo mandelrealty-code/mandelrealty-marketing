@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { useScrollToHash } from "../hooks/useScrollToHash";
 import { setPageSeo } from "../lib/pageSeo";
 import { FURNITURE_HTML } from "./furnitureContent";
 import "./furniture.css";
@@ -10,6 +11,8 @@ import "./furniture.css";
  * Plans dropdown: CSS hover + touch toggle; FAQ: native details; proof chart in yellow.
  */
 export function FurniturePage() {
+  useScrollToHash();
+
   useEffect(() => {
     setPageSeo({
       title: "Furniture Investment | Mandel Realty Group",
@@ -18,13 +21,6 @@ export function FurniturePage() {
       path: "/furniture",
     });
 
-    const hash = window.location.hash.replace(/^#/, "");
-    if (hash) {
-      requestAnimationFrame(() => {
-        document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-
     const root = document.querySelector(".mrg-fu");
     if (!root) return;
 
@@ -32,7 +28,7 @@ export function FurniturePage() {
     let chartRoot: Root | null = null;
     if (chartMount) {
       chartRoot = createRoot(chartMount);
-      chartRoot.render(<HubProofEarnings accent="yellow" />);
+      chartRoot.render(<HubProofEarnings />);
     }
 
     const plans = root.querySelector(".mrg-fu-plans") as HTMLElement | null;

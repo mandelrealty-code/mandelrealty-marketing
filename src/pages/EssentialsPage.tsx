@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { useScrollToHash } from "../hooks/useScrollToHash";
 import { setPageSeo } from "../lib/pageSeo";
 import { ESSENTIALS_HTML } from "./essentialsContent";
 import "./essentials.css";
@@ -10,6 +11,8 @@ import "./essentials.css";
  * Plans dropdown: CSS hover + touch toggle; FAQ: native details; proof chart in orange.
  */
 export function EssentialsPage() {
+  useScrollToHash();
+
   useEffect(() => {
     setPageSeo({
       title: "Managed Essentials | Mandel Realty Group",
@@ -18,13 +21,6 @@ export function EssentialsPage() {
       path: "/essentials",
     });
 
-    const hash = window.location.hash.replace(/^#/, "");
-    if (hash) {
-      requestAnimationFrame(() => {
-        document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-
     const root = document.querySelector(".mrg-es");
     if (!root) return;
 
@@ -32,7 +28,7 @@ export function EssentialsPage() {
     let chartRoot: Root | null = null;
     if (chartMount) {
       chartRoot = createRoot(chartMount);
-      chartRoot.render(<HubProofEarnings accent="orange" />);
+      chartRoot.render(<HubProofEarnings />);
     }
 
     const plans = root.querySelector(".mrg-es-plans") as HTMLElement | null;

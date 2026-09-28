@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HubProofEarnings } from "../components/HubProofEarnings";
+import { useScrollToHash } from "../hooks/useScrollToHash";
 import { setPageSeo } from "../lib/pageSeo";
 import { GROWTH_HTML } from "./growthContent";
 import "./growth.css";
@@ -10,6 +11,8 @@ import "./growth.css";
  * Plans dropdown: CSS hover + touch toggle; FAQ: native details; proof chart in green.
  */
 export function GrowthPage() {
+  useScrollToHash();
+
   useEffect(() => {
     setPageSeo({
       title: "Growth Partnership | Mandel Realty Group",
@@ -18,13 +21,6 @@ export function GrowthPage() {
       path: "/growth",
     });
 
-    const hash = window.location.hash.replace(/^#/, "");
-    if (hash) {
-      requestAnimationFrame(() => {
-        document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-
     const root = document.querySelector(".mrg-gr");
     if (!root) return;
 
@@ -32,7 +28,7 @@ export function GrowthPage() {
     let chartRoot: Root | null = null;
     if (chartMount) {
       chartRoot = createRoot(chartMount);
-      chartRoot.render(<HubProofEarnings accent="green" />);
+      chartRoot.render(<HubProofEarnings />);
     }
 
     const plans = root.querySelector(".mrg-gr-plans") as HTMLElement | null;

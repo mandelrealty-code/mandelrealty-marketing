@@ -71,7 +71,7 @@ const PLANS: Record<PlanStubId, PlanStub> = {
     badge: "Furniture",
     name: "Furniture Investment",
     color: "#F5C518",
-    who: "For an empty or dated unit that needs to be guest ready.",
+    who: "For an empty or dated unit that needs to be guest-ready.",
     fee: "$0 upfront furnish if approved. Pairs only with Standard 20% or Full Service 25%.",
     bullets: [
       "In-house design team furnishes furniture, décor, and styling",

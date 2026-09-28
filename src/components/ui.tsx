@@ -52,7 +52,7 @@ export function WhatsAppButton({
 export function CallButton({
   className = "",
   size = "default",
-  label = "Call Now",
+  label = "Call now",
   variant = "primary",
 }: {
   className?: string;
