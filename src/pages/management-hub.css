@@ -232,32 +232,41 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
   }
 }
 
-/* Mobile header / nav */
+/* Mobile header / nav — wrap so Plans stays fully on screen */
 @media (max-width: 820px) {
   .mrg-hub header > div {
-    row-gap: 10px;
+    row-gap: 8px;
   }
   .mrg-hub header nav {
     width: 100%;
+    min-width: 0;
     order: 3;
     justify-content: flex-start;
-    overflow-x: auto;
-    overflow-y: visible;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
-    flex-wrap: nowrap !important;
-  }
-  .mrg-hub header:has(.mrg-plans.is-open) nav {
     overflow: visible;
+    flex-wrap: wrap !important;
+    row-gap: 0;
   }
   .mrg-hub header nav a,
-  .mrg-hub header nav summary {
+  .mrg-hub header nav summary,
+  .mrg-hub header nav button {
     white-space: nowrap;
   }
+  .mrg-plans {
+    position: static;
+  }
   .mrg-plans-panel {
-    left: 0;
-    right: auto;
-    width: min(344px, calc(100vw - 40px));
+    left: 16px;
+    right: 16px;
+    width: auto;
+    top: calc(100% + 8px);
+    padding-top: 8px;
+    background: #ffffff;
+    border: 1px solid #ebebeb;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+  .mrg-plans-panel::before {
+    display: none;
   }
   .mrg-hub section[id="plans"] {
     margin-left: 12px !important;
@@ -267,6 +276,18 @@ html, body { margin: 0; padding: 0; background: #ffffff; }
   }
   .mrg-hero-media {
     min-height: min(62vw, 420px);
+  }
+}
+
+/* Phone: two even rows so the last item is not clipped */
+@media (max-width: 540px) {
+  .mrg-hub header nav {
+    display: grid !important;
+    grid-template-columns: repeat(3, max-content);
+    justify-content: start;
+    align-items: center;
+    column-gap: 0;
+    row-gap: 0;
   }
 }
 

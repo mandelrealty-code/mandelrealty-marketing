@@ -272,22 +272,12 @@
 
   .mrg-fs-header nav {
     width: 100%;
+    min-width: 0;
     order: 3;
     justify-content: flex-start;
-    overflow-x: auto;
-    overflow-y: visible;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 2px;
-    flex-wrap: nowrap !important;
-    scrollbar-width: none;
-  }
-
-  .mrg-fs-header:has(.mrg-fs-plans.is-open) nav {
     overflow: visible;
-  }
-
-  .mrg-fs-header nav::-webkit-scrollbar {
-    display: none;
+    flex-wrap: wrap !important;
+    row-gap: 0;
   }
 
   .mrg-fs-header nav a,
@@ -295,10 +285,34 @@
     white-space: nowrap;
   }
 
+  .mrg-fs-plans {
+    position: static;
+  }
+
   .mrg-fs-plans-panel {
-    left: 0;
-    right: auto;
-    width: min(344px, calc(100vw - 40px));
+    left: 16px;
+    right: 16px;
+    width: auto;
+    top: calc(100% + 8px);
+    padding-top: 8px;
+    background: #ffffff;
+    border: 1px solid #ebebeb;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+  .mrg-fs-plans-panel::before {
+    display: none;
+  }
+}
+
+@media (max-width: 540px) {
+  .mrg-fs-header nav {
+    display: grid !important;
+    grid-template-columns: repeat(3, max-content);
+    justify-content: start;
+    align-items: center;
+    column-gap: 0;
+    row-gap: 0;
   }
 }
 

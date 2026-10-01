@@ -263,28 +263,12 @@
 
   .mrg-fu-header nav {
     width: 100%;
+    min-width: 0;
     order: 3;
     justify-content: flex-start;
-    overflow-x: auto;
-    overflow-y: visible;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 2px;
-    flex-wrap: nowrap !important;
-    scrollbar-width: none;
-  }
-
-  .mrg-fu-header:has(.mrg-fu-plans.is-open) nav {
     overflow: visible;
-  }
-
-  .mrg-fu-plans-panel {
-    left: 0;
-    right: auto;
-    width: min(344px, calc(100vw - 40px));
-  }
-
-  .mrg-fu-header nav::-webkit-scrollbar {
-    display: none;
+    flex-wrap: wrap !important;
+    row-gap: 0;
   }
 
   .mrg-fu-header nav a,
@@ -292,8 +276,38 @@
     white-space: nowrap;
   }
 
+  .mrg-fu-plans {
+    position: static;
+  }
+
+  .mrg-fu-plans-panel {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    top: calc(100% + 8px);
+    padding-top: 8px;
+    background: #ffffff;
+    border: 1px solid #ebebeb;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+  .mrg-fu-plans-panel::before {
+    display: none;
+  }
+
   #how [style*="repeat(4"] {
     grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+@media (max-width: 540px) {
+  .mrg-fu-header nav {
+    display: grid !important;
+    grid-template-columns: repeat(3, max-content);
+    justify-content: start;
+    align-items: center;
+    column-gap: 0;
+    row-gap: 0;
   }
 }
 
