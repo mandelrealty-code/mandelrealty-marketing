@@ -335,6 +335,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   });
   const [boot, setBoot] = useState<Boot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [connectHint, setConnectHint] = useState<Record<string, boolean>>({});
   const [screen, setScreen] = useState<Screen>("brief");
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
@@ -1211,9 +1212,23 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                               {row.detail ? <div className="desc">{row.detail}</div> : null}
                               <div className={row.status === "connected" ? "ok" : "off"}>{row.statusLabel}</div>
                               {row.note ? <div className="note">{row.note}</div> : null}
+                              {connectHint[row.id] ? (
+                                <div className="note">
+                                  {row.id === "gmail"
+                                    ? "Gmail sign-in isn't set up yet. Nothing was connected."
+                                    : "WhatsApp linking isn't set up yet. Nothing was connected."}
+                                </div>
+                              ) : null}
                             </div>
                             {(row.id === "gmail" || row.id === "whatsapp") && row.status !== "connected" ? (
-                              <button type="button" className="cp-gold" style={{ height: 36, padding: "0 18px" }}>Connect</button>
+                              <button
+                                type="button"
+                                className="cp-gold"
+                                style={{ height: 36, padding: "0 18px" }}
+                                onClick={() => setConnectHint((prev) => ({ ...prev, [row.id]: true }))}
+                              >
+                                Connect
+                              </button>
                             ) : null}
                             {row.id === "hospitable" ? (
                               <button type="button" className="cp-linkish" onClick={() => onModeChange("ops")}>Open OPS Settings</button>

@@ -95,7 +95,6 @@ async function connectors(): Promise<ConnectorRow[]> {
       detail: "Host groups only.",
       status: "not_connected",
       statusLabel: "Not connected",
-      note: "Family chats are never saved.",
     },
     {
       id: "cursor",
@@ -103,7 +102,7 @@ async function connectors(): Promise<ConnectorRow[]> {
       detail: "Team keys.",
       status: cursor ? "connected" : "not_connected",
       statusLabel: cursor ? "Team keys are set" : "Not connected",
-      note: "Usage shows in the chat list.",
+      note: cursor ? "Usage shows in the chat list." : "The team key is not set on the server.",
     },
   ];
 }
