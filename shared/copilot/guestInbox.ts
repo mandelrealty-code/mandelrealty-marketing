@@ -85,17 +85,26 @@ async function inParallel<T>(items: T[], deadline: number, work: (item: T) => Pr
   return done;
 }
 
-export async function readGuestInbox(checklist: string[], now = new Date()): Promise<GuestInboxResult> {
-  const started = Date.now();
+export type UpcomingStay = {
+  reservationId: string;
+  guest: string;
+  unit: string;
+  platform: string;
+  status: string;
+  checkIn: string | null;
+  checkOut: string | null;
+};
+
+async function upcoming(daysAhead: number, now: Date) {
   const pat = await getHospitablePat();
-  if (!pat) throw new Error("Hospitable is not connected, so no messages were read.");
+  if (!pat) throw new Error("Hospitable is not connected, so nothing was read.");
 
   const properties = (await listPmProperties()).filter((p) => p.hospitable_property_id);
-  if (!properties.length) throw new Error("No properties are linked to Hospitable, so no messages were read.");
+  if (!properties.length) throw new Error("No properties are linked to Hospitable, so nothing was read.");
   const unitFor = new Map(properties.map((p) => [p.hospitable_property_id, p.name]));
 
   const today = torontoToday(now);
-  const horizon = addDays(today, LOOKAHEAD_DAYS);
+  const horizon = addDays(today, daysAhead);
   // Hospitable filters this list by checkout, so look a little past the horizon for longer stays.
   const reservations = await listHospitableReservations({
     pat,
@@ -107,6 +116,38 @@ export async function readGuestInbox(checklist: string[], now = new Date()): Pro
   const stays = reservations.filter(
     (r) => !DEAD.test(r.status) && r.check_in && r.check_in <= horizon && (!r.check_out || r.check_out >= today),
   );
+  return { pat, stays, unitFor, today };
+}
+
+/** Stays checked in now or arriving within `daysAhead` days. Read only. */
+export async function listStays(daysAhead = LOOKAHEAD_DAYS, now = new Date()): Promise<UpcomingStay[]> {
+  const { stays, unitFor } = await upcoming(Math.min(Math.max(daysAhead, 0), 60), now);
+  return stays
+    .map((stay) => ({
+      reservationId: stay.id,
+      guest: guestName(stay.raw),
+      unit: unitFor.get(stay.property_id) || "a unit",
+      platform: stay.platform,
+      status: stay.status,
+      checkIn: stay.check_in,
+      checkOut: stay.check_out,
+    }))
+    .sort((a, b) => String(a.checkIn ?? "").localeCompare(String(b.checkIn ?? "")));
+}
+
+/** One reservation's thread, oldest first. Read only. */
+export async function readThread(reservationId: string): Promise<{ from: string; at: string | null; body: string }[]> {
+  const pat = await getHospitablePat();
+  if (!pat) throw new Error("Hospitable is not connected, so nothing was read.");
+  const messages = await listReservationMessages(pat, reservationId);
+  return messages
+    .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")))
+    .map((m) => ({ from: m.sender_role, at: m.created_at, body: m.body }));
+}
+
+export async function readGuestInbox(checklist: string[], now = new Date()): Promise<GuestInboxResult> {
+  const started = Date.now();
+  const { pat, stays, unitFor } = await upcoming(LOOKAHEAD_DAYS, now);
 
   const checks = checklist
     .map((item) => ({ item, test: checkFor(item) }))

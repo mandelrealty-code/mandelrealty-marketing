@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../supabase.js";
-import type { CopilotChat, CopilotDraft, CopilotJob, CopilotMessage, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, GuestInboxResult, JobKind } from "./types.js";
+import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, SkillRunResult } from "./types.js";
 
 type FileShape = {
   chats: CopilotChat[];
@@ -13,7 +13,6 @@ type FileShape = {
   dismissals: { id: string; created_at: string; card_id: string }[];
   textNumbers: string[];
   textLog: CopilotTextSend[];
-  jobs: CopilotJob[];
   runs: CopilotRun[];
 };
 
@@ -21,7 +20,7 @@ const FILE = path.join(process.cwd(), "data", "copilot-store.json");
 let useFile = false;
 
 function empty(): FileShape {
-  return { chats: [], messages: [], reminders: [], memory: [], skills: [], dismissals: [], textNumbers: [], textLog: [], jobs: [], runs: [] };
+  return { chats: [], messages: [], reminders: [], memory: [], skills: [], dismissals: [], textNumbers: [], textLog: [], runs: [] };
 }
 
 function readFileStore(): FileShape {
@@ -35,7 +34,6 @@ function readFileStore(): FileShape {
     data.dismissals ??= [];
     data.textNumbers ??= [];
     data.textLog ??= [];
-    data.jobs ??= [];
     data.runs ??= [];
     data.skills = data.skills.map((skill) => asSkill(skill));
     return data;
@@ -82,15 +80,26 @@ function asSkill(row: Partial<CopilotSkill>): CopilotSkill {
     enabled: row.enabled !== false,
     kind: row.kind === "text" ? "text" : "playbook",
     phone: String(row.phone ?? ""),
+    schedule: row.schedule === "daily" ? "daily" : "",
+    chat_id: row.chat_id ? String(row.chat_id) : null,
+    last_run_at: row.last_run_at ? String(row.last_run_at) : null,
   };
 }
 
 const SQL_AGAIN =
   "Copilot storage is missing the text-skill columns. Run supabase/copilot_v1.sql in the Supabase SQL editor again, then try again.";
 
+const SKILLS_SQL =
+  "Copilot skills are missing their schedule columns. Run supabase/copilot_v3.sql in the Supabase SQL editor, then try again.";
+
 function missingColumn(error: { message?: string } | null): boolean {
   const m = error?.message ?? "";
   return /column|schema cache/i.test(m) && /phone|kind|copilot_text/i.test(m);
+}
+
+function missingSkillColumn(error: { message?: string } | null): boolean {
+  const m = error?.message ?? "";
+  return /column|schema cache/i.test(m) && /schedule|chat_id|last_run_at|skill_id|agent_id|cursor_run_id/i.test(m);
 }
 
 export async function listChats(): Promise<CopilotChat[]> {
@@ -221,14 +230,16 @@ export async function markChatSeen(chatId: string): Promise<void> {
 }
 
 function unpackMessage(row: CopilotMessage): CopilotMessage {
-  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[] }) | null;
+  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string }) | null;
   const choices = Array.isArray(raw?.choices) ? raw.choices : row.choices ?? null;
   const steps = Array.isArray(raw?.steps) ? raw.steps : row.steps ?? null;
   const thought = typeof raw?.thought === "string" ? raw.thought : row.thought ?? null;
   const images = Array.isArray(raw?.images) ? raw.images : row.images ?? null;
-  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images };
-  const { choices: _choices, steps: _steps, thought: _thought, images: _images, ...draft } = raw;
-  return { ...row, draft, choices, steps, thought, images };
+  const report = raw?.report && typeof raw.report === "object" ? raw.report : row.report ?? null;
+  const run_id = typeof raw?.run_id === "string" ? raw.run_id : row.run_id ?? null;
+  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id };
+  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, ...draft } = raw;
+  return { ...row, draft, choices, steps, thought, images, report, run_id };
 }
 
 export async function listMessages(chatId: string): Promise<CopilotMessage[]> {
@@ -295,12 +306,16 @@ export async function addMessage(input: {
   steps?: { text: string; meta?: string }[] | null;
   thought?: string | null;
   images?: { mimeType: string; data: string }[] | null;
+  report?: CopilotReport | null;
+  runId?: string | null;
 }): Promise<CopilotMessage> {
   const extra = {
     ...(input.choices?.length ? { choices: input.choices } : {}),
     ...(input.steps?.length ? { steps: input.steps } : {}),
     ...(input.thought ? { thought: input.thought } : {}),
     ...(input.images?.length ? { images: input.images } : {}),
+    ...(input.report ? { report: input.report } : {}),
+    ...(input.runId ? { run_id: input.runId } : {}),
   };
   const storedDraft = Object.keys(extra).length ? { ...(input.draft ?? {}), ...extra } : input.draft ?? null;
   const message: CopilotMessage = {
@@ -469,8 +484,13 @@ export async function listSkills(): Promise<CopilotSkill[]> {
   return readFileStore().skills.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
 }
 
-export async function saveSkill(input: Omit<CopilotSkill, "id" | "created_at" | "updated_at"> & { id?: string }): Promise<CopilotSkill> {
+type SkillInput = Omit<CopilotSkill, "id" | "created_at" | "updated_at" | "schedule" | "chat_id" | "last_run_at"> &
+  Partial<Pick<CopilotSkill, "schedule" | "chat_id" | "last_run_at">> & { id?: string };
+
+/** Schedule, chat and last run are kept from the saved row unless the caller sets them. */
+export async function saveSkill(input: SkillInput): Promise<CopilotSkill> {
   const now = new Date().toISOString();
+  const before = input.id ? (await listSkills()).find((row) => row.id === input.id) : undefined;
   const skill: CopilotSkill = {
     id: input.id || randomUUID(),
     created_at: now,
@@ -483,6 +503,9 @@ export async function saveSkill(input: Omit<CopilotSkill, "id" | "created_at" | 
     enabled: input.enabled,
     kind: input.kind === "text" ? "text" : "playbook",
     phone: input.phone.trim(),
+    schedule: input.schedule ?? before?.schedule ?? "",
+    chat_id: input.chat_id !== undefined ? input.chat_id : before?.chat_id ?? null,
+    last_run_at: input.last_run_at !== undefined ? input.last_run_at : before?.last_run_at ?? null,
   };
   const client = sb();
   if (!useFile && !skillsInFile && client) {
@@ -492,6 +515,7 @@ export async function saveSkill(input: Omit<CopilotSkill, "id" | "created_at" | 
     if (existing?.created_at) skill.created_at = existing.created_at as string;
     const { error } = await client.from("copilot_skills").upsert(skill);
     if (!error) return skill;
+    if (missingSkillColumn(error)) throw new Error(SKILLS_SQL);
     if (missingColumn(error)) throw new Error(SQL_AGAIN);
     if (missingTable(error)) skillsInFile = true;
     else throw new Error(error.message);
@@ -754,7 +778,7 @@ export async function flagChatNeedsYou(chatId: string): Promise<void> {
   if (!useFile && client) {
     const { error } = await client.from("copilot_chats").update({ needs_you_at: now }).eq("id", chatId);
     if (!error) return;
-    if (/needs_you_at/i.test(error.message ?? "")) throw new Error(JOBS_SQL);
+    if (/needs_you_at/i.test(error.message ?? "")) throw new Error(RUNS_SQL);
     if (useLocalFile(error)) { /* local file store */ }
     else throw new Error(error.message);
   }
@@ -775,115 +799,52 @@ export async function chatExists(chatId: string): Promise<boolean> {
   return readFileStore().chats.some((c) => c.id === chatId);
 }
 
-const JOBS_SQL =
-  "Copilot jobs are not set up yet. Run supabase/copilot_v2.sql in the Supabase SQL editor, then try again.";
+const RUNS_SQL =
+  "Copilot skill runs are not set up yet. Run supabase/copilot_v2.sql and supabase/copilot_v3.sql in the Supabase SQL editor, then try again.";
 
-let jobsInFile = false;
+let runsInFile = false;
 
-function jobsMissing(error: { message?: string } | null): boolean {
-  if (!missingTable(error) && !/copilot_jobs|copilot_runs/i.test(error?.message ?? "")) return false;
-  if (process.env.VERCEL) throw new Error(JOBS_SQL);
-  jobsInFile = true;
+function runsMissing(error: { message?: string } | null): boolean {
+  if (missingSkillColumn(error)) throw new Error(RUNS_SQL);
+  if (!missingTable(error)) return false;
+  if (process.env.VERCEL) throw new Error(RUNS_SQL);
+  runsInFile = true;
   return true;
-}
-
-function asJob(row: Partial<CopilotJob>): CopilotJob {
-  const settings = (row.settings ?? {}) as Partial<CopilotJob["settings"]>;
-  return {
-    id: String(row.id ?? ""),
-    created_at: String(row.created_at ?? ""),
-    updated_at: String(row.updated_at ?? ""),
-    kind: "guest_inbox",
-    title: String(row.title ?? "Morning inbox"),
-    chat_id: row.chat_id ? String(row.chat_id) : null,
-    settings: { checklist: Array.isArray(settings.checklist) ? settings.checklist.map(String) : [] },
-    enabled: row.enabled !== false,
-    last_run_at: row.last_run_at ? String(row.last_run_at) : null,
-  };
 }
 
 function asRun(row: Partial<CopilotRun>): CopilotRun {
   return {
     id: String(row.id ?? ""),
-    job_id: String(row.job_id ?? ""),
+    skill_id: String(row.skill_id ?? ""),
     started_at: String(row.started_at ?? ""),
     finished_at: row.finished_at ? String(row.finished_at) : null,
     status: row.status === "ok" || row.status === "failed" ? row.status : "running",
-    trigger: row.trigger === "manual" || row.trigger === "chat" ? row.trigger : "schedule",
-    result: (row.result as GuestInboxResult | null) ?? null,
+    trigger: row.trigger === "manual" ? "manual" : "schedule",
+    agent_id: String(row.agent_id ?? ""),
+    cursor_run_id: String(row.cursor_run_id ?? ""),
+    result: (row.result as SkillRunResult | null) ?? null,
     error: String(row.error ?? ""),
   };
 }
 
-export async function listJobs(): Promise<CopilotJob[]> {
-  const client = sb();
-  if (!useFile && !jobsInFile && client) {
-    const { data, error } = await client.from("copilot_jobs").select("*").order("created_at", { ascending: true });
-    if (!error) return (data ?? []).map((row) => asJob(row as Partial<CopilotJob>));
-    if (!jobsMissing(error)) throw new Error(error.message);
-  }
-  return readFileStore().jobs.map(asJob);
-}
-
-export async function getJob(kind: JobKind): Promise<CopilotJob | null> {
-  return (await listJobs()).find((job) => job.kind === kind) ?? null;
-}
-
-/** Insert or update the one job of this kind. Returns the saved row, read back. */
-export async function saveJob(input: {
-  kind: JobKind;
-  title: string;
-  enabled: boolean;
-  chat_id?: string | null;
-  settings?: CopilotJob["settings"];
-}): Promise<CopilotJob> {
-  const now = new Date().toISOString();
-  const existing = await getJob(input.kind);
-  const job: CopilotJob = {
-    id: existing?.id ?? randomUUID(),
-    created_at: existing?.created_at ?? now,
-    updated_at: now,
-    kind: input.kind,
-    title: input.title,
-    chat_id: input.chat_id !== undefined ? input.chat_id : existing?.chat_id ?? null,
-    settings: input.settings ?? existing?.settings ?? { checklist: [] },
-    enabled: input.enabled,
-    last_run_at: existing?.last_run_at ?? null,
-  };
-  const client = sb();
-  if (!useFile && !jobsInFile && client) {
-    const { error } = await client.from("copilot_jobs").upsert(job);
-    if (!error) {
-      const saved = await getJob(input.kind);
-      if (!saved) throw new Error("The job was not saved.");
-      return saved;
-    }
-    if (!jobsMissing(error)) throw new Error(error.message);
-  }
-  const data = readFileStore();
-  const idx = data.jobs.findIndex((row) => row.id === job.id);
-  if (idx >= 0) data.jobs[idx] = job;
-  else data.jobs.push(job);
-  writeFileStore(data);
-  return job;
-}
-
-export async function startRun(jobId: string, trigger: CopilotRun["trigger"]): Promise<CopilotRun> {
+export async function startRun(skillId: string, trigger: CopilotRun["trigger"]): Promise<CopilotRun> {
   const run: CopilotRun = {
     id: randomUUID(),
-    job_id: jobId,
+    skill_id: skillId,
     started_at: new Date().toISOString(),
     finished_at: null,
     status: "running",
     trigger,
-    result: null,
+    agent_id: "",
+    cursor_run_id: "",
+    result: { headline: "", needs_you: false, posted: false, tools: [] },
     error: "",
   };
   const client = sb();
-  if (!useFile && !jobsInFile && client) {
+  if (!useFile && !runsInFile && client) {
     const { error } = await client.from("copilot_runs").insert(run);
     if (!error) return run;
-    if (!jobsMissing(error)) throw new Error(error.message);
+    if (!runsMissing(error)) throw new Error(error.message);
   }
   const data = readFileStore();
   data.runs.unshift(run);
@@ -892,55 +853,65 @@ export async function startRun(jobId: string, trigger: CopilotRun["trigger"]): P
   return run;
 }
 
-export async function finishRun(
-  run: CopilotRun,
-  outcome: { status: "ok" | "failed"; result: GuestInboxResult | null; error?: string },
-): Promise<CopilotRun> {
-  const done: CopilotRun = {
-    ...run,
-    finished_at: new Date().toISOString(),
-    status: outcome.status,
-    result: outcome.result,
-    error: (outcome.error ?? "").slice(0, 500),
-  };
+export async function getRun(id: string): Promise<CopilotRun | null> {
   const client = sb();
-  if (!useFile && !jobsInFile && client) {
-    const { error } = await client
-      .from("copilot_runs")
-      .update({ finished_at: done.finished_at, status: done.status, result: done.result, error: done.error })
-      .eq("id", run.id);
-    if (!error) {
-      await client.from("copilot_jobs").update({ last_run_at: done.finished_at }).eq("id", run.job_id);
-      return done;
-    }
-    if (!jobsMissing(error)) throw new Error(error.message);
+  if (!useFile && !runsInFile && client) {
+    const { data, error } = await client.from("copilot_runs").select("*").eq("id", id).maybeSingle();
+    if (!error) return data ? asRun(data as Partial<CopilotRun>) : null;
+    if (!runsMissing(error)) throw new Error(error.message);
+  }
+  const hit = readFileStore().runs.find((row) => row.id === id);
+  return hit ? asRun(hit) : null;
+}
+
+export async function updateRun(
+  id: string,
+  patch: Partial<Pick<CopilotRun, "status" | "finished_at" | "agent_id" | "cursor_run_id" | "result" | "error">>,
+): Promise<void> {
+  const clean = { ...patch, ...(patch.error !== undefined ? { error: patch.error.slice(0, 500) } : {}) };
+  const client = sb();
+  if (!useFile && !runsInFile && client) {
+    const { error } = await client.from("copilot_runs").update(clean).eq("id", id);
+    if (!error) return;
+    if (!runsMissing(error)) throw new Error(error.message);
   }
   const data = readFileStore();
-  const idx = data.runs.findIndex((row) => row.id === run.id);
-  if (idx >= 0) data.runs[idx] = done;
-  else data.runs.unshift(done);
-  const job = data.jobs.find((row) => row.id === run.job_id);
-  if (job) job.last_run_at = done.finished_at;
+  const row = data.runs.find((item) => item.id === id);
+  if (row) Object.assign(row, clean);
   writeFileStore(data);
-  return done;
 }
 
 /** Newest runs first. */
-export async function listRuns(jobId: string, limit = 5): Promise<CopilotRun[]> {
+export async function listRuns(skillId: string, limit = 5): Promise<CopilotRun[]> {
   const client = sb();
-  if (!useFile && !jobsInFile && client) {
+  if (!useFile && !runsInFile && client) {
     const { data, error } = await client
       .from("copilot_runs")
       .select("*")
-      .eq("job_id", jobId)
+      .eq("skill_id", skillId)
       .order("started_at", { ascending: false })
       .limit(limit);
     if (!error) return (data ?? []).map((row) => asRun(row as Partial<CopilotRun>));
-    if (!jobsMissing(error)) throw new Error(error.message);
+    if (!runsMissing(error)) throw new Error(error.message);
   }
   return readFileStore()
-    .runs.filter((row) => row.job_id === jobId)
+    .runs.filter((row) => row.skill_id === skillId)
     .sort((a, b) => (a.started_at < b.started_at ? 1 : -1))
     .slice(0, limit)
     .map(asRun);
+}
+
+export async function listRunningRuns(): Promise<CopilotRun[]> {
+  const client = sb();
+  if (!useFile && !runsInFile && client) {
+    const { data, error } = await client
+      .from("copilot_runs")
+      .select("*")
+      .eq("status", "running")
+      .not("skill_id", "is", null)
+      .limit(20);
+    if (!error) return (data ?? []).map((row) => asRun(row as Partial<CopilotRun>));
+    if (!runsMissing(error)) throw new Error(error.message);
+  }
+  return readFileStore().runs.filter((row) => row.status === "running" && row.skill_id).map(asRun);
 }

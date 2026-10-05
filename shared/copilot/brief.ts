@@ -1,8 +1,8 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { addDays, greeting, torontoToday } from "./time.js";
 import type { BriefCard, BriefPayload } from "./types.js";
-import { getJob, listDismissed, listDueReminders, listRuns, listWaitingDrafts } from "./store.js";
-import { INBOX_TITLE, headline } from "./nightShift.js";
+import { listDismissed, listDueReminders, listRuns, listSkills, listWaitingDrafts } from "./store.js";
+import { runsOnItsOwn } from "./skillRunner.js";
 
 const MAX_CARDS = 4;
 
@@ -18,22 +18,23 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const focus: BriefCard[] = [];
   const eating: BriefCard[] = [];
   const skipped = new Set(await listDismissed().catch(() => []));
-  // The morning inbox card goes first, so waiting drafts cannot push it off the page.
-  const inbox = await getJob("guest_inbox").catch(() => null);
-  if (inbox?.enabled && inbox.chat_id) {
-    const last = (await listRuns(inbox.id, 1).catch(() => []))[0];
-    if (last && last.status !== "running" && torontoToday(new Date(last.started_at)) === today) {
-      take(focus, {
-        id: `job:${last.id}`,
-        chatId: inbox.chat_id,
-        group: "focus",
-        text: last.status === "failed" || !last.result
-          ? `${INBOX_TITLE}: I couldn't read Hospitable this time. Nothing was sent.`
-          : `${INBOX_TITLE}: ${headline(last.result)}`,
-        action: "Open",
-        source: "Hospitable",
-      }, skipped);
-    }
+  // Today's skill reports go first, so waiting drafts cannot push them off the page.
+  const skills = (await listSkills().catch(() => [])).filter((row) => row.enabled && row.chat_id && runsOnItsOwn(row));
+  for (const skill of skills.slice(0, 2)) {
+    const last = (await listRuns(skill.id, 1).catch(() => []))[0];
+    if (!last || last.status === "running" || torontoToday(new Date(last.started_at)) !== today) continue;
+    take(focus, {
+      id: `run:${last.id}`,
+      chatId: skill.chat_id as string,
+      group: "focus",
+      text: last.status === "failed"
+        ? `${skill.name} couldn't finish this time. Nothing was sent.`
+        : last.result?.headline
+          ? `${skill.name}: ${last.result.headline}`
+          : `${skill.name} finished. Nothing was sent.`,
+      action: "Open",
+      source: "Skill",
+    }, skipped);
   }
   const waiting = await listWaitingDrafts().catch(() => []);
   for (const item of waiting) {

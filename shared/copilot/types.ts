@@ -13,8 +13,12 @@ export type CopilotDraft = {
   skillMustNot?: string;
   skillKind?: "playbook" | "text";
   skillPhone?: string;
+  skillSchedule?: SkillSchedule;
   choices?: string[];
 };
+
+/** "" = runs only when asked in chat. "daily" = Cursor runs it every morning around 5:00. */
+export type SkillSchedule = "" | "daily";
 
 export type CopilotSkill = {
   id: string;
@@ -28,6 +32,9 @@ export type CopilotSkill = {
   enabled: boolean;
   kind: "playbook" | "text";
   phone: string;
+  schedule: SkillSchedule;
+  chat_id: string | null;
+  last_run_at: string | null;
 };
 
 export type CopilotTextSend = {
@@ -50,6 +57,19 @@ export type CopilotMessage = {
   steps?: { text: string; meta?: string }[] | null;
   thought?: string | null;
   images?: { mimeType: string; data: string }[] | null;
+  /** Structured report from a skill run. body holds the plain-text version. */
+  report?: CopilotReport | null;
+  /** Set when a skill run wrote this message, not a chat answer. */
+  run_id?: string | null;
+};
+
+export type CopilotReportRow = { who: string; meta: string; details?: string[]; quote?: string };
+
+export type CopilotReport = {
+  title: string;
+  summary: string;
+  sections: { title: string; rows: CopilotReportRow[] }[];
+  failed?: { line: string; sub?: string } | null;
 };
 
 export type CopilotChat = {
@@ -96,24 +116,6 @@ export type ConnectorRow = {
   note?: string;
 };
 
-export type JobKind = "guest_inbox";
-
-export type GuestInboxSettings = {
-  checklist: string[];
-};
-
-export type CopilotJob = {
-  id: string;
-  created_at: string;
-  updated_at: string;
-  kind: JobKind;
-  title: string;
-  chat_id: string | null;
-  settings: GuestInboxSettings;
-  enabled: boolean;
-  last_run_at: string | null;
-};
-
 export type InboxGuest = {
   reservationId: string;
   guest: string;
@@ -135,15 +137,26 @@ export type GuestInboxResult = {
   details: InboxGuest[];
 };
 
+export type SkillRunResult = {
+  /** One line for the morning card. */
+  headline: string;
+  needs_you: boolean;
+  /** The agent posted its report through the tools. */
+  posted: boolean;
+  tools: string[];
+};
+
 export type CopilotRun = {
   id: string;
-  job_id: string;
+  skill_id: string;
   started_at: string;
   finished_at: string | null;
   status: "running" | "ok" | "failed";
-  trigger: "schedule" | "manual" | "chat";
-  result: GuestInboxResult | null;
+  trigger: "schedule" | "manual";
+  agent_id: string;
+  cursor_run_id: string;
+  result: SkillRunResult | null;
   error: string;
 };
 
-export type JobRow = CopilotJob & { lastRun: CopilotRun | null };
+export type SkillRow = CopilotSkill & { lastRun: CopilotRun | null };

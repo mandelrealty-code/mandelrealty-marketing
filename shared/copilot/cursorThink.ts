@@ -1,6 +1,5 @@
 import { Agent, AgentBusyError, CursorAgentError, type Run } from "@cursor/sdk";
 import { addMessage, addReminder, listMessages, readCursorLink, saveCursorLink } from "./store.js";
-import { turnOnInbox } from "./nightShift.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
 
@@ -51,13 +50,14 @@ function promptFor(facts: string, history: string, skillMode: boolean, hasImages
       ? "They pressed Create a skill. Ask what you still need, one question at a time. When you have enough, put a skill draft in the JSON. Do not save it yourself."
       : "Only include a draft when they need to approve a note, an email, or a skill.",
     `Today is ${torontoToday()} in Toronto.`,
-    "The only job the app runs on its own is the morning inbox. Each morning the site reads Hospitable guest messages and reports who is waiting on a reply and who may have sent their details. To turn it on, set job to {\"kind\":\"guest_inbox\"}. For any other ongoing job, say you can't run that on your own yet.",
+    "Skills are how work runs on its own. When a partner asks for something recurring, draft a skill. Set skillSchedule to \"daily\" when it should run by itself every morning around 5:00, or \"\" when it should only run when they ask. Every morning is the only schedule today. For an event such as a new booking, say it will check every morning, not the moment it happens.",
+    "When a skill runs on its own, it can read Hospitable stays and guest messages, leave a report in its own chat, leave drafts that wait for approval, and save reminders. It cannot read Gmail, WhatsApp, the cleaner calendar, or AirROI yet, and it cannot send anything. If a skill needs one of those, say so in the skill draft.",
     "To save a reminder, set reminder to {\"due_on\":\"YYYY-MM-DD\",\"text\":\"what to remind them\"}. It shows as a card on that morning.",
-    "Never say a job or reminder is saved or turned on. The app adds that line after it actually saves it.",
+    "Never say a skill or reminder is saved or turned on. A skill is saved only when they press Save on its card. The app adds the reminder line after it actually saves it.",
     "Reply with one JSON object and no markdown fence:",
-    '{"body":"plain text the person reads","choices":null,"draft":null,"job":null,"reminder":null}',
+    '{"body":"plain text the person reads","choices":null,"draft":null,"reminder":null}',
     "choices is two or three short labels when a guess would send the work the wrong way, otherwise null.",
-    'draft is null or {"channel":"email"|"note"|"skill","subject":"","body":"","to":"","skillName":"","skillWhen":"","skillReads":"","skillDrafts":"","skillMustNot":"","skillKind":"playbook"|"text","skillPhone":""}.',
+    'draft is null or {"channel":"email"|"note"|"skill","subject":"","body":"","to":"","skillName":"","skillWhen":"","skillReads":"","skillDrafts":"","skillMustNot":"","skillKind":"playbook"|"text","skillPhone":"","skillSchedule":"daily"|""}.',
     "For a text skill, skillKind is text and skillPhone is their number. Saving still waits for them.",
     hasImages ? "Photos are attached to this message. Look at them and describe what is actually visible. Do not say the screenshot is missing." : "",
     "",
@@ -97,6 +97,7 @@ function asDraft(value: unknown): CopilotDraft | null {
     skillMustNot: text("skillMustNot", 400),
     skillKind: row.skillKind === "text" ? "text" : "playbook",
     skillPhone: text("skillPhone", 20),
+    skillSchedule: row.skillSchedule === "daily" ? "daily" : "",
   };
 }
 
@@ -105,7 +106,6 @@ type Parsed = {
   choices: string[] | null;
   draft: CopilotDraft | null;
   json: boolean;
-  job: boolean;
   reminder: { due_on: string; text: string } | null | "bad";
 };
 
@@ -129,13 +129,11 @@ function parseModel(text: string): Parsed {
       const value = JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
       const body = typeof value.body === "string" ? value.body.trim() : "";
       if (body) {
-        const job = value.job && typeof value.job === "object" && (value.job as { kind?: unknown }).kind === "guest_inbox";
         return {
           body,
           choices: asChoices(value.choices),
           draft: asDraft(value.draft),
           json: true,
-          job: Boolean(job),
           reminder: asReminder(value.reminder),
         };
       }
@@ -143,7 +141,7 @@ function parseModel(text: string): Parsed {
       /* The model wrote prose. Show that. */
     }
   }
-  return { body: text.trim() || "Cursor finished without a reply.", choices: null, draft: null, json: false, job: false, reminder: null };
+  return { body: text.trim() || "Cursor finished without a reply.", choices: null, draft: null, json: false, reminder: null };
 }
 
 function prettyDay(iso: string): string {
@@ -155,14 +153,6 @@ const CLAIMS = /\b(turned on|set up|i('| wi)ll remind|reminder (is )?(set|saved)
 /** Saves what Cursor asked for, then says plainly what was and was not saved. */
 async function applyAsks(parsed: Parsed): Promise<string> {
   const notes: string[] = [];
-  if (parsed.job) {
-    try {
-      await turnOnInbox();
-      notes.push("The morning inbox is on. It's in Settings → Jobs and runs each morning around 5:00. It only reads. Nothing is sent.");
-    } catch (err) {
-      notes.push(`The morning inbox was not saved, so it is not on. ${err instanceof Error ? err.message : ""}`.trim());
-    }
-  }
   if (parsed.reminder === "bad") {
     notes.push("The reminder was not saved. I couldn't read the date.");
   } else if (parsed.reminder) {
@@ -173,8 +163,8 @@ async function applyAsks(parsed: Parsed): Promise<string> {
       notes.push(`The reminder was not saved. ${err instanceof Error ? err.message : ""}`.trim());
     }
   }
-  if (!parsed.job && parsed.reminder === null && CLAIMS.test(parsed.body)) {
-    notes.push("Nothing was saved. No job or reminder was turned on.");
+  if (parsed.reminder === null && !parsed.draft && CLAIMS.test(parsed.body)) {
+    notes.push("Nothing was saved. No skill or reminder was turned on.");
   }
   return notes.length ? `${parsed.body}\n\n${notes.join("\n")}` : parsed.body;
 }
@@ -272,7 +262,6 @@ export async function collectCursorRun(chatId: string): Promise<ThinkState> {
       ? parseModel(result.result ?? "")
       : {
           json: false,
-          job: false,
           reminder: null,
           body: result.status === "cancelled"
             ? "Stopped. Nothing was sent."

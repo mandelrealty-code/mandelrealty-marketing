@@ -99,6 +99,10 @@
       "destination": "/api/admin?section=copilot"
     },
     {
+      "source": "/api/copilot/tools",
+      "destination": "/api/admin?section=copilot_tools"
+    },
+    {
       "source": "/api/webhooks/ops-hub",
       "destination": "/api/admin?section=ops_hub"
     },

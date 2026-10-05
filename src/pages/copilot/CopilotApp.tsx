@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
-import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, JobRow } from "../../../shared/copilot/types";
+import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, SkillRow } from "../../../shared/copilot/types";
 import "./copilot.css";
+import { EmailDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
+import { runWhen } from "./skillsTime";
 
-type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "jobs" | "connectors" | "twilio" | "account";
+type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account";
 
 type Boot = {
   brief: BriefPayload;
   chats: CopilotChat[];
-  skills: CopilotSkill[];
-  jobs?: JobRow[];
+  skills: SkillRow[];
   connectors: ConnectorRow[];
   billing: string;
   textLog?: CopilotTextSend[];
@@ -531,9 +532,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [pw, setPw] = useState({ cur: "", next: "", conf: "" });
   const [pwMsg, setPwMsg] = useState<"" | "err" | "current" | "server">("");
   const [pending, setPending] = useState<string | null>(null);
-  const [jobBusy, setJobBusy] = useState(false);
-  const [jobMsg, setJobMsg] = useState<string | null>(null);
-  const [checklistDraft, setChecklistDraft] = useState<string | null>(null);
+  const [runBusy, setRunBusy] = useState(false);
+  const [runMsg, setRunMsg] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
   const [liveSteps, setLiveSteps] = useState<{ text: string; meta?: string }[]>([{ text: "Sent your message to Cursor" }]);
   const [liveThought, setLiveThought] = useState<string | undefined>();
@@ -862,24 +862,46 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
-  const inSettings = screen === "settings" || screen === "skills" || screen === "skill" || screen === "jobs" || screen === "connectors" || screen === "twilio" || screen === "account";
-  const inbox = (boot?.jobs ?? []).find((job) => job.kind === "guest_inbox") ?? null;
+  const inSettings = screen === "settings" || screen === "skills" || screen === "skill" || screen === "connectors" || screen === "twilio" || screen === "account";
+  const skills = boot?.skills ?? [];
 
-  async function jobCall(op: "job" | "run-job", body: Record<string, unknown>, done: string) {
-    setJobBusy(true);
-    setJobMsg(null);
+  async function runSkill(skill: CopilotSkill) {
+    setRunBusy(true);
+    setRunMsg(null);
     try {
-      const data = await api<{ jobs: JobRow[]; connectors: ConnectorRow[]; chats: CopilotChat[]; brief: BriefPayload }>(op, body);
-      setBoot((prev) => (prev ? { ...prev, jobs: data.jobs, connectors: data.connectors, chats: data.chats, brief: data.brief } : prev));
-      const run = data.jobs.find((job) => job.kind === "guest_inbox")?.lastRun;
-      setJobMsg(op === "run-job" && run?.status === "failed" ? `It ran, but Hospitable could not be read: ${run.error}` : done);
+      const data = await api<{ skills: SkillRow[]; connectors: ConnectorRow[]; chats: CopilotChat[] }>("run-skill", { id: skill.id });
+      setBoot((prev) => (prev ? { ...prev, skills: data.skills, connectors: data.connectors, chats: data.chats } : prev));
+      setRunMsg("Running. It can take a few minutes. The report lands in this skill's chat. Nothing is sent.");
     } catch (e) {
-      setJobMsg(e instanceof Error ? e.message : "That did not work. Nothing was changed.");
+      setRunMsg(e instanceof Error ? e.message : "It did not start. Nothing was sent.");
     } finally {
-      setJobBusy(false);
+      setRunBusy(false);
     }
   }
-  const skills = boot?.skills ?? [];
+
+  const chatSkill = chatId ? skills.find((s) => s.chat_id === chatId) ?? null : null;
+  const anyRunning = skills.some((s) => s.lastRun?.status === "running");
+
+  // While a skill runs, refresh until its report lands. The server checks Cursor on each load.
+  useEffect(() => {
+    if (!anyRunning) return;
+    let polls = 0;
+    const timer = window.setInterval(() => {
+      polls += 1;
+      if (polls > 40) {
+        window.clearInterval(timer);
+        return;
+      }
+      void load().catch(() => undefined);
+      if (chatId && screen === "chat") {
+        void api<{ messages: CopilotMessage[] }>(`messages&chatId=${encodeURIComponent(chatId)}`)
+          .then((data) => setMessages(data.messages))
+          .catch(() => undefined);
+      }
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [anyRunning, chatId, screen]);
+
   const openSkillRecord = skills.find((s) => s.id === skillId) ?? null;
 
   const title = useMemo(() => {
@@ -889,7 +911,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }, [boot, chatId, screen]);
 
   const backLabel =
-    screen === "skills" || screen === "jobs" || screen === "connectors" || screen === "account"
+    screen === "skills" || screen === "connectors" || screen === "account"
       ? "Settings"
       : screen === "skill"
         ? "Skills"
@@ -900,7 +922,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   function back() {
     if (screen === "skill") setScreen("skills");
     else if (screen === "twilio") setScreen("connectors");
-    else if (screen === "skills" || screen === "jobs" || screen === "connectors" || screen === "account") setScreen("settings");
+    else if (screen === "skills" || screen === "connectors" || screen === "account") setScreen("settings");
     else {
       setScreen("brief");
       setSheet(false);
@@ -928,6 +950,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       phone: skill.phone || "",
     });
     setSkillSaved(false);
+    setRunMsg(null);
     setScreen("skill");
     setSheet(false);
   }
@@ -936,7 +959,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     if (!skillForm.name.trim()) return;
     setBusy(true);
     try {
-      const data = await api<{ skills: CopilotSkill[]; textNumbers?: string[] }>("skill", {
+      const data = await api<{ skills: SkillRow[]; textNumbers?: string[] }>("skill", {
         id: skillId,
         name: skillForm.name,
         when: skillForm.when,
@@ -957,7 +980,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   async function toggleSkill(skill: CopilotSkill) {
-    const data = await api<{ skills: CopilotSkill[]; textNumbers?: string[] }>("skill", {
+    const data = await api<{ skills: SkillRow[]; textNumbers?: string[] }>("skill", {
       id: skill.id,
       name: skill.name,
       when: skill.when_text,
@@ -990,7 +1013,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (chatId === target.id) goHome();
       return;
     }
-    const data = await api<{ skills: CopilotSkill[] }>("skill", { action: "delete", id: target.id });
+    const data = await api<{ skills: SkillRow[] }>("skill", { action: "delete", id: target.id });
     setBoot((prev) => (prev ? { ...prev, skills: data.skills } : prev));
     setScreen("skills");
   }
@@ -1005,7 +1028,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
     setBusy(true);
     try {
-      const data = await api<{ skills: CopilotSkill[]; textNumbers?: string[] }>("draft", {
+      const data = await api<{ skills: SkillRow[]; textNumbers?: string[] }>("draft", {
         messageId: message.id,
         action: "save-skill",
         name: draft.skillName,
@@ -1015,6 +1038,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         mustNot: draft.skillMustNot,
         kind: draft.skillKind === "text" ? "text" : "playbook",
         phone,
+        schedule: draft.skillSchedule === "daily" ? "daily" : "",
       });
       setBoot((prev) => (prev ? { ...prev, skills: data.skills, textNumbers: data.textNumbers ?? prev.textNumbers } : prev));
       if (chatId) await openChat(chatId);
@@ -1308,10 +1332,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           <span><strong>Skills</strong><em>Tools that automate routine work for the business.</em></span>
                           <Chevron />
                         </button>
-                        <button type="button" className="cp-setrow" onClick={() => { setJobMsg(null); setChecklistDraft(null); setScreen("jobs"); }}>
-                          <span><strong>Jobs</strong><em>Work the site does on its own while you're away.</em></span>
-                          <Chevron />
-                        </button>
                         <button type="button" className="cp-setrow" onClick={() => setScreen("connectors")}>
                           <span><strong>Connectors</strong><em>Accounts this chat can use.</em></span>
                           <Chevron />
@@ -1323,209 +1343,30 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       </>
                     ) : null}
                     {screen === "skills" ? (
-                      <>
-                        <div className="cp-sethead split">
-                          <div>
-                            <h1>Skills</h1>
-                            <p>Tools that automate routine work for the business.</p>
-                          </div>
-                          <button type="button" className="cp-newskill-desk" onClick={startSkill}>New skill</button>
-                        </div>
-                        {skills.length === 0 ? (
-                          <div className="cp-empty-skill">
-                            <div className="cp-empty-copy">
-                              <h2>No skills yet</h2>
-                              <p>A skill automates a task for the business. You create one by describing it in chat.</p>
-                            </div>
-                            <div className="cp-steps">
-                              <div className="cp-step"><b>1</b><span>Tap New skill and describe the task.</span></div>
-                              <div className="cp-step"><b>2</b><span>Copilot drafts the skill. Review it.</span></div>
-                              <div className="cp-step"><b>3</b><span>Save it. It runs on its own.</span></div>
-                            </div>
-                            <button type="button" className="cp-newskill" onClick={startSkill}>New skill</button>
-                          </div>
-                        ) : skills.map((skill) => (
-                          <div key={skill.id} className="cp-skillrow" onClick={() => openSkill(skill)}>
-                            <span className="copy">
-                              <strong className={skill.enabled ? undefined : "off"}>{skill.name}</strong>
-                              <em>{skill.when_text}</em>
-                            </span>
-                            <button
-                              type="button"
-                              className={`cp-pill${skill.enabled ? "" : " off"}`}
-                              aria-label={skill.enabled ? "Turn off" : "Turn on"}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void toggleSkill(skill);
-                              }}
-                            >
-                              {skill.enabled ? "On" : "Off"}
-                            </button>
-                            <Chevron />
-                          </div>
-                        ))}
-                      </>
+                      <SkillsList
+                        skills={skills}
+                        log={boot?.textLog ?? []}
+                        onOpen={(skill) => openSkill(skill)}
+                        onToggle={(skill) => void toggleSkill(skill)}
+                        onNew={startSkill}
+                      />
                     ) : null}
                     {screen === "skill" && openSkillRecord ? (
-                      <>
-                        <div className="cp-sethead">
-                          <h1>{skillForm.name || openSkillRecord.name}</h1>
-                          <p style={{ color: openSkillRecord.enabled ? "var(--muted)" : "var(--quiet)" }}>
-                            {openSkillRecord.kind === "text"
-                              ? !openSkillRecord.enabled
-                                ? "Off · will not text."
-                                : !openSkillRecord.phone
-                                  ? "On · no number yet."
-                                  : /\bclean/i.test(openSkillRecord.when_text)
-                                    ? "On · texts you when a clean is done."
-                                    : "On · texts your number."
-                              : openSkillRecord.enabled
-                                ? "On · runs overnight"
-                                : "Off · will not run"}
-                          </p>
-                        </div>
-                        <div className="cp-skillbox">
-                          {(
-                            [
-                              ["Name", "name"],
-                              ["When it runs", "when"],
-                              ["What it reads", "reads"],
-                              [openSkillRecord.kind === "text" ? "Text message" : "What it drafts", "drafts"],
-                            ] as const
-                          ).map(([label, key]) => (
-                            <label key={key} className="cp-field">
-                              <span>{label}</span>
-                              <textarea className="box" rows={key === "name" ? 1 : 3} value={skillForm[key]} onChange={(e) => { setSkillForm((f) => ({ ...f, [key]: e.target.value })); setSkillSaved(false); }} />
-                            </label>
-                          ))}
-                          {openSkillRecord.kind === "text" ? (
-                            <label className="cp-field">
-                              <span>Text these numbers</span>
-                              <input
-                                type="tel"
-                                inputMode="tel"
-                                autoComplete="tel"
-                                placeholder="Your mobile number"
-                                value={skillForm.phone}
-                                onChange={(e) => { setSkillForm((f) => ({ ...f, phone: e.target.value })); setSkillSaved(false); }}
-                              />
-                            </label>
-                          ) : null}
-                          <label className="cp-field">
-                            <span>It must not</span>
-                            <textarea className="box" rows={3} value={skillForm.mustNot} onChange={(e) => { setSkillForm((f) => ({ ...f, mustNot: e.target.value })); setSkillSaved(false); }} />
-                          </label>
-                        </div>
-                        <div className="cp-skill-actions">
-                          <button type="button" className="cp-gold" disabled={busy} onClick={() => void persistSkill(openSkillRecord.enabled)}>{skillSaved ? "Saved" : "Save"}</button>
-                          <button type="button" className="cp-textbtn" disabled={busy} onClick={() => void toggleSkill(openSkillRecord)}>{openSkillRecord.enabled ? "Turn off" : "Turn on"}</button>
-                          <button type="button" className="cp-textbtn danger" onClick={() => setPendingDelete({ kind: "skill", id: openSkillRecord.id, title: openSkillRecord.name })}>Delete</button>
-                        </div>
-                        <p className="cp-note">
-                          {openSkillRecord.kind === "text"
-                            ? /\bclean/i.test(openSkillRecord.when_text)
-                              ? "Saving does not text anyone. The next clean texts only the numbers on this skill."
-                              : "Saving does not text anyone. It texts only the numbers on this skill."
-                            : "Saving does not send anything. The next run only prepares a draft."}
-                        </p>
-                        {openSkillRecord.kind === "text" && (boot?.textLog ?? []).some((row) => row.skill_id === openSkillRecord.id) ? (
-                          <>
-                            <div className="cp-log">
-                              {(boot?.textLog ?? []).filter((row) => row.skill_id === openSkillRecord.id).map((row) => (
-                                <div key={row.id} className="cp-logrow">
-                                  <div className="meta">
-                                    <span>Texted</span>
-                                    <em>{[row.unit, when(row.created_at)].filter(Boolean).join(" · ")}</em>
-                                  </div>
-                                  <div className="bubble">
-                                    <p>{row.body}</p>
-                                    {row.link ? <p className="link">{row.link}</p> : null}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            <p className="cp-note">These texts already went to the numbers on this skill.</p>
-                          </>
-                        ) : null}
-                      </>
-                    ) : null}
-                    {screen === "jobs" ? (
-                      <>
-                        <div className="cp-sethead">
-                          <h1>Jobs</h1>
-                          <p>The site does these on its own. They only read. Nothing is sent.</p>
-                        </div>
-                        <div className="cp-skillrow cp-jobrow">
-                          <span className="copy">
-                            <strong className={inbox?.enabled ? undefined : "off"}>Morning inbox</strong>
-                            <em>
-                              Each morning around 5:00, reads the Hospitable messages for stays checked in now or arriving in the next two weeks. Reports who is waiting on a reply and who may have sent their details.
-                            </em>
-                          </span>
-                          <button
-                            type="button"
-                            className={`cp-pill${inbox?.enabled ? "" : " off"}`}
-                            disabled={jobBusy}
-                            aria-label={inbox?.enabled ? "Turn off" : "Turn on"}
-                            onClick={() => void jobCall("job", { action: inbox?.enabled ? "off" : "on" }, inbox?.enabled ? "The morning inbox is off." : "The morning inbox is on.")}
-                          >
-                            {inbox?.enabled ? "On" : "Off"}
-                          </button>
-                        </div>
-                        {inbox ? (
-                          <>
-                            <p className="cp-note">
-                              {!inbox.lastRun
-                                ? "It hasn't run yet."
-                                : inbox.lastRun.status === "running"
-                                  ? `Running since ${when(inbox.lastRun.started_at)}.`
-                                  : inbox.lastRun.status === "ok"
-                                    ? `Last run ${when(inbox.lastRun.started_at)} · worked.`
-                                    : `Last run ${when(inbox.lastRun.started_at)} · failed: ${inbox.lastRun.error}`}
-                            </p>
-                            <label className="cp-field">
-                              <span>Details to look for (comma separated)</span>
-                              <input
-                                value={checklistDraft ?? inbox.settings.checklist.join(", ")}
-                                onChange={(e) => setChecklistDraft(e.target.value)}
-                              />
-                            </label>
-                            <div className="cp-skill-actions">
-                              <button
-                                type="button"
-                                className="cp-gold"
-                                disabled={jobBusy}
-                                onClick={() => void jobCall("run-job", {}, "Done. The report is in the Morning inbox chat.")}
-                              >
-                                {jobBusy ? "Working…" : "Run now"}
-                              </button>
-                              {checklistDraft !== null ? (
-                                <button
-                                  type="button"
-                                  className="cp-textbtn"
-                                  disabled={jobBusy}
-                                  onClick={() =>
-                                    void jobCall(
-                                      "job",
-                                      { action: "checklist", checklist: checklistDraft.split(",").map((item) => item.trim()).filter(Boolean) },
-                                      "Checklist saved.",
-                                    ).then(() => setChecklistDraft(null))
-                                  }
-                                >
-                                  Save checklist
-                                </button>
-                              ) : null}
-                              {inbox.chat_id ? (
-                                <button type="button" className="cp-textbtn" onClick={() => void openChat(inbox.chat_id as string)}>
-                                  Open report
-                                </button>
-                              ) : null}
-                            </div>
-                          </>
-                        ) : null}
-                        {jobMsg ? <p className="cp-note">{jobMsg}</p> : null}
-                        <p className="cp-note">Run now reads Hospitable right away. It does not message any guest.</p>
-                      </>
+                      <SkillDetail
+                        skill={openSkillRecord}
+                        form={skillForm}
+                        onForm={(patch) => { setSkillForm((f) => ({ ...f, ...patch })); setSkillSaved(false); }}
+                        saved={skillSaved}
+                        busy={busy}
+                        runBusy={runBusy}
+                        runMsg={runMsg}
+                        log={boot?.textLog ?? []}
+                        onToggle={() => void toggleSkill(openSkillRecord)}
+                        onSave={() => void persistSkill(openSkillRecord.enabled)}
+                        onDelete={() => setPendingDelete({ kind: "skill", id: openSkillRecord.id, title: openSkillRecord.name })}
+                        onRun={() => void runSkill(openSkillRecord)}
+                        onOpenChat={() => void openChat(openSkillRecord.chat_id as string)}
+                      />
                     ) : null}
                     {screen === "connectors" ? (
                       <>
@@ -1592,7 +1433,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                                   type="button"
                                   className="cp-textbtn"
                                   onClick={() => {
-                                    void api<{ textNumbers: string[]; skills?: CopilotSkill[] }>("text-number", { action: "remove", phone }).then((data) => {
+                                    void api<{ textNumbers: string[]; skills?: SkillRow[] }>("text-number", { action: "remove", phone }).then((data) => {
                                       setBoot((prev) => (prev ? { ...prev, textNumbers: data.textNumbers, skills: data.skills ?? prev.skills } : prev));
                                     }).catch((e) => setError(e instanceof Error ? e.message : "Could not remove that number."));
                                   }}
@@ -1724,7 +1565,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     {messages.map((message) =>
                       message.role === "user" ? (
                         <div key={message.id} className="cp-userwrap">
-                          {viaPlus[message.id] ? <span className="cp-via">Create a skill</span> : null}
+                          {viaPlus[message.id] ? <span className="cp-via">New skill</span> : null}
                           <div className="cp-user">
                             {message.images?.map((image, index) => (
                               <img key={index} src={`data:${image.mimeType};base64,${image.data}`} alt="" />
@@ -1742,77 +1583,49 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             thought={shownTrail(message).thought}
                             steps={shownTrail(message).steps}
                           />
-                          <p>{message.body}</p>
-                          <div className="cp-skillcard">
-                            {(
-                              [
-                                ["Name", message.draft.skillName],
-                                ["When it runs", message.draft.skillWhen],
-                                ["What it reads", message.draft.skillReads],
-                                [message.draft.skillKind === "text" ? "Text message" : "What it drafts", message.draft.skillDrafts],
-                              ] as const
-                            ).map(([label, value]) => (
-                              <div key={label} className="row">
-                                <span className="k">{label}</span>
-                                <span className="v">{value}</span>
-                              </div>
-                            ))}
-                            {message.draft.skillKind === "text" ? (
-                              <label className="row">
-                                <span className="k">Text me at</span>
-                                <input
-                                  className="cp-phone"
-                                  type="tel"
-                                  inputMode="tel"
-                                  autoComplete="tel"
-                                  placeholder="Your mobile number"
-                                  value={skillPhones[message.id] ?? message.draft.skillPhone ?? ""}
-                                  onChange={(e) => setSkillPhones((prev) => ({ ...prev, [message.id]: e.target.value }))}
-                                  disabled={message.draft.status !== "waiting"}
-                                />
-                              </label>
-                            ) : null}
-                            <div className="row">
-                              <span className="k">It must not</span>
-                              <span className="v">{message.draft.skillMustNot}</span>
-                            </div>
-                            {message.draft.status === "approved_unsent" ? (
-                              <div className="cp-saved">
-                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                                  <path d="M3 7.5l2.5 2.5L11 4.5" />
-                                </svg>
-                                Saved to Skills
-                              </div>
-                            ) : null}
-                          </div>
-                          {message.draft.status === "waiting" ? (
-                            <>
-                              <div className="cp-waiting">Waiting for you</div>
-                              <div className="cp-actions">
-                                <button type="button" className="cp-send" disabled={busy} onClick={() => void saveSkillCard(message)}>Save skill</button>
-                                <button type="button" className="cp-hold" disabled={busy} onClick={() => void discardSkillCard(message)}>Discard</button>
-                              </div>
-                              <p className="cp-quietline">
-                                {message.draft.skillKind === "text"
-                                  ? boot?.connectors.some((row) => row.id === "twilio" && row.status === "connected")
-                                    ? "Saving this turns the text on for your number. It texts you only. It does not text a guest."
-                                    : "Twilio is not connected, so saving this will not text anyone yet. It does not text a guest."
-                                  : "Saving keeps the playbook. It still will not send until you approve a draft."}
-                              </p>
-                            </>
-                          ) : null}
-                          {message.draft.status === "approved_unsent" ? (
-                            <p>
-                              {message.draft.skillKind === "text"
-                                ? boot?.connectors.some((row) => row.id === "twilio" && row.status === "connected")
-                                  ? /\bclean/i.test(message.draft.skillWhen ?? "")
-                                    ? "Saved. The next clean texts your number."
-                                    : "Saved. It texts your number when that happens."
-                                  : "Saved. Twilio is not connected, so this will not text until the keys are set."
-                                : "Saved. Tonight it only prepares a draft. Nothing sends until you approve it."}
-                            </p>
-                          ) : null}
-                          {message.draft.status === "held" ? <p className="cp-muted">Discarded. Nothing was saved.</p> : null}
+                          <SkillDraftCard
+                            message={message}
+                            phone={skillPhones[message.id] ?? message.draft.skillPhone ?? ""}
+                            onPhone={(value) => setSkillPhones((prev) => ({ ...prev, [message.id]: value }))}
+                            busy={busy}
+                            onSave={() => void saveSkillCard(message)}
+                            onSkip={() => void discardSkillCard(message)}
+                          />
+                        </div>
+                      ) : message.report ? (
+                        <div key={message.id} className="cp-bot">
+                          <ReportCard
+                            message={message}
+                            report={message.report}
+                            running={runBusy || chatSkill?.lastRun?.status === "running"}
+                            onRun={chatSkill ? () => void runSkill(chatSkill) : undefined}
+                          />
+                        </div>
+                      ) : message.draft?.channel === "email" ? (
+                        <div key={message.id} className="cp-bot">
+                          {message.run_id ? null : (
+                            <Thinking
+                              open={!!trail[message.id]}
+                              onToggle={() => setTrail((prev) => ({ ...prev, [message.id]: !prev[message.id] }))}
+                              title="Worked"
+                              summary={shownTrail(message).summary}
+                              thought={shownTrail(message).thought}
+                              steps={shownTrail(message).steps}
+                            />
+                          )}
+                          <EmailDraftCard
+                            message={message}
+                            body={edits[message.id] ?? message.draft.body}
+                            onBody={(value) => setEdits((prev) => ({ ...prev, [message.id]: value }))}
+                            busy={busy}
+                            onApprove={() => void act(message, "send")}
+                            onHold={() => void act(message, "hold")}
+                          />
+                        </div>
+                      ) : message.run_id ? (
+                        <div key={message.id} className="cp-bot">
+                          <span className="cp-sk-stamp">{runWhen(message.created_at, true)}</span>
+                          <p className="cp-sk-pre">{message.body}</p>
                         </div>
                       ) : (
                         <div key={message.id} className="cp-bot">
@@ -1855,34 +1668,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                               <div className="cp-waiting">Waiting for you</div>
                               <div className="cp-actions">
                                 <button type="button" className="cp-send" disabled={busy} onClick={() => void act(message, "send")}>Keep</button>
-                                <button type="button" className="cp-hold" disabled={busy} onClick={() => void act(message, "hold")}>Hold</button>
-                              </div>
-                            </>
-                          ) : message.draft?.status === "waiting" ? (
-                            <>
-                              <div className="cp-mail">
-                                <div className="cp-mail-meta">
-                                  <div className="cp-meta-row">
-                                    <span className="cp-meta-k">From</span>
-                                    <span className="cp-meta-v">Gmail is not connected</span>
-                                  </div>
-                                  <div className="cp-meta-row">
-                                    <span className="cp-meta-k">To</span>
-                                    <span className="cp-chip">{message.draft.to || "Not set"}</span>
-                                  </div>
-                                  <div className="cp-meta-row">
-                                    <span className="cp-meta-k">Subject</span>
-                                    <span className="cp-subject">{message.draft.subject}</span>
-                                  </div>
-                                </div>
-                                <textarea
-                                  value={edits[message.id] ?? message.draft.body}
-                                  onChange={(e) => setEdits((prev) => ({ ...prev, [message.id]: e.target.value }))}
-                                />
-                              </div>
-                              <div className="cp-waiting">Waiting for you</div>
-                              <div className="cp-actions">
-                                <button type="button" className="cp-send" disabled={busy} onClick={() => void act(message, "send")}>Send</button>
                                 <button type="button" className="cp-hold" disabled={busy} onClick={() => void act(message, "hold")}>Hold</button>
                               </div>
                             </>
@@ -2047,7 +1832,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
               <p>
                 {pendingDelete.kind === "chat"
                   ? `“${pendingDelete.title}” will be removed for both partners.`
-                  : `${pendingDelete.title} will be removed for both partners.`}
+                  : `${pendingDelete.title} stops running and is removed for both partners.`}
               </p>
             </div>
             <div className="cp-modal-actions">

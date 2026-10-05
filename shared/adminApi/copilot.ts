@@ -29,15 +29,20 @@ import {
   saveSkill,
   updateDraft,
 } from "../copilot/store.js";
-import { runGuestInbox, turnOnInbox } from "../copilot/nightShift.js";
-import { getJob, listRuns, saveJob } from "../copilot/store.js";
-import type { ConnectorRow, JobRow } from "../copilot/types.js";
+import { collectSkillRuns, runsOnItsOwn, startSkillRun } from "../copilot/skillRunner.js";
+import { listRuns } from "../copilot/store.js";
+import type { ConnectorRow, SkillRow } from "../copilot/types.js";
 
-async function jobRows(): Promise<JobRow[]> {
-  const job = await getJob("guest_inbox");
-  if (!job) return [];
-  const lastRun = (await listRuns(job.id, 1))[0] ?? null;
-  return [{ ...job, lastRun }];
+const HOSPITABLE_TOOLS = ["guest_inbox", "list_stays", "read_guest_messages"];
+
+async function skillRows(): Promise<SkillRow[]> {
+  const skills = await listSkills();
+  return Promise.all(
+    skills.map(async (skill) => ({
+      ...skill,
+      lastRun: skill.kind === "playbook" ? ((await listRuns(skill.id, 1).catch(() => []))[0] ?? null) : null,
+    })),
+  );
 }
 
 function readImages(value: unknown): { mimeType: string; data: string }[] {
@@ -61,10 +66,15 @@ function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Sign in required." });
 }
 
-async function connectors(jobs?: JobRow[]): Promise<ConnectorRow[]> {
-  const rows = jobs ?? (await jobRows().catch(() => []));
-  const inbox = rows.find((job) => job.kind === "guest_inbox");
-  const inboxWorks = Boolean(inbox?.enabled && inbox.lastRun?.status === "ok");
+async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
+  const rows = skills ?? (await skillRows().catch(() => []));
+  const readsGuests = rows.some(
+    (skill) =>
+      skill.enabled &&
+      runsOnItsOwn(skill) &&
+      skill.lastRun?.status === "ok" &&
+      skill.lastRun.result?.tools.some((tool) => HOSPITABLE_TOOLS.includes(tool)),
+  );
   let hospitable = false;
   try {
     hospitable = Boolean(await getHospitablePat());
@@ -92,7 +102,7 @@ async function connectors(jobs?: JobRow[]): Promise<ConnectorRow[]> {
       statusLabel: hospitable ? "Connected" : "Not connected",
       note: !hospitable
         ? "Add the Hospitable key in OPS Settings."
-        : inboxWorks
+        : readsGuests
           ? "Reads guest messages each morning. Managed in OPS Settings."
           : "Managed in OPS Settings.",
     },
@@ -140,20 +150,13 @@ async function connectors(jobs?: JobRow[]): Promise<ConnectorRow[]> {
 }
 
 async function factsFor(): Promise<string> {
-  const [brief, rows, skills, memory, jobs] = await Promise.all([
+  const [brief, rows, skills, memory] = await Promise.all([
     buildBrief().catch(() => null),
     connectors(),
-    listSkills().catch(() => []),
+    skillRows().catch(() => [] as SkillRow[]),
     listMemory().catch(() => []),
-    jobRows().catch(() => []),
   ]);
   const lines: string[] = [];
-  const inbox = jobs.find((job) => job.kind === "guest_inbox");
-  lines.push(
-    !inbox
-      ? "Morning inbox job: not set up."
-      : `Morning inbox job: ${inbox.enabled ? "on" : "off"}. Checklist: ${inbox.settings.checklist.join(", ") || "none"}. Last run: ${inbox.lastRun ? `${inbox.lastRun.status} at ${inbox.lastRun.started_at}` : "never"}.`,
-  );
   if (brief) {
     lines.push(`${brief.hello} ${brief.line}`.trim());
     const cards = [...brief.focus, ...brief.eating];
@@ -164,7 +167,7 @@ async function factsFor(): Promise<string> {
   if (!skills.length) lines.push("No saved skills.");
   for (const skill of skills) {
     lines.push(
-      `Skill ${skill.name} (${skill.enabled ? "on" : "off"}, ${skill.kind}): when ${skill.when_text}. Reads ${skill.reads}. Writes ${skill.drafts}. Must not ${skill.must_not}. Phone ${skill.phone || "none"}.`,
+      `Skill ${skill.name} (${skill.enabled ? "on" : "off"}, ${skill.kind}, ${runsOnItsOwn(skill) ? "runs on its own every morning" : "runs only when asked"}, last run ${skill.lastRun ? skill.lastRun.status : "never"}): when ${skill.when_text}. Reads ${skill.reads}. Writes ${skill.drafts}. Must not ${skill.must_not}. Phone ${skill.phone || "none"}.`,
     );
   }
   for (const note of memory) lines.push(`Remembered: ${note}`);
@@ -185,12 +188,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chatId = String(req.query.chatId ?? "");
         return res.status(200).json({ messages: await listMessages(chatId) });
       }
-      const jobs = await jobRows().catch(() => [] as JobRow[]);
-      const [brief, chats, memory, skills, textLog, textNumbers] = await Promise.all([
+      await collectSkillRuns().catch(() => undefined);
+      const skills = await skillRows();
+      const [brief, chats, memory, textLog, textNumbers] = await Promise.all([
         buildBrief(),
         listChats(),
         listMemory().catch(() => []),
-        listSkills().catch(() => []),
         listTextLog().catch(() => []),
         listTextNumbers().catch(() => []),
       ]);
@@ -198,12 +201,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         brief,
         chats,
         skills,
-        jobs,
         textLog,
         textNumbers,
         twilioFrom: twilioFromLabel(),
         memory,
-        connectors: await connectors(jobs),
+        connectors: await connectors(skills),
         billing: process.env.CURSOR_API_KEY
           ? "Cursor Auto is connected. The team spend total appears when the admin key is set."
           : "Cursor isn’t connected yet. The brief still uses your records. Nothing is sent.",
@@ -221,39 +223,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ chats: await listChats(), brief: await buildBrief() });
     }
 
-    if (op === "job") {
-      const action = String(body.action ?? "");
-      if (action === "on") {
-        await turnOnInbox();
-      } else if (action === "off") {
-        const job = await getJob("guest_inbox");
-        if (job) await saveJob({ kind: job.kind, title: job.title, enabled: false });
-      } else if (action === "checklist") {
-        const job = await getJob("guest_inbox");
-        if (!job) return res.status(400).json({ error: "Turn on the morning inbox first." });
-        const checklist = (Array.isArray(body.checklist) ? body.checklist : [])
-          .map((item) => String(item).trim().slice(0, 60))
-          .filter(Boolean)
-          .slice(0, 8);
-        await saveJob({ kind: job.kind, title: job.title, enabled: job.enabled, settings: { checklist } });
-      } else {
-        return res.status(400).json({ error: "Unknown job action." });
-      }
-      const jobs = await jobRows();
-      return res.status(200).json({ jobs, connectors: await connectors(jobs), chats: await listChats(), brief: await buildBrief() });
-    }
-
-    if (op === "run-job") {
-      const outcome = await runGuestInbox("manual");
-      if ("skipped" in outcome) return res.status(400).json({ error: outcome.skipped });
-      const jobs = await jobRows();
-      return res.status(200).json({
-        jobs,
-        connectors: await connectors(jobs),
-        chats: await listChats(),
-        brief: await buildBrief(),
-        chatId: outcome.job.chat_id,
-      });
+    if (op === "run-skill") {
+      const id = String(body.id ?? "").trim();
+      if (!id) return res.status(400).json({ error: "Missing skill." });
+      const run = await startSkillRun(id, "manual");
+      const skills = await skillRows();
+      return res.status(200).json({ run, skills, connectors: await connectors(skills), chats: await listChats() });
     }
 
     if (op === "dismiss") {
@@ -364,6 +339,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           enabled: true,
           kind,
           phone: phone ?? "",
+          schedule: kind === "playbook" && body.schedule === "daily" ? "daily" : "",
         });
         if (phone) {
           try {
@@ -373,7 +349,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
         const message = await updateDraft(messageId, { status: "approved_unsent" });
-        return res.status(200).json({ message, skill, skills: await listSkills(), textNumbers: await listTextNumbers() });
+        return res.status(200).json({ message, skill, skills: await skillRows(), textNumbers: await listTextNumbers() });
       }
       if (action === "discard-skill") {
         const message = await updateDraft(messageId, { status: "held" });
@@ -382,7 +358,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action === "hold") {
         const message = await updateDraft(messageId, {
           status: "held",
-          bodyText: "Held. Nothing was sent.",
+          bodyText: body.channel === "note" ? "Held. Nothing was sent." : undefined,
         });
         return res.status(200).json({ message });
       }
@@ -391,9 +367,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const message = await updateDraft(messageId, {
           status: "approved_unsent",
           body: edited || undefined,
-          bodyText: note
-            ? "Kept. Nothing was sent."
-            : "You approved this. Gmail is not connected, so it was not sent. Nothing left this app.",
+          // Email keeps its text. The card shows Approved and that nothing was sent.
+          bodyText: note ? "Kept. Nothing was sent." : undefined,
         });
         return res.status(200).json({ message });
       }
@@ -403,7 +378,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (op === "skill") {
       if (body.action === "delete") {
         await deleteSkill(String(body.id ?? ""));
-        return res.status(200).json({ skills: await listSkills() });
+        return res.status(200).json({ skills: await skillRows() });
       }
       const kind = body.kind === "text" ? "text" : "playbook";
       const rawPhone = String(body.phone ?? "").trim();
@@ -429,7 +404,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           /* The skill still keeps the number if the allowlist table is not there yet. */
         }
       }
-      return res.status(200).json({ skill, skills: await listSkills(), textNumbers: await listTextNumbers().catch(() => []) });
+      return res.status(200).json({ skill, skills: await skillRows(), textNumbers: await listTextNumbers().catch(() => []) });
     }
 
     if (op === "text-number") {
@@ -437,7 +412,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!phone) return res.status(400).json({ error: "That mobile number is not valid." });
       if (body.action === "remove") {
         const textNumbers = await removeTextNumber(phone);
-        return res.status(200).json({ textNumbers, skills: await listSkills() });
+        return res.status(200).json({ textNumbers, skills: await skillRows() });
       }
       const textNumbers = await addTextNumber(phone);
       return res.status(200).json({ textNumbers });
