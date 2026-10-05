@@ -49,5 +49,25 @@ create table if not exists copilot_skills (
   reads text not null,
   drafts text not null,
   must_not text not null,
-  enabled boolean not null default true
+  enabled boolean not null default true,
+  kind text not null default 'playbook',
+  phone text not null default ''
+);
+
+alter table copilot_skills add column if not exists kind text not null default 'playbook';
+alter table copilot_skills add column if not exists phone text not null default '';
+
+create table if not exists copilot_text_numbers (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  phone text not null unique
+);
+
+create table if not exists copilot_text_log (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  skill_id uuid,
+  unit text not null default '',
+  body text not null,
+  link text not null default ''
 );

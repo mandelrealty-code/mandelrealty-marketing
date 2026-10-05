@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../supabase.js";
-import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReminder, CopilotSkill } from "./types.js";
+import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReminder, CopilotSkill, CopilotTextSend } from "./types.js";
 
 type FileShape = {
   chats: CopilotChat[];
@@ -11,13 +11,15 @@ type FileShape = {
   memory: { id: string; created_at: string; note: string }[];
   skills: CopilotSkill[];
   dismissals: { id: string; created_at: string; card_id: string }[];
+  textNumbers: string[];
+  textLog: CopilotTextSend[];
 };
 
 const FILE = path.join(process.cwd(), "data", "copilot-store.json");
 let useFile = false;
 
 function empty(): FileShape {
-  return { chats: [], messages: [], reminders: [], memory: [], skills: [], dismissals: [] };
+  return { chats: [], messages: [], reminders: [], memory: [], skills: [], dismissals: [], textNumbers: [], textLog: [] };
 }
 
 function readFileStore(): FileShape {
@@ -29,6 +31,9 @@ function readFileStore(): FileShape {
     data.memory ??= [];
     data.skills ??= [];
     data.dismissals ??= [];
+    data.textNumbers ??= [];
+    data.textLog ??= [];
+    data.skills = data.skills.map((skill) => asSkill(skill));
     return data;
   } catch {
     return empty();
@@ -58,6 +63,30 @@ function useLocalFile(error: { message?: string } | null): boolean {
 
 function sb() {
   return getSupabaseAdmin();
+}
+
+function asSkill(row: Partial<CopilotSkill>): CopilotSkill {
+  return {
+    id: String(row.id ?? ""),
+    created_at: String(row.created_at ?? ""),
+    updated_at: String(row.updated_at ?? ""),
+    name: String(row.name ?? ""),
+    when_text: String(row.when_text ?? ""),
+    reads: String(row.reads ?? ""),
+    drafts: String(row.drafts ?? ""),
+    must_not: String(row.must_not ?? ""),
+    enabled: row.enabled !== false,
+    kind: row.kind === "text" ? "text" : "playbook",
+    phone: String(row.phone ?? ""),
+  };
+}
+
+const SQL_AGAIN =
+  "Copilot storage is missing the text-skill columns. Run supabase/copilot_v1.sql in the Supabase SQL editor again, then try again.";
+
+function missingColumn(error: { message?: string } | null): boolean {
+  const m = error?.message ?? "";
+  return /column|schema cache/i.test(m) && /phone|kind|copilot_text/i.test(m);
 }
 
 export async function listChats(): Promise<CopilotChat[]> {
@@ -297,7 +326,7 @@ export async function listSkills(): Promise<CopilotSkill[]> {
       .from("copilot_skills")
       .select("*")
       .order("updated_at", { ascending: false });
-    if (!error) return (data ?? []) as CopilotSkill[];
+    if (!error) return (data ?? []).map((row) => asSkill(row as Partial<CopilotSkill>));
     if (missingTable(error)) skillsInFile = true;
     else throw new Error(error.message);
   }
@@ -316,6 +345,8 @@ export async function saveSkill(input: Omit<CopilotSkill, "id" | "created_at" | 
     drafts: input.drafts,
     must_not: input.must_not,
     enabled: input.enabled,
+    kind: input.kind === "text" ? "text" : "playbook",
+    phone: input.phone.trim(),
   };
   const client = sb();
   if (!useFile && !skillsInFile && client) {
@@ -325,6 +356,7 @@ export async function saveSkill(input: Omit<CopilotSkill, "id" | "created_at" | 
     if (existing?.created_at) skill.created_at = existing.created_at as string;
     const { error } = await client.from("copilot_skills").upsert(skill);
     if (!error) return skill;
+    if (missingColumn(error)) throw new Error(SQL_AGAIN);
     if (missingTable(error)) skillsInFile = true;
     else throw new Error(error.message);
   }
@@ -409,4 +441,109 @@ export async function listMemory(): Promise<string[]> {
     .memory.slice(-20)
     .reverse()
     .map((m) => m.note);
+}
+
+export async function listTextNumbers(): Promise<string[]> {
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_text_numbers").select("phone").order("created_at", { ascending: true });
+    if (!error) return (data ?? []).map((row) => String((row as { phone: string }).phone));
+    if (missingTable(error)) {
+      if (process.env.VERCEL) return [];
+    } else throw new Error(error.message);
+  }
+  return readFileStore().textNumbers;
+}
+
+export async function addTextNumber(phone: string): Promise<string[]> {
+  const value = phone.trim();
+  if (!value) return listTextNumbers();
+  const client = sb();
+  if (!useFile && client) {
+    const { error } = await client.from("copilot_text_numbers").insert({ id: randomUUID(), phone: value });
+    if (!error || /duplicate|unique/i.test(error.message ?? "")) return listTextNumbers();
+    if (missingTable(error)) {
+      if (process.env.VERCEL) throw new Error(SQL_AGAIN);
+    } else throw new Error(error.message);
+  }
+  const data = readFileStore();
+  if (!data.textNumbers.includes(value)) data.textNumbers.push(value);
+  writeFileStore(data);
+  return data.textNumbers;
+}
+
+export async function removeTextNumber(phone: string): Promise<string[]> {
+  const value = phone.trim();
+  const client = sb();
+  if (!useFile && client) {
+    const { error } = await client.from("copilot_text_numbers").delete().eq("phone", value);
+    if (error) {
+      if (missingTable(error)) {
+        if (process.env.VERCEL) throw new Error(SQL_AGAIN);
+      } else throw new Error(error.message);
+    } else {
+      const skills = await listSkills();
+      for (const skill of skills) {
+        if (skill.phone === value) await saveSkill({ ...skill, phone: "" });
+      }
+      return listTextNumbers();
+    }
+  }
+  const data = readFileStore();
+  data.textNumbers = data.textNumbers.filter((item) => item !== value);
+  for (const skill of data.skills) {
+    if (skill.phone === value) skill.phone = "";
+  }
+  writeFileStore(data);
+  return data.textNumbers;
+}
+
+export async function listTextLog(): Promise<CopilotTextSend[]> {
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client
+      .from("copilot_text_log")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (!error) {
+      return (data ?? []).map((row) => {
+        const item = row as CopilotTextSend;
+        return {
+          id: String(item.id),
+          created_at: String(item.created_at),
+          skill_id: String(item.skill_id ?? ""),
+          unit: String(item.unit ?? ""),
+          body: String(item.body ?? ""),
+          link: String(item.link ?? ""),
+        };
+      });
+    }
+    if (missingTable(error)) {
+      if (process.env.VERCEL) return [];
+    } else throw new Error(error.message);
+  }
+  return [...readFileStore().textLog].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 30);
+}
+
+export async function addTextLog(input: Omit<CopilotTextSend, "id" | "created_at">): Promise<void> {
+  const row: CopilotTextSend = {
+    id: randomUUID(),
+    created_at: new Date().toISOString(),
+    skill_id: input.skill_id,
+    unit: input.unit,
+    body: input.body,
+    link: input.link,
+  };
+  const client = sb();
+  if (!useFile && client) {
+    const { error } = await client.from("copilot_text_log").insert(row);
+    if (!error) return;
+    if (missingTable(error)) {
+      if (process.env.VERCEL) return;
+    } else throw new Error(error.message);
+  }
+  const data = readFileStore();
+  data.textLog.unshift(row);
+  writeFileStore(data);
 }

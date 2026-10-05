@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
-import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill } from "../../../shared/copilot/types";
+import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend } from "../../../shared/copilot/types";
 import "./copilot.css";
 
-type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "account";
+type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account";
 
 type Boot = {
   brief: BriefPayload;
@@ -11,9 +11,49 @@ type Boot = {
   skills: CopilotSkill[];
   connectors: ConnectorRow[];
   billing: string;
+  textLog?: CopilotTextSend[];
+  textNumbers?: string[];
+  twilioFrom?: string;
 };
 
-type SkillForm = { name: string; when: string; reads: string; drafts: string; mustNot: string };
+type SkillForm = { name: string; when: string; reads: string; drafts: string; mustNot: string; phone: string };
+
+type PendingFile = {
+  id: string;
+  kind: "photo" | "doc";
+  name: string;
+  size: string;
+  ext: string;
+  url?: string;
+};
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  const mb = bytes / (1024 * 1024);
+  return `${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB`;
+}
+
+function fileExt(name: string) {
+  const part = name.includes(".") ? name.split(".").pop() ?? "" : "";
+  return (part || "FILE").slice(0, 4).toUpperCase();
+}
+
+function prettyPhone(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return phone;
+}
+
+function usablePhone(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length === 10 || (digits.length === 11 && digits.startsWith("1"));
+}
 
 const SUGGESTIONS = [
   "Email the next guest at 20 Blue Jays Way",
@@ -172,6 +212,10 @@ function workFor(message: CopilotMessage): { thought: string; steps: { text: str
   const steps = [{ text: "Read your message" }];
   const draft = message.draft;
   if (draft?.channel === "skill") {
+    if (draft.skillKind === "text") {
+      steps.push({ text: "Wrote the text and left it waiting" });
+      return { thought: "Saving this texts your number only. It does not text a guest.", steps };
+    }
     steps.push({ text: "Wrote the skill and left it waiting" });
     return { thought: "This is a playbook. Saving it does not send anything.", steps };
   }
@@ -301,7 +345,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [installHint, setInstallHint] = useState(false);
   const [copied, setCopied] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
-  const [files, setFiles] = useState<string[]>([]);
+  const [files, setFiles] = useState<PendingFile[]>([]);
   const [hidden, setHidden] = useState<string[]>([]);
   const [trail, setTrail] = useState<Record<string, boolean>>({});
   const [report, setReport] = useState(false);
@@ -313,7 +357,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [renameText, setRenameText] = useState("");
   const [pendingDelete, setPendingDelete] = useState<{ kind: "chat" | "skill"; id: string; title: string } | null>(null);
   const [skillId, setSkillId] = useState<string | null>(null);
-  const [skillForm, setSkillForm] = useState<SkillForm>({ name: "", when: "", reads: "", drafts: "", mustNot: "" });
+  const [skillForm, setSkillForm] = useState<SkillForm>({ name: "", when: "", reads: "", drafts: "", mustNot: "", phone: "" });
+  const [skillPhones, setSkillPhones] = useState<Record<string, string>>({});
+  const [numberDraft, setNumberDraft] = useState("");
   const [skillSaved, setSkillSaved] = useState(false);
   const [pw, setPw] = useState({ cur: "", next: "", conf: "" });
   const [pwMsg, setPwMsg] = useState<"" | "err" | "current" | "server">("");
@@ -328,18 +374,74 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
 
   useEffect(() => {
     document.title = "Copilot | Mandel Realty Group";
+    const root = document.documentElement;
+    root.classList.add("cp-app");
     const link = document.createElement("link");
     link.rel = "manifest";
     link.href = "/copilot.webmanifest";
     document.head.appendChild(link);
+    const themeMeta = document.createElement("meta");
+    themeMeta.name = "theme-color";
+    document.head.appendChild(themeMeta);
+    const appleBar = document.createElement("meta");
+    appleBar.name = "apple-mobile-web-app-status-bar-style";
+    appleBar.content = "black-translucent";
+    document.head.appendChild(appleBar);
+    const paint = () => {
+      const light = root.dataset.cpTheme === "light";
+      themeMeta.content = light ? "#f4f3f7" : "#0b0a10";
+    };
+    paint();
+    const observer = new MutationObserver(paint);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-cp-theme"] });
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/copilot-sw.js").catch(() => undefined);
     }
+    let startY = 0;
+    const onStart = (event: TouchEvent) => {
+      startY = event.touches[0]?.clientY ?? 0;
+    };
+    const onMove = (event: TouchEvent) => {
+      const y = event.touches[0]?.clientY ?? startY;
+      const dy = y - startY;
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        event.preventDefault();
+        return;
+      }
+      let node: Element | null = target;
+      while (node && node !== document.body) {
+        if (node instanceof HTMLElement) {
+          const overflowY = window.getComputedStyle(node).overflowY;
+          if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight + 1) {
+            const atTop = node.scrollTop <= 0;
+            const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1;
+            if ((dy > 0 && atTop) || (dy < 0 && atBottom)) event.preventDefault();
+            return;
+          }
+        }
+        node = node.parentElement;
+      }
+      event.preventDefault();
+    };
+    document.addEventListener("touchstart", onStart, { passive: true });
+    document.addEventListener("touchmove", onMove, { passive: false });
     return () => {
+      observer.disconnect();
+      root.classList.remove("cp-app");
+      delete root.dataset.cpTheme;
       link.remove();
+      themeMeta.remove();
+      appleBar.remove();
+      document.removeEventListener("touchstart", onStart);
+      document.removeEventListener("touchmove", onMove);
       document.title = "CRM | Mandel Realty Group";
     };
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.cpTheme = theme;
+  }, [theme]);
 
   async function load() {
     const data = await api<Boot>("boot");
@@ -442,9 +544,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   async function send(preset?: string) {
-    const attached = files.length ? `\nAttached: ${files.join(", ")}` : "";
-    const value = `${(preset ?? text).trim()}${preset ? "" : attached}`.trim();
+    const attached = files.length ? `\nAttached: ${files.map((file) => file.name).join(", ")}` : "";
+    const typed = (preset ?? text).trim();
+    const value = `${typed}${preset ? "" : attached}`.trim();
     if (!value || busy) return;
+    const kept = files;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setPending(value);
@@ -465,7 +569,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         kind: "chat",
         skillMode: makingSkill,
       }, ctrl.signal);
-      if (ctrl.signal.aborted) return;
+      if (ctrl.signal.aborted) {
+        if (!preset) {
+          setText(typed);
+          setFiles(kept);
+        }
+        return;
+      }
+      kept.forEach((file) => {
+        if (file.url) URL.revokeObjectURL(file.url);
+      });
       setChatId(data.chatId);
       setMessages(data.messages);
       if (makingSkill) {
@@ -481,10 +594,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     } catch (e) {
       if (ctrl.signal.aborted) {
         setStopped(true);
-        if (!preset) setText(value);
+        if (!preset) {
+          setText(typed);
+          setFiles(kept);
+        }
       } else {
         setError(e instanceof Error ? e.message : "Could not send.");
-        if (!preset) setText(value);
+        if (!preset) {
+          setText(typed);
+          setFiles(kept);
+        }
       }
     } finally {
       if (abortRef.current === ctrl) abortRef.current = null;
@@ -513,7 +632,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
-  const inSettings = screen === "settings" || screen === "skills" || screen === "skill" || screen === "connectors" || screen === "account";
+  const inSettings = screen === "settings" || screen === "skills" || screen === "skill" || screen === "connectors" || screen === "twilio" || screen === "account";
   const skills = boot?.skills ?? [];
   const openSkillRecord = skills.find((s) => s.id === skillId) ?? null;
 
@@ -528,10 +647,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       ? "Settings"
       : screen === "skill"
         ? "Skills"
-        : "Chats";
+        : screen === "twilio"
+          ? "Connectors"
+          : "Chats";
 
   function back() {
     if (screen === "skill") setScreen("skills");
+    else if (screen === "twilio") setScreen("connectors");
     else if (screen === "skills" || screen === "connectors" || screen === "account") setScreen("settings");
     else {
       setScreen("brief");
@@ -557,6 +679,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       reads: skill.reads,
       drafts: skill.drafts,
       mustNot: skill.must_not,
+      phone: skill.phone || "",
     });
     setSkillSaved(false);
     setScreen("skill");
@@ -567,16 +690,18 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     if (!skillForm.name.trim()) return;
     setBusy(true);
     try {
-      const data = await api<{ skills: CopilotSkill[] }>("skill", {
+      const data = await api<{ skills: CopilotSkill[]; textNumbers?: string[] }>("skill", {
         id: skillId,
         name: skillForm.name,
         when: skillForm.when,
         reads: skillForm.reads,
         drafts: skillForm.drafts,
         mustNot: skillForm.mustNot,
+        phone: skillForm.phone,
+        kind: openSkillRecord?.kind ?? "playbook",
         enabled,
       });
-      setBoot((prev) => (prev ? { ...prev, skills: data.skills } : prev));
+      setBoot((prev) => (prev ? { ...prev, skills: data.skills, textNumbers: data.textNumbers ?? prev.textNumbers } : prev));
       setSkillSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save the skill.");
@@ -586,16 +711,18 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   async function toggleSkill(skill: CopilotSkill) {
-    const data = await api<{ skills: CopilotSkill[] }>("skill", {
+    const data = await api<{ skills: CopilotSkill[]; textNumbers?: string[] }>("skill", {
       id: skill.id,
       name: skill.name,
       when: skill.when_text,
       reads: skill.reads,
       drafts: skill.drafts,
       mustNot: skill.must_not,
+      phone: skill.phone,
+      kind: skill.kind,
       enabled: !skill.enabled,
     });
-    setBoot((prev) => (prev ? { ...prev, skills: data.skills } : prev));
+    setBoot((prev) => (prev ? { ...prev, skills: data.skills, textNumbers: data.textNumbers ?? prev.textNumbers } : prev));
   }
 
   async function commitRename() {
@@ -625,9 +752,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   async function saveSkillCard(message: CopilotMessage) {
     const draft = message.draft;
     if (!draft) return;
+    const phone = skillPhones[message.id] ?? draft.skillPhone ?? "";
+    if (draft.skillKind === "text" && !usablePhone(phone)) {
+      setError("Add your mobile number. Nothing was saved.");
+      return;
+    }
     setBusy(true);
     try {
-      const data = await api<{ skills: CopilotSkill[] }>("draft", {
+      const data = await api<{ skills: CopilotSkill[]; textNumbers?: string[] }>("draft", {
         messageId: message.id,
         action: "save-skill",
         name: draft.skillName,
@@ -635,8 +767,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         reads: draft.skillReads,
         drafts: draft.skillDrafts,
         mustNot: draft.skillMustNot,
+        kind: draft.skillKind === "text" ? "text" : "playbook",
+        phone,
       });
-      setBoot((prev) => (prev ? { ...prev, skills: data.skills } : prev));
+      setBoot((prev) => (prev ? { ...prev, skills: data.skills, textNumbers: data.textNumbers ?? prev.textNumbers } : prev));
       if (chatId) await openChat(chatId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save the skill.");
@@ -669,9 +803,25 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     window.location.reload();
   }
 
-  function takeFiles(list: FileList | null) {
-    setFiles(Array.from(list ?? []).map((file) => file.name));
+  function takeFiles(list: FileList | null, kind: "photo" | "doc") {
+    const next = Array.from(list ?? []).map((file) => ({
+      id: crypto.randomUUID(),
+      kind,
+      name: file.name,
+      size: formatBytes(file.size),
+      ext: fileExt(file.name),
+      url: kind === "photo" ? URL.createObjectURL(file) : undefined,
+    }));
+    if (next.length) setFiles((prev) => [...prev, ...next]);
     setPlusOpen(false);
+  }
+
+  function removeFile(id: string) {
+    setFiles((prev) => {
+      const item = prev.find((file) => file.id === id);
+      if (item?.url) URL.revokeObjectURL(item.url);
+      return prev.filter((file) => file.id !== id);
+    });
   }
 
   const waiting = messages.some((m) => m.draft?.status === "waiting");
@@ -906,7 +1056,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           <p>Shared by both partners.</p>
                         </div>
                         <button type="button" className="cp-setrow" onClick={() => setScreen("skills")}>
-                          <span><strong>Skills</strong><em>Playbooks Copilot prepares overnight.</em></span>
+                          <span><strong>Skills</strong><em>Tools that automate routine work for the business.</em></span>
                           <Chevron />
                         </button>
                         <button type="button" className="cp-setrow" onClick={() => setScreen("connectors")}>
@@ -924,14 +1074,22 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         <div className="cp-sethead split">
                           <div>
                             <h1>Skills</h1>
-                            <p>Playbooks Copilot prepares overnight.</p>
+                            <p>Tools that automate routine work for the business.</p>
                           </div>
                           <button type="button" className="cp-newskill-desk" onClick={startSkill}>New skill</button>
                         </div>
                         {skills.length === 0 ? (
                           <div className="cp-empty-skill">
-                            <strong>No skills yet.</strong>
-                            <button type="button" className="cp-goldlink" onClick={startSkill}>New skill</button>
+                            <div className="cp-empty-copy">
+                              <h2>No skills yet</h2>
+                              <p>A skill automates a task for the business. You create one by describing it in chat.</p>
+                            </div>
+                            <div className="cp-steps">
+                              <div className="cp-step"><b>1</b><span>Tap New skill and describe the task.</span></div>
+                              <div className="cp-step"><b>2</b><span>Copilot drafts the skill. Review it.</span></div>
+                              <div className="cp-step"><b>3</b><span>Save it. It runs on its own.</span></div>
+                            </div>
+                            <button type="button" className="cp-newskill" onClick={startSkill}>New skill</button>
                           </div>
                         ) : skills.map((skill) => (
                           <div key={skill.id} className="cp-skillrow" onClick={() => openSkill(skill)}>
@@ -960,7 +1118,17 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         <div className="cp-sethead">
                           <h1>{skillForm.name || openSkillRecord.name}</h1>
                           <p style={{ color: openSkillRecord.enabled ? "var(--muted)" : "var(--quiet)" }}>
-                            {openSkillRecord.enabled ? "On · runs overnight" : "Off · will not run"}
+                            {openSkillRecord.kind === "text"
+                              ? !openSkillRecord.enabled
+                                ? "Off · will not text."
+                                : !openSkillRecord.phone
+                                  ? "On · no number yet."
+                                  : /\bclean/i.test(openSkillRecord.when_text)
+                                    ? "On · texts you when a clean is done."
+                                    : "On · texts your number."
+                              : openSkillRecord.enabled
+                                ? "On · runs overnight"
+                                : "Off · will not run"}
                           </p>
                         </div>
                         <div className="cp-skillbox">
@@ -969,8 +1137,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                               ["Name", "name"],
                               ["When it runs", "when"],
                               ["What it reads", "reads"],
-                              ["What it drafts", "drafts"],
-                              ["It must not", "mustNot"],
+                              [openSkillRecord.kind === "text" ? "Text message" : "What it drafts", "drafts"],
                             ] as const
                           ).map(([label, key]) => (
                             <label key={key} className="cp-field">
@@ -978,13 +1145,55 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                               <textarea className="box" rows={key === "name" ? 1 : 3} value={skillForm[key]} onChange={(e) => { setSkillForm((f) => ({ ...f, [key]: e.target.value })); setSkillSaved(false); }} />
                             </label>
                           ))}
+                          {openSkillRecord.kind === "text" ? (
+                            <label className="cp-field">
+                              <span>Text these numbers</span>
+                              <input
+                                type="tel"
+                                inputMode="tel"
+                                autoComplete="tel"
+                                placeholder="Your mobile number"
+                                value={skillForm.phone}
+                                onChange={(e) => { setSkillForm((f) => ({ ...f, phone: e.target.value })); setSkillSaved(false); }}
+                              />
+                            </label>
+                          ) : null}
+                          <label className="cp-field">
+                            <span>It must not</span>
+                            <textarea className="box" rows={3} value={skillForm.mustNot} onChange={(e) => { setSkillForm((f) => ({ ...f, mustNot: e.target.value })); setSkillSaved(false); }} />
+                          </label>
                         </div>
                         <div className="cp-skill-actions">
                           <button type="button" className="cp-gold" disabled={busy} onClick={() => void persistSkill(openSkillRecord.enabled)}>{skillSaved ? "Saved" : "Save"}</button>
                           <button type="button" className="cp-textbtn" disabled={busy} onClick={() => void toggleSkill(openSkillRecord)}>{openSkillRecord.enabled ? "Turn off" : "Turn on"}</button>
                           <button type="button" className="cp-textbtn danger" onClick={() => setPendingDelete({ kind: "skill", id: openSkillRecord.id, title: openSkillRecord.name })}>Delete</button>
                         </div>
-                        <p className="cp-note">Saving does not send anything. The next run only prepares a draft.</p>
+                        <p className="cp-note">
+                          {openSkillRecord.kind === "text"
+                            ? /\bclean/i.test(openSkillRecord.when_text)
+                              ? "Saving does not text anyone. The next clean texts only the numbers on this skill."
+                              : "Saving does not text anyone. It texts only the numbers on this skill."
+                            : "Saving does not send anything. The next run only prepares a draft."}
+                        </p>
+                        {openSkillRecord.kind === "text" && (boot?.textLog ?? []).some((row) => row.skill_id === openSkillRecord.id) ? (
+                          <>
+                            <div className="cp-log">
+                              {(boot?.textLog ?? []).filter((row) => row.skill_id === openSkillRecord.id).map((row) => (
+                                <div key={row.id} className="cp-logrow">
+                                  <div className="meta">
+                                    <span>Texted</span>
+                                    <em>{[row.unit, when(row.created_at)].filter(Boolean).join(" · ")}</em>
+                                  </div>
+                                  <div className="bubble">
+                                    <p>{row.body}</p>
+                                    {row.link ? <p className="link">{row.link}</p> : null}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="cp-note">These texts already went to the numbers on this skill.</p>
+                          </>
+                        ) : null}
                       </>
                     ) : null}
                     {screen === "connectors" ? (
@@ -993,8 +1202,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           <h1>Connectors</h1>
                           <p>Accounts this chat can use.</p>
                         </div>
-                        {(boot?.connectors ?? []).map((row) => (
-                          <div key={row.id} className="cp-crow">
+                        {(boot?.connectors ?? []).map((row) => {
+                          const openTwilio = row.id === "twilio" && row.status === "connected";
+                          return (
+                          <div key={row.id} className={`cp-crow${openTwilio ? " link" : ""}`} onClick={openTwilio ? () => setScreen("twilio") : undefined}>
                             <div className="cp-crow-copy">
                               <strong>{row.name}</strong>
                               {row.detail ? <div className="desc">{row.detail}</div> : null}
@@ -1007,8 +1218,84 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             {row.id === "hospitable" ? (
                               <button type="button" className="cp-linkish" onClick={() => onModeChange("ops")}>Open OPS Settings</button>
                             ) : null}
+                            {openTwilio ? <Chevron /> : null}
                           </div>
-                        ))}
+                          );
+                        })}
+                      </>
+                    ) : null}
+                    {screen === "twilio" ? (
+                      <>
+                        <div className="cp-sethead">
+                          <h1>Twilio</h1>
+                          <p>Numbers a skill is allowed to text.</p>
+                        </div>
+                        <div className="cp-skillbox">
+                          <div className="cp-field">
+                            <span>From</span>
+                            <strong>{boot?.twilioFrom || "Not set on the server."}</strong>
+                          </div>
+                          <div className="cp-field">
+                            <span>Text these numbers</span>
+                            {(boot?.textNumbers ?? []).length === 0 && !skills.some((skill) => skill.phone) ? (
+                              <span className="cp-quietline">No number yet.</span>
+                            ) : null}
+                            {Array.from(new Set([...(boot?.textNumbers ?? []), ...skills.map((skill) => skill.phone).filter(Boolean)])).map((phone) => (
+                              <div key={phone} className="cp-numrow">
+                                <input type="tel" aria-label="Number" value={prettyPhone(phone)} readOnly />
+                                <button
+                                  type="button"
+                                  className="cp-textbtn"
+                                  onClick={() => {
+                                    void api<{ textNumbers: string[]; skills?: CopilotSkill[] }>("text-number", { action: "remove", phone }).then((data) => {
+                                      setBoot((prev) => (prev ? { ...prev, textNumbers: data.textNumbers, skills: data.skills ?? prev.skills } : prev));
+                                    }).catch((e) => setError(e instanceof Error ? e.message : "Could not remove that number."));
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                            <div className="cp-numadd">
+                              <input
+                                type="tel"
+                                placeholder="Add a number"
+                                value={numberDraft}
+                                onChange={(e) => setNumberDraft(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    if (!usablePhone(numberDraft)) {
+                                      setError("That mobile number is not valid.");
+                                      return;
+                                    }
+                                    void api<{ textNumbers: string[] }>("text-number", { phone: numberDraft }).then((data) => {
+                                      setNumberDraft("");
+                                      setBoot((prev) => (prev ? { ...prev, textNumbers: data.textNumbers } : prev));
+                                    }).catch((err) => setError(err instanceof Error ? err.message : "Could not add that number."));
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="cp-goldlink"
+                                onClick={() => {
+                                  if (!usablePhone(numberDraft)) {
+                                    setError("That mobile number is not valid.");
+                                    return;
+                                  }
+                                  void api<{ textNumbers: string[] }>("text-number", { phone: numberDraft }).then((data) => {
+                                    setNumberDraft("");
+                                    setBoot((prev) => (prev ? { ...prev, textNumbers: data.textNumbers } : prev));
+                                  }).catch((err) => setError(err instanceof Error ? err.message : "Could not add that number."));
+                                }}
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="cp-note">A skill can text only these numbers. Guests, hosts, and clients are never texted.</p>
                       </>
                     ) : null}
                     {screen === "account" ? (
@@ -1112,8 +1399,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                                 ["Name", message.draft.skillName],
                                 ["When it runs", message.draft.skillWhen],
                                 ["What it reads", message.draft.skillReads],
-                                ["What it drafts", message.draft.skillDrafts],
-                                ["It must not", message.draft.skillMustNot],
+                                [message.draft.skillKind === "text" ? "Text message" : "What it drafts", message.draft.skillDrafts],
                               ] as const
                             ).map(([label, value]) => (
                               <div key={label} className="row">
@@ -1121,6 +1407,25 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                                 <span className="v">{value}</span>
                               </div>
                             ))}
+                            {message.draft.skillKind === "text" ? (
+                              <label className="row">
+                                <span className="k">Text me at</span>
+                                <input
+                                  className="cp-phone"
+                                  type="tel"
+                                  inputMode="tel"
+                                  autoComplete="tel"
+                                  placeholder="Your mobile number"
+                                  value={skillPhones[message.id] ?? message.draft.skillPhone ?? ""}
+                                  onChange={(e) => setSkillPhones((prev) => ({ ...prev, [message.id]: e.target.value }))}
+                                  disabled={message.draft.status !== "waiting"}
+                                />
+                              </label>
+                            ) : null}
+                            <div className="row">
+                              <span className="k">It must not</span>
+                              <span className="v">{message.draft.skillMustNot}</span>
+                            </div>
                             {message.draft.status === "approved_unsent" ? (
                               <div className="cp-saved">
                                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1137,10 +1442,26 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                                 <button type="button" className="cp-send" disabled={busy} onClick={() => void saveSkillCard(message)}>Save skill</button>
                                 <button type="button" className="cp-hold" disabled={busy} onClick={() => void discardSkillCard(message)}>Discard</button>
                               </div>
-                              <p className="cp-quietline">Saving keeps the playbook. It still will not send until you approve a draft.</p>
+                              <p className="cp-quietline">
+                                {message.draft.skillKind === "text"
+                                  ? boot?.connectors.some((row) => row.id === "twilio" && row.status === "connected")
+                                    ? "Saving this turns the text on for your number. It texts you only. It does not text a guest."
+                                    : "Twilio is not connected, so saving this will not text anyone yet. It does not text a guest."
+                                  : "Saving keeps the playbook. It still will not send until you approve a draft."}
+                              </p>
                             </>
                           ) : null}
-                          {message.draft.status === "approved_unsent" ? <p>Saved. Tonight it only prepares a draft. Nothing sends until you approve it.</p> : null}
+                          {message.draft.status === "approved_unsent" ? (
+                            <p>
+                              {message.draft.skillKind === "text"
+                                ? boot?.connectors.some((row) => row.id === "twilio" && row.status === "connected")
+                                  ? /\bclean/i.test(message.draft.skillWhen ?? "")
+                                    ? "Saved. The next clean texts your number."
+                                    : "Saved. It texts your number when that happens."
+                                  : "Saved. Twilio is not connected, so this will not text until the keys are set."
+                                : "Saved. Tonight it only prepares a draft. Nothing sends until you approve it."}
+                            </p>
+                          ) : null}
                           {message.draft.status === "held" ? <p className="cp-muted">Discarded. Nothing was saved.</p> : null}
                         </div>
                       ) : (
@@ -1209,7 +1530,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
               {inSettings ? null : (
               <div className="cp-composer-wrap">
                 <div className="cp-confirm">Nothing goes out until you confirm.</div>
-                {files.length > 0 ? <div className="cp-files">{files.join(", ")}</div> : null}
                 <div className="cp-pluswrap" data-plus="1">
                   {plusOpen ? (
                     <div className="cp-plusmenu" role="menu">
@@ -1218,12 +1538,37 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); setSkillMode(true); }}><SkillIcon />Create a skill</button>
                     </div>
                   ) : null}
-                  <div className="cp-composer">
+                  <div className={`cp-composer${files.length ? " stacked" : ""}`}>
+                    {files.length > 0 ? (
+                      <div className="cp-tray">
+                        {files.map((file) => (
+                          <div key={file.id} className="cp-attach">
+                            {file.kind === "photo" ? (
+                              <img className="cp-thumb" src={file.url} alt="" />
+                            ) : (
+                              <div className="cp-doc">
+                                <span className="ext">{file.ext}</span>
+                                <span className="meta">
+                                  <span className="name">{file.name}</span>
+                                  <span className="size">{file.size}</span>
+                                </span>
+                              </div>
+                            )}
+                            <button type="button" className="cp-attach-x" aria-label="Remove attachment" onClick={() => removeFile(file.id)}>
+                              <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+                                <path d="M2 2l6 6M8 2L2 8" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="cp-composer-row">
                     <button type="button" className={`cp-iconbtn${plusOpen ? " open" : ""}`} aria-label="Add" aria-expanded={plusOpen} onClick={() => setPlusOpen((v) => !v)}>
                       <Plus />
                     </button>
-                    <input ref={photoRef} type="file" accept="image/*" multiple hidden onChange={(e) => { takeFiles(e.target.files); e.target.value = ""; }} />
-                    <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*" multiple hidden onChange={(e) => { takeFiles(e.target.files); e.target.value = ""; }} />
+                    <input ref={photoRef} type="file" accept="image/*" multiple hidden onChange={(e) => { takeFiles(e.target.files, "photo"); e.target.value = ""; }} />
+                    <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*" multiple hidden onChange={(e) => { takeFiles(e.target.files, "doc"); e.target.value = ""; }} />
                     {skillMode ? (
                       <span className="cp-skillchip">
                         Create a skill
@@ -1257,6 +1602,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     >
                       <Up />
                     </button>
+                    </div>
                   </div>
                 </div>
                 <div className="cp-deskpad" />

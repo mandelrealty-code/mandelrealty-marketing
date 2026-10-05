@@ -16,6 +16,66 @@ export function skillDraft(text: string): CopilotDraft {
     skillReads: "The connected accounts that already have this.",
     skillDrafts: text.trim(),
     skillMustNot: "Send, assign, change a price, or message anyone. It leaves a draft until you approve it.",
+    skillKind: "playbook",
+  };
+}
+
+function isCleanText(text: string) {
+  return /\bclean/.test(text.toLowerCase());
+}
+
+export function isTextSkillRequest(text: string) {
+  return /\b(text|texts|texting|sms)\b/i.test(text);
+}
+
+function textSkillDraft(text: string): CopilotDraft {
+  const clean = isCleanText(text);
+  const cleaned = text.replace(/^create a skill that\s+/i, "").replace(/^create a skill\s+/i, "").trim();
+  if (clean) {
+    return {
+      subject: "Clean done text",
+      body: text.trim(),
+      to: "",
+      status: "waiting",
+      channel: "skill",
+      skillName: "Clean done text",
+      skillWhen: "When the cleaner app says a clean is done.",
+      skillReads: "The unit, whether there were issues, and the report link.",
+      skillDrafts: "Clean done for {unit} — {no issues, or how many issues}. Here's the link to the report.",
+      skillMustNot: "Text a guest, a host, or a client. Invent an issue. Invent a link.",
+      skillKind: "text",
+      skillPhone: "",
+    };
+  }
+  const name = (cleaned || "Text skill").slice(0, 64);
+  return {
+    subject: name,
+    body: text.trim(),
+    to: "",
+    status: "waiting",
+    channel: "skill",
+    skillName: name,
+    skillWhen: "When the event you described happens.",
+    skillReads: "Only the facts that event already includes.",
+    skillDrafts: cleaned || text.trim(),
+    skillMustNot: "Text a guest, a host, or a client. Invent an issue. Invent a link.",
+    skillKind: "text",
+    skillPhone: "",
+  };
+}
+
+export function skillReply(text: string): { body: string; draft: CopilotDraft } {
+  if (isTextSkillRequest(text)) {
+    return {
+      body: isCleanText(text)
+        ? "Here is the text it will send you when a clean is done."
+        : "Here is the text it will send you. It texts your number only.",
+      draft: textSkillDraft(text),
+    };
+  }
+  return {
+    body: "Here is the skill. It runs overnight and leaves a draft for you in the morning.",
+    draft: skillDraft(text),
   };
 }
 
@@ -50,12 +110,8 @@ export function replyTo(text: string, previousDraft: CopilotDraft | null, now = 
   const today = torontoToday(now);
 
   if (/^create a skill\b/i.test(trimmed) || /\bcreate a skill that\b/i.test(lower)) {
-    return {
-      body: "Here is the skill. It runs overnight and leaves a draft for you in the morning.",
-      draft: skillDraft(trimmed),
-      reminder: null,
-      memory: null,
-    };
+    const skill = skillReply(trimmed);
+    return { body: skill.body, draft: skill.draft, reminder: null, memory: null };
   }
 
   if (/^remind me\b/.test(lower) || /\bremind me tomorrow\b/.test(lower)) {

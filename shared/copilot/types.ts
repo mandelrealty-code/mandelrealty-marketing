@@ -11,6 +11,8 @@ export type CopilotDraft = {
   skillReads?: string;
   skillDrafts?: string;
   skillMustNot?: string;
+  skillKind?: "playbook" | "text";
+  skillPhone?: string;
 };
 
 export type CopilotSkill = {
@@ -23,6 +25,17 @@ export type CopilotSkill = {
   drafts: string;
   must_not: string;
   enabled: boolean;
+  kind: "playbook" | "text";
+  phone: string;
+};
+
+export type CopilotTextSend = {
+  id: string;
+  created_at: string;
+  skill_id: string;
+  unit: string;
+  body: string;
+  link: string;
 };
 
 export type CopilotMessage = {

@@ -7,10 +7,13 @@ import {
 import { passwordMatches } from "../adminAuth.js";
 import { getHospitablePat } from "../pm/clientStore.js";
 import { buildBrief } from "../copilot/brief.js";
-import { draftForCard, replyTo, skillDraft } from "../copilot/reply.js";
+import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
+import { draftForCard, replyTo, skillReply } from "../copilot/reply.js";
+import { toE164 } from "../followUpSequences.js";
 import {
   addMessage,
   addReminder,
+  addTextNumber,
   createChat,
   deleteChat,
   deleteSkill,
@@ -19,7 +22,10 @@ import {
   listMemory,
   listMessages,
   listSkills,
+  listTextLog,
+  listTextNumbers,
   remember,
+  removeTextNumber,
   renameChat,
   saveSkill,
   updateDraft,
@@ -39,6 +45,8 @@ async function connectors(): Promise<ConnectorRow[]> {
   }
   const airroi = Boolean(process.env.AIRROI_API_KEY?.trim());
   const cursor = Boolean(process.env.CURSOR_API_KEY?.trim());
+  const cleaner = cleanerWebhookReady();
+  const twilio = twilioReady();
   return [
     {
       id: "gmail",
@@ -60,9 +68,19 @@ async function connectors(): Promise<ConnectorRow[]> {
       id: "cleaner",
       name: "Cleaner app",
       detail: "Calendar, assignments, issues, inventory.",
-      status: "not_connected",
-      statusLabel: "Not connected",
-      note: "Turnovers still open tasks in OPS. A live calendar read is next.",
+      status: cleaner ? "connected" : "not_connected",
+      statusLabel: cleaner ? "Connected" : "Not connected",
+      note: cleaner
+        ? "Pings Copilot when a clean is done."
+        : "Turnovers still open tasks in OPS. A live calendar read is next.",
+    },
+    {
+      id: "twilio",
+      name: "Twilio",
+      detail: "Texts the numbers you set.",
+      status: twilio ? "connected" : "not_connected",
+      statusLabel: twilio ? "Connected" : "Not connected",
+      note: twilio ? "It texts you. It does not text guests." : "Twilio keys are not set on the server.",
     },
     {
       id: "airroi",
@@ -112,16 +130,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chatId = String(req.query.chatId ?? "");
         return res.status(200).json({ messages: await listMessages(chatId) });
       }
-      const [brief, chats, memory, skills] = await Promise.all([
+      const [brief, chats, memory, skills, textLog, textNumbers] = await Promise.all([
         buildBrief(),
         listChats(),
         listMemory().catch(() => []),
         listSkills().catch(() => []),
+        listTextLog().catch(() => []),
+        listTextNumbers().catch(() => []),
       ]);
       return res.status(200).json({
         brief,
         chats,
         skills,
+        textLog,
+        textNumbers,
+        twilioFrom: twilioFromLabel(),
         memory,
         connectors: await connectors(),
         billing: process.env.CURSOR_API_KEY
@@ -174,11 +197,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await addMessage({ chatId, role: "user", body: text });
 
       if (body.skillMode === true) {
+        const skill = skillReply(text);
         await addMessage({
           chatId,
           role: "assistant",
-          body: "Here is the skill. It runs overnight and leaves a draft for you in the morning.",
-          draft: skillDraft(text),
+          body: skill.body,
+          draft: skill.draft,
         });
         const messages = await listMessages(chatId);
         const chats = await listChats();
@@ -218,6 +242,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const edited = String(body.edited ?? "");
       if (!messageId) return res.status(400).json({ error: "Missing draft." });
       if (action === "save-skill") {
+        const kind = body.kind === "text" ? "text" : "playbook";
+        const phone = kind === "text" ? toE164(String(body.phone ?? "")) : "";
+        if (kind === "text" && !phone) {
+          return res.status(400).json({ error: "Add your mobile number. Nothing was saved." });
+        }
         const skill = await saveSkill({
           name: String(body.name ?? "New skill"),
           when_text: String(body.when ?? ""),
@@ -225,9 +254,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           drafts: String(body.drafts ?? ""),
           must_not: String(body.mustNot ?? ""),
           enabled: true,
+          kind,
+          phone: phone ?? "",
         });
+        if (phone) {
+          try {
+            await addTextNumber(phone);
+          } catch {
+            /* The skill still keeps the number if the allowlist table is not there yet. */
+          }
+        }
         const message = await updateDraft(messageId, { status: "approved_unsent" });
-        return res.status(200).json({ message, skill, skills: await listSkills() });
+        return res.status(200).json({ message, skill, skills: await listSkills(), textNumbers: await listTextNumbers() });
       }
       if (action === "discard-skill") {
         const message = await updateDraft(messageId, { status: "held" });
@@ -257,6 +295,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await deleteSkill(String(body.id ?? ""));
         return res.status(200).json({ skills: await listSkills() });
       }
+      const kind = body.kind === "text" ? "text" : "playbook";
+      const rawPhone = String(body.phone ?? "").trim();
+      const phone = rawPhone ? toE164(rawPhone) : "";
+      if (kind === "text" && rawPhone && !phone) {
+        return res.status(400).json({ error: "That mobile number is not valid." });
+      }
       const skill = await saveSkill({
         id: body.id ? String(body.id) : undefined,
         name: String(body.name ?? "New skill"),
@@ -265,8 +309,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         drafts: String(body.drafts ?? ""),
         must_not: String(body.mustNot ?? ""),
         enabled: body.enabled !== false,
+        kind,
+        phone: phone ?? "",
       });
-      return res.status(200).json({ skill, skills: await listSkills() });
+      if (phone) {
+        try {
+          await addTextNumber(phone);
+        } catch {
+          /* The skill still keeps the number if the allowlist table is not there yet. */
+        }
+      }
+      return res.status(200).json({ skill, skills: await listSkills(), textNumbers: await listTextNumbers().catch(() => []) });
+    }
+
+    if (op === "text-number") {
+      const phone = toE164(String(body.phone ?? ""));
+      if (!phone) return res.status(400).json({ error: "That mobile number is not valid." });
+      if (body.action === "remove") {
+        const textNumbers = await removeTextNumber(phone);
+        return res.status(200).json({ textNumbers, skills: await listSkills() });
+      }
+      const textNumbers = await addTextNumber(phone);
+      return res.status(200).json({ textNumbers });
     }
 
     if (op === "rename") {

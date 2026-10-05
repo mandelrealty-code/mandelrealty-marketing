@@ -4,6 +4,7 @@ import {
   ensureTurnoverQaTask,
 } from "../pm/opsWorkflows.js";
 import { resolveByHospitablePropertyId } from "../pm/propertyIdentity.js";
+import { notifyCleanDone } from "../copilot/cleanText.js";
 import { isSupabaseConfigured } from "../supabase.js";
 
 /**
@@ -131,11 +132,20 @@ export default async function handleOpsHubWebhook(
         detail ||
         `Cleaning completed in Cleaner Hub for ${identity.name}. Review photos and inventory.`,
     });
+    let texts: { sent: number; error?: string } = { sent: 0 };
+    if (event === "cleaning_complete") {
+      try {
+        texts = await notifyCleanDone({ unit: identity.name, body });
+      } catch (err) {
+        texts = { sent: 0, error: err instanceof Error ? err.message : "The text skill did not run." };
+      }
+    }
     return res.status(200).json({
       ok: true,
       event,
       admin_property_id: identity.adminPropertyId,
       task: { id: task.id, title: task.title },
+      texts,
     });
   }
 
