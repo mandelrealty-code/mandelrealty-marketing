@@ -278,11 +278,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ message });
       }
       if (action === "send") {
+        const note = body.channel === "note";
         const message = await updateDraft(messageId, {
           status: "approved_unsent",
           body: edited || undefined,
-          bodyText:
-            "You approved this. Gmail is not connected, so it was not sent. Nothing left this app.",
+          bodyText: note
+            ? "Kept. Nothing was sent."
+            : "You approved this. Gmail is not connected, so it was not sent. Nothing left this app.",
         });
         return res.status(200).json({ message });
       }

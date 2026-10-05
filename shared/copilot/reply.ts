@@ -90,6 +90,31 @@ function draft(subject: string, body: string, to = ""): CopilotDraft {
   return { subject, body, to, status: "waiting", channel: "email" };
 }
 
+function note(subject: string, body: string): CopilotDraft {
+  return { subject, body, to: "", status: "waiting", channel: "note" };
+}
+
+function arrivalNote(text: string): string {
+  const place = (
+    text.match(/\bat\s+(.+?)\.\s+Confirm the arrival details/i)?.[1]
+    || text.match(/\b(?:at|for)\s+(.+?)$/i)?.[1]
+  )?.replace(/\.$/, "").trim();
+  const when = /\btomorrow\b/i.test(text) ? "tomorrow" : /\btoday\b/i.test(text) ? "today" : "";
+  const where = place || "the unit on this card";
+  const line = when ? `Guest check-in ${when} at ${where}.` : `Guest check-in at ${where}.`;
+  return [
+    line,
+    "",
+    "Still to confirm before they arrive:",
+    "- Check-in time",
+    "- Door code or lock instructions",
+    "- Parking",
+    "- Wi-Fi",
+    "",
+    "Those details are not on this card, so I left them blank. I have not messaged the guest.",
+  ].join("\n");
+}
+
 function planAnswer(text: string): string | null {
   const q = text.toLowerCase();
   if (/essentials|\$199|\$349|message & book|message & optimize/.test(q)) {
@@ -125,11 +150,10 @@ export function replyTo(text: string, previousDraft: CopilotDraft | null, now = 
   }
 
   if (previousDraft && /increase|change|update|9 month|clause/.test(lower)) {
-    const next = draft(
-      previousDraft.subject,
-      `${previousDraft.body}\n\nUpdate from you: ${trimmed}`,
-      previousDraft.to,
-    );
+    const nextBody = `${previousDraft.body}\n\nUpdate from you: ${trimmed}`;
+    const next = previousDraft.channel === "note"
+      ? note(previousDraft.subject, nextBody)
+      : draft(previousDraft.subject, nextBody, previousDraft.to);
     return {
       body: "Updated. The draft now includes what you just said. It is still waiting. Nothing has been sent.",
       draft: next,
@@ -161,9 +185,22 @@ export function replyTo(text: string, previousDraft: CopilotDraft | null, now = 
     };
   }
 
-  if (/whatsapp|family chat/.test(lower)) {
+  if (/whatsapp/.test(lower)) {
     return {
-      body: "WhatsApp is not linked yet. When it is, I will only keep groups that are you, your partner, and a host saved in Admin. Family chats are dropped before they are saved. I can't read them, and I won't send a WhatsApp message until you confirm one.",
+      body: "WhatsApp is not linked yet. I can't read host groups, and I won't send a WhatsApp message until you confirm one.",
+      draft: null,
+      reminder: null,
+      memory: null,
+    };
+  }
+
+  if (/\barrival note\b/.test(lower)) {
+    return draftForCard(trimmed, "Draft the arrival note");
+  }
+
+  if (/^(hi|hello|hey|thanks|thank you|good morning|good afternoon|good evening)\b[.!]?$/i.test(trimmed)) {
+    return {
+      body: "Hello. Ask me to draft a message, write an arrival note, or set a reminder. I won't send anything until you confirm.",
       draft: null,
       reminder: null,
       memory: null,
@@ -173,7 +210,7 @@ export function replyTo(text: string, previousDraft: CopilotDraft | null, now = 
   if (/pricelabs|price lab/.test(lower)) {
     return {
       body: "I can draft a price note. I can't change PriceLabs from here. You would apply the rate yourself after you approve the note.",
-      draft: draft("Price note", `Suggested change:\n${trimmed}`, ""),
+      draft: note("Price note", `Suggested change:\n${trimmed}\n\nI can't change PriceLabs from here.`),
       reminder: null,
       memory: null,
     };
@@ -188,19 +225,76 @@ export function replyTo(text: string, previousDraft: CopilotDraft | null, now = 
     };
   }
 
-  const subject = /contract/.test(lower) ? "Following up on your agreement" : "Following up";
+  if (/\b(draft|write|email)\b/.test(lower) && /\b(email|message|note)\b/.test(lower)) {
+    const subject = /contract|agreement|sign/.test(lower) ? "Following up on your agreement" : "Following up";
+    return {
+      body: "Here is a draft. It is waiting for you. Nothing has been sent.",
+      draft: draft(subject, trimmed, ""),
+      reminder: null,
+      memory: null,
+    };
+  }
+
   return {
-    body: "Here is a draft. It is waiting for you. Nothing has been sent.",
-    draft: draft(subject, trimmed, ""),
+    body: "I don't have a draft for that. Ask me to draft a message, write an arrival note, set a reminder, or create a skill. I won't invent one.",
+    draft: null,
     reminder: null,
     memory: null,
   };
 }
 
 export function draftForCard(text: string, action: string): ReplyResult {
+  const label = action.toLowerCase();
+  if (label.includes("arrival")) {
+    return {
+      body: "Here is the arrival note. It is for you. Nothing has been sent to the guest.",
+      draft: note("Arrival note", arrivalNote(text)),
+      reminder: null,
+      memory: null,
+    };
+  }
+  if (label.includes("message")) {
+    const who = text.match(/^(.+?) hasn't signed/i)?.[1]?.trim() ?? "";
+    const signed = text.match(/hasn't signed (.+?)\./i)?.[1]?.trim() || "";
+    const what = signed ? signed.charAt(0).toUpperCase() + signed.slice(1) : "The agreement";
+    const greeting = who && who !== "A client" ? `Hi ${who},` : "Hi,";
+    return {
+      body: "Here is the email. It is waiting for you. Nothing has been sent.",
+      draft: draft(
+        "Following up on your agreement",
+        `${greeting}\n\n${what} is still waiting for a signature. I have not sent this.\n\nMandel Realty Group`,
+        "",
+      ),
+      reminder: null,
+      memory: null,
+    };
+  }
+  if (label.includes("next step")) {
+    const title = text.replace(/\s+is due today\.?$/i, "").trim() || text;
+    const step = /clean/i.test(text)
+      ? "Confirm the cleaner is assigned and the unit will be ready today."
+      : /maint|repair|fix/i.test(text)
+        ? "Confirm who is doing the repair and that it can be finished today."
+        : "Confirm who is doing this and that it will be finished today.";
+    return {
+      body: "Here is the next step. I have not assigned anyone, and nothing has been sent.",
+      draft: note("Next step", `${title} is due today.\n\nNext step: ${step}\n\nI have not assigned anyone.`),
+      reminder: null,
+      memory: null,
+    };
+  }
+  if (label.includes("follow")) {
+    const about = text.replace(/^You asked me to remind you:\s*/i, "").trim() || text;
+    return {
+      body: "Here is the follow-up you asked for. I have not contacted anyone.",
+      draft: note("Follow-up", `${about}\n\nThis is the reminder you saved. I have not contacted anyone.`),
+      reminder: null,
+      memory: null,
+    };
+  }
   return {
-    body: `${text} ${action} is ready below. Nothing has been sent.`,
-    draft: draft(action, text, ""),
+    body: "Here is a note from that card. It is not an email, and nothing has been sent.",
+    draft: note(action || "Note", text),
     reminder: null,
     memory: null,
   };

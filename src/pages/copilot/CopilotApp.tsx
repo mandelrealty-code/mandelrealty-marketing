@@ -229,8 +229,21 @@ function workFor(message: CopilotMessage): { thought: string; steps: { text: str
     steps.push({ text: "Could not read the picture yet" });
     return { thought: "Cursor is not connected, so I did not invent what the picture shows.", steps };
   }
+  if (draft?.channel === "note") {
+    steps.push({ text: "Wrote the note" });
+    if (draft.status === "held") {
+      steps.push({ text: "You held it. Nothing was sent" });
+      return { thought: "You held this note. Nothing was sent.", steps };
+    }
+    if (draft.status === "approved_unsent") {
+      steps.push({ text: "You kept it. Nothing was sent" });
+      return { thought: "You kept this note. Nothing was sent.", steps };
+    }
+    steps.push({ text: "Left it waiting. Nothing was sent" });
+    return { thought: "This is a note for you. It is not an email, and nothing was sent.", steps };
+  }
   if (draft) {
-    steps.push({ text: "Drafted the note" });
+    steps.push({ text: "Drafted the email" });
     if (draft.status === "held") {
       steps.push({ text: "You held it. Nothing was sent" });
       return { thought: "You held this. Nothing was sent.", steps };
@@ -240,7 +253,7 @@ function workFor(message: CopilotMessage): { thought: string; steps: { text: str
       return { thought: "You approved this. Gmail is not connected, so it was not sent.", steps };
     }
     steps.push({ text: "Left it waiting. Nothing was sent" });
-    return { thought: "I wrote the draft and stopped. It stays here until you confirm.", steps };
+    return { thought: "I wrote the email and stopped. It stays here until you confirm.", steps };
   }
   steps.push({ text: "Answered from what is already saved" });
   steps.push({ text: "Nothing was sent" });
@@ -623,6 +636,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       await api("draft", {
         messageId: message.id,
         action,
+        channel: message.draft?.channel ?? "email",
         edited: edits[message.id] ?? message.draft?.body ?? "",
       });
       if (chatId) await openChat(chatId);
@@ -1490,7 +1504,28 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             steps={workFor(message).steps}
                           />
                           {message.draft?.status === "waiting" ? <p>{message.body}</p> : <p className={message.draft ? "cp-muted" : undefined}>{message.body}</p>}
-                          {message.draft?.status === "waiting" ? (
+                          {message.draft?.status === "waiting" && message.draft.channel === "note" ? (
+                            <>
+                              <div className="cp-mail">
+                                <div className="cp-mail-meta">
+                                  <div className="cp-meta-row">
+                                    <span className="cp-meta-k">Note</span>
+                                    <span className="cp-subject">{message.draft.subject}</span>
+                                  </div>
+                                </div>
+                                <textarea
+                                  value={edits[message.id] ?? message.draft.body}
+                                  onChange={(e) => setEdits((prev) => ({ ...prev, [message.id]: e.target.value }))}
+                                />
+                                <div className="cp-mail-note">This stays in Copilot. It is not an email.</div>
+                              </div>
+                              <div className="cp-waiting">Waiting for you</div>
+                              <div className="cp-actions">
+                                <button type="button" className="cp-send" disabled={busy} onClick={() => void act(message, "send")}>Keep</button>
+                                <button type="button" className="cp-hold" disabled={busy} onClick={() => void act(message, "hold")}>Hold</button>
+                              </div>
+                            </>
+                          ) : message.draft?.status === "waiting" ? (
                             <>
                               <div className="cp-mail">
                                 <div className="cp-mail-meta">
