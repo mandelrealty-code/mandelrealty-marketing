@@ -386,7 +386,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                 </svg>
               </button>
               <div className="cp-mtitle">
-                <span>{title}</span>
+                {screen === "brief" ? null : <span>{title}</span>}
                 {waiting ? <span className="cp-count">1</span> : null}
               </div>
               <button type="button" className="cp-icon44" aria-label="New chat" onClick={goEmpty}>
@@ -399,14 +399,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
 
           {screen !== "connectors" ? (
             <>
-              <header className="cp-dhead">
-                <span className="who">{title}</span>
-                {waiting ? (
-                  <span className="cp-waitbadge">
-                    <span className="cp-count">1</span>Waiting
-                  </span>
-                ) : null}
-              </header>
+              {screen === "brief" ? null : (
+                <header className="cp-dhead">
+                  <span className="who">{title}</span>
+                  {waiting ? (
+                    <span className="cp-waitbadge">
+                      <span className="cp-count">1</span>Waiting
+                    </span>
+                  ) : null}
+                </header>
+              )}
               <div className="cp-scroll" ref={scrollRef}>
                 {screen === "brief" && boot ? (
                   <div className="cp-home">
