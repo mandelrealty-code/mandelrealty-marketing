@@ -794,7 +794,7 @@ html.cp-app[data-cp-theme="light"] #root {
 
 .cp-think-step {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   color: #9a9590;
   min-width: 0;
@@ -807,6 +807,7 @@ html.cp-app[data-cp-theme="light"] #root {
 
 .cp-think-step svg {
   flex-shrink: 0;
+  margin-top: 2px;
   color: #9a9590;
 }
 

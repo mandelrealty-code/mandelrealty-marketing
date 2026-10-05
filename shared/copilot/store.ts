@@ -105,12 +105,13 @@ export async function listChats(): Promise<CopilotChat[]> {
 }
 
 function unpackMessage(row: CopilotMessage): CopilotMessage {
-  const raw = row.draft as (CopilotDraft & { choices?: string[] }) | null;
-  if (!raw || !Array.isArray(raw.choices)) return { ...row, choices: row.choices ?? null };
-  const choices = raw.choices;
-  if (!raw.channel) return { ...row, draft: null, choices };
-  const { choices: _omit, ...draft } = raw;
-  return { ...row, draft, choices };
+  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string }) | null;
+  const choices = Array.isArray(raw?.choices) ? raw.choices : row.choices ?? null;
+  const steps = Array.isArray(raw?.steps) ? raw.steps : row.steps ?? null;
+  const thought = typeof raw?.thought === "string" ? raw.thought : row.thought ?? null;
+  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought };
+  const { choices: _choices, steps: _steps, thought: _thought, ...draft } = raw;
+  return { ...row, draft, choices, steps, thought };
 }
 
 export async function listMessages(chatId: string): Promise<CopilotMessage[]> {
@@ -174,10 +175,15 @@ export async function addMessage(input: {
   body: string;
   draft?: CopilotDraft | null;
   choices?: string[] | null;
+  steps?: { text: string; meta?: string }[] | null;
+  thought?: string | null;
 }): Promise<CopilotMessage> {
-  const storedDraft = input.choices?.length
-    ? { ...(input.draft ?? {}), choices: input.choices }
-    : input.draft ?? null;
+  const extra = {
+    ...(input.choices?.length ? { choices: input.choices } : {}),
+    ...(input.steps?.length ? { steps: input.steps } : {}),
+    ...(input.thought ? { thought: input.thought } : {}),
+  };
+  const storedDraft = Object.keys(extra).length ? { ...(input.draft ?? {}), ...extra } : input.draft ?? null;
   const message: CopilotMessage = {
     id: randomUUID(),
     chat_id: input.chatId,

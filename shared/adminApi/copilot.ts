@@ -216,6 +216,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         messages: await listMessages(chatId),
         pending: state.pending,
         steps: state.steps,
+        thought: state.thought,
         chats: state.pending ? undefined : await listChats(),
       });
     }

@@ -47,6 +47,8 @@ export type CopilotMessage = {
   body: string;
   draft: CopilotDraft | null;
   choices?: string[] | null;
+  steps?: { text: string; meta?: string }[] | null;
+  thought?: string | null;
 };
 
 export type CopilotChat = {

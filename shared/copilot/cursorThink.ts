@@ -5,7 +5,8 @@ import type { CopilotDraft } from "./types.js";
 export const CURSOR_MISSING =
   "Cursor isn’t connected on the server, so I can’t think this through. Nothing was sent.";
 
-type ThinkState = { pending: boolean; steps: string[] };
+type ThinkStep = { text: string; meta?: string };
+type ThinkState = { pending: boolean; steps: ThinkStep[]; thought?: string };
 
 function explain(err: unknown): string {
   if (err instanceof CursorAgentError && err.message) return err.message;
@@ -13,12 +14,28 @@ function explain(err: unknown): string {
   return "Cursor could not start.";
 }
 
-function toolLabel(type: string): string {
-  if (type === "shell") return "Ran a command";
-  if (/search/i.test(type)) return "Searched";
-  if (/fetch|web/i.test(type)) return "Looked something up";
-  if (type === "read" || type === "grep" || type === "ls" || type === "glob") return "Read the workspace";
-  return "Worked a step";
+function clip(value: string, max = 220): string {
+  const one = value.replace(/\s+/g, " ").trim();
+  if (one.length <= max) return one;
+  return `${one.slice(0, max - 1).trimEnd()}…`;
+}
+
+function argText(args: object, key: string): string {
+  const value = (args as Record<string, unknown>)[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function describeTool(message: object): string | null {
+  const args = "args" in message && message.args && typeof message.args === "object" ? message.args : {};
+  const query = argText(args, "query") || argText(args, "pattern") || argText(args, "searchTerm");
+  const path = argText(args, "path") || argText(args, "targetFile") || argText(args, "file");
+  const url = argText(args, "url");
+  const command = argText(args, "command").split("\n")[0] ?? "";
+  if (query) return `Searched for “${clip(query, 90)}”`;
+  if (url) return `Opened ${clip(url, 90)}`;
+  if (path) return `Read ${clip(path, 90)}`;
+  if (command) return clip(command, 140);
+  return null;
 }
 
 function promptFor(facts: string, history: string, skillMode: boolean): string {
@@ -92,23 +109,32 @@ function parseModel(text: string): { body: string; choices: string[] | null; dra
   return { body: text.trim() || "Cursor finished without a reply.", choices: null, draft: null };
 }
 
-async function liveSteps(run: Run): Promise<string[]> {
-  const steps = ["Asking Cursor"];
-  if (!run.supports("conversation")) return steps;
+async function liveSteps(run: Run): Promise<{ steps: ThinkStep[]; thought?: string }> {
+  const waiting = { steps: [{ text: "Sent your message to Cursor" }] };
+  if (!run.supports("conversation")) return waiting;
   try {
     const turns = await run.conversation();
+    const timeline: { text: string; kind: "thought" | "action" }[] = [];
     for (const turn of turns) {
       if (turn.type !== "agentConversationTurn") continue;
       for (const step of turn.turn.steps) {
-        if (step.type !== "toolCall") continue;
-        const kind = step.message && typeof step.message === "object" && "type" in step.message ? String(step.message.type) : "";
-        if (kind) steps.push(toolLabel(kind));
+        if (step.type === "thinkingMessage") {
+          const text = clip(step.message.text);
+          if (text) timeline.push({ text, kind: "thought" });
+        } else if (step.type === "toolCall") {
+          const text = describeTool(step.message);
+          if (text) timeline.push({ text, kind: "action" });
+        }
       }
     }
+    const recent = timeline.slice(-12);
+    const lastThought = [...recent].reverse().find((item) => item.kind === "thought");
+    const steps = recent.filter((item) => item !== lastThought).map((item) => ({ text: item.text }));
+    if (!lastThought && !steps.length) return waiting;
+    return { thought: lastThought?.text, steps };
   } catch {
-    return steps;
+    return waiting;
   }
-  return steps.slice(0, 8);
 }
 
 async function openAgent(chatId: string, apiKey: string) {
@@ -153,15 +179,15 @@ export async function collectCursorRun(chatId: string): Promise<ThinkState> {
   const link = await readCursorLink(chatId);
   if (!apiKey || !link?.agentId || !link.runId) return { pending: false, steps: [] };
   const run = await Agent.getRun(link.runId, { runtime: "cloud", agentId: link.agentId, apiKey });
-  const steps = await liveSteps(run);
-  if (run.status === "running") return { pending: true, steps };
+  const trail = await liveSteps(run);
+  if (run.status === "running") return { pending: true, ...trail };
   const result = await Promise.race([
     run.wait(),
     new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
   ]);
-  if (!result) return { pending: true, steps };
+  if (!result) return { pending: true, ...trail };
   const again = await readCursorLink(chatId);
-  if (!again?.runId) return { pending: false, steps };
+  if (!again?.runId) return { pending: false, ...trail };
   const messages = await listMessages(chatId);
   if (messages[messages.length - 1]?.role !== "assistant") {
     const parsed = result.status === "finished"
@@ -179,10 +205,12 @@ export async function collectCursorRun(chatId: string): Promise<ThinkState> {
       body: parsed.body,
       draft: parsed.draft,
       choices: parsed.choices,
+      steps: trail.steps,
+      thought: trail.thought,
     });
   }
   await saveCursorLink(chatId, link.agentId, "");
-  return { pending: false, steps };
+  return { pending: false, ...trail };
 }
 
 export async function cancelCursorRun(chatId: string): Promise<void> {

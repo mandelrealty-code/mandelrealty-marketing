@@ -364,6 +364,14 @@ function workFor(message: CopilotMessage): { thought: string; steps: { text: str
   return { thought: "Cursor wrote this reply. Nothing was sent.", steps };
 }
 
+function shownTrail(message: CopilotMessage): { thought?: string; steps: { text: string; meta?: string }[]; summary: string } {
+  const trail = message.steps?.length || message.thought
+    ? { thought: message.thought || undefined, steps: message.steps ?? [] }
+    : workFor(message);
+  const count = trail.steps.length + (trail.thought ? 1 : 0);
+  return { ...trail, summary: count === 1 ? "1 step" : `${count} steps` };
+}
+
 function ThinkChevron({ open }: { open: boolean }) {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -411,8 +419,8 @@ function Thinking({
           {thought ? <p>{thought}</p> : null}
           {steps.length > 0 ? (
             <div className="cp-think-steps">
-              {steps.map((step) => (
-                <div key={step.text} className="cp-think-step">
+              {steps.map((step, index) => (
+                <div key={`${index}-${step.text}`} className="cp-think-step">
                   <ThinkCheck />
                   <span>{step.text}</span>
                   {step.meta ? <span className="meta">{step.meta}</span> : null}
@@ -485,7 +493,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [pwMsg, setPwMsg] = useState<"" | "err" | "current" | "server">("");
   const [pending, setPending] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
-  const [liveSteps, setLiveSteps] = useState<{ text: string }[]>([{ text: "Asking Cursor" }]);
+  const [liveSteps, setLiveSteps] = useState<{ text: string; meta?: string }[]>([{ text: "Sent your message to Cursor" }]);
+  const [liveThought, setLiveThought] = useState<string | undefined>();
   const [runOpen, setRunOpen] = useState(true);
   const [stopped, setStopped] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -640,8 +649,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     let pendingRun = true;
     while (pendingRun) {
       await pause(2000, signal);
-      const next = await api<{ messages: CopilotMessage[]; pending?: boolean; steps?: string[] }>("think", { chatId: id }, signal);
-      if (next.steps?.length) setLiveSteps(next.steps.map((text) => ({ text })));
+      const next = await api<{ messages: CopilotMessage[]; pending?: boolean; steps?: { text: string; meta?: string }[]; thought?: string }>("think", { chatId: id }, signal);
+      if (next.steps?.length) setLiveSteps(next.steps);
+      setLiveThought(next.thought);
       latest = next.messages;
       setMessages(latest);
       pendingRun = Boolean(next.pending);
@@ -653,7 +663,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setPending(cardText);
-    setLiveSteps([{ text: "Asking Cursor" }]);
+    setLiveSteps([{ text: "Sent your message to Cursor" }]);
+    setLiveThought(undefined);
     setThinking(false);
     setRunOpen(true);
     setStopped(false);
@@ -700,7 +711,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setPending(value);
-    setLiveSteps([{ text: "Asking Cursor" }]);
+    setLiveSteps([{ text: "Sent your message to Cursor" }]);
+    setLiveThought(undefined);
     setThinking(false);
     setRunOpen(true);
     setStopped(false);
@@ -1566,9 +1578,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             open={!!trail[message.id]}
                             onToggle={() => setTrail((prev) => ({ ...prev, [message.id]: !prev[message.id] }))}
                             title="Worked"
-                            summary={`${workFor(message).steps.length} steps`}
-                            thought={workFor(message).thought}
-                            steps={workFor(message).steps}
+                            summary={shownTrail(message).summary}
+                            thought={shownTrail(message).thought}
+                            steps={shownTrail(message).steps}
                           />
                           <p>{message.body}</p>
                           <div className="cp-skillcard">
@@ -1648,9 +1660,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             open={!!trail[message.id]}
                             onToggle={() => setTrail((prev) => ({ ...prev, [message.id]: !prev[message.id] }))}
                             title="Worked"
-                            summary={`${workFor(message).steps.length} steps`}
-                            thought={workFor(message).thought}
-                            steps={workFor(message).steps}
+                            summary={shownTrail(message).summary}
+                            thought={shownTrail(message).thought}
+                            steps={shownTrail(message).steps}
                           />
                           {message.draft?.status === "waiting" ? <p>{message.body}</p> : <p className={message.draft ? "cp-muted" : undefined}>{message.body}</p>}
                           {message.choices?.length ? (
@@ -1728,7 +1740,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         open={runOpen}
                         onToggle={() => setRunOpen((open) => !open)}
                         title="Exploring"
-                        summary={liveSteps.length === 1 ? "1 step" : `${liveSteps.length} steps`}
+                        summary={(liveSteps.length + (liveThought ? 1 : 0)) === 1 ? "1 step" : `${liveSteps.length + (liveThought ? 1 : 0)} steps`}
+                        thought={liveThought}
                         steps={liveSteps}
                         live
                         onStop={stopRun}
