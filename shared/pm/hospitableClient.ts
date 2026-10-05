@@ -323,6 +323,8 @@ export async function listHospitableReservations(input: {
   propertyIds: string[];
   startDate: string;
   endDate: string;
+  /** Extra includes, e.g. "guest". Financials and properties are always included. */
+  include?: string[];
 }): Promise<HospitableReservationNormalized[]> {
   if (!input.propertyIds.length) return [];
   const out: HospitableReservationNormalized[] = [];
@@ -333,7 +335,7 @@ export async function listHospitableReservations(input: {
     const json = (await hospitableFetch(input.pat, "/reservations", {
       page: String(page),
       per_page: "100",
-      include: "financials,financialsV2,properties",
+      include: ["financials", "financialsV2", "properties", ...(input.include ?? [])].join(","),
       start_date: input.startDate,
       end_date: input.endDate,
       date_query: "checkout",
@@ -813,6 +815,7 @@ export async function listReservationMessages(
     const author = asRecord(m.author);
     const sender = asRecord(m.sender);
     const roleRaw = (
+      str(m.sender_type) ||
       str(m.sender_role) ||
       str(m.role) ||
       str(sender.type) ||
@@ -829,8 +832,6 @@ export async function listReservationMessages(
       sender_role = "host";
     } else if (roleRaw.includes("system") || roleRaw.includes("auto")) {
       sender_role = "system";
-    } else if (author.name || author.id) {
-      sender_role = "host";
     }
     out.push({
       id: str(m.id) || str(m.uuid) || String(out.length),

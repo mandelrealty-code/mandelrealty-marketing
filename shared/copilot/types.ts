@@ -58,6 +58,7 @@ export type CopilotChat = {
   updated_at: string;
   title: string;
   kind: "chat" | "code";
+  needs_you_at?: string | null;
   unread?: boolean;
 };
 
@@ -94,3 +95,55 @@ export type ConnectorRow = {
   statusLabel: string;
   note?: string;
 };
+
+export type JobKind = "guest_inbox";
+
+export type GuestInboxSettings = {
+  checklist: string[];
+};
+
+export type CopilotJob = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  kind: JobKind;
+  title: string;
+  chat_id: string | null;
+  settings: GuestInboxSettings;
+  enabled: boolean;
+  last_run_at: string | null;
+};
+
+export type InboxGuest = {
+  reservationId: string;
+  guest: string;
+  unit: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  lastAt: string | null;
+  snippet: string;
+  found: { item: string; quote: string }[];
+};
+
+export type GuestInboxResult = {
+  read: number;
+  stays: number;
+  unreadable: number;
+  partial: boolean;
+  waiting: InboxGuest[];
+  unclear: InboxGuest[];
+  details: InboxGuest[];
+};
+
+export type CopilotRun = {
+  id: string;
+  job_id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: "running" | "ok" | "failed";
+  trigger: "schedule" | "manual" | "chat";
+  result: GuestInboxResult | null;
+  error: string;
+};
+
+export type JobRow = CopilotJob & { lastRun: CopilotRun | null };

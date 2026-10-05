@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
-import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend } from "../../../shared/copilot/types";
+import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, JobRow } from "../../../shared/copilot/types";
 import "./copilot.css";
 
-type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account";
+type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "jobs" | "connectors" | "twilio" | "account";
 
 type Boot = {
   brief: BriefPayload;
   chats: CopilotChat[];
   skills: CopilotSkill[];
+  jobs?: JobRow[];
   connectors: ConnectorRow[];
   billing: string;
   textLog?: CopilotTextSend[];
@@ -530,6 +531,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [pw, setPw] = useState({ cur: "", next: "", conf: "" });
   const [pwMsg, setPwMsg] = useState<"" | "err" | "current" | "server">("");
   const [pending, setPending] = useState<string | null>(null);
+  const [jobBusy, setJobBusy] = useState(false);
+  const [jobMsg, setJobMsg] = useState<string | null>(null);
+  const [checklistDraft, setChecklistDraft] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
   const [liveSteps, setLiveSteps] = useState<{ text: string; meta?: string }[]>([{ text: "Sent your message to Cursor" }]);
   const [liveThought, setLiveThought] = useState<string | undefined>();
@@ -858,7 +862,23 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
-  const inSettings = screen === "settings" || screen === "skills" || screen === "skill" || screen === "connectors" || screen === "twilio" || screen === "account";
+  const inSettings = screen === "settings" || screen === "skills" || screen === "skill" || screen === "jobs" || screen === "connectors" || screen === "twilio" || screen === "account";
+  const inbox = (boot?.jobs ?? []).find((job) => job.kind === "guest_inbox") ?? null;
+
+  async function jobCall(op: "job" | "run-job", body: Record<string, unknown>, done: string) {
+    setJobBusy(true);
+    setJobMsg(null);
+    try {
+      const data = await api<{ jobs: JobRow[]; connectors: ConnectorRow[]; chats: CopilotChat[]; brief: BriefPayload }>(op, body);
+      setBoot((prev) => (prev ? { ...prev, jobs: data.jobs, connectors: data.connectors, chats: data.chats, brief: data.brief } : prev));
+      const run = data.jobs.find((job) => job.kind === "guest_inbox")?.lastRun;
+      setJobMsg(op === "run-job" && run?.status === "failed" ? `It ran, but Hospitable could not be read: ${run.error}` : done);
+    } catch (e) {
+      setJobMsg(e instanceof Error ? e.message : "That did not work. Nothing was changed.");
+    } finally {
+      setJobBusy(false);
+    }
+  }
   const skills = boot?.skills ?? [];
   const openSkillRecord = skills.find((s) => s.id === skillId) ?? null;
 
@@ -869,7 +889,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }, [boot, chatId, screen]);
 
   const backLabel =
-    screen === "skills" || screen === "connectors" || screen === "account"
+    screen === "skills" || screen === "jobs" || screen === "connectors" || screen === "account"
       ? "Settings"
       : screen === "skill"
         ? "Skills"
@@ -880,7 +900,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   function back() {
     if (screen === "skill") setScreen("skills");
     else if (screen === "twilio") setScreen("connectors");
-    else if (screen === "skills" || screen === "connectors" || screen === "account") setScreen("settings");
+    else if (screen === "skills" || screen === "jobs" || screen === "connectors" || screen === "account") setScreen("settings");
     else {
       setScreen("brief");
       setSheet(false);
@@ -1288,6 +1308,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           <span><strong>Skills</strong><em>Tools that automate routine work for the business.</em></span>
                           <Chevron />
                         </button>
+                        <button type="button" className="cp-setrow" onClick={() => { setJobMsg(null); setChecklistDraft(null); setScreen("jobs"); }}>
+                          <span><strong>Jobs</strong><em>Work the site does on its own while you're away.</em></span>
+                          <Chevron />
+                        </button>
                         <button type="button" className="cp-setrow" onClick={() => setScreen("connectors")}>
                           <span><strong>Connectors</strong><em>Accounts this chat can use.</em></span>
                           <Chevron />
@@ -1423,6 +1447,84 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             <p className="cp-note">These texts already went to the numbers on this skill.</p>
                           </>
                         ) : null}
+                      </>
+                    ) : null}
+                    {screen === "jobs" ? (
+                      <>
+                        <div className="cp-sethead">
+                          <h1>Jobs</h1>
+                          <p>The site does these on its own. They only read. Nothing is sent.</p>
+                        </div>
+                        <div className="cp-skillrow cp-jobrow">
+                          <span className="copy">
+                            <strong className={inbox?.enabled ? undefined : "off"}>Morning inbox</strong>
+                            <em>
+                              Each morning around 5:00, reads the Hospitable messages for stays checked in now or arriving in the next two weeks. Reports who is waiting on a reply and who may have sent their details.
+                            </em>
+                          </span>
+                          <button
+                            type="button"
+                            className={`cp-pill${inbox?.enabled ? "" : " off"}`}
+                            disabled={jobBusy}
+                            aria-label={inbox?.enabled ? "Turn off" : "Turn on"}
+                            onClick={() => void jobCall("job", { action: inbox?.enabled ? "off" : "on" }, inbox?.enabled ? "The morning inbox is off." : "The morning inbox is on.")}
+                          >
+                            {inbox?.enabled ? "On" : "Off"}
+                          </button>
+                        </div>
+                        {inbox ? (
+                          <>
+                            <p className="cp-note">
+                              {!inbox.lastRun
+                                ? "It hasn't run yet."
+                                : inbox.lastRun.status === "running"
+                                  ? `Running since ${when(inbox.lastRun.started_at)}.`
+                                  : inbox.lastRun.status === "ok"
+                                    ? `Last run ${when(inbox.lastRun.started_at)} · worked.`
+                                    : `Last run ${when(inbox.lastRun.started_at)} · failed: ${inbox.lastRun.error}`}
+                            </p>
+                            <label className="cp-field">
+                              <span>Details to look for (comma separated)</span>
+                              <input
+                                value={checklistDraft ?? inbox.settings.checklist.join(", ")}
+                                onChange={(e) => setChecklistDraft(e.target.value)}
+                              />
+                            </label>
+                            <div className="cp-skill-actions">
+                              <button
+                                type="button"
+                                className="cp-gold"
+                                disabled={jobBusy}
+                                onClick={() => void jobCall("run-job", {}, "Done. The report is in the Morning inbox chat.")}
+                              >
+                                {jobBusy ? "Working…" : "Run now"}
+                              </button>
+                              {checklistDraft !== null ? (
+                                <button
+                                  type="button"
+                                  className="cp-textbtn"
+                                  disabled={jobBusy}
+                                  onClick={() =>
+                                    void jobCall(
+                                      "job",
+                                      { action: "checklist", checklist: checklistDraft.split(",").map((item) => item.trim()).filter(Boolean) },
+                                      "Checklist saved.",
+                                    ).then(() => setChecklistDraft(null))
+                                  }
+                                >
+                                  Save checklist
+                                </button>
+                              ) : null}
+                              {inbox.chat_id ? (
+                                <button type="button" className="cp-textbtn" onClick={() => void openChat(inbox.chat_id as string)}>
+                                  Open report
+                                </button>
+                              ) : null}
+                            </div>
+                          </>
+                        ) : null}
+                        {jobMsg ? <p className="cp-note">{jobMsg}</p> : null}
+                        <p className="cp-note">Run now reads Hospitable right away. It does not message any guest.</p>
                       </>
                     ) : null}
                     {screen === "connectors" ? (

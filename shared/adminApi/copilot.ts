@@ -29,7 +29,16 @@ import {
   saveSkill,
   updateDraft,
 } from "../copilot/store.js";
-import type { ConnectorRow } from "../copilot/types.js";
+import { runGuestInbox, turnOnInbox } from "../copilot/nightShift.js";
+import { getJob, listRuns, saveJob } from "../copilot/store.js";
+import type { ConnectorRow, JobRow } from "../copilot/types.js";
+
+async function jobRows(): Promise<JobRow[]> {
+  const job = await getJob("guest_inbox");
+  if (!job) return [];
+  const lastRun = (await listRuns(job.id, 1))[0] ?? null;
+  return [{ ...job, lastRun }];
+}
 
 function readImages(value: unknown): { mimeType: string; data: string }[] {
   if (!Array.isArray(value)) return [];
@@ -52,7 +61,10 @@ function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Sign in required." });
 }
 
-async function connectors(): Promise<ConnectorRow[]> {
+async function connectors(jobs?: JobRow[]): Promise<ConnectorRow[]> {
+  const rows = jobs ?? (await jobRows().catch(() => []));
+  const inbox = rows.find((job) => job.kind === "guest_inbox");
+  const inboxWorks = Boolean(inbox?.enabled && inbox.lastRun?.status === "ok");
   let hospitable = false;
   try {
     hospitable = Boolean(await getHospitablePat());
@@ -78,7 +90,11 @@ async function connectors(): Promise<ConnectorRow[]> {
       detail: "Guest messages, earnings, issues, and each property’s knowledge base.",
       status: hospitable ? "connected" : "not_connected",
       statusLabel: hospitable ? "Connected" : "Not connected",
-      note: hospitable ? "Managed in OPS Settings." : "Add the Hospitable key in OPS Settings.",
+      note: !hospitable
+        ? "Add the Hospitable key in OPS Settings."
+        : inboxWorks
+          ? "Reads guest messages each morning. Managed in OPS Settings."
+          : "Managed in OPS Settings.",
     },
     {
       id: "cleaner",
@@ -124,13 +140,20 @@ async function connectors(): Promise<ConnectorRow[]> {
 }
 
 async function factsFor(): Promise<string> {
-  const [brief, rows, skills, memory] = await Promise.all([
+  const [brief, rows, skills, memory, jobs] = await Promise.all([
     buildBrief().catch(() => null),
     connectors(),
     listSkills().catch(() => []),
     listMemory().catch(() => []),
+    jobRows().catch(() => []),
   ]);
   const lines: string[] = [];
+  const inbox = jobs.find((job) => job.kind === "guest_inbox");
+  lines.push(
+    !inbox
+      ? "Morning inbox job: not set up."
+      : `Morning inbox job: ${inbox.enabled ? "on" : "off"}. Checklist: ${inbox.settings.checklist.join(", ") || "none"}. Last run: ${inbox.lastRun ? `${inbox.lastRun.status} at ${inbox.lastRun.started_at}` : "never"}.`,
+  );
   if (brief) {
     lines.push(`${brief.hello} ${brief.line}`.trim());
     const cards = [...brief.focus, ...brief.eating];
@@ -162,6 +185,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chatId = String(req.query.chatId ?? "");
         return res.status(200).json({ messages: await listMessages(chatId) });
       }
+      const jobs = await jobRows().catch(() => [] as JobRow[]);
       const [brief, chats, memory, skills, textLog, textNumbers] = await Promise.all([
         buildBrief(),
         listChats(),
@@ -174,11 +198,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         brief,
         chats,
         skills,
+        jobs,
         textLog,
         textNumbers,
         twilioFrom: twilioFromLabel(),
         memory,
-        connectors: await connectors(),
+        connectors: await connectors(jobs),
         billing: process.env.CURSOR_API_KEY
           ? "Cursor Auto is connected. The team spend total appears when the admin key is set."
           : "Cursor isn’t connected yet. The brief still uses your records. Nothing is sent.",
@@ -194,6 +219,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!chatId) return res.status(400).json({ error: "Missing chat." });
       await markChatSeen(chatId);
       return res.status(200).json({ chats: await listChats(), brief: await buildBrief() });
+    }
+
+    if (op === "job") {
+      const action = String(body.action ?? "");
+      if (action === "on") {
+        await turnOnInbox();
+      } else if (action === "off") {
+        const job = await getJob("guest_inbox");
+        if (job) await saveJob({ kind: job.kind, title: job.title, enabled: false });
+      } else if (action === "checklist") {
+        const job = await getJob("guest_inbox");
+        if (!job) return res.status(400).json({ error: "Turn on the morning inbox first." });
+        const checklist = (Array.isArray(body.checklist) ? body.checklist : [])
+          .map((item) => String(item).trim().slice(0, 60))
+          .filter(Boolean)
+          .slice(0, 8);
+        await saveJob({ kind: job.kind, title: job.title, enabled: job.enabled, settings: { checklist } });
+      } else {
+        return res.status(400).json({ error: "Unknown job action." });
+      }
+      const jobs = await jobRows();
+      return res.status(200).json({ jobs, connectors: await connectors(jobs), chats: await listChats(), brief: await buildBrief() });
+    }
+
+    if (op === "run-job") {
+      const outcome = await runGuestInbox("manual");
+      if ("skipped" in outcome) return res.status(400).json({ error: outcome.skipped });
+      const jobs = await jobRows();
+      return res.status(200).json({
+        jobs,
+        connectors: await connectors(jobs),
+        chats: await listChats(),
+        brief: await buildBrief(),
+        chatId: outcome.job.chat_id,
+      });
     }
 
     if (op === "dismiss") {

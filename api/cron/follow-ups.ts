@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { processDueFollowups } from "../../shared/followUpStore.js";
 import { processUnansweredReviews } from "../../shared/pm/reviewReply/store.js";
+import { runGuestInbox } from "../../shared/copilot/nightShift.js";
+
+export const config = { maxDuration: 60 };
 
 function authorized(req: VercelRequest): boolean {
   const secret = process.env.CRON_SECRET?.trim();
@@ -22,6 +25,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (!authorized(req)) {
     return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  // Second daily cron (vercel.json): the Copilot morning inbox. Reads only, never sends.
+  if (req.query.job === "copilot") {
+    try {
+      const outcome = await runGuestInbox("schedule");
+      return res.status(200).json({
+        ok: true,
+        copilot: "skipped" in outcome
+          ? { skipped: outcome.skipped }
+          : { status: outcome.run.status, needs_you: outcome.needsYou, error: outcome.run.error || undefined },
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : "Copilot morning inbox failed";
+      console.error("[cron/follow-ups] copilot", error);
+      return res.status(500).json({ ok: false, error });
+    }
   }
 
   const followUps = await processDueFollowups({
