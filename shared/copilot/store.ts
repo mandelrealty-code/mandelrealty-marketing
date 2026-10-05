@@ -2,25 +2,34 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../supabase.js";
-import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReminder } from "./types.js";
+import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReminder, CopilotSkill } from "./types.js";
 
 type FileShape = {
   chats: CopilotChat[];
   messages: CopilotMessage[];
   reminders: CopilotReminder[];
   memory: { id: string; created_at: string; note: string }[];
+  skills: CopilotSkill[];
+  dismissals: { id: string; created_at: string; card_id: string }[];
 };
 
 const FILE = path.join(process.cwd(), "data", "copilot-store.json");
 let useFile = false;
 
 function empty(): FileShape {
-  return { chats: [], messages: [], reminders: [], memory: [] };
+  return { chats: [], messages: [], reminders: [], memory: [], skills: [], dismissals: [] };
 }
 
 function readFileStore(): FileShape {
   try {
-    return JSON.parse(readFileSync(FILE, "utf8")) as FileShape;
+    const data = JSON.parse(readFileSync(FILE, "utf8")) as FileShape;
+    data.chats ??= [];
+    data.messages ??= [];
+    data.reminders ??= [];
+    data.memory ??= [];
+    data.skills ??= [];
+    data.dismissals ??= [];
+    return data;
   } catch {
     return empty();
   }
@@ -241,6 +250,147 @@ export async function remember(note: string): Promise<void> {
   const data = readFileStore();
   data.memory.push(row);
   writeFileStore(data);
+}
+
+export async function renameChat(id: string, title: string): Promise<void> {
+  const next = title.trim().slice(0, 80);
+  if (!next) return;
+  const client = sb();
+  if (!useFile && client) {
+    const { error } = await client
+      .from("copilot_chats")
+      .update({ title: next, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (!error) return;
+    if (useLocalFile(error)) { /* local file store */ }
+    else throw new Error(error.message);
+  }
+  const data = readFileStore();
+  const chat = data.chats.find((c) => c.id === id);
+  if (chat) {
+    chat.title = next;
+    chat.updated_at = new Date().toISOString();
+    writeFileStore(data);
+  }
+}
+
+export async function deleteChat(id: string): Promise<void> {
+  const client = sb();
+  if (!useFile && client) {
+    const { error } = await client.from("copilot_chats").delete().eq("id", id);
+    if (!error) return;
+    if (useLocalFile(error)) { /* local file store */ }
+    else throw new Error(error.message);
+  }
+  const data = readFileStore();
+  data.chats = data.chats.filter((c) => c.id !== id);
+  data.messages = data.messages.filter((m) => m.chat_id !== id);
+  writeFileStore(data);
+}
+
+let skillsInFile = false;
+
+export async function listSkills(): Promise<CopilotSkill[]> {
+  const client = sb();
+  if (!useFile && !skillsInFile && client) {
+    const { data, error } = await client
+      .from("copilot_skills")
+      .select("*")
+      .order("updated_at", { ascending: false });
+    if (!error) return (data ?? []) as CopilotSkill[];
+    if (missingTable(error)) skillsInFile = true;
+    else throw new Error(error.message);
+  }
+  return readFileStore().skills.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+}
+
+export async function saveSkill(input: Omit<CopilotSkill, "id" | "created_at" | "updated_at"> & { id?: string }): Promise<CopilotSkill> {
+  const now = new Date().toISOString();
+  const skill: CopilotSkill = {
+    id: input.id || randomUUID(),
+    created_at: now,
+    updated_at: now,
+    name: input.name.slice(0, 120),
+    when_text: input.when_text,
+    reads: input.reads,
+    drafts: input.drafts,
+    must_not: input.must_not,
+    enabled: input.enabled,
+  };
+  const client = sb();
+  if (!useFile && !skillsInFile && client) {
+    const { data: existing } = input.id
+      ? await client.from("copilot_skills").select("created_at").eq("id", input.id).maybeSingle()
+      : { data: null };
+    if (existing?.created_at) skill.created_at = existing.created_at as string;
+    const { error } = await client.from("copilot_skills").upsert(skill);
+    if (!error) return skill;
+    if (missingTable(error)) skillsInFile = true;
+    else throw new Error(error.message);
+  }
+  const data = readFileStore();
+  const idx = data.skills.findIndex((s) => s.id === skill.id);
+  if (idx >= 0) {
+    skill.created_at = data.skills[idx].created_at;
+    data.skills[idx] = skill;
+  } else data.skills.unshift(skill);
+  writeFileStore(data);
+  return skill;
+}
+
+export async function deleteSkill(id: string): Promise<void> {
+  const client = sb();
+  if (!useFile && !skillsInFile && client) {
+    const { error } = await client.from("copilot_skills").delete().eq("id", id);
+    if (!error) return;
+    if (missingTable(error)) skillsInFile = true;
+    else throw new Error(error.message);
+  }
+  const data = readFileStore();
+  data.skills = data.skills.filter((s) => s.id !== id);
+  writeFileStore(data);
+}
+
+let dismissalsInFile = false;
+
+export async function listDismissed(): Promise<string[]> {
+  const client = sb();
+  if (!useFile && !dismissalsInFile && client) {
+    const { data, error } = await client.from("copilot_dismissals").select("card_id");
+    if (!error) return (data ?? []).map((row) => String((row as { card_id: string }).card_id));
+    if (missingTable(error)) {
+      if (process.env.VERCEL) {
+        throw new Error(
+          "Copilot storage is not set up yet. Run supabase/copilot_v1.sql in the Supabase SQL editor, then try again.",
+        );
+      }
+      dismissalsInFile = true;
+    } else throw new Error(error.message);
+  }
+  return readFileStore().dismissals.map((row) => row.card_id);
+}
+
+export async function dismissCard(cardId: string): Promise<void> {
+  const id = cardId.trim().slice(0, 200);
+  if (!id) return;
+  const client = sb();
+  if (!useFile && !dismissalsInFile && client) {
+    const { error } = await client.from("copilot_dismissals").insert({ id: randomUUID(), card_id: id });
+    if (!error || /duplicate|unique/i.test(error.message ?? "")) return;
+    if (missingTable(error)) {
+      if (process.env.VERCEL) {
+        throw new Error(
+          "Copilot storage is not set up yet. Run supabase/copilot_v1.sql in the Supabase SQL editor, then try again.",
+        );
+      }
+      dismissalsInFile = true;
+    } else throw new Error(error.message);
+  }
+  const data = readFileStore();
+  if (!data.dismissals.some((row) => row.card_id === id)) {
+    data.dismissals.push({ id: randomUUID(), created_at: new Date().toISOString(), card_id: id });
+    writeFileStore(data);
+  }
 }
 
 export async function listMemory(): Promise<string[]> {

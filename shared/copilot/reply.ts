@@ -1,6 +1,24 @@
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
 
+export function skillDraft(text: string): CopilotDraft {
+  const cleaned = text.replace(/^create a skill that\s+/i, "").trim();
+  const when = text.match(/\bwhen\b.+/i)?.[0]?.replace(/\.$/, "") ?? "Overnight, when this comes up.";
+  const name = (cleaned || "New skill").slice(0, 64);
+  return {
+    subject: name,
+    body: text.trim(),
+    to: "",
+    status: "waiting",
+    channel: "skill",
+    skillName: name,
+    skillWhen: when.charAt(0).toUpperCase() + when.slice(1),
+    skillReads: "The connected accounts that already have this.",
+    skillDrafts: text.trim(),
+    skillMustNot: "Send, assign, change a price, or message anyone. It leaves a draft until you approve it.",
+  };
+}
+
 export type ReplyResult = {
   body: string;
   draft: CopilotDraft | null;
@@ -30,6 +48,15 @@ export function replyTo(text: string, previousDraft: CopilotDraft | null, now = 
   const trimmed = text.trim();
   const lower = trimmed.toLowerCase();
   const today = torontoToday(now);
+
+  if (/^create a skill\b/i.test(trimmed) || /\bcreate a skill that\b/i.test(lower)) {
+    return {
+      body: "Here is the skill. It runs overnight and leaves a draft for you in the morning.",
+      draft: skillDraft(trimmed),
+      reminder: null,
+      memory: null,
+    };
+  }
 
   if (/^remind me\b/.test(lower) || /\bremind me tomorrow\b/.test(lower)) {
     const about = trimmed.replace(/^remind me( tomorrow)?( to)?/i, "").trim() || trimmed;

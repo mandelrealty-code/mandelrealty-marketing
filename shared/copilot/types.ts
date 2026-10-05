@@ -5,7 +5,24 @@ export type CopilotDraft = {
   body: string;
   to: string;
   status: DraftStatus;
-  channel: "email" | "note";
+  channel: "email" | "note" | "skill";
+  skillName?: string;
+  skillWhen?: string;
+  skillReads?: string;
+  skillDrafts?: string;
+  skillMustNot?: string;
+};
+
+export type CopilotSkill = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  name: string;
+  when_text: string;
+  reads: string;
+  drafts: string;
+  must_not: string;
+  enabled: boolean;
 };
 
 export type CopilotMessage = {

@@ -33,3 +33,21 @@ create table if not exists copilot_memory (
   created_at timestamptz not null default now(),
   note text not null
 );
+
+create table if not exists copilot_dismissals (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  card_id text not null unique
+);
+
+create table if not exists copilot_skills (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  name text not null,
+  when_text text not null,
+  reads text not null,
+  drafts text not null,
+  must_not text not null,
+  enabled boolean not null default true
+);

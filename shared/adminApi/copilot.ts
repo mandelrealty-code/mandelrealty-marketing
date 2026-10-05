@@ -4,17 +4,24 @@ import {
   isAdminConfigured,
   verifyAdminSessionToken,
 } from "../adminAuth.js";
+import { passwordMatches } from "../adminAuth.js";
 import { getHospitablePat } from "../pm/clientStore.js";
 import { buildBrief } from "../copilot/brief.js";
-import { draftForCard, replyTo } from "../copilot/reply.js";
+import { draftForCard, replyTo, skillDraft } from "../copilot/reply.js";
 import {
   addMessage,
   addReminder,
   createChat,
+  deleteChat,
+  deleteSkill,
+  dismissCard,
   listChats,
   listMemory,
   listMessages,
+  listSkills,
   remember,
+  renameChat,
+  saveSkill,
   updateDraft,
 } from "../copilot/store.js";
 import type { ConnectorRow, CopilotDraft } from "../copilot/types.js";
@@ -36,7 +43,7 @@ async function connectors(): Promise<ConnectorRow[]> {
     {
       id: "gmail",
       name: "Gmail",
-      detail: "Reads and sends",
+      detail: "Reads and drafts email.",
       status: "not_connected",
       statusLabel: "Not connected",
       note: "Nothing sends until this is connected and you confirm.",
@@ -44,7 +51,7 @@ async function connectors(): Promise<ConnectorRow[]> {
     {
       id: "hospitable",
       name: "Hospitable",
-      detail: "Guest messages, earnings, issues, and each property’s knowledge base",
+      detail: "Guest messages, earnings, issues, and each property’s knowledge base.",
       status: hospitable ? "connected" : "not_connected",
       statusLabel: hospitable ? "Connected" : "Not connected",
       note: hospitable ? "Managed in OPS Settings." : "Add the Hospitable key in OPS Settings.",
@@ -52,7 +59,7 @@ async function connectors(): Promise<ConnectorRow[]> {
     {
       id: "cleaner",
       name: "Cleaner app",
-      detail: "Calendar, assignments, issues, inventory",
+      detail: "Calendar, assignments, issues, inventory.",
       status: "not_connected",
       statusLabel: "Not connected",
       note: "Turnovers still open tasks in OPS. A live calendar read is next.",
@@ -60,25 +67,25 @@ async function connectors(): Promise<ConnectorRow[]> {
     {
       id: "airroi",
       name: "AirROI",
-      detail: "Comps",
+      detail: "Comps.",
       status: airroi ? "connected" : "not_connected",
       statusLabel: airroi ? "Connected" : "Not connected",
     },
     {
       id: "whatsapp",
       name: "WhatsApp",
-      detail: "Host groups only. Family chats are never saved.",
+      detail: "Host groups only.",
       status: "not_connected",
       statusLabel: "Not connected",
-      note: "A group is kept only when it is you, your partner, and a host in Admin.",
+      note: "Family chats are never saved.",
     },
     {
       id: "cursor",
       name: "Cursor",
-      detail: "Team keys for Auto",
+      detail: "Team keys.",
       status: cursor ? "connected" : "not_connected",
       statusLabel: cursor ? "Team keys are set" : "Not connected",
-      note: "Usage shows here when the team spend key is set.",
+      note: "Usage shows in the chat list.",
     },
   ];
 }
@@ -105,14 +112,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chatId = String(req.query.chatId ?? "");
         return res.status(200).json({ messages: await listMessages(chatId) });
       }
-      const [brief, chats, memory] = await Promise.all([
+      const [brief, chats, memory, skills] = await Promise.all([
         buildBrief(),
         listChats(),
         listMemory().catch(() => []),
+        listSkills().catch(() => []),
       ]);
       return res.status(200).json({
         brief,
         chats,
+        skills,
         memory,
         connectors: await connectors(),
         billing: process.env.CURSOR_API_KEY
@@ -124,6 +133,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed." });
     const body = (typeof req.body === "object" && req.body ? req.body : {}) as Record<string, unknown>;
     const op = String(body.op ?? "");
+
+    if (op === "dismiss") {
+      const cardId = String(body.cardId ?? "").trim();
+      if (!cardId) return res.status(400).json({ error: "Missing card." });
+      await dismissCard(cardId);
+      return res.status(200).json({ brief: await buildBrief() });
+    }
 
     if (op === "new") {
       const kind = body.kind === "code" ? "code" : "chat";
@@ -157,6 +173,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       await addMessage({ chatId, role: "user", body: text });
 
+      if (body.skillMode === true) {
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: "Here is the skill. It runs overnight and leaves a draft for you in the morning.",
+          draft: skillDraft(text),
+        });
+        const messages = await listMessages(chatId);
+        const chats = await listChats();
+        return res.status(200).json({ chatId, messages, chats });
+      }
+
       if (kind === "code") {
         const assistant = await addMessage({
           chatId,
@@ -189,6 +217,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const action = String(body.action ?? "");
       const edited = String(body.edited ?? "");
       if (!messageId) return res.status(400).json({ error: "Missing draft." });
+      if (action === "save-skill") {
+        const skill = await saveSkill({
+          name: String(body.name ?? "New skill"),
+          when_text: String(body.when ?? ""),
+          reads: String(body.reads ?? ""),
+          drafts: String(body.drafts ?? ""),
+          must_not: String(body.mustNot ?? ""),
+          enabled: true,
+        });
+        const message = await updateDraft(messageId, { status: "approved_unsent" });
+        return res.status(200).json({ message, skill, skills: await listSkills() });
+      }
+      if (action === "discard-skill") {
+        const message = await updateDraft(messageId, { status: "held" });
+        return res.status(200).json({ message });
+      }
       if (action === "hold") {
         const message = await updateDraft(messageId, {
           status: "held",
@@ -206,6 +250,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ message });
       }
       return res.status(400).json({ error: "Unknown action." });
+    }
+
+    if (op === "skill") {
+      if (body.action === "delete") {
+        await deleteSkill(String(body.id ?? ""));
+        return res.status(200).json({ skills: await listSkills() });
+      }
+      const skill = await saveSkill({
+        id: body.id ? String(body.id) : undefined,
+        name: String(body.name ?? "New skill"),
+        when_text: String(body.when ?? ""),
+        reads: String(body.reads ?? ""),
+        drafts: String(body.drafts ?? ""),
+        must_not: String(body.mustNot ?? ""),
+        enabled: body.enabled !== false,
+      });
+      return res.status(200).json({ skill, skills: await listSkills() });
+    }
+
+    if (op === "rename") {
+      await renameChat(String(body.chatId ?? ""), String(body.title ?? ""));
+      return res.status(200).json({ chats: await listChats() });
+    }
+
+    if (op === "delete-chat") {
+      await deleteChat(String(body.chatId ?? ""));
+      return res.status(200).json({ chats: await listChats() });
+    }
+
+    if (op === "password") {
+      const next = String(body.next ?? "");
+      const confirm = String(body.confirm ?? "");
+      if (!next || next !== confirm) return res.status(200).json({ ok: false, code: "mismatch" });
+      if (!passwordMatches(String(body.current ?? ""))) return res.status(200).json({ ok: false, code: "current" });
+      return res.status(200).json({ ok: false, code: "server" });
     }
 
     return res.status(400).json({ error: "Unknown op." });

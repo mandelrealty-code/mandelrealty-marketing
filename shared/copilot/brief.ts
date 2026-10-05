@@ -1,12 +1,12 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { addDays, greeting, torontoToday } from "./time.js";
 import type { BriefCard, BriefPayload } from "./types.js";
-import { listDueReminders } from "./store.js";
+import { listDismissed, listDueReminders } from "./store.js";
 
 const MAX_CARDS = 4;
 
-function take(cards: BriefCard[], next: BriefCard) {
-  if (cards.length >= MAX_CARDS) return;
+function take(cards: BriefCard[], next: BriefCard, skipped: Set<string>) {
+  if (skipped.has(next.id) || cards.length >= MAX_CARDS) return;
   cards.push(next);
 }
 
@@ -16,6 +16,7 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const tomorrow = addDays(today, 1);
   const focus: BriefCard[] = [];
   const eating: BriefCard[] = [];
+  const skipped = new Set(await listDismissed().catch(() => []));
   const sb = getSupabaseAdmin();
 
   if (sb) {
@@ -41,7 +42,7 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
         text: `${name} hasn't signed ${contract.title || "the contract"}. Let's get them going.`,
         action: "Draft a message",
         source: "Clients",
-      });
+      }, skipped);
     }
 
     const { data: stays } = await sb
@@ -68,7 +69,7 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
         text: `A guest checks in ${when} at ${place}. Confirm the arrival details before they arrive.`,
         action: "Draft the arrival note",
         source: "Hospitable",
-      });
+      }, skipped);
     }
 
     const { data: tasks } = await sb
@@ -90,7 +91,7 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
         text: `${task.title} is due today.`,
         action: "Draft the next step",
         source: "Today only",
-      });
+      }, skipped);
     }
   }
 
@@ -103,7 +104,7 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
       text: `You asked me to remind you: ${reminder.text}`,
       action: "Open the follow-up",
       source: "Reminder",
-    });
+    }, skipped);
   }
 
   const all = [...focus, ...eating].slice(0, MAX_CARDS);
