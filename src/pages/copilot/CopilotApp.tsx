@@ -25,7 +25,38 @@ type PendingFile = {
   size: string;
   ext: string;
   url?: string;
+  file: File;
 };
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+async function imagePayload(file: File): Promise<{ mimeType: string; data: string } | null> {
+  if (!file.type.startsWith("image/")) return null;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const max = 1280;
+    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.72));
+    if (!blob) return null;
+    return { mimeType: "image/jpeg", data: bytesToBase64(new Uint8Array(await blob.arrayBuffer())) };
+  } catch {
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type) || file.size > 1_400_000) return null;
+    return { mimeType: file.type, data: bytesToBase64(new Uint8Array(await file.arrayBuffer())) };
+  }
+}
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -414,8 +445,15 @@ function Thinking({
         {summary ? <span className="count">{summary}</span> : null}
         <ThinkChevron open={open} />
       </button>
-      {open ? (
-        <div className="cp-think-body">
+        {open ? (
+        <div
+          className="cp-think-body"
+          onWheel={(event) => {
+            const el = event.currentTarget;
+            if (el.scrollHeight <= el.clientHeight + 1) return;
+            event.stopPropagation();
+          }}
+        >
           {thought ? <p>{thought}</p> : null}
           {steps.length > 0 ? (
             <div className="cp-think-steps">
@@ -642,6 +680,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setStopped(false);
     const data = await api<{ messages: CopilotMessage[] }>(`messages&chatId=${encodeURIComponent(id)}`);
     setMessages(data.messages);
+    await api("seen", { chatId: id }).catch(() => undefined);
+    await load();
   }
 
   async function watchCursor(id: string, signal: AbortSignal) {
@@ -688,6 +728,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         setThinking(true);
         await watchCursor(data.chat.id, ctrl.signal);
       }
+      await api("seen", { chatId: data.chat.id }).catch(() => undefined);
       await load();
     } catch (e) {
       if (ctrl.signal.aborted) {
@@ -706,8 +747,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     const attached = files.length ? `\nAttached: ${files.map((file) => file.name).join(", ")}` : "";
     const typed = (preset ?? text).trim();
     const value = `${typed}${preset ? "" : attached}`.trim();
-    if (!value || busy) return;
+    if ((!value && files.length === 0) || busy) return;
     const kept = files;
+    const images: { mimeType: string; data: string }[] = [];
+    for (const item of kept) {
+      if (!item.file.type.startsWith("image/")) continue;
+      const image = await imagePayload(item.file).catch(() => null);
+      if (image) images.push(image);
+      if (images.length === 4) break;
+    }
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setPending(value);
@@ -731,6 +779,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         chatId: preset && !keepChat ? null : chatId,
         kind: "chat",
         skillMode: makingSkill,
+        images,
       }, ctrl.signal);
       if (ctrl.signal.aborted) {
         if (!preset) {
@@ -763,6 +812,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       setElseFor(null);
       setElseDraft("");
       if (/floor plan|sourcing|furniture report/i.test(value)) setReport(true);
+      await api("seen", { chatId: data.chatId }).catch(() => undefined);
       await load();
     } catch (e) {
       if (ctrl.signal.aborted) {
@@ -986,7 +1036,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       name: file.name,
       size: formatBytes(file.size),
       ext: fileExt(file.name),
-      url: kind === "photo" ? URL.createObjectURL(file) : undefined,
+      url: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+      file,
     }));
     if (next.length) setFiles((prev) => [...prev, ...next]);
     setPlusOpen(false);
@@ -1040,7 +1091,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           </button>
         </div>
         <p>{item.text}</p>
-        <button type="button" className="cp-cta" disabled={busy} onClick={() => void openCard(item.text, item.action)}>
+        <button type="button" className="cp-cta" disabled={busy} onClick={() => void (item.chatId ? openChat(item.chatId) : openCard(item.text, item.action))}>
           <span className="cp-cta-label">{item.action}</span>
           <span className="cp-go"><Arrow /></span>
         </button>
@@ -1088,6 +1139,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
               ) : (
                 <div className={`cp-chatline${active ? " on" : ""}${menuOpen ? " menu" : ""}`}>
                   <button type="button" className="open" onClick={() => void openChat(chat.id)}>
+                    {chat.unread && !active ? <span className="cp-unread" aria-label="Needs you" /> : null}
                     <span className="cp-chat-title">{chat.title}</span>
                     <span className="cp-time">{when(chat.updated_at)}</span>
                   </button>
@@ -1188,10 +1240,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
             </header>
           ) : (
             <header className="cp-mhead">
-              <button type="button" className="cp-icon44" aria-label="Chats" onClick={() => setSheet(true)}>
+              <button type="button" className="cp-icon44" aria-label={(boot?.chats ?? []).some((chat) => chat.unread) ? "Chats, needs you" : "Chats"} onClick={() => setSheet(true)}>
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
                   <path d="M3 6h14M3 10h14M3 14h9" />
                 </svg>
+                {(boot?.chats ?? []).some((chat) => chat.unread) ? <span className="cp-navdot" /> : null}
               </button>
               <div className="cp-mtitle">
                 {screen === "brief" ? null : <span>{title}</span>}
@@ -1570,7 +1623,12 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       message.role === "user" ? (
                         <div key={message.id} className="cp-userwrap">
                           {viaPlus[message.id] ? <span className="cp-via">Create a skill</span> : null}
-                          <div className="cp-user">{message.body}</div>
+                          <div className="cp-user">
+                            {message.images?.map((image, index) => (
+                              <img key={index} src={`data:${image.mimeType};base64,${image.data}`} alt="" />
+                            ))}
+                            {message.body ? <span>{message.body}</span> : null}
+                          </div>
                         </div>
                       ) : message.draft?.channel === "skill" ? (
                         <div key={message.id} className="cp-bot">

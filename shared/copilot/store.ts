@@ -97,21 +97,134 @@ export async function listChats(): Promise<CopilotChat[]> {
       .select("*")
       .order("updated_at", { ascending: false })
       .limit(40);
-    if (!error) return (data ?? []) as CopilotChat[];
+    if (!error) return withUnread((data ?? []) as CopilotChat[]);
     if (useLocalFile(error)) { /* local file store */ }
     else throw new Error(error.message);
   }
-  return readFileStore().chats.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+  return withUnread(readFileStore().chats.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)));
+}
+
+export type WaitingDraft = {
+  messageId: string;
+  chatId: string;
+  createdAt: string;
+  channel: "email" | "note" | "skill";
+  subject: string;
+  skillName: string;
+};
+
+function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; draft?: CopilotDraft | null }): WaitingDraft | null {
+  const draft = row.draft;
+  if (!draft || draft.status !== "waiting") return null;
+  if (draft.channel !== "email" && draft.channel !== "note" && draft.channel !== "skill") return null;
+  return {
+    messageId: String(row.id ?? ""),
+    chatId: String(row.chat_id ?? ""),
+    createdAt: String(row.created_at ?? ""),
+    channel: draft.channel,
+    subject: draft.subject || "",
+    skillName: draft.skillName || "",
+  };
+}
+
+export async function listWaitingDrafts(): Promise<WaitingDraft[]> {
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client
+      .from("copilot_messages")
+      .select("id, chat_id, created_at, draft")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (!error) {
+      return (data ?? [])
+        .map((row) => asWaiting(row as { id?: string; chat_id?: string; created_at?: string; draft?: CopilotDraft | null }))
+        .filter((item): item is WaitingDraft => Boolean(item));
+    }
+    if (useLocalFile(error)) { /* local file store */ }
+    else throw new Error(error.message);
+  }
+  return readFileStore()
+    .messages.map((message) => asWaiting(message))
+    .filter((item): item is WaitingDraft => Boolean(item))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+async function listSeen(): Promise<Map<string, string>> {
+  const seen = new Map<string, string>();
+  const take = (note: string) => {
+    if (!note.startsWith("seen|")) return;
+    const [, chatId, at] = note.split("|");
+    if (chatId && at) seen.set(chatId, at);
+  };
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("note").like("note", "seen|%").limit(80);
+    if (!error) {
+      for (const row of data ?? []) take(String((row as { note?: string }).note ?? ""));
+      return seen;
+    }
+    if (useLocalFile(error)) { /* local file store */ }
+    else throw new Error(error.message);
+  }
+  for (const row of readFileStore().memory) take(row.note);
+  return seen;
+}
+
+async function withUnread(chats: CopilotChat[]): Promise<CopilotChat[]> {
+  const [waiting, seen] = await Promise.all([
+    listWaitingDrafts().catch(() => []),
+    listSeen().catch(() => new Map<string, string>()),
+  ]);
+  const newest = new Map<string, string>();
+  for (const item of waiting) {
+    const prev = newest.get(item.chatId);
+    if (!prev || item.createdAt > prev) newest.set(item.chatId, item.createdAt);
+  }
+  return chats.map((chat) => {
+    const at = newest.get(chat.id);
+    const opened = seen.get(chat.id);
+    return { ...chat, unread: Boolean(at && (!opened || at > opened)) };
+  });
+}
+
+export async function markChatSeen(chatId: string): Promise<void> {
+  const prefix = `seen|${chatId}|`;
+  const note = `${prefix}${new Date().toISOString()}`;
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("id").like("note", `${prefix}%`).limit(1);
+    if (error) {
+      if (!useLocalFile(error)) throw new Error(error.message);
+    } else if (data?.[0]) {
+      const { error: updateError } = await client.from("copilot_memory").update({ note }).eq("id", (data[0] as { id: string }).id);
+      if (!updateError) return;
+      if (!useLocalFile(updateError)) throw new Error(updateError.message);
+    } else {
+      const { error: insertError } = await client.from("copilot_memory").insert({
+        id: randomUUID(),
+        created_at: new Date().toISOString(),
+        note,
+      });
+      if (!insertError) return;
+      if (!useLocalFile(insertError)) throw new Error(insertError.message);
+    }
+  }
+  const data = readFileStore();
+  const existing = data.memory.find((row) => row.note.startsWith(prefix));
+  if (existing) existing.note = note;
+  else data.memory.push({ id: randomUUID(), created_at: new Date().toISOString(), note });
+  writeFileStore(data);
 }
 
 function unpackMessage(row: CopilotMessage): CopilotMessage {
-  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string }) | null;
+  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[] }) | null;
   const choices = Array.isArray(raw?.choices) ? raw.choices : row.choices ?? null;
   const steps = Array.isArray(raw?.steps) ? raw.steps : row.steps ?? null;
   const thought = typeof raw?.thought === "string" ? raw.thought : row.thought ?? null;
-  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought };
-  const { choices: _choices, steps: _steps, thought: _thought, ...draft } = raw;
-  return { ...row, draft, choices, steps, thought };
+  const images = Array.isArray(raw?.images) ? raw.images : row.images ?? null;
+  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images };
+  const { choices: _choices, steps: _steps, thought: _thought, images: _images, ...draft } = raw;
+  return { ...row, draft, choices, steps, thought, images };
 }
 
 export async function listMessages(chatId: string): Promise<CopilotMessage[]> {
@@ -177,11 +290,13 @@ export async function addMessage(input: {
   choices?: string[] | null;
   steps?: { text: string; meta?: string }[] | null;
   thought?: string | null;
+  images?: { mimeType: string; data: string }[] | null;
 }): Promise<CopilotMessage> {
   const extra = {
     ...(input.choices?.length ? { choices: input.choices } : {}),
     ...(input.steps?.length ? { steps: input.steps } : {}),
     ...(input.thought ? { thought: input.thought } : {}),
+    ...(input.images?.length ? { images: input.images } : {}),
   };
   const storedDraft = Object.keys(extra).length ? { ...(input.draft ?? {}), ...extra } : input.draft ?? null;
   const message: CopilotMessage = {
@@ -453,7 +568,7 @@ export async function listMemory(): Promise<string[]> {
     if (!error) {
       return (data ?? [])
         .map((r) => String((r as { note: string }).note))
-        .filter((note) => !note.startsWith("cursor|"))
+        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|"))
         .slice(0, 20);
     }
     if (useLocalFile(error)) { /* local file store */ }
@@ -463,7 +578,7 @@ export async function listMemory(): Promise<string[]> {
     .memory.slice(-40)
     .reverse()
     .map((m) => m.note)
-    .filter((note) => !note.startsWith("cursor|"))
+    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|"))
     .slice(0, 20);
 }
 

@@ -38,7 +38,7 @@ function describeTool(message: object): string | null {
   return null;
 }
 
-function promptFor(facts: string, history: string, skillMode: boolean): string {
+function promptFor(facts: string, history: string, skillMode: boolean, hasImages: boolean): string {
   return [
     "You are Mandel Realty Copilot, answering the two partners inside their admin app.",
     "Think, then answer. Ask one plain question when you are unsure. If you already know, answer.",
@@ -53,6 +53,7 @@ function promptFor(facts: string, history: string, skillMode: boolean): string {
     "choices is two or three short labels when a guess would send the work the wrong way, otherwise null.",
     'draft is null or {"channel":"email"|"note"|"skill","subject":"","body":"","to":"","skillName":"","skillWhen":"","skillReads":"","skillDrafts":"","skillMustNot":"","skillKind":"playbook"|"text","skillPhone":""}.',
     "For a text skill, skillKind is text and skillPhone is their number. Saving still waits for them.",
+    hasImages ? "Photos are attached to this message. Look at them and describe what is actually visible. Do not say the screenshot is missing." : "",
     "",
     "Facts:",
     facts || "No extra facts were loaded.",
@@ -154,7 +155,12 @@ async function openAgent(chatId: string, apiKey: string) {
   });
 }
 
-export async function startCursorRun(chatId: string, facts: string, skillMode: boolean): Promise<void> {
+export async function startCursorRun(
+  chatId: string,
+  facts: string,
+  skillMode: boolean,
+  images: { mimeType: string; data: string }[] = [],
+): Promise<void> {
   const apiKey = process.env.CURSOR_API_KEY?.trim();
   if (!apiKey) throw new Error(CURSOR_MISSING);
   const existing = await readCursorLink(chatId);
@@ -164,7 +170,10 @@ export async function startCursorRun(chatId: string, facts: string, skillMode: b
   const agent = await openAgent(chatId, apiKey);
   try {
     await saveCursorLink(chatId, agent.agentId, existing?.runId ?? "");
-    const run = await agent.send(promptFor(facts, history, skillMode));
+    const prompt = promptFor(facts, history, skillMode, images.length > 0);
+    const run = images.length
+      ? await agent.send({ text: prompt, images })
+      : await agent.send(prompt);
     await saveCursorLink(chatId, agent.agentId, run.id);
   } catch (err) {
     if (err instanceof AgentBusyError) return;

@@ -19,6 +19,7 @@ import {
   dismissCard,
   listChats,
   listMemory,
+  markChatSeen,
   listMessages,
   listSkills,
   listTextLog,
@@ -29,6 +30,23 @@ import {
   updateDraft,
 } from "../copilot/store.js";
 import type { ConnectorRow } from "../copilot/types.js";
+
+function readImages(value: unknown): { mimeType: string; data: string }[] {
+  if (!Array.isArray(value)) return [];
+  const images: { mimeType: string; data: string }[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const mimeType = String((item as { mimeType?: string }).mimeType ?? "");
+    let data = String((item as { data?: string }).data ?? "");
+    const comma = data.indexOf(",");
+    if (data.startsWith("data:") && comma > 0) data = data.slice(comma + 1);
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(mimeType)) continue;
+    if (data.length < 32 || data.length > 1_800_000) continue;
+    images.push({ mimeType, data });
+    if (images.length === 4) break;
+  }
+  return images;
+}
 
 function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Sign in required." });
@@ -171,6 +189,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body = (typeof req.body === "object" && req.body ? req.body : {}) as Record<string, unknown>;
     const op = String(body.op ?? "");
 
+    if (op === "seen") {
+      const chatId = String(body.chatId ?? "").trim();
+      if (!chatId) return res.status(400).json({ error: "Missing chat." });
+      await markChatSeen(chatId);
+      return res.status(200).json({ chats: await listChats(), brief: await buildBrief() });
+    }
+
     if (op === "dismiss") {
       const cardId = String(body.cardId ?? "").trim();
       if (!cardId) return res.status(400).json({ error: "Missing card." });
@@ -229,7 +254,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (op === "send") {
-      const text = String(body.text ?? "").trim();
+      const images = readImages(body.images);
+      const text = String(body.text ?? "").trim() || (images.length ? "Look at the attached photo." : "");
       const kind = body.kind === "code" ? "code" : "chat";
       if (!text) return res.status(400).json({ error: "Write a message first." });
       let chatId = String(body.chatId ?? "");
@@ -237,13 +263,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chat = await createChat(text.slice(0, 48), kind);
         chatId = chat.id;
       }
-      await addMessage({ chatId, role: "user", body: text });
+      await addMessage({ chatId, role: "user", body: text, images });
       let pending = false;
       if (!process.env.CURSOR_API_KEY?.trim()) {
         await addMessage({ chatId, role: "assistant", body: CURSOR_MISSING });
       } else {
         try {
-          await startCursorRun(chatId, await factsFor(), body.skillMode === true);
+          await startCursorRun(chatId, await factsFor(), body.skillMode === true, images);
           pending = true;
         } catch (err) {
           await addMessage({

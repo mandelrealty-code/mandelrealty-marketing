@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { addDays, greeting, torontoToday } from "./time.js";
 import type { BriefCard, BriefPayload } from "./types.js";
-import { listDismissed, listDueReminders } from "./store.js";
+import { listDismissed, listDueReminders, listWaitingDrafts } from "./store.js";
 
 const MAX_CARDS = 4;
 
@@ -17,6 +17,21 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const focus: BriefCard[] = [];
   const eating: BriefCard[] = [];
   const skipped = new Set(await listDismissed().catch(() => []));
+  const waiting = await listWaitingDrafts().catch(() => []);
+  for (const item of waiting) {
+    const label = item.channel === "skill"
+      ? (item.skillName || "A skill")
+      : (item.subject || (item.channel === "note" ? "A note" : "An email"));
+    const ready = item.channel === "skill" ? `${label} is ready to save.` : `${label} is ready.`;
+    take(focus, {
+      id: `draft:${item.messageId}`,
+      chatId: item.chatId,
+      group: "focus",
+      text: `${ready} Nothing was sent.`,
+      action: "Review",
+      source: "Copilot",
+    }, skipped);
+  }
   const sb = getSupabaseAdmin();
 
   if (sb) {

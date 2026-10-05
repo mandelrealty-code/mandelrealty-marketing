@@ -49,6 +49,7 @@ export type CopilotMessage = {
   choices?: string[] | null;
   steps?: { text: string; meta?: string }[] | null;
   thought?: string | null;
+  images?: { mimeType: string; data: string }[] | null;
 };
 
 export type CopilotChat = {
@@ -57,6 +58,7 @@ export type CopilotChat = {
   updated_at: string;
   title: string;
   kind: "chat" | "code";
+  unread?: boolean;
 };
 
 export type CopilotReminder = {
@@ -73,6 +75,7 @@ export type BriefCard = {
   text: string;
   action: string;
   source: string;
+  chatId?: string;
 };
 
 export type BriefPayload = {
