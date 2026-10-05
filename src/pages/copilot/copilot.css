@@ -1024,6 +1024,119 @@ html.cp-app[data-cp-theme="light"] #root {
   color: var(--quiet);
 }
 
+.cp-bot > p {
+  white-space: pre-wrap;
+}
+
+.cp-choices {
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-top: -4px;
+}
+
+.cp-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 16px;
+  box-sizing: border-box;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cp-choice:first-child {
+  border-top: none;
+}
+
+.cp-choice:hover:not(:disabled) {
+  background: var(--surf2);
+}
+
+.cp-choice.else {
+  color: var(--muted);
+}
+
+.cp-choice:disabled {
+  cursor: default;
+}
+
+.cp-choice-letter {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--surf2);
+  border: 1px solid var(--line);
+  box-sizing: border-box;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cp-choice-else {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 8px 8px 16px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--line);
+  background: var(--surf2);
+}
+
+.cp-choice-else .cp-choice-letter {
+  background: var(--surf);
+}
+
+.cp-choice-else input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+}
+
+.cp-else-send {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: none;
+  background: #c4a35a;
+  color: #0a0a0a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.cp-else-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.cp-else-send:hover:not(:disabled) {
+  background: #dcc084;
+}
+
 .cp-waiting {
   font-size: 13px;
   font-weight: 500;

@@ -8,7 +8,7 @@ import { passwordMatches } from "../adminAuth.js";
 import { getHospitablePat } from "../pm/clientStore.js";
 import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
-import { draftForCard, replyTo, skillReply } from "../copilot/reply.js";
+import { draftForCard, replyTo, skillTurn } from "../copilot/reply.js";
 import { toE164 } from "../followUpSequences.js";
 import {
   addMessage,
@@ -193,15 +193,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chat = await createChat(text.slice(0, 48), kind);
         chatId = chat.id;
       }
+      const prior = await listMessages(chatId);
       await addMessage({ chatId, role: "user", body: text });
 
-      if (body.skillMode === true) {
-        const skill = skillReply(text);
+      const interviewing = prior.some((message) => message.role === "assistant" && /What should the text include\?|Who should get this text\?|What number should it text|what should I prepare, and who is it for|What should it never do\?|What should it do, and who is it for\?|Before I write the skill/.test(message.body));
+      if (body.skillMode === true || interviewing || /^create a skill\b/i.test(text) || /\bcreate a skill that\b/i.test(text)) {
+        const skill = skillTurn(text, prior);
+        if (skill.memory) await remember(skill.memory);
         await addMessage({
           chatId,
           role: "assistant",
           body: skill.body,
           draft: skill.draft,
+          choices: skill.choices,
         });
         const messages = await listMessages(chatId);
         const chats = await listChats();
@@ -221,7 +225,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const previous = await lastDraft(chatId);
-      const result = replyTo(text, previous);
+      const lastAssistant = [...prior].reverse().find((message) => message.role === "assistant")?.body ?? "";
+      let stayPlace: string | null = null;
+      let stayWhen: string | null = null;
+      try {
+        const brief = await buildBrief();
+        const stay = [...brief.focus, ...brief.eating].find((card) => /checks in/.test(card.text));
+        stayPlace = stay?.text.match(/\bat\s+(.+?)\.\s+Confirm the arrival details/i)?.[1] ?? null;
+        stayWhen = /tomorrow/.test(stay?.text ?? "") ? "tomorrow" : /today/.test(stay?.text ?? "") ? "today" : null;
+      } catch {
+        stayPlace = null;
+      }
+      const result = replyTo(text, previous, new Date(), { lastAssistant, stayPlace, stayWhen });
       if (result.reminder) await addReminder(result.reminder.text, result.reminder.dueOn);
       if (result.memory) await remember(result.memory);
       await addMessage({
@@ -229,6 +244,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         role: "assistant",
         body: result.body,
         draft: result.draft,
+        choices: result.choices,
       });
       const messages = await listMessages(chatId);
       const chats = await listChats();

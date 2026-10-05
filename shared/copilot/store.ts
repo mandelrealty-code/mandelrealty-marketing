@@ -104,6 +104,15 @@ export async function listChats(): Promise<CopilotChat[]> {
   return readFileStore().chats.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
 }
 
+function unpackMessage(row: CopilotMessage): CopilotMessage {
+  const raw = row.draft as (CopilotDraft & { choices?: string[] }) | null;
+  if (!raw || !Array.isArray(raw.choices)) return { ...row, choices: row.choices ?? null };
+  const choices = raw.choices;
+  if (!raw.channel) return { ...row, draft: null, choices };
+  const { choices: _omit, ...draft } = raw;
+  return { ...row, draft, choices };
+}
+
 export async function listMessages(chatId: string): Promise<CopilotMessage[]> {
   const client = sb();
   if (!useFile && client) {
@@ -113,17 +122,15 @@ export async function listMessages(chatId: string): Promise<CopilotMessage[]> {
       .eq("chat_id", chatId)
       .order("created_at", { ascending: true });
     if (!error) {
-      return (data ?? []).map((row) => ({
-        ...(row as CopilotMessage),
-        draft: (row as CopilotMessage).draft ?? null,
-      }));
+      return (data ?? []).map((row) => unpackMessage(row as CopilotMessage));
     }
     if (useLocalFile(error)) { /* local file store */ }
     else throw new Error(error.message);
   }
   return readFileStore()
     .messages.filter((m) => m.chat_id === chatId)
-    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
+    .map(unpackMessage);
 }
 
 export async function createChat(title: string, kind: CopilotChat["kind"] = "chat"): Promise<CopilotChat> {
@@ -166,21 +173,25 @@ export async function addMessage(input: {
   role: "user" | "assistant";
   body: string;
   draft?: CopilotDraft | null;
+  choices?: string[] | null;
 }): Promise<CopilotMessage> {
+  const storedDraft = input.choices?.length
+    ? { ...(input.draft ?? {}), choices: input.choices }
+    : input.draft ?? null;
   const message: CopilotMessage = {
     id: randomUUID(),
     chat_id: input.chatId,
     created_at: new Date().toISOString(),
     role: input.role,
     body: input.body,
-    draft: input.draft ?? null,
+    draft: (storedDraft as CopilotDraft | null) ?? null,
   };
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_messages").insert(message);
     if (!error) {
       await touchChat(input.chatId);
-      return message;
+      return unpackMessage(message);
     }
     if (useLocalFile(error)) { /* local file store */ }
     else throw new Error(error.message);
@@ -190,7 +201,7 @@ export async function addMessage(input: {
   const chat = data.chats.find((c) => c.id === input.chatId);
   if (chat) chat.updated_at = message.created_at;
   writeFileStore(data);
-  return message;
+  return unpackMessage(message);
 }
 
 export async function updateDraft(

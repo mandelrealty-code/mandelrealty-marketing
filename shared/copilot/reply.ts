@@ -64,26 +64,106 @@ function textSkillDraft(text: string): CopilotDraft {
   };
 }
 
+function phoneIn(text: string) {
+  return text.match(/(?:\+?1[\s.-]*)?(?:\(?\d{3}\)?[\s.-]*)\d{3}[\s.-]*\d{4}/)?.[0]?.trim() ?? "";
+}
+
 export function skillReply(text: string): { body: string; draft: CopilotDraft } {
   if (isTextSkillRequest(text)) {
+    const draft = textSkillDraft(text);
+    const lower = text.toLowerCase();
+    if (isCleanText(text)) {
+      if (/unit name only/.test(lower)) draft.skillDrafts = "Clean done for {unit}.";
+      else if (/failed inspection/.test(lower)) {
+        draft.skillDrafts = "Clean done for {unit} — {no issues, or how many issues}. Say if the unit failed inspection.";
+      } else if (/whether there were issues/.test(lower) && !/report link/.test(lower)) {
+        draft.skillDrafts = "Clean done for {unit} — {no issues, or how many issues}.";
+      }
+    }
+    const phone = phoneIn(text);
+    if (phone) draft.skillPhone = phone;
     return {
       body: isCleanText(text)
         ? "Here is the text it will send you when a clean is done."
         : "Here is the text it will send you. It texts your number only.",
-      draft: textSkillDraft(text),
+      draft,
     };
   }
   return {
-    body: "Here is the skill. It runs overnight and leaves a draft for you in the morning.",
+    body: "Here is the skill. Saving it does not send anything. The next run only prepares a draft.",
     draft: skillDraft(text),
+  };
+}
+
+function ask(body: string, choices?: string[]): ReplyResult {
+  return { body, draft: null, choices: choices ?? null, reminder: null, memory: null };
+}
+
+export function skillTurn(
+  text: string,
+  prior: { role: string; body: string }[],
+): ReplyResult {
+  const assistants = prior.filter((message) => message.role === "assistant").map((message) => message.body);
+  const said = [...prior.filter((message) => message.role === "user").map((message) => message.body), text].join("\n");
+  const lower = said.toLowerCase();
+  const askedInclude = assistants.some((body) => body.startsWith("What should the text include?"));
+  const askedWho = assistants.some((body) => body.startsWith("Who should get this text?"));
+  const askedNumber = assistants.some((body) => body.includes("What number should it text"));
+  const askedPrepare = assistants.some((body) => /what should I prepare|what should it do, and who is it for/i.test(body));
+  const askedNever = assistants.some((body) => body.startsWith("What should it never do?"));
+  const texting = /\b(text|texts|texting|sms)\b/.test(lower);
+  const clean = texting && /\bclean/.test(lower);
+  const described = /unit name only|whether there were issues|report link|failed inspection/.test(lower);
+  const hasPhone = Boolean(phoneIn(said));
+
+  if (clean && !askedInclude && !described) {
+    return ask("What should the text include?", [
+      "Unit name only",
+      "Unit, and whether there were issues",
+      "Unit, issues, and the report link if the cleaner app sent one",
+    ]);
+  }
+  if (clean && !askedWho && !askedNumber && !hasPhone && (askedInclude || described)) {
+    return ask("Who should get this text?", ["My mobile only", "My mobile and my partner's"]);
+  }
+  if (texting && !askedNumber && !hasPhone && (askedWho || askedInclude || described)) {
+    return ask(
+      /partner/.test(lower)
+        ? "This skill texts one number. What number should it text? It will not text a guest."
+        : "What number should it text?",
+    );
+  }
+  if (!texting && !askedPrepare && assistants.length === 0) {
+    if (/owner lead/.test(lower)) {
+      return ask("When a new owner lead comes in, what should I prepare, and who is it for?");
+    }
+    return ask("What should it do, and who is it for?");
+  }
+  if (!texting && askedPrepare && !askedNever && !/\b(never|must not|don't|do not)\b/.test(lower)) {
+    return ask("What should it never do?");
+  }
+  const built = skillReply(said);
+  return {
+    body: built.body,
+    draft: built.draft,
+    choices: null,
+    reminder: null,
+    memory: `Skill discussed: ${built.draft.skillName ?? "New skill"}`,
   };
 }
 
 export type ReplyResult = {
   body: string;
   draft: CopilotDraft | null;
+  choices?: string[] | null;
   reminder: { text: string; dueOn: string } | null;
   memory: string | null;
+};
+
+export type ReplyContext = {
+  lastAssistant?: string;
+  stayPlace?: string | null;
+  stayWhen?: string | null;
 };
 
 function draft(subject: string, body: string, to = ""): CopilotDraft {
@@ -129,14 +209,101 @@ function planAnswer(text: string): string | null {
   return null;
 }
 
-export function replyTo(text: string, previousDraft: CopilotDraft | null, now = new Date()): ReplyResult {
+export function replyTo(
+  text: string,
+  previousDraft: CopilotDraft | null,
+  now = new Date(),
+  ctx: ReplyContext = {},
+): ReplyResult {
   const trimmed = text.trim();
   const lower = trimmed.toLowerCase();
   const today = torontoToday(now);
+  const last = ctx.lastAssistant ?? "";
+  const place = trimmed.match(/\b(?:for|at) the (.+?) check-?in/i)?.[1]?.trim() || ctx.stayPlace || "";
+  const when = ctx.stayWhen || (/\btomorrow\b/i.test(trimmed) ? "tomorrow" : /\btoday\b/i.test(trimmed) ? "today" : "");
 
   if (/^create a skill\b/i.test(trimmed) || /\bcreate a skill that\b/i.test(lower)) {
-    const skill = skillReply(trimmed);
-    return { body: skill.body, draft: skill.draft, reminder: null, memory: null };
+    return skillTurn(trimmed, []);
+  }
+
+  if (/Want me to write the arrival note\?|Do you mean the .+ check-in/.test(last) && /^(yes|yeah|yep|please|do it|write it)\b/i.test(trimmed) && place) {
+    return draftForCard(
+      `A guest checks in ${when || "tomorrow"} at ${place}. Confirm the arrival details before they arrive.`,
+      "Draft the arrival note",
+    );
+  }
+
+  if (last.startsWith("Who is this for?")) {
+    if (/client|hasn.?t signed|unsigned/.test(lower)) {
+      return {
+        body: "Here is the email. Gmail is not connected, so it stays a draft. Nothing has been sent.",
+        draft: draft(
+          "Following up on your agreement",
+          "Hi,\n\nThe agreement is still waiting for a signature. I have not sent this.\n\nMandel Realty Group",
+        ),
+        choices: null,
+        reminder: null,
+        memory: null,
+      };
+    }
+    if (/reminder|\bus\b/.test(lower)) {
+      return {
+        body: "Here is the reminder. I have not contacted anyone.",
+        draft: note("Reminder", "The agreement is still unsigned.\n\nThis is for you. I have not contacted the client."),
+        choices: null,
+        reminder: null,
+        memory: null,
+      };
+    }
+  }
+
+  if (last.startsWith("What should I prepare?")) {
+    if (/arrival note/.test(lower)) {
+      return place
+        ? draftForCard(
+            `A guest checks in ${when || "tomorrow"} at ${place}. Confirm the arrival details before they arrive.`,
+            "Draft the arrival note",
+          )
+        : ask("Which check-in is this for?");
+    }
+    if (/guest/.test(lower)) {
+      return {
+        body: "Gmail is not connected, so this stays a draft. Who is it to?",
+        choices: ["The guest on this stay", "The host"],
+        draft: null,
+        reminder: null,
+        memory: null,
+      };
+    }
+    if (/cleaner/.test(lower)) {
+      return {
+        body: "Here is the note for the cleaner. I have not assigned anyone, and nothing has been sent.",
+        draft: note("Cleaner note", place
+          ? `Check-in ${when || "tomorrow"} at ${place}.\n\nConfirm the clean is set before they arrive. I have not assigned anyone.`
+          : "Confirm the clean is set before the guest arrives. I have not assigned anyone."),
+        choices: null,
+        reminder: null,
+        memory: null,
+      };
+    }
+  }
+
+  if (/\bplan\b/.test(lower) && /check-?in/.test(lower)) {
+    return ask("What should I prepare?", ["An arrival note for us", "A message to the guest", "A note for the cleaner"]);
+  }
+
+  if (/\b(write|draft)\b/.test(lower) && /unsigned agreement/.test(lower)) {
+    return ask("Who is this for?", ["The client who hasn't signed", "Us, as a reminder"]);
+  }
+
+  if (/check-?in/.test(lower) && /\b(handle|can you)\b/.test(lower)) {
+    return ask(place ? `Do you mean the ${place} check-in ${when || "tomorrow"}?` : "Which check-in do you mean?");
+  }
+
+  if (/get ahead of tomorrow/.test(lower)) {
+    return ask(place
+      ? `The ${place} guest checks in ${when || "tomorrow"}. Want me to write the arrival note?`
+      : "What should I get ahead of?");
   }
 
   if (/^remind me\b/.test(lower) || /\bremind me tomorrow\b/.test(lower)) {

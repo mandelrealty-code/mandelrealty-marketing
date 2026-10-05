@@ -208,6 +208,74 @@ function Switcher({ onModeChange }: { onModeChange: (mode: AdminProductMode) => 
   );
 }
 
+function ChoiceCard({
+  message,
+  locked,
+  open,
+  draft,
+  onOpen,
+  onDraft,
+  onPick,
+  onElse,
+}: {
+  message: CopilotMessage;
+  locked: boolean;
+  open: boolean;
+  draft: string;
+  onOpen: () => void;
+  onDraft: (value: string) => void;
+  onPick: (label: string) => void;
+  onElse: (value: string) => void;
+}) {
+  const choices = message.choices ?? [];
+  const letters = "ABCD";
+  const elseLetter = letters[choices.length] ?? "D";
+  return (
+    <div className="cp-choices">
+      {choices.map((label, index) => (
+        <button
+          key={label}
+          type="button"
+          className="cp-choice"
+          disabled={locked}
+          onClick={() => onPick(`${letters[index]}. ${label}.`)}
+        >
+          <span className="cp-choice-letter">{letters[index]}</span>
+          <span>{label}</span>
+        </button>
+      ))}
+      {open && !locked ? (
+        <div className="cp-choice-else">
+          <span className="cp-choice-letter">{elseLetter}</span>
+          <input
+            placeholder="Type your own"
+            aria-label="Something else"
+            value={draft}
+            onChange={(event) => onDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                const value = draft.trim();
+                if (value) onElse(value);
+              }
+            }}
+          />
+          <button type="button" className="cp-else-send" aria-label="Send" disabled={!draft.trim()} onClick={() => onElse(draft.trim())}>
+            <svg width="15" height="15" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M9 14V4M4.5 8.5L9 4l4.5 4.5" />
+            </svg>
+          </button>
+        </div>
+      ) : (
+        <button type="button" className="cp-choice else" disabled={locked} onClick={onOpen}>
+          <span className="cp-choice-letter">{elseLetter}</span>
+          <span>Something else</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function workFor(message: CopilotMessage): { thought: string; steps: { text: string }[] } {
   const steps = [{ text: "Read your message" }];
   const draft = message.draft;
@@ -218,6 +286,20 @@ function workFor(message: CopilotMessage): { thought: string; steps: { text: str
     }
     steps.push({ text: "Wrote the skill and left it waiting" });
     return { thought: "This is a playbook. Saving it does not send anything.", steps };
+  }
+  if (message.choices?.length) {
+    steps.push({ text: "Found a real fork" });
+    steps.push({ text: "Asked instead of guessing" });
+    return { thought: "A guess here would be wrong, so I asked.", steps };
+  }
+  if (!draft && /\?\s*$/.test(message.body.trim())) {
+    steps.push({ text: "Asked one question" });
+    return { thought: "One question was enough. I did not guess.", steps };
+  }
+  if (/Before I write the skill/i.test(message.body)) {
+    steps.push({ text: "Asked what the skill should do" });
+    steps.push({ text: "Did not save a skill yet" });
+    return { thought: "I need your answers before I write the skill. Nothing was saved.", steps };
   }
   if (/remind you tomorrow/i.test(message.body)) {
     steps.push({ text: "Saved a reminder for tomorrow" });
@@ -348,6 +430,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   });
   const [boot, setBoot] = useState<Boot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [elseFor, setElseFor] = useState<string | null>(null);
+  const [elseDraft, setElseDraft] = useState("");
   const [connectHint, setConnectHint] = useState<Record<string, boolean>>({});
   const [screen, setScreen] = useState<Screen>("brief");
   const [chatId, setChatId] = useState<string | null>(null);
@@ -557,7 +641,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
-  async function send(preset?: string) {
+  async function send(preset?: string, keepChat = false) {
     const attached = files.length ? `\nAttached: ${files.map((file) => file.name).join(", ")}` : "";
     const typed = (preset ?? text).trim();
     const value = `${typed}${preset ? "" : attached}`.trim();
@@ -576,10 +660,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       setFiles([]);
     }
     try {
-      const makingSkill = skillMode && !preset;
+      const makingSkill = skillMode && (!preset || keepChat);
       const data = await api<{ chatId: string; messages: CopilotMessage[] }>("send", {
         text: value,
-        chatId: preset ? null : chatId,
+        chatId: preset && !keepChat ? null : chatId,
         kind: "chat",
         skillMode: makingSkill,
       }, ctrl.signal);
@@ -598,11 +682,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (makingSkill) {
         const user = [...data.messages].reverse().find((m) => m.role === "user");
         if (user) setViaPlus((prev) => ({ ...prev, [user.id]: true }));
-        setSkillMode(false);
+        const assistant = [...data.messages].reverse().find((m) => m.role === "assistant");
+        if (assistant?.draft?.channel === "skill") setSkillMode(false);
       }
       setScreen("chat");
       setSheet(false);
       setPlusOpen(false);
+      setElseFor(null);
+      setElseDraft("");
       if (/floor plan|sourcing|furniture report/i.test(value)) setReport(true);
       await load();
     } catch (e) {
@@ -1504,6 +1591,18 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             steps={workFor(message).steps}
                           />
                           {message.draft?.status === "waiting" ? <p>{message.body}</p> : <p className={message.draft ? "cp-muted" : undefined}>{message.body}</p>}
+                          {message.choices?.length ? (
+                            <ChoiceCard
+                              message={message}
+                              locked={messages.slice(messages.findIndex((item) => item.id === message.id) + 1).some((item) => item.role === "user") || busy}
+                              open={elseFor === message.id}
+                              draft={elseDraft}
+                              onOpen={() => { setElseFor(message.id); setElseDraft(""); }}
+                              onDraft={setElseDraft}
+                              onPick={(label) => void send(label, true)}
+                              onElse={(value) => void send(value, true)}
+                            />
+                          ) : null}
                           {message.draft?.status === "waiting" && message.draft.channel === "note" ? (
                             <>
                               <div className="cp-mail">

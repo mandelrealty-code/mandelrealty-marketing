@@ -13,6 +13,7 @@ export type CopilotDraft = {
   skillMustNot?: string;
   skillKind?: "playbook" | "text";
   skillPhone?: string;
+  choices?: string[];
 };
 
 export type CopilotSkill = {
@@ -45,6 +46,7 @@ export type CopilotMessage = {
   role: "user" | "assistant";
   body: string;
   draft: CopilotDraft | null;
+  choices?: string[] | null;
 };
 
 export type CopilotChat = {
