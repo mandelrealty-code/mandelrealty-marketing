@@ -185,7 +185,7 @@ function workFor(message: CopilotMessage): { thought: string; steps: { text: str
     steps.push({ text: "Could not read the picture yet" });
     return { thought: "Cursor is not connected, so I did not invent what the picture shows.", steps };
   }
-  if (draft && draft.channel !== "skill") {
+  if (draft) {
     steps.push({ text: "Drafted the note" });
     if (draft.status === "held") {
       steps.push({ text: "You held it. Nothing was sent" });
