@@ -245,7 +245,7 @@ function ChoiceCard({
   onPick: (label: string) => void;
   onElse: (value: string) => void;
 }) {
-  const choices = message.choices ?? [];
+  const choices = (message.choices ?? []).filter((label) => !/^something else\.?$/i.test(label.trim()));
   const letters = "ABCD";
   const elseLetter = letters[choices.length] ?? "D";
   return (

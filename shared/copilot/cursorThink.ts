@@ -67,7 +67,7 @@ function asChoices(value: unknown): string[] | null {
   const choices = value
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
-    .filter(Boolean)
+    .filter((item) => item && !/^something else\.?$/i.test(item))
     .slice(0, 3);
   return choices.length ? choices : null;
 }
