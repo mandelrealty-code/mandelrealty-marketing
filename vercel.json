@@ -91,6 +91,10 @@
       "destination": "/api/admin?section=pm"
     },
     {
+      "source": "/api/admin/copilot",
+      "destination": "/api/admin?section=copilot"
+    },
+    {
       "source": "/api/webhooks/ops-hub",
       "destination": "/api/admin?section=ops_hub"
     },

@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import handleKnowledge from "../shared/adminApi/knowledge.js";
 import handleLeads from "../shared/adminApi/leads.js";
 import handleOpsHubWebhook from "../shared/adminApi/opsHubWebhook.js";
+import handleCopilot from "../shared/adminApi/copilot.js";
 import handlePm from "../shared/adminApi/pm.js";
 import handleSession from "../shared/adminApi/session.js";
 import handleSettings from "../shared/adminApi/settings.js";
@@ -29,6 +30,7 @@ function sectionOf(req: VercelRequest): string {
     return "session";
   }
   if (url.includes("/pm") || url.includes("section=pm")) return "pm";
+  if (url.includes("copilot")) return "copilot";
   if (url.includes("leads")) return "leads";
 
   // Clients app hits /api/admin/pm?resource=… — after rewrite section=pm is preferred
@@ -53,6 +55,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleKnowledge(req, res);
     case "pm":
       return handlePm(req, res);
+    case "copilot":
+      return handleCopilot(req, res);
     case "ops_hub":
       return handleOpsHubWebhook(req, res);
     default:

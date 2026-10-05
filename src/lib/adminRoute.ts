@@ -87,6 +87,10 @@ export function parseAdminRoute(
     return { ...emptyAdminRoute("crm"), leadId: legacyLead };
   }
 
+  if (parts[0] === "copilot") {
+    return emptyAdminRoute("copilot");
+  }
+
   if (parts[0] === "ops") {
     const base = emptyAdminRoute("ops");
     if (parts[1] === "properties" && parts[2]) {
@@ -129,6 +133,7 @@ export function parseAdminRoute(
 }
 
 export function adminPath(route: AdminRoute): string {
+  if (route.mode === "copilot") return "/copilot";
   if (route.mode === "crm") {
     if (route.leadId) return `/crm/lead/${encodeURIComponent(route.leadId)}`;
     if (route.crmTab === "contacts") return "/crm";

@@ -1,4 +1,4 @@
-export type AdminProductMode = "crm" | "ops";
+export type AdminProductMode = "crm" | "ops" | "copilot";
 
 const MODE_KEY = "mrg_admin_mode";
 
@@ -8,6 +8,7 @@ export function readStoredAdminMode(): AdminProductMode {
     if (v === "crm") return "crm";
     // Legacy storage key "clients" maps to OPS
     if (v === "ops" || v === "clients") return "ops";
+    if (v === "copilot") return "copilot";
   } catch {
     /* ignore */
   }

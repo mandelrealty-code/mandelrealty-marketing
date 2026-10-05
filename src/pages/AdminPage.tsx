@@ -25,6 +25,7 @@ import { DraftCard, type PendingDraft } from "./crm/DraftCard";
 import { setCurrentPlaybookStep, type PlaybookStep } from "../../shared/playbookTypes";
 
 const ClientsApp = lazy(() => import("./clients/ClientsApp"));
+const CopilotApp = lazy(() => import("./copilot/CopilotApp"));
 
 type Lead = {
   id: string;
@@ -1641,6 +1642,20 @@ export function AdminPage() {
           <p className="text-[12.5px] text-[#5e5a56]">Two-operator access · session held 30 days</p>
         </motion.form>
       </div>
+    );
+  }
+
+  if (productMode === "copilot") {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex min-h-dvh items-center justify-center bg-[#0a0a0a] text-[#9a9590]">
+            Loading Copilot…
+          </div>
+        }
+      >
+        <CopilotApp onModeChange={switchProduct} />
+      </Suspense>
     );
   }
 

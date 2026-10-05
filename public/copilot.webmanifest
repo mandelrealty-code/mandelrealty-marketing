@@ -1,0 +1,17 @@
+{
+  "name": "Copilot",
+  "short_name": "Copilot",
+  "start_url": "/copilot",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "/mrg-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

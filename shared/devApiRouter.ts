@@ -165,6 +165,14 @@ export async function handleDevApi(
     if (sectionPm) {
       return runVercelAdminHandler(req, res, "pm", handlePm);
     }
+    const sectionCopilot =
+      url === "/api/admin/copilot" ||
+      (url === "/api/admin" &&
+        new URL(full, "http://localhost").searchParams.get("section") === "copilot");
+    if (sectionCopilot) {
+      const { default: handleCopilot } = await import("./adminApi/copilot.js");
+      return runVercelAdminHandler(req, res, "copilot", handleCopilot);
+    }
   }
 
   // Owner portal API
