@@ -443,15 +443,78 @@ export async function listMemory(): Promise<string[]> {
       .from("copilot_memory")
       .select("note")
       .order("created_at", { ascending: false })
-      .limit(20);
-    if (!error) return (data ?? []).map((r) => String((r as { note: string }).note));
+      .limit(40);
+    if (!error) {
+      return (data ?? [])
+        .map((r) => String((r as { note: string }).note))
+        .filter((note) => !note.startsWith("cursor|"))
+        .slice(0, 20);
+    }
     if (useLocalFile(error)) { /* local file store */ }
     else throw new Error(error.message);
   }
   return readFileStore()
-    .memory.slice(-20)
+    .memory.slice(-40)
     .reverse()
-    .map((m) => m.note);
+    .map((m) => m.note)
+    .filter((note) => !note.startsWith("cursor|"))
+    .slice(0, 20);
+}
+
+function parseCursorNote(note: string, chatId: string): { agentId: string; runId: string } | null {
+  const prefix = `cursor|${chatId}|`;
+  if (!note.startsWith(prefix)) return null;
+  const rest = note.slice(prefix.length);
+  const cut = rest.indexOf("|");
+  if (cut < 1) return null;
+  return { agentId: rest.slice(0, cut), runId: rest.slice(cut + 1) };
+}
+
+export async function readCursorLink(chatId: string): Promise<{ agentId: string; runId: string } | null> {
+  const prefix = `cursor|${chatId}|`;
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client
+      .from("copilot_memory")
+      .select("note")
+      .like("note", `${prefix}%`)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (!error) return parseCursorNote(String((data?.[0] as { note?: string } | undefined)?.note ?? ""), chatId);
+    if (useLocalFile(error)) { /* local file store */ }
+    else throw new Error(error.message);
+  }
+  const hit = [...readFileStore().memory].reverse().find((row) => row.note.startsWith(prefix));
+  return parseCursorNote(hit?.note ?? "", chatId);
+}
+
+export async function saveCursorLink(chatId: string, agentId: string, runId: string): Promise<void> {
+  const prefix = `cursor|${chatId}|`;
+  const note = `${prefix}${agentId}|${runId}`;
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("id").like("note", `${prefix}%`).limit(1);
+    if (error) {
+      if (!useLocalFile(error)) throw new Error(error.message);
+    } else if (data?.[0]) {
+      const { error: updateError } = await client.from("copilot_memory").update({ note }).eq("id", (data[0] as { id: string }).id);
+      if (!updateError) return;
+      if (!useLocalFile(updateError)) throw new Error(updateError.message);
+    } else {
+      const { error: insertError } = await client.from("copilot_memory").insert({
+        id: randomUUID(),
+        created_at: new Date().toISOString(),
+        note,
+      });
+      if (!insertError) return;
+      if (!useLocalFile(insertError)) throw new Error(insertError.message);
+    }
+  }
+  const data = readFileStore();
+  const existing = data.memory.find((row) => row.note.startsWith(prefix));
+  if (existing) existing.note = note;
+  else data.memory.push({ id: randomUUID(), created_at: new Date().toISOString(), note });
+  writeFileStore(data);
 }
 
 export async function listTextNumbers(): Promise<string[]> {

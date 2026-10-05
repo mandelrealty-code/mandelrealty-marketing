@@ -73,10 +73,14 @@ export function skillReply(text: string): { body: string; draft: CopilotDraft } 
     const draft = textSkillDraft(text);
     const lower = text.toLowerCase();
     if (isCleanText(text)) {
-      if (/unit name only/.test(lower)) draft.skillDrafts = "Clean done for {unit}.";
-      else if (/failed inspection/.test(lower)) {
+      if (/unit name only/.test(lower)) {
+        draft.skillReads = "The unit.";
+        draft.skillDrafts = "Clean done for {unit}.";
+      } else if (/failed inspection/.test(lower)) {
+        draft.skillReads = "The unit, whether there were issues, and whether it failed inspection.";
         draft.skillDrafts = "Clean done for {unit} — {no issues, or how many issues}. Say if the unit failed inspection.";
       } else if (/whether there were issues/.test(lower) && !/report link/.test(lower)) {
+        draft.skillReads = "The unit, and whether there were issues.";
         draft.skillDrafts = "Clean done for {unit} — {no issues, or how many issues}.";
       }
     }
@@ -365,7 +369,7 @@ export function replyTo(
     return draftForCard(trimmed, "Draft the arrival note");
   }
 
-  if (/^(hi|hello|hey|thanks|thank you|good morning|good afternoon|good evening)\b[.!]?$/i.test(trimmed)) {
+  if (/^(hi|hello|hey|bonjour|salut|thanks|thank you|good morning|good afternoon|good evening)\b[.!]?$/i.test(trimmed)) {
     return {
       body: "Hello. Ask me to draft a message, write an arrival note, or set a reminder. I won't send anything until you confirm.",
       draft: null,

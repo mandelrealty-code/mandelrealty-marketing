@@ -8,11 +8,10 @@ import { passwordMatches } from "../adminAuth.js";
 import { getHospitablePat } from "../pm/clientStore.js";
 import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
-import { draftForCard, replyTo, skillTurn } from "../copilot/reply.js";
+import { CURSOR_MISSING, cancelCursorRun, collectCursorRun, startCursorRun } from "../copilot/cursorThink.js";
 import { toE164 } from "../followUpSequences.js";
 import {
   addMessage,
-  addReminder,
   addTextNumber,
   createChat,
   deleteChat,
@@ -24,13 +23,12 @@ import {
   listSkills,
   listTextLog,
   listTextNumbers,
-  remember,
   removeTextNumber,
   renameChat,
   saveSkill,
   updateDraft,
 } from "../copilot/store.js";
-import type { ConnectorRow, CopilotDraft } from "../copilot/types.js";
+import type { ConnectorRow } from "../copilot/types.js";
 
 function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Sign in required." });
@@ -102,17 +100,34 @@ async function connectors(): Promise<ConnectorRow[]> {
       detail: "Team keys.",
       status: cursor ? "connected" : "not_connected",
       statusLabel: cursor ? "Team keys are set" : "Not connected",
-      note: cursor ? "Usage shows in the chat list." : "The team key is not set on the server.",
+      note: cursor ? "Answers this chat on Auto." : "The team key is not set on the server.",
     },
   ];
 }
 
-async function lastDraft(chatId: string): Promise<CopilotDraft | null> {
-  const messages = await listMessages(chatId);
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].draft?.status === "waiting") return messages[i].draft;
+async function factsFor(): Promise<string> {
+  const [brief, rows, skills, memory] = await Promise.all([
+    buildBrief().catch(() => null),
+    connectors(),
+    listSkills().catch(() => []),
+    listMemory().catch(() => []),
+  ]);
+  const lines: string[] = [];
+  if (brief) {
+    lines.push(`${brief.hello} ${brief.line}`.trim());
+    const cards = [...brief.focus, ...brief.eating];
+    if (!cards.length) lines.push("No brief cards right now.");
+    for (const card of cards) lines.push(`Card: ${card.text}`);
   }
-  return null;
+  for (const row of rows) lines.push(`${row.name}: ${row.statusLabel}. ${row.detail} ${row.note ?? ""}`.trim());
+  if (!skills.length) lines.push("No saved skills.");
+  for (const skill of skills) {
+    lines.push(
+      `Skill ${skill.name} (${skill.enabled ? "on" : "off"}, ${skill.kind}): when ${skill.when_text}. Reads ${skill.reads}. Writes ${skill.drafts}. Must not ${skill.must_not}. Phone ${skill.phone || "none"}.`,
+    );
+  }
+  for (const note of memory) lines.push(`Remembered: ${note}`);
+  return lines.join("\n");
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -171,17 +186,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (op === "card") {
       const text = String(body.text ?? "").trim();
-      const action = String(body.action ?? "Draft").trim();
       if (!text) return res.status(400).json({ error: "Missing card." });
       const chat = await createChat(text.slice(0, 48));
-      const result = draftForCard(text, action);
-      const message = await addMessage({
-        chatId: chat.id,
-        role: "assistant",
-        body: result.body,
-        draft: result.draft,
+      await addMessage({ chatId: chat.id, role: "user", body: text });
+      let pending = false;
+      if (!process.env.CURSOR_API_KEY?.trim()) {
+        await addMessage({ chatId: chat.id, role: "assistant", body: CURSOR_MISSING });
+      } else {
+        try {
+          await startCursorRun(chat.id, await factsFor(), false);
+          pending = true;
+        } catch (err) {
+          await addMessage({
+            chatId: chat.id,
+            role: "assistant",
+            body: err instanceof Error ? err.message : CURSOR_MISSING,
+          });
+        }
+      }
+      return res.status(200).json({ chat, messages: await listMessages(chat.id), pending });
+    }
+
+    if (op === "think") {
+      const chatId = String(body.chatId ?? "");
+      if (!chatId) return res.status(400).json({ error: "Missing chat." });
+      const state = await collectCursorRun(chatId);
+      return res.status(200).json({
+        chatId,
+        messages: await listMessages(chatId),
+        pending: state.pending,
+        steps: state.steps,
+        chats: state.pending ? undefined : await listChats(),
       });
-      return res.status(200).json({ chat, messages: [message] });
+    }
+
+    if (op === "cancel-think") {
+      const chatId = String(body.chatId ?? "");
+      if (!chatId) return res.status(400).json({ error: "Missing chat." });
+      await cancelCursorRun(chatId);
+      return res.status(200).json({ chatId, messages: await listMessages(chatId), pending: false });
     }
 
     if (op === "send") {
@@ -193,62 +236,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chat = await createChat(text.slice(0, 48), kind);
         chatId = chat.id;
       }
-      const prior = await listMessages(chatId);
       await addMessage({ chatId, role: "user", body: text });
-
-      const interviewing = prior.some((message) => message.role === "assistant" && /What should the text include\?|Who should get this text\?|What number should it text|what should I prepare, and who is it for|What should it never do\?|What should it do, and who is it for\?|Before I write the skill/.test(message.body));
-      if (body.skillMode === true || interviewing || /^create a skill\b/i.test(text) || /\bcreate a skill that\b/i.test(text)) {
-        const skill = skillTurn(text, prior);
-        if (skill.memory) await remember(skill.memory);
-        await addMessage({
-          chatId,
-          role: "assistant",
-          body: skill.body,
-          draft: skill.draft,
-          choices: skill.choices,
-        });
-        const messages = await listMessages(chatId);
-        const chats = await listChats();
-        return res.status(200).json({ chatId, messages, chats });
+      let pending = false;
+      if (!process.env.CURSOR_API_KEY?.trim()) {
+        await addMessage({ chatId, role: "assistant", body: CURSOR_MISSING });
+      } else {
+        try {
+          await startCursorRun(chatId, await factsFor(), body.skillMode === true);
+          pending = true;
+        } catch (err) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: err instanceof Error ? err.message : "Cursor could not start. Nothing was sent.",
+          });
+        }
       }
-
-      if (kind === "code") {
-        const assistant = await addMessage({
-          chatId,
-          role: "assistant",
-          body: process.env.CURSOR_API_KEY
-            ? "I can prepare that change on Auto. I will not push it until you confirm, and I will not send any guest or host message from this mode. Say confirm when you want a pull request."
-            : "Code mode needs the Cursor key before I can edit the repo. I will not push anything, and I will not send a message to a guest or a host from here.",
-        });
-        const messages = await listMessages(chatId);
-        return res.status(200).json({ chatId, messages, message: assistant });
-      }
-
-      const previous = await lastDraft(chatId);
-      const lastAssistant = [...prior].reverse().find((message) => message.role === "assistant")?.body ?? "";
-      let stayPlace: string | null = null;
-      let stayWhen: string | null = null;
-      try {
-        const brief = await buildBrief();
-        const stay = [...brief.focus, ...brief.eating].find((card) => /checks in/.test(card.text));
-        stayPlace = stay?.text.match(/\bat\s+(.+?)\.\s+Confirm the arrival details/i)?.[1] ?? null;
-        stayWhen = /tomorrow/.test(stay?.text ?? "") ? "tomorrow" : /today/.test(stay?.text ?? "") ? "today" : null;
-      } catch {
-        stayPlace = null;
-      }
-      const result = replyTo(text, previous, new Date(), { lastAssistant, stayPlace, stayWhen });
-      if (result.reminder) await addReminder(result.reminder.text, result.reminder.dueOn);
-      if (result.memory) await remember(result.memory);
-      await addMessage({
-        chatId,
-        role: "assistant",
-        body: result.body,
-        draft: result.draft,
-        choices: result.choices,
-      });
       const messages = await listMessages(chatId);
       const chats = await listChats();
-      return res.status(200).json({ chatId, messages, chats });
+      return res.status(200).json({ chatId, messages, chats, pending });
     }
 
     if (op === "draft") {

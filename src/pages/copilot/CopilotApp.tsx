@@ -75,6 +75,24 @@ async function api<T>(op: string, body?: Record<string, unknown>, signal?: Abort
   return data;
 }
 
+function pause(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 function when(iso: string) {
   const date = new Date(iso);
   const today = new Date();
@@ -337,9 +355,13 @@ function workFor(message: CopilotMessage): { thought: string; steps: { text: str
     steps.push({ text: "Left it waiting. Nothing was sent" });
     return { thought: "I wrote the email and stopped. It stays here until you confirm.", steps };
   }
-  steps.push({ text: "Answered from what is already saved" });
+  if (/isn’t connected on the server/.test(message.body)) {
+    steps.push({ text: "Cursor is not connected" });
+    return { thought: "The team key is not set on the server, so Cursor did not answer.", steps };
+  }
+  steps.push({ text: "Cursor answered" });
   steps.push({ text: "Nothing was sent" });
-  return { thought: "I used what is already in this account. I did not look outside it.", steps };
+  return { thought: "Cursor wrote this reply. Nothing was sent.", steps };
 }
 
 function ThinkChevron({ open }: { open: boolean }) {
@@ -462,6 +484,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [pw, setPw] = useState({ cur: "", next: "", conf: "" });
   const [pwMsg, setPwMsg] = useState<"" | "err" | "current" | "server">("");
   const [pending, setPending] = useState<string | null>(null);
+  const [thinking, setThinking] = useState(false);
+  const [liveSteps, setLiveSteps] = useState<{ text: string }[]>([{ text: "Asking Cursor" }]);
   const [runOpen, setRunOpen] = useState(true);
   const [stopped, setStopped] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -611,32 +635,58 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setMessages(data.messages);
   }
 
+  async function watchCursor(id: string, signal: AbortSignal) {
+    let latest: CopilotMessage[] = [];
+    let pendingRun = true;
+    while (pendingRun) {
+      await pause(2000, signal);
+      const next = await api<{ messages: CopilotMessage[]; pending?: boolean; steps?: string[] }>("think", { chatId: id }, signal);
+      if (next.steps?.length) setLiveSteps(next.steps.map((text) => ({ text })));
+      latest = next.messages;
+      setMessages(latest);
+      pendingRun = Boolean(next.pending);
+    }
+    return latest;
+  }
+
   async function openCard(cardText: string, action: string) {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setPending(cardText);
+    setLiveSteps([{ text: "Asking Cursor" }]);
+    setThinking(false);
     setRunOpen(true);
     setStopped(false);
     setBusy(true);
     setError(null);
     setSheet(false);
     setScreen("chat");
+    let activeId = "";
     try {
-      const data = await api<{ chat: CopilotChat; messages: CopilotMessage[] }>("card", {
+      const data = await api<{ chat: CopilotChat; messages: CopilotMessage[]; pending?: boolean }>("card", {
         text: cardText,
         action,
       }, ctrl.signal);
       if (ctrl.signal.aborted) return;
+      activeId = data.chat.id;
       setChatId(data.chat.id);
       setMessages(data.messages);
+      setPending(null);
       setScreen("chat");
+      if (data.pending) {
+        setThinking(true);
+        await watchCursor(data.chat.id, ctrl.signal);
+      }
       await load();
     } catch (e) {
-      if (ctrl.signal.aborted) setStopped(true);
-      else setError(e instanceof Error ? e.message : "Could not open the draft.");
+      if (ctrl.signal.aborted) {
+        setStopped(true);
+        if (activeId) void api("cancel-think", { chatId: activeId }).catch(() => undefined);
+      } else setError(e instanceof Error ? e.message : "Could not open the draft.");
     } finally {
       if (abortRef.current === ctrl) abortRef.current = null;
       setPending(null);
+      setThinking(false);
       setBusy(false);
     }
   }
@@ -650,6 +700,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setPending(value);
+    setLiveSteps([{ text: "Asking Cursor" }]);
+    setThinking(false);
     setRunOpen(true);
     setStopped(false);
     setBusy(true);
@@ -659,9 +711,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       setText("");
       setFiles([]);
     }
+    let activeId = preset && !keepChat ? "" : chatId ?? "";
     try {
       const makingSkill = skillMode && (!preset || keepChat);
-      const data = await api<{ chatId: string; messages: CopilotMessage[] }>("send", {
+      const data = await api<{ chatId: string; messages: CopilotMessage[]; pending?: boolean }>("send", {
         text: value,
         chatId: preset && !keepChat ? null : chatId,
         kind: "chat",
@@ -677,12 +730,19 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       kept.forEach((file) => {
         if (file.url) URL.revokeObjectURL(file.url);
       });
+      activeId = data.chatId;
       setChatId(data.chatId);
       setMessages(data.messages);
+      setPending(null);
+      let shown = data.messages;
+      if (data.pending) {
+        setThinking(true);
+        shown = await watchCursor(data.chatId, ctrl.signal);
+      }
       if (makingSkill) {
         const user = [...data.messages].reverse().find((m) => m.role === "user");
         if (user) setViaPlus((prev) => ({ ...prev, [user.id]: true }));
-        const assistant = [...data.messages].reverse().find((m) => m.role === "assistant");
+        const assistant = [...shown].reverse().find((m) => m.role === "assistant");
         if (assistant?.draft?.channel === "skill") setSkillMode(false);
       }
       setScreen("chat");
@@ -695,6 +755,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     } catch (e) {
       if (ctrl.signal.aborted) {
         setStopped(true);
+        if (activeId) void api("cancel-think", { chatId: activeId }).catch(() => undefined);
         if (!preset) {
           setText(typed);
           setFiles(kept);
@@ -709,6 +770,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     } finally {
       if (abortRef.current === ctrl) abortRef.current = null;
       setPending(null);
+      setThinking(false);
       setBusy(false);
     }
   }
@@ -1657,22 +1719,22 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       ),
                     )}
                     {pending ? (
-                      <>
-                        <div className="cp-userwrap">
-                          <div className="cp-user">{pending}</div>
-                        </div>
-                        <Thinking
-                          open={runOpen}
-                          onToggle={() => setRunOpen((open) => !open)}
-                          title="Exploring"
-                          summary="1 step"
-                          steps={[{ text: "Read your message" }]}
-                          live
-                          onStop={stopRun}
-                        />
-                      </>
+                      <div className="cp-userwrap">
+                        <div className="cp-user">{pending}</div>
+                      </div>
                     ) : null}
-                    {stopped && !pending ? <p className="cp-muted">Stopped. Nothing was sent.</p> : null}
+                    {pending || thinking ? (
+                      <Thinking
+                        open={runOpen}
+                        onToggle={() => setRunOpen((open) => !open)}
+                        title="Exploring"
+                        summary={liveSteps.length === 1 ? "1 step" : `${liveSteps.length} steps`}
+                        steps={liveSteps}
+                        live
+                        onStop={stopRun}
+                      />
+                    ) : null}
+                    {stopped && !pending && !thinking ? <p className="cp-muted">Stopped. Nothing was sent.</p> : null}
                   </div>
                 ) : null}
               </div>

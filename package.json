@@ -1,6 +1,7 @@
 {
   "name": "mandelrealty-marketing",
   "private": true,
+  "engines": { "node": ">=22.13.0" },
   "version": "0.0.0",
   "type": "module",
   "scripts": {
@@ -10,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@cursor/sdk": "^1.0.36",
     "@supabase/supabase-js": "^2.110.8",
     "framer-motion": "^12.42.2",
     "mammoth": "^1.12.1",
