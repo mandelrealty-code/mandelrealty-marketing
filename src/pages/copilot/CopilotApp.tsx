@@ -448,6 +448,19 @@ function ThinkCheck() {
   );
 }
 
+function foundPages(body: string): string[] {
+  const found = body.match(/https?:\/\/[^\s<>"']+/g) ?? [];
+  return [...new Set(found.map((url) => url.replace(/[),.;]+$/, "")))];
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
 function Thinking({
   open,
   onToggle,
@@ -456,7 +469,6 @@ function Thinking({
   thought,
   steps,
   live,
-  onStop,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -465,11 +477,10 @@ function Thinking({
   thought?: string;
   steps: { text: string; meta?: string }[];
   live?: boolean;
-  onStop?: () => void;
 }) {
   return (
     <div className="cp-think">
-      <button type="button" className="cp-think-head" onClick={onToggle}>
+      <button type="button" className={`cp-think-head${live ? " live" : ""}`} onClick={onToggle}>
         <span className="label">{title}</span>
         {summary ? <span className="count">{summary}</span> : null}
         <ThinkChevron open={open} />
@@ -495,19 +506,7 @@ function Thinking({
               ))}
             </div>
           ) : null}
-          {live ? (
-            <div className="cp-think-live">
-              <span className="cp-pulse" />
-              <span className="cp-shimmer">Planning next moves</span>
-            </div>
-          ) : null}
         </div>
-      ) : null}
-      {live ? (
-        <button type="button" className="cp-stop" onClick={onStop}>
-          <span className="sq" />
-          Stop
-        </button>
       ) : null}
     </div>
   );
@@ -575,7 +574,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [thinking, setThinking] = useState(false);
   const [liveSteps, setLiveSteps] = useState<{ text: string; meta?: string }[]>([{ text: "Sent your message to Cursor" }]);
   const [liveThought, setLiveThought] = useState<string | undefined>();
-  const [runOpen, setRunOpen] = useState(true);
+  const [runOpen, setRunOpen] = useState(false);
   const [stopped, setStopped] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -764,7 +763,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setLiveSteps([{ text: "Sent your message to Cursor" }]);
     setLiveThought(undefined);
     setThinking(false);
-    setRunOpen(true);
+    setRunOpen(false);
     setStopped(false);
     setBusy(true);
     setError(null);
@@ -838,7 +837,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     if (searching) setWebSearch(false);
     setLiveThought(undefined);
     setThinking(false);
-    setRunOpen(true);
+    setRunOpen(false);
     setStopped(false);
     setBusy(true);
     setError(null);
@@ -1764,6 +1763,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             steps={shownTrail(message).steps}
                           />
                           {message.draft?.status === "waiting" ? <p>{message.body}</p> : <p className={message.draft ? "cp-muted" : undefined}>{message.body}</p>}
+                          {foundPages(message.body).map((url) => (
+                            <button
+                              key={url}
+                              type="button"
+                              className="cp-showpage"
+                              onClick={() => setStage({ kind: "page", control: false, open: true, url })}
+                            >
+                              Show {hostOf(url)}
+                            </button>
+                          ))}
                           {message.choices?.length ? (
                             <ChoiceCard
                               message={message}
@@ -1816,7 +1825,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         thought={liveThought}
                         steps={liveSteps}
                         live
-                        onStop={stopRun}
                       />
                     ) : null}
                     {stopped && !pending && !thinking ? <p className="cp-muted">Stopped. Nothing was sent.</p> : null}
@@ -1915,13 +1923,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     />
                     <button
                       type="button"
-                      className="cp-up"
-                      aria-label="Send"
-                      disabled={busy || (!text.trim() && files.length === 0)}
-                      style={{ opacity: text.trim() || files.length ? 1 : 0.45 }}
-                      onClick={() => void send()}
+                      className={`cp-up${pending || thinking ? " stop" : ""}`}
+                      aria-label={pending || thinking ? "Stop" : "Send"}
+                      disabled={!(pending || thinking) && !text.trim() && files.length === 0}
+                      style={{ opacity: pending || thinking || text.trim() || files.length ? 1 : 0.45 }}
+                      onClick={() => (pending || thinking ? stopRun() : void send())}
                     >
-                      <Up />
+                      {pending || thinking ? <span className="sq" /> : <Up />}
                     </button>
                     </div>
                   </div>
@@ -1956,9 +1964,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     </div>
                     <button type="button" onClick={() => setStage(null)}>Close</button>
                   </div>
-                  <div className="cp-stage-page">
-                    <p>The live view isn’t available for this run.</p>
-                  </div>
+                  <iframe title={stage.url} src={stage.url} />
                 </>
               )}
             </div>

@@ -792,6 +792,15 @@ html.cp-app[data-cp-theme="light"] #root {
   font-weight: 500;
 }
 
+.cp-think-head.live .label {
+  background: linear-gradient(90deg, #c8c3bd 0%, #c8c3bd 35%, #ffffff 50%, #c8c3bd 65%, #c8c3bd 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: mrgShimmer 2.2s linear infinite;
+}
+
 .cp-think-head .count,
 .cp-think-head svg {
   color: #6f6a65;
@@ -904,6 +913,15 @@ html.cp-app[data-cp-theme="light"] #root {
 
 .cp[data-theme="light"] .cp-think-head .label {
   color: #3a3844;
+}
+
+.cp[data-theme="light"] .cp-think-head.live .label {
+  background: linear-gradient(90deg, #3a3844 0%, #3a3844 35%, #ffffff 50%, #3a3844 65%, #3a3844 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: mrgShimmer 2.2s linear infinite;
 }
 
 .cp[data-theme="light"] .cp-think-head .count,
@@ -1428,6 +1446,32 @@ html.cp-app[data-cp-theme="light"] #root {
 
 .cp-up:disabled {
   cursor: default;
+}
+
+.cp-up.stop {
+  background: #17151f;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.cp-up.stop .sq {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #f5f5f7;
+}
+
+.cp-showpage {
+  align-self: flex-start;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
 }
 
 .cp-deskpad {
