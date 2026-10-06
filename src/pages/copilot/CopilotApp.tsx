@@ -4,6 +4,8 @@ import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage
 import "./copilot.css";
 import { EmailDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
 import { WorkflowBuilder } from "./WorkflowBuilder";
+import { PICTURE_MODELS, WORK_MODELS } from "../../../shared/copilot/models";
+import type { AccountSpend, PictureModelId, WorkModelId } from "../../../shared/copilot/models";
 import { BLANK, SEED } from "../../../shared/copilot/workflow";
 import { runWhen } from "./skillsTime";
 
@@ -31,6 +33,15 @@ type PendingFile = {
   url?: string;
   file: File;
 };
+
+function storedChoice<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const value = localStorage.getItem(key) ?? "";
+    return (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -560,6 +571,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [trail, setTrail] = useState<Record<string, boolean>>({});
   const [report, setReport] = useState(false);
   const [plusOpen, setPlusOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
+  const [workModel, setWorkModel] = useState<WorkModelId>(() => storedChoice("mrg_copilot_work_model", ["auto", "haiku", "sonnet", "cursor"] as const, "auto"));
+  const [pictureModel, setPictureModel] = useState<PictureModelId>(() => storedChoice("mrg_copilot_picture_model", ["draft", "edit", "client"] as const, "draft"));
+  const [pictureWait, setPictureWait] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<AccountSpend[] | null>(null);
   const [webSearch, setWebSearch] = useState(false);
   const [pictureMode, setPictureMode] = useState(false);
   const [pendingPicture, setPendingPicture] = useState(false);
@@ -687,14 +703,38 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }, [text]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem("mrg_copilot_work_model", workModel);
+      localStorage.setItem("mrg_copilot_picture_model", pictureModel);
+    } catch {
+      /* The choice still applies to this visit. */
+    }
+  }, [workModel, pictureModel]);
+
+  useEffect(() => {
+    let gone = false;
+    void api<{ accounts: AccountSpend[] }>("accounts", {}).then((data) => {
+      if (!gone) setAccounts(data.accounts);
+    }).catch(() => {
+      if (!gone) setAccounts((prev) => prev ?? [
+        { id: "openai", name: "OpenAI", spent: null, left: null, note: "Couldn’t read the accounts." },
+        { id: "anthropic", name: "Anthropic", spent: null, left: null, note: "Couldn’t read the accounts." },
+        { id: "cursor", name: "Cursor", spent: null, left: null, note: "Couldn’t read the accounts." },
+      ]);
+    });
+    return () => { gone = true; };
+  }, [modelOpen, screen]);
+
+  useEffect(() => {
     function down(event: MouseEvent) {
       const target = event.target as HTMLElement | null;
       if (menuFor && !target?.closest("[data-chat-menu]")) setMenuFor(null);
       if (plusOpen && !target?.closest("[data-plus]")) setPlusOpen(false);
+      if (modelOpen && !target?.closest("[data-model]")) setModelOpen(false);
     }
     document.addEventListener("click", down);
     return () => document.removeEventListener("click", down);
-  }, [menuFor, plusOpen]);
+  }, [menuFor, plusOpen, modelOpen]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -842,8 +882,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     const pdf = docs.find((file) => file.file.type === "application/pdf" || /\.pdf$/i.test(file.name));
     const searching = webSearch && !preset && !pictureMode;
     const makingPicture = pictureMode && !preset;
+    const pictureId: PictureModelId = (pictureModel === "edit" || pictureModel === "client") && photos.length === 0 ? "draft" : pictureModel;
+    const chosen = makingPicture ? pictureId : workModel;
+    const waitLabel = makingPicture ? PICTURE_MODELS.find((row) => row.id === pictureId) : null;
     setPending(value || "Look at the attached photo.");
     setPendingPicture(makingPicture);
+    setPictureWait(waitLabel ? `${waitLabel.name} · ${waitLabel.price}` : null);
+    setModelOpen(false);
     setLiveSteps(makingPicture ? [] : [{ text: images.length ? "Looking at the photo" : searching ? "Looking this up" : "Thinking" }]);
     if (pdf && !makingPicture) {
       setStage({
@@ -882,6 +927,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         skillMode: makingSkill,
         pictureMode: makingPicture,
         webSearch: searching,
+        model: chosen,
         images,
       }, ctrl.signal);
       delivered = true;
@@ -934,6 +980,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (abortRef.current === ctrl) abortRef.current = null;
       setPending(null);
       setPendingPicture(false);
+      setPictureWait(null);
       setThinking(false);
       setBusy(false);
     }
@@ -1182,6 +1229,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       file,
     }));
     if (next.length) setFiles((prev) => [...prev, ...next]);
+    if (kind === "photo") setPictureModel((current) => (pictureMode && current === "draft" ? "edit" : current));
     setPlusOpen(false);
   }
 
@@ -1194,6 +1242,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   const waiting = messages.some((m) => m.draft?.status === "waiting");
+  const hasPhoto = files.some((file) => file.kind === "photo");
+  const activePicture: PictureModelId = (pictureModel === "edit" || pictureModel === "client") && !hasPhoto ? "draft" : pictureModel;
+  const modelLabel = pictureMode
+    ? `${PICTURE_MODELS.find((row) => row.id === activePicture)?.name ?? "Draft"} · ${PICTURE_MODELS.find((row) => row.id === activePicture)?.price ?? ""}`
+    : (WORK_MODELS.find((row) => row.id === workModel)?.name ?? "Auto");
   const focus = (boot?.brief.focus ?? []).filter((c) => !hidden.includes(c.id));
   const eating = (boot?.brief.eating ?? []).filter((c) => !hidden.includes(c.id));
   const chromeOnPhone = /CriOS|FxiOS|EdgiOS/i.test(typeof navigator === "undefined" ? "" : navigator.userAgent);
@@ -1333,7 +1386,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       </div>
       <div className="cp-bill">
         <span className="quiet">Cursor · this cycle</span>
-        <span className="used">Usage from the team bill.</span>
+        <span className="used">{accounts?.find((row) => row.id === "cursor")?.spent ?? accounts?.find((row) => row.id === "cursor")?.note ?? "Usage from the team bill."}</span>
       </div>
       <button type="button" className={`cp-footbtn${inSettings ? " on" : ""}`} onClick={() => { setScreen("settings"); setSheet(false); }}>
         Settings
@@ -1596,15 +1649,19 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           <h1>Billing</h1>
                           <p>What these three accounts have used.</p>
                         </div>
-                        {["OpenAI", "Anthropic", "Cursor"].map((name) => (
-                          <div key={name} className="cp-bill">
-                            <strong>{name}</strong>
-                            <span className="spent">Not recorded yet</span>
-                            <span className="split">Chat, skills, photos, and documents will show here once spend is recorded.</span>
-                            <span className="note">Remaining balance isn’t available from this account.</span>
+                        {(accounts ?? [
+                          { id: "openai", name: "OpenAI", spent: null, left: null, note: "Checking the account." },
+                          { id: "anthropic", name: "Anthropic", spent: null, left: null, note: "Checking the account." },
+                          { id: "cursor", name: "Cursor", spent: null, left: null, note: "Checking the account." },
+                        ]).map((row) => (
+                          <div key={row.id} className="cp-bill">
+                            <strong>{row.name}</strong>
+                            <span className="spent">{row.spent ?? "Not recorded yet"}</span>
+                            {row.left ? <span className="split">{row.left}</span> : null}
+                            <span className="note">{row.note}</span>
                           </div>
                         ))}
-                        <p className="cp-note">Amounts are what Copilot spent through each account. Nothing has been recorded yet, so there is no balance to show.</p>
+                        <p className="cp-note">Spent is what each account reported. A balance only appears when that account actually returns one.</p>
                       </>
                     ) : null}
                     {screen === "account" ? (
@@ -1845,7 +1902,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       <div className="cp-bot">
                         <figure className="cp-made cp-making" aria-live="polite">
                           <div className="cp-making-frame" aria-hidden />
-                          <figcaption>Making the picture</figcaption>
+                          <figcaption>Making the picture{pictureWait ? ` · ${pictureWait}` : ""}</figcaption>
                         </figure>
                       </div>
                     ) : null}
@@ -1872,7 +1929,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     <div className="cp-plusmenu" role="menu">
                       <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); photoRef.current?.click(); }}><PhotoIcon />Photo</button>
                       <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); docRef.current?.click(); }}><DocIcon />Document</button>
-                      <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); setPictureMode(true); setSkillMode(false); setWebSearch(false); }}><PictureIcon />Make a picture</button>
+                      <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); setPictureMode(true); setSkillMode(false); setWebSearch(false); if (files.some((file) => file.kind === "photo")) setPictureModel((current) => (current === "draft" ? "edit" : current)); }}><PictureIcon />Make a picture</button>
                       <button type="button" role="menuitemcheckbox" aria-checked={webSearch} onClick={() => { setPlusOpen(false); setWebSearch((on) => !on); setPictureMode(false); setSkillMode(false); }}>
                         <GlobeIcon />Web search
                         {webSearch ? <CheckIcon /> : null}
@@ -1954,6 +2011,57 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         }
                       }}
                     />
+                    <div className="cp-modelwrap" data-model="1">
+                      {modelOpen ? (
+                        <div className="cp-modelmenu" role="menu">
+                          {(pictureMode ? PICTURE_MODELS : WORK_MODELS).map((row) => {
+                            const locked = "needsPhoto" in row && row.needsPhoto && !hasPhoto;
+                            const on = pictureMode ? row.id === activePicture : row.id === workModel;
+                            return (
+                              <button
+                                key={row.id}
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={on}
+                                disabled={locked}
+                                onClick={() => {
+                                  if (locked) return;
+                                  if (pictureMode && (row.id === "draft" || row.id === "edit" || row.id === "client")) setPictureModel(row.id);
+                                  if (!pictureMode && (row.id === "auto" || row.id === "haiku" || row.id === "sonnet" || row.id === "cursor")) setWorkModel(row.id);
+                                  setModelOpen(false);
+                                }}
+                              >
+                                <span>
+                                  <strong>{row.name}</strong>
+                                  <em>{locked ? "Add a photo first." : row.line}</em>
+                                </span>
+                                {"price" in row ? <b>{row.price}</b> : null}
+                                {on ? <CheckIcon /> : <span className="cp-modelgap" />}
+                              </button>
+                            );
+                          })}
+                          <div className="cp-modelaccts">
+                            {(accounts ?? []).map((row) => (
+                              <div key={row.id}>
+                                <strong>{row.name}</strong>
+                                <span>{row.spent ?? "Spend not recorded"}</span>
+                                <em>{row.left ?? row.note}</em>
+                              </div>
+                            ))}
+                            {accounts === null ? <p>Checking the accounts…</p> : null}
+                          </div>
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="cp-modelbtn"
+                        aria-expanded={modelOpen}
+                        aria-haspopup="menu"
+                        onClick={() => { setModelOpen((open) => !open); setPlusOpen(false); }}
+                      >
+                        {modelLabel}
+                      </button>
+                    </div>
                     <button
                       type="button"
                       className={`cp-up${pending || thinking ? " stop" : ""}`}

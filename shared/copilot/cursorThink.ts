@@ -132,7 +132,12 @@ function parseModel(text: string): Parsed {
     }
   }
   const body = spoken(text.trim());
-  return { body: body || "Cursor finished without a reply.", choices: null, draft: null, json: false, reminder: null };
+  return { body: body || "The model finished without a reply.", choices: null, draft: null, json: false, reminder: null };
+}
+
+export async function finishSpoken(text: string): Promise<{ body: string; draft: CopilotDraft | null; choices: string[] | null }> {
+  const parsed = parseModel(text);
+  return { body: await applyAsks(parsed), draft: parsed.draft, choices: parsed.choices };
 }
 
 function prettyDay(iso: string): string {
