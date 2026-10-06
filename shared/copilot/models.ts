@@ -9,6 +9,7 @@ export type AccountSpend = {
   /** Last four characters of the key this server uses, so it can be matched in the console. */
   keyHint: string | null;
   addUrl: string;
+  bars?: { label: string; percent: number }[];
 };
 
 export const ACCOUNT_LINKS = {

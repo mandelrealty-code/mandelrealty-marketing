@@ -146,19 +146,39 @@ async function anthropicSpend(): Promise<AccountSpend> {
   });
 }
 
+const CURSOR_PLAN = "$60 a month";
+
 type CursorMember = {
-  spendCents?: number;
-  overallSpendCents?: number;
-  includedSpendCents?: number;
+  autoPercentUsed?: number;
+  apiPercentUsed?: number;
   totalPercentUsed?: number;
-  monthlyLimitDollars?: number;
 };
+
+function usedPercent(value: number | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  const pct = value > 0 && value < 1 ? value * 100 : value;
+  return Math.max(0, Math.round(pct));
+}
+
+function renewalLabel(cycleStart: number | undefined): string | null {
+  if (typeof cycleStart !== "number" || !Number.isFinite(cycleStart)) return null;
+  const ms = cycleStart < 1e12 ? cycleStart * 1000 : cycleStart;
+  const start = new Date(ms);
+  if (Number.isNaN(start.getTime())) return null;
+  const renew = new Date(start.getTime());
+  renew.setUTCMonth(renew.getUTCMonth() + 1);
+  const when = renew.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/Toronto" });
+  return `Renews ${when}`;
+}
 
 async function cursorSpend(): Promise<AccountSpend> {
   const admin = process.env.CURSOR_ADMIN_API_KEY?.trim() || "";
   const key = admin || process.env.CURSOR_API_KEY?.trim() || "";
-  if (!key) return row("cursor", "Cursor", { spent: null, left: null, note: "Cursor isn’t connected." });
+  if (!key) {
+    return row("cursor", "Cursor", { spent: CURSOR_PLAN, left: null, note: "Cursor isn’t connected, so the usage bars and renewal date aren’t available." });
+  }
   const members: CursorMember[] = [];
+  let cycleStart: number | undefined;
   let page = 1;
   let pages = 1;
   while (page <= pages && page <= 5) {
@@ -172,48 +192,36 @@ async function cursorSpend(): Promise<AccountSpend> {
     });
     if (!res.ok) {
       const note = res.status === 401 || res.status === 403
-        ? (admin ? "This Cursor admin key can’t read the team bill." : "The agent key can’t read the team bill. A team admin key is required.")
-        : res.status ? "Cursor didn’t return spend." : "Cursor didn’t answer.";
-      return row("cursor", "Cursor", { spent: null, left: null, note });
+        ? "The plan is $60 a month. The usage bars and renewal date need a team admin key."
+        : res.status ? "Cursor didn’t return usage." : "Cursor didn’t answer.";
+      return row("cursor", "Cursor", { spent: CURSOR_PLAN, left: null, note });
     }
-    const body = res.data as { teamMemberSpend?: CursorMember[]; totalPages?: number };
+    const body = res.data as { teamMemberSpend?: CursorMember[]; totalPages?: number; subscriptionCycleStart?: number };
+    if (cycleStart == null && typeof body.subscriptionCycleStart === "number") cycleStart = body.subscriptionCycleStart;
     members.push(...(body.teamMemberSpend ?? []));
     pages = Math.max(1, Number(body.totalPages) || 1);
     page += 1;
   }
-  let cents = 0;
-  let saw = false;
-  let onDemandLeft = 0;
-  let sawLimit = false;
-  let percentLeft: number | null = null;
-  for (const member of members) {
-    const overall = member.overallSpendCents;
-    const piece = typeof overall === "number"
-      ? overall
-      : (Number(member.spendCents) || 0) + (Number(member.includedSpendCents) || 0);
-    if (Number.isFinite(piece)) {
-      cents += piece;
-      saw = true;
-    }
-    if (typeof member.monthlyLimitDollars === "number" && typeof member.spendCents === "number") {
-      onDemandLeft += Math.max(0, Math.round(member.monthlyLimitDollars * 100) - member.spendCents);
-      sawLimit = true;
-    }
-    if (typeof member.totalPercentUsed === "number" && Number.isFinite(member.totalPercentUsed)) {
-      const left = Math.max(0, Math.round(100 - member.totalPercentUsed));
-      percentLeft = percentLeft == null ? left : Math.min(percentLeft, left);
-    }
-  }
-  const left = sawLimit
-    ? `${money(onDemandLeft)} on-demand room left`
-    : percentLeft != null
-      ? `${percentLeft}% of included usage left`
-      : null;
-  return row("cursor", "Cursor", {
-    spent: saw ? `${money(cents)} · this cycle` : null,
-    left,
-    note: left ? "From the team bill." : "Cursor doesn’t report credits left on this plan. Use Add funds to open the team bill.",
-  });
+  const busiest = members.reduce<CursorMember | null>((best, member) => {
+    const score = member.autoPercentUsed ?? member.totalPercentUsed ?? 0;
+    const bestScore = best?.autoPercentUsed ?? best?.totalPercentUsed ?? -1;
+    return score >= bestScore ? member : best;
+  }, null);
+  const cursorModels = usedPercent(busiest?.autoPercentUsed);
+  const otherModels = usedPercent(busiest?.apiPercentUsed);
+  const bars = [
+    cursorModels == null ? null : { label: "Cursor models", percent: cursorModels },
+    otherModels == null ? null : { label: "Other models", percent: otherModels },
+  ].filter((bar): bar is { label: string; percent: number } => bar != null);
+  const renews = renewalLabel(cycleStart);
+  return {
+    ...row("cursor", "Cursor", {
+      spent: CURSOR_PLAN,
+      left: null,
+      note: renews ?? "The bill didn’t include a renewal date.",
+    }),
+    ...(bars.length ? { bars } : {}),
+  };
 }
 
 export async function accountSpend(): Promise<AccountSpend[]> {

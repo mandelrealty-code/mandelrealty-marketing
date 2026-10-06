@@ -1658,6 +1658,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             <strong>{row.name}</strong>
                             {row.keyHint ? <span className="split">{row.keyHint}</span> : null}
                             <span className="spent">{row.spent ?? "Spend not recorded"}</span>
+                            {row.bars?.map((bar) => (
+                              <div key={bar.label} className="cp-usebar">
+                                <span>{bar.label}</span>
+                                <span>{bar.percent}% used</span>
+                                <div className="track" aria-hidden>
+                                  <div className="fill" style={{ width: `${Math.min(100, Math.max(0, bar.percent))}%` }} />
+                                </div>
+                              </div>
+                            ))}
                             {row.left ? <span className="split">{row.left}</span> : null}
                             <span className="note">{row.note}</span>
                             <a className="cp-goldlink" href={row.addUrl} target="_blank" rel="noreferrer">Add funds</a>
