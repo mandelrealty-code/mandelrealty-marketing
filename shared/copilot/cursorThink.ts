@@ -23,10 +23,11 @@ function explain(err: unknown): string {
 function promptFor(facts: string, history: string, skillMode: boolean, hasImages: boolean, web: boolean): string {
   if (web) {
     return [
-      "Look this up on the web for the two partners at Mandel Realty.",
+      "Look this up in the computer's browser for the two partners at Mandel Realty.",
       "Open the browser first. Do not inspect files, do not set up a repository, and do not write code.",
-      "Amazon means https://www.amazon.ca. Search there for what they asked. Facebook Marketplace means https://www.facebook.com/marketplace.",
-      "Read the page, then answer with what you found and the page address. Do not invent a price or a product you did not see.",
+      "If they named Amazon, open https://www.amazon.ca and search there. If they named Facebook Marketplace, open https://www.facebook.com/marketplace.",
+      "Otherwise open Google and search for what they asked. Stay on the results and the pages you open from them.",
+      "Read what is on the screen, then answer with what you found and the page address. Do not invent a price, a product, or a page you did not see.",
       "Reply with one JSON object and no markdown fence:",
       '{"body":"plain sentences with the page address","choices":null,"draft":null,"reminder":null}',
       "",
@@ -199,7 +200,7 @@ function deskSteps(chatId: string): ThinkStep[] {
 function deskView(chatId: string): DeskView | undefined {
   const desk = desks.get(chatId);
   if (!desk) return undefined;
-  const image = desk.image && desk.image.length <= 800_000 ? desk.image : undefined;
+  const image = desk.image && desk.image.length <= 1_800_000 ? desk.image : undefined;
   if (!desk.url && !image && !desk.pointer) return undefined;
   return {
     ...(desk.url ? { url: desk.url } : {}),
@@ -217,7 +218,17 @@ function pushStep(desk: Desk, text: string, url?: string) {
 
 function pageUrl(value: unknown, depth = 0): string | undefined {
   if (depth > 6 || value == null) return undefined;
-  if (typeof value === "string") return /^https?:\/\//i.test(value) && value.length < 400 ? value : undefined;
+  if (typeof value === "string") {
+    if (/^https?:\/\//i.test(value) && value.length < 400) return value;
+    if (value.startsWith("{") || value.startsWith("[")) {
+      try {
+        return pageUrl(JSON.parse(value), depth + 1);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
   if (typeof value !== "object") return undefined;
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -239,7 +250,16 @@ function pageUrl(value: unknown, depth = 0): string | undefined {
 }
 
 function shotOf(value: unknown, depth = 0): { data: string; mime: string } | null {
-  if (depth > 6 || !value || typeof value !== "object") return null;
+  if (depth > 6 || value == null) return null;
+  if (typeof value === "string") {
+    if (!value.startsWith("{") && !value.startsWith("[")) return null;
+    try {
+      return shotOf(JSON.parse(value), depth + 1);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value !== "object") return null;
   if (Array.isArray(value)) {
     for (const item of value) {
       const found = shotOf(item, depth + 1);
@@ -357,12 +377,9 @@ function applyDesk(chatId: string, msg: StreamMsg) {
   if (msg.type === "status") {
     if (msg.status === "CREATING") pushStep(desk, "Starting the computer");
     else if (msg.status === "RUNNING") pushStep(desk, "Opening the browser");
-  } else if (msg.type === "thinking" && msg.text) {
-    const line = msg.text.trim().split("\n")[0]?.replace(/\s+/g, " ").slice(0, 90) ?? "";
-    if (line) pushStep(desk, line);
   } else if (msg.type === "tool_call") {
     const url = pageUrl(msg.args) || pageUrl(msg.result);
-    const shot = shotOf(msg.result);
+    const shot = shotOf(msg.result) || shotOf(msg.args);
     const name = (msg.name || "").toLowerCase();
     if (url) {
       desk.url = url;
@@ -374,7 +391,7 @@ function applyDesk(chatId: string, msg: StreamMsg) {
       else if (name.includes("browser") || name.includes("computer")) pushStep(desk, "Opening the browser");
       else if (shot) pushStep(desk, "Looking at the page");
     }
-    if (shot && shot.data.length <= 500_000) {
+    if (shot && shot.data.length <= 1_800_000) {
       desk.image = shot.data;
       desk.mime = shot.mime;
     }
@@ -391,7 +408,7 @@ async function rememberDesk(chatId: string) {
   await saveDesk(chatId, {
     steps: desk.steps,
     url: desk.url,
-    image: desk.image && desk.image.length <= 500_000 ? desk.image : undefined,
+    image: desk.image && desk.image.length <= 1_800_000 ? desk.image : undefined,
     mime: desk.mime,
     pointer: desk.pointer,
   }).catch(() => undefined);
@@ -407,11 +424,11 @@ async function pullDesk(chatId: string, apiKey: string, agentId: string, runId: 
     void closer.disposeClientStream?.();
   }, 8000);
   try {
+    const seen = desks.get(chatId)?.image;
     for await (const msg of events) {
-      const before = desks.get(chatId)?.steps.length ?? 0;
       applyDesk(chatId, msg);
-      const desk = desks.get(chatId);
-      if (desk?.image || desk?.url || (desk?.steps.length ?? 0) > before) break;
+      const image = desks.get(chatId)?.image;
+      if (image && image !== seen) break;
     }
   } catch {
     /* The cloud run keeps going. The next check opens the screen again. */

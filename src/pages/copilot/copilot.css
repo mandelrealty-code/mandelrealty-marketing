@@ -785,6 +785,32 @@ html.cp-app[data-cp-theme="light"] #root {
   min-width: 0;
 }
 
+.cp-think-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cp-showbrowser {
+  margin-left: auto;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(22, 20, 30, 0.12);
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cp[data-theme="dark"] .cp-showbrowser,
+.cp:not([data-theme="light"]) .cp-showbrowser {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
 .cp-think-head {
   align-self: flex-start;
   display: flex;

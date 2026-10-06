@@ -524,6 +524,7 @@ function Thinking({
   thought,
   steps,
   live,
+  onShowBrowser,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -532,9 +533,11 @@ function Thinking({
   thought?: string;
   steps: { text: string; meta?: string }[];
   live?: boolean;
+  onShowBrowser?: () => void;
 }) {
   return (
     <div className="cp-think">
+      <div className="cp-think-row">
       <button
         type="button"
         className={`cp-think-head${live ? " live" : ""}`}
@@ -549,6 +552,21 @@ function Thinking({
         {summary ? <span className="count">{summary}</span> : null}
         <ThinkChevron open={open} />
       </button>
+      {onShowBrowser ? (
+        <button
+          type="button"
+          className="cp-showbrowser"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onShowBrowser();
+          }}
+        >
+          Show browser
+        </button>
+      ) : null}
+      </div>
         {open ? (
         <div
           className="cp-think-body"
@@ -644,6 +662,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const chatIdRef = useRef<string | null>(null);
   const screenRef = useRef<Screen>("brief");
   const deskMemory = useRef<Record<string, Stage>>({});
+  const closedBrowsers = useRef<Set<string>>(new Set());
   const [liveRuns, setLiveRuns] = useState<string[]>([]);
   chatIdRef.current = chatId;
   screenRef.current = screen;
@@ -777,7 +796,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
             if (next.view || opened?.url) {
               const saved = withDesk(deskMemory.current[id] ?? null, next.view, opened?.url);
               if (saved) deskMemory.current[id] = saved;
-              if (id === chatIdRef.current && screenRef.current === "chat" && saved) setStage(saved);
+              if (id === chatIdRef.current && screenRef.current === "chat" && saved && !closedBrowsers.current.has(id)) setStage(saved);
             }
             if (id === chatIdRef.current && screenRef.current === "chat") {
               if (next.steps?.length) setLiveSteps(next.steps);
@@ -1018,6 +1037,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         pdfName: pdf.name,
       });
     } else if (searching) {
+      if (chatId) closedBrowsers.current.delete(chatId);
       setStage({ kind: "page", control: false, open: true, url: "" });
     } else if (!makingPicture) {
       setStage(null);
@@ -1885,23 +1905,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                 ) : null}
                 {screen === "chat" ? (
                   <div className="cp-thread">
-                    {stage?.kind === "page" ? (
-                      <div className="cp-worksteps">
-                        <button type="button" onClick={() => setStage({ ...stage, open: !stage.open })}>
-                          <span className={stage.control ? "cp-pause" : "cp-pulse"} aria-hidden />
-                          <strong>Looking this up</strong>
-                          <span className="meta">· {liveSteps.length === 1 ? "1 step" : `${liveSteps.length} steps`}{stage.control ? " · Paused" : ""}</span>
-                        </button>
-                        {stage.open ? (
-                          <div className="list">
-                            {stage.control ? <p>Paused. Copilot picks up where you leave off.</p> : null}
-                            {liveSteps.map((step, index) => (
-                              <div key={`${step.text}-${index}`}>{step.text}</div>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
                     {error ? <p className="cp-err">{error}</p> : null}
                     {messages.map((message) =>
                       message.role === "user" ? (
@@ -2059,6 +2062,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         thought={liveThought}
                         steps={liveSteps}
                         live
+                        onShowBrowser={chatId && !stage && deskMemory.current[chatId]?.kind === "page" ? () => {
+                          closedBrowsers.current.delete(chatId);
+                          const saved = deskMemory.current[chatId];
+                          if (saved) setStage({ ...saved, control: false });
+                        } : undefined}
                       />
                     ) : null}
                     {stopped && !pending && !thinking ? <p className="cp-muted">Stopped. Nothing was sent.</p> : null}
@@ -2244,9 +2252,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   <div className="cp-stage-bar">
                     <div className="cp-stage-url">
                       <span className={stage.control ? "cp-pause" : "cp-pulse"} aria-hidden />
-                      <span>{stage.url || "Opening the browser"}</span>
+                      <span>{/^https?:\/\//i.test(stage.url) ? stage.url : "Opening the browser"}</span>
                     </div>
-                    <button type="button" onClick={() => setStage(null)}>Close</button>
+                    <button type="button" onClick={() => {
+                      if (chatId) {
+                        deskMemory.current[chatId] = stage;
+                        closedBrowsers.current.add(chatId);
+                      }
+                      setStage(null);
+                    }}>Close</button>
                   </div>
                   <div className={`cp-stage-page${stage.image ? " shot" : ""}`}>
                     {stage.image ? (
@@ -2259,7 +2273,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         ) : null}
                       </div>
                     ) : (
-                      <p>{liveSteps[liveSteps.length - 1]?.text || "Starting the computer"}</p>
+                      <p>Waiting for the screen</p>
                     )}
                     <button
                       type="button"
