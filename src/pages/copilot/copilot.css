@@ -2703,6 +2703,36 @@ html.cp-app[data-cp-theme="light"] #root {
   max-width: 100%;
 }
 
+.cp-made {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.cp-made img {
+  width: 100%;
+  aspect-ratio: 7 / 6;
+  object-fit: cover;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  display: block;
+}
+
+.cp-made figcaption {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--quiet);
+}
+
+.cp-plusmenu .cp-check {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: #c4a35a;
+}
+
 .cp-via {
   display: flex;
   align-items: center;

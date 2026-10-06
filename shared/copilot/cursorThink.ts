@@ -6,7 +6,7 @@ import type { CopilotDraft } from "./types.js";
 export const CURSOR_MISSING =
   "Cursor isn’t connected on the server, so I can’t think this through. Nothing was sent.";
 
-type ThinkStep = { text: string; meta?: string };
+type ThinkStep = { text: string; meta?: string; url?: string };
 type ThinkState = { pending: boolean; steps: ThinkStep[]; thought?: string };
 
 function explain(err: unknown): string {
@@ -26,16 +26,21 @@ function argText(args: object, key: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function describeTool(message: object): string | null {
+function httpUrl(value: string): string {
+  const match = value.match(/https?:\/\/\S+/i);
+  return match ? match[0].replace(/[),.;]+$/, "") : "";
+}
+
+function describeTool(message: object): { text: string; url?: string } | null {
   const args = "args" in message && message.args && typeof message.args === "object" ? message.args : {};
   const query = argText(args, "query") || argText(args, "pattern") || argText(args, "searchTerm");
   const path = argText(args, "path") || argText(args, "targetFile") || argText(args, "file");
-  const url = argText(args, "url");
+  const url = httpUrl(argText(args, "url"));
   const command = argText(args, "command").split("\n")[0] ?? "";
-  if (query) return `Searched for “${clip(query, 90)}”`;
-  if (url) return `Opened ${clip(url, 90)}`;
-  if (path) return `Read ${clip(path, 90)}`;
-  if (command) return clip(command, 140);
+  if (query) return { text: `Searched for “${clip(query, 90)}”` };
+  if (url) return { text: `Opened ${clip(url, 90)}`, url };
+  if (path) return { text: `Read ${clip(path, 90)}` };
+  if (command) return { text: clip(command, 140) };
   return null;
 }
 
@@ -174,7 +179,7 @@ async function liveSteps(run: Run): Promise<{ steps: ThinkStep[]; thought?: stri
   if (!run.supports("conversation")) return waiting;
   try {
     const turns = await run.conversation();
-    const timeline: { text: string; kind: "thought" | "action" }[] = [];
+    const timeline: { text: string; kind: "thought" | "action"; url?: string }[] = [];
     for (const turn of turns) {
       if (turn.type !== "agentConversationTurn") continue;
       for (const step of turn.turn.steps) {
@@ -182,14 +187,14 @@ async function liveSteps(run: Run): Promise<{ steps: ThinkStep[]; thought?: stri
           const text = clip(step.message.text);
           if (text) timeline.push({ text, kind: "thought" });
         } else if (step.type === "toolCall") {
-          const text = describeTool(step.message);
-          if (text) timeline.push({ text, kind: "action" });
+          const action = describeTool(step.message);
+          if (action) timeline.push({ text: action.text, kind: "action", url: action.url });
         }
       }
     }
     const recent = timeline.slice(-12);
     const lastThought = [...recent].reverse().find((item) => item.kind === "thought");
-    const steps = recent.filter((item) => item !== lastThought).map((item) => ({ text: item.text }));
+    const steps = recent.filter((item) => item !== lastThought).map((item) => ({ text: item.text, ...(item.url ? { url: item.url } : {}) }));
     if (!lastThought && !steps.length) return waiting;
     return { thought: lastThought?.text, steps };
   } catch {

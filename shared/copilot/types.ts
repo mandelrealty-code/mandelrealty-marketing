@@ -54,9 +54,11 @@ export type CopilotMessage = {
   body: string;
   draft: CopilotDraft | null;
   choices?: string[] | null;
-  steps?: { text: string; meta?: string }[] | null;
+  steps?: { text: string; meta?: string; url?: string }[] | null;
   thought?: string | null;
   images?: { mimeType: string; data: string }[] | null;
+  /** This message asked for a generated picture, or it is the picture that came back. */
+  picture?: boolean | null;
   /** Structured report from a skill run. body holds the plain-text version. */
   report?: CopilotReport | null;
   /** Set when a skill run wrote this message, not a chat answer. */

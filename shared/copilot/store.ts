@@ -230,16 +230,17 @@ export async function markChatSeen(chatId: string): Promise<void> {
 }
 
 function unpackMessage(row: CopilotMessage): CopilotMessage {
-  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string }) | null;
+  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean }) | null;
   const choices = Array.isArray(raw?.choices) ? raw.choices : row.choices ?? null;
   const steps = Array.isArray(raw?.steps) ? raw.steps : row.steps ?? null;
   const thought = typeof raw?.thought === "string" ? raw.thought : row.thought ?? null;
   const images = Array.isArray(raw?.images) ? raw.images : row.images ?? null;
   const report = raw?.report && typeof raw.report === "object" ? raw.report : row.report ?? null;
   const run_id = typeof raw?.run_id === "string" ? raw.run_id : row.run_id ?? null;
-  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id };
-  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, ...draft } = raw;
-  return { ...row, draft, choices, steps, thought, images, report, run_id };
+  const picture = raw?.picture === true || row.picture === true;
+  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture };
+  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, ...draft } = raw;
+  return { ...row, draft, choices, steps, thought, images, report, run_id, picture };
 }
 
 export async function listMessages(chatId: string): Promise<CopilotMessage[]> {
@@ -303,11 +304,12 @@ export async function addMessage(input: {
   body: string;
   draft?: CopilotDraft | null;
   choices?: string[] | null;
-  steps?: { text: string; meta?: string }[] | null;
+  steps?: { text: string; meta?: string; url?: string }[] | null;
   thought?: string | null;
   images?: { mimeType: string; data: string }[] | null;
   report?: CopilotReport | null;
   runId?: string | null;
+  picture?: boolean;
 }): Promise<CopilotMessage> {
   const extra = {
     ...(input.choices?.length ? { choices: input.choices } : {}),
@@ -316,6 +318,7 @@ export async function addMessage(input: {
     ...(input.images?.length ? { images: input.images } : {}),
     ...(input.report ? { report: input.report } : {}),
     ...(input.runId ? { run_id: input.runId } : {}),
+    ...(input.picture ? { picture: true } : {}),
   };
   const storedDraft = Object.keys(extra).length ? { ...(input.draft ?? {}), ...extra } : input.draft ?? null;
   const message: CopilotMessage = {

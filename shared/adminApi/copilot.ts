@@ -9,6 +9,7 @@ import { getHospitablePat } from "../pm/clientStore.js";
 import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { CURSOR_MISSING, cancelCursorRun, collectCursorRun, startCursorRun } from "../copilot/cursorThink.js";
+import { makePicture } from "../copilot/picture.js";
 import { toE164 } from "../followUpSequences.js";
 import {
   addMessage,
@@ -298,8 +299,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chat = await createChat(text.slice(0, 48), kind);
         chatId = chat.id;
       }
-      await addMessage({ chatId, role: "user", body: text, images });
+      const pictureMode = body.pictureMode === true;
+      await addMessage({ chatId, role: "user", body: text, images, picture: pictureMode });
       let pending = false;
+      if (pictureMode) {
+        const image = await makePicture(text);
+        await addMessage(
+          image
+            ? { chatId, role: "assistant", body: text, images: [image], picture: true }
+            : { chatId, role: "assistant", body: "The picture didn’t come back. Nothing was saved." },
+        );
+        const messages = await listMessages(chatId);
+        const chats = await listChats();
+        return res.status(200).json({ chatId, messages, chats, pending: false });
+      }
       if (!process.env.CURSOR_API_KEY?.trim()) {
         await addMessage({ chatId, role: "assistant", body: CURSOR_MISSING });
       } else {
