@@ -1,0 +1,14 @@
+---
+description: MRG Copilot workflow builder + test run. Apply when touching workflows, Skills, the builder canvas, or chat workflow proposals.
+globs: ["**/workflow*/**", "**/skills/**", "**/builder/**"]
+alwaysApply: false
+---
+- Model + logic: shared/copilot/workflow.ts. The builder screen is src/pages/copilot/WorkflowBuilder.tsx. Read both before changing code.
+- Reference HTML in design_handoff_workflow_builder/reference/ is for looking only. Never import `support.js`, `.dc.html`, or `{{ }}` templates into the app.
+- Use the app's existing stack and components. Match the README token table exactly (Manrope, gold #c4a35a, dark/light values). Don't add new colors or fonts.
+- Six function names, exact and in order: When, Read, Write, Look on the web, Text me, Wait for you. The how-it-runs lines are fixed copy.
+- Canvas: world layer = translate(pan) scale(k); nodes 240×132; edges are vertical cubic beziers bottom-center → top-center; 20px snap; wheel zoom around cursor, exp(-deltaY*0.004), clamp 0.35–2; non-passive wheel listener.
+- Adding a step: below the source, or right of its right-most child; auto-link; auto-fit if off-screen.
+- Test run: follow the event rules in workflow-model.ts (flow → pass → run → ok/fail; fail blocks outgoing edges; nodes with no succeeded parent are skipped; independent branches continue).
+- Turn it on is disabled while any Text me step has no number ("Add a number first.").
+- Don't touch unrelated screens (Settings, billing). Don't invent people or product names.

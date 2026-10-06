@@ -55,15 +55,27 @@ export function SkillsList({
   onOpen,
   onToggle,
   onNew,
+  onBoard,
 }: {
   skills: SkillRow[];
   log: CopilotTextSend[];
   onOpen: (skill: SkillRow) => void;
   onToggle: (skill: SkillRow) => void;
   onNew: () => void;
+  onBoard: (kind: "seed" | "blank") => void;
 }) {
   return (
     <>
+      <div className="cp-boards">
+        <button type="button" onClick={() => onBoard("seed")}>
+          <span><strong>Review text</strong><em>Texts you when a new review arrives. It does not text a guest.</em></span>
+          <Chev />
+        </button>
+        <button type="button" onClick={() => onBoard("blank")}>
+          <span><strong>New workflow</strong><em>A blank board. Add the first step.</em></span>
+          <Chev />
+        </button>
+      </div>
       <div className="cp-sk-head">
         <div className="cp-sk-headcopy">
           <h1>Skills</h1>

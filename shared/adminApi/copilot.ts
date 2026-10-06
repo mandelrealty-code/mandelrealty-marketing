@@ -9,6 +9,7 @@ import { getHospitablePat } from "../pm/clientStore.js";
 import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { CURSOR_MISSING, cancelCursorRun, collectCursorRun, startCursorRun } from "../copilot/cursorThink.js";
+import { nameChat } from "../copilot/chatTitle.js";
 import { makePicture } from "../copilot/picture.js";
 import { toE164 } from "../followUpSequences.js";
 import {
@@ -248,7 +249,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (op === "card") {
       const text = String(body.text ?? "").trim();
       if (!text) return res.status(400).json({ error: "Missing card." });
-      const chat = await createChat(text.slice(0, 48));
+      const chat = await createChat(await nameChat(text));
       await addMessage({ chatId: chat.id, role: "user", body: text });
       let pending = false;
       if (!process.env.CURSOR_API_KEY?.trim()) {
@@ -265,7 +266,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
       }
-      return res.status(200).json({ chat, messages: await listMessages(chat.id), pending });
+      return res.status(200).json({ chat, messages: await listMessages(chat.id), pending, chats: await listChats() });
     }
 
     if (op === "think") {
@@ -296,7 +297,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!text) return res.status(400).json({ error: "Write a message first." });
       let chatId = String(body.chatId ?? "");
       if (!chatId) {
-        const chat = await createChat(text.slice(0, 48), kind);
+        const chat = await createChat(await nameChat(text), kind);
         chatId = chat.id;
       }
       const pictureMode = body.pictureMode === true;
@@ -362,7 +363,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
         const message = await updateDraft(messageId, { status: "approved_unsent" });
-        return res.status(200).json({ message, skill, skills: await skillRows(), textNumbers: await listTextNumbers() });
+        if (message?.chat_id) await renameChat(message.chat_id, skill.name);
+        return res.status(200).json({ message, skill, skills: await skillRows(), textNumbers: await listTextNumbers(), chats: await listChats() });
       }
       if (action === "discard-skill") {
         const message = await updateDraft(messageId, { status: "held" });

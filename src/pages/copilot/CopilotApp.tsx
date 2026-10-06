@@ -3,9 +3,11 @@ import type { AdminProductMode } from "../clients/mode";
 import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, SkillRow } from "../../../shared/copilot/types";
 import "./copilot.css";
 import { EmailDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
+import { WorkflowBuilder } from "./WorkflowBuilder";
+import { BLANK, SEED } from "../../../shared/copilot/workflow";
 import { runWhen } from "./skillsTime";
 
-type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing";
+type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board";
 
 type Boot = {
   brief: BriefPayload;
@@ -530,6 +532,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [elseDraft, setElseDraft] = useState("");
   const [connectHint, setConnectHint] = useState<Record<string, boolean>>({});
   const [screen, setScreen] = useState<Screen>("brief");
+  const [boardKind, setBoardKind] = useState<"seed" | "blank">("seed");
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [text, setText] = useState("");
@@ -737,7 +740,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     let pendingRun = true;
     while (pendingRun) {
       await pause(2000, signal);
-      const next = await api<{ messages: CopilotMessage[]; pending?: boolean; steps?: { text: string; meta?: string; url?: string }[]; thought?: string }>("think", { chatId: id }, signal);
+      const next = await api<{ messages: CopilotMessage[]; pending?: boolean; steps?: { text: string; meta?: string; url?: string }[]; thought?: string; chats?: CopilotChat[] }>("think", { chatId: id }, signal);
+      if (next.chats) setBoot((prev) => (prev ? { ...prev, chats: next.chats ?? prev.chats } : prev));
       if (next.steps?.length) setLiveSteps(next.steps);
       const opened = [...(next.steps ?? [])].reverse().find((step) => step.url && /^https?:\/\//i.test(step.url));
       if (opened?.url) {
@@ -771,7 +775,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setScreen("chat");
     let activeId = "";
     try {
-      const data = await api<{ chat: CopilotChat; messages: CopilotMessage[]; pending?: boolean }>("card", {
+      const data = await api<{ chat: CopilotChat; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[] }>("card", {
         text: cardText,
         action,
       }, ctrl.signal);
@@ -779,6 +783,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       activeId = data.chat.id;
       setChatId(data.chat.id);
       setMessages(data.messages);
+      if (data.chats) setBoot((prev) => (prev ? { ...prev, chats: data.chats ?? prev.chats } : prev));
       setPending(null);
       setScreen("chat");
       if (data.pending) {
@@ -850,7 +855,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     let activeId = preset && !keepChat ? "" : chatId ?? "";
     try {
       const makingSkill = skillMode && (!preset || keepChat);
-      const data = await api<{ chatId: string; messages: CopilotMessage[]; pending?: boolean }>("send", {
+      const data = await api<{ chatId: string; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[] }>("send", {
         text: value,
         chatId: preset && !keepChat ? null : chatId,
         kind: "chat",
@@ -872,6 +877,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       activeId = data.chatId;
       setChatId(data.chatId);
       setMessages(data.messages);
+      if (data.chats) setBoot((prev) => (prev ? { ...prev, chats: data.chats ?? prev.chats } : prev));
       setPending(null);
       let shown = data.messages;
       if (data.pending) {
@@ -1105,7 +1111,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
     setBusy(true);
     try {
-      const data = await api<{ skills: SkillRow[]; textNumbers?: string[] }>("draft", {
+      const data = await api<{ skills: SkillRow[]; textNumbers?: string[]; chats?: CopilotChat[] }>("draft", {
         messageId: message.id,
         action: "save-skill",
         name: draft.skillName,
@@ -1117,7 +1123,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         phone,
         schedule: draft.skillSchedule === "daily" ? "daily" : "",
       });
-      setBoot((prev) => (prev ? { ...prev, skills: data.skills, textNumbers: data.textNumbers ?? prev.textNumbers } : prev));
+      setBoot((prev) => (prev ? { ...prev, skills: data.skills, textNumbers: data.textNumbers ?? prev.textNumbers, chats: data.chats ?? prev.chats } : prev));
       if (chatId) await openChat(chatId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save the skill.");
@@ -1337,6 +1343,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           <Moon />
         </button>
       </header>
+      {screen === "board" ? (
+        <WorkflowBuilder key={boardKind} seed={boardKind === "blank" ? BLANK : SEED} theme={theme} onBack={() => setScreen("skills")} />
+      ) : (
       <div className={`cp-body${stage && !inSettings ? " work" : ""}`}>
         <aside className="cp-side">{sideList()}</aside>
         <main className="cp-main">
@@ -1430,6 +1439,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         onOpen={(skill) => openSkill(skill)}
                         onToggle={(skill) => void toggleSkill(skill)}
                         onNew={startSkill}
+                        onBoard={(kind) => { setBoardKind(kind); setScreen("board"); }}
                       />
                     ) : null}
                     {screen === "skill" && openSkillRecord ? (
@@ -2013,6 +2023,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           </div>
         ) : null}
       </div>
+      )}
       {pendingDelete ? (
         <div className="cp-dialog">
           <button type="button" className="dim" aria-label="Keep" onClick={() => setPendingDelete(null)} />

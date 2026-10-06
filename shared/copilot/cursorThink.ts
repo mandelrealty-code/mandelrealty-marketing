@@ -1,5 +1,5 @@
 import { Agent, AgentBusyError, CursorAgentError, type Run } from "@cursor/sdk";
-import { addMessage, addReminder, listMessages, readCursorLink, saveCursorLink } from "./store.js";
+import { addMessage, addReminder, listMessages, readCursorLink, renameChat, saveCursorLink } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
 
@@ -301,6 +301,8 @@ export async function collectCursorRun(chatId: string): Promise<ThinkState> {
       steps: trail.steps,
       thought: trail.thought,
     });
+    const skillName = parsed.draft?.channel === "skill" ? parsed.draft.skillName?.trim() : "";
+    if (skillName) await renameChat(chatId, skillName);
   }
   await saveCursorLink(chatId, link.agentId, "");
   await hideAgent(link.agentId, apiKey);
