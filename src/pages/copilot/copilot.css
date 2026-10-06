@@ -4258,7 +4258,7 @@ html.cp-app[data-cp-theme="light"] #root {
 }
 
 .cp-modelaccts strong {
-  grid-row: span 2;
+  grid-row: span 3;
   align-self: center;
   font-size: 13px;
 }
@@ -4273,4 +4273,17 @@ html.cp-app[data-cp-theme="light"] #root {
 
 .cp-modelaccts p {
   margin: 0;
+}
+
+.cp-modelaccts a {
+  grid-column: 2;
+  color: #c4a35a;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cp-bill a.cp-goldlink {
+  align-self: flex-start;
+  margin-top: 8px;
 }

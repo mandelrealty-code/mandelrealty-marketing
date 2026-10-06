@@ -4,7 +4,7 @@ import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage
 import "./copilot.css";
 import { EmailDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
 import { WorkflowBuilder } from "./WorkflowBuilder";
-import { PICTURE_MODELS, WORK_MODELS } from "../../../shared/copilot/models";
+import { ACCOUNT_LINKS, PICTURE_MODELS, WORK_MODELS } from "../../../shared/copilot/models";
 import type { AccountSpend, PictureModelId, WorkModelId } from "../../../shared/copilot/models";
 import { BLANK, SEED } from "../../../shared/copilot/workflow";
 import { runWhen } from "./skillsTime";
@@ -717,9 +717,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (!gone) setAccounts(data.accounts);
     }).catch(() => {
       if (!gone) setAccounts((prev) => prev ?? [
-        { id: "openai", name: "OpenAI", spent: null, left: null, note: "Couldn’t read the accounts." },
-        { id: "anthropic", name: "Anthropic", spent: null, left: null, note: "Couldn’t read the accounts." },
-        { id: "cursor", name: "Cursor", spent: null, left: null, note: "Couldn’t read the accounts." },
+        { id: "openai", name: "OpenAI", spent: null, left: null, note: "Couldn’t read the accounts.", keyHint: null, addUrl: ACCOUNT_LINKS.openai },
+        { id: "anthropic", name: "Anthropic", spent: null, left: null, note: "Couldn’t read the accounts.", keyHint: null, addUrl: ACCOUNT_LINKS.anthropic },
+        { id: "cursor", name: "Cursor", spent: null, left: null, note: "Couldn’t read the accounts.", keyHint: null, addUrl: ACCOUNT_LINKS.cursor },
       ]);
     });
     return () => { gone = true; };
@@ -1650,18 +1650,20 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           <p>What these three accounts have used.</p>
                         </div>
                         {(accounts ?? [
-                          { id: "openai", name: "OpenAI", spent: null, left: null, note: "Checking the account." },
-                          { id: "anthropic", name: "Anthropic", spent: null, left: null, note: "Checking the account." },
-                          { id: "cursor", name: "Cursor", spent: null, left: null, note: "Checking the account." },
+                          { id: "openai" as const, name: "OpenAI", spent: null, left: null, note: "Checking the account.", keyHint: null, addUrl: ACCOUNT_LINKS.openai },
+                          { id: "anthropic" as const, name: "Anthropic", spent: null, left: null, note: "Checking the account.", keyHint: null, addUrl: ACCOUNT_LINKS.anthropic },
+                          { id: "cursor" as const, name: "Cursor", spent: null, left: null, note: "Checking the account.", keyHint: null, addUrl: ACCOUNT_LINKS.cursor },
                         ]).map((row) => (
                           <div key={row.id} className="cp-bill">
                             <strong>{row.name}</strong>
-                            <span className="spent">{row.spent ?? "Not recorded yet"}</span>
+                            {row.keyHint ? <span className="split">{row.keyHint}</span> : null}
+                            <span className="spent">{row.spent ?? "Spend not recorded"}</span>
                             {row.left ? <span className="split">{row.left}</span> : null}
                             <span className="note">{row.note}</span>
+                            <a className="cp-goldlink" href={row.addUrl} target="_blank" rel="noreferrer">Add funds</a>
                           </div>
                         ))}
-                        <p className="cp-note">Spent is what each account reported. A balance only appears when that account actually returns one.</p>
+                        <p className="cp-note">Match the key ending to the key in that console. That is the account Copilot spends from. Add funds opens the page where the balance and the top-up live.</p>
                       </>
                     ) : null}
                     {screen === "account" ? (
@@ -2044,8 +2046,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             {(accounts ?? []).map((row) => (
                               <div key={row.id}>
                                 <strong>{row.name}</strong>
-                                <span>{row.spent ?? "Spend not recorded"}</span>
-                                <em>{row.left ?? row.note}</em>
+                                <span>{row.left ?? row.spent ?? "Spend not recorded"}</span>
+                                <em>{row.keyHint ?? row.note}</em>
+                                <a href={row.addUrl} target="_blank" rel="noreferrer">Add funds</a>
                               </div>
                             ))}
                             {accounts === null ? <p>Checking the accounts…</p> : null}

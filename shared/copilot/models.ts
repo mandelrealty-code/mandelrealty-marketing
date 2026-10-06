@@ -6,7 +6,16 @@ export type AccountSpend = {
   spent: string | null;
   left: string | null;
   note: string;
+  /** Last four characters of the key this server uses, so it can be matched in the console. */
+  keyHint: string | null;
+  addUrl: string;
 };
+
+export const ACCOUNT_LINKS = {
+  openai: "https://platform.openai.com/settings/organization/billing/overview",
+  anthropic: "https://platform.claude.com/settings/billing",
+  cursor: "https://cursor.com/dashboard/billing",
+} as const;
 
 export type WorkModelId = "auto" | "haiku" | "sonnet" | "cursor";
 export type PictureModelId = "draft" | "edit" | "client";
