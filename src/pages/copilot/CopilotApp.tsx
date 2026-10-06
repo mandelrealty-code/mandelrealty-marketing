@@ -1519,13 +1519,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           );
         })}
       </div>
-      <button type="button" className={`cp-footbtn${inSettings ? " on" : ""}`} onClick={() => { setScreen("settings"); setSheet(false); }}>
-        Settings
-      </button>
-      <button type="button" className="cp-install" onClick={askInstall}>
-        Install Copilot
-      </button>
-      {installHint ? <div className="cp-hint">Open this page on your phone, then tap Install Copilot.</div> : null}
+      <div className="cp-sidefoot">
+        <button type="button" className={`cp-footbtn${inSettings ? " on" : ""}`} onClick={() => { setScreen("settings"); setSheet(false); }}>
+          Settings
+        </button>
+        <button type="button" className="cp-install" onClick={askInstall}>
+          Install Copilot
+        </button>
+        {installHint ? <div className="cp-hint">Open this page on your phone, then tap Install Copilot.</div> : null}
+      </div>
     </>
     );
   }
