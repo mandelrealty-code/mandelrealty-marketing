@@ -127,8 +127,11 @@
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
+  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
 }
 
 .cp-switch button:hover {
@@ -3417,34 +3420,6 @@ html.cp-app[data-cp-theme="light"] #root {
   font-size: 12px;
   font-weight: 400;
   color: var(--muted);
-}
-
-.cp-switch {
-  width: 36px;
-  height: 22px;
-  border-radius: 999px;
-  background: var(--surf2);
-  padding: 2px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-}
-
-.cp-switch::after {
-  content: "";
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--text);
-}
-
-.cp-switch.on {
-  background: #c4a35a;
-  justify-content: flex-end;
-}
-
-.cp-switch.on::after {
-  background: #0b0a10;
 }
 
 @media (max-width: 700px) {

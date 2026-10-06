@@ -39,6 +39,8 @@ function describeTool(message: object): { text: string; url?: string } | null {
   const command = argText(args, "command").split("\n")[0] ?? "";
   if (query) return { text: `Searched for “${clip(query, 90)}”` };
   if (url) return { text: `Opened ${clip(url, 90)}`, url };
+  if (path && /\/agent\/assets\/|\.(jpe?g|png|gif|webp)$/i.test(path)) return { text: "Looked at the photo" };
+  if (path && path.startsWith("/agent/")) return null;
   if (path) return { text: `Read ${clip(path, 90)}` };
   if (command) return { text: clip(command, 140) };
   return null;
@@ -59,12 +61,15 @@ function promptFor(facts: string, history: string, skillMode: boolean, hasImages
     "When a skill runs on its own, it can read Hospitable stays and guest messages, leave a report in its own chat, leave drafts that wait for approval, and save reminders. It cannot read Gmail, WhatsApp, the cleaner calendar, or AirROI yet, and it cannot send anything. If a skill needs one of those, say so in the skill draft.",
     "To save a reminder, set reminder to {\"due_on\":\"YYYY-MM-DD\",\"text\":\"what to remind them\"}. It shows as a card on that morning.",
     "Never say a skill or reminder is saved or turned on. A skill is saved only when they press Save on its card. The app adds the reminder line after it actually saves it.",
+    "The body is the only thing they read. Write it the way you would say it out loud. Do not mention JSON, tools, files, or paths in the body.",
+    hasImages
+      ? "A photo is attached. Say what it shows in a sentence or two, as if you are looking at it with them. Name the page and the details that are actually visible. Do not say you are examining a screenshot."
+      : "",
     "Reply with one JSON object and no markdown fence:",
     '{"body":"plain text the person reads","choices":null,"draft":null,"reminder":null}',
     "choices is two or three short labels when a guess would send the work the wrong way, otherwise null.",
     'draft is null or {"channel":"email"|"note"|"skill","subject":"","body":"","to":"","skillName":"","skillWhen":"","skillReads":"","skillDrafts":"","skillMustNot":"","skillKind":"playbook"|"text","skillPhone":"","skillSchedule":"daily"|""}.',
     "For a text skill, skillKind is text and skillPhone is their number. Saving still waits for them.",
-    hasImages ? "Photos are attached to this message. Look at them and describe what is actually visible. Do not say the screenshot is missing." : "",
     "",
     "Facts:",
     facts || "No extra facts were loaded.",
@@ -125,6 +130,13 @@ function asReminder(value: unknown): Parsed["reminder"] {
   return { due_on: due, text };
 }
 
+function spoken(body: string): string {
+  return body
+    .replace(/^I will describe the attached screenshot[^\n]*\n+/i, "")
+    .replace(/^I(?:'m| am) examining the attached screenshot[^\n]*\n+/i, "")
+    .trim();
+}
+
 function parseModel(text: string): Parsed {
   const cleaned = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const start = cleaned.indexOf("{");
@@ -132,7 +144,7 @@ function parseModel(text: string): Parsed {
   if (start >= 0 && end > start) {
     try {
       const value = JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
-      const body = typeof value.body === "string" ? value.body.trim() : "";
+      const body = spoken(typeof value.body === "string" ? value.body.trim() : "");
       if (body) {
         return {
           body,
@@ -146,7 +158,8 @@ function parseModel(text: string): Parsed {
       /* The model wrote prose. Show that. */
     }
   }
-  return { body: text.trim() || "Cursor finished without a reply.", choices: null, draft: null, json: false, reminder: null };
+  const body = spoken(text.trim());
+  return { body: body || "Cursor finished without a reply.", choices: null, draft: null, json: false, reminder: null };
 }
 
 function prettyDay(iso: string): string {
@@ -185,7 +198,7 @@ async function liveSteps(run: Run): Promise<{ steps: ThinkStep[]; thought?: stri
       for (const step of turn.turn.steps) {
         if (step.type === "thinkingMessage") {
           const text = clip(step.message.text);
-          if (text) timeline.push({ text, kind: "thought" });
+          if (text && !/\bjson\b|examining the attached|\/agent\/assets\//i.test(text)) timeline.push({ text, kind: "thought" });
         } else if (step.type === "toolCall") {
           const action = describeTool(step.message);
           if (action) timeline.push({ text: action.text, kind: "action", url: action.url });
@@ -202,9 +215,14 @@ async function liveSteps(run: Run): Promise<{ steps: ThinkStep[]; thought?: stri
   }
 }
 
+async function hideAgent(agentId: string, apiKey: string) {
+  await Agent.archive(agentId, { apiKey }).catch(() => undefined);
+}
+
 async function openAgent(chatId: string, apiKey: string) {
   const link = await readCursorLink(chatId);
   if (link?.agentId) {
+    await Agent.unarchive(link.agentId, { apiKey }).catch(() => undefined);
     try {
       return await Agent.resume(link.agentId, { apiKey, model: { id: "auto" } });
     } catch {
@@ -285,6 +303,7 @@ export async function collectCursorRun(chatId: string): Promise<ThinkState> {
     });
   }
   await saveCursorLink(chatId, link.agentId, "");
+  await hideAgent(link.agentId, apiKey);
   return { pending: false, ...trail };
 }
 
@@ -296,6 +315,7 @@ export async function cancelCursorRun(chatId: string): Promise<void> {
   if (apiKey && link.runId) {
     await Agent.cancelRun(link.runId, { runtime: "cloud", agentId: link.agentId, apiKey }).catch(() => undefined);
   }
+  if (apiKey) await hideAgent(link.agentId, apiKey);
   const messages = await listMessages(chatId);
   if (messages[messages.length - 1]?.role === "user") {
     await addMessage({ chatId, role: "assistant", body: "Stopped. Nothing was sent." });

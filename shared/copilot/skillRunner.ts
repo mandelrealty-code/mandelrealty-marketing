@@ -183,6 +183,7 @@ export async function collectSkillRuns(now = Date.now()): Promise<void> {
         if (age > TOO_LONG_MS) {
           await Agent.cancelRun(run.cursor_run_id, { runtime: "cloud", agentId: run.agent_id, apiKey: key }).catch(() => undefined);
           await finish(run, skill, { ok: false, error: "It ran for more than 45 minutes, so I stopped it." });
+          if (run.agent_id) await Agent.archive(run.agent_id, { apiKey: key }).catch(() => undefined);
         }
         continue;
       }
@@ -193,6 +194,7 @@ export async function collectSkillRuns(now = Date.now()): Promise<void> {
       if (!result) continue;
       if (result.status === "finished") await finish(run, skill, { ok: true, fallback: result.result ?? "" });
       else await finish(run, skill, { ok: false, error: result.error?.message || (result.status === "cancelled" ? "It was stopped." : "Cursor stopped.") });
+      if (run.agent_id) await Agent.archive(run.agent_id, { apiKey: key }).catch(() => undefined);
     } catch (err) {
       if (age > TOO_LONG_MS) await finish(run, skill, { ok: false, error: explain(err) }).catch(() => undefined);
     }
