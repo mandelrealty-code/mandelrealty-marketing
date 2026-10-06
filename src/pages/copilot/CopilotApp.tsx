@@ -363,8 +363,9 @@ function ChoiceCard({
   const choices = (message.choices ?? []).filter((label) => !/^something else\.?$/i.test(label.trim()));
   const letters = "ABCD";
   const elseLetter = letters[choices.length] ?? "D";
+  const signIn = choices[0] === "Keep me signed in";
   return (
-    <div className="cp-choices">
+    <div className={`cp-choices${signIn ? " signin" : ""}`}>
       {choices.map((label, index) => (
         <button
           key={label}
@@ -508,6 +509,22 @@ function foundPages(body: string): string[] {
   return [...new Set(found.map((url) => url.replace(/[),.;]+$/, "")))];
 }
 
+function Address({ url }: { url: string }) {
+  if (!/^https?:\/\//i.test(url)) return <span>Opening the browser</span>;
+  try {
+    const page = new URL(url);
+    const path = `${page.pathname}${page.search}`;
+    return (
+      <span className="cp-addr">
+        <b>{page.hostname.replace(/^www\./, "")}</b>
+        {path && path !== "/" ? <span>{path}</span> : null}
+      </span>
+    );
+  } catch {
+    return <span>{url}</span>;
+  }
+}
+
 function hostOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -563,7 +580,7 @@ function Thinking({
             onShowBrowser();
           }}
         >
-          Show browser
+          <i />Show browser
         </button>
       ) : null}
       </div>
@@ -581,7 +598,7 @@ function Thinking({
             <div className="cp-think-steps">
               {steps.map((step, index) => (
                 <div key={`${index}-${step.text}`} className="cp-think-step">
-                  <ThinkCheck />
+                  {live && index === steps.length - 1 ? <span className="cp-pulse" /> : <ThinkCheck />}
                   <span>{step.text}</span>
                   {step.meta ? <span className="meta">{step.meta}</span> : null}
                 </div>
@@ -805,7 +822,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
               setThinking(Boolean(next.pending));
             }
             if (!next.pending) {
-              delete deskMemory.current[id];
               setLiveRuns((prev) => prev.filter((item) => item !== id));
               if (id === chatIdRef.current) {
                 setMessages(next.messages);
@@ -1078,6 +1094,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       });
       activeId = data.chatId;
       setChatId(data.chatId);
+      if (searching) {
+        closedBrowsers.current.delete(data.chatId);
+        deskMemory.current[data.chatId] = deskMemory.current[data.chatId] ?? { kind: "page", control: false, open: true, url: "" };
+      }
       setMessages(data.messages);
       if (data.chats) setBoot((prev) => (prev ? { ...prev, chats: data.chats ?? prev.chats } : prev));
       setPending(null);
@@ -1128,11 +1148,19 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
+  function reopenBrowser() {
+    if (!chatId) return;
+    closedBrowsers.current.delete(chatId);
+    const saved = deskMemory.current[chatId] ?? { kind: "page" as const, control: false, open: true, url: "" };
+    deskMemory.current[chatId] = saved;
+    setStage({ ...saved, control: false });
+  }
+
   function stopRun() {
     const id = chatIdRef.current;
     abortRef.current?.abort();
     if (id) {
-      delete deskMemory.current[id];
+      closedBrowsers.current.add(id);
       setLiveRuns((prev) => prev.filter((item) => item !== id));
       void api("cancel-think", { chatId: id }).catch(() => undefined);
     }
@@ -1992,6 +2020,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             steps={shownTrail(message).steps}
                           />
                           {message.draft?.status === "waiting" ? <p>{message.body}</p> : <p className={message.draft ? "cp-muted" : undefined}>{message.body}</p>}
+                          {message.body.includes("Tell me when you're in.") && !messages.slice(messages.findIndex((item) => item.id === message.id) + 1).some((item) => item.role === "user") ? (
+                            <button type="button" className="cp-imin" disabled={busy} onClick={() => void send("I'm in", true)}>I'm in</button>
+                          ) : null}
                           {foundPages(message.body).map((url) => (
                             <button
                               key={url}
@@ -2053,6 +2084,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         </figure>
                       </div>
                     ) : null}
+                    {stage?.control ? <p className="cp-paused"><i />Paused. Copilot picks up where you leave off.</p> : null}
                     {(pending || thinking) && !pendingPicture ? (
                       <Thinking
                         open={runOpen}
@@ -2062,14 +2094,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         thought={liveThought}
                         steps={liveSteps}
                         live
-                        onShowBrowser={chatId && !stage && deskMemory.current[chatId]?.kind === "page" ? () => {
-                          closedBrowsers.current.delete(chatId);
-                          const saved = deskMemory.current[chatId];
-                          if (saved) setStage({ ...saved, control: false });
-                        } : undefined}
+                        onShowBrowser={chatId && !stage && deskMemory.current[chatId]?.kind === "page" ? reopenBrowser : undefined}
                       />
                     ) : null}
                     {stopped && !pending && !thinking ? <p className="cp-muted">Stopped. Nothing was sent.</p> : null}
+                    {chatId && !stage && !thinking && !pending && deskMemory.current[chatId]?.kind === "page" ? (
+                      <button type="button" className="cp-showbrowser alone" onClick={reopenBrowser}>Show browser</button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -2252,7 +2283,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   <div className="cp-stage-bar">
                     <div className="cp-stage-url">
                       <span className={stage.control ? "cp-pause" : "cp-pulse"} aria-hidden />
-                      <span>{/^https?:\/\//i.test(stage.url) ? stage.url : "Opening the browser"}</span>
+                      <Address url={stage.url} />
                     </div>
                     <button type="button" onClick={() => {
                       if (chatId) {
@@ -2273,8 +2304,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         ) : null}
                       </div>
                     ) : (
-                      <p>Waiting for the screen</p>
+                      <p>Opening the browser</p>
                     )}
+                    <div className="cp-stage-fade" />
                     <button
                       type="button"
                       className="cp-takeover"

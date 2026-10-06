@@ -198,8 +198,8 @@ export async function answerSignIn(chatId: string): Promise<{
   const extra = morningNote(messages.map((message) => message.body).join("\n"));
   return {
     body: keep
-      ? `I'll use this same computer next time. If ${site} still has the sign-in, this lookup continues. If it asks again, I'll stop.${extra} Nothing was sent.`
-      : `I won't keep that ${site} sign-in for later. I'll finish this lookup, and the next one will stop again if it asks you to sign in.${extra} Nothing was sent.`,
+      ? `I'll keep this ${site} sign-in on this computer for later lookups and a morning check. Searching now.${extra}`
+      : `I won't keep that ${site} sign-in. Searching now.${extra}`,
     choices: null,
     steps: [{ text: keep ? "Will use this computer next time" : "Won't keep the sign-in" }],
     thought: keep
@@ -367,10 +367,21 @@ function shotOf(value: unknown, depth = 0): { data: string; mime: string } | nul
     return null;
   }
   const row = value as Record<string, unknown>;
-  const data = row.data ?? row.image;
-  const mime = row.mimeType ?? row.mime ?? row.mediaType;
-  if (typeof data === "string" && data.length > 80 && typeof mime === "string" && mime.startsWith("image/")) {
-    return { data, mime };
+  const raw = row.data ?? (typeof row.image === "string" ? row.image : undefined);
+  if (typeof raw === "string" && raw.length > 80) {
+    const named = row.mimeType ?? row.mime ?? row.mediaType;
+    const mime = typeof named === "string" && named.startsWith("image/")
+      ? named
+      : raw.startsWith("/9j/")
+        ? "image/jpeg"
+        : raw.startsWith("iVBOR")
+          ? "image/png"
+          : raw.startsWith("R0lGOD")
+            ? "image/gif"
+            : raw.startsWith("UklGR")
+              ? "image/webp"
+              : null;
+    if (mime) return { data: raw, mime };
   }
   for (const item of Object.values(row)) {
     const found = shotOf(item, depth + 1);
@@ -573,7 +584,13 @@ export async function startCursorRun(
   const apiKey = process.env.CURSOR_API_KEY?.trim();
   if (!apiKey) throw new Error(CURSOR_MISSING);
   const existing = await readCursorLink(chatId);
-  if (existing?.runId) return;
+  if (existing?.runId) {
+    const running = await Agent.getRun(existing.runId, { runtime: "cloud", agentId: existing.agentId, apiKey })
+      .then((run) => run.status === "running")
+      .catch(() => false);
+    if (running) return;
+    await saveCursorLink(chatId, existing.agentId, "");
+  }
   const messages = await listMessages(chatId);
   const history = messages.map((message) => `${message.role}: ${message.body}`).join("\n\n");
   const agent = await openAgent(chatId, apiKey);
