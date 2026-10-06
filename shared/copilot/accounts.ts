@@ -127,26 +127,24 @@ async function anthropicSpend(): Promise<AccountSpend> {
       : res.status ? "Anthropic didn’t return spend." : "Anthropic didn’t answer.";
     return row("anthropic", "Anthropic", { spent: null, left: null, note });
   }
-  const body = res.data as { data?: { results?: { amount?: string }[] }[] };
+  const body = res.data as { data?: { results?: { amount?: string | number }[] }[] };
   let cents = 0;
-  let saw = false;
   for (const bucket of body.data ?? []) {
-    for (const row of bucket.results ?? []) {
-      const value = Number(row.amount);
-      if (Number.isFinite(value)) {
-        cents += value;
-        saw = true;
-      }
+    for (const line of bucket.results ?? []) {
+      const value = Number(line.amount);
+      if (Number.isFinite(value)) cents += value;
     }
   }
   return row("anthropic", "Anthropic", {
-    spent: saw ? `${money(cents)} · last 30 days` : null,
+    spent: `${money(cents)} · last 30 days`,
     left: null,
-    note: "Claude doesn’t report the credit balance to this key. Use Add funds to see it.",
+    note: cents === 0
+      ? "No charges in the last 30 days. The credit balance is only on Add funds."
+      : "The credit balance is only on Add funds.",
   });
 }
 
-const CURSOR_PLAN = "$60 a month";
+const CURSOR_PLAN = "$88.42 CAD a month";
 
 type CursorMember = {
   autoPercentUsed?: number;
@@ -192,7 +190,7 @@ async function cursorSpend(): Promise<AccountSpend> {
     });
     if (!res.ok) {
       const note = res.status === 401 || res.status === 403
-        ? "The plan is $60 a month. The usage bars and renewal date need a team admin key."
+        ? "The plan is $88.42 CAD a month. The usage bars and renewal date need a team admin key."
         : res.status ? "Cursor didn’t return usage." : "Cursor didn’t answer.";
       return row("cursor", "Cursor", { spent: CURSOR_PLAN, left: null, note });
     }
