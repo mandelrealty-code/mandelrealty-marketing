@@ -761,7 +761,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       void (async () => {
         while (!signal.aborted) {
           try {
-            await pause(2000, signal);
+            await pause(400, signal);
           } catch {
             return;
           }
@@ -2259,7 +2259,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         ) : null}
                       </div>
                     ) : (
-                      <p>Opening the browser</p>
+                      <p>{liveSteps[liveSteps.length - 1]?.text || "Starting the computer"}</p>
                     )}
                     <button
                       type="button"

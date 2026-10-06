@@ -278,7 +278,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (op === "think") {
       const chatId = String(body.chatId ?? "");
       if (!chatId) return res.status(400).json({ error: "Missing chat." });
-      const state = await collectCursorRun(chatId);
+      const state = await collectCursorRun(chatId, true);
       const stamp = state.view?.image ? `${state.view.image.length}:${state.view.image.slice(0, 16)}:${state.view.image.slice(-16)}` : "";
       const sameFrame = Boolean(stamp) && stamp === String(body.viewRev ?? "");
       const view = state.view

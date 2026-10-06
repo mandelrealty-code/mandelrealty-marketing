@@ -599,7 +599,7 @@ export async function listMemory(): Promise<string[]> {
     if (!error) {
       return (data ?? [])
         .map((r) => String((r as { note: string }).note))
-        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|"))
+        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|"))
         .slice(0, 20);
     }
     if (useLocalFile(error)) { /* local file store */ }
@@ -609,7 +609,7 @@ export async function listMemory(): Promise<string[]> {
     .memory.slice(-40)
     .reverse()
     .map((m) => m.note)
-    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|"))
+    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|"))
     .slice(0, 20);
 }
 
@@ -692,6 +692,79 @@ export async function saveCursorLink(chatId: string, agentId: string, runId: str
   const existing = data.memory.find((row) => row.note.startsWith(prefix));
   if (existing) existing.note = note;
   else data.memory.push({ id: randomUUID(), created_at: new Date().toISOString(), note });
+  writeFileStore(data);
+}
+
+export type StoredDesk = {
+  steps: { text: string; url?: string }[];
+  url?: string;
+  image?: string;
+  mime?: string;
+  pointer?: { x: number; y: number };
+};
+
+export async function readDesk(chatId: string): Promise<StoredDesk | null> {
+  const prefix = `desk|${chatId}|`;
+  let note = "";
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("note").like("note", `${prefix}%`).limit(1);
+    if (!error) note = String((data?.[0] as { note?: string } | undefined)?.note ?? "");
+    else if (!useLocalFile(error)) throw new Error(error.message);
+  }
+  if (!note) note = readFileStore().memory.find((row) => row.note.startsWith(prefix))?.note ?? "";
+  if (!note.startsWith(prefix)) return null;
+  try {
+    const value = JSON.parse(note.slice(prefix.length)) as StoredDesk;
+    if (!value || !Array.isArray(value.steps)) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveDesk(chatId: string, desk: StoredDesk): Promise<void> {
+  const prefix = `desk|${chatId}|`;
+  const note = `${prefix}${JSON.stringify(desk)}`;
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("id").like("note", `${prefix}%`).limit(1);
+    if (error) {
+      if (!useLocalFile(error)) throw new Error(error.message);
+    } else if (data?.[0]) {
+      const { error: updateError } = await client.from("copilot_memory").update({ note }).eq("id", (data[0] as { id: string }).id);
+      if (!updateError) return;
+      if (!useLocalFile(updateError)) throw new Error(updateError.message);
+    } else {
+      const { error: insertError } = await client.from("copilot_memory").insert({
+        id: randomUUID(),
+        created_at: new Date().toISOString(),
+        note,
+      });
+      if (!insertError) return;
+      if (!useLocalFile(insertError)) throw new Error(insertError.message);
+    }
+  }
+  const data = readFileStore();
+  const existing = data.memory.find((row) => row.note.startsWith(prefix));
+  if (existing) existing.note = note;
+  else data.memory.push({ id: randomUUID(), created_at: new Date().toISOString(), note });
+  writeFileStore(data);
+}
+
+export async function clearDesk(chatId: string): Promise<void> {
+  const prefix = `desk|${chatId}|`;
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("id").like("note", `${prefix}%`).limit(1);
+    if (!error && data?.[0]) {
+      await client.from("copilot_memory").delete().eq("id", (data[0] as { id: string }).id);
+      return;
+    }
+    if (error && !useLocalFile(error)) return;
+  }
+  const data = readFileStore();
+  data.memory = data.memory.filter((row) => !row.note.startsWith(prefix));
   writeFileStore(data);
 }
 

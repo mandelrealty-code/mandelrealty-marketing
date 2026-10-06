@@ -1,5 +1,5 @@
 import { Agent, AgentBusyError, CursorAgentError } from "@cursor/sdk";
-import { addMessage, addReminder, listCursorRuns, listMessages, readCursorLink, renameChat, saveCursorLink } from "./store.js";
+import { addMessage, addReminder, clearDesk, listCursorRuns, listMessages, readCursorLink, readDesk, renameChat, saveCursorLink, saveDesk } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
 
@@ -10,10 +10,9 @@ type ThinkStep = { text: string; meta?: string; url?: string };
 type DeskView = { url?: string; image?: string; mime?: string; pointer?: { x: number; y: number } };
 type ThinkState = { pending: boolean; steps: ThinkStep[]; thought?: string; view?: DeskView };
 type Desk = { steps: ThinkStep[]; url?: string; image?: string; mime?: string; pointer?: { x: number; y: number } };
-type StreamMsg = { type: string; text?: string; name?: string; args?: unknown; result?: unknown };
+type StreamMsg = { type: string; text?: string; name?: string; status?: string; args?: unknown; result?: unknown };
 
 const desks = new Map<string, Desk>();
-const deskWatch = new Map<string, number>();
 
 function explain(err: unknown): string {
   if (err instanceof CursorAgentError && err.message) return err.message;
@@ -22,6 +21,19 @@ function explain(err: unknown): string {
 }
 
 function promptFor(facts: string, history: string, skillMode: boolean, hasImages: boolean, web: boolean): string {
+  if (web) {
+    return [
+      "Look this up on the web for the two partners at Mandel Realty.",
+      "Open the browser first. Do not inspect files, do not set up a repository, and do not write code.",
+      "Amazon means https://www.amazon.ca. Search there for what they asked. Facebook Marketplace means https://www.facebook.com/marketplace.",
+      "Read the page, then answer with what you found and the page address. Do not invent a price or a product you did not see.",
+      "Reply with one JSON object and no markdown fence:",
+      '{"body":"plain sentences with the page address","choices":null,"draft":null,"reminder":null}',
+      "",
+      "Request:",
+      history || "(empty)",
+    ].join("\n");
+  }
   return [
     "You are Mandel Realty Copilot, answering the two partners inside their admin app.",
     "Think, then answer. Ask one plain question when you are unsure. If you already know, answer.",
@@ -176,7 +188,6 @@ const heldAgents = new Map<string, { [Symbol.asyncDispose](): Promise<void> }>()
 async function releaseAgent(chatId: string) {
   const agent = heldAgents.get(chatId);
   heldAgents.delete(chatId);
-  deskWatch.delete(chatId);
   desks.delete(chatId);
   if (agent) await agent[Symbol.asyncDispose]().catch(() => undefined);
 }
@@ -342,19 +353,28 @@ function pointerFor(point: { x: number; y: number }, shot: { data: string; mime:
 }
 
 function applyDesk(chatId: string, msg: StreamMsg) {
-  const desk = desks.get(chatId) ?? { steps: [{ text: "Opening the browser" }] };
-  if (msg.type === "tool_call") {
+  const desk = desks.get(chatId) ?? { steps: [{ text: "Starting the computer" }] };
+  if (msg.type === "status") {
+    if (msg.status === "CREATING") pushStep(desk, "Starting the computer");
+    else if (msg.status === "RUNNING") pushStep(desk, "Opening the browser");
+  } else if (msg.type === "thinking" && msg.text) {
+    const line = msg.text.trim().split("\n")[0]?.replace(/\s+/g, " ").slice(0, 90) ?? "";
+    if (line) pushStep(desk, line);
+  } else if (msg.type === "tool_call") {
     const url = pageUrl(msg.args) || pageUrl(msg.result);
     const shot = shotOf(msg.result);
+    const name = (msg.name || "").toLowerCase();
     if (url) {
       desk.url = url;
       pushStep(desk, openedLabel(url), url);
     } else {
       const motion = gesture(msg.args) || gesture(msg.name);
       if (motion) pushStep(desk, motion);
-      else if (shot && desk.steps[desk.steps.length - 1]?.text === "Opening the browser") pushStep(desk, "Looking at the page");
+      else if (name.includes("search")) pushStep(desk, "Searching the web");
+      else if (name.includes("browser") || name.includes("computer")) pushStep(desk, "Opening the browser");
+      else if (shot) pushStep(desk, "Looking at the page");
     }
-    if (shot && shot.data.length <= 800_000) {
+    if (shot && shot.data.length <= 500_000) {
       desk.image = shot.data;
       desk.mime = shot.mime;
     }
@@ -365,20 +385,43 @@ function applyDesk(chatId: string, msg: StreamMsg) {
   desks.set(chatId, desk);
 }
 
-function watchDesk(chatId: string, run: { stream(): AsyncIterable<StreamMsg> }) {
-  const watchId = (deskWatch.get(chatId) ?? 0) + 1;
-  deskWatch.set(chatId, watchId);
-  desks.set(chatId, { steps: [{ text: "Opening the browser" }] });
-  void (async () => {
-    try {
-      for await (const msg of run.stream()) {
-        if (deskWatch.get(chatId) !== watchId) return;
-        applyDesk(chatId, msg);
-      }
-    } catch {
-      /* The cloud run still finishes. Polling reads its status separately. */
+async function rememberDesk(chatId: string) {
+  const desk = desks.get(chatId);
+  if (!desk) return;
+  await saveDesk(chatId, {
+    steps: desk.steps,
+    url: desk.url,
+    image: desk.image && desk.image.length <= 500_000 ? desk.image : undefined,
+    mime: desk.mime,
+    pointer: desk.pointer,
+  }).catch(() => undefined);
+}
+
+async function pullDesk(chatId: string, apiKey: string, agentId: string, runId: string) {
+  const run = await Agent.getRun(runId, { runtime: "cloud", agentId, apiKey });
+  if (run.status !== "running") return;
+  if (!desks.has(chatId)) desks.set(chatId, { steps: [{ text: "Starting the computer" }] });
+  const closer = run as { stream(): AsyncIterable<StreamMsg>; disposeClientStream?: () => Promise<void> };
+  const events = closer.stream();
+  const timer = setTimeout(() => {
+    void closer.disposeClientStream?.();
+  }, 8000);
+  try {
+    for await (const msg of events) {
+      const before = desks.get(chatId)?.steps.length ?? 0;
+      applyDesk(chatId, msg);
+      const desk = desks.get(chatId);
+      if (desk?.image || desk?.url || (desk?.steps.length ?? 0) > before) break;
     }
-  })();
+  } catch {
+    /* The cloud run keeps going. The next check opens the screen again. */
+  } finally {
+    clearTimeout(timer);
+    const generator = events as AsyncGenerator<StreamMsg>;
+    if (typeof generator.return === "function") await generator.return(undefined).catch(() => undefined);
+    await closer.disposeClientStream?.().catch(() => undefined);
+  }
+  await rememberDesk(chatId);
 }
 
 async function hideAgent(agentId: string, apiKey: string) {
@@ -423,11 +466,12 @@ export async function startCursorRun(
     const run = images.length
       ? await agent.send({ text: prompt, images })
       : await agent.send(prompt);
-    heldAgents.set(chatId, agent);
-    watchDesk(chatId, run);
     await saveCursorLink(chatId, agent.agentId, run.id);
+    desks.set(chatId, { steps: [{ text: "Starting the computer" }] });
+    await rememberDesk(chatId);
+    // Drop this request's event stream so the next check can open the screen on its own.
+    await agent[Symbol.asyncDispose]().catch(() => undefined);
   } catch (err) {
-    deskWatch.delete(chatId);
     desks.delete(chatId);
     await agent[Symbol.asyncDispose]().catch(() => undefined);
     if (err instanceof AgentBusyError) return;
@@ -437,11 +481,19 @@ export async function startCursorRun(
 
 const runGates = new Set<string>();
 
-async function readCursorRun(chatId: string): Promise<ThinkState> {
+async function loadStoredDesk(chatId: string) {
+  if (desks.has(chatId)) return;
+  const stored = await readDesk(chatId).catch(() => null);
+  if (stored?.steps?.length) desks.set(chatId, stored);
+}
+
+async function readCursorRun(chatId: string, follow: boolean): Promise<ThinkState> {
   const apiKey = process.env.CURSOR_API_KEY?.trim();
   const link = await readCursorLink(chatId);
   if (!apiKey || !link?.agentId || !link.runId) return { pending: false, steps: [] };
+  await loadStoredDesk(chatId);
   const run = await Agent.getRun(link.runId, { runtime: "cloud", agentId: link.agentId, apiKey });
+  if (run.status === "running" && follow) await pullDesk(chatId, apiKey, link.agentId, link.runId).catch(() => undefined);
   const looking = { steps: deskSteps(chatId), view: deskView(chatId) };
   if (run.status === "running") return { pending: true, ...looking };
   const again = await readCursorLink(chatId);
@@ -475,17 +527,18 @@ async function readCursorRun(chatId: string): Promise<ThinkState> {
     if (skillName) await renameChat(chatId, skillName);
   }
   const latest = { steps: deskSteps(chatId), view: deskView(chatId) };
+  await clearDesk(chatId).catch(() => undefined);
   await saveCursorLink(chatId, link.agentId, "");
   await hideAgent(link.agentId, apiKey);
   await releaseAgent(chatId);
   return { pending: false, ...latest };
 }
 
-export async function collectCursorRun(chatId: string): Promise<ThinkState> {
+export async function collectCursorRun(chatId: string, follow = false): Promise<ThinkState> {
   while (runGates.has(chatId)) await new Promise((resolve) => setTimeout(resolve, 40));
   runGates.add(chatId);
   try {
-    return await readCursorRun(chatId);
+    return await readCursorRun(chatId, follow);
   } finally {
     runGates.delete(chatId);
   }
