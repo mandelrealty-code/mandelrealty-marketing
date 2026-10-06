@@ -10,7 +10,7 @@ import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
 import { answerWithClaude } from "../copilot/claudeAnswer.js";
-import { CURSOR_MISSING, cancelCursorRun, collectCursorRun, settleOpenCursorRuns, startCursorRun } from "../copilot/cursorThink.js";
+import { CURSOR_MISSING, answerSignIn, cancelCursorRun, collectCursorRun, settleOpenCursorRuns, startCursorRun } from "../copilot/cursorThink.js";
 import { nameChat } from "../copilot/chatTitle.js";
 import { pictureModel, wantsWeb, workModel } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
@@ -327,6 +327,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const picked = workModel(String(body.model ?? "auto")).id;
       const pictureChoice = pictureModel(String(body.model ?? "draft"));
       await addMessage({ chatId, role: "user", body: text, images, picture: pictureMode });
+      const signIn = await answerSignIn(chatId);
+      if (signIn) {
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: signIn.body,
+          choices: signIn.choices,
+          steps: signIn.steps,
+          thought: signIn.thought,
+        });
+        let pending = false;
+        if (signIn.continueWeb) {
+          if (!process.env.CURSOR_API_KEY?.trim()) {
+            await addMessage({ chatId, role: "assistant", body: CURSOR_MISSING });
+          } else {
+            try {
+              await startCursorRun(chatId, await factsFor(), false, [], true);
+              pending = true;
+            } catch (err) {
+              await addMessage({
+                chatId,
+                role: "assistant",
+                body: err instanceof Error ? err.message : "Cursor could not start. Nothing was sent.",
+              });
+            }
+          }
+        }
+        const messages = await listMessages(chatId);
+        const chats = await listChats();
+        return res.status(200).json({ chatId, messages, chats, pending });
+      }
       let pending = false;
       const done = async () => {
         const messages = await listMessages(chatId);

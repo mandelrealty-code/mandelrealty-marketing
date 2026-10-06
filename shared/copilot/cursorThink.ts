@@ -1,5 +1,5 @@
 import { Agent, AgentBusyError, CursorAgentError } from "@cursor/sdk";
-import { addMessage, addReminder, clearDesk, listCursorRuns, listMessages, readCursorLink, readDesk, renameChat, saveCursorLink, saveDesk } from "./store.js";
+import { addMessage, addReminder, clearDesk, listCursorRuns, listMessages, readCursorLink, readDesk, remember, renameChat, saveCursorLink, saveDesk } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
 
@@ -28,8 +28,10 @@ function promptFor(facts: string, history: string, skillMode: boolean, hasImages
       "If they named Amazon, open https://www.amazon.ca and search there. If they named Facebook Marketplace, open https://www.facebook.com/marketplace.",
       "Otherwise open Google and search for what they asked. Stay on the results and the pages you open from them.",
       "Read what is on the screen, then answer with what you found and the page address. Do not invent a price, a product, or a page you did not see.",
+      "If the page asks you to sign in, stop. Do not type a password or a code. Do not say you are signed in. Set signIn to the site name.",
+      signInLines(facts),
       "Reply with one JSON object and no markdown fence:",
-      '{"body":"plain sentences with the page address","choices":null,"draft":null,"reminder":null}',
+      '{"body":"plain sentences with the page address","choices":null,"draft":null,"reminder":null,"signIn":null}',
       "",
       "Request:",
       history || "(empty)",
@@ -109,7 +111,103 @@ type Parsed = {
   draft: CopilotDraft | null;
   json: boolean;
   reminder: { due_on: string; text: string } | null | "bad";
+  signIn?: string;
 };
+
+function signInLines(facts: string): string {
+  const lines = facts.split("\n").filter((line) => /sign-in:/i.test(line)).slice(0, 4);
+  if (!lines.length) return "No saved sign-in preference yet.";
+  return `The newest sign-in line counts.\n${lines.join("\n")}`;
+}
+
+/** A page that is asking for a sign-in, named the way we say it out loud. */
+export function loginWall(url?: string): string | null {
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+  let host = "";
+  let blob = url.toLowerCase();
+  try {
+    const page = new URL(url);
+    host = page.hostname.replace(/^www\./, "").toLowerCase();
+    blob = `${host}${page.pathname}${page.search}`.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (!/login|signin|sign-in|checkpoint|authwall|\/ap\/signin/.test(blob)) return null;
+  if (host.includes("facebook") || blob.includes("facebook")) {
+    return blob.includes("marketplace") ? "Facebook Marketplace" : "Facebook";
+  }
+  if (host.includes("amazon")) return "Amazon";
+  if (host.includes("google")) return "Google";
+  return host || null;
+}
+
+function handoffBody(site: string): string {
+  return `I've opened ${site}. It needs you to sign in before I can look. Tell me when you're in.`;
+}
+
+function askBody(site: string): string {
+  return `Keep this ${site} sign-in on this computer for later lookups, including a morning check?`;
+}
+
+function siteFrom(body: string, pattern: RegExp): string {
+  return body.match(pattern)?.[1]?.trim() || "That site";
+}
+
+function morningNote(history: string): string {
+  if (!/\b(every day|each morning|every morning|each day|text me|workflow)\b/i.test(history)) return "";
+  return " A morning skill can look again after you save it. It still can't text you.";
+}
+
+/** The sign-in handoff. Returns null when this message is a normal request. */
+export async function answerSignIn(chatId: string): Promise<{
+  body: string;
+  choices: string[] | null;
+  steps: { text: string }[];
+  thought: string;
+  continueWeb: boolean;
+} | null> {
+  const messages = await listMessages(chatId);
+  const lastUser = [...messages].reverse().find((message) => message.role === "user");
+  const previous = [...messages].reverse().find((message) => message.role === "assistant");
+  if (!lastUser || !previous) return null;
+  const text = lastUser.body.trim();
+  if (previous.body.includes("Tell me when you're in.")) {
+    const site = siteFrom(previous.body, /^I've opened ([^.]+)\./);
+    if (/\b(can't|cannot|can not|skip|never mind|not now)\b/i.test(text)) {
+      return {
+        body: `I didn't keep a ${site} sign-in. Nothing was sent.`,
+        choices: null,
+        steps: [{ text: "Left the sign-in" }],
+        thought: "No sign-in was kept. Nothing was sent.",
+        continueWeb: false,
+      };
+    }
+    if (!/\b(i'?m in|i am in|signed in|logged in|i'?m done|i am done|^done$|^yes$)\b/i.test(text)) return null;
+    return {
+      body: askBody(site),
+      choices: ["Keep me signed in", "Only this time"],
+      steps: [{ text: "Asked whether to keep the sign-in" }],
+      thought: "Nothing is kept until you choose. Nothing was sent.",
+      continueWeb: false,
+    };
+  }
+  if (!previous.body.startsWith("Keep this ") || !previous.body.includes("sign-in on this computer")) return null;
+  const site = siteFrom(previous.body, /^Keep this (.+) sign-in/);
+  const keep = /keep me signed in/i.test(text) && !/\b(don'?t|do not|\bno\b)/i.test(text);
+  await remember(keep ? `${site} sign-in: keep on this computer` : `${site} sign-in: only this time`);
+  const extra = morningNote(messages.map((message) => message.body).join("\n"));
+  return {
+    body: keep
+      ? `I'll use this same computer next time. If ${site} still has the sign-in, this lookup continues. If it asks again, I'll stop.${extra} Nothing was sent.`
+      : `I won't keep that ${site} sign-in for later. I'll finish this lookup, and the next one will stop again if it asks you to sign in.${extra} Nothing was sent.`,
+    choices: null,
+    steps: [{ text: keep ? "Will use this computer next time" : "Won't keep the sign-in" }],
+    thought: keep
+      ? "This does not mean the site confirmed the sign-in. Nothing was sent."
+      : "The sign-in was not kept. Nothing was sent.",
+    continueWeb: true,
+  };
+}
 
 function asReminder(value: unknown): Parsed["reminder"] {
   if (value == null) return null;
@@ -144,6 +242,7 @@ function parseModel(text: string): Parsed {
           draft: asDraft(value.draft),
           json: true,
           reminder: asReminder(value.reminder),
+          signIn: typeof value.signIn === "string" ? value.signIn.trim().slice(0, 40) : undefined,
         };
       }
     } catch {
@@ -383,7 +482,8 @@ function applyDesk(chatId: string, msg: StreamMsg) {
     const name = (msg.name || "").toLowerCase();
     if (url) {
       desk.url = url;
-      pushStep(desk, openedLabel(url), url);
+      const site = loginWall(url);
+      pushStep(desk, site ? `${site} needs a sign-in` : openedLabel(url), url);
     } else {
       const motion = gesture(msg.args) || gesture(msg.name);
       if (motion) pushStep(desk, motion);
@@ -520,7 +620,7 @@ async function readCursorRun(chatId: string, follow: boolean): Promise<ThinkStat
   }
   const messages = await listMessages(chatId);
   if (messages[messages.length - 1]?.role !== "assistant") {
-    const parsed: Parsed = run.status === "finished"
+    let parsed: Parsed = run.status === "finished"
       ? parseModel(run.result ?? "")
       : {
           json: false,
@@ -531,6 +631,10 @@ async function readCursorRun(chatId: string, follow: boolean): Promise<ThinkStat
           choices: null,
           draft: null,
         };
+    const site = loginWall(looking.view?.url) || (parsed.signIn && /sign in|log in|login/i.test(parsed.body) ? parsed.signIn : null);
+    if (run.status === "finished" && site) {
+      parsed = { ...parsed, body: handoffBody(site), choices: null, draft: null, reminder: null };
+    }
     await addMessage({
       chatId,
       role: "assistant",
