@@ -1,5 +1,5 @@
 import { Agent, AgentBusyError, CursorAgentError } from "@cursor/sdk";
-import { addMessage, addReminder, listMessages, readCursorLink, renameChat, saveCursorLink } from "./store.js";
+import { addMessage, addReminder, listCursorRuns, listMessages, readCursorLink, renameChat, saveCursorLink } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
 
@@ -7,7 +7,13 @@ export const CURSOR_MISSING =
   "Cursor isn’t connected on the server, so I can’t think this through. Nothing was sent.";
 
 type ThinkStep = { text: string; meta?: string; url?: string };
-type ThinkState = { pending: boolean; steps: ThinkStep[]; thought?: string };
+type DeskView = { url?: string; image?: string; mime?: string; pointer?: { x: number; y: number } };
+type ThinkState = { pending: boolean; steps: ThinkStep[]; thought?: string; view?: DeskView };
+type Desk = { steps: ThinkStep[]; url?: string; image?: string; mime?: string; pointer?: { x: number; y: number } };
+type StreamMsg = { type: string; text?: string; name?: string; args?: unknown; result?: unknown };
+
+const desks = new Map<string, Desk>();
+const deskWatch = new Map<string, number>();
 
 function explain(err: unknown): string {
   if (err instanceof CursorAgentError && err.message) return err.message;
@@ -170,7 +176,209 @@ const heldAgents = new Map<string, { [Symbol.asyncDispose](): Promise<void> }>()
 async function releaseAgent(chatId: string) {
   const agent = heldAgents.get(chatId);
   heldAgents.delete(chatId);
+  deskWatch.delete(chatId);
+  desks.delete(chatId);
   if (agent) await agent[Symbol.asyncDispose]().catch(() => undefined);
+}
+
+function deskSteps(chatId: string): ThinkStep[] {
+  return desks.get(chatId)?.steps ?? [{ text: "Looking this up" }];
+}
+
+function deskView(chatId: string): DeskView | undefined {
+  const desk = desks.get(chatId);
+  if (!desk) return undefined;
+  const image = desk.image && desk.image.length <= 800_000 ? desk.image : undefined;
+  if (!desk.url && !image && !desk.pointer) return undefined;
+  return {
+    ...(desk.url ? { url: desk.url } : {}),
+    ...(image ? { image, mime: desk.mime || "image/png" } : {}),
+    ...(desk.pointer ? { pointer: desk.pointer } : {}),
+  };
+}
+
+function pushStep(desk: Desk, text: string, url?: string) {
+  const last = desk.steps[desk.steps.length - 1];
+  if (last?.text === text) return;
+  desk.steps.push({ text, ...(url ? { url } : {}) });
+  if (desk.steps.length > 8) desk.steps.splice(0, desk.steps.length - 8);
+}
+
+function pageUrl(value: unknown, depth = 0): string | undefined {
+  if (depth > 6 || value == null) return undefined;
+  if (typeof value === "string") return /^https?:\/\//i.test(value) && value.length < 400 ? value : undefined;
+  if (typeof value !== "object") return undefined;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = pageUrl(item, depth + 1);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  const row = value as Record<string, unknown>;
+  for (const key of ["url", "uri", "href", "address"]) {
+    const found = pageUrl(row[key], depth + 1);
+    if (found) return found;
+  }
+  for (const item of Object.values(row)) {
+    const found = pageUrl(item, depth + 1);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function shotOf(value: unknown, depth = 0): { data: string; mime: string } | null {
+  if (depth > 6 || !value || typeof value !== "object") return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = shotOf(item, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  const data = row.data ?? row.image;
+  const mime = row.mimeType ?? row.mime ?? row.mediaType;
+  if (typeof data === "string" && data.length > 80 && typeof mime === "string" && mime.startsWith("image/")) {
+    return { data, mime };
+  }
+  for (const item of Object.values(row)) {
+    const found = shotOf(item, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+function pointOf(value: unknown, depth = 0): { x: number; y: number } | null {
+  if (depth > 6 || !value || typeof value !== "object") return null;
+  if (Array.isArray(value)) {
+    if (value.length === 2 && typeof value[0] === "number" && typeof value[1] === "number") return normPoint(value[0], value[1]);
+    for (const item of value) {
+      const found = pointOf(item, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  if (typeof row.x === "number" && typeof row.y === "number") {
+    const point = normPoint(row.x, row.y);
+    if (point) return point;
+  }
+  for (const item of Object.values(row)) {
+    const found = pointOf(item, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+function normPoint(x: number, y: number): { x: number; y: number } | null {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 8000 || y > 8000) return null;
+  if (x === 0 && y === 0) return null;
+  return { x, y };
+}
+
+function imageSize(data: string, mime: string): { width: number; height: number } | null {
+  let raw: Buffer;
+  try {
+    raw = Buffer.from(data, "base64");
+  } catch {
+    return null;
+  }
+  if (mime.includes("png") || raw[0] === 0x89) {
+    if (raw.length < 24) return null;
+    return { width: raw.readUInt32BE(16), height: raw.readUInt32BE(20) };
+  }
+  let i = 2;
+  while (i < raw.length - 8) {
+    if (raw[i] !== 0xff) {
+      i += 1;
+      continue;
+    }
+    const marker = raw[i + 1];
+    if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+      return { height: raw.readUInt16BE(i + 5), width: raw.readUInt16BE(i + 7) };
+    }
+    const len = raw.readUInt16BE(i + 2);
+    if (len < 2) break;
+    i += 2 + len;
+  }
+  return null;
+}
+
+function gesture(value: unknown, depth = 0): string | null {
+  if (depth > 5 || value == null) return null;
+  if (typeof value === "string") {
+    const text = value.toLowerCase();
+    if (text.includes("scroll")) return "Scrolling";
+    if (text === "type" || text.includes("keypress") || text === "key") return "Typing";
+    if (text.includes("click") || text.includes("mouse")) return "Clicking the page";
+    return null;
+  }
+  if (typeof value !== "object") return null;
+  for (const item of Object.values(value as object)) {
+    const found = gesture(item, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+function openedLabel(url: string): string {
+  try {
+    return `Opened ${new URL(url).hostname.replace(/^www\./, "")}`;
+  } catch {
+    return "Opened the page";
+  }
+}
+
+function pointerFor(point: { x: number; y: number }, shot: { data: string; mime: string } | null): { x: number; y: number } | undefined {
+  if (point.x <= 1 && point.y <= 1) return { x: point.x * 100, y: point.y * 100 };
+  if (!shot) return undefined;
+  const size = imageSize(shot.data, shot.mime);
+  if (!size?.width || !size.height) return undefined;
+  return {
+    x: Math.min(100, Math.max(0, (point.x / size.width) * 100)),
+    y: Math.min(100, Math.max(0, (point.y / size.height) * 100)),
+  };
+}
+
+function applyDesk(chatId: string, msg: StreamMsg) {
+  const desk = desks.get(chatId) ?? { steps: [{ text: "Opening the browser" }] };
+  if (msg.type === "tool_call") {
+    const url = pageUrl(msg.args) || pageUrl(msg.result);
+    const shot = shotOf(msg.result);
+    if (url) {
+      desk.url = url;
+      pushStep(desk, openedLabel(url), url);
+    } else {
+      const motion = gesture(msg.args) || gesture(msg.name);
+      if (motion) pushStep(desk, motion);
+      else if (shot && desk.steps[desk.steps.length - 1]?.text === "Opening the browser") pushStep(desk, "Looking at the page");
+    }
+    if (shot && shot.data.length <= 800_000) {
+      desk.image = shot.data;
+      desk.mime = shot.mime;
+    }
+    const point = pointOf(msg.args);
+    const pointer = point ? pointerFor(point, shot) : undefined;
+    if (pointer) desk.pointer = pointer;
+  }
+  desks.set(chatId, desk);
+}
+
+function watchDesk(chatId: string, run: { stream(): AsyncIterable<StreamMsg> }) {
+  const watchId = (deskWatch.get(chatId) ?? 0) + 1;
+  deskWatch.set(chatId, watchId);
+  desks.set(chatId, { steps: [{ text: "Opening the browser" }] });
+  void (async () => {
+    try {
+      for await (const msg of run.stream()) {
+        if (deskWatch.get(chatId) !== watchId) return;
+        applyDesk(chatId, msg);
+      }
+    } catch {
+      /* The cloud run still finishes. Polling reads its status separately. */
+    }
+  })();
 }
 
 async function hideAgent(agentId: string, apiKey: string) {
@@ -216,20 +424,25 @@ export async function startCursorRun(
       ? await agent.send({ text: prompt, images })
       : await agent.send(prompt);
     heldAgents.set(chatId, agent);
+    watchDesk(chatId, run);
     await saveCursorLink(chatId, agent.agentId, run.id);
   } catch (err) {
+    deskWatch.delete(chatId);
+    desks.delete(chatId);
     await agent[Symbol.asyncDispose]().catch(() => undefined);
     if (err instanceof AgentBusyError) return;
     throw new Error(explain(err));
   }
 }
 
-export async function collectCursorRun(chatId: string): Promise<ThinkState> {
+const runGates = new Set<string>();
+
+async function readCursorRun(chatId: string): Promise<ThinkState> {
   const apiKey = process.env.CURSOR_API_KEY?.trim();
   const link = await readCursorLink(chatId);
   if (!apiKey || !link?.agentId || !link.runId) return { pending: false, steps: [] };
   const run = await Agent.getRun(link.runId, { runtime: "cloud", agentId: link.agentId, apiKey });
-  const looking = { steps: [{ text: "Looking this up" }] };
+  const looking = { steps: deskSteps(chatId), view: deskView(chatId) };
   if (run.status === "running") return { pending: true, ...looking };
   const again = await readCursorLink(chatId);
   if (!again?.runId) {
@@ -261,10 +474,35 @@ export async function collectCursorRun(chatId: string): Promise<ThinkState> {
     const skillName = parsed.draft?.channel === "skill" ? parsed.draft.skillName?.trim() : "";
     if (skillName) await renameChat(chatId, skillName);
   }
+  const latest = { steps: deskSteps(chatId), view: deskView(chatId) };
   await saveCursorLink(chatId, link.agentId, "");
   await hideAgent(link.agentId, apiKey);
   await releaseAgent(chatId);
-  return { pending: false, ...looking };
+  return { pending: false, ...latest };
+}
+
+export async function collectCursorRun(chatId: string): Promise<ThinkState> {
+  while (runGates.has(chatId)) await new Promise((resolve) => setTimeout(resolve, 40));
+  runGates.add(chatId);
+  try {
+    return await readCursorRun(chatId);
+  } finally {
+    runGates.delete(chatId);
+  }
+}
+
+/** Finishes runs that completed while the app was closed, and lists the ones still going. */
+export async function settleOpenCursorRuns(): Promise<string[]> {
+  const pending: string[] = [];
+  for (const link of await listCursorRuns()) {
+    try {
+      const state = await collectCursorRun(link.chatId);
+      if (state.pending) pending.push(link.chatId);
+    } catch {
+      pending.push(link.chatId);
+    }
+  }
+  return pending;
 }
 
 export async function cancelCursorRun(chatId: string): Promise<void> {

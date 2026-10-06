@@ -10,10 +10,10 @@ import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
 import { answerWithClaude } from "../copilot/claudeAnswer.js";
-import { CURSOR_MISSING, cancelCursorRun, collectCursorRun, startCursorRun } from "../copilot/cursorThink.js";
+import { CURSOR_MISSING, cancelCursorRun, collectCursorRun, settleOpenCursorRuns, startCursorRun } from "../copilot/cursorThink.js";
 import { nameChat } from "../copilot/chatTitle.js";
-import { pictureModel, workModel } from "../copilot/models.js";
-import { answerGeneral, answerPhoto, solveMath, wantsWeb } from "../copilot/plainAnswer.js";
+import { pictureModel, wantsWeb, workModel } from "../copilot/models.js";
+import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { makePicture } from "../copilot/picture.js";
 import { toE164 } from "../followUpSequences.js";
 import {
@@ -195,6 +195,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ messages: await listMessages(chatId) });
       }
       await collectSkillRuns().catch(() => undefined);
+      const runningChatIds = await settleOpenCursorRuns().catch(() => [] as string[]);
       const skills = await skillRows();
       const [brief, chats, memory, textLog, textNumbers] = await Promise.all([
         buildBrief(),
@@ -212,6 +213,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         twilioFrom: twilioFromLabel(),
         memory,
         connectors: await connectors(skills),
+        runningChatIds,
         billing: process.env.CURSOR_API_KEY
           ? "Cursor Auto is connected. The team spend total appears when the admin key is set."
           : "Cursor isn’t connected yet. The brief still uses your records. Nothing is sent.",
@@ -277,12 +279,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const chatId = String(body.chatId ?? "");
       if (!chatId) return res.status(400).json({ error: "Missing chat." });
       const state = await collectCursorRun(chatId);
+      const stamp = state.view?.image ? `${state.view.image.length}:${state.view.image.slice(0, 16)}:${state.view.image.slice(-16)}` : "";
+      const sameFrame = Boolean(stamp) && stamp === String(body.viewRev ?? "");
+      const view = state.view
+        ? {
+            url: state.view.url,
+            pointer: state.view.pointer,
+            ...(stamp ? { rev: stamp } : {}),
+            ...(state.view.image && !sameFrame ? { image: state.view.image, mime: state.view.mime } : {}),
+          }
+        : undefined;
       return res.status(200).json({
         chatId,
         messages: await listMessages(chatId),
         pending: state.pending,
         steps: state.steps,
         thought: state.thought,
+        view,
         chats: state.pending ? undefined : await listChats(),
       });
     }
@@ -340,35 +353,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         return done();
       }
-      const claude = picked === "haiku" || picked === "sonnet"
-        ? picked
-        : picked === "auto" && skillMode && !webSearch && process.env.ANTHROPIC_API_KEY?.trim()
-          ? "sonnet"
-          : null;
+      const claude = webSearch
+        ? null
+        : picked === "haiku" || picked === "sonnet"
+          ? picked
+          : picked === "auto" && skillMode && process.env.ANTHROPIC_API_KEY?.trim()
+            ? "sonnet"
+            : null;
       if (claude) {
-        if (webSearch) {
-          const name = claude === "haiku" ? "Haiku" : "Sonnet";
-          await addMessage({
-            chatId,
-            role: "assistant",
-            body: `${name} can’t open the web. Switch to Cursor and send it again. Nothing was looked up.`,
-          });
-        } else {
-          const spoken = await answerWithClaude(claude, text, skillMode, images);
-          const name = claude === "haiku" ? "Haiku" : "Sonnet";
-          await addMessage({
-            chatId,
-            role: "assistant",
-            body: spoken?.body ?? "Anthropic isn’t connected, so that model didn’t answer. Nothing was sent.",
-            draft: spoken?.draft ?? null,
-            choices: spoken?.choices ?? null,
-            steps: [{ text: spoken ? `Answered with ${name}` : "Could not reach Anthropic" }],
-            thought: spoken ? `This used ${name}. Nothing was sent.` : "Anthropic isn’t connected.",
-          });
-        }
+        const spoken = await answerWithClaude(claude, text, skillMode, images);
+        const name = claude === "haiku" ? "Haiku" : "Sonnet";
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: spoken?.body ?? "Anthropic isn’t connected, so that model didn’t answer. Nothing was sent.",
+          draft: spoken?.draft ?? null,
+          choices: spoken?.choices ?? null,
+          steps: [{ text: spoken ? `Answered with ${name}` : "Could not reach Anthropic" }],
+          thought: spoken ? `This used ${name}. Nothing was sent.` : "Anthropic isn’t connected.",
+        });
         return done();
       }
-      const forceCursor = picked === "cursor";
+      const forceCursor = picked === "cursor" || webSearch;
       if (!forceCursor && images.length && !skillMode) {
         const spoken = await answerPhoto(text, images);
         const missed = /couldn't read|isn't connected/i.test(spoken);

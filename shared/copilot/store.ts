@@ -622,6 +622,32 @@ function parseCursorNote(note: string, chatId: string): { agentId: string; runId
   return { agentId: rest.slice(0, cut), runId: rest.slice(cut + 1) };
 }
 
+export async function listCursorRuns(): Promise<{ chatId: string; agentId: string; runId: string }[]> {
+  const notes: string[] = [];
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("note").like("note", "cursor|%").limit(20);
+    if (!error) {
+      for (const row of data ?? []) notes.push(String((row as { note?: string }).note ?? ""));
+    } else if (!useLocalFile(error)) throw new Error(error.message);
+  }
+  if (!notes.length) {
+    for (const row of readFileStore().memory) {
+      if (row.note.startsWith("cursor|")) notes.push(row.note);
+    }
+  }
+  const runs: { chatId: string; agentId: string; runId: string }[] = [];
+  for (const note of notes) {
+    const parts = note.split("|");
+    if (parts.length < 4 || parts[0] !== "cursor") continue;
+    const chatId = parts[1] ?? "";
+    const agentId = parts[2] ?? "";
+    const runId = parts.slice(3).join("|");
+    if (chatId && agentId && runId) runs.push({ chatId, agentId, runId });
+  }
+  return runs;
+}
+
 export async function readCursorLink(chatId: string): Promise<{ agentId: string; runId: string } | null> {
   const prefix = `cursor|${chatId}|`;
   const client = sb();

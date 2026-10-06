@@ -16,11 +16,6 @@ const ALLOWED = new Set([
   "subtracting", "sum", "result",
 ]);
 
-/** A lookup they want from the live web, even if the web-search switch was missed. */
-export function wantsWeb(text: string): boolean {
-  return /\b(look up|look this up|look it up|search for|search the web|on amazon|amazon\.|on facebook|facebook marketplace|marketplace)\b/i.test(text);
-}
-
 /** Company questions stay on the record path. A plain sum does not match this. */
 export const NEEDS_RECORDS =
   /\b(guest|guests|booking|bookings|reservation|reservations|payout|payouts|revenue|earn|earned|earning|made|making|fee|fees|invoice|property|properties|unit|units|hospitable|airbnb|cleaner|guidebook|contract|owner|owners|client|clients|email|inbox|review|reviews|wifi|calendar|turnover|occupancy)\b/i;

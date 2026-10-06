@@ -70,6 +70,11 @@ export const PICTURE_MODELS: PictureModel[] = [
   },
 ];
 
+/** A lookup they want from the live web, even if the web-search switch was missed. */
+export function wantsWeb(text: string): boolean {
+  return /\b(look up|look this up|look it up|search for|search the web|on amazon|amazon\.|on facebook|facebook marketplace|marketplace)\b/i.test(text);
+}
+
 export function workModel(id: string): WorkModel {
   return WORK_MODELS.find((row) => row.id === id) ?? WORK_MODELS[0];
 }

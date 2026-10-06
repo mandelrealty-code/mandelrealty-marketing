@@ -4,7 +4,7 @@ import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage
 import "./copilot.css";
 import { EmailDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
 import { WorkflowBuilder } from "./WorkflowBuilder";
-import { ACCOUNT_LINKS, PICTURE_MODELS, WORK_MODELS } from "../../../shared/copilot/models";
+import { ACCOUNT_LINKS, PICTURE_MODELS, WORK_MODELS, wantsWeb } from "../../../shared/copilot/models";
 import type { AccountSpend, PictureModelId, WorkModelId } from "../../../shared/copilot/models";
 import { BLANK, SEED } from "../../../shared/copilot/workflow";
 import { runWhen } from "./skillsTime";
@@ -20,6 +20,7 @@ type Boot = {
   textLog?: CopilotTextSend[];
   textNumbers?: string[];
   twilioFrom?: string;
+  runningChatIds?: string[];
 };
 
 type SkillForm = { name: string; when: string; reads: string; drafts: string; mustNot: string; phone: string };
@@ -175,6 +176,43 @@ function Arrow() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M4 10L10 4M5 4h5v5" />
+    </svg>
+  );
+}
+
+type DeskView = { url?: string; image?: string; mime?: string; rev?: string; pointer?: { x: number; y: number } };
+
+type Stage = {
+  kind: "page" | "pdf";
+  control: boolean;
+  open: boolean;
+  url: string;
+  image?: string;
+  pointer?: { x: number; y: number };
+  pdfUrl?: string;
+  pdfName?: string;
+};
+
+function withDesk(current: Stage | null, view?: DeskView, fallbackUrl?: string): Stage | null {
+  if (current?.kind === "pdf") return current;
+  if (current?.control) return current;
+  const url = view?.url || fallbackUrl || current?.url || "";
+  const image = view?.image ? `data:${view.mime || "image/png"};base64,${view.image}` : current?.image;
+  if (!current && !url && !image) return current;
+  return {
+    kind: "page",
+    control: false,
+    open: current?.open ?? true,
+    url,
+    image,
+    pointer: view?.pointer ?? current?.pointer,
+  };
+}
+
+function Pointer() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden>
+      <path d="M1.2 1.2 L1.2 12.4 L4.4 9.4 L6.6 14.2 L8.3 13.4 L6.1 8.8 L10.2 8.8 Z" fill="#0b0a10" stroke="#fff" strokeWidth="1" />
     </svg>
   );
 }
@@ -579,14 +617,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [webSearch, setWebSearch] = useState(false);
   const [pictureMode, setPictureMode] = useState(false);
   const [pendingPicture, setPendingPicture] = useState(false);
-  const [stage, setStage] = useState<{
-    kind: "page" | "pdf";
-    control: boolean;
-    open: boolean;
-    url: string;
-    pdfUrl?: string;
-    pdfName?: string;
-  } | null>(null);
+  const [stage, setStage] = useState<Stage | null>(null);
   const [skillMode, setSkillMode] = useState(false);
   const [viaPlus, setViaPlus] = useState<Record<string, boolean>>({});
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -609,6 +640,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [runOpen, setRunOpen] = useState(false);
   const [stopped, setStopped] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const deskRev = useRef("");
+  const chatIdRef = useRef<string | null>(null);
+  const screenRef = useRef<Screen>("brief");
+  const deskMemory = useRef<Record<string, Stage>>({});
+  const [liveRuns, setLiveRuns] = useState<string[]>([]);
+  chatIdRef.current = chatId;
+  screenRef.current = screen;
   const sendDown = useRef(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -689,11 +727,100 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   async function load() {
     const data = await api<Boot>("boot");
     setBoot(data);
+    return data;
+  }
+
+  function rememberRun(id: string) {
+    setLiveRuns((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  }
+
+  function runningChat(id: string | null) {
+    if (!id) return false;
+    return liveRuns.includes(id) || (boot?.runningChatIds ?? []).includes(id);
   }
 
   useEffect(() => {
     load().catch((e) => setError(e instanceof Error ? e.message : "Could not load Copilot."));
   }, []);
+
+  useEffect(() => {
+    const server = boot?.runningChatIds ?? [];
+    if (!server.length) return;
+    setLiveRuns((prev) => {
+      const next = Array.from(new Set([...prev, ...server]));
+      return next.length === prev.length && next.every((id, index) => id === prev[index]) ? prev : next;
+    });
+  }, [boot]);
+
+  useEffect(() => {
+    if (!liveRuns.length) return;
+    const controllers = liveRuns.map(() => new AbortController());
+    liveRuns.forEach((id, index) => {
+      const signal = controllers[index]?.signal;
+      if (!signal) return;
+      void (async () => {
+        while (!signal.aborted) {
+          try {
+            await pause(2000, signal);
+          } catch {
+            return;
+          }
+          if (signal.aborted) return;
+          try {
+            const next = await api<{ messages: CopilotMessage[]; pending?: boolean; steps?: { text: string; meta?: string; url?: string }[]; thought?: string; view?: DeskView }>("think", {
+              chatId: id,
+              viewRev: id === chatIdRef.current ? deskRev.current : "",
+            }, signal);
+            if (signal.aborted) return;
+            if (next.view?.rev && id === chatIdRef.current) deskRev.current = next.view.rev;
+            const opened = [...(next.steps ?? [])].reverse().find((step) => step.url && /^https?:\/\//i.test(step.url));
+            if (next.view || opened?.url) {
+              const saved = withDesk(deskMemory.current[id] ?? null, next.view, opened?.url);
+              if (saved) deskMemory.current[id] = saved;
+              if (id === chatIdRef.current && screenRef.current === "chat" && saved) setStage(saved);
+            }
+            if (id === chatIdRef.current && screenRef.current === "chat") {
+              if (next.steps?.length) setLiveSteps(next.steps);
+              setLiveThought(next.thought);
+              setMessages(next.messages);
+              setThinking(Boolean(next.pending));
+            }
+            if (!next.pending) {
+              delete deskMemory.current[id];
+              setLiveRuns((prev) => prev.filter((item) => item !== id));
+              if (id === chatIdRef.current) {
+                setMessages(next.messages);
+                setThinking(false);
+              }
+              void load().catch(() => undefined);
+              return;
+            }
+          } catch (err) {
+            if (signal.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
+          }
+        }
+      })();
+    });
+    return () => {
+      for (const ctrl of controllers) ctrl.abort();
+    };
+  }, [liveRuns]);
+
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      void load().then(async (data) => {
+        const id = chatIdRef.current;
+        if (!id || screenRef.current !== "chat") return;
+        const next = await api<{ messages: CopilotMessage[] }>(`messages&chatId=${encodeURIComponent(id)}`);
+        setMessages(next.messages);
+        const still = (data.runningChatIds ?? []).includes(id) || liveRuns.includes(id);
+        setThinking(still);
+      }).catch(() => undefined);
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [liveRuns]);
 
   useEffect(() => {
     const el = taRef.current;
@@ -723,7 +850,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       ]);
     });
     return () => { gone = true; };
-  }, [modelOpen, screen]);
+  }, [screen]);
 
   useEffect(() => {
     function down(event: MouseEvent) {
@@ -777,41 +904,26 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   async function openChat(id: string) {
+    const still = runningChat(id);
     setChatId(id);
     setScreen("chat");
     setSheet(false);
     setReport(false);
-    setStage(null);
     setStopped(false);
+    if (still) {
+      setThinking(true);
+      const saved = deskMemory.current[id];
+      if (saved) setStage(saved);
+      else if (id !== chatId) setStage(null);
+      if (id !== chatId) setLiveSteps([{ text: "Looking this up" }]);
+    } else {
+      setThinking(false);
+      setStage(null);
+    }
     const data = await api<{ messages: CopilotMessage[] }>(`messages&chatId=${encodeURIComponent(id)}`);
     setMessages(data.messages);
     await api("seen", { chatId: id }).catch(() => undefined);
     await load();
-  }
-
-  async function watchCursor(id: string, signal: AbortSignal) {
-    let latest: CopilotMessage[] = [];
-    let pendingRun = true;
-    while (pendingRun) {
-      await pause(2000, signal);
-      const next = await api<{ messages: CopilotMessage[]; pending?: boolean; steps?: { text: string; meta?: string; url?: string }[]; thought?: string; chats?: CopilotChat[] }>("think", { chatId: id }, signal);
-      if (next.chats) setBoot((prev) => (prev ? { ...prev, chats: next.chats ?? prev.chats } : prev));
-      if (next.steps?.length) setLiveSteps(next.steps);
-      const opened = [...(next.steps ?? [])].reverse().find((step) => step.url && /^https?:\/\//i.test(step.url));
-      if (opened?.url) {
-        setStage((current) => current?.kind === "pdf" ? current : {
-          kind: "page",
-          control: false,
-          open: true,
-          url: opened.url ?? "",
-        });
-      }
-      setLiveThought(next.thought);
-      latest = next.messages;
-      setMessages(latest);
-      pendingRun = Boolean(next.pending);
-    }
-    return latest;
   }
 
   async function openCard(cardText: string, action: string) {
@@ -828,6 +940,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setSheet(false);
     setScreen("chat");
     let activeId = "";
+    let handed = false;
     try {
       const data = await api<{ chat: CopilotChat; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[] }>("card", {
         text: cardText,
@@ -841,8 +954,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       setPending(null);
       setScreen("chat");
       if (data.pending) {
+        handed = true;
         setThinking(true);
-        await watchCursor(data.chat.id, ctrl.signal);
+        rememberRun(data.chat.id);
       }
       await api("seen", { chatId: data.chat.id }).catch(() => undefined);
       await load();
@@ -854,7 +968,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     } finally {
       if (abortRef.current === ctrl) abortRef.current = null;
       setPending(null);
-      setThinking(false);
+      if (!handed) setThinking(false);
       setBusy(false);
     }
   }
@@ -880,10 +994,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const pdf = docs.find((file) => file.file.type === "application/pdf" || /\.pdf$/i.test(file.name));
-    const searching = webSearch && !preset && !pictureMode;
     const makingPicture = pictureMode && !preset;
+    const searching = !makingPicture && !preset && (webSearch || wantsWeb(typed));
     const pictureId: PictureModelId = (pictureModel === "edit" || pictureModel === "client") && photos.length === 0 ? "draft" : pictureModel;
-    const chosen = makingPicture ? pictureId : workModel;
+    const chosen = makingPicture ? pictureId : searching ? "cursor" : workModel;
+    if (searching) {
+      setWorkModel("cursor");
+      deskRev.current = "";
+    }
     const waitLabel = makingPicture ? PICTURE_MODELS.find((row) => row.id === pictureId) : null;
     setPending(value || "Look at the attached photo.");
     setPendingPicture(makingPicture);
@@ -899,6 +1017,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         pdfUrl: pdf.url,
         pdfName: pdf.name,
       });
+    } else if (searching) {
+      setStage({ kind: "page", control: false, open: true, url: "" });
     } else if (!makingPicture) {
       setStage(null);
     }
@@ -918,6 +1038,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
     let activeId = preset && !keepChat ? "" : chatId ?? "";
     let delivered = false;
+    let handed = false;
     try {
       const makingSkill = skillMode && (!preset || keepChat);
       const data = await api<{ chatId: string; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[] }>("send", {
@@ -942,8 +1063,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       setPending(null);
       let shown = data.messages;
       if (data.pending) {
+        handed = true;
         setThinking(true);
-        shown = await watchCursor(data.chatId, ctrl.signal);
+        rememberRun(data.chatId);
       }
       if (makingSkill) {
         const user = [...data.messages].reverse().find((m) => m.role === "user");
@@ -981,13 +1103,23 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       setPending(null);
       setPendingPicture(false);
       setPictureWait(null);
-      setThinking(false);
+      if (!handed) setThinking(false);
       setBusy(false);
     }
   }
 
   function stopRun() {
+    const id = chatIdRef.current;
     abortRef.current?.abort();
+    if (id) {
+      delete deskMemory.current[id];
+      setLiveRuns((prev) => prev.filter((item) => item !== id));
+      void api("cancel-think", { chatId: id }).catch(() => undefined);
+    }
+    setStage(null);
+    setThinking(false);
+    setStopped(true);
+    setPending(null);
   }
 
   async function act(message: CopilotMessage, action: "send" | "hold") {
@@ -1244,9 +1376,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const waiting = messages.some((m) => m.draft?.status === "waiting");
   const hasPhoto = files.some((file) => file.kind === "photo");
   const activePicture: PictureModelId = (pictureModel === "edit" || pictureModel === "client") && !hasPhoto ? "draft" : pictureModel;
+  const lookupDraft = !pictureMode && (webSearch || wantsWeb(text));
+  const shownWork: WorkModelId = lookupDraft ? "cursor" : workModel;
   const modelLabel = pictureMode
     ? `${PICTURE_MODELS.find((row) => row.id === activePicture)?.name ?? "Draft"} · ${PICTURE_MODELS.find((row) => row.id === activePicture)?.price ?? ""}`
-    : (WORK_MODELS.find((row) => row.id === workModel)?.name ?? "Auto");
+    : (WORK_MODELS.find((row) => row.id === shownWork)?.name ?? "Auto");
   const focus = (boot?.brief.focus ?? []).filter((c) => !hidden.includes(c.id));
   const eating = (boot?.brief.eating ?? []).filter((c) => !hidden.includes(c.id));
   const chromeOnPhone = /CriOS|FxiOS|EdgiOS/i.test(typeof navigator === "undefined" ? "" : navigator.userAgent);
@@ -1310,6 +1444,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         {(boot?.chats ?? []).map((chat) => {
           const active = chat.id === chatId && screen === "chat";
           const menuOpen = menuFor === chat.id;
+          const working = liveRuns.includes(chat.id) || skills.some((skill) => skill.chat_id === chat.id && skill.lastRun?.status === "running");
           return (
             <div
               key={chat.id}
@@ -1334,9 +1469,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
               ) : (
                 <div className={`cp-chatline${active ? " on" : ""}${menuOpen ? " menu" : ""}`}>
                   <button type="button" className="open" onClick={() => void openChat(chat.id)}>
-                    {chat.unread && !active ? <span className="cp-unread" aria-label="Needs you" /> : null}
+                    {working ? <span className="cp-pulse" aria-label="Working" /> : chat.unread && !active ? <span className="cp-unread" aria-label="Needs you" /> : null}
                     <span className="cp-chat-title">{chat.title}</span>
-                    <span className="cp-time">{when(chat.updated_at)}</span>
+                    <span className={`cp-time${working ? " work" : ""}`}>{working ? "Working" : when(chat.updated_at)}</span>
                   </button>
                   <button
                     type="button"
@@ -1383,10 +1518,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
             </div>
           );
         })}
-      </div>
-      <div className="cp-bill">
-        <span className="quiet">Cursor · this cycle</span>
-        <span className="used">{accounts?.find((row) => row.id === "cursor")?.spent ?? accounts?.find((row) => row.id === "cursor")?.note ?? "Usage from the team bill."}</span>
       </div>
       <button type="button" className={`cp-footbtn${inSettings ? " on" : ""}`} onClick={() => { setScreen("settings"); setSheet(false); }}>
         Settings
@@ -2027,7 +2158,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         <div className="cp-modelmenu" role="menu">
                           {(pictureMode ? PICTURE_MODELS : WORK_MODELS).map((row) => {
                             const locked = "needsPhoto" in row && row.needsPhoto && !hasPhoto;
-                            const on = pictureMode ? row.id === activePicture : row.id === workModel;
+                            const on = pictureMode ? row.id === activePicture : row.id === shownWork;
                             return (
                               <button
                                 key={row.id}
@@ -2051,17 +2182,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                               </button>
                             );
                           })}
-                          <div className="cp-modelaccts">
-                            {(accounts ?? []).map((row) => (
-                              <div key={row.id}>
-                                <strong>{row.name}</strong>
-                                <span>{row.left ?? row.spent ?? "Spend not recorded"}</span>
-                                <em>{row.keyHint ?? row.note}</em>
-                                <a href={row.addUrl} target="_blank" rel="noreferrer">Add funds</a>
-                              </div>
-                            ))}
-                            {accounts === null ? <p>Checking the accounts…</p> : null}
-                          </div>
                         </div>
                       ) : null}
                       <button
@@ -2121,12 +2241,33 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                 <>
                   <div className="cp-stage-bar">
                     <div className="cp-stage-url">
-                      <span className="cp-pulse" aria-hidden />
-                      <span>{stage.url}</span>
+                      <span className={stage.control ? "cp-pause" : "cp-pulse"} aria-hidden />
+                      <span>{stage.url || "Opening the browser"}</span>
                     </div>
                     <button type="button" onClick={() => setStage(null)}>Close</button>
                   </div>
-                  <iframe title={stage.url} src={stage.url} />
+                  <div className={`cp-stage-page${stage.image ? " shot" : ""}`}>
+                    {stage.image ? (
+                      <div className="cp-shotwrap">
+                        <img src={stage.image} alt="" />
+                        {stage.pointer && !stage.control ? (
+                          <span className="cp-agentcursor" style={{ left: `${stage.pointer.x}%`, top: `${stage.pointer.y}%` }}>
+                            <Pointer />
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p>Opening the browser</p>
+                    )}
+                    <button
+                      type="button"
+                      className="cp-takeover"
+                      onClick={() => setStage({ ...stage, control: !stage.control })}
+                    >
+                      <Pointer />
+                      {stage.control ? "Resume" : "Take over"}
+                    </button>
+                  </div>
                 </>
               )}
             </div>
