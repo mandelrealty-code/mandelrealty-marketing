@@ -5,7 +5,7 @@ import "./copilot.css";
 import { EmailDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
 import { runWhen } from "./skillsTime";
 
-type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account";
+type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing";
 
 type Boot = {
   brief: BriefPayload;
@@ -518,6 +518,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [trail, setTrail] = useState<Record<string, boolean>>({});
   const [report, setReport] = useState(false);
   const [plusOpen, setPlusOpen] = useState(false);
+  const [research, setResearch] = useState(false);
+  const [stage, setStage] = useState<{
+    kind: "page" | "pdf";
+    control: boolean;
+    open: boolean;
+    url: string;
+    pdfUrl?: string;
+    pdfName?: string;
+  } | null>(null);
   const [skillMode, setSkillMode] = useState(false);
   const [viaPlus, setViaPlus] = useState<Record<string, boolean>>({});
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -666,6 +675,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setScreen("brief");
     setSheet(false);
     setReport(false);
+    setStage(null);
+    setResearch(false);
   }
 
   function goEmpty() {
@@ -674,6 +685,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setScreen("empty");
     setSheet(false);
     setReport(false);
+    setStage(null);
+    setResearch(false);
   }
 
   async function openChat(id: string) {
@@ -681,6 +694,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setScreen("chat");
     setSheet(false);
     setReport(false);
+    setStage(null);
     setStopped(false);
     const data = await api<{ messages: CopilotMessage[] }>(`messages&chatId=${encodeURIComponent(id)}`);
     setMessages(data.messages);
@@ -762,8 +776,25 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    const pageUrl = value.match(/https?:\/\/\S+/)?.[0]?.replace(/[),.;]+$/, "") ?? "";
+    const pdf = kept.find((file) => file.file.type === "application/pdf" || /\.pdf$/i.test(file.name));
+    const researching = research && !preset;
     setPending(value);
-    setLiveSteps([{ text: "Sent your message to Cursor" }]);
+    setLiveSteps(researching
+      ? [{ text: pageUrl ? "Looking up the page in your message." : "Research is on for this message." }]
+      : [{ text: "Sent your message to Cursor" }]);
+    if (researching || pdf) {
+      setStage({
+        kind: researching || !pdf ? "page" : "pdf",
+        control: false,
+        open: true,
+        url: pageUrl,
+        pdfUrl: pdf?.url,
+        pdfName: pdf?.name,
+      });
+      setResearch(false);
+      setPlusOpen(false);
+    }
     setLiveThought(undefined);
     setThinking(false);
     setRunOpen(true);
@@ -793,7 +824,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         return;
       }
       kept.forEach((file) => {
-        if (file.url) URL.revokeObjectURL(file.url);
+        if (file.url && file.url !== pdf?.url) URL.revokeObjectURL(file.url);
       });
       activeId = data.chatId;
       setChatId(data.chatId);
@@ -862,7 +893,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
-  const inSettings = screen === "settings" || screen === "skills" || screen === "skill" || screen === "connectors" || screen === "twilio" || screen === "account";
+  const inSettings = screen === "settings" || screen === "skills" || screen === "skill" || screen === "connectors" || screen === "twilio" || screen === "account" || screen === "billing";
   const skills = boot?.skills ?? [];
 
   async function runSkill(skill: CopilotSkill) {
@@ -911,7 +942,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }, [boot, chatId, screen]);
 
   const backLabel =
-    screen === "skills" || screen === "connectors" || screen === "account"
+    screen === "skills" || screen === "connectors" || screen === "account" || screen === "billing"
       ? "Settings"
       : screen === "skill"
         ? "Skills"
@@ -922,7 +953,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   function back() {
     if (screen === "skill") setScreen("skills");
     else if (screen === "twilio") setScreen("connectors");
-    else if (screen === "skills" || screen === "connectors" || screen === "account") setScreen("settings");
+    else if (screen === "skills" || screen === "connectors" || screen === "account" || screen === "billing") setScreen("settings");
     else {
       setScreen("brief");
       setSheet(false);
@@ -1080,7 +1111,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       name: file.name,
       size: formatBytes(file.size),
       ext: fileExt(file.name),
-      url: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+      url: file.type.startsWith("image/") || file.type === "application/pdf" || /\.pdf$/i.test(file.name) ? URL.createObjectURL(file) : undefined,
       file,
     }));
     if (next.length) setFiles((prev) => [...prev, ...next]);
@@ -1260,7 +1291,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           <Moon />
         </button>
       </header>
-      <div className="cp-body">
+      <div className={`cp-body${stage && !inSettings ? " work" : ""}`}>
         <aside className="cp-side">{sideList()}</aside>
         <main className="cp-main">
           <header className="cp-mobilebar">
@@ -1338,6 +1369,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         </button>
                         <button type="button" className="cp-setrow" onClick={() => setScreen("account")}>
                           <span><strong>Account</strong><em>Password and log out.</em></span>
+                          <Chevron />
+                        </button>
+                        <button type="button" className="cp-setrow" onClick={() => setScreen("billing")}>
+                          <span><strong>Billing</strong><em>What these three accounts have used.</em></span>
                           <Chevron />
                         </button>
                       </>
@@ -1484,6 +1519,23 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         <p className="cp-note">A skill can text only these numbers. Guests, hosts, and clients are never texted.</p>
                       </>
                     ) : null}
+                    {screen === "billing" ? (
+                      <>
+                        <div className="cp-sethead">
+                          <h1>Billing</h1>
+                          <p>What these three accounts have used.</p>
+                        </div>
+                        {["OpenAI", "Anthropic", "Cursor"].map((name) => (
+                          <div key={name} className="cp-bill">
+                            <strong>{name}</strong>
+                            <span className="spent">Not recorded yet</span>
+                            <span className="split">Chat, skills, photos, and documents will show here once spend is recorded.</span>
+                            <span className="note">Remaining balance isn’t available from this account.</span>
+                          </div>
+                        ))}
+                        <p className="cp-note">Amounts are what Copilot spent through each account. Nothing has been recorded yet, so there is no balance to show.</p>
+                      </>
+                    ) : null}
                     {screen === "account" ? (
                       <>
                         <div className="cp-sethead">
@@ -1561,6 +1613,23 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                 ) : null}
                 {screen === "chat" ? (
                   <div className="cp-thread">
+                    {stage ? (
+                      <div className="cp-worksteps">
+                        <button type="button" onClick={() => setStage({ ...stage, open: !stage.open })}>
+                          <span className={stage.control ? "cp-pause" : "cp-pulse"} aria-hidden />
+                          <strong>Looking this up</strong>
+                          <span className="meta">· {liveSteps.length === 1 ? "1 step" : `${liveSteps.length} steps`}{stage.control ? " · Paused" : ""}</span>
+                        </button>
+                        {stage.open ? (
+                          <div className="list">
+                            {stage.control ? <p>Paused. Copilot picks up where you leave off.</p> : null}
+                            {liveSteps.map((step, index) => (
+                              <div key={`${step.text}-${index}`}>{step.text}</div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {error ? <p className="cp-err">{error}</p> : null}
                     {messages.map((message) =>
                       message.role === "user" ? (
@@ -1704,7 +1773,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     <div className="cp-plusmenu" role="menu">
                       <button type="button" role="menuitem" onClick={() => photoRef.current?.click()}><PhotoIcon />Photo</button>
                       <button type="button" role="menuitem" onClick={() => docRef.current?.click()}><DocIcon />Document</button>
-                      <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); setSkillMode(true); }}><SkillIcon />Create a skill</button>
+                      <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); setSkillMode(true); setResearch(false); }}><SkillIcon />Create a skill</button>
+                      <button type="button" role="menuitem" className="cp-research" aria-pressed={research} onClick={() => { setResearch((on) => !on); setSkillMode(false); }}>
+                        <span>
+                          <strong>Research</strong>
+                          <em>This message only</em>
+                        </span>
+                        <span className={`cp-switch${research ? " on" : ""}`} aria-hidden />
+                      </button>
                     </div>
                   ) : null}
                   <div className={`cp-composer${files.length ? " stacked" : ""}`}>
@@ -1738,6 +1814,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     </button>
                     <input ref={photoRef} type="file" accept="image/*" multiple hidden onChange={(e) => { takeFiles(e.target.files, "photo"); e.target.value = ""; }} />
                     <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*" multiple hidden onChange={(e) => { takeFiles(e.target.files, "doc"); e.target.value = ""; }} />
+                    {research ? (
+                      <span className="cp-skillchip">
+                        Research
+                        <button type="button" aria-label="Remove" onClick={() => setResearch(false)}>
+                          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
+                            <path d="M2 2l6 6M8 2L2 8" />
+                          </svg>
+                        </button>
+                      </span>
+                    ) : null}
                     {skillMode ? (
                       <span className="cp-skillchip">
                         Create a skill
@@ -1751,7 +1837,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     <textarea
                       ref={taRef}
                       rows={1}
-                      placeholder={skillMode ? "Describe the skill" : "Ask MRG"}
+                      placeholder={research ? "Search the web" : skillMode ? "Describe the skill" : "Ask MRG"}
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                       onKeyDown={(e) => {
@@ -1780,6 +1866,49 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
               )}
             </>
         </main>
+        {stage && !inSettings ? (
+          <aside className={`cp-stage${stage.control ? " control" : ""}`}>
+            <div className="cp-stage-frame">
+              {stage.kind === "pdf" ? (
+                <>
+                  <div className="cp-stage-bar">
+                    <div className="cp-stage-file">
+                      <strong>{stage.pdfName || "Document.pdf"}</strong>
+                      <span>Opened in Copilot</span>
+                    </div>
+                    {stage.pdfUrl ? <a href={stage.pdfUrl} download={stage.pdfName || "document.pdf"}>Download</a> : null}
+                    <button type="button" onClick={() => setStage(null)}>Close</button>
+                  </div>
+                  {stage.pdfUrl ? <iframe title={stage.pdfName || "PDF"} src={stage.pdfUrl} /> : <p className="cp-stage-empty">This PDF isn’t available to preview.</p>}
+                </>
+              ) : (
+                <>
+                  <div className="cp-stage-bar">
+                    <div className="cp-stage-url">
+                      {stage.control ? null : <span className="cp-pulse" aria-hidden />}
+                      <span>{stage.url || "No page address in this message"}</span>
+                    </div>
+                    {stage.control ? (
+                      <button type="button" className="cp-stage-gold" onClick={() => setStage({ ...stage, control: false })}>Hand back</button>
+                    ) : null}
+                    <button type="button" onClick={() => setStage(null)}>Close</button>
+                  </div>
+                  <div className="cp-stage-note">
+                    {stage.control ? <strong>You’re in the browser</strong> : null}
+                    {stage.control ? <span>·</span> : null}
+                    <span>Nothing is purchased.</span>
+                  </div>
+                  <div className="cp-stage-page">
+                    {stage.control ? null : (
+                      <button type="button" className="cp-takeover" onClick={() => setStage({ ...stage, control: true })}>Take over</button>
+                    )}
+                    <p>The live view isn’t available for this run.</p>
+                  </div>
+                </>
+              )}
+            </div>
+          </aside>
+        ) : null}
         {report ? (
           <aside className="cp-panel">
             <div className="cp-panel-bar">
