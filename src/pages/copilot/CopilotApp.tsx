@@ -180,13 +180,14 @@ function Arrow() {
   );
 }
 
-type DeskView = { url?: string; image?: string; mime?: string; rev?: string; pointer?: { x: number; y: number } };
+type DeskView = { url?: string; liveUrl?: string; image?: string; mime?: string; rev?: string; pointer?: { x: number; y: number } };
 
 type Stage = {
   kind: "page" | "pdf";
   control: boolean;
   open: boolean;
   url: string;
+  liveUrl?: string;
   image?: string;
   pointer?: { x: number; y: number };
   pdfUrl?: string;
@@ -196,7 +197,11 @@ type Stage = {
 function withDesk(current: Stage | null, view?: DeskView, fallbackUrl?: string): Stage | null {
   if (current?.kind === "pdf") return current;
   if (current?.control) return current;
+  const liveUrl = view?.liveUrl || current?.liveUrl || "";
   const url = view?.url || fallbackUrl || current?.url || "";
+  if (liveUrl) {
+    return { kind: "page", control: false, open: current?.open ?? true, url, liveUrl };
+  }
   const image = view?.image ? `data:${view.mime || "image/png"};base64,${view.image}` : current?.image;
   if (!current && !url && !image) return current;
   return {
@@ -806,6 +811,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
             const next = await api<{ messages: CopilotMessage[]; pending?: boolean; steps?: { text: string; meta?: string; url?: string }[]; thought?: string; view?: DeskView }>("think", {
               chatId: id,
               viewRev: id === chatIdRef.current ? deskRev.current : "",
+              hold: Boolean(deskMemory.current[id]?.control),
             }, signal);
             if (signal.aborted) return;
             if (next.view?.rev && id === chatIdRef.current) deskRev.current = next.view.rev;
@@ -1032,11 +1038,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     const makingPicture = pictureMode && !preset;
     const searching = !makingPicture && !preset && (webSearch || wantsWeb(typed));
     const pictureId: PictureModelId = (pictureModel === "edit" || pictureModel === "client") && photos.length === 0 ? "draft" : pictureModel;
-    const chosen = makingPicture ? pictureId : searching ? "cursor" : workModel;
-    if (searching) {
-      setWorkModel("cursor");
-      deskRev.current = "";
-    }
+    const chosen = makingPicture ? pictureId : workModel;
+    if (searching) deskRev.current = "";
     const waitLabel = makingPicture ? PICTURE_MODELS.find((row) => row.id === pictureId) : null;
     setPending(value || "Look at the attached photo.");
     setPendingPicture(makingPicture);
@@ -1077,7 +1080,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     let handed = false;
     try {
       const makingSkill = skillMode && (!preset || keepChat);
-      const data = await api<{ chatId: string; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[] }>("send", {
+      const data = await api<{ chatId: string; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[]; view?: DeskView; steps?: { text: string }[]; thought?: string }>("send", {
         text: value || "Look at the attached photo.",
         chatId: preset && !keepChat ? null : chatId,
         kind: "chat",
@@ -1096,8 +1099,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       setChatId(data.chatId);
       if (searching) {
         closedBrowsers.current.delete(data.chatId);
-        deskMemory.current[data.chatId] = deskMemory.current[data.chatId] ?? { kind: "page", control: false, open: true, url: "" };
+        const saved = withDesk(deskMemory.current[data.chatId] ?? { kind: "page", control: false, open: true, url: "" }, data.view);
+        if (saved) {
+          deskMemory.current[data.chatId] = saved;
+          if (!closedBrowsers.current.has(data.chatId)) setStage(saved);
+        }
       }
+      if (data.steps?.length) setLiveSteps(data.steps);
+      if (data.thought) setLiveThought(data.thought);
       setMessages(data.messages);
       if (data.chats) setBoot((prev) => (prev ? { ...prev, chats: data.chats ?? prev.chats } : prev));
       setPending(null);
@@ -1425,7 +1434,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const hasPhoto = files.some((file) => file.kind === "photo");
   const activePicture: PictureModelId = (pictureModel === "edit" || pictureModel === "client") && !hasPhoto ? "draft" : pictureModel;
   const lookupDraft = !pictureMode && (webSearch || wantsWeb(text));
-  const shownWork: WorkModelId = lookupDraft ? "cursor" : workModel;
+  const shownWork: WorkModelId = lookupDraft ? "haiku" : workModel;
   const modelLabel = pictureMode
     ? `${PICTURE_MODELS.find((row) => row.id === activePicture)?.name ?? "Draft"} · ${PICTURE_MODELS.find((row) => row.id === activePicture)?.price ?? ""}`
     : (WORK_MODELS.find((row) => row.id === shownWork)?.name ?? "Auto");
@@ -2285,6 +2294,20 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       <span className={stage.control ? "cp-pause" : "cp-pulse"} aria-hidden />
                       <Address url={stage.url} />
                     </div>
+                    {stage.liveUrl ? (
+                      <button
+                        type="button"
+                        className="cp-takeover inbar"
+                        onClick={() => {
+                          const next = { ...stage, control: !stage.control };
+                          if (chatId) deskMemory.current[chatId] = next;
+                          setStage(next);
+                        }}
+                      >
+                        <Pointer />
+                        {stage.control ? "Resume" : "Take over"}
+                      </button>
+                    ) : null}
                     <button type="button" onClick={() => {
                       if (chatId) {
                         deskMemory.current[chatId] = stage;
@@ -2293,8 +2316,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       setStage(null);
                     }}>Close</button>
                   </div>
-                  <div className={`cp-stage-page${stage.image ? " shot" : ""}`}>
-                    {stage.image ? (
+                  <div className={`cp-stage-page${stage.liveUrl ? " live" : ""}${stage.image ? " shot" : ""}`}>
+                    {stage.liveUrl ? (
+                      <iframe
+                        title="Live browser"
+                        src={stage.liveUrl}
+                        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+                        allow="clipboard-read; clipboard-write"
+                      />
+                    ) : stage.image ? (
                       <div className="cp-shotwrap">
                         <img src={stage.image} alt="" />
                         {stage.pointer && !stage.control ? (
@@ -2306,15 +2336,17 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     ) : (
                       <p>Opening the browser</p>
                     )}
-                    <div className="cp-stage-fade" />
-                    <button
-                      type="button"
-                      className="cp-takeover"
-                      onClick={() => setStage({ ...stage, control: !stage.control })}
-                    >
-                      <Pointer />
-                      {stage.control ? "Resume" : "Take over"}
-                    </button>
+                    {stage.liveUrl ? null : <div className="cp-stage-fade" />}
+                    {stage.liveUrl ? null : (
+                      <button
+                        type="button"
+                        className="cp-takeover"
+                        onClick={() => setStage({ ...stage, control: !stage.control })}
+                      >
+                        <Pointer />
+                        {stage.control ? "Resume" : "Take over"}
+                      </button>
+                    )}
                   </div>
                 </>
               )}

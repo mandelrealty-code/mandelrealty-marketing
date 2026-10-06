@@ -11,6 +11,7 @@ import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cl
 import { accountSpend } from "../copilot/accounts.js";
 import { answerWithClaude } from "../copilot/claudeAnswer.js";
 import { CURSOR_MISSING, answerSignIn, cancelCursorRun, collectCursorRun, settleOpenCursorRuns, startCursorRun } from "../copilot/cursorThink.js";
+import { cancelBrowser, collectBrowser, publicError, resumeBrowser, settleOpenBrowsers, startBrowser } from "../copilot/webBrowser.js";
 import { nameChat } from "../copilot/chatTitle.js";
 import { pictureModel, wantsWeb, workModel } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
@@ -195,7 +196,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ messages: await listMessages(chatId) });
       }
       await collectSkillRuns().catch(() => undefined);
-      const runningChatIds = await settleOpenCursorRuns().catch(() => [] as string[]);
+      const [cursorRuns, browserRuns] = await Promise.all([
+        settleOpenCursorRuns().catch(() => [] as string[]),
+        settleOpenBrowsers().catch(() => [] as string[]),
+      ]);
+      const runningChatIds = [...new Set([...cursorRuns, ...browserRuns])];
       const skills = await skillRows();
       const [brief, chats, memory, textLog, textNumbers] = await Promise.all([
         buildBrief(),
@@ -278,6 +283,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (op === "think") {
       const chatId = String(body.chatId ?? "");
       if (!chatId) return res.status(400).json({ error: "Missing chat." });
+      const browser = await collectBrowser(chatId, body.hold === true);
+      if (browser) {
+        return res.status(200).json({
+          chatId,
+          messages: await listMessages(chatId),
+          pending: browser.pending,
+          steps: browser.steps,
+          thought: browser.thought,
+          view: browser.view,
+          chats: browser.pending ? undefined : await listChats(),
+        });
+      }
       const state = await collectCursorRun(chatId, true);
       const stamp = state.view?.image ? `${state.view.image.length}:${state.view.image.slice(0, 16)}:${state.view.image.slice(-16)}` : "";
       const sameFrame = Boolean(stamp) && stamp === String(body.viewRev ?? "");
@@ -307,7 +324,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (op === "cancel-think") {
       const chatId = String(body.chatId ?? "");
       if (!chatId) return res.status(400).json({ error: "Missing chat." });
-      await cancelCursorRun(chatId);
+      const stoppedBrowser = await cancelBrowser(chatId);
+      if (!stoppedBrowser) await cancelCursorRun(chatId);
       return res.status(200).json({ chatId, messages: await listMessages(chatId), pending: false });
     }
 
@@ -338,25 +356,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           thought: signIn.thought,
         });
         let pending = false;
+        let view: { url: string; liveUrl: string } | undefined;
+        let steps: { text: string }[] | undefined;
+        let thought: string | undefined;
         if (signIn.continueWeb) {
-          if (!process.env.CURSOR_API_KEY?.trim()) {
-            await addMessage({ chatId, role: "assistant", body: CURSOR_MISSING });
-          } else {
-            try {
-              await startCursorRun(chatId, await factsFor(), false, [], true);
-              pending = true;
-            } catch (err) {
-              await addMessage({
-                chatId,
-                role: "assistant",
-                body: err instanceof Error ? err.message : "Cursor could not start. Nothing was sent.",
-              });
-            }
+          try {
+            const opened = await resumeBrowser(chatId);
+            pending = opened.pending;
+            view = opened.view;
+            steps = opened.steps;
+            thought = opened.thought;
+          } catch (err) {
+            await addMessage({
+              chatId,
+              role: "assistant",
+              body: publicError(err),
+            });
           }
         }
         const messages = await listMessages(chatId);
         const chats = await listChats();
-        return res.status(200).json({ chatId, messages, chats, pending });
+        return res.status(200).json({ chatId, messages, chats, pending, view, steps, thought });
       }
       let pending = false;
       const done = async () => {
@@ -432,11 +452,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return done();
         }
       }
+      if (webSearch) {
+        try {
+          const opened = await startBrowser(chatId, text);
+          pending = opened.pending;
+          const messages = await listMessages(chatId);
+          const chats = await listChats();
+          return res.status(200).json({
+            chatId,
+            messages,
+            chats,
+            pending,
+            view: opened.view,
+            steps: opened.steps,
+            thought: opened.thought,
+          });
+        } catch (err) {
+          await addMessage({ chatId, role: "assistant", body: publicError(err) });
+          const messages = await listMessages(chatId);
+          const chats = await listChats();
+          return res.status(200).json({ chatId, messages, chats, pending: false });
+        }
+      }
       if (!process.env.CURSOR_API_KEY?.trim()) {
         await addMessage({ chatId, role: "assistant", body: CURSOR_MISSING });
       } else {
         try {
-          await startCursorRun(chatId, await factsFor(), skillMode, images, webSearch);
+          await startCursorRun(chatId, await factsFor(), skillMode, images, false);
           pending = true;
         } catch (err) {
           await addMessage({

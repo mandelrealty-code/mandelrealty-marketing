@@ -9,8 +9,8 @@ import handleSession from "../shared/adminApi/session.js";
 import handleSettings from "../shared/adminApi/settings.js";
 import { rejectIfNotAdminHost } from "../shared/adminHost.js";
 
-/** Review drafting + Hospitable sync needs headroom on Hobby. */
-export const config = { maxDuration: 60 };
+/** Hobby allows 5 minutes. Opening the live browser needs more than a minute. */
+export const config = { maxDuration: 300 };
 /**
  * Single admin serverless function (Hobby plan ≤12 functions).
  * Paths are rewritten in vercel.json:

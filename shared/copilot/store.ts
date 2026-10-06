@@ -599,7 +599,7 @@ export async function listMemory(): Promise<string[]> {
     if (!error) {
       return (data ?? [])
         .map((r) => String((r as { note: string }).note))
-        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|"))
+        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|"))
         .slice(0, 20);
     }
     if (useLocalFile(error)) { /* local file store */ }
@@ -609,7 +609,7 @@ export async function listMemory(): Promise<string[]> {
     .memory.slice(-40)
     .reverse()
     .map((m) => m.note)
-    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|"))
+    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|"))
     .slice(0, 20);
 }
 
@@ -750,6 +750,138 @@ export async function saveDesk(chatId: string, desk: StoredDesk): Promise<void> 
   if (existing) existing.note = note;
   else data.memory.push({ id: randomUUID(), created_at: new Date().toISOString(), note });
   writeFileStore(data);
+}
+
+export type StoredBrowser = {
+  sessionId: string;
+  connectUrl: string;
+  liveUrl: string;
+  contextId: string;
+  contextOwned: boolean;
+  keep: boolean;
+  goal: string;
+  startUrl: string;
+  pageUrl: string;
+  site: string;
+  siteKey: string;
+  status: "running" | "signin" | "done";
+  steps: { text: string }[];
+  thought: string;
+  acts: number;
+  fails: number;
+};
+
+async function readPrefixed(prefix: string): Promise<string> {
+  let note = "";
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("note").like("note", `${prefix}%`).limit(1);
+    if (!error) note = String((data?.[0] as { note?: string } | undefined)?.note ?? "");
+    else if (!useLocalFile(error)) throw new Error(error.message);
+  }
+  if (!note) note = readFileStore().memory.find((row) => row.note.startsWith(prefix))?.note ?? "";
+  return note.startsWith(prefix) ? note.slice(prefix.length) : "";
+}
+
+async function writePrefixed(prefix: string, body: string): Promise<void> {
+  const note = `${prefix}${body}`;
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("id").like("note", `${prefix}%`).limit(1);
+    if (error) {
+      if (!useLocalFile(error)) throw new Error(error.message);
+    } else if (data?.[0]) {
+      const { error: updateError } = await client.from("copilot_memory").update({ note }).eq("id", (data[0] as { id: string }).id);
+      if (!updateError) return;
+      if (!useLocalFile(updateError)) throw new Error(updateError.message);
+    } else {
+      const { error: insertError } = await client.from("copilot_memory").insert({
+        id: randomUUID(),
+        created_at: new Date().toISOString(),
+        note,
+      });
+      if (!insertError) return;
+      if (!useLocalFile(insertError)) throw new Error(insertError.message);
+    }
+  }
+  const data = readFileStore();
+  const existing = data.memory.find((row) => row.note.startsWith(prefix));
+  if (existing) existing.note = note;
+  else data.memory.push({ id: randomUUID(), created_at: new Date().toISOString(), note });
+  writeFileStore(data);
+}
+
+async function deletePrefixed(prefix: string): Promise<void> {
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("id").like("note", `${prefix}%`).limit(1);
+    if (!error && data?.[0]) {
+      await client.from("copilot_memory").delete().eq("id", (data[0] as { id: string }).id);
+      return;
+    }
+    if (error && !useLocalFile(error)) return;
+  }
+  const data = readFileStore();
+  data.memory = data.memory.filter((row) => !row.note.startsWith(prefix));
+  writeFileStore(data);
+}
+
+export async function readBrowser(chatId: string): Promise<StoredBrowser | null> {
+  const raw = await readPrefixed(`browser|${chatId}|`);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as StoredBrowser;
+    if (!value?.sessionId || !value.liveUrl) return null;
+    value.steps = Array.isArray(value.steps) ? value.steps : [];
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveBrowser(chatId: string, row: StoredBrowser): Promise<void> {
+  await writePrefixed(`browser|${chatId}|`, JSON.stringify(row));
+}
+
+export async function readSiteContext(siteKey: string): Promise<string> {
+  return (await readPrefixed(`bbctx|${siteKey}|`)).trim();
+}
+
+export async function saveSiteContext(siteKey: string, contextId: string): Promise<void> {
+  await writePrefixed(`bbctx|${siteKey}|`, contextId);
+}
+
+export async function clearSiteContext(siteKey: string): Promise<void> {
+  if (!siteKey) return;
+  await deletePrefixed(`bbctx|${siteKey}|`);
+}
+
+export async function listOpenBrowsers(): Promise<{ chatId: string; row: StoredBrowser }[]> {
+  const notes: string[] = [];
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("note").like("note", "browser|%").limit(20);
+    if (!error) {
+      for (const row of data ?? []) notes.push(String((row as { note?: string }).note ?? ""));
+    } else if (!useLocalFile(error)) throw new Error(error.message);
+  }
+  if (!notes.length) {
+    for (const row of readFileStore().memory) {
+      if (row.note.startsWith("browser|")) notes.push(row.note);
+    }
+  }
+  const runs: { chatId: string; row: StoredBrowser }[] = [];
+  for (const note of notes) {
+    const match = /^browser\|([^|]+)\|(.*)$/.exec(note);
+    if (!match?.[1] || !match[2]) continue;
+    try {
+      const row = JSON.parse(match[2]) as StoredBrowser;
+      if (row?.sessionId && row.status === "running") runs.push({ chatId: match[1], row });
+    } catch {
+      /* skip a broken note */
+    }
+  }
+  return runs;
 }
 
 export async function clearDesk(chatId: string): Promise<void> {
