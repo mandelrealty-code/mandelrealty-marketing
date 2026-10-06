@@ -38,8 +38,12 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+function isPhotoFile(file: File) {
+  return file.type.startsWith("image/") || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file.name);
+}
+
 async function imagePayload(file: File): Promise<{ mimeType: string; data: string } | null> {
-  if (!file.type.startsWith("image/")) return null;
+  if (!isPhotoFile(file)) return null;
   try {
     const bitmap = await createImageBitmap(file);
     const max = 1280;
@@ -482,7 +486,16 @@ function Thinking({
 }) {
   return (
     <div className="cp-think">
-      <button type="button" className={`cp-think-head${live ? " live" : ""}`} onClick={onToggle}>
+      <button
+        type="button"
+        className={`cp-think-head${live ? " live" : ""}`}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onToggle();
+        }}
+      >
         <span className="label">{title}</span>
         {summary ? <span className="count">{summary}</span> : null}
         <ThinkChevron open={open} />
@@ -580,6 +593,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [runOpen, setRunOpen] = useState(false);
   const [stopped, setStopped] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const sendDown = useRef(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const photoRef = useRef<HTMLInputElement | null>(null);
@@ -678,8 +692,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (menuFor && !target?.closest("[data-chat-menu]")) setMenuFor(null);
       if (plusOpen && !target?.closest("[data-plus]")) setPlusOpen(false);
     }
-    document.addEventListener("mousedown", down);
-    return () => document.removeEventListener("mousedown", down);
+    document.addEventListener("click", down);
+    return () => document.removeEventListener("click", down);
   }, [menuFor, plusOpen]);
 
   useEffect(() => {
@@ -806,26 +820,31 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   async function send(preset?: string, keepChat = false) {
-    const attached = files.length ? `\nAttached: ${files.map((file) => file.name).join(", ")}` : "";
-    const typed = (preset ?? text).trim();
-    const value = `${typed}${preset ? "" : attached}`.trim();
-    if ((!value && files.length === 0) || busy) return;
     const kept = files;
+    const photos = preset ? [] : kept.filter((item) => item.kind === "photo" || isPhotoFile(item.file));
+    const docs = preset ? [] : kept.filter((item) => !photos.includes(item));
+    const attached = docs.length ? `\nAttached: ${docs.map((file) => file.name).join(", ")}` : "";
+    const typed = (preset ?? text).trim();
+    const value = `${typed}${attached}`.trim();
+    if ((!value && kept.length === 0) || busy) return;
     const images: { mimeType: string; data: string }[] = [];
-    for (const item of kept) {
-      if (!item.file.type.startsWith("image/")) continue;
+    for (const item of photos) {
       const image = await imagePayload(item.file).catch(() => null);
       if (image) images.push(image);
       if (images.length === 4) break;
     }
+    if (photos.length && images.length === 0) {
+      setError("That photo couldn't be read. Try a different one.");
+      return;
+    }
     const ctrl = new AbortController();
     abortRef.current = ctrl;
-    const pdf = kept.find((file) => file.file.type === "application/pdf" || /\.pdf$/i.test(file.name));
+    const pdf = docs.find((file) => file.file.type === "application/pdf" || /\.pdf$/i.test(file.name));
     const searching = webSearch && !preset && !pictureMode;
     const makingPicture = pictureMode && !preset;
-    setPending(value);
+    setPending(value || "Look at the attached photo.");
     setPendingPicture(makingPicture);
-    setLiveSteps(makingPicture ? [] : [{ text: "Sent your message to Cursor" }]);
+    setLiveSteps(makingPicture ? [] : [{ text: images.length ? "Looking at the photo" : searching ? "Looking this up" : "Thinking" }]);
     if (pdf && !makingPicture) {
       setStage({
         kind: "pdf",
@@ -853,24 +872,20 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (makingPicture) setPictureMode(false);
     }
     let activeId = preset && !keepChat ? "" : chatId ?? "";
+    let delivered = false;
     try {
       const makingSkill = skillMode && (!preset || keepChat);
       const data = await api<{ chatId: string; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[] }>("send", {
-        text: value,
+        text: value || "Look at the attached photo.",
         chatId: preset && !keepChat ? null : chatId,
         kind: "chat",
         skillMode: makingSkill,
         pictureMode: makingPicture,
+        webSearch: searching,
         images,
       }, ctrl.signal);
-      if (ctrl.signal.aborted) {
-        if (!preset) {
-          setText(typed);
-          setFiles(kept);
-          if (makingPicture) setPictureMode(true);
-        }
-        return;
-      }
+      delivered = true;
+      if (ctrl.signal.aborted) return;
       kept.forEach((file) => {
         if (file.url && file.url !== pdf?.url) URL.revokeObjectURL(file.url);
       });
@@ -902,14 +917,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (ctrl.signal.aborted) {
         setStopped(true);
         if (activeId) void api("cancel-think", { chatId: activeId }).catch(() => undefined);
-        if (!preset) {
+        if (!delivered && !preset) {
           setText(typed);
           setFiles(kept);
           if (makingPicture) setPictureMode(true);
         }
       } else {
         setError(e instanceof Error ? e.message : "Could not send.");
-        if (!preset) {
+        if (!delivered && !preset) {
           setText(typed);
           setFiles(kept);
           if (makingPicture) setPictureMode(true);
@@ -1163,7 +1178,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       name: file.name,
       size: formatBytes(file.size),
       ext: fileExt(file.name),
-      url: file.type.startsWith("image/") || file.type === "application/pdf" || /\.pdf$/i.test(file.name) ? URL.createObjectURL(file) : undefined,
+      url: kind === "photo" || file.type.startsWith("image/") || file.type === "application/pdf" || /\.pdf$/i.test(file.name) ? URL.createObjectURL(file) : undefined,
       file,
     }));
     if (next.length) setFiles((prev) => [...prev, ...next]);
@@ -1826,6 +1841,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         <div className="cp-user">{pending}</div>
                       </div>
                     ) : null}
+                    {pendingPicture ? (
+                      <div className="cp-bot">
+                        <figure className="cp-made cp-making" aria-live="polite">
+                          <div className="cp-making-frame" aria-hidden />
+                          <figcaption>Making the picture</figcaption>
+                        </figure>
+                      </div>
+                    ) : null}
                     {(pending || thinking) && !pendingPicture ? (
                       <Thinking
                         open={runOpen}
@@ -1847,10 +1870,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                 <div className="cp-pluswrap" data-plus="1">
                   {plusOpen ? (
                     <div className="cp-plusmenu" role="menu">
-                      <button type="button" role="menuitem" onClick={() => photoRef.current?.click()}><PhotoIcon />Photo</button>
-                      <button type="button" role="menuitem" onClick={() => docRef.current?.click()}><DocIcon />Document</button>
+                      <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); photoRef.current?.click(); }}><PhotoIcon />Photo</button>
+                      <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); docRef.current?.click(); }}><DocIcon />Document</button>
                       <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); setPictureMode(true); setSkillMode(false); setWebSearch(false); }}><PictureIcon />Make a picture</button>
-                      <button type="button" role="menuitemcheckbox" aria-checked={webSearch} onClick={() => { setWebSearch((on) => !on); setPictureMode(false); setSkillMode(false); }}>
+                      <button type="button" role="menuitemcheckbox" aria-checked={webSearch} onClick={() => { setPlusOpen(false); setWebSearch((on) => !on); setPictureMode(false); setSkillMode(false); }}>
                         <GlobeIcon />Web search
                         {webSearch ? <CheckIcon /> : null}
                       </button>
@@ -1937,7 +1960,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       aria-label={pending || thinking ? "Stop" : "Send"}
                       disabled={!(pending || thinking) && !text.trim() && files.length === 0}
                       style={{ opacity: pending || thinking || text.trim() || files.length ? 1 : 0.45 }}
-                      onClick={() => (pending || thinking ? stopRun() : void send())}
+                      onMouseDown={() => { sendDown.current = true; }}
+                      onClick={() => {
+                        const fromHere = sendDown.current;
+                        sendDown.current = false;
+                        if (pending || thinking) {
+                          if (fromHere) stopRun();
+                          return;
+                        }
+                        void send();
+                      }}
                     >
                       {pending || thinking ? <span className="sq" /> : <Up />}
                     </button>

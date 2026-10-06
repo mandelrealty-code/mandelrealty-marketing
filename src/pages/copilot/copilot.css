@@ -2774,6 +2774,18 @@ html.cp-app[data-cp-theme="light"] #root {
   color: var(--quiet);
 }
 
+.cp-making-frame {
+  width: 100%;
+  aspect-ratio: 7 / 6;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(100deg, transparent 30%, rgba(196, 163, 90, 0.28) 50%, transparent 70%),
+    var(--surf2);
+  background-size: 220% 100%, auto;
+  animation: mrgShimmer 1.6s linear infinite;
+}
+
 .cp-plusmenu .cp-check {
   margin-left: auto;
   flex-shrink: 0;

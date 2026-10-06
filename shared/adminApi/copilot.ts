@@ -10,6 +10,7 @@ import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { CURSOR_MISSING, cancelCursorRun, collectCursorRun, startCursorRun } from "../copilot/cursorThink.js";
 import { nameChat } from "../copilot/chatTitle.js";
+import { answerGeneral, answerPhoto, solveMath, wantsWeb } from "../copilot/plainAnswer.js";
 import { makePicture } from "../copilot/picture.js";
 import { toE164 } from "../followUpSequences.js";
 import {
@@ -301,6 +302,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         chatId = chat.id;
       }
       const pictureMode = body.pictureMode === true;
+      const skillMode = body.skillMode === true;
+      const webSearch = body.webSearch === true || wantsWeb(text);
       await addMessage({ chatId, role: "user", body: text, images, picture: pictureMode });
       let pending = false;
       if (pictureMode) {
@@ -314,11 +317,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chats = await listChats();
         return res.status(200).json({ chatId, messages, chats, pending: false });
       }
+      if (images.length && !skillMode) {
+        const spoken = await answerPhoto(text, images);
+        const missed = /couldn't read|isn't connected/i.test(spoken);
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: spoken,
+          steps: [{ text: missed ? "Could not read the photo" : "Looked at the photo" }],
+          thought: missed ? "The photo did not come back as a description." : "The photo was read here. Nothing was sent.",
+        });
+        const messages = await listMessages(chatId);
+        const chats = await listChats();
+        return res.status(200).json({ chatId, messages, chats, pending: false });
+      }
+      if (!skillMode && !webSearch) {
+        const math = solveMath(text);
+        const spoken = math ?? (await answerGeneral(text));
+        if (spoken) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: spoken,
+            steps: [{ text: math ? "Worked it out" : "Answered" }],
+            thought: math ? "This was arithmetic, so it stayed in the app." : "This did not need Cursor.",
+          });
+          const messages = await listMessages(chatId);
+          const chats = await listChats();
+          return res.status(200).json({ chatId, messages, chats, pending: false });
+        }
+      }
       if (!process.env.CURSOR_API_KEY?.trim()) {
         await addMessage({ chatId, role: "assistant", body: CURSOR_MISSING });
       } else {
         try {
-          await startCursorRun(chatId, await factsFor(), body.skillMode === true, images);
+          await startCursorRun(chatId, await factsFor(), skillMode, images, webSearch);
           pending = true;
         } catch (err) {
           await addMessage({

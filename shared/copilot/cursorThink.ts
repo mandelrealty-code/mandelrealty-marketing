@@ -1,4 +1,4 @@
-import { Agent, AgentBusyError, CursorAgentError, type Run } from "@cursor/sdk";
+import { Agent, AgentBusyError, CursorAgentError } from "@cursor/sdk";
 import { addMessage, addReminder, listMessages, readCursorLink, renameChat, saveCursorLink } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
@@ -15,44 +15,17 @@ function explain(err: unknown): string {
   return "Cursor could not start.";
 }
 
-function clip(value: string, max = 220): string {
-  const one = value.replace(/\s+/g, " ").trim();
-  if (one.length <= max) return one;
-  return `${one.slice(0, max - 1).trimEnd()}…`;
-}
-
-function argText(args: object, key: string): string {
-  const value = (args as Record<string, unknown>)[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function httpUrl(value: string): string {
-  const match = value.match(/https?:\/\/\S+/i);
-  return match ? match[0].replace(/[),.;]+$/, "") : "";
-}
-
-function describeTool(message: object): { text: string; url?: string } | null {
-  const args = "args" in message && message.args && typeof message.args === "object" ? message.args : {};
-  const query = argText(args, "query") || argText(args, "pattern") || argText(args, "searchTerm");
-  const path = argText(args, "path") || argText(args, "targetFile") || argText(args, "file");
-  const url = httpUrl(argText(args, "url"));
-  const command = argText(args, "command").split("\n")[0] ?? "";
-  if (query) return { text: `Searched for “${clip(query, 90)}”` };
-  if (url) return { text: `Opened ${clip(url, 90)}`, url };
-  if (path && /\/agent\/assets\/|\.(jpe?g|png|gif|webp)$/i.test(path)) return { text: "Looked at the photo" };
-  if (path && path.startsWith("/agent/")) return null;
-  if (path) return { text: `Read ${clip(path, 90)}` };
-  if (command) return { text: clip(command, 140) };
-  return null;
-}
-
-function promptFor(facts: string, history: string, skillMode: boolean, hasImages: boolean): string {
+function promptFor(facts: string, history: string, skillMode: boolean, hasImages: boolean, web: boolean): string {
   return [
     "You are Mandel Realty Copilot, answering the two partners inside their admin app.",
     "Think, then answer. Ask one plain question when you are unsure. If you already know, answer.",
-    "Do not edit files, open a pull request, or treat this as a coding job. This workspace is empty on purpose.",
+    web
+      ? "They asked you to look on the web. Open the browser, go to the site they named, and read the page. Then answer with what you found and the page address. Do not say you cannot search. Do not tell them to look it up themselves."
+      : "Do not edit files, open a pull request, or treat this as a coding job. This workspace is empty on purpose.",
     "Do not text, email, or message a guest, a host, or a client. The app only sends after they press confirm.",
-    "Do not invent fees, names, issues, links, or whether an account is connected. Use the facts. If a fact is missing, say so.",
+    web
+      ? "Do not invent fees, names, or whether an account is connected. Include the address of the page you opened. Facebook Marketplace and Amazon are normal websites. Open them."
+      : "Do not invent fees, names, issues, links, or whether an account is connected. Use the facts. If a fact is missing, say so.",
     skillMode
       ? "They pressed Create a skill. Ask what you still need, one question at a time. When you have enough, put a skill draft in the JSON. Do not save it yourself."
       : "Only include a draft when they need to approve a note, an email, or a skill.",
@@ -187,32 +160,12 @@ async function applyAsks(parsed: Parsed): Promise<string> {
   return notes.length ? `${parsed.body}\n\n${notes.join("\n")}` : parsed.body;
 }
 
-async function liveSteps(run: Run): Promise<{ steps: ThinkStep[]; thought?: string }> {
-  const waiting = { steps: [{ text: "Sent your message to Cursor" }] };
-  if (!run.supports("conversation")) return waiting;
-  try {
-    const turns = await run.conversation();
-    const timeline: { text: string; kind: "thought" | "action"; url?: string }[] = [];
-    for (const turn of turns) {
-      if (turn.type !== "agentConversationTurn") continue;
-      for (const step of turn.turn.steps) {
-        if (step.type === "thinkingMessage") {
-          const text = clip(step.message.text);
-          if (text && !/\bjson\b|examining the attached|\/agent\/assets\//i.test(text)) timeline.push({ text, kind: "thought" });
-        } else if (step.type === "toolCall") {
-          const action = describeTool(step.message);
-          if (action) timeline.push({ text: action.text, kind: "action", url: action.url });
-        }
-      }
-    }
-    const recent = timeline.slice(-12);
-    const lastThought = [...recent].reverse().find((item) => item.kind === "thought");
-    const steps = recent.filter((item) => item !== lastThought).map((item) => ({ text: item.text, ...(item.url ? { url: item.url } : {}) }));
-    if (!lastThought && !steps.length) return waiting;
-    return { thought: lastThought?.text, steps };
-  } catch {
-    return waiting;
-  }
+const heldAgents = new Map<string, { [Symbol.asyncDispose](): Promise<void> }>();
+
+async function releaseAgent(chatId: string) {
+  const agent = heldAgents.get(chatId);
+  heldAgents.delete(chatId);
+  if (agent) await agent[Symbol.asyncDispose]().catch(() => undefined);
 }
 
 async function hideAgent(agentId: string, apiKey: string) {
@@ -242,6 +195,7 @@ export async function startCursorRun(
   facts: string,
   skillMode: boolean,
   images: { mimeType: string; data: string }[] = [],
+  web = false,
 ): Promise<void> {
   const apiKey = process.env.CURSOR_API_KEY?.trim();
   if (!apiKey) throw new Error(CURSOR_MISSING);
@@ -252,16 +206,16 @@ export async function startCursorRun(
   const agent = await openAgent(chatId, apiKey);
   try {
     await saveCursorLink(chatId, agent.agentId, existing?.runId ?? "");
-    const prompt = promptFor(facts, history, skillMode, images.length > 0);
+    const prompt = promptFor(facts, history, skillMode, images.length > 0, web);
     const run = images.length
       ? await agent.send({ text: prompt, images })
       : await agent.send(prompt);
+    heldAgents.set(chatId, agent);
     await saveCursorLink(chatId, agent.agentId, run.id);
   } catch (err) {
+    await agent[Symbol.asyncDispose]().catch(() => undefined);
     if (err instanceof AgentBusyError) return;
     throw new Error(explain(err));
-  } finally {
-    await agent[Symbol.asyncDispose]().catch(() => undefined);
   }
 }
 
@@ -270,43 +224,42 @@ export async function collectCursorRun(chatId: string): Promise<ThinkState> {
   const link = await readCursorLink(chatId);
   if (!apiKey || !link?.agentId || !link.runId) return { pending: false, steps: [] };
   const run = await Agent.getRun(link.runId, { runtime: "cloud", agentId: link.agentId, apiKey });
-  const trail = await liveSteps(run);
-  if (run.status === "running") return { pending: true, ...trail };
-  const result = await Promise.race([
-    run.wait(),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
-  ]);
-  if (!result) return { pending: true, ...trail };
+  const looking = { steps: [{ text: "Looking this up" }] };
+  if (run.status === "running") return { pending: true, ...looking };
   const again = await readCursorLink(chatId);
-  if (!again?.runId) return { pending: false, ...trail };
+  if (!again?.runId) {
+    await releaseAgent(chatId);
+    return { pending: false, steps: [] };
+  }
   const messages = await listMessages(chatId);
   if (messages[messages.length - 1]?.role !== "assistant") {
-    const parsed: Parsed = result.status === "finished"
-      ? parseModel(result.result ?? "")
+    const parsed: Parsed = run.status === "finished"
+      ? parseModel(run.result ?? "")
       : {
           json: false,
           reminder: null,
-          body: result.status === "cancelled"
+          body: run.status === "cancelled"
             ? "Stopped. Nothing was sent."
-            : `Cursor stopped before it answered. ${result.error?.message ?? ""}`.trim(),
+            : `Cursor stopped before it answered. ${run.error?.message ?? ""}`.trim(),
           choices: null,
           draft: null,
         };
     await addMessage({
       chatId,
       role: "assistant",
-      body: result.status === "finished" ? await applyAsks(parsed) : parsed.body,
+      body: run.status === "finished" ? await applyAsks(parsed) : parsed.body,
       draft: parsed.draft,
       choices: parsed.choices,
-      steps: trail.steps,
-      thought: trail.thought,
+      steps: looking.steps,
+      thought: undefined,
     });
     const skillName = parsed.draft?.channel === "skill" ? parsed.draft.skillName?.trim() : "";
     if (skillName) await renameChat(chatId, skillName);
   }
   await saveCursorLink(chatId, link.agentId, "");
   await hideAgent(link.agentId, apiKey);
-  return { pending: false, ...trail };
+  await releaseAgent(chatId);
+  return { pending: false, ...looking };
 }
 
 export async function cancelCursorRun(chatId: string): Promise<void> {
@@ -318,6 +271,7 @@ export async function cancelCursorRun(chatId: string): Promise<void> {
     await Agent.cancelRun(link.runId, { runtime: "cloud", agentId: link.agentId, apiKey }).catch(() => undefined);
   }
   if (apiKey) await hideAgent(link.agentId, apiKey);
+  await releaseAgent(chatId);
   const messages = await listMessages(chatId);
   if (messages[messages.length - 1]?.role === "user") {
     await addMessage({ chatId, role: "assistant", body: "Stopped. Nothing was sent." });
