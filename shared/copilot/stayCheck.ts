@@ -5,7 +5,7 @@ import { readPropertyHub } from "./knowledgeHub.js";
 import { memoryBodies } from "./memoryFiles.js";
 import { isManagedUnit } from "./managedUnits.js";
 import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
-import { hospitableFetch } from "../pm/hospitableClient.js";
+import { hospitableFetch, listReservationMessages } from "../pm/hospitableClient.js";
 import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -99,18 +99,21 @@ function toStay(row: Record<string, unknown>, propertyId: string): Stay {
   };
 }
 
-function toMessages(raw: unknown): Msg[] {
-  return rowsOf(raw).map((row) => {
-    const author = isRow(row.author) ? row.author : {};
-    const roleRaw = `${text(row.sender_role)} ${text(row.sender_type)}`.toLowerCase();
-    const role = roleRaw.includes("guest") ? "guest" : roleRaw.includes("host") ? "host" : "system";
-    return {
-      at: text(row.created_at) || text(row.sent_at),
-      role,
-      name: text(author.name),
-      body: text(row.body) || text(row.message) || text(row.content),
-    };
-  }).filter((row) => row.body);
+async function readStayThread(reservationId: string, now: Date): Promise<Msg[]> {
+  const pat = await getHospitablePat().catch(() => "");
+  if (!pat) throw new Error("Hospitable is not connected, so the message thread could not be read.");
+  const messages = await listReservationMessages(pat, reservationId);
+  return messages
+    .map((message) => ({
+      at: message.created_at || "",
+      role: message.sender_role,
+      name: message.author_name,
+      body: message.body,
+    }))
+    .filter((row) => {
+      const at = new Date(row.at);
+      return !row.at || Number.isNaN(at.getTime()) || at <= now;
+    });
 }
 
 async function checksChat(): Promise<string> {
@@ -284,18 +287,20 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
       }
       let messages: Msg[] = [];
       try {
-        messages = toMessages(await callTool("get-reservation-messages", { uuid: stay.id })).filter((row) => {
-          const at = new Date(row.at);
-          return !row.at || Number.isNaN(at.getTime()) || at <= now;
-        });
+        // MCP get-reservation-messages throws on these live threads. Conversations
+        // elsewhere use the public API read, which is the one that returns them.
+        messages = await readStayThread(stay.id, now);
       } catch {
-        await publishCheckReport({
-          headline: stay.code,
-          text: `${stay.code}: I can't see the message thread. ${AIRBNB_BLIND}${hubRead.ok ? "" : " The Knowledge Hub didn't return."}${failureNote(picture)}`,
-          needs_you: !picture.ok,
-          title: stay.code,
-          summary: "Messages didn't return.",
-        });
+        if (daySpan(today, stay.checkIn) >= 0 && daySpan(today, stay.checkIn) <= 7) {
+          const who = stay.guest || "The guest";
+          await publishCheckReport({
+            headline: stay.code,
+            text: `${stay.code}. ${who} arrives ${longDate(stay.checkIn)}. The message thread could not be read.`,
+            needs_you: true,
+            title: stay.code,
+            summary: `${who} arrives ${longDate(stay.checkIn)}. The message thread could not be read.`,
+          });
+        }
         continue;
       }
       const memory = businessFacts(await memoryFor(place), hub);
@@ -354,10 +359,6 @@ async function cancellation(stay: Stay, hubFailed: boolean): Promise<void> {
     title: stay.code,
     summary: "Dates are back open.",
   });
-}
-
-function failureNote(picture: CleanerPicture): string {
-  return picture.ok ? "" : ` Cleaner app failed read: ${picture.error}`;
 }
 
 function daySpan(from: string, to: string): number {

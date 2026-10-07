@@ -374,6 +374,23 @@ async function fixtureCleanerFailed(): Promise<void> {
   expect(capturedPurchases() === 0, "nothing was purchased", "a purchase was made");
 }
 
+async function fixtureThreadUnread(): Promise<void> {
+  const world = worldAt("2026-10-07T11:00:00-04:00");
+  const diane = world.reservations.find((row) => row.code === CODE.diane);
+  if (!diane) throw new Gap("Diane is in the fixture", "Diane was missing");
+  diane.threadUnreadable = true;
+  const result = await scan(world);
+  expectNothingSent();
+  const warnings = result.reports.filter((row) => /message thread could not be read/i.test(row.text));
+  expect(warnings.length === 1, "one named warning when the thread cannot be read", `found ${warnings.length}`);
+  const text = warnings[0]?.text ?? "";
+  expect(/HMESPTA3TJ/.test(text) && /Diane/.test(text) && /October 9, 2026/.test(text), "the warning names the stay, the guest, and the arrival date", text);
+  expect(!result.drafts.some((row) => /gluten-free|lactose-free|P4-62/.test(`${row.subject}\n${row.body}`)), "an unread thread does not produce Diane's drafts", "a draft was written from the failed read");
+  const again = await rescan(world.now);
+  expect(!again.reports.some((row) => /message thread could not be read/i.test(row.text)), "a second pass does not repeat the warning", again.reports.map((row) => row.text).join("\n").slice(0, 400));
+  expectDraftRules(result.drafts, result.reports);
+}
+
 async function fixtureTodayCheckins(): Promise<void> {
   installWorld(worldAt("2026-10-07T11:00:00-04:00"));
   const answer = (await answerStay("How many check-ins are today?")) ?? "";
@@ -400,6 +417,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "13", title: "Low stock offer with no purchase", run: fixtureLowStock },
   { id: "14", title: "Failed cleaner read", run: fixtureCleanerFailed },
   { id: "15", title: "Today's check-ins across managed properties", run: fixtureTodayCheckins },
+  { id: "16", title: "Unreadable thread names the stay", run: fixtureThreadUnread },
 ];
 
 function guard(): void {
