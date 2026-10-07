@@ -519,16 +519,22 @@ export function EmailDraftCard({
         <>
           <span className="cp-sk-waiting"><span className="cp-sk-dot" style={{ background: "var(--primary)" }} />Waiting for you</span>
           <div className="cp-sk-btns">
-            <button type="button" className="cp-sk-gold" disabled={busy} onClick={onApprove}>Approve</button>
+            <button type="button" className="cp-sk-gold" disabled={busy} onClick={onApprove}>Submit</button>
             <button type="button" className="cp-sk-ghost" disabled={busy} onClick={onHold}>Hold</button>
           </div>
-          <p className="cp-sk-after muted">Email isn’t connected yet, so Approve won’t send it. It’s marked approved, and nothing goes out on its own later.</p>
+          <p className="cp-sk-after muted">Submit sends this reply from your Gmail. Hold keeps it here.</p>
+        </>
+      ) : null}
+      {d.status === "sent" ? (
+        <>
+          <span className="cp-sk-approved"><Check />Sent</span>
+          <p className="cp-sk-tight">Sent from your Gmail.</p>
         </>
       ) : null}
       {d.status === "approved_unsent" ? (
         <>
-          <span className="cp-sk-approved"><Check />Approved</span>
-          <p className="cp-sk-tight">Not sent. Email isn’t connected, so it stays here.</p>
+          <span className="cp-sk-approved"><Check />Not sent</span>
+          <p className="cp-sk-tight">{message.body || "Not sent. It stays here."}</p>
         </>
       ) : null}
       {d.status === "held" ? <p className="cp-sk-mutedp">On hold. Nothing was sent.</p> : null}

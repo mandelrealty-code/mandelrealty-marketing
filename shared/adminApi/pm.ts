@@ -38,6 +38,7 @@ import {
 } from "../pm/portalUserStore.js";
 import { createOwnerPreviewToken } from "../portalAuth.js";
 import { ownerPortalUrl, sendOwnerInviteEmail } from "../ownerEmails.js";
+import { syncUnitsFromOps } from "../copilot/memoryFiles.js";
 import {
   createPmClient,
   deletePmClient,
@@ -660,6 +661,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             hst_bps: hstBps,
             rate_bps: rateBps,
           });
+          await syncUnitsFromOps().catch(() => undefined);
           return res.status(200).json({ property });
         }
         if (op === "import_hospitable") {
@@ -694,6 +696,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             hst_bps: hstBps,
             rate_bps: rateBps,
           });
+          await syncUnitsFromOps().catch(() => undefined);
           return res.status(200).json({ property });
         }
         if (op === "update") {
@@ -765,6 +768,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             mat_required:
               typeof body.mat_required === "boolean" ? body.mat_required : undefined,
           });
+          if (body.name != null || body.address != null || typeof body.active === "boolean") {
+            await syncUnitsFromOps().catch(() => undefined);
+          }
           return res.status(200).json({ property });
         }
         if (op === "mark_mat_filing") {

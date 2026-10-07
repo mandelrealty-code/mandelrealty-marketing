@@ -4516,3 +4516,95 @@ html.cp-app[data-cp-theme="light"] #root {
   border-radius: 99px;
   background: #8aa4c8;
 }
+
+.cp-mem {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.cp-mem-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cp-mem-group h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--quiet);
+}
+
+.cp-mem-empty p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.cp-mem-file h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.cp-mem-label {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cp-mem-file pre,
+.cp-memcard pre {
+  margin: 14px 0 0;
+  white-space: pre-wrap;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.cp-mem-delete,
+.cp-memcard button {
+  margin-top: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cp-mem-delete {
+  color: var(--danger);
+}
+
+.cp-memcard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.cp-memcard strong,
+.cp-memcard span {
+  font-size: 13px;
+}
+
+.cp-memcard span {
+  color: var(--quiet);
+}
+
+.cp-memcard pre {
+  margin: 0;
+  color: var(--text);
+}
+
+.cp-memcard button {
+  margin-top: 8px;
+}

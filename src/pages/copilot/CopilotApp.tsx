@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AdminProductMode } from "../clients/mode";
-import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, SkillRow } from "../../../shared/copilot/types";
+import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
 import "./copilot.css";
+import { MemoryFileDetail, MemoryFileList, MemoryWrote } from "./memoryUi";
 import { EmailDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { ACCOUNT_LINKS, PICTURE_MODELS, WORK_MODELS, wantsWeb } from "../../../shared/copilot/models";
@@ -9,7 +10,7 @@ import type { AccountSpend, PictureModelId, WorkModelId } from "../../../shared/
 import { BLANK, SEED } from "../../../shared/copilot/workflow";
 import { runWhen } from "./skillsTime";
 
-type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board";
+type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
 
 type Boot = {
   brief: BriefPayload;
@@ -21,6 +22,7 @@ type Boot = {
   textNumbers?: string[];
   twilioFrom?: string;
   runningChatIds?: string[];
+  memoryFiles?: MemoryFileView[];
 };
 
 type SkillForm = { name: string; when: string; reads: string; drafts: string; mustNot: string; phone: string };
@@ -672,7 +674,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameText, setRenameText] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<{ kind: "chat" | "skill"; id: string; title: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ kind: "chat" | "skill" | "file"; id: string; title: string } | null>(null);
+  const [memoryPath, setMemoryPath] = useState<string | null>(null);
   const [skillId, setSkillId] = useState<string | null>(null);
   const [skillForm, setSkillForm] = useState<SkillForm>({ name: "", when: "", reads: "", drafts: "", mustNot: "", phone: "" });
   const [skillPhones, setSkillPhones] = useState<Record<string, string>>({});
@@ -980,7 +983,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setPending(cardText);
-    setLiveSteps([{ text: "Sent your message to Cursor" }]);
+    setLiveSteps([{ text: action === "Reply" ? "Reading the email" : "Sent your message to Cursor" }]);
     setLiveThought(undefined);
     setThinking(false);
     setRunOpen(false);
@@ -1089,7 +1092,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     let handed = false;
     try {
       const makingSkill = skillMode && (!preset || keepChat);
-      const data = await api<{ chatId: string; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[]; view?: DeskView; steps?: { text: string }[]; thought?: string }>("send", {
+      const data = await api<{ chatId: string; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[]; view?: DeskView; steps?: { text: string }[]; thought?: string; memoryFiles?: MemoryFileView[] }>("send", {
         text: value || "Look at the attached photo.",
         chatId: preset && !keepChat ? null : chatId,
         kind: "chat",
@@ -1106,6 +1109,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       });
       activeId = data.chatId;
       setChatId(data.chatId);
+      if (data.memoryFiles) setBoot((prev) => (prev ? { ...prev, memoryFiles: data.memoryFiles } : prev));
       if (searching) {
         closedBrowsers.current.delete(data.chatId);
         const saved = withDesk(deskMemory.current[data.chatId] ?? { kind: "page", control: false, open: true, url: "" }, data.view);
@@ -1206,7 +1210,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
-  const inSettings = screen === "settings" || screen === "skills" || screen === "skill" || screen === "connectors" || screen === "twilio" || screen === "account" || screen === "billing";
+  const inSettings = screen === "settings" || screen === "skills" || screen === "skill" || screen === "connectors" || screen === "twilio" || screen === "account" || screen === "billing" || screen === "memory" || screen === "memory-file";
   const skills = boot?.skills ?? [];
 
   async function runSkill(skill: CopilotSkill) {
@@ -1255,18 +1259,21 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }, [boot, chatId, screen]);
 
   const backLabel =
-    screen === "skills" || screen === "connectors" || screen === "account" || screen === "billing"
-      ? "Settings"
-      : screen === "skill"
-        ? "Skills"
-        : screen === "twilio"
-          ? "Connectors"
-          : "Chats";
+    screen === "memory-file"
+      ? "Memory"
+      : screen === "memory" || screen === "skills" || screen === "connectors" || screen === "account" || screen === "billing"
+        ? "Settings"
+        : screen === "skill"
+          ? "Skills"
+          : screen === "twilio"
+            ? "Connectors"
+            : "Chats";
 
   function back() {
-    if (screen === "skill") setScreen("skills");
+    if (screen === "memory-file") setScreen("memory");
+    else if (screen === "skill") setScreen("skills");
     else if (screen === "twilio") setScreen("connectors");
-    else if (screen === "skills" || screen === "connectors" || screen === "account" || screen === "billing") setScreen("settings");
+    else if (screen === "memory" || screen === "skills" || screen === "connectors" || screen === "account" || screen === "billing") setScreen("settings");
     else {
       setScreen("brief");
       setSheet(false);
@@ -1355,6 +1362,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       const data = await api<{ chats: CopilotChat[] }>("delete-chat", { chatId: target.id });
       setBoot((prev) => (prev ? { ...prev, chats: data.chats } : prev));
       if (chatId === target.id) goHome();
+      return;
+    }
+    if (target.kind === "file") {
+      const data = await api<{ memoryFiles: MemoryFileView[] }>("memory-file", { action: "delete", path: target.id });
+      setBoot((prev) => (prev ? { ...prev, memoryFiles: data.memoryFiles } : prev));
+      setMemoryPath(null);
+      setScreen("memory");
       return;
     }
     const data = await api<{ skills: SkillRow[] }>("skill", { action: "delete", id: target.id });
@@ -1688,6 +1702,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           <span><strong>Skills</strong><em>Tools that automate routine work for the business.</em></span>
                           <Chevron />
                         </button>
+                        <button type="button" className="cp-setrow" onClick={() => setScreen("memory")}>
+                          <span><strong>Memory</strong><em>What this chat remembers.</em></span>
+                          <Chevron />
+                        </button>
                         <button type="button" className="cp-setrow" onClick={() => setScreen("connectors")}>
                           <span><strong>Connectors</strong><em>Accounts this chat can use.</em></span>
                           <Chevron />
@@ -1729,6 +1747,37 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         onOpenChat={() => void openChat(openSkillRecord.chat_id as string)}
                       />
                     ) : null}
+                    {screen === "memory" ? (
+                      <>
+                        <div className="cp-sethead">
+                          <h1>Memory</h1>
+                          <p>What this chat remembers.</p>
+                        </div>
+                        <MemoryFileList
+                          files={boot?.memoryFiles ?? []}
+                          onOpen={(path) => { setMemoryPath(path); setScreen("memory-file"); }}
+                        />
+                      </>
+                    ) : null}
+                    {screen === "memory-file" ? (
+                      <MemoryFileDetail
+                        file={(boot?.memoryFiles ?? []).find((file) => file.path === memoryPath) ?? {
+                          path: memoryPath || "memory",
+                          body: "",
+                          origin: "you",
+                          updated_at: "",
+                          group: "files",
+                          label: "",
+                          quiet: "",
+                          title: "Memory",
+                        }}
+                        onDelete={() => {
+                          const file = (boot?.memoryFiles ?? []).find((row) => row.path === memoryPath);
+                          if (!file) return;
+                          setPendingDelete({ kind: "file", id: file.path, title: file.title });
+                        }}
+                      />
+                    ) : null}
                     {screen === "connectors" ? (
                       <>
                         <div className="cp-sethead">
@@ -1757,7 +1806,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                                 type="button"
                                 className="cp-gold"
                                 style={{ height: 36, padding: "0 18px" }}
-                                onClick={() => setConnectHint((prev) => ({ ...prev, [row.id]: true }))}
+                                onClick={() => {
+                                  if (row.id === "gmail") {
+                                    window.location.href = "/api/admin/gmail/start";
+                                    return;
+                                  }
+                                  setConnectHint((prev) => ({ ...prev, [row.id]: true }));
+                                }}
                               >
                                 Connect
                               </button>
@@ -2041,6 +2096,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             steps={shownTrail(message).steps}
                           />
                           <ChatText text={message.body} muted={message.draft?.status !== "waiting" && !!message.draft} />
+                          {message.memoryFile ? (
+                            <MemoryWrote
+                              title={message.memoryFile.title || "Memory"}
+                              preview={message.memoryFile.preview}
+                              onOpen={() => { setMemoryPath(message.memoryFile?.path ?? null); setScreen("memory-file"); }}
+                            />
+                          ) : null}
                           {message.body.includes("Tell me when you're in.") && !messages.slice(messages.findIndex((item) => item.id === message.id) + 1).some((item) => item.role === "user") ? (
                             <button type="button" className="cp-imin" disabled={busy} onClick={() => void send("I'm in", true)}>I'm in</button>
                           ) : null}
@@ -2406,13 +2468,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       {pendingDelete ? (
         <div className="cp-dialog">
           <button type="button" className="dim" aria-label="Keep" onClick={() => setPendingDelete(null)} />
-          <div className="card" role="dialog" aria-modal="true" aria-label={pendingDelete.kind === "chat" ? "Delete this chat?" : "Delete this skill?"}>
+          <div className="card" role="dialog" aria-modal="true" aria-label={pendingDelete.kind === "chat" ? "Delete this chat?" : pendingDelete.kind === "file" ? "Delete this file?" : "Delete this skill?"}>
             <div>
-              <h2>{pendingDelete.kind === "chat" ? "Delete this chat?" : "Delete this skill?"}</h2>
+              <h2>{pendingDelete.kind === "chat" ? "Delete this chat?" : pendingDelete.kind === "file" ? "Delete this file?" : "Delete this skill?"}</h2>
               <p>
                 {pendingDelete.kind === "chat"
                   ? `“${pendingDelete.title}” will be removed for both partners.`
-                  : `${pendingDelete.title} stops running and is removed for both partners.`}
+                  : pendingDelete.kind === "file"
+                    ? `${pendingDelete.title} will be removed for both partners.`
+                    : `${pendingDelete.title} stops running and is removed for both partners.`}
               </p>
             </div>
             <div className="cp-modal-actions">

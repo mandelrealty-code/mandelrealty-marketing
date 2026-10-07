@@ -229,8 +229,20 @@ export async function markChatSeen(chatId: string): Promise<void> {
   writeFileStore(data);
 }
 
+function asMemoryFile(value: unknown): { path: string; title: string; preview: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as { path?: unknown; preview?: unknown };
+  if (typeof row.path !== "string" || !row.path.trim()) return null;
+  const titled = row as { path: string; preview?: unknown; title?: unknown };
+  return {
+    path: titled.path,
+    title: typeof titled.title === "string" ? titled.title : "",
+    preview: typeof titled.preview === "string" ? titled.preview : "",
+  };
+}
+
 function unpackMessage(row: CopilotMessage): CopilotMessage {
-  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean }) | null;
+  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean; memory_file?: { path: string; preview: string } }) | null;
   const choices = Array.isArray(raw?.choices) ? raw.choices : row.choices ?? null;
   const steps = Array.isArray(raw?.steps) ? raw.steps : row.steps ?? null;
   const thought = typeof raw?.thought === "string" ? raw.thought : row.thought ?? null;
@@ -238,9 +250,10 @@ function unpackMessage(row: CopilotMessage): CopilotMessage {
   const report = raw?.report && typeof raw.report === "object" ? raw.report : row.report ?? null;
   const run_id = typeof raw?.run_id === "string" ? raw.run_id : row.run_id ?? null;
   const picture = raw?.picture === true || row.picture === true;
-  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture };
-  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, ...draft } = raw;
-  return { ...row, draft, choices, steps, thought, images, report, run_id, picture };
+  const memoryFile = asMemoryFile(raw?.memory_file) ?? row.memoryFile ?? null;
+  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture, memoryFile };
+  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, memory_file: _memoryFile, ...draft } = raw;
+  return { ...row, draft, choices, steps, thought, images, report, run_id, picture, memoryFile };
 }
 
 export async function listMessages(chatId: string): Promise<CopilotMessage[]> {
@@ -310,6 +323,7 @@ export async function addMessage(input: {
   report?: CopilotReport | null;
   runId?: string | null;
   picture?: boolean;
+  memoryFile?: { path: string; title: string; preview: string } | null;
 }): Promise<CopilotMessage> {
   const extra = {
     ...(input.choices?.length ? { choices: input.choices } : {}),
@@ -319,6 +333,7 @@ export async function addMessage(input: {
     ...(input.report ? { report: input.report } : {}),
     ...(input.runId ? { run_id: input.runId } : {}),
     ...(input.picture ? { picture: true } : {}),
+    ...(input.memoryFile ? { memory_file: input.memoryFile } : {}),
   };
   const storedDraft = Object.keys(extra).length ? { ...(input.draft ?? {}), ...extra } : input.draft ?? null;
   const message: CopilotMessage = {
@@ -599,7 +614,7 @@ export async function listMemory(): Promise<string[]> {
     if (!error) {
       return (data ?? [])
         .map((r) => String((r as { note: string }).note))
-        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|"))
+        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|"))
         .slice(0, 20);
     }
     if (useLocalFile(error)) { /* local file store */ }
@@ -609,7 +624,7 @@ export async function listMemory(): Promise<string[]> {
     .memory.slice(-40)
     .reverse()
     .map((m) => m.note)
-    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|"))
+    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|"))
     .slice(0, 20);
 }
 
@@ -770,6 +785,69 @@ export type StoredBrowser = {
   acts: number;
   fails: number;
 };
+
+export async function readGmailLogin(): Promise<{ refreshToken: string; email: string } | null> {
+  const raw = await readPrefixed("gmail|");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { refreshToken?: string; email?: string };
+    const refreshToken = parsed.refreshToken?.trim() ?? "";
+    if (!refreshToken) return null;
+    return { refreshToken, email: parsed.email?.trim() ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveGmailLogin(refreshToken: string, email: string): Promise<void> {
+  await writePrefixed("gmail|", JSON.stringify({ refreshToken, email }));
+}
+
+export type GmailOffer = {
+  from: string;
+  email: string;
+  subject: string;
+  snippet: string;
+  threadId: string;
+  messageId: string;
+  rfcId: string;
+};
+
+export async function readGmailOffer(): Promise<GmailOffer | null> {
+  const raw = await readPrefixed("gmail-offer|");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<GmailOffer>;
+    if (!parsed.email || !parsed.threadId || !parsed.messageId) return null;
+    return {
+      from: parsed.from ?? "",
+      email: parsed.email,
+      subject: parsed.subject ?? "",
+      snippet: parsed.snippet ?? "",
+      threadId: parsed.threadId,
+      messageId: parsed.messageId,
+      rfcId: parsed.rfcId ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveGmailOffer(offer: GmailOffer): Promise<void> {
+  await writePrefixed("gmail-offer|", JSON.stringify(offer));
+}
+
+export async function readMessage(messageId: string): Promise<CopilotMessage | null> {
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_messages").select("*").eq("id", messageId).maybeSingle();
+    if (error) {
+      if (!useLocalFile(error)) throw new Error(error.message);
+    } else if (data) return unpackMessage(data as CopilotMessage);
+  }
+  const row = readFileStore().messages.find((item) => item.id === messageId);
+  return row ? unpackMessage(row) : null;
+}
 
 async function readPrefixed(prefix: string): Promise<string> {
   let note = "";

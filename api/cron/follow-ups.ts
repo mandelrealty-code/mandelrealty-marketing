@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { processDueFollowups } from "../../shared/followUpStore.js";
 import { processUnansweredReviews } from "../../shared/pm/reviewReply/store.js";
+import { runNightlyDream } from "../../shared/copilot/memoryFiles.js";
 import { runScheduledSkills } from "../../shared/copilot/skillRunner.js";
 
 export const config = { maxDuration: 60 };
@@ -32,7 +33,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.job === "copilot") {
     try {
       const copilot = await runScheduledSkills();
-      return res.status(200).json({ ok: true, copilot });
+      const dream = await runNightlyDream().catch(() => ({ wrote: null }));
+      return res.status(200).json({ ok: true, copilot, dream });
     } catch (err) {
       const error = err instanceof Error ? err.message : "Copilot skills failed";
       console.error("[cron/follow-ups] copilot", error);

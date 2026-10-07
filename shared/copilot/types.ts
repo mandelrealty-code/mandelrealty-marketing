@@ -1,9 +1,11 @@
-export type DraftStatus = "waiting" | "held" | "approved_unsent";
+export type DraftStatus = "waiting" | "held" | "approved_unsent" | "sent";
 
 export type CopilotDraft = {
   subject: string;
   body: string;
   to: string;
+  threadId?: string;
+  replyMessageId?: string;
   status: DraftStatus;
   channel: "email" | "note" | "skill";
   skillName?: string;
@@ -63,6 +65,8 @@ export type CopilotMessage = {
   report?: CopilotReport | null;
   /** Set when a skill run wrote this message, not a chat answer. */
   run_id?: string | null;
+  /** A memory file written in this turn. */
+  memoryFile?: { path: string; title: string; preview: string } | null;
 };
 
 export type CopilotReportRow = { who: string; meta: string; details?: string[]; quote?: string };
@@ -162,3 +166,14 @@ export type CopilotRun = {
 };
 
 export type SkillRow = CopilotSkill & { lastRun: CopilotRun | null };
+
+export type MemoryFileView = {
+  path: string;
+  body: string;
+  origin: "you" | "ops" | "night";
+  updated_at: string;
+  group: "today" | "files" | "tonight";
+  label: string;
+  quiet: string;
+  title: string;
+};

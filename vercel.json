@@ -99,6 +99,14 @@
       "destination": "/api/admin?section=copilot"
     },
     {
+      "source": "/api/admin/gmail/start",
+      "destination": "/api/admin?section=gmail&op=start"
+    },
+    {
+      "source": "/api/admin/gmail/callback",
+      "destination": "/api/admin?section=gmail&op=callback"
+    },
+    {
       "source": "/api/copilot/tools",
       "destination": "/api/admin?section=copilot_tools"
     },

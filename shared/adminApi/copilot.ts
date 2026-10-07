@@ -6,6 +6,7 @@ import {
 } from "../adminAuth.js";
 import { passwordMatches } from "../adminAuth.js";
 import { getHospitablePat } from "../pm/clientStore.js";
+import { gmailConnected, gmailKeysReady } from "./gmail.js";
 import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
@@ -16,6 +17,8 @@ import { nameChat } from "../copilot/chatTitle.js";
 import { pictureModel, wantsWeb, workModel } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords } from "../copilot/recordsAnswer.js";
+import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer, mailQuestion } from "../copilot/mailReply.js";
+import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
 import { toE164 } from "../followUpSequences.js";
 import {
@@ -29,6 +32,7 @@ import {
   listMemory,
   markChatSeen,
   listMessages,
+  readMessage,
   listSkills,
   listTextLog,
   listTextNumbers,
@@ -89,6 +93,8 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
   } catch {
     hospitable = Boolean(process.env.HOSPITABLE_PAT?.trim());
   }
+  const gmail = await gmailConnected().catch(() => false);
+  const gmailReady = gmailKeysReady();
   const airroi = Boolean(process.env.AIRROI_API_KEY?.trim());
   const cursor = Boolean(process.env.CURSOR_API_KEY?.trim());
   const cleaner = cleanerWebhookReady();
@@ -97,10 +103,14 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
     {
       id: "gmail",
       name: "Gmail",
-      detail: "Reads and drafts email.",
-      status: "not_connected",
-      statusLabel: "Not connected",
-      note: "Nothing sends until this is connected and you confirm.",
+      detail: "Reads mail and drafts a note when something needs you.",
+      status: gmail ? "connected" : "not_connected",
+      statusLabel: gmail ? "Connected" : "Not connected",
+      note: gmail
+        ? "Reads the mailbox you signed in. A reply sends only after you press Submit."
+        : gmailReady
+          ? "Click Connect and allow reading and sending. A reply still waits for Submit."
+          : "The Gmail sign-in is not on the server yet.",
     },
     {
       id: "hospitable",
@@ -158,11 +168,12 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
 }
 
 async function factsFor(): Promise<string> {
-  const [brief, rows, skills, memory] = await Promise.all([
+  const [brief, rows, skills, memory, memoryFiles] = await Promise.all([
     buildBrief().catch(() => null),
     connectors(),
     skillRows().catch(() => [] as SkillRow[]),
     listMemory().catch(() => []),
+    listMemoryFiles().catch(() => []),
   ]);
   const lines: string[] = [];
   if (brief) {
@@ -179,6 +190,7 @@ async function factsFor(): Promise<string> {
     );
   }
   for (const note of memory) lines.push(`Remembered: ${note}`);
+  lines.push(...promptLines(memoryFiles));
   return lines.join("\n");
 }
 
@@ -203,12 +215,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ]);
       const runningChatIds = [...new Set([...cursorRuns, ...browserRuns])];
       const skills = await skillRows();
-      const [brief, chats, memory, textLog, textNumbers] = await Promise.all([
+      const [brief, chats, memory, textLog, textNumbers, memoryFiles] = await Promise.all([
         buildBrief(),
         listChats(),
         listMemory().catch(() => []),
         listTextLog().catch(() => []),
         listTextNumbers().catch(() => []),
+        listMemoryFiles().catch(() => []),
       ]);
       return res.status(200).json({
         brief,
@@ -218,6 +231,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         textNumbers,
         twilioFrom: twilioFromLabel(),
         memory,
+        memoryFiles,
         connectors: await connectors(skills),
         runningChatIds,
         billing: process.env.CURSOR_API_KEY
@@ -245,6 +259,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ run, skills, connectors: await connectors(skills), chats: await listChats() });
     }
 
+    if (op === "memory-file") {
+      const action = String(body.action ?? "");
+      const filePath = String(body.path ?? "").trim();
+      if (action !== "delete" || !filePath) return res.status(400).json({ error: "Missing file." });
+      const memoryFiles = await deleteMemoryFile(filePath);
+      return res.status(200).json({ memoryFiles });
+    }
+
     if (op === "dismiss") {
       const cardId = String(body.cardId ?? "").trim();
       if (!cardId) return res.status(400).json({ error: "Missing card." });
@@ -263,6 +285,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!text) return res.status(400).json({ error: "Missing card." });
       const chat = await createChat(await nameChat(text));
       await addMessage({ chatId: chat.id, role: "user", body: text });
+      if (/Want me to reply\?/i.test(text)) {
+        const result = await mailDraftFromOffer();
+        await addMessage({
+          chatId: chat.id,
+          role: "assistant",
+          body: result.body,
+          draft: result.draft ? { ...result.draft, status: "waiting", channel: "email" } : null,
+          steps: [{ text: result.draft ? "Wrote a reply" : "Couldn't write a reply" }],
+          thought: "Nothing was sent. Submit is what sends it.",
+        });
+        return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
+      }
       let pending = false;
       if (!process.env.CURSOR_API_KEY?.trim()) {
         await addMessage({ chatId: chat.id, role: "assistant", body: CURSOR_MISSING });
@@ -352,7 +386,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const webSearch = body.webSearch === true || wantsWeb(text);
       const picked = workModel(String(body.model ?? "auto")).id;
       const pictureChoice = pictureModel(String(body.model ?? "draft"));
-      await addMessage({ chatId, role: "user", body: text, images, picture: pictureMode });
+      const userMessage = await addMessage({ chatId, role: "user", body: text, images, picture: pictureMode });
       const signIn = await answerSignIn(chatId);
       if (signIn) {
         await addMessage({
@@ -412,6 +446,82 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         return done();
       }
+      if (!pictureMode && !skillMode) {
+        try {
+          const history = await listMessages(chatId);
+          const previous = history[history.length - 2];
+          const before = history[history.length - 3];
+          const linked = (await connectors()).filter((row) => row.status === "connected").map((row) => row.id);
+          const memoryTurn = await takeMemoryTurn({
+            text,
+            messageId: userMessage.id,
+            chatId,
+            priorAssistant: previous?.role === "assistant" ? previous.body : "",
+            priorUser: before?.role === "user" ? before.body : "",
+            connected: linked,
+          });
+          if (memoryTurn) {
+            await addMessage({
+              chatId,
+              role: "assistant",
+              body: memoryTurn.body,
+              choices: memoryTurn.choices ?? null,
+              steps: [{ text: memoryTurn.step }],
+              thought: memoryTurn.thought,
+              memoryFile: memoryTurn.file,
+            });
+            const messages = await listMessages(chatId);
+            const chats = await listChats();
+            const memoryFiles = await listMemoryFiles().catch(() => []);
+            return res.status(200).json({ chatId, messages, chats, pending: false, memoryFiles });
+          }
+        } catch (err) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: err instanceof Error ? err.message : "The file was not written.",
+          });
+          return done();
+        }
+      }
+      if (!webSearch && !skillMode) {
+        const history = await listMessages(chatId);
+        let prior = "";
+        for (let i = history.length - 1; i >= 0; i -= 1) {
+          if (history[i]?.role === "assistant") {
+            prior = history[i]?.body ?? "";
+            break;
+          }
+        }
+        if (declinesReply(text, prior)) {
+          await addMessage({ chatId, role: "assistant", body: "Held. Nothing was sent.", thought: "Nothing was sent." });
+          return done();
+        }
+        if (agreesToReply(text, prior) || /wrote about .+\. Want me to reply\?/i.test(text)) {
+          const result = await mailDraftFromOffer();
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: result.body,
+            draft: result.draft ? { ...result.draft, status: "waiting", channel: "email" } : null,
+            steps: [{ text: result.draft ? "Wrote a reply" : "Couldn't write a reply" }],
+            thought: "Nothing was sent. Submit is what sends it.",
+          });
+          return done();
+        }
+        if (asksAboutMail(text)) {
+          const result = await mailQuestion();
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: result.body,
+            choices: "choices" in result ? result.choices : null,
+            steps: [{ text: "Read the inbox" }],
+            thought: "This came from Gmail. Nothing was sent.",
+          });
+          return done();
+        }
+      }
       if (!webSearch && !skillMode) {
         const history = await listMessages(chatId);
         let prior = "";
@@ -429,7 +539,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             role: "assistant",
             body: records,
             steps: [{ text: missed ? "Couldn't read the records" : "Read the records" }],
-            thought: "This came from Hospitable. Nothing was sent.",
+            thought: records.startsWith("We manage")
+              ? "This came from Units we manage."
+              : "This came from Hospitable. Nothing was sent.",
           });
           return done();
         }
@@ -569,10 +681,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (action === "send") {
         const note = body.channel === "note";
+        const current = await readMessage(messageId);
+        const draft = current?.draft;
+        if (!note && draft?.channel === "email" && draft.to) {
+          try {
+            await deliverReply({
+              to: draft.to,
+              subject: draft.subject,
+              body: edited || draft.body,
+              threadId: draft.threadId,
+              rfcId: draft.replyMessageId,
+            });
+            const message = await updateDraft(messageId, {
+              status: "sent",
+              body: edited || undefined,
+              bodyText: "Sent.",
+            });
+            return res.status(200).json({ message });
+          } catch (err) {
+            const message = await updateDraft(messageId, {
+              status: "approved_unsent",
+              body: edited || undefined,
+              bodyText: err instanceof Error ? err.message : "Gmail didn't send it. Nothing went out.",
+            });
+            return res.status(200).json({ message });
+          }
+        }
         const message = await updateDraft(messageId, {
           status: "approved_unsent",
           body: edited || undefined,
-          // Email keeps its text. The card shows Approved and that nothing was sent.
           bodyText: note ? "Kept. Nothing was sent." : undefined,
         });
         return res.status(200).json({ message });

@@ -7,6 +7,7 @@ import { getHospitablePat } from "../pm/clientStore.js";
 import { listAllHospitableProperties, listHospitableReservations, listReservationMessages } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { getSupabaseAdmin } from "../supabase.js";
+import { unitsAnswer } from "./memoryFiles.js";
 import { addDays, torontoToday } from "./time.js";
 
 const UNITS =
@@ -32,14 +33,20 @@ export async function answerRecords(input: string, prior = ""): Promise<string |
   try {
     if (MESSAGE.test(text)) return await lastMessage();
     if (REVIEWS.test(text)) return await newReviews();
-    if (UNITS.test(text) || (ABOUT_UNITS.test(prior) && UNIT_FOLLOW.test(text))) return await unitList();
+    if (UNITS.test(text) || (ABOUT_UNITS.test(prior) && UNIT_FOLLOW.test(text))) return await unitList(text);
   } catch {
     return "Hospitable didn't return that. I didn't guess a number or a name.";
   }
   return null;
 }
 
-async function unitList(): Promise<string> {
+async function unitList(question: string): Promise<string> {
+  const hospitableAsk = /\bhospitable\b/i.test(question) && !/\b(we manage|we track|only tracks|mrg)\b/i.test(question);
+  if (!hospitableAsk) {
+    const properties = await propertiesFromHospitable();
+    const fromFile = await unitsAnswer(properties?.length ?? null).catch(() => null);
+    if (fromFile) return fromFile;
+  }
   const properties = await propertiesFromHospitable();
   if (properties === null) {
     return "Hospitable isn't connected, so I can't see the units. Add the key in OPS Settings. I didn't guess a count.";

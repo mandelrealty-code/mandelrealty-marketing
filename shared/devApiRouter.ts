@@ -165,6 +165,10 @@ export async function handleDevApi(
     if (sectionPm) {
       return runVercelAdminHandler(req, res, "pm", handlePm);
     }
+    if (url.startsWith("/api/admin/gmail")) {
+      const { default: handleGmail } = await import("./adminApi/gmail.js");
+      return runVercelAdminHandler(req, res, "gmail", handleGmail);
+    }
     const sectionCopilot =
       url === "/api/admin/copilot" ||
       (url === "/api/admin" &&

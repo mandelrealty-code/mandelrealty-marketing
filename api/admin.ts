@@ -3,6 +3,7 @@ import handleKnowledge from "../shared/adminApi/knowledge.js";
 import handleLeads from "../shared/adminApi/leads.js";
 import handleOpsHubWebhook from "../shared/adminApi/opsHubWebhook.js";
 import handleCopilot from "../shared/adminApi/copilot.js";
+import handleGmail from "../shared/adminApi/gmail.js";
 import handleCopilotTools from "../shared/copilot/toolServer.js";
 import handlePm from "../shared/adminApi/pm.js";
 import handleSession from "../shared/adminApi/session.js";
@@ -59,6 +60,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handlePm(req, res);
     case "copilot":
       return handleCopilot(req, res);
+    case "gmail":
+      return handleGmail(req, res);
     case "ops_hub":
       return handleOpsHubWebhook(req, res);
     case "copilot_tools":
