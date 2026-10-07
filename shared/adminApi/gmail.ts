@@ -5,7 +5,7 @@ import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/
 import { readGmailLogin, saveGmailLogin } from "../copilot/store.js";
 import { captureCommit } from "../copilot/parity/capture.js";
 import { parityEnabled } from "../copilot/parity/flag.js";
-import { parityGmailOffer, paritySearchGmail } from "../copilot/parity/world.js";
+import { parityGmailOffer, parityReadMail, paritySearchGmail } from "../copilot/parity/world.js";
 
 const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/gmail/callback";
 const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
@@ -284,6 +284,12 @@ export async function searchGmail(input: {
 }
 
 export async function readGmailMessage(id: string, includeAirbnb: boolean): Promise<GmailLetter> {
+  if (parityEnabled()) {
+    const mail = parityReadMail("gmail", id);
+    if (!mail) throw new Error("Gmail didn't return that message.");
+    if (!includeAirbnb && isAirbnbNotification(mail.email)) throw new Error("That Airbnb notice stays out of this search.");
+    return mail;
+  }
   const token = await accessToken();
   const msg = await gmailGet(token, id, "full");
   if (!msg) throw new Error("Gmail didn't return that message.");

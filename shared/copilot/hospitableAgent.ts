@@ -10,6 +10,7 @@ import {
 import { callHospitableMcp, hospitableMcpConfigured, listHospitableAgentTools } from "./hospitableMcp.js";
 import { propertyLines } from "./stayAnswer.js";
 import { readMail, searchMail } from "./mailSearch.js";
+import { withoutHubSecrets } from "./hubSecrets.js";
 import { keepWay } from "./memoryFiles.js";
 import type { WorkModelId } from "./models.js";
 import { addDays, torontoToday } from "./time.js";
@@ -137,7 +138,12 @@ export function hospitableDraft(name: string, args: Record<string, unknown>, spo
     messageKey = name.startsWith("respond-") || name.startsWith("submit-") ? "response" : "body";
     next[messageKey] = spoken.trim();
   }
-  const shown = messageKey ? String(next[messageKey]) : spoken.trim() || summarize(next);
+  const shown = withoutHubSecrets(messageKey ? String(next[messageKey]) : spoken.trim() || summarize(next)).text;
+  if (messageKey) {
+    const cleaned = withoutHubSecrets(String(next[messageKey] ?? "")).text;
+    if (cleaned) next[messageKey] = cleaned;
+    else delete next[messageKey];
+  }
   return {
     channel: "hospitable",
     status: "waiting",

@@ -5,7 +5,7 @@ import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/
 import { readOutlookLogin, saveOutlookLogin } from "../copilot/store.js";
 import { captureCommit } from "../copilot/parity/capture.js";
 import { parityEnabled } from "../copilot/parity/flag.js";
-import { parityOutlookOffer, paritySearchOutlook } from "../copilot/parity/world.js";
+import { parityOutlookOffer, parityReadMail, paritySearchOutlook } from "../copilot/parity/world.js";
 
 const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/outlook/callback";
 const SCOPE = "offline_access User.Read Mail.Read Mail.Send";
@@ -269,6 +269,12 @@ export async function searchOutlook(input: {
 }
 
 export async function readOutlookMessage(id: string, includeAirbnb: boolean): Promise<OutlookLetter> {
+  if (parityEnabled()) {
+    const mail = parityReadMail("outlook", id);
+    if (!mail) throw new Error("Outlook didn't return that message.");
+    if (!includeAirbnb && isAirbnbNotification(mail.email)) throw new Error("That Airbnb notice stays out of this search.");
+    return mail;
+  }
   const token = await accessToken();
   const [inboxId, sentId] = await Promise.all([outlookFolderId(token, "inbox"), outlookFolderId(token, "sentitems")]);
   const url = new URL(`https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(id)}`);

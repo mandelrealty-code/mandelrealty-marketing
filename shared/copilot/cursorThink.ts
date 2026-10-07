@@ -1,4 +1,5 @@
 import { Agent, AgentBusyError, CursorAgentError } from "@cursor/sdk";
+import { withoutHubSecrets } from "./hubSecrets.js";
 import { addMessage, addReminder, clearDesk, listCursorRuns, listMessages, readCursorLink, readDesk, remember, renameChat, saveCursorLink, saveDesk } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
@@ -52,7 +53,7 @@ function promptFor(facts: string, history: string, skillMode: boolean, hasImages
       : "Only include a draft when they need to approve a note, an email, or a skill.",
     `Today is ${torontoToday()} in Toronto.`,
     "Skills are how work runs on its own. When a partner asks for something recurring, draft a skill. Set skillSchedule to \"daily\" when it should run by itself every morning around 5:00, or \"\" when it should only run when they ask. Every morning is the only schedule today. For an event such as a new booking, say it will check every morning, not the moment it happens.",
-    "When a skill runs on its own, it can read Hospitable and leave a report, a draft, or a reminder. It cannot read Gmail, WhatsApp, the cleaner calendar, or AirROI yet. A Hospitable change is a draft until they press Submit. If a skill needs something it cannot do, say so in the skill draft.",
+    "When a skill runs on its own, it can read Hospitable, search and read Gmail and Outlook, and leave a report, a draft, or a reminder. It cannot read WhatsApp, the cleaner calendar, or AirROI yet. A Hospitable change is a draft until they press Submit. If a skill needs something it cannot do, say so in the skill draft.",
     "To save a reminder, set reminder to {\"due_on\":\"YYYY-MM-DD\",\"text\":\"what to remind them\"}. It shows as a card on that morning.",
     "Never say a skill or reminder is saved or turned on. A skill is saved only when they press Save on its card. The app adds the reminder line after it actually saves it.",
     "The body is the only thing they read. Write it the way you would say it out loud. Do not mention JSON, tools, files, or paths in the body.",
@@ -88,10 +89,12 @@ function asDraft(value: unknown): CopilotDraft | null {
   const row = value as Record<string, unknown>;
   if (row.channel !== "email" && row.channel !== "note" && row.channel !== "skill") return null;
   const text = (key: string, max: number) => String(row[key] ?? "").trim().slice(0, max);
+  const body = withoutHubSecrets(text("body", 4000)).text;
+  if (!body && row.channel !== "skill") return null;
   return {
     channel: row.channel,
     subject: text("subject", 180),
-    body: text("body", 4000),
+    body,
     to: text("to", 180),
     status: "waiting",
     skillName: text("skillName", 80),

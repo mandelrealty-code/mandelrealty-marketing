@@ -14,6 +14,7 @@ import {
   startRun,
   updateRun,
 } from "./store.js";
+import { skillMemoryText } from "./memoryFiles.js";
 import { torontoToday } from "./time.js";
 import type { CopilotRun, CopilotSkill } from "./types.js";
 
@@ -52,7 +53,8 @@ async function lastReport(chatId: string): Promise<string> {
   return last ? last.body.slice(0, 3000) : "";
 }
 
-function promptFor(skill: CopilotSkill, trigger: CopilotRun["trigger"], previous: string): string {
+async function promptFor(skill: CopilotSkill, trigger: CopilotRun["trigger"], previous: string): Promise<string> {
+  const memory = await skillMemoryText();
   return [
     "You are Mandel Realty Copilot, running one of the partners' saved skills on your own while they are away.",
     "",
@@ -65,6 +67,10 @@ function promptFor(skill: CopilotSkill, trigger: CopilotRun["trigger"], previous
     `Today is ${torontoToday()} in Toronto. ${trigger === "manual" ? "A partner pressed Run now." : "This is the scheduled morning run."}`,
     "",
     "Use hospitable_read to look at Hospitable. It cannot change anything.",
+    "Use search_mail and read_mail for mail. They search Gmail and Outlook, inbox and Sent, and read one message in full. They do not send. Set include_airbnb only when the question is about Airbnb email.",
+    "To see whether an email thread about a stay already exists, including a building thread, search_mail for the unit or the stay. To see whether anyone replied later, read_mail on that thread and compare the dates.",
+    "Use read_memory for a unit's standing file. Pass check_in and check_out from the reservation when you have them. If those times disagree with the file, the tool returns the reservation times.",
+    "Access codes, door codes, and WiFi passwords are not in memory files. They stay in the Hospitable Knowledge Hub. Do not put them in a draft.",
     "The copilot tools are the only way to leave something for the partners.",
     "Rules:",
     "- Never send a guest message, post a review, change a calendar, change a task, or change an owner statement yourself. To propose one, call propose_draft with hospitable_tool and hospitable_args. It waits until a partner presses Submit. Never say it was sent or changed.",
@@ -77,6 +83,9 @@ function promptFor(skill: CopilotSkill, trigger: CopilotRun["trigger"], previous
     "- This workspace is empty on purpose. Do not edit files, run code, or open pull requests.",
     "- Write the report for two busy partners: short headings, one line per guest or item, no markdown. Pass title, summary and sections to post_report as well as the plain text, so it shows as a tidy card.",
     "- Finish by calling post_report exactly once. Set needs_you true when someone is waiting, something changed since the last report, a draft is waiting, or something failed.",
+    "",
+    "Memory files, the same ones chat uses:",
+    memory,
     "",
     "Last report from this skill, to say what changed:",
     previous || "(none yet)",
@@ -156,7 +165,7 @@ export async function startSkillRun(skillId: string, trigger: CopilotRun["trigge
         copilot: { type: "http", url: TOOLS_URL(), headers: { Authorization: `Bearer ${mintRunToken(run.id)}` } },
       },
     });
-    const cursorRun = await agent.send(promptFor(skill, trigger, previous));
+    const cursorRun = await agent.send(await promptFor(skill, trigger, previous));
     await updateRun(run.id, { agent_id: agent.agentId, cursor_run_id: cursorRun.id });
     return { ...run, agent_id: agent.agentId, cursor_run_id: cursorRun.id };
   } catch (err) {

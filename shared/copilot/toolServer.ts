@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
+import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { hospitableDraft, isHospitableWrite } from "./hospitableAgent.js";
+import { readMail, searchMail } from "./mailSearch.js";
+import { readStanding } from "./memoryFiles.js";
 import { DEFAULT_CHECKLIST, listStays, readGuestInbox, readThread } from "./guestInbox.js";
 import { readRunToken } from "./runToken.js";
 import { addMessage, addReminder, flagChatNeedsYou, getRun, listSkills, updateRun } from "./store.js";
@@ -164,6 +167,58 @@ const TOOLS: Record<string, Tool> = {
       return { posted: true };
     },
   },
+  search_mail: {
+    description:
+      "Search Sent and the main inbox in Gmail and Outlook. Gmail Social and Promotions, and Outlook Other, are already excluded. Pass keywords from the question, such as a property or a subject. Set mailbox to gmail or outlook only when the question named that one. Set where to sent, inbox, or both. Set include_airbnb only when the question is about Airbnb email. Read only. This does not send.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        keywords: { type: "string" },
+        mailbox: { type: "string", enum: ["gmail", "outlook", "both"] },
+        where: { type: "string", enum: ["sent", "inbox", "both"] },
+        include_airbnb: { type: "boolean" },
+      },
+      required: ["keywords"],
+    },
+    readOnly: true,
+    call: async (args) =>
+      searchMail({
+        keywords: text(args.keywords),
+        mailbox: text(args.mailbox),
+        where: text(args.where),
+        includeAirbnb: args.include_airbnb === true,
+      }),
+  },
+  read_mail: {
+    description:
+      "Read one message returned by search_mail, in full. Pass that result's mailbox and id. Set include_airbnb only when the search did. Read only. This does not send.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mailbox: { type: "string", enum: ["gmail", "outlook"] },
+        id: { type: "string" },
+        include_airbnb: { type: "boolean" },
+      },
+      required: ["mailbox", "id"],
+    },
+    readOnly: true,
+    call: async (args) => readMail({ mailbox: text(args.mailbox), id: text(args.id), includeAirbnb: args.include_airbnb === true }),
+  },
+  read_memory: {
+    description:
+      "Reads one standing memory file, the same files chat uses. Pass unit (the spoken name) or path. Pass check_in and check_out from the reservation when you have them. A check-in or check-out time in the file is replaced by the reservation time. Access codes, door codes, and WiFi passwords are not returned.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        unit: { type: "string" },
+        check_in: { type: "string" },
+        check_out: { type: "string" },
+      },
+      required: ["unit"],
+    },
+    readOnly: true,
+    call: async (args) => readStanding(text(args.unit, 120), text(args.check_in, 40), text(args.check_out, 40)),
+  },
   hospitable_read: {
     description:
       "Reads one Hospitable MCP tool. name must start with get-, list-, or search-, for example get-reservations or get-property-calendar. Pass that tool's arguments. This cannot send, publish, or change anything.",
@@ -204,8 +259,8 @@ const TOOLS: Record<string, Tool> = {
     },
     readOnly: false,
     call: async (args, ctx) => {
-      const draftBody = text(args.body);
-      if (!draftBody && !text(args.hospitable_tool, 80)) throw new Error("body is required.");
+      const draftBody = withoutHubSecrets(text(args.body)).text;
+      if (!draftBody && !text(args.hospitable_tool, 80)) throw new Error(withoutHubSecrets(text(args.body)).removed ? HUB_SECRET_NOTE : "body is required.");
       const warnings = Array.isArray(args.warnings) ? args.warnings.map((w) => text(w, 200)).filter(Boolean).slice(0, 6) : [];
       const toolName = text(args.hospitable_tool, 80);
       if (parityEnabled()) {

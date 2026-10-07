@@ -199,6 +199,35 @@ function offer(mail: ParityMail) {
   };
 }
 
+export function parityReadMail(mailbox: "gmail" | "outlook", id: string): {
+  id: string;
+  folder: "inbox" | "sent";
+  from: string;
+  email: string;
+  to: string;
+  date: string;
+  subject: string;
+  snippet: string;
+  body: string;
+} | null {
+  const current = live();
+  if (!current) return null;
+  const rows = mailbox === "gmail" ? current.gmail : current.outlook;
+  const mail = rows.find((row) => row.id === id);
+  if (!mail) return null;
+  return {
+    id: mail.id,
+    folder: mail.folder,
+    from: mail.from,
+    email: mail.email,
+    to: mail.to,
+    date: mail.date,
+    subject: mail.subject,
+    snippet: mail.snippet,
+    body: mail.body,
+  };
+}
+
 export function paritySearchGmail(input: { keywords: string; where: "inbox" | "sent" | "both"; includeAirbnb: boolean }): {
   id: string;
   folder: "inbox" | "sent";

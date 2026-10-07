@@ -8,7 +8,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../supabase.js";
+import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { parityMemory } from "./parity/world.js";
+import { parityEnabled } from "./parity/flag.js";
+import { reservationTimes } from "./standing.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { addDays, torontoToday } from "./time.js";
 import {
@@ -309,8 +312,36 @@ async function seedIfEmpty(): Promise<void> {
   });
 }
 
+/** One file per managed unit, using the lines already in Units we manage. Does not overwrite a file that exists. */
+export async function ensureUnitFiles(): Promise<void> {
+  if (parityEnabled()) return;
+  await seedIfEmpty();
+  const { files } = await loadAll();
+  const units = files.find((file) => file.path === UNITS_PATH);
+  const lines = factLines(units?.body || SEED_UNITS);
+  let added = false;
+  for (const line of lines) {
+    const name = line.split("—")[0]?.trim() ?? "";
+    if (name.length < 4) continue;
+    const target = filePath(name);
+    if (target === UNITS_PATH || target === GUIDANCE_PATH || isDaily(target) || isDream(target)) continue;
+    if (files.some((file) => file.path === target)) continue;
+    await saveFile({
+      path: target,
+      body: line,
+      origin: units?.origin ?? "you",
+      updated_at: units?.updated_at ?? SEED_AT,
+    });
+    added = true;
+  }
+  if (!added) return;
+  const next = await loadAll();
+  await rewriteGuidance(next.files);
+}
+
 export async function listMemoryFiles(): Promise<MemoryFileView[]> {
   await seedIfEmpty();
+  await ensureUnitFiles();
   const today = torontoToday();
   const { files } = await loadAll();
   return files
@@ -322,6 +353,31 @@ export async function readMemoryFile(filePath: string): Promise<MemoryFile | nul
   await seedIfEmpty();
   const { files } = await loadAll();
   return files.find((file) => file.path === filePath) ?? null;
+}
+
+/** The memory block chat already puts in its facts. A skill run uses the same lines. */
+export async function skillMemoryText(): Promise<string> {
+  try {
+    const lines = promptLines(await listMemoryFiles());
+    return lines.length ? lines.join("\n") : "No memory files yet.";
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Memory files could not be read.";
+    return `Memory files could not be read: ${message}`;
+  }
+}
+
+export async function readStanding(unitOrPath: string, checkIn?: string, checkOut?: string): Promise<{ path: string; title: string; body: string } | { error: string }> {
+  const asked = unitOrPath.trim();
+  if (!asked) return { error: "Say which unit or file to read." };
+  const files = await listMemoryFiles();
+  const key = asked.toLowerCase();
+  const file = files.find((row) => {
+    if (row.group !== "files" && row.path !== GUIDANCE_PATH) return false;
+    return row.path.toLowerCase() === key || row.title.toLowerCase() === key || row.title.toLowerCase().includes(key);
+  });
+  if (!file) return { error: `No standing file matches ${asked}.` };
+  const cleaned = withoutHubSecrets(file.body).text;
+  return { path: file.path, title: file.title, body: reservationTimes(cleaned, checkIn, checkOut) };
 }
 
 export function promptLines(files: MemoryFileView[]): string[] {
@@ -355,8 +411,9 @@ export async function unitsAnswer(hospitableCount: number | null): Promise<strin
 /** Saves a way of working they just chose, so the next answer follows it. */
 export async function keepWay(title: string, decision: string): Promise<{ path: string; title: string } | { error: string }> {
   const name = title.trim().slice(0, 80);
-  const line = decision.trim().slice(0, 500);
-  if (!name || !line) return { error: "Say what to keep." };
+  const kept = withoutHubSecrets(decision.trim().slice(0, 500));
+  const line = kept.text;
+  if (!name || !line) return { error: kept.removed ? HUB_SECRET_NOTE : "Say what to keep." };
   try {
     await seedIfEmpty();
   } catch (err) {
@@ -440,12 +497,14 @@ async function remember(
 ): Promise<{ body: string; step: string; thought: string; file: MemoryWrite | null }> {
   const day = torontoToday();
   const target = intent.kind === "units" ? UNITS_PATH : intent.path;
-  const lines = (intent.kind === "units" ? intent.lines : [intent.body]).map((line) => line.trim()).filter(Boolean);
+  const lines = (intent.kind === "units" ? intent.lines : [intent.body])
+    .map((line) => withoutHubSecrets(line.trim()).text)
+    .filter(Boolean);
   if (!lines.length) {
     return {
-      body: "Say what to keep, and I will write the file.",
-      step: "Did not write a file",
-      thought: "There was nothing to put in a file.",
+      body: HUB_SECRET_NOTE,
+      step: "Left it in the Knowledge Hub",
+      thought: "That was an access code, a door code, or a WiFi password, so no memory file was written.",
       file: null,
     };
   }
