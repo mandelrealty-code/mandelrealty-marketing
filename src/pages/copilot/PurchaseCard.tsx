@@ -45,6 +45,9 @@ export function PurchaseCard({
   if (purchase.kind === "skipped") {
     return <p className="cp-purchase-note">Skipped. Nothing was ordered. {purchase.item} stays marked low in the cleaner app, and the brief stays on Overview.</p>;
   }
+  if (purchase.kind === "ordered" && purchase.status === "delivered") {
+    return <p className="cp-purchase-note">Cleaners notified in the cleaner app. Ready for pickup at {purchase.property}.</p>;
+  }
   if (purchase.kind === "ordered") {
     return (
       <div className="cp-purchase">

@@ -279,6 +279,7 @@ export async function commitPurchase(detail: PurchaseDetail, quantity = detail.q
     confirmation: result.confirmation,
     delivery: result.delivery,
     tracking: result.tracking,
+    status: "ordered",
   };
 }
 
@@ -289,7 +290,7 @@ export function applyCleanerStatus(confirmation: string, status: DeliveryStatus)
   return { ...row };
 }
 
-export function purchaseCardText(row: RecordedSupply): string {
+export function purchaseCardText(row: { status: DeliveryStatus; product: string; property: string; item: string; confirmation: string; delivery: string }): string {
   if (row.status === "delivered") {
     return `Cleaners notified in the cleaner app. Ready for pickup at ${row.property}.`;
   }

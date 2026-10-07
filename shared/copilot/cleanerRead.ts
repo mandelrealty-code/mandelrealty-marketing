@@ -32,8 +32,14 @@ export type CleanerSupply = {
   shipTo?: string;
 };
 
+export type CleanerOrder = {
+  confirmation: string;
+  item: string;
+  status: "ordered" | "shipped" | "delivered";
+};
+
 export type CleanerPicture =
-  | { ok: true; turnovers: CleanerTurnover[]; supplies: CleanerSupply[] }
+  | { ok: true; turnovers: CleanerTurnover[]; supplies: CleanerSupply[]; orders: CleanerOrder[] }
   | { ok: false; error: string };
 
 function syncUrl(): string {
@@ -82,6 +88,7 @@ export async function readCleanerUnit(input: {
       error?: string;
       turnovers?: unknown;
       supplies?: unknown;
+      reorders?: unknown;
       usual_cleaner?: string;
     };
     if (!res.ok) return { ok: false, error: data.error || `Cleaner Hub read failed (${res.status}).` };
@@ -91,6 +98,7 @@ export async function readCleanerUnit(input: {
       ok: true,
       turnovers: asTurnovers(data.turnovers).map((row) => (usual && !row.assigned ? { ...row, usual } : row)),
       supplies: asSupplies(data.supplies),
+      orders: asOrders(data.reorders),
     };
   } catch (err) {
     return { ok: false, error: messageOf(err) };
@@ -99,7 +107,7 @@ export async function readCleanerUnit(input: {
 
 function parityPicture(input: { propertyId: string; from: string; to: string }): CleanerPicture {
   const fixture = parityCleaner();
-  if (!fixture) return { ok: true, turnovers: [], supplies: [] };
+  if (!fixture) return { ok: true, turnovers: [], supplies: [], orders: [] };
   if (fixture.error) return { ok: false, error: fixture.error };
   const turnovers = (fixture.turnovers ?? [])
     .filter((row) => row.propertyId === input.propertyId)
@@ -131,7 +139,7 @@ function parityPicture(input: { propertyId: string; from: string; to: string }):
       category: row.category,
       shipTo: row.shipTo,
     }));
-  return { ok: true, turnovers, supplies };
+  return { ok: true, turnovers, supplies, orders: [] };
 }
 
 function asTurnovers(raw: unknown): CleanerTurnover[] {
@@ -148,6 +156,23 @@ function asTurnovers(raw: unknown): CleanerTurnover[] {
       done: Boolean(item.done),
       issue: typeof item.issue === "string" ? item.issue : "",
     }];
+  });
+}
+
+function asOrders(raw: unknown): CleanerOrder[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const item = row as Record<string, unknown>;
+    const confirmation = typeof item.order_reference === "string" ? item.order_reference.trim() : "";
+    const name = typeof item.item_name === "string" ? item.item_name.trim() : "";
+    if (!confirmation) return [];
+    const status = item.status === "delivered" || item.status === "picked_up"
+      ? "delivered"
+      : item.status === "in_transit"
+        ? "shipped"
+        : "ordered";
+    return [{ confirmation, item: name, status }];
   });
 }
 

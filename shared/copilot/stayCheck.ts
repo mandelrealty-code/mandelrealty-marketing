@@ -9,7 +9,7 @@ import { hospitableFetch } from "../pm/hospitableClient.js";
 import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
-import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, recordCancellation, recordDrafts, recordReport, reportRecorded } from "./store.js";
+import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, recordCancellation, recordDrafts, recordReport, refreshSupplyDrafts, reportRecorded } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
 import { readCleanerUnit, type CleanerPicture, type CleanerSupply, type CleanerTurnover } from "./cleanerRead.js";
@@ -301,7 +301,10 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
       const memory = businessFacts(await memoryFor(place), hub);
       await oneStay({ stay, place, messages, hub, memory, propertyName: property.name, hubFailed: !hubRead.ok, picture, now });
     }
-    if (picture.ok) await offerLowStock(id, property.name, property.address, picture.supplies);
+    if (picture.ok) {
+      await offerLowStock(id, property.name, property.address, picture.supplies);
+      await refreshSupplyDrafts(picture.orders);
+    }
   }
 }
 

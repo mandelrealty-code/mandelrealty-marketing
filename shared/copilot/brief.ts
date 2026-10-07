@@ -3,7 +3,7 @@ import { addDays, greeting, torontoToday } from "./time.js";
 import type { BriefCard, BriefPayload } from "./types.js";
 import { latestInboxOffer } from "../adminApi/gmail.js";
 import { latestOutlookOffer } from "../adminApi/outlook.js";
-import { listDismissed, listDueReminders, listRuns, listSkills, listWaitingDrafts, readGmailOffer, saveGmailOffer } from "./store.js";
+import { listDismissed, listDueReminders, listRuns, listSkills, listSupplyDrafts, listWaitingDrafts, readGmailOffer, saveGmailOffer } from "./store.js";
 import { runsOnItsOwn } from "./skillRunner.js";
 import { listOpenItems, verifiedLabel } from "./openItems.js";
 import { runUnattendedChecks } from "./stayCheck.js";
@@ -25,7 +25,9 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const focus: BriefCard[] = [];
   const eating: BriefCard[] = [];
   const skipped = new Set(await listDismissed().catch(() => []));
+  const seenSupply = new Set<string>();
   for (const row of recordedSupplies()) {
+    seenSupply.add(row.confirmation);
     take(focus, {
       id: `supply:${row.confirmation}`,
       group: "focus",
@@ -35,6 +37,22 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
       purchaseStatus: row.status,
       trackingUrl: row.tracking,
     }, skipped);
+  }
+  try {
+    for (const row of await listSupplyDrafts()) {
+      if (seenSupply.has(row.confirmation)) continue;
+      take(focus, {
+        id: `supply:${row.confirmation}`,
+        group: "focus",
+        text: purchaseCardText(row),
+        action: row.status === "delivered" ? "Dismiss" : "Track order",
+        source: `Supplies · ${row.property}`,
+        purchaseStatus: row.status,
+        trackingUrl: row.tracking,
+      }, skipped);
+    }
+  } catch {
+    /* The overview still loads when a saved order cannot be read. */
   }
   // The live page reads checks the morning and afternoon passes already saved.
   // The parity suite still runs them here, because that is how a fixture scan works.

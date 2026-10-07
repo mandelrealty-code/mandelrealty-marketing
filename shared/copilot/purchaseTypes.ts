@@ -29,6 +29,7 @@ export type PurchaseOrdered = {
   confirmation: string;
   delivery: string;
   tracking: string;
+  status: "ordered" | "shipped" | "delivered";
 };
 
 export type PurchaseFailed = {

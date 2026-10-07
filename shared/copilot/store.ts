@@ -198,6 +198,70 @@ export async function listWaitingDrafts(): Promise<WaitingDraft[]> {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
+export type StoredSupply = {
+  confirmation: string;
+  property: string;
+  item: string;
+  product: string;
+  delivery: string;
+  tracking: string;
+  status: "ordered" | "shipped" | "delivered";
+};
+
+function asSupply(row: { id?: string; draft?: CopilotDraft | null }): StoredSupply | null {
+  const purchase = row.draft?.purchase;
+  if (!purchase || purchase.kind !== "ordered" || !purchase.confirmation) return null;
+  return {
+    confirmation: purchase.confirmation,
+    property: purchase.property,
+    item: purchase.item,
+    product: purchase.productName,
+    delivery: purchase.delivery,
+    tracking: purchase.tracking,
+    status: purchase.status || "ordered",
+  };
+}
+
+async function recentDraftRows(): Promise<{ id: string; draft?: CopilotDraft | null }[]> {
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client
+      .from("copilot_messages")
+      .select("id, draft")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (!error) return (data ?? []) as { id: string; draft?: CopilotDraft | null }[];
+    if (!useLocalFile(error)) throw new Error(error.message);
+  }
+  return readFileStore().messages.map((message) => ({ id: message.id, draft: message.draft }));
+}
+
+export async function listSupplyDrafts(): Promise<StoredSupply[]> {
+  if (parityEnabled()) return [];
+  const rows = await recentDraftRows();
+  return rows.flatMap((row) => {
+    const supply = asSupply(row);
+    return supply ? [supply] : [];
+  });
+}
+
+export async function refreshSupplyDrafts(orders: { confirmation: string; status: StoredSupply["status"] }[]): Promise<void> {
+  if (parityEnabled() || !orders.length) return;
+  const next = new Map(orders.map((row) => [row.confirmation, row.status]));
+  for (const row of await recentDraftRows()) {
+    const purchase = row.draft?.purchase;
+    if (!purchase || purchase.kind !== "ordered") continue;
+    const status = next.get(purchase.confirmation);
+    if (!status || status === (purchase.status || "ordered")) continue;
+    const bodyText = status === "delivered"
+      ? `Cleaners notified in the cleaner app. Ready for pickup at ${purchase.property}.`
+      : status === "shipped"
+        ? `Shipped. ${purchase.productName} is on the way to ${purchase.property}.`
+        : undefined;
+    await updateDraft(row.id, { purchase: { ...purchase, status }, ...(bodyText ? { bodyText } : {}) });
+  }
+}
+
 async function listSeen(): Promise<Map<string, string>> {
   const seen = new Map<string, string>();
   const take = (note: string) => {
