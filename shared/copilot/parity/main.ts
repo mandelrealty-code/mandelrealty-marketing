@@ -259,6 +259,16 @@ async function fixtureCodePin(): Promise<void> {
   expect(/dishwasher/i.test(named) && named.includes(CODE.scarborough), "last message by name is the Scarborough stay", named || "no answer");
   expect(!/930\s*pm|Michael/i.test(named), "the name answer does not use another stay", named);
   expect(accountWideRan() === false, "the account-wide last-message path does not run when the unit is named", "list reservations across the account ran");
+  clearAccountWide();
+  const about = await answerStay(`Tell me about reservation ${CODE.diane}`);
+  const told = about ?? "";
+  expect(/Diane/.test(told), "the reservation answer names Diane", told || "no answer");
+  expect(/4 adults/.test(told) && /4 children/.test(told), "the reservation answer includes the party", told);
+  expect(!/\bpets?\b/i.test(told), "pets stay out when the reservation has none", told);
+  expect(/20 Blue Jays Way/.test(told), "the reservation answer names the property", told);
+  expect(/October 9, 2026 at 4:00 PM/.test(told) && /October 12, 2026 at 11:00 AM/.test(told), "the reservation answer includes check-in and check-out", told);
+  expect(told.includes(CODE.diane), "the reservation answer stays on HMESPTA3TJ", told);
+  expect(accountWideRan() === false, "telling about one code does not list the account", "list reservations across the account ran");
 }
 
 async function fixtureOnboarding(): Promise<void> {

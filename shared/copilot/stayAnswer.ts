@@ -262,15 +262,69 @@ async function messageFor(code: string, thread = true): Promise<string> {
   if (!row) return `Hospitable didn't return reservation ${code}. I didn't guess.`;
   const stay = toStay(row);
   const listing = listingFrom(row);
-  const where = listing ? `${listing.label}${listedAs(listing)}` : "that listing";
-  if (!thread) {
-    return `${stay.code} is an ${stay.status} reservation at ${where}, ${stay.checkIn} to ${stay.checkOut}.`;
-  }
+  const where = listing ? `${listing.label}${listedAs(listing)}` : "The property wasn't on the reservation.";
+  if (!thread) return reservationSummary(row, stay, where);
   const messages = await callTool("get-reservation-messages", { uuid: stay.id });
   const latest = toMessages(messages).sort((a, b) => b.at.localeCompare(a.at))[0];
   if (!latest) return `${stay.code} at ${where} has no messages in the thread Hospitable returned.`;
   const who = latest.role === "guest" ? stay.guest || "The guest" : latest.name || (latest.role === "host" ? "The host" : "An automated message");
   return `On ${stay.code} at ${where}, the last message was from ${who} on ${latest.at.slice(0, 16).replace("T", " ")}: “${clip(latest.body, 180)}”`;
+}
+
+function reservationSummary(row: Record<string, unknown>, stay: Stay, where: string): string {
+  const guest = guestName(row) || "The guest name wasn't on the reservation";
+  const checkIn = clockLabel(text(row.check_in) || text(row.arrival_date) || stay.checkIn, "check-in");
+  const checkOut = clockLabel(text(row.check_out) || text(row.departure_date) || stay.checkOut, "check-out");
+  const party = partyLabel(row) || "The party wasn't on the reservation.";
+  const place = where.endsWith(".") ? where : `${where}.`;
+  const partySentence = party.endsWith(".") ? party : `${party}.`;
+  return `${stay.code} is an ${stay.status} reservation for ${guest} at ${place} Check-in ${checkIn}. Check-out ${checkOut}. ${partySentence}`;
+}
+
+function guestName(row: Record<string, unknown>): string {
+  const guest = row.guest && typeof row.guest === "object" ? (row.guest as Record<string, unknown>) : {};
+  const named = [text(guest.first_name), text(guest.last_name)].filter(Boolean).join(" ");
+  return named || text(guest.name) || text(row.guest_name);
+}
+
+function partyLabel(row: Record<string, unknown>): string {
+  const guests = row.guests && typeof row.guests === "object" && !Array.isArray(row.guests) ? (row.guests as Record<string, unknown>) : {};
+  const adults = countOf(guests.adult_count ?? guests.adults ?? row.adults);
+  const children = countOf(guests.child_count ?? guests.children ?? row.children);
+  const pets = countOf(guests.pet_count ?? guests.pets ?? row.pets);
+  const parts: string[] = [];
+  if (adults != null) parts.push(`${adults} ${adults === 1 ? "adult" : "adults"}`);
+  if (children != null) parts.push(`${children} ${children === 1 ? "child" : "children"}`);
+  if (pets != null && pets > 0) parts.push(`${pets} ${pets === 1 ? "pet" : "pets"}`);
+  return parts.join(", ");
+}
+
+function countOf(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
+function clockLabel(value: string, which: string): string {
+  const raw = value.trim();
+  if (!raw) return "wasn't on the reservation";
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+  const dt = new Date(dateOnly ? `${raw}T12:00:00Z` : raw);
+  if (Number.isNaN(dt.getTime())) return raw;
+  const date = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/Toronto",
+  }).format(dt);
+  if (dateOnly || !/T\d{2}:\d{2}/.test(raw)) return `${date}. The ${which} time wasn't on the reservation`;
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h12",
+    timeZone: "America/Toronto",
+  }).format(dt).replace(/\u202f/g, " ");
+  return `${date} at ${time}`;
 }
 
 function listedAs(listing: Listing): string {
