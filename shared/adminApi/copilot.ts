@@ -1098,18 +1098,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (op === "workflow") {
       const wf = body.workflow as Workflow;
       if (!wf || !Array.isArray(wf.nodes)) return res.status(400).json({ error: "Missing workflow." });
+      if (!wf.nodes.length) return res.status(400).json({ error: "Add a step first. Nothing was saved." });
       if (wf.on && missingNumber(wf)) return res.status(400).json({ error: "Add a number first. Nothing was turned on." });
       const shaped = skillFromWorkflow(wf);
       const phone = shaped.phone ? toE164(shaped.phone) ?? "" : "";
       if (shaped.phone.trim() && !phone) return res.status(400).json({ error: "That mobile number is not valid." });
       const existing = (await listSkills()).find((row) => row.name === shaped.name)
         ?? (wf.id && wf.id !== "new" ? (await listSkills()).find((row) => row.workflow?.id === wf.id) : undefined);
+      const on = existing ? Boolean(wf.on) : false;
       const skill = await saveSkill({
         ...shaped,
         id: existing?.id,
         phone,
-        enabled: Boolean(wf.on),
-        workflow: shaped.workflow,
+        enabled: on,
+        workflow: shaped.workflow ? { ...shaped.workflow, on } : null,
       });
       if (phone) {
         try {

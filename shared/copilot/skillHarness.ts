@@ -6,15 +6,15 @@
 import { CODE, worldAt } from "./parity/catalog.js";
 import { capturedBrowserCalls, capturedCleanerCalls, capturedCommits, capturedPurchases, capturedReports, resetCaptures } from "./parity/capture.js";
 import { installWorld } from "./parity/world.js";
-import { saveSkill, listSkills } from "./store.js";
+import { deleteSkill, saveSkill, listSkills } from "./store.js";
 import { skillsToStart } from "./skillRunner.js";
 import { executeSkill, testWorkflow } from "./skillExecute.js";
 import { NO_PHONE } from "./skillContacts.js";
 import { TEXT_MISSING, capturedPartnerDeliveries, resetPartnerDeliveries, setPartnerMailbox } from "./skillDelivery.js";
 import { installResearch } from "./skillResearch.js";
 import { installSheet, writeSheet } from "./skillSheet.js";
-import { skillFromWords, skillFromWorkflow, workflowFromSkill } from "./skillShape.js";
-import type { Workflow } from "./workflow.js";
+import { applyBuilderSave, skillFromWords, skillFromWorkflow, workflowFromSkill } from "./skillShape.js";
+import { BLANK, FN, type Workflow } from "./workflow.js";
 
 const MONDAY = "Every Monday, text me the guest names and phone numbers for the week's check-ins";
 const PRODUCT = "Every week, find one product we can give guests and email me a PDF";
@@ -115,6 +115,39 @@ const handRun = await executeSkill(hand, NOW);
 if (listLines(handRun.text) !== listLines(live.text)) fail(`builder run differed:\n${listLines(handRun.text)}\n${listLines(live.text)}`);
 const handFlow = workflowFromSkill(hand);
 if (handFlow.nodes.map((node) => node.fn).join(",") !== fns.join(",")) fail("the saved builder workflow lost its steps");
+
+if (/8:00/.test(FN.When.defaultField)) fail("a new step still starts at 8:00 each morning");
+if (applyBuilderSave({ ...BLANK }, "Monday check-ins", "weekly:Monday", true)) fail("a board was created before a step");
+const built: Workflow = {
+  ...BLANK,
+  nodes: [
+    { id: "n1", fn: "When", note: FN.When.defaultNote, field: FN.When.defaultField, x: 0, y: 0 },
+    { id: "n2", fn: "Read", note: "Guest names and phone numbers for the week's check-ins", field: "Hospitable", x: 0, y: 220 },
+    { id: "n3", fn: "Text me", note: "Text me the list", field: "", x: 0, y: 440 },
+  ],
+  edges: [
+    { id: "e1", from: "n1", to: "n2" },
+    { id: "e2", from: "n2", to: "n3" },
+  ],
+};
+const ready = applyBuilderSave(built, "Monday check-ins", "weekly:Monday", true);
+if (!ready || ready.on) fail("the builder save did not stay off");
+if (/8:00/.test(ready.nodes.map((node) => `${node.field} ${node.note}`).join(" "))) fail("the saved steps kept 8:00");
+const builtSkill = await saveSkill(skillFromWorkflow(ready));
+if (builtSkill.enabled || builtSkill.schedule !== "weekly:Monday") fail(`builder skill was ${builtSkill.enabled} ${builtSkill.schedule}`);
+const builtListed = await listSkills();
+if (!builtListed.some((row) => row.id === builtSkill.id && row.enabled === false && row.schedule === "weekly:Monday")) {
+  fail("the builder skill was not listed off on a weekly schedule");
+}
+const reopened = workflowFromSkill(builtListed.find((row) => row.id === builtSkill.id) as typeof builtSkill);
+if (reopened.nodes.map((node) => node.fn).join(",") !== "When,Read,Text me") fail("the reopened workflow lost its steps");
+if (!/Monday/.test(reopened.nodes[0]?.field ?? "") || /8:00/.test(reopened.nodes[0]?.field ?? "")) fail(reopened.nodes[0]?.field ?? "no when step");
+const builtRun = await executeSkill({ ...builtSkill, enabled: true }, NOW);
+if (listLines(builtRun.text) !== listLines(live.text)) fail(`builder run differed:\n${listLines(builtRun.text)}\n${listLines(live.text)}`);
+await deleteSkill(builtSkill.id);
+await deleteSkill(saved.id);
+const afterDelete = await listSkills();
+if (afterDelete.some((row) => row.id === builtSkill.id || row.id === saved.id)) fail("delete left a workflow behind");
 
 installSheet("sheet1", [["Item"]]);
 const sheet = await writeSheet("https://docs.google.com/spreadsheets/d/sheet1/edit", ["Welcome tin"]);

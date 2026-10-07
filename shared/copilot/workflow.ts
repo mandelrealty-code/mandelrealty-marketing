@@ -15,7 +15,7 @@ export interface FnMeta {
 }
 
 export const FN: Record<FnName, FnMeta> = {
-  'When':            { how: 'Checks each morning',     field: 'Check time',    defaultField: '8:00 each morning',  defaultNote: 'Something new happens',      hue: 75,  icon: 'clock' },
+  'When':            { how: 'Checks each morning',     field: 'Check time',    defaultField: '', placeholder: 'Chosen when you save', defaultNote: 'Something new happens', hue: 75, icon: 'clock' },
   'Read':            { how: 'Reads in code',           field: 'Reads from',    defaultField: 'Review inbox',       defaultNote: 'Reads what came in',         hue: 250, icon: 'lines' },
   'Write':           { how: 'Writes with Sonnet',      field: 'Tone',          defaultField: 'Short and plain',    defaultNote: 'Writes a draft',             hue: 300, icon: 'pen' },
   'Look on the web': { how: 'Looks with Cursor',       field: 'Where to look', defaultField: 'The review page',    defaultNote: 'Opens a page and checks it', hue: 200, icon: 'globe' },

@@ -56,6 +56,16 @@ export function isUnattended(schedule: string): boolean {
   return schedule === "daily" || schedule.startsWith("weekly:");
 }
 
+/** The same phrases a chat-created skill shows for when it runs. */
+export function scheduleChoices(): { label: string; schedule: SkillSchedule }[] {
+  const days: Weekday[] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  return [
+    { label: schedulePhrase("daily"), schedule: "daily" },
+    ...days.map((day) => ({ label: schedulePhrase(`weekly:${day}`), schedule: `weekly:${day}` as SkillSchedule })),
+    { label: schedulePhrase(""), schedule: "" },
+  ];
+}
+
 export function schedulePhrase(schedule: string): string {
   if (schedule === "daily") return "Every morning, ~5:00";
   if (schedule.startsWith("weekly:")) return `Every ${schedule.slice("weekly:".length)} morning, ~5:00`;

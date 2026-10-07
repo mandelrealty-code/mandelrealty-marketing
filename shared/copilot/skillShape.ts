@@ -1,6 +1,8 @@
 import type { CopilotDraft, CopilotSkill } from "./types.js";
 import type { FnName, Workflow, WfNode } from "./workflow.js";
-import { namedWeekday, normalizeSchedule, schedulePhrase } from "./skillSchedule.js";
+import { FN } from "./workflow.js";
+import { namedWeekday, normalizeSchedule, scheduleChoices, schedulePhrase } from "./skillSchedule.js";
+import type { SkillSchedule } from "./types.js";
 
 export type SkillShape = Omit<CopilotSkill, "id" | "created_at" | "updated_at" | "chat_id" | "last_run_at">;
 
@@ -69,6 +71,35 @@ export function skillFromWords(sentence: string): SkillShape {
     reads: checkins ? "Guest names and phone numbers for the week's check-ins" : skill.reads,
     drafts: product ? "Email me a PDF" : /\btext me\b/i.test(text) ? "Text me the list" : skill.drafts,
   };
+}
+
+/**
+ * A new board is not a skill until this runs. No steps means nothing is created.
+ * The first save stays off. The When step takes the schedule the partner picked.
+ */
+export function applyBuilderSave(wf: Workflow, name: string, schedule: SkillSchedule, first: boolean): Workflow | null {
+  const title = name.trim();
+  if (!title || !wf.nodes.length) return null;
+  if (!scheduleChoices().some((choice) => choice.schedule === schedule)) return null;
+  const phrase = schedulePhrase(schedule);
+  const when = wf.nodes.find((step) => step.fn === "When");
+  const nodes = wf.nodes.map((step) => {
+    if (step.fn !== "When") return step;
+    const stock = !step.note.trim() || step.note === FN.When.defaultNote || /8:00 each morning/i.test(`${step.field} ${step.note}`);
+    return { ...step, field: phrase, note: stock ? phrase : step.note };
+  });
+  let nextNodes = nodes;
+  let nextEdges = wf.edges;
+  if (!when) {
+    const id = "when";
+    const firstNode = wf.nodes[0];
+    nextNodes = [{ id, fn: "When", note: phrase, field: phrase, x: firstNode?.x ?? 0, y: (firstNode?.y ?? 220) - 220 }, ...nodes];
+    if (firstNode) nextEdges = [{ id: "e-when", from: id, to: firstNode.id }, ...wf.edges];
+  }
+  const id = !wf.id || wf.id === "new"
+    ? title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "workflow"
+    : wf.id;
+  return { ...wf, id, name: title.slice(0, 120), on: first ? false : wf.on, nodes: nextNodes, edges: nextEdges };
 }
 
 /**

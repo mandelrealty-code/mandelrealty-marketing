@@ -1639,10 +1639,20 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           key={`${boardSeed.id}-${boardTick}`}
           seed={boardSeed}
           theme={theme}
+          persisted={Boolean(boot?.skills.some((skill) => skill.workflow?.id === boardSeed.id))}
+          skillId={boot?.skills.find((skill) => skill.workflow?.id === boardSeed.id)?.id ?? null}
           onBack={() => setScreen("skills")}
           onSave={async (next) => {
-            const data = await api<{ skills: SkillRow[] }>("workflow", { workflow: next });
+            const data = await api<{ skill: { id: string }; skills: SkillRow[] }>("workflow", { workflow: next });
             setBoot((prev) => (prev ? { ...prev, skills: data.skills } : prev));
+            return { id: data.skill.id };
+          }}
+          onDelete={async (skillId) => {
+            if (skillId) {
+              const data = await api<{ skills: SkillRow[] }>("skill", { action: "delete", id: skillId });
+              setBoot((prev) => (prev ? { ...prev, skills: data.skills } : prev));
+            }
+            setScreen("skills");
           }}
           onTest={async (next) => {
             const data = await api<{ results: Record<string, NodeResult> }>("workflow-test", { workflow: next });
@@ -1747,6 +1757,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         onOpen={(skill) => openSkill(skill)}
                         onToggle={(skill) => void toggleSkill(skill)}
                         onNew={startSkill}
+                        onDelete={(skill) => setPendingDelete({ kind: "skill", id: skill.id, title: skill.name })}
                         onBoard={(target) => {
                           if (target === "seed") {
                             const saved = boot?.skills.find((skill) => skill.name === "Review text");

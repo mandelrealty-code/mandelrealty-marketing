@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "../supabase.js";
 import { captureReminder } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityItems, updateParityItem } from "./parity/world.js";
-import { parityCancellationRaised, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReportIssued, paritySaveSkill, paritySkillList } from "./parity/storeStub.js";
+import { parityCancellationRaised, parityDeleteSkill, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReportIssued, paritySaveSkill, paritySkillList } from "./parity/storeStub.js";
 import { normalizeSchedule } from "./skillSchedule.js";
 import type { Workflow } from "./workflow.js";
 import type { OpenItem } from "./openItems.js";
@@ -659,6 +659,10 @@ export async function saveSkill(input: SkillInput): Promise<CopilotSkill> {
 }
 
 export async function deleteSkill(id: string): Promise<void> {
+  if (parityEnabled()) {
+    parityDeleteSkill(id);
+    return;
+  }
   const client = sb();
   if (!useFile && !skillsInFile && client) {
     const { error } = await client.from("copilot_skills").delete().eq("id", id);

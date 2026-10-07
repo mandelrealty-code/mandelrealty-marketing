@@ -66,3 +66,8 @@ export function paritySaveSkill(skill: CopilotSkill): CopilotSkill {
   else skills.unshift(skill);
   return skill;
 }
+
+export function parityDeleteSkill(id: string): void {
+  const idx = skills.findIndex((row) => row.id === id);
+  if (idx >= 0) skills.splice(idx, 1);
+}

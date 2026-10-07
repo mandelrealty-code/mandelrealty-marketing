@@ -3838,6 +3838,108 @@ html.cp-app[data-cp-theme="light"] #root {
 
 .cp-wf-need { font-size: 13px; flex-shrink: 0; }
 
+.cp-wf-state {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cp-wf-state.saved { color: var(--ok); }
+
+.cp-wf-save,
+.cp-wf-discard {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--wf-line2);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cp-wf-save {
+  border-color: #c4a35a;
+  background: #c4a35a;
+  color: #0a0a0a;
+}
+
+.cp-wf-save:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.cp-wf-discard.danger { color: var(--danger); }
+
+.cp-wf-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.cp-wf-modal .card {
+  width: min(440px, 100%);
+  max-height: min(80vh, 640px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+.cp-wf-modal h2 { margin: 0; font-size: 18px; }
+.cp-wf-modal p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
+.cp-wf-modal label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.cp-wf-modal input {
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--page);
+  color: var(--text);
+  padding: 0 12px;
+  font: inherit;
+}
+
+.cp-wf-choices { display: flex; flex-direction: column; gap: 8px; }
+.cp-wf-choices button {
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.cp-wf-choices button.on { border-color: #c4a35a; }
+.cp-wf-modal .err { color: var(--danger); }
+.cp-wf-modal-actions { display: flex; gap: 8px; }
+
+.cp-sk-rowdel {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px;
+}
+
 .cp-wf-test,
 .cp-wf-turn,
 .cp-wf-again {

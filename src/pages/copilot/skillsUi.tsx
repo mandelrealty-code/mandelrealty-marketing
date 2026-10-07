@@ -57,6 +57,7 @@ export function SkillsList({
   onToggle,
   onNew,
   onBoard,
+  onDelete,
 }: {
   skills: SkillRow[];
   log: CopilotTextSend[];
@@ -64,6 +65,7 @@ export function SkillsList({
   onToggle: (skill: SkillRow) => void;
   onNew: () => void;
   onBoard: (target: "seed" | "blank" | SkillRow) => void;
+  onDelete: (skill: SkillRow) => void;
 }) {
   return (
     <>
@@ -118,6 +120,16 @@ export function SkillsList({
                   }}
                 >
                   <Switch on={skill.enabled} />
+                </button>
+                <button
+                  type="button"
+                  className="cp-sk-rowdel"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(skill);
+                  }}
+                >
+                  Delete
                 </button>
                 <Chev />
               </div>

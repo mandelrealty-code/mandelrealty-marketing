@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { applyBuilderSave } from "../../../shared/copilot/skillShape";
+import { scheduleChoices } from "../../../shared/copilot/skillSchedule";
+import type { SkillSchedule } from "../../../shared/copilot/types";
 import {
   BLANK,
   BUTTON_ZOOM,
@@ -95,17 +98,34 @@ function stColor(st: NodeResult["st"] | undefined) {
   return "var(--wf-line2)";
 }
 
+function stamp(wf: Workflow) {
+  return JSON.stringify({
+    name: wf.name,
+    on: wf.on,
+    boundary: wf.boundary,
+    memory: wf.memory,
+    nodes: wf.nodes,
+    edges: wf.edges,
+  });
+}
+
 export function WorkflowBuilder({
   seed,
   theme,
+  persisted: persistedSeed,
+  skillId,
   onBack,
   onSave,
+  onDelete,
   onTest,
 }: {
   seed: Workflow;
   theme: "dark" | "light";
+  persisted?: boolean;
+  skillId?: string | null;
   onBack: () => void;
-  onSave?: (wf: Workflow) => Promise<void>;
+  onSave?: (wf: Workflow) => Promise<{ id: string } | void>;
+  onDelete?: (skillId: string | null) => Promise<void>;
   onTest?: (wf: Workflow) => Promise<Record<string, NodeResult>>;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -120,12 +140,31 @@ export function WorkflowBuilder({
   const [picker, setPicker] = useState<Picker | null>(null);
   const [panning, setPanning] = useState(false);
   const [run, setRun] = useState<RunView | null>(null);
+  const [persisted, setPersisted] = useState(Boolean(persistedSeed));
+  const [savedId, setSavedId] = useState<string | null>(skillId ?? null);
+  const [status, setStatus] = useState<"Saved" | "Unsaved changes" | "">(() => (persistedSeed ? "Saved" : ""));
+  const [ask, setAsk] = useState(false);
+  const [askName, setAskName] = useState("");
+  const [askSchedule, setAskSchedule] = useState<SkillSchedule | null>(null);
+  const [askError, setAskError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const clean = useRef<string | null>(persistedSeed ? stamp(seed) : null);
   const wfRef = useRef(wf);
   const viewRef = useRef(view);
   const selRef = useRef(sel);
   const selEdgeRef = useRef(selEdge);
   wfRef.current = wf;
   viewRef.current = view;
+
+  useEffect(() => {
+    const now = stamp(wf);
+    if (clean.current == null) {
+      setStatus(now === stamp(seed) ? "" : "Unsaved changes");
+      return;
+    }
+    setStatus(now === clean.current ? "Saved" : "Unsaved changes");
+  }, [wf, seed]);
   selRef.current = sel;
   selEdgeRef.current = selEdge;
 
@@ -386,30 +425,75 @@ export function WorkflowBuilder({
     });
   }
 
-  async function leave() {
-    if (onSave && wfRef.current.nodes.length) {
-      try {
-        await onSave(wfRef.current);
-      } catch {
-        return;
-      }
-    }
+  function leave() {
     onBack();
   }
 
-  async function toggleArmed() {
+  function toggleArmed() {
     if (missingNumber(wfRef.current)) return;
-    const previous = wfRef.current;
-    const next = { ...previous, on: !previous.on };
+    const next = { ...wfRef.current, on: !wfRef.current.on };
     wfRef.current = next;
     setWf(next);
-    if (!onSave) return;
-    try {
-      await onSave(next);
-    } catch {
-      wfRef.current = previous;
-      setWf(previous);
+  }
+
+  function openSave() {
+    if (!wfRef.current.nodes.length || saving) return;
+    if (!persisted) {
+      setAskName(wfRef.current.name === BLANK.name ? "" : wfRef.current.name);
+      setAskSchedule(null);
+      setAskError("");
+      setAsk(true);
+      return;
     }
+    void commit(wfRef.current);
+  }
+
+  async function commit(next: Workflow) {
+    if (!onSave) return;
+    setSaving(true);
+    setAskError("");
+    try {
+      const saved = await onSave(next);
+      if (saved?.id) setSavedId(saved.id);
+      const stored = {
+        ...next,
+        nodes: next.nodes.map((node) => ({ ...node })),
+        edges: next.edges.map((edge) => ({ ...edge })),
+      };
+      clean.current = stamp(stored);
+      wfRef.current = stored;
+      setWf(stored);
+      setStatus("Saved");
+      setPersisted(true);
+      setAsk(false);
+    } catch (err) {
+      setAskError(err instanceof Error ? err.message : "Could not save that workflow.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function confirmSave() {
+    if (!askName.trim()) {
+      setAskError("Give it a name.");
+      return;
+    }
+    if (askSchedule == null) {
+      setAskError("Choose when it runs.");
+      return;
+    }
+    const ready = applyBuilderSave(wfRef.current, askName, askSchedule, true);
+    if (!ready) {
+      setAskError("Add a step first. Nothing was saved.");
+      return;
+    }
+    void commit(ready);
+  }
+
+  async function removeWorkflow() {
+    setConfirmDelete(false);
+    if (onDelete) await onDelete(persisted ? savedId : null);
+    else onBack();
   }
 
   function closeRun() {
@@ -468,7 +552,7 @@ export function WorkflowBuilder({
   return (
     <div className="cp-wf">
       <div className="cp-wf-bar">
-        <button type="button" className="cp-wf-back" onClick={() => void leave()}>
+        <button type="button" className="cp-wf-back" onClick={leave}>
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M12 4.5L6.5 10l5.5 5.5" />
           </svg>
@@ -479,7 +563,12 @@ export function WorkflowBuilder({
           <span>{wf.name}</span>
           <em>{wf.boundary}</em>
         </div>
+        {status ? <span className={`cp-wf-state${status === "Saved" ? " saved" : ""}`}>{status}</span> : null}
         {missing ? <span className="cp-wf-need">Add a number first.</span> : null}
+        <button type="button" className="cp-wf-save" disabled={!wf.nodes.length || status === "Saved" || saving} onClick={openSave}>
+          Save
+        </button>
+        <button type="button" className="cp-wf-discard" onClick={() => setConfirmDelete(true)}>Delete</button>
         <button type="button" className="cp-wf-test" onClick={startTest} style={{ cursor: running ? "default" : "pointer" }}>
           {running ? <span className="cp-wf-spin" /> : (
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden><path d="M4 2.5v11l9-5.5z" /></svg>
@@ -786,6 +875,47 @@ export function WorkflowBuilder({
           )}
         </aside>
       </div>
+      {ask ? (
+        <div className="cp-wf-modal">
+          <div className="card" role="dialog" aria-modal="true" aria-label="Save this workflow">
+            <h2>Save this workflow</h2>
+            <p>Name it and choose when it runs. It stays off until you turn it on.</p>
+            <label>
+              <span>Name</span>
+              <input value={askName} onChange={(e) => setAskName(e.target.value)} />
+            </label>
+            <div className="cp-wf-choices">
+              {scheduleChoices().map((choice) => (
+                <button
+                  key={choice.label}
+                  type="button"
+                  className={askSchedule === choice.schedule ? "on" : ""}
+                  onClick={() => setAskSchedule(choice.schedule)}
+                >
+                  {choice.label}
+                </button>
+              ))}
+            </div>
+            {askError ? <p className="err">{askError}</p> : null}
+            <div className="cp-wf-modal-actions">
+              <button type="button" className="cp-wf-save" disabled={saving} onClick={confirmSave}>Save</button>
+              <button type="button" className="cp-wf-discard" disabled={saving} onClick={() => setAsk(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {confirmDelete ? (
+        <div className="cp-wf-modal">
+          <div className="card" role="dialog" aria-modal="true" aria-label="Delete this workflow?">
+            <h2>Delete this workflow?</h2>
+            <p>{persisted ? `${wf.name} stops running and is removed for both partners.` : "This workflow has not been saved. It will be discarded."}</p>
+            <div className="cp-wf-modal-actions">
+              <button type="button" className="cp-wf-discard danger" onClick={() => void removeWorkflow()}>Delete</button>
+              <button type="button" className="cp-wf-discard" onClick={() => setConfirmDelete(false)}>Keep</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
