@@ -20,6 +20,7 @@ import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords } from "../copilot/recordsAnswer.js";
 import { answerStay } from "../copilot/stayAnswer.js";
+import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, editProposal, prepareProposalSend, proposalFromWords } from "../copilot/proposal.js";
 import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
@@ -734,6 +735,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: stay,
             steps: [{ text: "Read the reservation" }],
             thought: "This came from Hospitable. Nothing was sent.",
+          });
+          return done();
+        }
+        const fact = await answerPropertyFact(text);
+        if (fact) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: fact,
+            steps: [{ text: /didn't return/.test(fact) ? "The Knowledge Hub didn't return" : "Read the Knowledge Hub" }],
+            thought: "This came from the Knowledge Hub. Nothing was sent.",
           });
           return done();
         }

@@ -9,6 +9,7 @@ import { buildBrief } from "../brief.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
 import { answerStay } from "../stayAnswer.js";
+import { answerPropertyFact } from "../propertyFact.js";
 import { callHospitableMcp } from "../hospitableMcp.js";
 import {
   accountWideRan,
@@ -374,6 +375,15 @@ async function fixtureCleanerFailed(): Promise<void> {
   expect(capturedPurchases() === 0, "nothing was purchased", "a purchase was made");
 }
 
+async function fixtureHubGarbageBags(): Promise<void> {
+  installWorld(worldAt("2026-10-07T11:00:00-04:00"));
+  const answer = await answerPropertyFact("Where are the garbage bags at the Scarborough house?");
+  const said = answer ?? "";
+  expect(/garbage bags/i.test(said) && /gift basket/i.test(said) && /kitchen counter/i.test(said), "the Scarborough garbage bags come from the Knowledge Hub", said || "no answer");
+  expect(/Roseglor/.test(said) && /Knowledge Hub/.test(said), "the answer names the property and the Hub", said);
+  expect(!/no information|don't have|do not have|nothing on file/i.test(said), "the answer does not claim the property has no information", said);
+}
+
 async function fixtureThreadUnread(): Promise<void> {
   const world = worldAt("2026-10-07T11:00:00-04:00");
   const diane = world.reservations.find((row) => row.code === CODE.diane);
@@ -418,6 +428,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "14", title: "Failed cleaner read", run: fixtureCleanerFailed },
   { id: "15", title: "Today's check-ins across managed properties", run: fixtureTodayCheckins },
   { id: "16", title: "Unreadable thread names the stay", run: fixtureThreadUnread },
+  { id: "17", title: "Scarborough garbage bags from the Hub", run: fixtureHubGarbageBags },
 ];
 
 function guard(): void {
