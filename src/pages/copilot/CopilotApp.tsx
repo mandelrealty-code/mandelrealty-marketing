@@ -8,7 +8,7 @@ import { PurchaseCard } from "./PurchaseCard";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
 import type { AccountSpend } from "../../../shared/copilot/models";
-import { BLANK, SEED, type NodeResult, type Workflow } from "../../../shared/copilot/workflow";
+import { BLANK, type NodeResult, type Workflow } from "../../../shared/copilot/workflow";
 import { workflowFromSkill } from "../../../shared/copilot/skillShape";
 import { runWhen } from "./skillsTime";
 
@@ -640,7 +640,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [mcpToken, setMcpToken] = useState("");
   const [mcpBusy, setMcpBusy] = useState(false);
   const [screen, setScreen] = useState<Screen>("brief");
-  const [boardSeed, setBoardSeed] = useState<Workflow>(SEED);
+  const [boardSeed, setBoardSeed] = useState<Workflow>(BLANK);
+  const [boardSkillId, setBoardSkillId] = useState<string | null>(null);
   const [boardTick, setBoardTick] = useState(0);
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
@@ -1636,11 +1637,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       </header>
       {screen === "board" ? (
         <WorkflowBuilder
-          key={`${boardSeed.id}-${boardTick}`}
+          key={`${boardSkillId ?? boardSeed.id}-${boardTick}`}
           seed={boardSeed}
           theme={theme}
-          persisted={Boolean(boot?.skills.some((skill) => skill.workflow?.id === boardSeed.id))}
-          skillId={boot?.skills.find((skill) => skill.workflow?.id === boardSeed.id)?.id ?? null}
+          persisted={Boolean(boardSkillId)}
+          skillId={boardSkillId}
           onBack={() => setScreen("skills")}
           onSave={async (next) => {
             const data = await api<{ skill: { id: string }; skills: SkillRow[] }>("workflow", { workflow: next });
@@ -1757,16 +1758,19 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         onOpen={(skill) => openSkill(skill)}
                         onToggle={(skill) => void toggleSkill(skill)}
                         onNew={startSkill}
-                        onDelete={(skill) => setPendingDelete({ kind: "skill", id: skill.id, title: skill.name })}
-                        onBoard={(target) => {
-                          if (target === "seed") {
-                            const saved = boot?.skills.find((skill) => skill.name === "Review text");
-                            setBoardSeed(saved ? workflowFromSkill(saved) : SEED);
-                          } else if (target === "blank") setBoardSeed(BLANK);
-                          else setBoardSeed(workflowFromSkill(target));
+                        onNewWorkflow={() => {
+                          setBoardSkillId(null);
+                          setBoardSeed(BLANK);
                           setBoardTick((tick) => tick + 1);
                           setScreen("board");
                         }}
+                        onEditWorkflow={(skill) => {
+                          setBoardSkillId(skill.id);
+                          setBoardSeed(workflowFromSkill(skill));
+                          setBoardTick((tick) => tick + 1);
+                          setScreen("board");
+                        }}
+                        onDelete={(skill) => setPendingDelete({ kind: "skill", id: skill.id, title: skill.name })}
                       />
                     ) : null}
                     {screen === "skill" && openSkillRecord ? (

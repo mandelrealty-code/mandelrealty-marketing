@@ -56,7 +56,8 @@ export function SkillsList({
   onOpen,
   onToggle,
   onNew,
-  onBoard,
+  onNewWorkflow,
+  onEditWorkflow,
   onDelete,
 }: {
   skills: SkillRow[];
@@ -64,35 +65,23 @@ export function SkillsList({
   onOpen: (skill: SkillRow) => void;
   onToggle: (skill: SkillRow) => void;
   onNew: () => void;
-  onBoard: (target: "seed" | "blank" | SkillRow) => void;
+  onNewWorkflow: () => void;
+  onEditWorkflow: (skill: SkillRow) => void;
   onDelete: (skill: SkillRow) => void;
 }) {
   return (
     <>
-      <div className="cp-boards">
-        <button type="button" onClick={() => onBoard("seed")}>
-          <span><strong>Review text</strong><em>Texts you when a new review arrives. It does not text a guest.</em></span>
-          <Chev />
-        </button>
-        <button type="button" onClick={() => onBoard("blank")}>
-          <span><strong>New workflow</strong><em>A blank board. Add the first step.</em></span>
-          <Chev />
-        </button>
-        {skills.filter((skill) => skill.kind === "playbook" && skill.workflow?.nodes?.length).map((skill) => (
-          <button key={skill.id} type="button" onClick={() => onBoard(skill)}>
-            <span><strong>{skill.name}</strong><em>{skill.workflow?.boundary || skill.must_not}</em></span>
-            <Chev />
-          </button>
-        ))}
-      </div>
       <div className="cp-sk-head">
         <div className="cp-sk-headcopy">
           <h1>Skills</h1>
           <p>Copilot runs these on its own. Shared by both partners.</p>
         </div>
-        {skills.length ? (
-          <button type="button" className="cp-sk-gold cp-sk-desknew" onClick={onNew}>New skill</button>
-        ) : null}
+        <div className="cp-sk-create">
+          {skills.length ? (
+            <button type="button" className="cp-sk-gold cp-sk-desknew" onClick={onNew}>New skill</button>
+          ) : null}
+          <button type="button" className="cp-sk-gold" onClick={onNewWorkflow}>New workflow</button>
+        </div>
       </div>
       {skills.length ? (
         <div className="cp-sk-box">
@@ -120,6 +109,16 @@ export function SkillsList({
                   }}
                 >
                   <Switch on={skill.enabled} />
+                </button>
+                <button
+                  type="button"
+                  className="cp-sk-edit"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditWorkflow(skill);
+                  }}
+                >
+                  Edit workflow
                 </button>
                 <button
                   type="button"
