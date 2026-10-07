@@ -1,4 +1,5 @@
 import { Agent, AgentBusyError, CursorAgentError } from "@cursor/sdk";
+import { ANSWER_STYLE } from "./answerStyle.js";
 import { withoutHubSecrets } from "./hubSecrets.js";
 import { addMessage, addReminder, clearDesk, listCursorRuns, listMessages, readCursorLink, readDesk, remember, renameChat, saveCursorLink, saveDesk } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
@@ -23,7 +24,7 @@ function explain(err: unknown): string {
   return "Cursor could not start.";
 }
 
-function promptFor(facts: string, history: string, skillMode: boolean, hasImages: boolean, web: boolean): string {
+export function promptFor(facts: string, history: string, skillMode: boolean, hasImages: boolean, web: boolean): string {
   if (web) {
     return [
       "Look this up in the computer's browser for the two partners at Mandel Realty.",
@@ -31,6 +32,7 @@ function promptFor(facts: string, history: string, skillMode: boolean, hasImages
       "If they named Amazon, open https://www.amazon.ca and search there. If they named Facebook Marketplace, open https://www.facebook.com/marketplace.",
       "Otherwise open Google and search for what they asked. Stay on the results and the pages you open from them.",
       "Read what is on the screen, then answer with what you found and the page address. Do not invent a price, a product, or a page you did not see.",
+      ANSWER_STYLE,
       "If the page asks you to sign in, stop. Do not type a password or a code. Do not say you are signed in. Set signIn to the site name.",
       signInLines(facts),
       "Reply with one JSON object and no markdown fence:",
@@ -42,6 +44,7 @@ function promptFor(facts: string, history: string, skillMode: boolean, hasImages
   }
   return [
     "You are Mandel Realty Copilot, answering the two partners inside their admin app.",
+    ANSWER_STYLE,
     "Think, then answer. Ask one plain question when you are unsure. If you already know, answer.",
     web
       ? "They asked you to look on the web. Open the browser, go to the site they named, and read the page. Then answer with what you found and the page address. Do not say you cannot search. Do not tell them to look it up themselves."

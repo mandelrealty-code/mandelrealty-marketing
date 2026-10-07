@@ -1,8 +1,13 @@
+import { ANSWER_STYLE } from "./answerStyle.js";
+
 /**
  * Cheap answers that must not start a Cursor agent.
  * Arithmetic is computed here. A photo is described by one small OpenAI vision call.
  * A general question uses one small chat call. Company records still go to Cursor.
  */
+
+export const GENERAL_ANSWER_SYSTEM =
+  `Answer in one or two sentences. If the question needs this company's bookings, money, guests, properties, email, or a live web page, reply with exactly NEED_RECORDS. Do not invent company numbers. ${ANSWER_STYLE}`;
 
 const NANO = "gpt-4.1-nano";
 const VISION = "gpt-4.1-mini";
@@ -162,8 +167,7 @@ export async function answerGeneral(input: string): Promise<string | null> {
     [
       {
         role: "system",
-        content:
-          "Answer in one or two sentences. If the question needs this company's bookings, money, guests, properties, email, or a live web page, reply with exactly NEED_RECORDS. Do not invent company numbers.",
+        content: GENERAL_ANSWER_SYSTEM,
       },
       { role: "user", content: text.slice(0, 800) },
     ],

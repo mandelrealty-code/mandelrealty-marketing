@@ -33,7 +33,9 @@ export async function answerPropertyFact(question: string): Promise<string | nul
   if (!hub.ok || !hub.text.trim()) return `The Knowledge Hub didn't return for ${listing.label}.`;
   const lines = matchingLines(hub.text, question);
   if (!lines.length) return `The Knowledge Hub for ${listing.label} was read. It does not mention that.`;
-  return `At ${listing.label}, the Knowledge Hub says: ${lines.join(" ")}`;
+  const fact = lines.join(" ");
+  const sentence = /[.!?]$/.test(fact) ? fact : `${fact}.`;
+  return `${sentence} That is at ${listing.label}, from the Knowledge Hub.`;
 }
 
 async function managedListings(): Promise<Listing[]> {

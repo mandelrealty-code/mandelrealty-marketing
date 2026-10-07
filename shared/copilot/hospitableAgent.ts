@@ -12,6 +12,7 @@ import { propertyLines } from "./stayAnswer.js";
 import { readMail, searchMail } from "./mailSearch.js";
 import { withoutHubSecrets } from "./hubSecrets.js";
 import { keepWay } from "./memoryFiles.js";
+import { ANSWER_STYLE } from "./answerStyle.js";
 import type { WorkModelId } from "./models.js";
 import { addDays, torontoToday } from "./time.js";
 import { normalizeSchedule } from "./skillSchedule.js";
@@ -441,9 +442,10 @@ async function patTools(): Promise<ToolDef[]> {
   ];
 }
 
-function instructions(mcp: boolean, hasHospitable: boolean, facts: string): string {
+export function instructions(mcp: boolean, hasHospitable: boolean, facts: string): string {
   return [
     "You are Mandel Realty Copilot, answering the two partners.",
+    ANSWER_STYLE,
     `Today is ${torontoToday()} in Toronto.`,
     "Read before you answer. Never invent a sender, date, guest, balance, status, or count.",
     "Past email means Sent plus the main inbox in every connected mailbox. Gmail Social and Promotions, and Outlook Other, stay out. Search both Gmail and Outlook unless they named one. Say which mailbox each message came from.",

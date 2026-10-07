@@ -137,7 +137,7 @@ async function dayCount(listings: Listing[], day: string, checkins: boolean): Pr
     const names = missed.join(", ");
     return `${head}\n${lines.join("\n")}\nThis read is incomplete. ${names} failed read.`.trim();
   }
-  return `${head}\n${lines.join("\n")}\nCounted accepted ${noun}s on ${day} across every managed property.`;
+  return `${head}\n${lines.join("\n")}`.trim();
 }
 
 export function pickListings(text: string, listings: Listing[]): Listing[] {

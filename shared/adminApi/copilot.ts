@@ -845,7 +845,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await addMessage({
           chatId,
           role: "assistant",
-          body: "I don't have that in the records I can read. I didn't guess.",
+          body: "I could not read that.",
           steps: [{ text: "Stayed in the app" }],
           thought: "Nothing was sent.",
         });
