@@ -15,6 +15,7 @@ import { cancelBrowser, collectBrowser, browserIsLive, publicError, resumeBrowse
 import { nameChat } from "../copilot/chatTitle.js";
 import { pictureModel, wantsWeb, workModel } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
+import { answerRecords } from "../copilot/recordsAnswer.js";
 import { makePicture } from "../copilot/picture.js";
 import { toE164 } from "../followUpSequences.js";
 import {
@@ -410,6 +411,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
         }
         return done();
+      }
+      if (!webSearch && !skillMode) {
+        const records = await answerRecords(text);
+        if (records) {
+          const missed = /isn't connected|didn't guess|couldn't read|isn't set up|isn't available/i.test(records);
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: records,
+            steps: [{ text: missed ? "Couldn't read the records" : "Read the records" }],
+            thought: "This came from the property book or Hospitable. Nothing was sent.",
+          });
+          return done();
+        }
       }
       const claude = webSearch
         ? null
