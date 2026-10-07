@@ -7,6 +7,7 @@ import {
 import { passwordMatches } from "../adminAuth.js";
 import { getHospitablePat } from "../pm/clientStore.js";
 import { gmailConnected, gmailKeysReady } from "./gmail.js";
+import { outlookConnected, outlookKeysReady } from "./outlook.js";
 import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
@@ -95,6 +96,8 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
   }
   const gmail = await gmailConnected().catch(() => false);
   const gmailReady = gmailKeysReady();
+  const outlook = await outlookConnected().catch(() => false);
+  const outlookReady = outlookKeysReady();
   const airroi = Boolean(process.env.AIRROI_API_KEY?.trim());
   const cursor = Boolean(process.env.CURSOR_API_KEY?.trim());
   const cleaner = cleanerWebhookReady();
@@ -111,6 +114,18 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
         : gmailReady
           ? "Click Connect and allow reading and sending. A reply still waits for Submit."
           : "The Gmail sign-in is not on the server yet.",
+    },
+    {
+      id: "outlook",
+      name: "Outlook",
+      detail: "Reads the company mailbox and drafts a reply when something needs you.",
+      status: outlook ? "connected" : "not_connected",
+      statusLabel: outlook ? "Connected" : "Not connected",
+      note: outlook
+        ? "Reads the mailbox you signed in. A reply sends only after you press Submit."
+        : outlookReady
+          ? "Click Connect and sign in as the company mailbox. A reply still waits for Submit."
+          : "The Outlook sign-in is not on the server yet.",
     },
     {
       id: "hospitable",
@@ -286,7 +301,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const chat = await createChat(await nameChat(text));
       await addMessage({ chatId: chat.id, role: "user", body: text });
       if (/Want me to reply\?/i.test(text)) {
-        const result = await mailDraftFromOffer();
+        const result = await mailDraftFromOffer(text);
         await addMessage({
           chatId: chat.id,
           role: "assistant",
@@ -498,7 +513,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return done();
         }
         if (agreesToReply(text, prior) || /wrote about .+\. Want me to reply\?/i.test(text)) {
-          const result = await mailDraftFromOffer();
+          const result = await mailDraftFromOffer(text);
           await addMessage({
             chatId,
             role: "assistant",
@@ -510,14 +525,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return done();
         }
         if (asksAboutMail(text)) {
-          const result = await mailQuestion();
+          const result = await mailQuestion(text);
           await addMessage({
             chatId,
             role: "assistant",
             body: result.body,
             choices: "choices" in result ? result.choices : null,
             steps: [{ text: "Read the inbox" }],
-            thought: "This came from Gmail. Nothing was sent.",
+            thought: /in Outlook/i.test(result.body)
+              ? "This came from Outlook. Nothing was sent."
+              : "This came from Gmail. Nothing was sent.",
           });
           return done();
         }
@@ -691,6 +708,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               body: edited || draft.body,
               threadId: draft.threadId,
               rfcId: draft.replyMessageId,
+              mailbox: draft.mailbox,
             });
             const message = await updateDraft(messageId, {
               status: "sent",
@@ -702,7 +720,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const message = await updateDraft(messageId, {
               status: "approved_unsent",
               body: edited || undefined,
-              bodyText: err instanceof Error ? err.message : "Gmail didn't send it. Nothing went out.",
+              bodyText: err instanceof Error ? err.message : "The mailbox didn't send it. Nothing went out.",
             });
             return res.status(200).json({ message });
           }

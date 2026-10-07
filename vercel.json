@@ -107,6 +107,14 @@
       "destination": "/api/admin?section=gmail&op=callback"
     },
     {
+      "source": "/api/admin/outlook/start",
+      "destination": "/api/admin?section=outlook&op=start"
+    },
+    {
+      "source": "/api/admin/outlook/callback",
+      "destination": "/api/admin?section=outlook&op=callback"
+    },
+    {
       "source": "/api/copilot/tools",
       "destination": "/api/admin?section=copilot_tools"
     },

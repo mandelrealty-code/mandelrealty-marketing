@@ -522,13 +522,13 @@ export function EmailDraftCard({
             <button type="button" className="cp-sk-gold" disabled={busy} onClick={onApprove}>Submit</button>
             <button type="button" className="cp-sk-ghost" disabled={busy} onClick={onHold}>Hold</button>
           </div>
-          <p className="cp-sk-after muted">Submit sends this reply from your Gmail. Hold keeps it here.</p>
+          <p className="cp-sk-after muted">Submit sends this reply. Hold keeps it here.</p>
         </>
       ) : null}
       {d.status === "sent" ? (
         <>
           <span className="cp-sk-approved"><Check />Sent</span>
-          <p className="cp-sk-tight">Sent from your Gmail.</p>
+          <p className="cp-sk-tight">Sent.</p>
         </>
       ) : null}
       {d.status === "approved_unsent" ? (

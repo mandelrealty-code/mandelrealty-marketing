@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "../supabase.js";
 import { addDays, greeting, torontoToday } from "./time.js";
 import type { BriefCard, BriefPayload } from "./types.js";
 import { latestInboxOffer } from "../adminApi/gmail.js";
+import { latestOutlookOffer } from "../adminApi/outlook.js";
 import { listDismissed, listDueReminders, listRuns, listSkills, listWaitingDrafts, saveGmailOffer } from "./store.js";
 import { runsOnItsOwn } from "./skillRunner.js";
 
@@ -22,17 +23,32 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   try {
     const offer = await latestInboxOffer();
     if (offer) {
-      await saveGmailOffer(offer);
+      await saveGmailOffer({ ...offer, mailbox: "gmail" });
       take(focus, {
         id: `gmail:${offer.messageId}`,
         group: "focus",
-        text: `${offer.from} wrote about ${offer.subject}. Want me to reply?`,
+        text: `${offer.from} wrote about ${offer.subject} in Gmail. Want me to reply?`,
         action: "Reply",
         source: "Gmail",
       }, skipped);
     }
   } catch {
     /* The overview still loads when Gmail is not connected. */
+  }
+  try {
+    const offer = await latestOutlookOffer();
+    if (offer) {
+      await saveGmailOffer({ ...offer, mailbox: "outlook" });
+      take(focus, {
+        id: `outlook:${offer.messageId}`,
+        group: "focus",
+        text: `${offer.from} wrote about ${offer.subject} in Outlook. Want me to reply?`,
+        action: "Reply",
+        source: "Outlook",
+      }, skipped);
+    }
+  } catch {
+    /* The overview still loads when Outlook is not connected. */
   }
   // Today's skill reports go first, so waiting drafts cannot push them off the page.
   const skills = (await listSkills().catch(() => [])).filter((row) => row.enabled && row.chat_id && runsOnItsOwn(row));

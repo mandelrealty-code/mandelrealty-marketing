@@ -614,7 +614,7 @@ export async function listMemory(): Promise<string[]> {
     if (!error) {
       return (data ?? [])
         .map((r) => String((r as { note: string }).note))
-        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|"))
+        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|") && !note.startsWith("outlook|"))
         .slice(0, 20);
     }
     if (useLocalFile(error)) { /* local file store */ }
@@ -624,7 +624,7 @@ export async function listMemory(): Promise<string[]> {
     .memory.slice(-40)
     .reverse()
     .map((m) => m.note)
-    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|"))
+    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|") && !note.startsWith("outlook|"))
     .slice(0, 20);
 }
 
@@ -803,6 +803,23 @@ export async function saveGmailLogin(refreshToken: string, email: string): Promi
   await writePrefixed("gmail|", JSON.stringify({ refreshToken, email }));
 }
 
+export async function readOutlookLogin(): Promise<{ refreshToken: string; email: string } | null> {
+  const raw = await readPrefixed("outlook|");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { refreshToken?: string; email?: string };
+    const refreshToken = parsed.refreshToken?.trim() ?? "";
+    if (!refreshToken) return null;
+    return { refreshToken, email: parsed.email?.trim() ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveOutlookLogin(refreshToken: string, email: string): Promise<void> {
+  await writePrefixed("outlook|", JSON.stringify({ refreshToken, email }));
+}
+
 export type GmailOffer = {
   from: string;
   email: string;
@@ -811,6 +828,7 @@ export type GmailOffer = {
   threadId: string;
   messageId: string;
   rfcId: string;
+  mailbox?: "gmail" | "outlook";
 };
 
 export async function readGmailOffer(): Promise<GmailOffer | null> {
@@ -827,6 +845,7 @@ export async function readGmailOffer(): Promise<GmailOffer | null> {
       threadId: parsed.threadId,
       messageId: parsed.messageId,
       rfcId: parsed.rfcId ?? "",
+      mailbox: parsed.mailbox === "outlook" ? "outlook" : "gmail",
     };
   } catch {
     return null;

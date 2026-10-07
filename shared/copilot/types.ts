@@ -6,6 +6,7 @@ export type CopilotDraft = {
   to: string;
   threadId?: string;
   replyMessageId?: string;
+  mailbox?: "gmail" | "outlook";
   status: DraftStatus;
   channel: "email" | "note" | "skill";
   skillName?: string;

@@ -1801,7 +1801,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                                 </div>
                               ) : null}
                             </div>
-                            {(row.id === "gmail" || row.id === "whatsapp") && row.status !== "connected" ? (
+                            {(row.id === "gmail" || row.id === "outlook" || row.id === "whatsapp") && row.status !== "connected" ? (
                               <button
                                 type="button"
                                 className="cp-gold"
@@ -1809,6 +1809,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                                 onClick={() => {
                                   if (row.id === "gmail") {
                                     window.location.href = "/api/admin/gmail/start";
+                                    return;
+                                  }
+                                  if (row.id === "outlook") {
+                                    window.location.href = "/api/admin/outlook/start";
                                     return;
                                   }
                                   setConnectHint((prev) => ({ ...prev, [row.id]: true }));
