@@ -41,6 +41,8 @@ export type ParityReservation = {
 export type ParityProperty = {
   id: string;
   name: string;
+  /** Hospitable display title, when it differs from the internal name. */
+  publicName?: string;
   address: string;
   managed: boolean;
 };
@@ -316,7 +318,7 @@ function mcpProperty(row: ParityProperty) {
   return {
     id: row.id,
     name: row.name,
-    public_name: row.name,
+    public_name: row.publicName || row.name,
     address: { display: row.address },
     listed: true,
   };

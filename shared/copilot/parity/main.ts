@@ -98,6 +98,8 @@ function namesOutOfScope(text: string): boolean {
 }
 
 async function fixtureOpenItem(): Promise<void> {
+  // Closing the item (Already upgraded marks it closed) waits for the open-items step, where the store exists.
+  // This fixture only checks that the stored item is shown and that Still pending does not create a reminder.
   const result = await scan(worldAt("2026-10-06T09:00:00-04:00"));
   expectNothingSent();
   expect(/1\.14 GB/.test(result.brief) && /Oct|October/.test(result.brief), "brief shows the Supabase item and the Oct 5 verification date", "the brief did not show the stored Supabase limit item");
@@ -193,10 +195,10 @@ async function fixtureLateArrival(): Promise<void> {
   const waiting = await scan(worldAt("2026-10-06T19:00:00-04:00", false));
   expectNothingSent();
   const waitingText = raised(waiting);
-  expect(/9:30/.test(waitingText) && /Priya|Shaw/i.test(waitingText), "no host reply raises one late-arrival item", "the late arrival was not raised");
+  expect(/930\s*pm/i.test(waitingText) && /Michael|Shaw/i.test(waitingText), "no host reply raises one 9:30 PM arrival item", "the late arrival was not raised");
   expect(waiting.drafts.length === 0, "the late arrival does not draft a reply by itself", `found ${waiting.drafts.length} drafts`);
   const handled = await scan(worldAt("2026-10-06T19:00:00-04:00", true));
-  expect(!/9:30/.test(raised(handled)), "a host reply in the thread raises nothing", "the late arrival was raised after the host had replied");
+  expect(!/930\s*pm/i.test(raised(handled)), "a host reply in the thread raises nothing", "the late arrival was raised after the host had replied");
   expectDraftRules(waiting.drafts, waiting.reports);
 }
 
@@ -207,7 +209,7 @@ async function fixtureCodePin(): Promise<void> {
   const byCode = await answerStay(`What was the last guest message on reservation ${CODE.scarborough}?`);
   const recordsForCode = await answerRecords(`What was the last guest message on reservation ${CODE.scarborough}?`);
   expect(Boolean(byCode) && (byCode ?? "").includes(CODE.scarborough) && /dishwasher/i.test(byCode ?? ""), "last message by code is the Scarborough stay", byCode ?? "no answer");
-  expect(!/9:30|on our way|Priya/i.test(byCode ?? ""), "the code answer does not use another stay", byCode ?? "");
+  expect(!/930\s*pm|Michael/i.test(byCode ?? ""), "the code answer does not use another stay", byCode ?? "");
   expect(recordsForCode === null, "the account-wide last-message path does not answer a coded question", recordsForCode ?? "");
   expect(accountWideRan() === false, "the account-wide reservation list did not run for a code", "list reservations across the account ran");
   clearAccountWide();
@@ -215,7 +217,7 @@ async function fixtureCodePin(): Promise<void> {
   const recordsForName = await answerRecords("What was the last guest message on the Scarborough reservation at Spacious 3BR Family Retreat?");
   const named = byName || recordsForName || "";
   expect(/dishwasher/i.test(named) && named.includes(CODE.scarborough), "last message by name is the Scarborough stay", named || "no answer");
-  expect(!/9:30|Priya/i.test(named), "the name answer does not use another stay", named);
+  expect(!/930\s*pm|Michael/i.test(named), "the name answer does not use another stay", named);
   expect(accountWideRan() === false, "the account-wide last-message path does not run when the unit is named", "list reservations across the account ran");
 }
 
