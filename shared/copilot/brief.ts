@@ -7,6 +7,7 @@ import { listDismissed, listDueReminders, listRuns, listSkills, listWaitingDraft
 import { runsOnItsOwn } from "./skillRunner.js";
 import { listOpenItems, verifiedLabel } from "./openItems.js";
 import { runUnattendedChecks } from "./stayCheck.js";
+import { listConnectorFailures } from "./connectorFailures.js";
 
 const MAX_CARDS = 4;
 
@@ -26,6 +27,19 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
     await runUnattendedChecks(now);
   } catch {
     /* The overview still loads when a check cannot finish. */
+  }
+  try {
+    for (const failure of await listConnectorFailures()) {
+      take(focus, {
+        id: `failed-read:${failure.connector}`,
+        group: "focus",
+        text: `${failure.connector} failed read: ${failure.error}`,
+        action: "Open",
+        source: "Checks",
+      }, skipped);
+    }
+  } catch {
+    /* The overview still loads when connector failures cannot be read. */
   }
   try {
     const items = await listOpenItems();

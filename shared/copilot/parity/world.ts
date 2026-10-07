@@ -1,6 +1,6 @@
 import type { PmPropertyListItem } from "../../pm/types.js";
 import { captureCommit, markAccountWide, resetCaptures } from "./capture.js";
-import { resetParityCancellations } from "./storeStub.js";
+import { resetParityCancellations, resetParityConnectorFailures, resetParityReports } from "./storeStub.js";
 import { setParityClock } from "./clock.js";
 import { parityEnabled } from "./flag.js";
 
@@ -61,6 +61,29 @@ export type ParityItem = {
 
 export type ParityHub = { propertyId: string; body: string };
 
+export type ParityCleanerTurnover = {
+  propertyId: string;
+  scheduledOn: string;
+  status: string;
+  assigned: boolean;
+  done: boolean;
+  issue: string;
+};
+
+export type ParityCleanerSupply = {
+  propertyId: string;
+  item: string;
+  left: number;
+  low: boolean;
+  product: string;
+};
+
+export type ParityCleaner = {
+  error?: string;
+  turnovers?: ParityCleanerTurnover[];
+  supplies?: ParityCleanerSupply[];
+};
+
 export type ParityWorld = {
   now: Date;
   properties: ParityProperty[];
@@ -70,6 +93,7 @@ export type ParityWorld = {
   memory: ParityMemory[];
   items: ParityItem[];
   hub?: ParityHub[];
+  cleaner?: ParityCleaner;
 };
 
 let world: ParityWorld | null = null;
@@ -85,10 +109,19 @@ export function installWorld(next: ParityWorld): void {
     memory: next.memory.map((row) => ({ ...row })),
     items: next.items.map((row) => ({ ...row })),
     hub: (next.hub ?? []).map((row) => ({ ...row })),
+    cleaner: next.cleaner
+      ? {
+          error: next.cleaner.error,
+          turnovers: (next.cleaner.turnovers ?? []).map((row) => ({ ...row })),
+          supplies: (next.cleaner.supplies ?? []).map((row) => ({ ...row })),
+        }
+      : undefined,
   };
   setParityClock(next.now);
   resetCaptures();
   resetParityCancellations();
+  resetParityConnectorFailures();
+  resetParityReports();
 }
 
 export function clearWorld(): void {
@@ -100,6 +133,10 @@ export function clearWorld(): void {
 function live(): ParityWorld | null {
   if (!parityEnabled()) return null;
   return world;
+}
+
+export function parityCleaner(): ParityCleaner | null {
+  return live()?.cleaner ?? null;
 }
 
 export function parityPat(): string | null {

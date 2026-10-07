@@ -25,6 +25,7 @@ const commits: CommitAttempt[] = [];
 const reminders: { text: string; dueOn: string }[] = [];
 let cleanerCalls = 0;
 let browserCalls = 0;
+let purchases = 0;
 let accountWide = false;
 
 export function resetCaptures(): void {
@@ -34,6 +35,7 @@ export function resetCaptures(): void {
   reminders.length = 0;
   cleanerCalls = 0;
   browserCalls = 0;
+  purchases = 0;
   accountWide = false;
 }
 
@@ -60,6 +62,11 @@ export function captureReminder(text: string, dueOn: string): void {
 export function captureCleaner(): void {
   if (!parityEnabled()) return;
   cleanerCalls += 1;
+}
+
+export function capturePurchase(): void {
+  if (!parityEnabled()) return;
+  purchases += 1;
 }
 
 export function captureBrowser(): void {
@@ -98,6 +105,10 @@ export function capturedCleanerCalls(): number {
 
 export function capturedBrowserCalls(): number {
   return browserCalls;
+}
+
+export function capturedPurchases(): number {
+  return purchases;
 }
 
 export function accountWideRan(): boolean {

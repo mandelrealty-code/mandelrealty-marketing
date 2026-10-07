@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/follow-ups?job=copilot",
-      "schedule": "0 9 * * *"
+      "schedule": "0 9,17 * * *"
     }
   ],
   "headers": [

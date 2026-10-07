@@ -3,6 +3,7 @@ import { processDueFollowups } from "../../shared/followUpStore.js";
 import { processUnansweredReviews } from "../../shared/pm/reviewReply/store.js";
 import { runNightlyDream } from "../../shared/copilot/memoryFiles.js";
 import { runScheduledSkills } from "../../shared/copilot/skillRunner.js";
+import { runCopilotPass } from "../../shared/copilot/pass.js";
 
 export const config = { maxDuration: 60 };
 
@@ -28,13 +29,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  // Second daily cron (vercel.json): starts each daily Copilot skill on a Cursor cloud agent.
-  // The agents read and leave reports or drafts in Copilot. Nothing is sent.
+  // Copilot cron (vercel.json): 5:00 AM and 1:00 PM Toronto (EDT), via 09:00 and 17:00 UTC.
+  // Skills start once that morning. Checks and connector health run both times. Nothing is sent.
   if (req.query.job === "copilot") {
     try {
       const copilot = await runScheduledSkills();
+      const checks = await runCopilotPass().then(() => ({ ok: true })).catch((err: unknown) => ({
+        ok: false,
+        error: err instanceof Error ? err.message : "Copilot checks failed",
+      }));
       const dream = await runNightlyDream().catch(() => ({ wrote: null }));
-      return res.status(200).json({ ok: true, copilot, dream });
+      return res.status(200).json({ ok: true, copilot, checks, dream });
     } catch (err) {
       const error = err instanceof Error ? err.message : "Copilot skills failed";
       console.error("[cron/follow-ups] copilot", error);

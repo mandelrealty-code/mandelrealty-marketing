@@ -12,6 +12,8 @@ import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
 import { searchMail } from "./mailSearch.js";
 import { listSkills } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
+import { readCleanerUnit } from "./cleanerRead.js";
+import { parityEnabled } from "./parity/flag.js";
 
 export type ConnectorStatus = "ok" | "failed" | "chat-only";
 
@@ -110,6 +112,7 @@ async function storeRow(): Promise<ConnectorRow> {
 
 async function cursorRow(): Promise<ConnectorRow> {
   const read = "one Cursor cloud completion, no tools";
+  if (parityEnabled()) return row("Cursor", "failed", read, null, "Cursor isn't connected on the server, so the skill did not run.");
   const key = process.env.CURSOR_API_KEY?.trim();
   if (!key) return row("Cursor", "failed", read, null, "Cursor isn't connected on the server, so the skill did not run.");
   let agent: Awaited<ReturnType<typeof Agent.create>> | null = null;
@@ -136,15 +139,34 @@ async function cursorRow(): Promise<ConnectorRow> {
   }
 }
 
-export async function connectorHealthReport(): Promise<ConnectorRow[]> {
-  const week = torontoWeek();
-  const [gmail, outlook, mcp, api, store, cursor] = await Promise.all([
+async function cleanerRow(now = new Date()): Promise<ConnectorRow> {
+  const week = torontoWeek(now);
+  const read = `turnovers for 20 Blue Jays Way Unit 318, Toronto week ${week.start} to ${week.end}`;
+  try {
+    const properties = await listPmProperties();
+    const unit = properties.find((property) => {
+      const blob = `${property.name} ${property.address}`;
+      return /blue jays/i.test(blob) && /\b318\b/.test(blob);
+    });
+    const id = (unit?.hospitable_property_id || unit?.id || "").trim();
+    if (!id) return row("Cleaner app", "failed", read, null, "20 Blue Jays Way Unit 318 is not linked, so that read is not available.");
+    const picture = await readCleanerUnit({ propertyId: id, from: week.start, to: week.end });
+    if (!picture.ok) return row("Cleaner app", "failed", read, null, picture.error);
+    return row("Cleaner app", "ok", read, picture.turnovers.length);
+  } catch (err) {
+    return row("Cleaner app", "failed", read, null, messageOf(err));
+  }
+}
+
+export async function connectorHealthReport(now = new Date()): Promise<ConnectorRow[]> {
+  const [gmail, outlook, mcp, api, store, cursor, cleaner] = await Promise.all([
     mailRow("Gmail", "gmail"),
     mailRow("Outlook", "outlook"),
     mcpRow(),
     publicApiRow(),
     storeRow(),
     cursorRow(),
+    cleanerRow(now),
   ]);
   return [
     gmail,
@@ -158,13 +180,7 @@ export async function connectorHealthReport(): Promise<ConnectorRow[]> {
       null,
       "The scheduled skill runner has no browser tool. Browserbase is only opened from chat. This check did not fetch a page.",
     ),
-    row(
-      "Cleaner app",
-      "chat-only",
-      `turnovers for 20 Blue Jays Way Unit 318, Toronto week ${week.start} to ${week.end}`,
-      null,
-      "The scheduled skill runner cannot read cleaner turnovers. There is no turnover read on that path. This check did not call the cleaner app.",
-    ),
+    cleaner,
     row(
       "OpenAI",
       "chat-only",

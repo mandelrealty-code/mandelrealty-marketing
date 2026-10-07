@@ -8,9 +8,10 @@ import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
 import { hospitableFetch } from "../pm/hospitableClient.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
-import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, recordCancellation, recordDrafts } from "./store.js";
+import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, recordCancellation, recordDrafts, recordReport, reportRecorded } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
+import { readCleanerUnit, type CleanerPicture, type CleanerSupply, type CleanerTurnover } from "./cleanerRead.js";
 
 const AIRBNB_BLIND = "I cannot see replies sent inside the Airbnb app.";
 const CONTACTS = [
@@ -118,7 +119,10 @@ async function checksChat(): Promise<string> {
   return chat.id;
 }
 
-async function leaveReport(row: ReportCapture): Promise<void> {
+export async function publishCheckReport(row: ReportCapture): Promise<void> {
+  const key = `report:${row.headline}\n${row.text}`;
+  if (await reportRecorded(key)) return;
+  await recordReport(key);
   captureReport(row);
   if (parityEnabled()) return;
   try {
@@ -147,13 +151,13 @@ async function leaveDraft(row: DraftCapture, reservationId = ""): Promise<void> 
     await addMessage({
       chatId,
       role: "assistant",
-      body: `${row.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : "Here is the building email. Nothing was sent."}${warnings}`,
+      body: `${row.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : row.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : "Here is the building email. Nothing was sent."}${warnings}`,
       draft: {
         subject: row.subject,
         body: row.body,
         to: row.to,
         status: "waiting",
-        channel: row.channel === "hospitable" ? "hospitable" : "email",
+        channel: row.channel === "hospitable" ? "hospitable" : row.channel === "note" ? "note" : "email",
         ...(row.channel === "hospitable" && reservationId
           ? { hospitable: { tool: "send-reservation-message", args: { reservation_id: reservationId, body: row.body } } }
           : {}),
@@ -242,7 +246,7 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
       });
       stays = rowsOf(raw).map((row) => toStay(row, id)).filter((stay) => stay.id && isManagedUnit(property.name, property.address));
     } catch {
-      await leaveReport({
+      await publishCheckReport({
         headline: property.name,
         text: `I can't see reservations for ${property.name}. ${AIRBNB_BLIND}`,
         needs_you: false,
@@ -250,6 +254,20 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
         summary: "Reservations didn't return.",
       });
       continue;
+    }
+    const picture = await readCleanerUnit({
+      propertyId: id,
+      from: addDays(today, -2),
+      to: addDays(today, 21),
+    });
+    if (!picture.ok) {
+      await publishCheckReport({
+        headline: property.name,
+        text: `${property.name} cleaner app failed read: ${picture.error}`,
+        needs_you: true,
+        title: property.name,
+        summary: "Cleaner app failed read.",
+      });
     }
     for (const stay of stays) {
       if (!relevant(stay, today) || !isManagedUnit(property.name, property.address)) continue;
@@ -267,18 +285,19 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
           return !row.at || Number.isNaN(at.getTime()) || at <= now;
         });
       } catch {
-        await leaveReport({
+        await publishCheckReport({
           headline: stay.code,
-          text: `${stay.code}: I can't see the message thread. ${AIRBNB_BLIND}${hubRead.ok ? "" : " The Knowledge Hub didn't return."}`,
-          needs_you: false,
+          text: `${stay.code}: I can't see the message thread. ${AIRBNB_BLIND}${hubRead.ok ? "" : " The Knowledge Hub didn't return."}${failureNote(picture)}`,
+          needs_you: !picture.ok,
           title: stay.code,
           summary: "Messages didn't return.",
         });
         continue;
       }
       const memory = businessFacts(await memoryFor(place), hub);
-      await oneStay({ stay, place, messages, hub, memory, propertyName: property.name, hubFailed: !hubRead.ok });
+      await oneStay({ stay, place, messages, hub, memory, propertyName: property.name, hubFailed: !hubRead.ok, picture, now });
     }
+    if (picture.ok) await offerLowStock(property.name, property.address, picture.supplies);
   }
 }
 
@@ -306,7 +325,7 @@ async function preApproval(): Promise<void> {
       hour12: true,
     }).format(exp);
     const who = /ryan/i.test(`${hit.subject} ${body} ${hit.from}`) ? "Ryan" : hit.from || "A co-host";
-    await leaveReport({
+    await publishCheckReport({
       headline: `${who} sent a pre-approval`,
       text: `${who} sent a pre-approval. It expires ${when} ET, 24 hours after it was sent. The dates stay open until the guest accepts. No reservation exists yet. Nothing needs a reply.`,
       needs_you: false,
@@ -321,13 +340,69 @@ async function cancellation(stay: Stay, hubFailed: boolean): Promise<void> {
   if (!stay.code || await cancellationRecorded(stay.code)) return;
   await recordCancellation(stay.code);
   const hubNote = hubFailed ? " The Knowledge Hub didn't return." : "";
-  await leaveReport({
+  await publishCheckReport({
     headline: `${stay.code} dates are back open`,
     text: `${stay.code}: the dates are back open. No draft was left.${hubNote}`,
     needs_you: true,
     title: stay.code,
     summary: "Dates are back open.",
   });
+}
+
+function failureNote(picture: CleanerPicture): string {
+  return picture.ok ? "" : ` Cleaner app failed read: ${picture.error}`;
+}
+
+function daySpan(from: string, to: string): number {
+  const start = Date.parse(`${from.slice(0, 10)}T00:00:00Z`);
+  const end = Date.parse(`${to.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  return Math.round((end - start) / 86400000);
+}
+
+function turnoverLine(stay: Stay, picture: CleanerPicture, now: Date): { line: string; needsYou: boolean } | null {
+  if (!picture.ok) return { line: `Cleaner app failed read: ${picture.error}`, needsYou: true };
+  const from = addDays(stay.checkIn, -1);
+  const rows = picture.turnovers.filter((row) => row.scheduledOn >= from && row.scheduledOn <= stay.checkOut);
+  const next = rows.find((row) => !row.done) ?? rows[0];
+  if (!next) return null;
+  return describeTurnover(next, now);
+}
+
+function describeTurnover(row: CleanerTurnover, now: Date): { line: string; needsYou: boolean } {
+  const issue = row.issue ? ` Issue reported: ${row.issue}.` : "";
+  if (row.done) return { line: `Turnover is done.${issue}`, needsYou: Boolean(row.issue) };
+  const days = daySpan(torontoToday(now), row.scheduledOn);
+  const when = days === 0 ? "turnover today" : days === 1 ? "turnover in 1 day" : days > 1 ? `turnover in ${days} days` : `turnover was ${Math.abs(days)} days ago`;
+  if (!row.assigned) return { line: `no cleaner assigned, ${when}.${issue}`, needsYou: true };
+  return { line: `A cleaner is assigned, ${when}.${issue}`, needsYou: Boolean(row.issue) };
+}
+
+async function offerLowStock(name: string, address: string, supplies: CleanerSupply[]): Promise<void> {
+  const where = placeLabel(`${name} ${address}`, name);
+  for (const item of supplies) {
+    if (!item.low || !item.item) continue;
+    const key = `offer:${where}:${item.item}`;
+    if (await draftsRecorded(key)) continue;
+    await recordDrafts(key);
+    const product = item.product || item.item;
+    const left = Number.isInteger(item.left) ? String(item.left) : String(item.left);
+    await publishCheckReport({
+      headline: `${where} is low on ${item.item}`,
+      text: `${where} is low on ${item.item}. ${left} left.`,
+      needs_you: true,
+      title: where,
+      summary: `${item.item}: ${left} left.`,
+    });
+    await leaveDraft({
+      channel: "note",
+      to: "",
+      subject: `Buy ${product} for ${where}`,
+      body: `${where} is low on ${item.item}. ${left} left. Approve the purchase of ${product}. Nothing is purchased until you approve.`,
+      warnings: [],
+      needs_you: true,
+    });
+  }
 }
 
 async function oneStay(input: {
@@ -338,13 +413,31 @@ async function oneStay(input: {
   memory: string;
   propertyName: string;
   hubFailed: boolean;
+  picture: CleanerPicture;
+  now: Date;
 }): Promise<void> {
-  const { stay, messages, hub, memory, hubFailed } = input;
+  const { stay, messages, hub, memory, hubFailed, picture, now } = input;
   const note = hubFailed ? " The Knowledge Hub didn't return." : "";
+  const turnover = turnoverLine(stay, picture, now);
+  const extra = turnover ? ` ${turnover.line}` : "";
   let reported = false;
   const say = async (row: ReportCapture) => {
     reported = true;
-    await leaveReport({ ...row, text: `${row.text}${note}` });
+    await publishCheckReport({
+      ...row,
+      text: `${row.text}${note}${extra}`,
+      needs_you: row.needs_you || Boolean(turnover?.needsYou),
+    });
+  };
+  const ensureTurnover = async () => {
+    if (!turnover || reported) return;
+    await say({
+      headline: stay.code,
+      text: `${stay.code} at ${placeLabel(input.place, input.propertyName)}.`,
+      needs_you: turnover.needsYou,
+      title: stay.code,
+      summary: turnover.line,
+    });
   };
   const lastHost = messages.filter((row) => row.role === "host").map((row) => row.at).sort().at(-1) ?? "";
   const open = messages.filter((row) => row.role === "guest" && row.at > lastHost);
@@ -383,26 +476,30 @@ async function oneStay(input: {
   const cars = /two cars|parking/i.test(ask);
   if (!diet || !cars || !/blue jays|\b318\b/i.test(input.place)) {
     if (hubFailed && !reported) {
-      await leaveReport({
+      await publishCheckReport({
         headline: stay.code,
-        text: `${stay.code}: The Knowledge Hub didn't return.`,
-        needs_you: false,
+        text: `${stay.code}: The Knowledge Hub didn't return.${extra}`,
+        needs_you: Boolean(turnover?.needsYou),
         title: stay.code,
         summary: "The Knowledge Hub didn't return.",
       });
+      reported = true;
     }
+    await ensureTurnover();
     return;
   }
   if (await draftsRecorded(stay.code)) {
     if (hubFailed && !reported) {
-      await leaveReport({
+      await publishCheckReport({
         headline: stay.code,
-        text: `${stay.code}: The Knowledge Hub didn't return.`,
-        needs_you: false,
+        text: `${stay.code}: The Knowledge Hub didn't return.${extra}`,
+        needs_you: Boolean(turnover?.needsYou),
         title: stay.code,
         summary: "The Knowledge Hub didn't return.",
       });
+      reported = true;
     }
+    await ensureTurnover();
     return;
   }
   const facts = memory || BLUE_JAYS_PROCESS;

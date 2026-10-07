@@ -14,6 +14,7 @@ import {
   accountWideRan,
   capturedBrowserCalls,
   capturedCleanerCalls,
+  capturedPurchases,
   capturedCommits,
   capturedDrafts,
   capturedReminders,
@@ -27,7 +28,8 @@ import { BUILDING_MEMORY, CODE, ID, OPEN_ITEM, ryanMail, worldAt } from "./catal
 import { parityEnabled } from "./flag.js";
 import { parityNow, setParityClock } from "./clock.js";
 import { chooseOpenItem } from "../openItems.js";
-import { parityItems, parityMemory, installWorld, type ParityWorld } from "./world.js";
+import { parityItems, parityMemory, installWorld, type ParityReservation, type ParityWorld } from "./world.js";
+import { runCopilotPass } from "../pass.js";
 
 class Gap extends Error {
   assertion: string;
@@ -87,6 +89,7 @@ function expectNothingSent(): void {
   const commits = capturedCommits();
   expect(commits.length === 0, "nothing was sent or committed", commits.map((row) => `${row.connector} ${row.detail}`).join("; ") || "a connector committed");
   expect(capturedCleanerCalls() === 0, "the cleaner app was not called", "the cleaner app was called");
+  expect(capturedPurchases() === 0, "nothing was purchased", "a purchase was made");
   expect(capturedBrowserCalls() === 0, "Browserbase was not opened", "Browserbase was opened");
 }
 
@@ -268,6 +271,109 @@ async function fixtureOnboarding(): Promise<void> {
   expectDraftRules(second.drafts, second.reports);
 }
 
+const AFTERNOON_CODE = "HMAFTN0701";
+
+function afternoonStay(): ParityReservation {
+  return {
+    id: "00000000-0000-4000-8000-000000000a11",
+    code: AFTERNOON_CODE,
+    propertyId: ID.charlotte,
+    status: "accepted",
+    checkIn: "2026-10-07",
+    checkOut: "2026-10-10",
+    guest: "Nora",
+    adults: 2,
+    children: 0,
+    messages: [{
+      id: "nora-late",
+      at: "2026-10-07T11:30:00-04:00",
+      role: "guest",
+      name: "Nora",
+      body: "Please bring another set of keys. The windows are dirty and the shower pressure is very strong.",
+    }],
+  };
+}
+
+async function fixtureAfternoon(): Promise<void> {
+  const world = worldAt("2026-10-07T09:00:00-04:00");
+  world.reservations = [...world.reservations, afternoonStay()];
+  installWorld(world);
+  await runCopilotPass(new Date("2026-10-07T09:00:00-04:00"));
+  expectNothingSent();
+  const morning = [...capturedReports(), ...capturedDrafts()].map((row) => "text" in row ? row.text : row.body).join("\n");
+  expect(!morning.includes(AFTERNOON_CODE), "the morning pass does not see the 11:30 message", "the late-morning message was raised at 9:00");
+  resetCaptures();
+  setParityClock(new Date("2026-10-07T13:00:00-04:00"));
+  await runCopilotPass(new Date("2026-10-07T13:00:00-04:00"));
+  expectNothingSent();
+  const caught = capturedReports().filter((row) => row.text.includes(AFTERNOON_CODE));
+  expect(caught.length === 1, "the afternoon pass catches the late-morning message the same day", `found ${caught.length} reports`);
+  expect(capturedDrafts().every((row) => !row.body.includes(AFTERNOON_CODE)), "the late-morning catch is a report", "a draft was written for that stay");
+  resetCaptures();
+  await runCopilotPass(new Date("2026-10-07T13:00:00-04:00"));
+  expectNothingSent();
+  expect(capturedReports().length === 0 && capturedDrafts().length === 0, "a second pass the same afternoon does not duplicate the item, report, or draft", `reports ${capturedReports().length}, drafts ${capturedDrafts().length}`);
+}
+
+async function fixtureTurnover(): Promise<void> {
+  const world = worldAt("2026-10-07T13:00:00-04:00");
+  world.cleaner = {
+    turnovers: [{
+      propertyId: ID.blue,
+      scheduledOn: "2026-10-10",
+      status: "scheduled",
+      assigned: false,
+      done: false,
+      issue: "",
+    }],
+  };
+  installWorld(world);
+  await runCopilotPass(world.now);
+  expectNothingSent();
+  const report = capturedReports().map((row) => row.text).join("\n");
+  expect(/no cleaner assigned, turnover in 3 days/.test(report) && /318/.test(report), "the Unit 318 stay report includes the turnover state", report.slice(0, 500));
+  const guest = capturedDrafts().filter((row) => row.channel === "hospitable").map((row) => row.body).join("\n");
+  expect(!/\bcleaners?\b/i.test(guest), "the cleaner is not named in a guest-facing draft", guest.slice(0, 300));
+  expectDraftRules(capturedDrafts(), capturedReports());
+}
+
+async function fixtureLowStock(): Promise<void> {
+  const world = worldAt("2026-10-07T13:00:00-04:00");
+  world.cleaner = {
+    supplies: [{
+      propertyId: ID.charlotte,
+      item: "paper towels",
+      left: 1,
+      low: true,
+      product: "Bounty paper towels",
+    }],
+  };
+  installWorld(world);
+  await runCopilotPass(world.now);
+  expectNothingSent();
+  const offer = capturedDrafts().find((row) => row.channel === "note");
+  const said = [...capturedReports().map((row) => row.text), offer?.body ?? ""].join("\n");
+  expect(/8 Charlotte 606/.test(said) && /paper towels/.test(said) && /\b1 left\b/.test(said), "the report names the unit, the item, and how much is left", said.slice(0, 400));
+  expect(Boolean(offer) && /Approve the purchase of Bounty paper towels/.test(offer?.body ?? ""), "the purchase is offered as a draft", offer?.body ?? "no note draft");
+  expect(capturedPurchases() === 0, "nothing was purchased", "a purchase was made");
+  resetCaptures();
+  await runCopilotPass(world.now);
+  expect(capturedDrafts().length === 0 && capturedPurchases() === 0, "the offer is not duplicated and still nothing is purchased", `drafts ${capturedDrafts().length}`);
+}
+
+async function fixtureCleanerFailed(): Promise<void> {
+  const world = worldAt("2026-10-07T13:00:00-04:00");
+  world.cleaner = { error: "Cleaner Hub timed out" };
+  installWorld(world);
+  await runCopilotPass(world.now);
+  const brief = JSON.stringify(await buildBrief(world.now));
+  const said = [...capturedReports().map((row) => `${row.headline}\n${row.text}`), brief].join("\n");
+  expect(/Cleaner Hub timed out/.test(said) && /failed read/i.test(said), "a failed cleaner read is reported as failed", said.slice(0, 500));
+  expect(!/all[- ]clear/i.test(said), "a failed read is not an all-clear", "the pass said all clear");
+  expectNothingSent();
+  expect(capturedPurchases() === 0, "nothing was purchased", "a purchase was made");
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -279,6 +385,10 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "8", title: "Late arrival", run: fixtureLateArrival },
   { id: "9", title: "Code pinning", run: fixtureCodePin },
   { id: "10", title: "Hub onboarding without memory seeding", run: fixtureOnboarding },
+  { id: "11", title: "Afternoon pass catches a late-morning message once", run: fixtureAfternoon },
+  { id: "12", title: "Unit 318 turnover state", run: fixtureTurnover },
+  { id: "13", title: "Low stock offer with no purchase", run: fixtureLowStock },
+  { id: "14", title: "Failed cleaner read", run: fixtureCleanerFailed },
 ];
 
 function guard(): void {

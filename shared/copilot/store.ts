@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "../supabase.js";
 import { captureReminder } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityItems, updateParityItem } from "./parity/world.js";
-import { parityCancellationRaised, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts } from "./parity/storeStub.js";
+import { parityCancellationRaised, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReportIssued } from "./parity/storeStub.js";
 import type { OpenItem } from "./openItems.js";
 import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, SkillRunResult } from "./types.js";
 
@@ -633,7 +633,7 @@ export async function listMemory(): Promise<string[]> {
     if (!error) {
       return (data ?? [])
         .map((r) => String((r as { note: string }).note))
-        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|") && !note.startsWith("outlook|"))
+        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|") && !note.startsWith("outlook|") && !note.startsWith("failed-read|"))
         .slice(0, 20);
     }
     if (useLocalFile(error)) { /* local file store */ }
@@ -643,7 +643,7 @@ export async function listMemory(): Promise<string[]> {
     .memory.slice(-40)
     .reverse()
     .map((m) => m.note)
-    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|") && !note.startsWith("outlook|"))
+    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|") && !note.startsWith("outlook|") && !note.startsWith("failed-read|"))
     .slice(0, 20);
 }
 
@@ -1346,8 +1346,12 @@ export async function saveStoredOpenItem(item: OpenItem): Promise<void> {
   writeFileStore(data);
 }
 
-async function checkMarked(kind: "cancellation" | "drafts", key: string): Promise<boolean> {
-  if (parityEnabled()) return kind === "cancellation" ? parityCancellationRaised(key) : parityDraftsIssued(key);
+async function checkMarked(kind: "cancellation" | "drafts" | "report", key: string): Promise<boolean> {
+  if (parityEnabled()) {
+    if (kind === "cancellation") return parityCancellationRaised(key);
+    if (kind === "report") return parityReportIssued(key);
+    return parityDraftsIssued(key);
+  }
   const client = sb();
   if (!useFile && !checksInFile && client) {
     const { data, error } = await client.from("copilot_check_state").select("key").eq("kind", kind).eq("key", key).maybeSingle();
@@ -1361,10 +1365,11 @@ async function checkMarked(kind: "cancellation" | "drafts", key: string): Promis
   return kind === "cancellation" ? data.cancellations.includes(key) : data.draftKeys.includes(key);
 }
 
-async function markCheck(kind: "cancellation" | "drafts", key: string): Promise<void> {
+async function markCheck(kind: "cancellation" | "drafts" | "report", key: string): Promise<void> {
   if (!key) return;
   if (parityEnabled()) {
     if (kind === "cancellation") parityMarkCancellation(key);
+    else if (kind === "report") parityMarkReport(key);
     else parityMarkDrafts(key);
     return;
   }
@@ -1397,4 +1402,12 @@ export async function draftsRecorded(key: string): Promise<boolean> {
 
 export async function recordDrafts(key: string): Promise<void> {
   await markCheck("drafts", key);
+}
+
+export async function reportRecorded(key: string): Promise<boolean> {
+  return checkMarked("report", key);
+}
+
+export async function recordReport(key: string): Promise<void> {
+  await markCheck("report", key);
 }
