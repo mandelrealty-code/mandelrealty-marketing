@@ -8,7 +8,9 @@ export type CopilotDraft = {
   replyMessageId?: string;
   mailbox?: "gmail" | "outlook";
   status: DraftStatus;
-  channel: "email" | "note" | "skill";
+  channel: "email" | "note" | "skill" | "hospitable";
+  /** The Hospitable change Submit will make. Absent until then, nothing is committed. */
+  hospitable?: { tool: string; args: Record<string, unknown> };
   skillName?: string;
   skillWhen?: string;
   skillReads?: string;
@@ -121,6 +123,8 @@ export type ConnectorRow = {
   status: "connected" | "not_connected";
   statusLabel: string;
   note?: string;
+  /** Hospitable: mcp uses the agent token, pat is the Public API key only. */
+  setup?: "mcp" | "pat" | "none";
 };
 
 export type InboxGuest = {

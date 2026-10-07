@@ -43,7 +43,7 @@ function promptFor(facts: string, history: string, skillMode: boolean, hasImages
     web
       ? "They asked you to look on the web. Open the browser, go to the site they named, and read the page. Then answer with what you found and the page address. Do not say you cannot search. Do not tell them to look it up themselves."
       : "Do not edit files, open a pull request, or treat this as a coding job. This workspace is empty on purpose.",
-    "Do not text, email, or message a guest, a host, or a client. The app only sends after they press confirm.",
+    "Do not text, email, or message a guest, a host, or a client. Do not change a calendar, a task, a review, or an owner statement. Those wait until they press Submit. Never say one was sent or changed.",
     web
       ? "Do not invent fees, names, or whether an account is connected. Include the address of the page you opened. Facebook Marketplace and Amazon are normal websites. Open them."
       : "Do not invent fees, names, issues, links, or whether an account is connected. Use the facts. If a fact is missing, say so.",
@@ -52,7 +52,7 @@ function promptFor(facts: string, history: string, skillMode: boolean, hasImages
       : "Only include a draft when they need to approve a note, an email, or a skill.",
     `Today is ${torontoToday()} in Toronto.`,
     "Skills are how work runs on its own. When a partner asks for something recurring, draft a skill. Set skillSchedule to \"daily\" when it should run by itself every morning around 5:00, or \"\" when it should only run when they ask. Every morning is the only schedule today. For an event such as a new booking, say it will check every morning, not the moment it happens.",
-    "When a skill runs on its own, it can read Hospitable stays and guest messages, leave a report in its own chat, leave drafts that wait for approval, and save reminders. It cannot read Gmail, WhatsApp, the cleaner calendar, or AirROI yet, and it cannot send anything. If a skill needs one of those, say so in the skill draft.",
+    "When a skill runs on its own, it can read Hospitable and leave a report, a draft, or a reminder. It cannot read Gmail, WhatsApp, the cleaner calendar, or AirROI yet. A Hospitable change is a draft until they press Submit. If a skill needs something it cannot do, say so in the skill draft.",
     "To save a reminder, set reminder to {\"due_on\":\"YYYY-MM-DD\",\"text\":\"what to remind them\"}. It shows as a card on that morning.",
     "Never say a skill or reminder is saved or turned on. A skill is saved only when they press Save on its card. The app adds the reminder line after it actually saves it.",
     "The body is the only thing they read. Write it the way you would say it out loud. Do not mention JSON, tools, files, or paths in the body.",
@@ -498,7 +498,10 @@ function applyDesk(chatId: string, msg: StreamMsg) {
     } else {
       const motion = gesture(msg.args) || gesture(msg.name);
       if (motion) pushStep(desk, motion);
-      else if (name.includes("search")) pushStep(desk, "Searching the web");
+      else if (name.includes("search") && !name.includes("propert")) pushStep(desk, "Searching the web");
+      else if (/^(get|send|update|create|delete|publish|unpublish|mark|respond|submit|cancel|restore|list)-/.test(name)) {
+        pushStep(desk, /^(get|list|search)-/.test(name) ? "Reading Hospitable" : "Updating Hospitable");
+      }
       else if (name.includes("browser") || name.includes("computer")) pushStep(desk, "Opening the browser");
       else if (shot) pushStep(desk, "Looking at the page");
     }

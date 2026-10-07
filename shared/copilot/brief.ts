@@ -72,13 +72,13 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   for (const item of waiting) {
     const label = item.channel === "skill"
       ? (item.skillName || "A skill")
-      : (item.subject || (item.channel === "note" ? "A note" : "An email"));
+      : (item.subject || (item.channel === "note" ? "A note" : item.channel === "hospitable" ? "A Hospitable change" : "An email"));
     const ready = item.channel === "skill" ? `${label} is ready to save.` : `${label} is ready.`;
     take(focus, {
       id: `draft:${item.messageId}`,
       chatId: item.chatId,
       group: "focus",
-      text: `${ready} Nothing was sent.`,
+      text: item.channel === "hospitable" ? `${ready} Nothing was changed.` : `${ready} Nothing was sent.`,
       action: "Review",
       source: "Copilot",
     }, skipped);

@@ -99,6 +99,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
   const [defaultRatePercent, setDefaultRatePercent] = useState(15);
   const [defaultHstPercent, setDefaultHstPercent] = useState(3);
   const [hospitableConnected, setHospitableConnected] = useState(false);
+  const [hospitableMcp, setHospitableMcp] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
@@ -170,6 +171,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     hospitable_dashboard_id: "",
   });
   const [patInput, setPatInput] = useState("");
+  const [mcpInput, setMcpInput] = useState("");
   const [hospitableAvailable, setHospitableAvailable] = useState<
     { id: string; name: string; address: string }[]
   >([]);
@@ -221,6 +223,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
       pmGet<{
         settings: { default_commission_bps: number; default_hst_bps?: number };
         hospitable_connected: boolean;
+        hospitable_mcp?: boolean;
       }>("settings"),
     ]);
     setClients(c.clients ?? []);
@@ -228,6 +231,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     setDefaultRatePercent((s.settings?.default_commission_bps ?? 1500) / 100);
     setDefaultHstPercent((s.settings?.default_hst_bps ?? 300) / 100);
     setHospitableConnected(Boolean(s.hospitable_connected));
+    setHospitableMcp(Boolean(s.hospitable_mcp));
   }, []);
 
   const loadProperty = useCallback(async (id: string) => {
@@ -623,19 +627,34 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     setBusy(true);
     setLoadError("");
     try {
-      const data = await pmPost<{
-        settings: { default_commission_bps: number };
-        hospitable_connected: boolean;
-      }>("settings", {
-        op: "save_hospitable_pat",
-        hospitable_pat: patInput,
-      });
-      setHospitableConnected(Boolean(data.hospitable_connected));
+      if (patInput.trim()) {
+        const data = await pmPost<{
+          hospitable_connected: boolean;
+          hospitable_mcp?: boolean;
+        }>("settings", {
+          op: "save_hospitable_pat",
+          hospitable_pat: patInput,
+        });
+        setHospitableConnected(Boolean(data.hospitable_connected));
+        if (data.hospitable_mcp != null) setHospitableMcp(Boolean(data.hospitable_mcp));
+      }
+      if (mcpInput.trim()) {
+        const data = await pmPost<{
+          hospitable_connected: boolean;
+          hospitable_mcp?: boolean;
+        }>("settings", {
+          op: "save_hospitable_mcp",
+          hospitable_mcp_token: mcpInput,
+        });
+        setHospitableConnected(Boolean(data.hospitable_connected));
+        setHospitableMcp(Boolean(data.hospitable_mcp));
+      }
       setPatInput("");
+      setMcpInput("");
       setPatSheet(false);
-      setToast("Hospitable connected.");
+      setToast(mcpInput.trim() ? "Hospitable agent connected." : "Hospitable connected.");
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Could not save PAT.");
+      setLoadError(err instanceof Error ? err.message : "Could not save Hospitable.");
     } finally {
       setBusy(false);
     }
@@ -644,17 +663,21 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
   const clearPat = async () => {
     setBusy(true);
     try {
-      const data = await pmPost<{ hospitable_connected: boolean }>("settings", {
+      const data = await pmPost<{ hospitable_connected: boolean; hospitable_mcp?: boolean }>("settings", {
         op: "clear_hospitable_pat",
       });
-      setHospitableConnected(Boolean(data.hospitable_connected));
+      const mcp = await pmPost<{ hospitable_connected: boolean; hospitable_mcp?: boolean }>("settings", {
+        op: "clear_hospitable_mcp",
+      });
+      setHospitableConnected(Boolean(mcp.hospitable_connected ?? data.hospitable_connected));
+      setHospitableMcp(Boolean(mcp.hospitable_mcp));
       setToast(
-        data.hospitable_connected
-          ? "Cleared saved PAT (env token still active)."
+        mcp.hospitable_connected || mcp.hospitable_mcp
+          ? "Cleared the saved keys. A server key is still active."
           : "Hospitable disconnected.",
       );
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Could not clear PAT.");
+      setLoadError(err instanceof Error ? err.message : "Could not clear Hospitable.");
     } finally {
       setBusy(false);
     }
@@ -2169,9 +2192,9 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           <p className="text-[13px] text-[#9a9590]">Booking sync</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <StatusDot active={hospitableConnected} />
+          <StatusDot active={hospitableConnected || hospitableMcp} />
           <span className="text-sm text-[#f5f5f5]">
-            {hospitableConnected ? "Connected" : "Not connected"}
+            {hospitableMcp ? "Agent connected" : hospitableConnected ? "API key only" : "Not connected"}
           </span>
         </div>
       </div>
@@ -2180,13 +2203,14 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
           type="button"
           onClick={() => {
             setPatInput("");
+            setMcpInput("");
             setPatSheet(true);
           }}
           className="text-[13px] font-semibold text-[#c4a35a]"
         >
-          {hospitableConnected ? "Update PAT" : "Paste PAT"}
+          {hospitableConnected || hospitableMcp ? "Update keys" : "Connect"}
         </button>
-        {hospitableConnected ? (
+        {hospitableConnected || hospitableMcp ? (
           <button
             type="button"
             onClick={() => clearPat()}
@@ -2870,7 +2894,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
 
       {patSheet ? (
         <Sheet
-          title={hospitableConnected ? "Update PAT" : "Connect Hospitable"}
+          title={hospitableConnected || hospitableMcp ? "Update Hospitable" : "Connect Hospitable"}
           onCancel={() => setPatSheet(false)}
           desktop={desktop}
         >
@@ -2886,11 +2910,22 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
             <p className="text-[13px] text-[#6f6a65]">
               Stored server-side. We verify it before saving. Never shown again in full.
             </p>
+            <FieldLabel>MCP fallback token</FieldLabel>
+            <TextInput
+              value={mcpInput}
+              onChange={(e) => setMcpInput(e.target.value)}
+              placeholder="Hospitable → Settings → Integrations → MCP"
+              autoComplete="off"
+              className="border-[#c4a35a]/55 font-mono text-sm"
+            />
+            <p className="text-[13px] text-[#6f6a65]">
+              This is what Copilot uses to read and change the account. The API key above is only the fallback.
+            </p>
           </div>
           <GoldButton
             type="button"
             className="mt-4 w-full"
-            disabled={busy || !patInput.trim()}
+            disabled={busy || (!patInput.trim() && !mcpInput.trim())}
             onClick={savePat}
           >
             {busy ? "Verifying…" : "Save & connect"}

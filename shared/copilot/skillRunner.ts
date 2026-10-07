@@ -18,8 +18,8 @@ import { torontoToday } from "./time.js";
 import type { CopilotRun, CopilotSkill } from "./types.js";
 
 /**
- * Runs saved skills with a Cursor cloud agent. The agent reaches the business only through
- * the Copilot tools server, which can read Hospitable and write inside Copilot. It cannot send.
+ * Runs saved skills with a Cursor cloud agent.
+ * Hospitable reads go through the Copilot tools. A change is only a draft until a partner presses Submit.
  */
 
 const TOOLS_URL = () => process.env.COPILOT_TOOLS_URL?.trim() || "https://admin.mandelrealtygroup.com/api/copilot/tools";
@@ -64,12 +64,15 @@ function promptFor(skill: CopilotSkill, trigger: CopilotRun["trigger"], previous
     "",
     `Today is ${torontoToday()} in Toronto. ${trigger === "manual" ? "A partner pressed Run now." : "This is the scheduled morning run."}`,
     "",
-    "Use the tools on the copilot MCP server. They are the only way to read the business's accounts and the only way to leave anything for the partners.",
+    "Use hospitable_read to look at Hospitable. It cannot change anything.",
+    "The copilot tools are the only way to leave something for the partners.",
     "Rules:",
-    "- Nothing you do reaches a guest, host, or client. For anything meant for them, call propose_draft. It waits for a partner to approve. Never say anything was sent.",
+    "- Never send a guest message, post a review, change a calendar, change a task, or change an owner statement yourself. To propose one, call propose_draft with hospitable_tool and hospitable_args. It waits until a partner presses Submit. Never say it was sent or changed.",
+    "- For an email or a note, call propose_draft. It waits for a partner. Never say an email was sent.",
     "- Do not invent fees, names, clauses, products, links, or facts. If a fact is missing, leave a blank like [fee] in the draft and list it in warnings.",
     "- If a tool fails, say so in the report. Never report an all-clear after a failed read.",
     "- For details found in guest messages, say the guest may have sent it, and quote the line. Never say they sent it.",
+    "- If hospitable_read is not connected, use guest_inbox, list_stays, and read_guest_messages, and say what you could not do.",
     "- If the skill needs something no tool can do, say plainly what you could not do.",
     "- This workspace is empty on purpose. Do not edit files, run code, or open pull requests.",
     "- Write the report for two busy partners: short headings, one line per guest or item, no markdown. Pass title, summary and sections to post_report as well as the plain text, so it shows as a tidy card.",

@@ -121,7 +121,7 @@ export type WaitingDraft = {
   messageId: string;
   chatId: string;
   createdAt: string;
-  channel: "email" | "note" | "skill";
+  channel: "email" | "note" | "skill" | "hospitable";
   subject: string;
   skillName: string;
 };
@@ -129,7 +129,7 @@ export type WaitingDraft = {
 function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; draft?: CopilotDraft | null }): WaitingDraft | null {
   const draft = row.draft;
   if (!draft || draft.status !== "waiting") return null;
-  if (draft.channel !== "email" && draft.channel !== "note" && draft.channel !== "skill") return null;
+  if (draft.channel !== "email" && draft.channel !== "note" && draft.channel !== "skill" && draft.channel !== "hospitable") return null;
   return {
     messageId: String(row.id ?? ""),
     chatId: String(row.chat_id ?? ""),

@@ -1713,6 +1713,26 @@ html.cp-app[data-cp-theme="light"] #root {
   color: var(--muted);
 }
 
+.cp-mcp {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  min-width: 0;
+}
+
+.cp-mcp input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
 .cp-linkish {
   height: 36px;
   flex-shrink: 0;

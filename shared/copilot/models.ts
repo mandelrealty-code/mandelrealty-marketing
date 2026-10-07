@@ -82,3 +82,10 @@ export function workModel(id: string): WorkModel {
 export function pictureModel(id: string): PictureModel {
   return PICTURE_MODELS.find((row) => row.id === id) ?? PICTURE_MODELS[0];
 }
+
+/** Draft unless a photo is attached. A customer picture stays on the sharper edit. */
+export function pictureFor(text: string, hasPhoto: boolean): PictureModel {
+  if (hasPhoto && /\b(client|customer|sharper|report)\b/i.test(text)) return pictureModel("client");
+  if (hasPhoto) return pictureModel("edit");
+  return pictureModel("draft");
+}

@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
+import { hospitableDraft, isHospitableWrite } from "./hospitableAgent.js";
 import { DEFAULT_CHECKLIST, listStays, readGuestInbox, readThread } from "./guestInbox.js";
 import { readRunToken } from "./runToken.js";
 import { addMessage, addReminder, flagChatNeedsYou, getRun, listSkills, updateRun } from "./store.js";
@@ -9,8 +11,8 @@ import type { CopilotReport, CopilotRun, CopilotSkill } from "./types.js";
  * Copilot tools for Cursor cloud agents (MCP over HTTP, stateless JSON).
  * Served via /api/admin?section=copilot_tools. Public path: POST /api/copilot/tools
  *
- * Read tools look at Hospitable. Write tools only write inside Copilot.
- * There is no tool that sends anything to a guest, host, or client.
+ * Read tools can look at Hospitable. A Hospitable change is only a draft until a partner presses Submit.
+ * Nothing here sends a guest message or commits a calendar, task, review, or owner statement.
  */
 
 type Rpc = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
@@ -150,27 +152,59 @@ const TOOLS: Record<string, Tool> = {
       return { posted: true };
     },
   },
-  propose_draft: {
+  hospitable_read: {
     description:
-      "Leaves a draft in the skill's chat for a partner to approve. It is not sent. Use it for any email or message meant for a guest, host, or client. Leave a blank like [fee] for any fact you could not find and list it in warnings.",
+      "Reads one Hospitable MCP tool. name must start with get-, list-, or search-, for example get-reservations or get-property-calendar. Pass that tool's arguments. This cannot send, publish, or change anything.",
     inputSchema: {
       type: "object",
       properties: {
-        channel: { type: "string", enum: ["email", "note"] },
+        name: { type: "string" },
+        arguments: { type: "object" },
+      },
+      required: ["name"],
+    },
+    readOnly: true,
+    call: async (args) => {
+      const name = text(args.name, 80);
+      const toolArgs = args.arguments && typeof args.arguments === "object" && !Array.isArray(args.arguments) ? args.arguments as Record<string, unknown> : {};
+      if (!/^(get|list|search)-/.test(name) || isHospitableWrite(name)) {
+        throw new Error("That would change Hospitable. Call propose_draft with hospitable_tool instead. Nothing was changed.");
+      }
+      if (!(await hospitableMcpConfigured())) throw new Error("Hospitable MCP is not connected, so that read is not available. Nothing was changed.");
+      return callHospitableMcp(name, toolArgs);
+    },
+  },
+  propose_draft: {
+    description:
+      "Leaves a draft in the skill's chat for a partner to approve. Nothing is sent or changed. Use it for an email, a note, or a Hospitable change. For Hospitable, set hospitable_tool to the write tool name and hospitable_args to its arguments. Leave a blank like [fee] for any fact you could not find and list it in warnings.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        channel: { type: "string", enum: ["email", "note", "hospitable"] },
         to: { type: "string" },
         subject: { type: "string" },
         body: { type: "string" },
         warnings: { type: "array", items: { type: "string" } },
+        hospitable_tool: { type: "string" },
+        hospitable_args: { type: "object" },
       },
-      required: ["channel", "body"],
+      required: ["body"],
     },
     readOnly: false,
     call: async (args, ctx) => {
       const draftBody = text(args.body);
-      if (!draftBody) throw new Error("body is required.");
+      if (!draftBody && !text(args.hospitable_tool, 80)) throw new Error("body is required.");
       const warnings = Array.isArray(args.warnings) ? args.warnings.map((w) => text(w, 200)).filter(Boolean).slice(0, 6) : [];
+      const toolName = text(args.hospitable_tool, 80);
+      const toolArgs = args.hospitable_args && typeof args.hospitable_args === "object" && !Array.isArray(args.hospitable_args)
+        ? args.hospitable_args as Record<string, unknown>
+        : {};
+      if (toolName && !isHospitableWrite(toolName)) {
+        throw new Error("That is not a Hospitable change. Nothing was changed.");
+      }
+      const hospitable = toolName ? hospitableDraft(toolName, toolArgs, draftBody) : null;
       const intro = [
-        `${ctx.skill.name} drafted this. Nothing was sent.`,
+        `${ctx.skill.name} drafted this. ${hospitable ? "Nothing was changed." : "Nothing was sent."}`,
         ...(warnings.length ? ["Check before approving:", ...warnings.map((w) => `• ${w}`)] : []),
       ].join("\n");
       const message = await addMessage({
@@ -178,7 +212,7 @@ const TOOLS: Record<string, Tool> = {
         role: "assistant",
         body: intro,
         runId: ctx.run.id,
-        draft: {
+        draft: hospitable ?? {
           channel: args.channel === "note" ? "note" : "email",
           to: text(args.to, 180),
           subject: text(args.subject, 180),
@@ -244,7 +278,7 @@ async function answer(rpc: Rpc, ctx: Ctx): Promise<Record<string, unknown> | nul
       protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: "mandel-copilot", version: "1.0.0" },
-      instructions: "Mandel Copilot tools. Read tools look at Hospitable. Write tools only write inside Copilot. Nothing here sends to a guest.",
+      instructions: "Mandel Copilot tools. hospitable_read only reads. A Hospitable change goes through propose_draft and waits for Submit. Nothing here commits a guest message, calendar, task, review, or owner statement.",
     });
   }
   if (method === "ping") return ok({});

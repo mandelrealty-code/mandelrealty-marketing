@@ -476,6 +476,59 @@ export function ReportCard({
   );
 }
 
+export function HospitableDraftCard({
+  message,
+  body,
+  onBody,
+  busy,
+  onApprove,
+  onHold,
+}: {
+  message: CopilotMessage;
+  body: string;
+  onBody: (v: string) => void;
+  busy: boolean;
+  onApprove: () => void;
+  onHold: () => void;
+}) {
+  const draft = message.draft;
+  if (!draft || draft.channel !== "hospitable") return null;
+  return (
+    <div className="cp-sk-prop">
+      {message.run_id ? <span className="cp-sk-stamp">{runWhen(message.created_at, true)}</span> : null}
+      <p className="cp-sk-pre">{message.body}</p>
+      <div className="cp-sk-card">
+        <div className="cp-sk-mailmeta">
+          <div className="r">
+            <span className="k">Change</span>
+            <span className="subj">{draft.subject || "Hospitable"}</span>
+          </div>
+        </div>
+        <div className="cp-sk-mailbody">
+          {draft.status === "waiting" ? <Grow value={body} onChange={onBody} /> : <span className="cp-sk-pre">{draft.body}</span>}
+        </div>
+      </div>
+      {draft.status === "waiting" ? (
+        <>
+          <span className="cp-sk-waiting"><span className="cp-sk-dot" style={{ background: "var(--primary)" }} />Waiting for you</span>
+          <div className="cp-sk-btns">
+            <button type="button" className="cp-sk-gold" disabled={busy} onClick={onApprove}>Submit</button>
+            <button type="button" className="cp-sk-ghost" disabled={busy} onClick={onHold}>Hold</button>
+          </div>
+          <p className="cp-sk-after muted">Submit commits this in Hospitable. Hold leaves it here.</p>
+        </>
+      ) : null}
+      {draft.status === "sent" ? (
+        <>
+          <span className="cp-sk-approved"><Check />Done</span>
+          <p className="cp-sk-tight">It is in Hospitable.</p>
+        </>
+      ) : null}
+      {draft.status === "held" ? <p className="cp-sk-tight">Held. Nothing was changed.</p> : null}
+    </div>
+  );
+}
+
 export function EmailDraftCard({
   message,
   body,

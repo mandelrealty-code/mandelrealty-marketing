@@ -46,10 +46,12 @@ import {
   getPmClient,
   getPmSettings,
   isHospitableConfigured,
+  isHospitableMcpConfigured,
   listPmClients,
   updatePmClient,
   updatePmSettings,
 } from "../pm/clientStore.js";
+import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import {
   listAllHospitableProperties,
   verifyHospitablePat,
@@ -240,6 +242,7 @@ async function settingsPayload(extra: Record<string, unknown> = {}) {
   return {
     settings,
     hospitable_connected: await isHospitableConfigured(),
+    hospitable_mcp: await isHospitableMcpConfigured(),
     ...extra,
   };
 }
@@ -1368,6 +1371,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(200).json({
             settings,
             hospitable_connected: await isHospitableConfigured(),
+            hospitable_mcp: await isHospitableMcpConfigured(),
           });
         }
         if (op === "save_hospitable_pat") {
@@ -1378,6 +1382,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(200).json({
             settings,
             hospitable_connected: true,
+            hospitable_mcp: await isHospitableMcpConfigured(),
           });
         }
         if (op === "clear_hospitable_pat") {
@@ -1385,6 +1390,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(200).json({
             settings,
             hospitable_connected: await isHospitableConfigured(),
+            hospitable_mcp: await isHospitableMcpConfigured(),
+          });
+        }
+        if (op === "save_hospitable_mcp") {
+          const token = cleanMcpToken(str(body.hospitable_mcp_token));
+          if (!token) return res.status(400).json({ error: "The MCP token is required." });
+          try {
+            await verifyHospitableMcpToken(token);
+            const settings = await updatePmSettings({ hospitable_mcp_token: token });
+            return res.status(200).json({
+              settings,
+              hospitable_connected: await isHospitableConfigured(),
+              hospitable_mcp: true,
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Could not save the MCP token.";
+            if (/hospitable_mcp_token|schema cache/i.test(message)) {
+              return res.status(400).json({
+                error: "The MCP token column is not on the database yet. Run supabase/pm_hospitable_mcp_token_v1.sql, then save the token again.",
+              });
+            }
+            return res.status(400).json({ error: message });
+          }
+        }
+        if (op === "clear_hospitable_mcp") {
+          const settings = await updatePmSettings({ hospitable_mcp_token: "" });
+          return res.status(200).json({
+            settings,
+            hospitable_connected: await isHospitableConfigured(),
+            hospitable_mcp: await isHospitableMcpConfigured(),
           });
         }
       }

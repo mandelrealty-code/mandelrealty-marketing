@@ -149,10 +149,38 @@ export async function isHospitableConfigured(): Promise<boolean> {
   return Boolean(await getHospitablePat());
 }
 
+/** MCP fallback bearer token. Not the Public API personal access token. */
+export async function getHospitableMcpToken(): Promise<string> {
+  const fromEnv = () => process.env.HOSPITABLE_MCP_TOKEN?.trim() ?? "";
+  try {
+    const { data, error } = await db()
+      .from("pm_settings")
+      .select("hospitable_mcp_token")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) {
+      if (/hospitable_mcp_token|column/i.test(error.message || "")) return fromEnv();
+      throw error;
+    }
+    const fromDb = typeof data?.hospitable_mcp_token === "string" ? data.hospitable_mcp_token.trim() : "";
+    if (fromDb) return fromDb;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    if (/hospitable_mcp_token|column/i.test(message)) return fromEnv();
+    throw err;
+  }
+  return fromEnv();
+}
+
+export async function isHospitableMcpConfigured(): Promise<boolean> {
+  return Boolean(await getHospitableMcpToken());
+}
+
 export async function updatePmSettings(patch: {
   default_commission_bps?: number;
   default_hst_bps?: number;
   hospitable_pat?: string | null;
+  hospitable_mcp_token?: string | null;
 }): Promise<PmSettings> {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.default_commission_bps != null) {
@@ -171,6 +199,9 @@ export async function updatePmSettings(patch: {
   }
   if (patch.hospitable_pat !== undefined) {
     updates.hospitable_pat = (patch.hospitable_pat ?? "").trim();
+  }
+  if (patch.hospitable_mcp_token !== undefined) {
+    updates.hospitable_mcp_token = (patch.hospitable_mcp_token ?? "").trim();
   }
   const { data, error } = await db()
     .from("pm_settings")

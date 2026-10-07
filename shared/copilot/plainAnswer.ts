@@ -152,7 +152,7 @@ async function chat(model: string, messages: unknown, maxTokens: number, ms: num
 
 /**
  * A sentence for a general question, or null when it needs company records
- * or the small model could not answer. Null means the caller may use Cursor.
+ * or the small model could not answer.
  */
 export async function answerGeneral(input: string): Promise<string | null> {
   const text = input.replace(/\n?Attached:.*$/is, "").trim();

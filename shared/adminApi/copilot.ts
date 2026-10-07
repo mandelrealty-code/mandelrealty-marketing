@@ -5,22 +5,25 @@ import {
   verifyAdminSessionToken,
 } from "../adminAuth.js";
 import { passwordMatches } from "../adminAuth.js";
-import { getHospitablePat } from "../pm/clientStore.js";
+import { getHospitablePat, isHospitableMcpConfigured, updatePmSettings } from "../pm/clientStore.js";
 import { gmailConnected, gmailKeysReady } from "./gmail.js";
 import { outlookConnected, outlookKeysReady } from "./outlook.js";
 import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
-import { answerWithClaude } from "../copilot/claudeAnswer.js";
-import { CURSOR_MISSING, answerSignIn, cancelCursorRun, collectCursorRun, settleOpenCursorRuns, startCursorRun } from "../copilot/cursorThink.js";
+import { answerSignIn, cancelCursorRun, collectCursorRun, settleOpenCursorRuns } from "../copilot/cursorThink.js";
 import { cancelBrowser, collectBrowser, browserIsLive, publicError, resumeBrowser, settleOpenBrowsers, startBrowser } from "../copilot/webBrowser.js";
 import { nameChat } from "../copilot/chatTitle.js";
-import { pictureModel, wantsWeb, workModel } from "../copilot/models.js";
+import { pictureFor, wantsWeb, workModel } from "../copilot/models.js";
+import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords } from "../copilot/recordsAnswer.js";
+import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
+import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer, mailQuestion } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
+import { draftForCard, skillTurn } from "../copilot/reply.js";
 import { toE164 } from "../followUpSequences.js";
 import {
   addMessage,
@@ -79,6 +82,39 @@ function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Sign in required." });
 }
 
+function mcpSaveError(err: unknown): string {
+  const message = err instanceof Error ? err.message : "Could not save the MCP token.";
+  if (/hospitable_mcp_token|schema cache/i.test(message)) {
+    return "The MCP token column is not on the database yet. Run supabase/pm_hospitable_mcp_token_v1.sql, then save the token again.";
+  }
+  return message;
+}
+
+async function hospitableMessage(
+  chatId: string,
+  model: WorkModelId,
+  question: string,
+  images: { mimeType: string; data: string }[],
+): Promise<boolean> {
+  const history = await listMessages(chatId);
+  const prior = history
+    .slice(0, -1)
+    .slice(-6)
+    .map((message) => `${message.role}: ${message.body.slice(0, 700)}`)
+    .join("\n\n");
+  const turn = await answerHospitable({ model, question, prior, facts: await factsFor(), images });
+  if (!turn) return false;
+  await addMessage({
+    chatId,
+    role: "assistant",
+    body: turn.body,
+    steps: turn.steps,
+    thought: turn.thought,
+    draft: turn.draft,
+  });
+  return true;
+}
+
 async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
   const rows = skills ?? (await skillRows().catch(() => []));
   const readsGuests = rows.some(
@@ -94,6 +130,7 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
   } catch {
     hospitable = Boolean(process.env.HOSPITABLE_PAT?.trim());
   }
+  const hospitableMcp = await isHospitableMcpConfigured().catch(() => Boolean(process.env.HOSPITABLE_MCP_TOKEN?.trim()));
   const gmail = await gmailConnected().catch(() => false);
   const gmailReady = gmailKeysReady();
   const outlook = await outlookConnected().catch(() => false);
@@ -130,14 +167,17 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
     {
       id: "hospitable",
       name: "Hospitable",
-      detail: "Guest messages, earnings, issues, and each property’s knowledge base.",
-      status: hospitable ? "connected" : "not_connected",
-      statusLabel: hospitable ? "Connected" : "Not connected",
-      note: !hospitable
-        ? "Add the Hospitable key in OPS Settings."
-        : readsGuests
-          ? "Reads guest messages each morning. Managed in OPS Settings."
-          : "Managed in OPS Settings.",
+      detail: "Guest messages, bookings, calendar, tasks, reviews, and owner statements.",
+      status: hospitableMcp || hospitable ? "connected" : "not_connected",
+      statusLabel: hospitableMcp ? "Connected" : hospitable ? "API key only" : "Not connected",
+      setup: hospitableMcp ? "mcp" : hospitable ? "pat" : "none",
+      note: hospitableMcp
+        ? readsGuests
+          ? "The agent uses Hospitable MCP, including the morning read. A change waits until you press Submit."
+          : "The agent uses Hospitable MCP. A change waits until you press Submit."
+        : hospitable
+          ? "The Public API key can read properties, stays, messages, the calendar, and reviews. Paste the MCP fallback token for guest replies, tasks, and owner statements."
+          : "Paste the MCP fallback token from Hospitable → Settings → Integrations → MCP. The Public API key in OPS Settings is only the fallback.",
     },
     {
       id: "cleaner",
@@ -177,7 +217,7 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
       detail: "Team keys.",
       status: cursor ? "connected" : "not_connected",
       statusLabel: cursor ? "Team keys are set" : "Not connected",
-      note: cursor ? "Answers this chat on Auto." : "The team key is not set on the server.",
+      note: cursor ? "Saved skill runs can use the team key. This chat does not." : "The team key is not set on the server.",
     },
   ];
 }
@@ -274,6 +314,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ run, skills, connectors: await connectors(skills), chats: await listChats() });
     }
 
+    if (op === "hospitable-mcp") {
+      if (body.action === "clear") {
+        try {
+          await updatePmSettings({ hospitable_mcp_token: "" });
+        } catch (err) {
+          return res.status(400).json({ error: mcpSaveError(err) });
+        }
+        return res.status(200).json({ connectors: await connectors() });
+      }
+      const token = cleanMcpToken(String(body.token ?? ""));
+      if (!token) return res.status(400).json({ error: "Paste the MCP fallback token." });
+      try {
+        await verifyHospitableMcpToken(token);
+        await updatePmSettings({ hospitable_mcp_token: token });
+      } catch (err) {
+        return res.status(400).json({ error: mcpSaveError(err) });
+      }
+      return res.status(200).json({ connectors: await connectors() });
+    }
+
     if (op === "memory-file") {
       const action = String(body.action ?? "");
       const filePath = String(body.path ?? "").trim();
@@ -312,22 +372,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
         return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
       }
-      let pending = false;
-      if (!process.env.CURSOR_API_KEY?.trim()) {
-        await addMessage({ chatId: chat.id, role: "assistant", body: CURSOR_MISSING });
-      } else {
-        try {
-          await startCursorRun(chat.id, await factsFor(), false);
-          pending = true;
-        } catch (err) {
-          await addMessage({
-            chatId: chat.id,
-            role: "assistant",
-            body: err instanceof Error ? err.message : CURSOR_MISSING,
-          });
-        }
+      if (ASKS_HOSPITABLE.test(text) && (await hospitableMessage(chat.id, "auto", text, []))) {
+        return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
       }
-      return res.status(200).json({ chat, messages: await listMessages(chat.id), pending, chats: await listChats() });
+      const result = draftForCard(text, String(body.action ?? ""));
+      await addMessage({
+        chatId: chat.id,
+        role: "assistant",
+        body: result.body,
+        draft: result.draft,
+        choices: result.choices ?? null,
+        steps: [{ text: "Wrote a note" }],
+        thought: "Nothing was sent.",
+      });
+      return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
     }
 
     if (op === "think") {
@@ -399,8 +457,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const pictureMode = body.pictureMode === true;
       const skillMode = body.skillMode === true;
       const webSearch = body.webSearch === true || wantsWeb(text);
-      const picked = workModel(String(body.model ?? "auto")).id;
-      const pictureChoice = pictureModel(String(body.model ?? "draft"));
+      const pictureChoice = pictureFor(text, images.length > 0);
       const userMessage = await addMessage({ chatId, role: "user", body: text, images, picture: pictureMode });
       const signIn = await answerSignIn(chatId);
       if (signIn) {
@@ -549,43 +606,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
         const records = await answerRecords(text, prior);
-        if (records) {
-          const missed = /isn't connected|didn't guess|couldn't read|isn't set up|isn't available|didn't return/i.test(records);
+        const missed = records ? /isn't connected|didn't guess|couldn't read|isn't set up|isn't available|didn't return/i.test(records) : false;
+        if (records && !missed) {
           await addMessage({
             chatId,
             role: "assistant",
             body: records,
-            steps: [{ text: missed ? "Couldn't read the records" : "Read the records" }],
+            steps: [{ text: "Read the records" }],
             thought: records.startsWith("We manage")
               ? "This came from Units we manage."
               : "This came from Hospitable. Nothing was sent.",
           });
           return done();
         }
+        if (ASKS_HOSPITABLE.test(text) || missed) {
+          if (await hospitableMessage(chatId, workModel(String(body.model ?? "auto")).id, text, images)) return done();
+          if (records) {
+            await addMessage({
+              chatId,
+              role: "assistant",
+              body: records,
+              steps: [{ text: "Couldn't read the records" }],
+              thought: "Hospitable didn't return that. Nothing was sent.",
+            });
+            return done();
+          }
+        }
       }
-      const claude = webSearch
-        ? null
-        : picked === "haiku" || picked === "sonnet"
-          ? picked
-          : picked === "auto" && skillMode && process.env.ANTHROPIC_API_KEY?.trim()
-            ? "sonnet"
-            : null;
-      if (claude) {
-        const spoken = await answerWithClaude(claude, text, skillMode, images);
-        const name = claude === "haiku" ? "Haiku" : "Sonnet";
+      if (skillMode && !webSearch) {
+        const history = await listMessages(chatId);
+        const prior = history.slice(0, -1).map((message) => ({ role: message.role, body: message.body }));
+        const result = skillTurn(text, prior);
         await addMessage({
           chatId,
           role: "assistant",
-          body: spoken?.body ?? "Anthropic isn’t connected, so that model didn’t answer. Nothing was sent.",
-          draft: spoken?.draft ?? null,
-          choices: spoken?.choices ?? null,
-          steps: [{ text: spoken ? `Answered with ${name}` : "Could not reach Anthropic" }],
-          thought: spoken ? `This used ${name}. Nothing was sent.` : "Anthropic isn’t connected.",
+          body: result.body,
+          draft: result.draft,
+          choices: result.choices ?? null,
+          steps: [{ text: result.draft ? "Drafted the skill" : "Asked about the skill" }],
+          thought: "Nothing was saved, and nothing was sent.",
         });
         return done();
       }
-      const forceCursor = picked === "cursor" || webSearch;
-      if (!forceCursor && images.length && !skillMode) {
+      if (images.length && !skillMode && !webSearch && !ASKS_HOSPITABLE.test(text)) {
         const spoken = await answerPhoto(text, images);
         const missed = /couldn't read|isn't connected/i.test(spoken);
         await addMessage({
@@ -597,7 +660,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
         return done();
       }
-      if (!forceCursor && !skillMode && !webSearch) {
+      if (!skillMode && !webSearch) {
         const math = solveMath(text);
         const spoken = math ?? (await answerGeneral(text));
         if (spoken) {
@@ -606,10 +669,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             role: "assistant",
             body: spoken,
             steps: [{ text: math ? "Worked it out" : "Answered" }],
-            thought: math ? "This was arithmetic, so it stayed in the app." : "This did not need Cursor.",
+            thought: math ? "This was arithmetic, so it stayed in the app." : "This stayed in the app. Nothing was sent.",
           });
           return done();
         }
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: "I don't have that in the records I can read. I didn't guess.",
+          steps: [{ text: "Stayed in the app" }],
+          thought: "Nothing was sent.",
+        });
+        return done();
       }
       if (webSearch) {
         try {
@@ -633,23 +704,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(200).json({ chatId, messages, chats, pending: false });
         }
       }
-      if (!process.env.CURSOR_API_KEY?.trim()) {
-        await addMessage({ chatId, role: "assistant", body: CURSOR_MISSING });
-      } else {
-        try {
-          await startCursorRun(chatId, await factsFor(), skillMode, images, false);
-          pending = true;
-        } catch (err) {
-          await addMessage({
-            chatId,
-            role: "assistant",
-            body: err instanceof Error ? err.message : "Cursor could not start. Nothing was sent.",
-          });
-        }
-      }
-      const messages = await listMessages(chatId);
-      const chats = await listChats();
-      return res.status(200).json({ chatId, messages, chats, pending });
+      return done();
     }
 
     if (op === "draft") {
@@ -692,7 +747,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action === "hold") {
         const message = await updateDraft(messageId, {
           status: "held",
-          bodyText: body.channel === "note" ? "Held. Nothing was sent." : undefined,
+          bodyText: body.channel === "hospitable" ? "Held. Nothing was changed." : body.channel === "note" ? "Held. Nothing was sent." : undefined,
         });
         return res.status(200).json({ message });
       }
@@ -700,6 +755,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const note = body.channel === "note";
         const current = await readMessage(messageId);
         const draft = current?.draft;
+        if (draft?.channel === "hospitable" && draft.hospitable?.tool) {
+          try {
+            const args = applyHospitableEdit(draft.hospitable.args, draft.body, edited || draft.body);
+            await commitHospitable(draft.hospitable.tool, args);
+            const message = await updateDraft(messageId, {
+              status: "sent",
+              body: edited || undefined,
+              hospitable: { tool: draft.hospitable.tool, args },
+              bodyText: "Done. It is in Hospitable.",
+            });
+            return res.status(200).json({ message });
+          } catch (err) {
+            const message = await updateDraft(messageId, {
+              status: "waiting",
+              body: edited || undefined,
+              bodyText: err instanceof Error ? `${err.message} Nothing was changed.` : "Nothing was changed.",
+            });
+            return res.status(200).json({ message });
+          }
+        }
+        if (draft?.channel === "hospitable") {
+          const message = await updateDraft(messageId, {
+            status: "waiting",
+            bodyText: "That draft has no Hospitable change to commit. Nothing was changed.",
+          });
+          return res.status(200).json({ message });
+        }
         if (!note && draft?.channel === "email" && draft.to) {
           try {
             await deliverReply({

@@ -3,10 +3,10 @@ import type { AdminProductMode } from "../clients/mode";
 import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
 import "./copilot.css";
 import { MemoryFileDetail, MemoryFileList, MemoryWrote } from "./memoryUi";
-import { EmailDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
+import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
 import { WorkflowBuilder } from "./WorkflowBuilder";
-import { ACCOUNT_LINKS, PICTURE_MODELS, WORK_MODELS, wantsWeb } from "../../../shared/copilot/models";
-import type { AccountSpend, PictureModelId, WorkModelId } from "../../../shared/copilot/models";
+import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
+import type { AccountSpend } from "../../../shared/copilot/models";
 import { BLANK, SEED } from "../../../shared/copilot/workflow";
 import { runWhen } from "./skillsTime";
 
@@ -36,15 +36,6 @@ type PendingFile = {
   url?: string;
   file: File;
 };
-
-function storedChoice<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
-  try {
-    const value = localStorage.getItem(key) ?? "";
-    return (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -644,6 +635,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [elseFor, setElseFor] = useState<string | null>(null);
   const [elseDraft, setElseDraft] = useState("");
   const [connectHint, setConnectHint] = useState<Record<string, boolean>>({});
+  const [mcpToken, setMcpToken] = useState("");
+  const [mcpBusy, setMcpBusy] = useState(false);
   const [screen, setScreen] = useState<Screen>("brief");
   const [boardKind, setBoardKind] = useState<"seed" | "blank">("seed");
   const [chatId, setChatId] = useState<string | null>(null);
@@ -660,10 +653,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [trail, setTrail] = useState<Record<string, boolean>>({});
   const [report, setReport] = useState(false);
   const [plusOpen, setPlusOpen] = useState(false);
-  const [modelOpen, setModelOpen] = useState(false);
-  const [workModel, setWorkModel] = useState<WorkModelId>(() => storedChoice("mrg_copilot_work_model", ["auto", "haiku", "sonnet", "cursor"] as const, "auto"));
-  const [pictureModel, setPictureModel] = useState<PictureModelId>(() => storedChoice("mrg_copilot_picture_model", ["draft", "edit", "client"] as const, "draft"));
-  const [pictureWait, setPictureWait] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountSpend[] | null>(null);
   const [webSearch, setWebSearch] = useState(false);
   const [pictureMode, setPictureMode] = useState(false);
@@ -883,15 +872,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }, [text]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem("mrg_copilot_work_model", workModel);
-      localStorage.setItem("mrg_copilot_picture_model", pictureModel);
-    } catch {
-      /* The choice still applies to this visit. */
-    }
-  }, [workModel, pictureModel]);
-
-  useEffect(() => {
     let gone = false;
     void api<{ accounts: AccountSpend[] }>("accounts", {}).then((data) => {
       if (!gone) setAccounts(data.accounts);
@@ -910,11 +890,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       const target = event.target as HTMLElement | null;
       if (menuFor && !target?.closest("[data-chat-menu]")) setMenuFor(null);
       if (plusOpen && !target?.closest("[data-plus]")) setPlusOpen(false);
-      if (modelOpen && !target?.closest("[data-model]")) setModelOpen(false);
     }
     document.addEventListener("click", down);
     return () => document.removeEventListener("click", down);
-  }, [menuFor, plusOpen, modelOpen]);
+  }, [menuFor, plusOpen]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -983,7 +962,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setPending(cardText);
-    setLiveSteps([{ text: action === "Reply" ? "Reading the email" : "Sent your message to Cursor" }]);
+    setLiveSteps([{ text: action === "Reply" ? "Reading the email" : "Opening that" }]);
     setLiveThought(undefined);
     setThinking(false);
     setRunOpen(false);
@@ -1049,14 +1028,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     const pdf = docs.find((file) => file.file.type === "application/pdf" || /\.pdf$/i.test(file.name));
     const makingPicture = pictureMode && !preset;
     const searching = !makingPicture && !preset && (webSearch || wantsWeb(typed));
-    const pictureId: PictureModelId = (pictureModel === "edit" || pictureModel === "client") && photos.length === 0 ? "draft" : pictureModel;
-    const chosen = makingPicture ? pictureId : workModel;
     if (searching) deskRev.current = "";
-    const waitLabel = makingPicture ? PICTURE_MODELS.find((row) => row.id === pictureId) : null;
     setPending(value || "Look at the attached photo.");
     setPendingPicture(makingPicture);
-    setPictureWait(waitLabel ? `${waitLabel.name} · ${waitLabel.price}` : null);
-    setModelOpen(false);
     setLiveSteps(makingPicture ? [] : [{ text: images.length ? "Looking at the photo" : searching ? "Looking this up" : "Thinking" }]);
     if (pdf && !makingPicture) {
       setStage({
@@ -1099,7 +1073,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         skillMode: makingSkill,
         pictureMode: makingPicture,
         webSearch: searching,
-        model: chosen,
         images,
       }, ctrl.signal);
       delivered = true;
@@ -1164,7 +1137,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (abortRef.current === ctrl) abortRef.current = null;
       setPending(null);
       setPendingPicture(false);
-      setPictureWait(null);
       if (!handed) setThinking(false);
       setBusy(false);
     }
@@ -1442,7 +1414,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       file,
     }));
     if (next.length) setFiles((prev) => [...prev, ...next]);
-    if (kind === "photo") setPictureModel((current) => (pictureMode && current === "draft" ? "edit" : current));
     setPlusOpen(false);
   }
 
@@ -1455,13 +1426,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   const waiting = messages.some((m) => m.draft?.status === "waiting");
-  const hasPhoto = files.some((file) => file.kind === "photo");
-  const activePicture: PictureModelId = (pictureModel === "edit" || pictureModel === "client") && !hasPhoto ? "draft" : pictureModel;
-  const lookupDraft = !pictureMode && (webSearch || wantsWeb(text));
-  const shownWork: WorkModelId = lookupDraft ? "haiku" : workModel;
-  const modelLabel = pictureMode
-    ? `${PICTURE_MODELS.find((row) => row.id === activePicture)?.name ?? "Draft"} · ${PICTURE_MODELS.find((row) => row.id === activePicture)?.price ?? ""}`
-    : (WORK_MODELS.find((row) => row.id === shownWork)?.name ?? "Auto");
   const signInOpen = Boolean(stage?.liveUrl) && [...messages].reverse().find((message) => message.role === "assistant")?.choices?.[0] === "Keep me signed in";
   const showStop = Boolean(pending || thinking || signInOpen);
   const focus = (boot?.brief.focus ?? []).filter((c) => !hidden.includes(c.id));
@@ -1800,6 +1764,56 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                                     : "WhatsApp linking isn't set up yet. Nothing was connected."}
                                 </div>
                               ) : null}
+                              {row.id === "hospitable" && row.setup !== "mcp" ? (
+                                <form
+                                  className="cp-mcp"
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    const token = mcpToken.trim();
+                                    if (!token) {
+                                      setError("Paste the MCP fallback token.");
+                                      return;
+                                    }
+                                    setMcpBusy(true);
+                                    void api<{ connectors: ConnectorRow[] }>("hospitable-mcp", { token })
+                                      .then((data) => {
+                                        setMcpToken("");
+                                        setError(null);
+                                        setBoot((prev) => (prev ? { ...prev, connectors: data.connectors } : prev));
+                                      })
+                                      .catch((err) => setError(err instanceof Error ? err.message : "Could not connect Hospitable."))
+                                      .finally(() => setMcpBusy(false));
+                                  }}
+                                >
+                                  <input
+                                    type="password"
+                                    autoComplete="off"
+                                    placeholder="MCP fallback token"
+                                    aria-label="Hospitable MCP token"
+                                    value={mcpToken}
+                                    onChange={(event) => setMcpToken(event.target.value)}
+                                  />
+                                  <button type="submit" className="cp-gold" style={{ height: 36, padding: "0 14px" }} disabled={mcpBusy}>
+                                    {mcpBusy ? "Checking…" : "Save"}
+                                  </button>
+                                </form>
+                              ) : null}
+                              {row.id === "hospitable" && row.setup === "mcp" ? (
+                                <button
+                                  type="button"
+                                  className="cp-textbtn"
+                                  disabled={mcpBusy}
+                                  onClick={() => {
+                                    setMcpBusy(true);
+                                    void api<{ connectors: ConnectorRow[] }>("hospitable-mcp", { action: "clear" })
+                                      .then((data) => setBoot((prev) => (prev ? { ...prev, connectors: data.connectors } : prev)))
+                                      .catch((err) => setError(err instanceof Error ? err.message : "Could not remove the token."))
+                                      .finally(() => setMcpBusy(false));
+                                  }}
+                                >
+                                  Remove token
+                                </button>
+                              ) : null}
                             </div>
                             {(row.id === "gmail" || row.id === "outlook" || row.id === "whatsapp") && row.status !== "connected" ? (
                               <button
@@ -2054,6 +2068,17 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             onRun={chatSkill ? () => void runSkill(chatSkill) : undefined}
                           />
                         </div>
+                      ) : message.draft?.channel === "hospitable" ? (
+                        <div key={message.id} className="cp-bot">
+                          <HospitableDraftCard
+                            message={message}
+                            body={edits[message.id] ?? message.draft.body}
+                            onBody={(value) => setEdits((prev) => ({ ...prev, [message.id]: value }))}
+                            busy={busy}
+                            onApprove={() => void act(message, "send")}
+                            onHold={() => void act(message, "hold")}
+                          />
+                        </div>
                       ) : message.draft?.channel === "email" ? (
                         <div key={message.id} className="cp-bot">
                           {message.run_id ? null : (
@@ -2157,7 +2182,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       <div className="cp-bot">
                         <figure className="cp-made cp-making" aria-live="polite">
                           <div className="cp-making-frame" aria-hidden />
-                          <figcaption>Making the picture{pictureWait ? ` · ${pictureWait}` : ""}</figcaption>
+                          <figcaption>Making the picture</figcaption>
                         </figure>
                       </div>
                     ) : null}
@@ -2189,7 +2214,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     <div className="cp-plusmenu" role="menu">
                       <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); photoRef.current?.click(); }}><PhotoIcon />Photo</button>
                       <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); docRef.current?.click(); }}><DocIcon />Document</button>
-                      <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); setPictureMode(true); setSkillMode(false); setWebSearch(false); if (files.some((file) => file.kind === "photo")) setPictureModel((current) => (current === "draft" ? "edit" : current)); }}><PictureIcon />Make a picture</button>
+                      <button type="button" role="menuitem" onClick={() => { setPlusOpen(false); setPictureMode(true); setSkillMode(false); setWebSearch(false); }}><PictureIcon />Make a picture</button>
                       <button type="button" role="menuitemcheckbox" aria-checked={webSearch} onClick={() => { setPlusOpen(false); setWebSearch((on) => !on); setPictureMode(false); setSkillMode(false); }}>
                         <GlobeIcon />Web search
                         {webSearch ? <CheckIcon /> : null}
@@ -2271,47 +2296,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         }
                       }}
                     />
-                    <div className="cp-modelwrap" data-model="1">
-                      {modelOpen ? (
-                        <div className="cp-modelmenu" role="menu">
-                          {(pictureMode ? PICTURE_MODELS : WORK_MODELS).map((row) => {
-                            const locked = "needsPhoto" in row && row.needsPhoto && !hasPhoto;
-                            const on = pictureMode ? row.id === activePicture : row.id === shownWork;
-                            return (
-                              <button
-                                key={row.id}
-                                type="button"
-                                role="menuitemradio"
-                                aria-checked={on}
-                                disabled={locked}
-                                onClick={() => {
-                                  if (locked) return;
-                                  if (pictureMode && (row.id === "draft" || row.id === "edit" || row.id === "client")) setPictureModel(row.id);
-                                  if (!pictureMode && (row.id === "auto" || row.id === "haiku" || row.id === "sonnet" || row.id === "cursor")) setWorkModel(row.id);
-                                  setModelOpen(false);
-                                }}
-                              >
-                                <span>
-                                  <strong>{row.name}</strong>
-                                  <em>{locked ? "Add a photo first." : row.line}</em>
-                                </span>
-                                {"price" in row ? <b>{row.price}</b> : null}
-                                {on ? <CheckIcon /> : <span className="cp-modelgap" />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="cp-modelbtn"
-                        aria-expanded={modelOpen}
-                        aria-haspopup="menu"
-                        onClick={() => { setModelOpen((open) => !open); setPlusOpen(false); }}
-                      >
-                        {modelLabel}
-                      </button>
-                    </div>
                     <button
                       type="button"
                       className={`cp-up${showStop ? " stop" : ""}`}
