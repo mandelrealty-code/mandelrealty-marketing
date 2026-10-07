@@ -74,6 +74,7 @@ export async function readCleanerUnit(input: {
       error?: string;
       turnovers?: unknown;
       supplies?: unknown;
+      usual_cleaner?: string;
     };
     if (!res.ok) return { ok: false, error: data.error || `Cleaner Hub read failed (${res.status}).` };
     if (data.error) return { ok: false, error: data.error };
