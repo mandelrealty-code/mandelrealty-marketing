@@ -78,6 +78,7 @@ async function promptFor(skill: CopilotSkill, trigger: CopilotRun["trigger"], pr
     "Use read_memory for a unit's standing file. Pass check_in and check_out from the reservation when you have them. If those times disagree with the file, the tool returns the reservation times.",
     "Use guest_contacts for names and phone numbers on a reservation. If a reservation has no phone, say no phone on this reservation. Do not invent a number.",
     "Use read_knowledge_hub for a property's Knowledge Hub. Use cleaner_read for turnovers and stock. Both are read only.",
+    "Use ops_clients and ops_revenue for client counts and host revenue. Those numbers come from OPS at answer time. Use amend_contract to prepare a resend, and assign_cleaner to prepare a cleaner assignment. Both wait for Submit. Use create_sop to save an SOP in OPS.",
     "Use research_web to open a page. Cite the page title it returns. Use make_pdf to make a PDF from that report. Use sheet_read and sheet_write with a sheet link or id.",
     "Deliver a finished run to the partners with deliver_to_partners: in the app, by email, or by text. If a channel is not configured, say so. Do not switch to a different channel.",
     "Access codes, door codes, and WiFi passwords are not in memory files. They stay in the Hospitable Knowledge Hub. Do not put them in a draft.",

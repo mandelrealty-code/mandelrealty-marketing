@@ -13,6 +13,8 @@ export type CleanerTurnover = {
   assigned: boolean;
   done: boolean;
   issue: string;
+  /** The unit's usual cleaner, when the cleaner app recorded one. Not shown to guests. */
+  usual?: string;
 };
 
 export type CleanerSupply = {
@@ -75,9 +77,10 @@ export async function readCleanerUnit(input: {
     };
     if (!res.ok) return { ok: false, error: data.error || `Cleaner Hub read failed (${res.status}).` };
     if (data.error) return { ok: false, error: data.error };
+    const usual = typeof data.usual_cleaner === "string" ? data.usual_cleaner.trim() : "";
     return {
       ok: true,
-      turnovers: asTurnovers(data.turnovers),
+      turnovers: asTurnovers(data.turnovers).map((row) => (usual && !row.assigned ? { ...row, usual } : row)),
       supplies: asSupplies(data.supplies),
     };
   } catch (err) {
@@ -92,13 +95,17 @@ function parityPicture(input: { propertyId: string; from: string; to: string }):
   const turnovers = (fixture.turnovers ?? [])
     .filter((row) => row.propertyId === input.propertyId)
     .filter((row) => row.scheduledOn >= input.from && row.scheduledOn <= input.to)
-    .map((row) => ({
-      scheduledOn: row.scheduledOn,
-      status: row.status,
-      assigned: row.assigned,
-      done: row.done,
-      issue: row.issue,
-    }));
+    .map((row) => {
+      const usualName = (fixture.usual ?? []).find((item) => item.propertyId === row.propertyId)?.name || "";
+      return {
+        scheduledOn: row.scheduledOn,
+        status: row.status,
+        assigned: row.assigned,
+        done: row.done,
+        issue: row.issue,
+        ...(usualName && !row.assigned ? { usual: usualName } : {}),
+      };
+    });
   const supplies = (fixture.supplies ?? [])
     .filter((row) => row.propertyId === input.propertyId)
     .map((row) => ({

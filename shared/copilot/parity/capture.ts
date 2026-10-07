@@ -7,6 +7,7 @@ export type DraftCapture = {
   body: string;
   warnings: string[];
   needs_you: boolean;
+  cleanerAssign?: { propertyId: string; scheduledOn: string; cleanerName: string; unit: string };
 };
 
 export type ReportCapture = {

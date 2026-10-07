@@ -129,6 +129,171 @@ const third = await executeSkill({
 if (!/Nothing was sent/.test(third.text)) fail(third.text);
 if (capturedPurchases()) fail("a skill purchased something");
 
+const { ID } = await import("./parity/catalog.js");
+const { pdfFromLines } = await import("./contractPdf.js");
+const { installOpsClients, installOpsContract, installOpsReservations } = await import("./parity/opsState.js");
+const { listContracts } = await import("../pm/contractStore.js");
+const { listSops } = await import("../pm/sopStore.js");
+const { commitCleanerAssignment, commitContractResend } = await import("./ops.js");
+const { callCopilotTool } = await import("./toolServer.js");
+const { parityCleaner } = await import("./parity/world.js");
+
+const opsWorld = worldAt("2026-10-07T11:00:00-04:00");
+opsWorld.cleaner = {
+  turnovers: [{
+    propertyId: ID.blue,
+    scheduledOn: "2026-10-10",
+    status: "scheduled",
+    assigned: false,
+    done: false,
+    issue: "",
+  }],
+};
+installWorld(opsWorld);
+const people = installOpsClients([
+  { name: "Elizabeth Hart", email: "elizabeth@mandelrealtygroup.com" },
+  { name: "Mara Singh", email: "mara@mandelrealtygroup.com" },
+  { name: "Noah Patel", email: "noah@mandelrealtygroup.com" },
+]);
+const elizabeth = people.find((row) => row.name.startsWith("Elizabeth"));
+const mara = people.find((row) => row.name.startsWith("Mara"));
+if (!elizabeth || !mara) fail("the fixture clients were not saved");
+installOpsReservations([
+  {
+    id: "aug-606",
+    property_id: ID.charlotte,
+    hospitable_reservation_id: "aug-606",
+    platform: "airbnb",
+    platform_id: "aug-606",
+    status: "accepted",
+    check_in: "2026-08-10",
+    check_out: "2026-08-14",
+    nights: 4,
+    currency: "CAD",
+    gross_cents: 90000,
+    host_payout_cents: 80000,
+    financials_json: { currency: "CAD", host: { revenue: { amount: 80000, formatted: "$800.00" } } },
+    synced_at: "2026-08-14T00:00:00.000Z",
+  },
+  {
+    id: "aug-shaw",
+    property_id: ID.shaw,
+    hospitable_reservation_id: "aug-shaw",
+    platform: "airbnb",
+    platform_id: "aug-shaw",
+    status: "accepted",
+    check_in: "2026-08-02",
+    check_out: "2026-08-06",
+    nights: 4,
+    currency: "CAD",
+    gross_cents: 50000,
+    host_payout_cents: 45000,
+    financials_json: { currency: "CAD", host: { revenue: { amount: 45000, formatted: "$450.00" } } },
+    synced_at: "2026-08-06T00:00:00.000Z",
+  },
+]);
+const sourceLines = [
+  "Management agreement",
+  "Client: Elizabeth Hart",
+  "Management fee: 20%",
+  "Term: 12 months",
+  "Start date: 2026-01-01",
+  "End date: 2026-12-31",
+  "Clause: Quiet hours run from 10pm to 8am.",
+  "Guests follow the house rules.",
+  ...[1, 2, 3, 4, 5, 6].map((n) => `Additional term ${n}`),
+];
+const sourcePdf = await pdfFromLines(sourceLines);
+const hostField = {
+  id: "host-sign",
+  type: "signature" as const,
+  party: "host" as const,
+  page: 2,
+  x: 0.1,
+  y: 0.7,
+  w: 0.28,
+  h: 0.04,
+  label: "Host signature",
+};
+const elizabethOriginal = installOpsContract({
+  clientId: elizabeth.id,
+  title: "Management agreement",
+  filename: "agreement.pdf",
+  templateId: "template-elizabeth",
+  buffer: sourcePdf,
+  source: sourcePdf,
+  signFields: [hostField],
+});
+installOpsContract({
+  clientId: mara.id,
+  title: "Management agreement",
+  filename: "agreement.pdf",
+  templateId: "template-mara",
+  buffer: sourcePdf,
+  source: sourcePdf,
+  signFields: [hostField],
+});
+resetCaptures();
+
+const counted = await callCopilotTool("ops_clients", {});
+const countText = String((counted as { answer?: string }).answer ?? "");
+if (countText !== "We currently have 3 clients.") fail(countText);
+const revenue = await callCopilotTool("ops_revenue", { month: "August" });
+const revenueText = String((revenue as { answer?: string }).answer ?? "");
+if (!revenueText.includes("$1,250.00 CAD") || !/host revenue/i.test(revenueText)) fail(revenueText);
+if (!revenueText.includes("Unit #606") || !revenueText.includes("Chic 2BR with Yard and Parking")) fail(revenueText);
+
+const shifted = await callCopilotTool("amend_contract", {
+  request: "send Mara an updated contract with these revisions: remove the additional terms",
+}) as { body: string; draft: { contractSend?: { contractId: string } } | null };
+if (shifted.draft) fail("a pagination change prepared a send");
+if (!/Host signature/.test(shifted.body) || !/not prepared/i.test(shifted.body)) fail(shifted.body);
+if ((await listContracts({ client_id: mara.id })).length !== 1) fail("the unconfirmed amendment was stored");
+if (capturedCommits().length) fail("a send fired before Submit");
+
+const amended = await callCopilotTool("amend_contract", {
+  request: "send Elizabeth an updated contract with these revisions: management fee 18% and term 24 months",
+}) as { body: string; draft: { contractSend?: { contractId: string }; to?: string } | null };
+if (!amended.draft?.contractSend) fail(amended.body);
+if (!/18%/.test(amended.body) || !/24 months/.test(amended.body)) fail(amended.body);
+const afterPrepare = await listContracts({ client_id: elizabeth.id });
+if (!afterPrepare.some((row) => row.id === elizabethOriginal.id)) fail("the previous contract was not retained");
+const prepared = afterPrepare.find((row) => row.id === amended.draft?.contractSend?.contractId);
+if (!prepared || prepared.template_id !== "template-elizabeth") fail("the template link was not kept");
+const carried = prepared.sign_fields?.find((field) => field.label === "Host signature");
+if (!carried || carried.page !== 2) fail("the signing field was not carried onto its page");
+if (capturedCommits().length) fail("the resend fired before Submit");
+const resent = await commitContractResend(amended.draft.contractSend.contractId, NOW);
+if (!/resent on October 7, 2026/.test(resent)) fail(resent);
+if (capturedCommits().length !== 1 || capturedCommits()[0]?.detail !== elizabeth.email) fail(`sent ${capturedCommits().length} times`);
+if (!(await listContracts({ client_id: elizabeth.id })).some((row) => row.id === elizabethOriginal.id)) fail("Submit dropped the previous version");
+
+const sop = await callCopilotTool("create_sop", {
+  title: "VA guest message SOP",
+  audience: "va",
+  steps: ["Read the new message", "Draft a reply", "Wait for Submit"],
+}) as { answer?: string };
+if (!/SOP list/.test(sop.answer ?? "")) fail(sop.answer ?? "");
+const savedSop = (await listSops()).find((row) => row.title === "VA guest message SOP");
+if (!savedSop || savedSop.target_role !== "va") fail("listSops did not return the SOP");
+if (savedSop.steps.map((step) => step.title).join("|") !== "Read the new message|Draft a reply|Wait for Submit") fail("the SOP steps were not saved");
+
+const before = parityCleaner()?.turnovers?.find((row) => row.propertyId === ID.blue);
+if (!before || before.assigned) fail("the fixture turnover started assigned");
+const assignment = await callCopilotTool("assign_cleaner", {
+  unit: "318",
+  scheduled_on: "2026-10-10",
+  cleaner_name: "Priya",
+}) as { body: string; draft: { cleanerAssign?: { propertyId: string; scheduledOn: string; cleanerName: string; unit: string } } | null };
+if (!assignment.draft?.cleanerAssign) fail(assignment.body);
+if (!/2026-10-10/.test(assignment.body) || !/Priya/.test(assignment.body) || !/318/.test(assignment.body)) fail(assignment.body);
+if (parityCleaner()?.turnovers?.find((row) => row.propertyId === ID.blue)?.assigned) fail("the cleaner was written before Submit");
+if (capturedCleanerCalls() || capturedCommits().filter((row) => row.connector !== "contract").length) fail("the cleaner app was called before Submit");
+const assigned = await commitCleanerAssignment(assignment.draft.cleanerAssign);
+if (!/Priya/.test(assigned)) fail(assigned);
+const after = parityCleaner()?.turnovers?.find((row) => row.propertyId === ID.blue);
+if (!after?.assigned || after.cleanerName !== "Priya") fail("the turnover cleaner was not set");
+
 console.log("Monday list:");
 console.log(listLines(live.text));
 console.log(TEXT_MISSING);

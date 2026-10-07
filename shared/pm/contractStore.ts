@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
+import { opsCancelAwaiting, opsContract, opsContractSource, opsContracts, opsCreateContract } from "../copilot/parity/opsState.js";
 import { downloadTemplateBuffer, getTemplateDownloadUrl } from "./contractTemplateStore.js";
 import { mergeHostFieldValues, normalizeSignFields, type SignField } from "./signFields.js";
 import { stampSignedPdf } from "./stampSignedPdf.js";
@@ -41,6 +42,8 @@ export async function listContracts(input: {
   client_id?: string;
   property_id?: string;
 }): Promise<PmContract[]> {
+  const parity = opsContracts(input.client_id);
+  if (parity) return input.property_id ? parity.filter((row) => row.property_id === input.property_id) : parity;
   let q = db().from("pm_contracts").select("*").order("created_at", { ascending: false });
   if (input.client_id) q = q.eq("client_id", input.client_id);
   if (input.property_id) q = q.eq("property_id", input.property_id);
@@ -66,6 +69,8 @@ export async function createContract(input: {
   /** Unstamped PDF so later edits can re-place fields without double-stamping MRG signatures. */
   sourceBuffer?: Buffer;
 }): Promise<PmContract> {
+  const parityOn = opsContracts();
+  if (parityOn) return opsCreateContract(input);
   const title = input.title.trim() || input.filename.trim() || "Contract";
   if (!input.client_id && !input.property_id) {
     throw new Error("client_id or property_id required.");
@@ -157,6 +162,9 @@ export async function deleteContract(id: string): Promise<void> {
 }
 
 export async function getContract(id: string): Promise<PmContract | null> {
+  const parity = opsContract(id);
+  if (parity) return parity;
+  if (opsContracts()) return null;
   const { data, error } = await db()
     .from("pm_contracts")
     .select("*")
@@ -233,6 +241,17 @@ export async function downloadContractSourceBuffer(id: string): Promise<{
   template_id: string | null;
   contract: PmContract;
 }> {
+  const parity = opsContractSource(id);
+  if (parity) {
+    return {
+      buffer: parity.buffer,
+      filename: parity.contract.filename || "agreement.pdf",
+      mime: parity.contract.mime || "application/pdf",
+      title: parity.contract.title,
+      template_id: parity.contract.template_id || null,
+      contract: parity.contract,
+    };
+  }
   const contract = await getContract(id);
   if (!contract) throw new Error("Contract not found.");
 
@@ -284,6 +303,10 @@ export async function getContractEditPdfUrl(id: string): Promise<string> {
 }
 
 export async function cancelAwaitingContracts(clientId: string, note?: string): Promise<void> {
+  if (opsContracts()) {
+    opsCancelAwaiting(clientId, note || "Superseded");
+    return;
+  }
   const { error } = await db()
     .from("pm_contracts")
     .update({

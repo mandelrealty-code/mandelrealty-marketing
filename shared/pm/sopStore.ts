@@ -1,6 +1,7 @@
 /** Storage and query helpers for SOPs */
 
 import { getSupabaseAdmin } from "../supabase.js";
+import { opsSops, opsUpsertSop } from "../copilot/parity/opsState.js";
 import type { SopItem, SopCategory, SopTargetRole, SopStep } from "./sopTypes.js";
 
 function db() {
@@ -93,6 +94,14 @@ export async function listSops(options?: {
   category?: string;
   onlyPublished?: boolean;
 }): Promise<SopItem[]> {
+  const parity = opsSops();
+  if (parity) {
+    return parity.filter((row) => {
+      if (options?.category && options.category !== "all" && row.category !== options.category) return false;
+      if (options?.onlyPublished && !row.is_published) return false;
+      return true;
+    });
+  }
   let query = db().from("pm_sops").select("*").order("created_at", { ascending: false });
 
   if (options?.category && options.category !== "all") {
@@ -181,6 +190,14 @@ export async function uploadSopVideo(
 }
 
 export async function upsertSop(input: Partial<SopItem> & { title: string }): Promise<SopItem> {
+  if (opsSops()) {
+    return opsUpsertSop({
+      title: input.title,
+      target_role: input.target_role,
+      steps: input.steps,
+      summary: input.summary,
+    });
+  }
   const title = input.title.trim();
   if (!title) throw new Error("Title is required.");
 

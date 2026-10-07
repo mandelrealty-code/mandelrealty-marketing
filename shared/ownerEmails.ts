@@ -1,4 +1,6 @@
 import { sendResendEmail } from "./auditEmails.js";
+import { captureCommit } from "./copilot/parity/capture.js";
+import { parityEnabled } from "./copilot/parity/flag.js";
 
 /** Owner-facing origin — never a Vercel preview URL (those are SSO-protected). */
 export function publicSiteOrigin(): string {
@@ -162,6 +164,10 @@ export async function sendOwnerInviteEmail(input: {
   /** existing = already signed; new = must sign; revised = unsigned agreement was replaced */
   kind?: "new" | "existing" | "revised";
 }): Promise<{ ok: boolean; message?: string }> {
+  if (parityEnabled()) {
+    captureCommit("contract", input.to);
+    return { ok: true };
+  }
   const apiKey = process.env.RESEND_API_KEY?.trim() || "";
   if (!apiKey) return { ok: false, message: "RESEND_API_KEY not configured." };
   const from = inviteFrom();

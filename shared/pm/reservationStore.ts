@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
+import { opsReservationsForProperty } from "../copilot/parity/opsState.js";
 import { getHospitablePat } from "./clientStore.js";
 import {
   listHospitableReservations,
@@ -334,6 +335,10 @@ export async function listReservationsForPropertyMonth(
   propertyId: string,
   yearMonth: string,
 ): Promise<PmReservationRow[]> {
+  const parity = opsReservationsForProperty(propertyId);
+  if (parity) {
+    return parity.filter((row) => reservationBelongsToStatementMonth(row.check_in, row.check_out, yearMonth));
+  }
   const { start, end } = monthBounds(yearMonth);
   const { data, error } = await db()
     .from("pm_reservations")

@@ -9,6 +9,7 @@ import { readRunToken } from "./runToken.js";
 import { addMessage, addReminder, flagChatNeedsYou, getRun, listSkills, updateRun } from "./store.js";
 import { cleanerTool, hubTool, readSheetTool, writeSheetTool } from "./skillExecute.js";
 import { guestCheckins, formatCheckins } from "./skillContacts.js";
+import { answerOps, createOpsSop, prepareCleanerAssignment, prepareContractAmendment } from "./ops.js";
 import { deliverToPartners, channelsFor } from "./skillDelivery.js";
 import { reportPdf } from "./skillPdf.js";
 import { researchWeb } from "./skillResearch.js";
@@ -417,6 +418,67 @@ const TOOLS: Record<string, Tool> = {
       return { notes: delivered.notes };
     },
   },
+  ops_clients: {
+    description: "How many clients OPS has right now, from the client list. Read only. Does not use memory.",
+    inputSchema: { type: "object", properties: {} },
+    readOnly: true,
+    call: async () => ({ answer: await answerOps("How many clients do we currently have?") }),
+  },
+  ops_revenue: {
+    description: "Host revenue for a month from OPS reservations and the financial breakdown, in the stay currency. Name the month, for example August. Read only. Does not use memory.",
+    inputSchema: {
+      type: "object",
+      properties: { month: { type: "string", description: "A month name, such as August, with an optional year." } },
+      required: ["month"],
+    },
+    readOnly: true,
+    call: async (args) => ({ answer: await answerOps(`What was the total revenue for ${text(args.month, 40)}?`) }),
+  },
+  amend_contract: {
+    description: "Prepares an updated contract for a named client from the retained source PDF. Signing fields are carried over. Nothing is sent until a partner presses Submit. If a field's page cannot be confirmed, the send is not prepared.",
+    inputSchema: {
+      type: "object",
+      properties: { request: { type: "string", description: "The client and the revisions, such as fee, term, dates, or clause wording." } },
+      required: ["request"],
+    },
+    readOnly: false,
+    call: async (args) => prepareContractAmendment(text(args.request, 2000)),
+  },
+  create_sop: {
+    description: "Saves an SOP in OPS for the given audience and steps. This writes to OPS immediately. It does not send anything.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        audience: { type: "string" },
+        steps: { type: "array", items: { type: "string" } },
+      },
+      required: ["title", "steps"],
+    },
+    readOnly: false,
+    call: async (args) => {
+      const steps = Array.isArray(args.steps) ? args.steps.map((step) => text(step, 240)).filter(Boolean) : [];
+      return { answer: await createOpsSop({ title: text(args.title, 120), audience: text(args.audience, 40), steps }) };
+    },
+  },
+  assign_cleaner: {
+    description: "Prepares a cleaner assignment for one turnover. Nothing is written to the cleaner app until a partner presses Submit. If no cleaner is named and the unit has no usual cleaner, it asks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        unit: { type: "string" },
+        scheduled_on: { type: "string" },
+        cleaner_name: { type: "string" },
+      },
+      required: ["unit", "scheduled_on"],
+    },
+    readOnly: false,
+    call: async (args) => prepareCleanerAssignment({
+      unit: text(args.unit, 160),
+      scheduledOn: text(args.scheduled_on, 20),
+      cleanerName: text(args.cleaner_name, 80),
+    }),
+  },
 };
 
 function toolList() {
@@ -472,6 +534,12 @@ async function answer(rpc: Rpc, ctx: Ctx): Promise<Record<string, unknown> | nul
     }
   }
   return fail(-32601, `Unknown method: ${method}`);
+}
+
+export async function callCopilotTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+  const tool = TOOLS[name];
+  if (!tool) throw new Error(`Unknown tool: ${name}`);
+  return tool.call(args, { run: { id: "harness" } as CopilotRun, skill: { id: "harness", chat_id: "harness" } as CopilotSkill, chatId: "harness" });
 }
 
 export default async function handleCopilotTools(req: VercelRequest, res: VercelResponse) {

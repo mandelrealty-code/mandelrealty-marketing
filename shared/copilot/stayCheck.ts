@@ -6,6 +6,7 @@ import { memoryBodies } from "./memoryFiles.js";
 import { isManagedUnit } from "./managedUnits.js";
 import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
 import { hospitableFetch } from "../pm/hospitableClient.js";
+import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, recordCancellation, recordDrafts, recordReport, reportRecorded } from "./store.js";
@@ -158,7 +159,8 @@ async function leaveDraft(row: DraftCapture, reservationId = ""): Promise<void> 
         to: row.to,
         status: "waiting",
         channel: row.channel === "hospitable" ? "hospitable" : row.channel === "note" ? "note" : "email",
-        ...(row.channel === "hospitable" && reservationId
+        ...(row.cleanerAssign ? { cleanerAssign: row.cleanerAssign } : {}),
+        ...(row.channel === "hospitable" && reservationId && !row.cleanerAssign
           ? { hospitable: { tool: "send-reservation-message", args: { reservation_id: reservationId, body: row.body } } }
           : {}),
       },
@@ -405,6 +407,27 @@ async function offerLowStock(name: string, address: string, supplies: CleanerSup
   }
 }
 
+async function offerUnassignedCleaner(propertyId: string, place: string, picture: CleanerPicture): Promise<void> {
+  if (!picture.ok) return;
+  for (const row of picture.turnovers) {
+    if (row.assigned || !row.usual) continue;
+    const key = `assign:${propertyId}:${row.scheduledOn}`;
+    if (await draftsRecorded(key)) continue;
+    await recordDrafts(key);
+    const offered = await prepareCleanerAssignment({ unit: place, scheduledOn: row.scheduledOn, cleanerName: row.usual });
+    if (!offered.draft?.cleanerAssign) continue;
+    await leaveDraft({
+      channel: "hospitable",
+      to: "",
+      subject: offered.draft.subject,
+      body: offered.body,
+      warnings: [],
+      needs_you: true,
+      cleanerAssign: offered.draft.cleanerAssign,
+    });
+  }
+}
+
 async function oneStay(input: {
   stay: Stay;
   place: string;
@@ -443,6 +466,7 @@ async function oneStay(input: {
   const open = messages.filter((row) => row.role === "guest" && row.at > lastHost);
   const ask = open.map((row) => row.body).join(" ");
   const where = placeLabel(input.place, input.propertyName);
+  await offerUnassignedCleaner(stay.propertyId, where, picture);
   if (/keys/i.test(ask) && /window/i.test(ask) && /shower/i.test(ask)) {
     await say({
       headline: `${stay.guest || "The guest"} is waiting`,

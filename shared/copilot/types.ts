@@ -22,6 +22,10 @@ export type CopilotDraft = {
   skillPhone?: string;
   skillSchedule?: SkillSchedule;
   choices?: string[];
+  /** Set when Submit should resend this contract through OPS. */
+  contractSend?: { clientId: string; contractId: string };
+  /** Set when Submit should assign this cleaner. Nothing is written until then. */
+  cleanerAssign?: { propertyId: string; scheduledOn: string; cleanerName: string; unit: string };
 };
 
 export type Weekday = "Sunday" | "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday";

@@ -11,14 +11,15 @@ import { outlookConnected, outlookKeysReady } from "./outlook.js";
 import { buildBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
-import { answerSignIn, cancelCursorRun, collectCursorRun, settleOpenCursorRuns } from "../copilot/cursorThink.js";
-import { cancelBrowser, collectBrowser, browserIsLive, publicError, resumeBrowser, settleOpenBrowsers, startBrowser } from "../copilot/webBrowser.js";
+import { answerSignIn, cancelCursorRun, collectCursorRun } from "../copilot/cursorThink.js";
+import { cancelBrowser, collectBrowser, browserIsLive, publicError, resumeBrowser, startBrowser } from "../copilot/webBrowser.js";
 import { nameChat } from "../copilot/chatTitle.js";
 import { pictureFor, wantsWeb, workModel } from "../copilot/models.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords } from "../copilot/recordsAnswer.js";
 import { answerStay } from "../copilot/stayAnswer.js";
+import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
@@ -39,9 +40,11 @@ import {
   deleteSkill,
   dismissCard,
   listChats,
+  listCursorRuns,
   listMemory,
   markChatSeen,
   listMessages,
+  listOpenBrowsers,
   readMessage,
   listSkills,
   listTextLog,
@@ -52,7 +55,7 @@ import {
   updateDraft,
 } from "../copilot/store.js";
 import type { ConnectorRow, SkillRow } from "../copilot/types.js";
-import { collectSkillRuns, runsOnItsOwn, startSkillRun } from "../copilot/skillRunner.js";
+import { runsOnItsOwn, startSkillRun } from "../copilot/skillRunner.js";
 import { schedulePhrase, normalizeSchedule } from "../copilot/skillSchedule.js";
 import { listRuns } from "../copilot/store.js";
 
@@ -272,20 +275,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chatId = String(req.query.chatId ?? "");
         return res.status(200).json({ messages: await listMessages(chatId) });
       }
-      await collectSkillRuns().catch(() => undefined);
       const [cursorRuns, browserRuns] = await Promise.all([
-        settleOpenCursorRuns().catch(() => [] as string[]),
-        settleOpenBrowsers().catch(() => [] as string[]),
+        listCursorRuns().catch(() => []),
+        listOpenBrowsers().catch(() => []),
       ]);
-      const runningChatIds = [...new Set([...cursorRuns, ...browserRuns])];
+      const runningChatIds = [...new Set([...cursorRuns.map((row) => row.chatId), ...browserRuns.map((row) => row.chatId)])];
       const skills = await skillRows();
-      const [brief, chats, memory, textLog, textNumbers, memoryFiles] = await Promise.all([
+      const [brief, chats, memory, textLog, textNumbers, memoryFiles, connectorRows] = await Promise.all([
         buildBrief(),
         listChats(),
         listMemory().catch(() => []),
         listTextLog().catch(() => []),
         listTextNumbers().catch(() => []),
         listMemoryFiles().catch(() => []),
+        connectors(skills),
       ]);
       return res.status(200).json({
         brief,
@@ -296,7 +299,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         twilioFrom: twilioFromLabel(),
         memory,
         memoryFiles,
-        connectors: await connectors(skills),
+        connectors: connectorRows,
         runningChatIds,
         billing: process.env.CURSOR_API_KEY
           ? "Cursor Auto is connected. The team spend total appears when the admin key is set."
@@ -625,6 +628,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             break;
           }
         }
+        const opsAnswer = await answerOps(text);
+        if (opsAnswer) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: opsAnswer,
+            steps: [{ text: "Read OPS" }],
+            thought: "This came from OPS. Nothing was sent.",
+          });
+          return done();
+        }
+        if (asksContractRevision(text)) {
+          const prepared = await prepareContractAmendment(text);
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: prepared.body,
+            draft: prepared.draft,
+            steps: [{ text: prepared.draft ? "Prepared the updated contract" : "Did not prepare a send" }],
+            thought: "Nothing was sent.",
+          });
+          return done();
+        }
+        if (asksSop(text)) {
+          const shaped = sopFromWords(text);
+          const saved = shaped ? await createOpsSop(shaped) : "An SOP needs a title and the steps. Nothing was saved.";
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: saved,
+            steps: [{ text: "Saved the SOP" }],
+            thought: "This is in OPS.",
+          });
+          return done();
+        }
+        if (asksCleanerAssignment(text)) {
+          const job = cleanerFromWords(text);
+          const prepared = job
+            ? await prepareCleanerAssignment(job)
+            : { body: "Tell me the unit, the turnover date, and who to assign. Nothing was written.", draft: null };
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: prepared.body,
+            draft: prepared.draft,
+            steps: [{ text: prepared.draft ? "Prepared the assignment" : "Asked who to assign" }],
+            thought: "Nothing was written to the cleaner app.",
+          });
+          return done();
+        }
         const stay = await answerStay(text, prior);
         if (stay) {
           await addMessage({
@@ -811,6 +864,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const note = body.channel === "note";
         const current = await readMessage(messageId);
         const draft = current?.draft;
+        if (draft?.contractSend?.contractId) {
+          try {
+            const said = await commitContractResend(draft.contractSend.contractId);
+            const message = await updateDraft(messageId, { status: "sent", bodyText: said });
+            return res.status(200).json({ message });
+          } catch (err) {
+            const message = await updateDraft(messageId, {
+              status: "waiting",
+              bodyText: err instanceof Error ? `${err.message} Nothing was sent.` : "Nothing was sent.",
+            });
+            return res.status(200).json({ message });
+          }
+        }
+        if (draft?.cleanerAssign) {
+          try {
+            const said = await commitCleanerAssignment(draft.cleanerAssign);
+            const wrote = /Assigned /.test(said);
+            const message = await updateDraft(messageId, {
+              status: wrote ? "sent" : "waiting",
+              bodyText: said,
+            });
+            return res.status(200).json({ message });
+          } catch (err) {
+            const message = await updateDraft(messageId, {
+              status: "waiting",
+              bodyText: err instanceof Error ? `${err.message} Nothing was written.` : "Nothing was written.",
+            });
+            return res.status(200).json({ message });
+          }
+        }
         if (draft?.channel === "hospitable" && draft.hospitable?.tool) {
           try {
             const args = applyHospitableEdit(draft.hospitable.args, draft.body, edited || draft.body);

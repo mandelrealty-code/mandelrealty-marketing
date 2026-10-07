@@ -12,7 +12,6 @@ import {
   getContractEditPdfUrl,
   downloadContractSourceBuffer,
   listContracts,
-  assignAwaitingContract,
   cancelAwaitingContracts,
 } from "../pm/contractStore.js";
 import {
@@ -38,6 +37,7 @@ import {
 } from "../pm/portalUserStore.js";
 import { createOwnerPreviewToken } from "../portalAuth.js";
 import { ownerPortalUrl, sendOwnerInviteEmail } from "../ownerEmails.js";
+import { deliverAwaitingContract } from "../pm/sendContract.js";
 import { syncUnitsFromOps } from "../copilot/memoryFiles.js";
 import {
   createPmClient,
@@ -1307,29 +1307,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
           }
 
-          const contract = await assignAwaitingContract({
-            client_id: clientId,
-            property_id: propertyId,
+          const revised = Boolean(replaceId) || keepPortalLogin;
+          const delivered = await deliverAwaitingContract({
+            clientId,
+            propertyId,
             title: pdf.title,
             filename: pdf.filename,
             mime: pdf.mime,
             buffer,
-            template_id: pdf.template_id,
-            sign_fields: signFields,
             sourceBuffer: pdf.buffer,
-          });
-
-          // Revised = we replaced an unsigned agreement, or they already use the portal
-          // (no new temp password) — never send a "welcome + new code" in those cases.
-          const revised = Boolean(replaceId) || keepPortalLogin;
-          const mail = await sendOwnerInviteEmail({
-            to: email,
+            templateId: pdf.template_id,
+            signFields,
+            email,
             firstName: user.first_name || "there",
             propertyLabel,
             slug: user.slug,
             tempPassword,
             kind: revised ? "revised" : "new",
           });
+          const contract = delivered.contract;
+          const mail = { ok: delivered.emailOk, message: delivered.emailError || undefined };
 
           return res.status(200).json({
             ok: true,

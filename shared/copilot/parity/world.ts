@@ -1,5 +1,6 @@
 import type { PmPropertyListItem } from "../../pm/types.js";
 import { captureCommit, markAccountWide, resetCaptures } from "./capture.js";
+import { resetOps } from "./opsState.js";
 import { resetParityCancellations, resetParityConnectorFailures, resetParityReports } from "./storeStub.js";
 import { setParityClock } from "./clock.js";
 import { parityEnabled } from "./flag.js";
@@ -70,6 +71,7 @@ export type ParityCleanerTurnover = {
   assigned: boolean;
   done: boolean;
   issue: string;
+  cleanerName?: string;
 };
 
 export type ParityCleanerSupply = {
@@ -84,6 +86,7 @@ export type ParityCleaner = {
   error?: string;
   turnovers?: ParityCleanerTurnover[];
   supplies?: ParityCleanerSupply[];
+  usual?: { propertyId: string; name: string }[];
 };
 
 export type ParityWorld = {
@@ -116,9 +119,11 @@ export function installWorld(next: ParityWorld): void {
           error: next.cleaner.error,
           turnovers: (next.cleaner.turnovers ?? []).map((row) => ({ ...row })),
           supplies: (next.cleaner.supplies ?? []).map((row) => ({ ...row })),
+          usual: (next.cleaner.usual ?? []).map((row) => ({ ...row })),
         }
       : undefined,
   };
+  resetOps();
   setParityClock(next.now);
   resetCaptures();
   resetParityCancellations();
@@ -139,6 +144,19 @@ function live(): ParityWorld | null {
 
 export function parityCleaner(): ParityCleaner | null {
   return live()?.cleaner ?? null;
+}
+
+/** Sets the cleaner on one fixture turnover. Nothing else on the row changes. */
+export function assignParityCleaner(propertyId: string, scheduledOn: string, cleanerName: string): boolean {
+  const row = live()?.cleaner?.turnovers?.find((item) => item.propertyId === propertyId && item.scheduledOn === scheduledOn);
+  if (!row) return false;
+  row.assigned = true;
+  row.cleanerName = cleanerName;
+  return true;
+}
+
+export function parityUsualCleaner(propertyId: string): string {
+  return live()?.cleaner?.usual?.find((row) => row.propertyId === propertyId)?.name ?? "";
 }
 
 export function parityPat(): string | null {

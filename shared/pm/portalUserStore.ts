@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
+import { opsClient, opsClients } from "../copilot/parity/opsState.js";
 import { generateTempPassword, hashPassword } from "../portalAuth.js";
 
 function db() {
@@ -78,6 +79,25 @@ export async function getPortalUserBySlug(slug: string): Promise<PortalUser | nu
 export async function getPortalUserByClientId(
   clientId: string,
 ): Promise<PortalUser | null> {
+  const client = opsClient(clientId);
+  if (client) {
+    const first = client.name.trim().split(/\s+/)[0] || "Owner";
+    return {
+      id: `portal-${client.id}`,
+      created_at: client.created_at,
+      updated_at: client.updated_at,
+      pm_client_id: client.id,
+      email: client.email,
+      slug: first.toLowerCase(),
+      password_hash: "",
+      must_change_password: false,
+      invite_token: "",
+      invited_at: client.created_at,
+      last_login_at: client.created_at,
+      first_name: first,
+    };
+  }
+  if (opsClients()) return null;
   const { data, error } = await db()
     .from("portal_users")
     .select("*")

@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
+import { opsClient, opsClients } from "../copilot/parity/opsState.js";
 import { parityMcpToken, parityPat } from "../copilot/parity/world.js";
 import type { PmClient, PmClientListItem, PmClientStatus, PmSettings } from "./types.js";
 
@@ -9,6 +10,8 @@ function db() {
 }
 
 export async function listPmClients(): Promise<PmClientListItem[]> {
+  const parity = opsClients();
+  if (parity) return parity;
   const { data, error } = await db()
     .from("pm_clients")
     .select("*, pm_properties(id)")
@@ -25,6 +28,9 @@ export async function listPmClients(): Promise<PmClientListItem[]> {
 }
 
 export async function getPmClient(id: string): Promise<PmClient | null> {
+  const parity = opsClient(id);
+  if (parity) return parity;
+  if (opsClients()) return null;
   const { data, error } = await db()
     .from("pm_clients")
     .select("*")
