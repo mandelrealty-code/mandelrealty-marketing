@@ -15,8 +15,10 @@ import {
   UNITS_PATH,
   alreadyKnown,
   factLines,
+  isMemoryTurn,
   parseMemoryTurn,
   placeMemory,
+  filePath,
   plainTitle,
   previewLines,
   saveChoice,
@@ -347,6 +349,26 @@ export async function unitsAnswer(hospitableCount: number | null): Promise<strin
   return `We manage ${count}.\n${names.join("\n")}\n${tail}`;
 }
 
+/** Saves a way of working they just chose, so the next answer follows it. */
+export async function keepWay(title: string, decision: string): Promise<{ path: string; title: string } | { error: string }> {
+  const name = title.trim().slice(0, 80);
+  const line = decision.trim().slice(0, 500);
+  if (!name || !line) return { error: "Say what to keep." };
+  try {
+    await seedIfEmpty();
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Memory isn't set up." };
+  }
+  const target = filePath(name);
+  const day = torontoToday();
+  await appendLog(day, `Saved ${plainTitle(target)}`);
+  const now = new Date().toISOString();
+  await saveFile({ path: target, body: line, origin: "you", updated_at: now });
+  const { files } = await loadAll();
+  await rewriteGuidance(files);
+  return { path: target, title: plainTitle(target) };
+}
+
 export async function takeMemoryTurn(input: {
   text: string;
   messageId: string;
@@ -355,7 +377,19 @@ export async function takeMemoryTurn(input: {
   priorAssistant?: string;
   connected?: string[];
 }): Promise<{ body: string; step: string; thought: string; file: MemoryWrite | null; choices?: string[] | null } | null> {
-  await seedIfEmpty();
+  const continuing = Boolean(input.priorAssistant && /add this memory to that file/i.test(input.priorAssistant));
+  if (!isMemoryTurn(input.text) && !continuing) return null;
+  try {
+    await seedIfEmpty();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "The file was not written.";
+    return {
+      body: message,
+      step: "Memory isn't set up",
+      thought: "The memory file was not written.",
+      file: null,
+    };
+  }
   const refs = (await loadAll()).files.map((file) => ({ path: file.path, body: file.body }));
   if (input.priorAssistant && input.priorUser) {
     const chosen = saveChoice(input.text, input.priorAssistant, input.priorUser, refs);

@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
+import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
 import { readOutlookLogin, saveOutlookLogin } from "../copilot/store.js";
 
 const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/outlook/callback";
@@ -158,14 +159,136 @@ async function accessToken(): Promise<string> {
   return data.access_token;
 }
 
+type OutlookAddress = { emailAddress?: { name?: string; address?: string } };
+
+type OutlookMessage = {
+  id?: string;
+  subject?: string;
+  bodyPreview?: string;
+  conversationId?: string;
+  internetMessageId?: string;
+  receivedDateTime?: string;
+  sentDateTime?: string;
+  parentFolderId?: string;
+  inferenceClassification?: string;
+  from?: OutlookAddress;
+  toRecipients?: OutlookAddress[];
+  body?: { content?: string; contentType?: string };
+};
+
+export type OutlookHit = {
+  id: string;
+  folder: MailFolder;
+  from: string;
+  email: string;
+  to: string;
+  date: string;
+  subject: string;
+  snippet: string;
+};
+
+export type OutlookLetter = OutlookHit & { body: string };
+
+const OUTLOOK_SELECT = "id,from,toRecipients,subject,bodyPreview,receivedDateTime,sentDateTime,inferenceClassification,parentFolderId";
+
+function outlookHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}`, Prefer: 'outlook.body-content-type="text"' };
+}
+
+function outlookTo(rows: OutlookAddress[] | undefined): string {
+  return (rows ?? [])
+    .map((row) => row.emailAddress?.address?.trim() || row.emailAddress?.name?.trim() || "")
+    .filter(Boolean)
+    .join(", ");
+}
+
+function outlookHit(item: OutlookMessage, folder: MailFolder): OutlookHit | null {
+  const address = item.from?.emailAddress?.address?.trim() ?? "";
+  const name = item.from?.emailAddress?.name?.trim() || address;
+  if (!item.id) return null;
+  return {
+    id: item.id,
+    folder,
+    from: name,
+    email: address,
+    to: outlookTo(item.toRecipients),
+    date: item.sentDateTime || item.receivedDateTime || "",
+    subject: item.subject?.trim() || "(no subject)",
+    snippet: (item.bodyPreview ?? "").replace(/\s+/g, " ").trim().slice(0, 280),
+  };
+}
+
+function outlookInboxOk(item: OutlookMessage): boolean {
+  const kind = item.inferenceClassification?.toLowerCase();
+  return kind !== "other";
+}
+
+async function outlookFolderId(token: string, name: "inbox" | "sentitems"): Promise<string> {
+  const res = await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${name}?$select=id`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = (await res.json().catch(() => ({}))) as { id?: string };
+  if (!res.ok || !data.id) throw new Error("Outlook didn't return that folder.");
+  return data.id;
+}
+
+export async function searchOutlook(input: {
+  keywords: string;
+  where: MailFolder | "both";
+  includeAirbnb: boolean;
+}): Promise<OutlookHit[]> {
+  const token = await accessToken();
+  const keywords = mailKeywords(input.keywords);
+  if (!keywords) return [];
+  const folders: MailFolder[] = input.where === "both" ? ["sent", "inbox"] : [input.where];
+  const hits: OutlookHit[] = [];
+  for (const folder of folders) {
+    const name = folder === "sent" ? "sentitems" : "inbox";
+    const url = new URL(`https://graph.microsoft.com/v1.0/me/mailFolders/${name}/messages`);
+    url.searchParams.set("$search", `"${keywords}"`);
+    url.searchParams.set("$top", "8");
+    url.searchParams.set("$select", OUTLOOK_SELECT);
+    const listRes = await fetch(url, { headers: { ...outlookHeaders(token), ConsistencyLevel: "eventual" } });
+    const list = (await listRes.json().catch(() => ({}))) as { value?: OutlookMessage[]; error?: { message?: string } };
+    if (!listRes.ok) throw new Error(list.error?.message || "Outlook didn't return that search.");
+    for (const item of list.value ?? []) {
+      if (folder === "inbox" && !outlookInboxOk(item)) continue;
+      const hit = outlookHit(item, folder);
+      if (!hit) continue;
+      if (!input.includeAirbnb && isAirbnbNotification(hit.email)) continue;
+      hits.push(hit);
+    }
+  }
+  return hits.slice(0, 16);
+}
+
+export async function readOutlookMessage(id: string, includeAirbnb: boolean): Promise<OutlookLetter> {
+  const token = await accessToken();
+  const [inboxId, sentId] = await Promise.all([outlookFolderId(token, "inbox"), outlookFolderId(token, "sentitems")]);
+  const url = new URL(`https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(id)}`);
+  url.searchParams.set("$select", `${OUTLOOK_SELECT},body`);
+  const res = await fetch(url, { headers: outlookHeaders(token) });
+  const item = (await res.json().catch(() => ({}))) as OutlookMessage & { error?: { message?: string } };
+  if (!res.ok) throw new Error(item.error?.message || "Outlook didn't return that message.");
+  const folder: MailFolder | null = item.parentFolderId === sentId ? "sent" : item.parentFolderId === inboxId ? "inbox" : null;
+  if (!folder) throw new Error("That message isn't in Sent or the Focused inbox.");
+  if (folder === "inbox" && !outlookInboxOk(item)) throw new Error("That message is in Outlook Other, so it stays out of this search.");
+  const hit = outlookHit(item, folder);
+  if (!hit) throw new Error("Outlook didn't return that message.");
+  if (!includeAirbnb && isAirbnbNotification(hit.email)) throw new Error("That Airbnb notice stays out of this search.");
+  const html = item.body?.contentType === "html";
+  const text = html ? (item.bodyPreview ?? "") : (item.body?.content ?? item.bodyPreview ?? "");
+  return { ...hit, body: text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000) };
+}
+
 export async function latestOutlookOffer(): Promise<OutlookOffer | null> {
   const token = await accessToken();
   const login = await readOutlookLogin();
   const sinceMs = Date.now() - 3 * 24 * 60 * 60 * 1000;
   const url = new URL("https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages");
-  url.searchParams.set("$top", "8");
+  url.searchParams.set("$top", "15");
   url.searchParams.set("$orderby", "receivedDateTime desc");
-  url.searchParams.set("$select", "id,from,subject,bodyPreview,body,conversationId,internetMessageId,receivedDateTime");
+  url.searchParams.set("$select", "id,from,subject,bodyPreview,body,conversationId,internetMessageId,receivedDateTime,inferenceClassification");
   const listRes = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.body-content-type="text"' },
   });
@@ -177,6 +300,7 @@ export async function latestOutlookOffer(): Promise<OutlookOffer | null> {
       conversationId?: string;
       internetMessageId?: string;
       receivedDateTime?: string;
+      inferenceClassification?: string;
       from?: { emailAddress?: { name?: string; address?: string } };
       body?: { content?: string; contentType?: string };
     }[];
@@ -184,10 +308,12 @@ export async function latestOutlookOffer(): Promise<OutlookOffer | null> {
   if (!listRes.ok) throw new Error("Outlook didn't return the inbox. I didn't guess.");
   for (const item of list.value ?? []) {
     if (item.receivedDateTime && Date.parse(item.receivedDateTime) < sinceMs) continue;
+    if (item.inferenceClassification?.toLowerCase() === "other") continue;
     const address = item.from?.emailAddress?.address?.trim() ?? "";
     const name = item.from?.emailAddress?.name?.trim() || address;
     if (!address || address.toLowerCase() === (login?.email ?? "").toLowerCase()) continue;
     if (/no-?reply|notifications?@|mailer-daemon|newsletter/i.test(address)) continue;
+    if (isAirbnbNotification(address)) continue;
     const html = item.body?.contentType === "html";
     const text = html ? (item.bodyPreview ?? "") : (item.body?.content ?? item.bodyPreview ?? "");
     return {
@@ -203,6 +329,25 @@ export async function latestOutlookOffer(): Promise<OutlookOffer | null> {
     };
   }
   return null;
+}
+
+export async function sendOutlookMail(input: { to: string; subject: string; body: string }): Promise<void> {
+  const token = await accessToken();
+  const res = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: {
+        subject: input.subject,
+        body: { contentType: "Text", content: input.body },
+        toRecipients: [{ emailAddress: { address: input.to } }],
+      },
+    }),
+  });
+  if (!res.ok && res.status !== 202) {
+    if (res.status === 403) throw new Error("Outlook can read mail, but sending isn't allowed yet. Click Connect again and allow sending.");
+    throw new Error("Outlook didn't send it. Nothing went out.");
+  }
 }
 
 export async function sendOutlookReply(input: { messageId: string; body: string }): Promise<void> {

@@ -18,9 +18,10 @@ import { pictureFor, wantsWeb, workModel } from "../copilot/models.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords } from "../copilot/recordsAnswer.js";
+import { answerStay } from "../copilot/stayAnswer.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
-import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer, mailQuestion } from "../copilot/mailReply.js";
+import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
 import { draftForCard, skillTurn } from "../copilot/reply.js";
@@ -111,6 +112,7 @@ async function hospitableMessage(
     steps: turn.steps,
     thought: turn.thought,
     draft: turn.draft,
+    choices: turn.choices,
   });
   return true;
 }
@@ -143,11 +145,11 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
     {
       id: "gmail",
       name: "Gmail",
-      detail: "Reads mail and drafts a note when something needs you.",
+      detail: "Reads Sent and Primary, and drafts a reply when you ask.",
       status: gmail ? "connected" : "not_connected",
       statusLabel: gmail ? "Connected" : "Not connected",
       note: gmail
-        ? "Reads the mailbox you signed in. A reply sends only after you press Submit."
+        ? "Searches Sent and Primary. Social and Promotions stay out. A reply sends only after you press Submit."
         : gmailReady
           ? "Click Connect and allow reading and sending. A reply still waits for Submit."
           : "The Gmail sign-in is not on the server yet.",
@@ -155,11 +157,11 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
     {
       id: "outlook",
       name: "Outlook",
-      detail: "Reads the company mailbox and drafts a reply when something needs you.",
+      detail: "Reads Sent and Focused, and drafts a reply when you ask.",
       status: outlook ? "connected" : "not_connected",
       statusLabel: outlook ? "Connected" : "Not connected",
       note: outlook
-        ? "Reads the mailbox you signed in. A reply sends only after you press Submit."
+        ? "Searches Sent and the Focused inbox. Other stays out. A reply sends only after you press Submit."
         : outlookReady
           ? "Click Connect and sign in as the company mailbox. A reply still waits for Submit."
           : "The Outlook sign-in is not on the server yet.",
@@ -581,20 +583,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        if (asksAboutMail(text)) {
-          const result = await mailQuestion(text);
-          await addMessage({
-            chatId,
-            role: "assistant",
-            body: result.body,
-            choices: "choices" in result ? result.choices : null,
-            steps: [{ text: "Read the inbox" }],
-            thought: /in Outlook/i.test(result.body)
-              ? "This came from Outlook. Nothing was sent."
-              : "This came from Gmail. Nothing was sent.",
-          });
-          return done();
-        }
       }
       if (!webSearch && !skillMode) {
         const history = await listMessages(chatId);
@@ -604,6 +592,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             prior = history[i]?.body ?? "";
             break;
           }
+        }
+        const stay = await answerStay(text, prior);
+        if (stay) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: stay,
+            steps: [{ text: "Read the reservation" }],
+            thought: "This came from Hospitable. Nothing was sent.",
+          });
+          return done();
         }
         const records = await answerRecords(text, prior);
         const missed = records ? /isn't connected|didn't guess|couldn't read|isn't set up|isn't available|didn't return/i.test(records) : false;
@@ -619,18 +618,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        if (ASKS_HOSPITABLE.test(text) || missed) {
-          if (await hospitableMessage(chatId, workModel(String(body.model ?? "auto")).id, text, images)) return done();
-          if (records) {
-            await addMessage({
-              chatId,
-              role: "assistant",
-              body: records,
-              steps: [{ text: "Couldn't read the records" }],
-              thought: "Hospitable didn't return that. Nothing was sent.",
-            });
-            return done();
-          }
+        if (images.length && !ASKS_HOSPITABLE.test(text) && !asksAboutMail(text)) {
+          const spoken = await answerPhoto(text, images);
+          const photoMissed = /couldn't read|isn't connected/i.test(spoken);
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: spoken,
+            steps: [{ text: photoMissed ? "Could not read the photo" : "Looked at the photo" }],
+            thought: photoMissed ? "The photo did not come back as a description." : "The photo was read here. Nothing was sent.",
+          });
+          return done();
+        }
+        if (await hospitableMessage(chatId, workModel(String(body.model ?? "auto")).id, text, images)) return done();
+        if (missed && records) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: records,
+            steps: [{ text: "Couldn't read the records" }],
+            thought: "Hospitable didn't return that. Nothing was sent.",
+          });
+          return done();
         }
       }
       if (skillMode && !webSearch) {

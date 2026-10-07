@@ -8,6 +8,9 @@ import {
   respondToHospitableReview,
 } from "../pm/hospitableClient.js";
 import { callHospitableMcp, hospitableMcpConfigured, listHospitableAgentTools } from "./hospitableMcp.js";
+import { propertyLines } from "./stayAnswer.js";
+import { readMail, searchMail } from "./mailSearch.js";
+import { keepWay } from "./memoryFiles.js";
 import type { WorkModelId } from "./models.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
@@ -87,9 +90,15 @@ export type HospitableTurn = {
   steps: { text: string }[];
   thought: string;
   draft: CopilotDraft | null;
+  choices: string[] | null;
 };
 
-type Held = { action: { name: string; args: Record<string, unknown> } | null };
+type Held = {
+  action: { name: string; args: Record<string, unknown> } | null;
+  choices: string[] | null;
+  offer: CopilotDraft | null;
+  finishedBody: string;
+};
 
 export function isHospitableWrite(name: string): boolean {
   return LIVE.test(name);
@@ -156,18 +165,19 @@ export async function answerHospitable(input: {
   images?: Image[];
 }): Promise<HospitableTurn | null> {
   const question = input.question.trim();
-  if (!question || !ASKS_HOSPITABLE.test(question)) return null;
+  if (!question) return null;
 
   try {
-    const mcp = await hospitableMcpConfigured();
-    const tools = mcp ? await mcpTools() : await patTools();
-    if (!tools.length) {
-      return say(
-        "Hospitable isn't connected, so I can't see the account. Add the MCP token in Connectors. I didn't guess.",
-        "Couldn't read Hospitable",
-        "Hospitable isn't connected.",
-      );
+    let mcp = false;
+    let hospitable: ToolDef[] = [];
+    try {
+      mcp = await hospitableMcpConfigured();
+      hospitable = mcp ? await mcpTools() : await patTools();
+    } catch {
+      hospitable = [];
+      mcp = false;
     }
+    const tools = [...mailTools(), ...hospitable];
     const which = process.env.ANTHROPIC_API_KEY?.trim()
       ? "claude"
       : process.env.OPENAI_API_KEY?.trim()
@@ -175,9 +185,9 @@ export async function answerHospitable(input: {
         : null;
     if (!which) {
       return say(
-        "No model is connected that can use Hospitable. Nothing was changed.",
-        "Couldn't read Hospitable",
-        "Hospitable is connected, and no model could call it.",
+        "No model is connected, so I can't look this up. Nothing was sent.",
+        "Couldn't answer",
+        "No model could call the connected accounts.",
       );
     }
     const model = which === "openai"
@@ -185,15 +195,104 @@ export async function answerHospitable(input: {
       : input.model === "sonnet" || input.model === "cursor"
         ? "claude-sonnet-4-6"
         : "claude-haiku-4-5";
-    return await runLoop(which, model, tools, input, mcp);
+    const roster = ASKS_HOSPITABLE.test(question) ? await propertyLines().catch(() => "") : "";
+    const facts = [roster, input.facts].filter(Boolean).join("\n\n");
+    return await runLoop(which, model, tools, { ...input, facts }, mcp, hospitable.length > 0);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Hospitable didn't answer.";
-    return say(message, "Couldn't read Hospitable", "Hospitable didn't return that. Nothing was changed.");
+    const message = err instanceof Error ? err.message : "That didn't come back.";
+    return say(message, "Couldn't answer", "Nothing was sent.");
   }
 }
 
 function say(body: string, step: string, thought: string): HospitableTurn {
-  return { body, steps: [{ text: step }], thought, draft: null };
+  return { body, steps: [{ text: step }], thought, draft: null, choices: null };
+}
+
+function mailTools(): ToolDef[] {
+  return [
+    {
+      name: "search_mail",
+      description:
+        "Search Sent and the main inbox in Gmail and Outlook. Gmail Social and Promotions, and Outlook Other, are already excluded. Pass keywords from the question, such as a property or a subject. Set mailbox to gmail or outlook only when they named that one. Set where to sent, inbox, or both. Set include_airbnb only when they asked about Airbnb email.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          keywords: { type: "string" },
+          mailbox: { type: "string", enum: ["gmail", "outlook", "both"] },
+          where: { type: "string", enum: ["sent", "inbox", "both"] },
+          include_airbnb: { type: "boolean" },
+        },
+        required: ["keywords"],
+      },
+      run: async (args) =>
+        searchMail({
+          keywords: text(args.keywords),
+          mailbox: text(args.mailbox),
+          where: text(args.where),
+          includeAirbnb: args.include_airbnb === true,
+        }),
+    },
+    {
+      name: "read_mail",
+      description:
+        "Read one message returned by search_mail. Pass that result's mailbox and id. This does not send. Set include_airbnb only when the search did.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          mailbox: { type: "string", enum: ["gmail", "outlook"] },
+          id: { type: "string" },
+          include_airbnb: { type: "boolean" },
+        },
+        required: ["mailbox", "id"],
+      },
+      run: async (args) => readMail({ mailbox: text(args.mailbox), id: text(args.id), includeAirbnb: args.include_airbnb === true }),
+    },
+    {
+      name: "keep_way",
+      description:
+        "Save a way of working only after they choose it. title is a short name, such as Blue Jays parking email. decision is the choice they just made, in one sentence. Do not call this when they only asked what you see.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          decision: { type: "string" },
+        },
+        required: ["title", "decision"],
+      },
+      run: async (args) => keepWay(text(args.title), text(args.decision)),
+    },
+    {
+      name: "finish",
+      description:
+        "End the turn after you have read what the answer needs. body is the sentences they read. If you asked them to pick a way, choices are the short labels for those ways. draft is a skill or an email only after they asked for that card. If they said not to draft or write, omit draft. Do not call finish in the same step as search_mail, read_mail, or keep_way.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          body: { type: "string" },
+          choices: { type: "array", items: { type: "string" } },
+          draft: {
+            type: "object",
+            properties: {
+              channel: { type: "string", enum: ["email", "skill"] },
+              subject: { type: "string" },
+              body: { type: "string" },
+              to: { type: "string" },
+              mailbox: { type: "string", enum: ["gmail", "outlook"] },
+              skillName: { type: "string" },
+              skillWhen: { type: "string" },
+              skillReads: { type: "string" },
+              skillDrafts: { type: "string" },
+              skillMustNot: { type: "string" },
+              skillKind: { type: "string", enum: ["playbook", "text"] },
+              skillSchedule: { type: "string", enum: ["daily", ""] },
+            },
+          },
+        },
+        required: ["body"],
+      },
+      run: async () => ({ ok: true }),
+    },
+  ];
 }
 
 async function mcpTools(): Promise<ToolDef[]> {
@@ -335,25 +434,41 @@ async function patTools(): Promise<ToolDef[]> {
   ];
 }
 
-function instructions(mcp: boolean, facts: string): string {
+function instructions(mcp: boolean, hasHospitable: boolean, facts: string): string {
   return [
     "You are Mandel Realty Copilot, answering the two partners.",
     `Today is ${torontoToday()} in Toronto.`,
-    mcp
-      ? "Read tools look at the live Hospitable account: messages, reservations, inquiries, calendars, tasks, reviews, payouts, and owner statements."
-      : "Only the Public API key is connected. You can read properties, reservations, messages, the calendar, and reviews. Sending a guest message, changing the calendar, tasks, and owner statements need the MCP token. Say that plainly. Do not invent a way around it.",
-    "Read before you answer. Never invent a name, date, balance, status, or count.",
+    "Read before you answer. Never invent a sender, date, guest, balance, status, or count.",
+    "Past email means Sent plus the main inbox in every connected mailbox. Gmail Social and Promotions, and Outlook Other, stay out. Search both Gmail and Outlook unless they named one. Say which mailbox each message came from.",
+    "If a mailbox tool says it isn't connected, search the other one. Say you cannot see a mailbox only when neither is connected.",
+    "If they said not to draft or write, report what you found, then you may still ask how they want a repeating job handled. Do not attach a draft.",
+    "If the same kind of email goes out before each turnover, say what you actually saw. Then ask if they want a skill that does it every time so they don't have to think about it. Say what that skill would do from the mail and the stays you read, such as watching guest messages for that property, telling them when one comes in, and drafting the email. Then ask how they want it done. For a guest-detail email, ask whether to wait until the guest sends the details, message the guest a couple of days before arrival and then draft the note to the building, or send the details already on hand. Use the real property, the real recipient, and the real detail. One or two questions, in plain sentences. Do not create the skill.",
+    "choices, when you ask that, are short labels for the ways you just named. The question itself stays in the body.",
+    "If a memory already says how this job works, follow it. Do not ask again. Offer to handle the next one that way.",
+    "When they choose, call keep_way with that choice, then confirm it in a sentence. Do not call keep_way on a question that only asks what you see.",
+    "A skill card comes only after they say they want the skill. An email card comes only after they ask for a draft. Neither is saved or sent until they press the card.",
+    "Call finish when the answer is ready, with the sentences they should read. Do not mention tools, tokens, JSON, or MCP in that body.",
     "Follow the memory in the facts. When a file says which units we manage, that list is the count. Hospitable's other listings stay out of it, and you still say how many Hospitable lists.",
-    "A write tool does not commit. It only drafts. Never say a message was sent, a review was published, a calendar changed, a task changed, or a statement was updated. Ask them to press Submit. Hold leaves it uncommitted.",
+    "Spoken unit names do not match Hospitable's marketing titles. Use the listing directory in the facts. 8 Charlotte 606 is the Charlotte listing whose address contains 606. Roseglor is the Roseglor Crescent address.",
+    "An empty month is an empty month. Do not call that an empty booking history unless a multi-year read also came back empty.",
+    hasHospitable
+      ? mcp
+        ? "Hospitable tools are the live account: messages, reservations, inquiries, calendars, tasks, reviews, payouts, and owner statements. A write tool does not commit. It only drafts. Ask them to press Submit."
+        : "Only the Hospitable Public API key is connected. You can read properties, reservations, messages, the calendar, and reviews. Sending a guest message, changing the calendar, tasks, and owner statements need the MCP token. Say that plainly."
+      : "Hospitable is not connected. Say so when the question needs a stay, a guest, or a calendar. Do not invent one.",
+    "Use a connected source the question needs. Say when one is not connected.",
     "Owner portal invitations and bank-account connection status are not their own tool. Read owners, alerts, and the user. Report those fields when Hospitable included them. If the field is missing, say Hospitable did not return it.",
     "Rate limits come back on tool results as rate_limits. If remaining is low, say so and stop.",
     "For a custom total or a one-number view, add only figures the tools returned.",
     "Webhook subscriptions are not available from this chat.",
-    "Reply in plain sentences. Do not mention tools, tokens, JSON, or MCP.",
     "",
     "Facts:",
     facts || "No extra facts were loaded.",
   ].join("\n");
+}
+
+function reportOnly(question: string): boolean {
+  return /\b(do not|don't|dont)\s+(draft|write|reply)\b|\bjust tell me\b/i.test(question);
 }
 
 async function runLoop(
@@ -362,26 +477,36 @@ async function runLoop(
   tools: ToolDef[],
   input: { question: string; prior: string; facts: string; images?: Image[] },
   mcp: boolean,
+  hasHospitable: boolean,
 ): Promise<HospitableTurn> {
   const used: string[] = [];
-  const held: Held = { action: null };
-  const deadline = Date.now() + 90_000;
-  const system = instructions(mcp, input.facts);
+  const held: Held = { action: null, choices: null, offer: null, finishedBody: "" };
+  const quiet = reportOnly(input.question);
+  const deadline = Date.now() + 120_000;
+  const system = instructions(mcp, hasHospitable, input.facts);
   const asked = [input.prior ? `Earlier:\n${input.prior.slice(0, 4000)}` : "", input.question].filter(Boolean).join("\n\n");
   let final = "";
-  if (which === "claude") final = await claudeLoop(model, system, asked, input.images ?? [], tools, used, held, deadline);
-  else final = await openLoop(model, system, asked, tools, used, held, deadline);
-  let body = final.trim() || "Hospitable didn't return an answer. I didn't guess.";
-  if (held.action && !/submit/i.test(body)) {
+  if (which === "claude") final = await claudeLoop(model, system, asked, input.images ?? [], tools, used, held, quiet, deadline);
+  else final = await openLoop(model, system, asked, tools, used, held, quiet, deadline);
+  let body = (held.finishedBody || final).trim() || "I didn't get an answer back. I didn't guess.";
+  const draft = quiet ? null : held.offer ?? (held.action ? hospitableDraft(held.action.name, held.action.args, body) : null);
+  if (held.action && !held.offer && !/submit/i.test(body)) {
     body = `${body}\n\nNothing was changed. Press Submit to commit it, or Hold to leave it.`.trim();
   }
-  const steps = [...new Set(used.map((name) => stepFor(name, Boolean(held.action))))].slice(0, 6).map((text) => ({ text }));
-  if (!steps.length) steps.push({ text: "Read Hospitable" });
+  if (draft?.channel === "email" && !/submit/i.test(body)) {
+    body = `${body}\n\nNothing was sent. Press Submit to send it, or Hold to leave it.`.trim();
+  }
+  if (draft?.channel === "skill" && !/save/i.test(body)) {
+    body = `${body}\n\nNothing was saved. Press Save to keep the skill.`.trim();
+  }
+  const steps = [...new Set(used.filter((name) => name !== "finish").map((name) => stepFor(name, Boolean(held.action))))].slice(0, 8).map((text) => ({ text }));
+  if (!steps.length) steps.push({ text: "Answered" });
   return {
     body,
     steps,
-    thought: thoughtFor(used, Boolean(held.action)),
-    draft: held.action ? hospitableDraft(held.action.name, held.action.args) : null,
+    thought: thoughtFor(used, Boolean(held.action), draft),
+    draft,
+    choices: held.choices,
   };
 }
 
@@ -393,6 +518,7 @@ async function claudeLoop(
   tools: ToolDef[],
   used: string[],
   held: Held,
+  quiet: boolean,
   deadline: number,
 ): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
@@ -404,7 +530,7 @@ async function claudeLoop(
   }
   first.push({ type: "text", text: asked.slice(0, 8000) });
   const messages: { role: string; content: unknown }[] = [{ role: "user", content: first }];
-  for (let round = 0; round < 6 && Date.now() < deadline; round += 1) {
+  for (let round = 0; round < 10 && Date.now() < deadline; round += 1) {
     const data = await claudePost(key, model, system, messages, tools);
     const content = Array.isArray(data.content) ? data.content : [];
     const calls = content.filter((part) => part && typeof part === "object" && (part as { type?: string }).type === "tool_use") as {
@@ -421,6 +547,7 @@ async function claudeLoop(
         .trim();
     }
     messages.push({ role: "assistant", content });
+    const names = calls.map((call) => String(call.name ?? ""));
     const results = [];
     for (const call of calls) {
       const name = String(call.name ?? "");
@@ -428,12 +555,18 @@ async function claudeLoop(
       results.push({
         type: "tool_result",
         tool_use_id: call.id,
-        content: await runNamed(tools, name, call.input ?? {}, held),
+        content: await runNamed(tools, name, call.input ?? {}, held, quiet),
       });
     }
+    if (names.includes("finish") && names.some((name) => name !== "finish" && name !== "keep_way")) {
+      held.finishedBody = "";
+      held.choices = null;
+      held.offer = null;
+    }
+    if (held.finishedBody) return held.finishedBody;
     messages.push({ role: "user", content: results });
   }
-  return "I started reading Hospitable and didn't finish. I didn't guess.";
+  return held.finishedBody || "I started reading and didn't finish. I didn't guess.";
 }
 
 async function claudePost(
@@ -478,6 +611,7 @@ async function openLoop(
   tools: ToolDef[],
   used: string[],
   held: Held,
+  quiet: boolean,
   deadline: number,
 ): Promise<string> {
   const key = process.env.OPENAI_API_KEY?.trim();
@@ -486,13 +620,15 @@ async function openLoop(
     { role: "system", content: system },
     { role: "user", content: asked.slice(0, 8000) },
   ];
-  for (let round = 0; round < 6 && Date.now() < deadline; round += 1) {
+  for (let round = 0; round < 10 && Date.now() < deadline; round += 1) {
     const message = await openPost(key, model, messages, tools);
     const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
     if (!calls.length) return String(message.content ?? "").trim();
     messages.push({ role: "assistant", content: message.content ?? "", tool_calls: calls });
+    const names: string[] = [];
     for (const call of calls) {
       const name = String(call.function?.name ?? "");
+      names.push(name);
       used.push(name);
       let args: Record<string, unknown> = {};
       try {
@@ -501,10 +637,16 @@ async function openLoop(
       } catch {
         args = {};
       }
-      messages.push({ role: "tool", tool_call_id: call.id, content: await runNamed(tools, name, args, held) });
+      messages.push({ role: "tool", tool_call_id: call.id, content: await runNamed(tools, name, args, held, quiet) });
     }
+    if (names.includes("finish") && names.some((name) => name !== "finish" && name !== "keep_way")) {
+      held.finishedBody = "";
+      held.choices = null;
+      held.offer = null;
+    }
+    if (held.finishedBody) return held.finishedBody;
   }
-  return "I started reading Hospitable and didn't finish. I didn't guess.";
+  return held.finishedBody || "I started reading and didn't finish. I didn't guess.";
 }
 
 async function openPost(
@@ -542,7 +684,13 @@ async function openPost(
   }
 }
 
-async function runNamed(tools: ToolDef[], name: string, args: Record<string, unknown>, held: Held): Promise<string> {
+async function runNamed(tools: ToolDef[], name: string, args: Record<string, unknown>, held: Held, quiet: boolean): Promise<string> {
+  if (name === "finish") {
+    held.finishedBody = text(args.body).slice(0, 4000);
+    held.choices = choiceList(args.choices);
+    held.offer = quiet ? null : offerDraft(args.draft);
+    return JSON.stringify({ ok: Boolean(held.finishedBody) });
+  }
   if (isHospitableWrite(name)) {
     if (held.action) {
       return JSON.stringify({ committed: false, error: "A draft is already waiting. Ask them to submit or hold that one first. Nothing was changed." });
@@ -564,15 +712,74 @@ function clip(value: unknown): string {
   return text.length > 14_000 ? `${text.slice(0, 14_000)}\n…truncated` : text;
 }
 
+function choiceList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const choices = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item && !/^something else\.?$/i.test(item))
+    .slice(0, 3);
+  return choices.length ? choices : null;
+}
+
+function offerDraft(value: unknown): CopilotDraft | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (row.channel === "email") {
+    const body = text(row.body);
+    if (!body) return null;
+    const mailbox = row.mailbox === "outlook" ? "outlook" : row.mailbox === "gmail" ? "gmail" : undefined;
+    return {
+      channel: "email",
+      status: "waiting",
+      subject: text(row.subject).slice(0, 180),
+      body: body.slice(0, 4000),
+      to: text(row.to).slice(0, 180),
+      mailbox,
+    };
+  }
+  if (row.channel === "skill") {
+    const name = text(row.skillName).slice(0, 80);
+    if (!name) return null;
+    return {
+      channel: "skill",
+      status: "waiting",
+      subject: name,
+      body: text(row.body).slice(0, 4000),
+      to: "",
+      skillName: name,
+      skillWhen: text(row.skillWhen).slice(0, 240),
+      skillReads: text(row.skillReads).slice(0, 400) || "Gmail and Outlook Sent and the main inbox, plus Hospitable stays.",
+      skillDrafts: text(row.skillDrafts).slice(0, 400),
+      skillMustNot: text(row.skillMustNot).slice(0, 400) || "Do not send until a partner presses Submit.",
+      skillKind: row.skillKind === "text" ? "text" : "playbook",
+      skillPhone: text(row.skillPhone).slice(0, 20),
+      skillSchedule: row.skillSchedule === "daily" ? "daily" : "",
+    };
+  }
+  return null;
+}
+
 function stepFor(name: string, drafted: boolean): string {
+  if (name === "search_mail") return "Searched the mail";
+  if (name === "read_mail") return "Read the mail";
+  if (name === "keep_way") return "Saved the way you want it";
   if (drafted && isHospitableWrite(name)) return "Drafted the change";
   return "Read Hospitable";
 }
 
-function thoughtFor(used: string[], drafted: boolean): string {
+function thoughtFor(used: string[], drafted: boolean, offer: CopilotDraft | null): string {
+  if (offer?.channel === "skill") return "Nothing was saved, and nothing was sent.";
+  if (offer?.channel === "email") return "Nothing was sent. Submit is what sends it.";
   if (drafted) return "Nothing was changed. Submit is what commits it.";
-  if (used.length) return "This came from Hospitable. Nothing was changed.";
-  return "Nothing was changed.";
+  const mail = used.some((name) => name === "search_mail" || name === "read_mail");
+  const kept = used.includes("keep_way");
+  if (kept) return "Saved the way you want this done. Nothing was sent.";
+  const hospitable = used.some((name) => name !== "search_mail" && name !== "read_mail" && name !== "finish" && name !== "keep_way");
+  if (mail && hospitable) return "This came from the mailbox and Hospitable. Nothing was sent.";
+  if (mail) return "This came from the mailbox. Nothing was sent.";
+  if (hospitable) return "This came from Hospitable. Nothing was changed.";
+  return "Nothing was sent.";
 }
 
 function changeLabel(name: string): string {

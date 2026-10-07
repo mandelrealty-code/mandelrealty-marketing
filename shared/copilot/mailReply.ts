@@ -1,5 +1,5 @@
 import { latestInboxOffer, sendGmailReply, type InboxOffer } from "../adminApi/gmail.js";
-import { latestOutlookOffer, sendOutlookReply } from "../adminApi/outlook.js";
+import { latestOutlookOffer, sendOutlookMail, sendOutlookReply } from "../adminApi/outlook.js";
 import { readGmailOffer, saveGmailOffer, type GmailOffer } from "./store.js";
 
 const MAIL = /\b(emails?|inbox|gmail|outlook)\b/i;
@@ -11,7 +11,11 @@ export function asksAboutMail(text: string): boolean {
 }
 
 export function agreesToReply(text: string, prior: string): boolean {
-  return /want me to reply/i.test(prior) && YES.test(text.trim());
+  if (!/want me to reply/i.test(prior)) return false;
+  const line = text.trim();
+  if (/^yes, draft a reply$/i.test(line)) return true;
+  if (/draft the next|save this as a skill|leave it/i.test(line)) return false;
+  return YES.test(line);
 }
 
 export function declinesReply(text: string, prior: string): boolean {
@@ -172,8 +176,8 @@ export async function deliverReply(input: {
   mailbox?: "gmail" | "outlook";
 }): Promise<void> {
   if (input.mailbox === "outlook") {
-    if (!input.rfcId) throw new Error("Outlook didn't send it. Nothing went out.");
-    await sendOutlookReply({ messageId: input.rfcId, body: input.body });
+    if (input.rfcId) await sendOutlookReply({ messageId: input.rfcId, body: input.body });
+    else await sendOutlookMail({ to: input.to, subject: input.subject, body: input.body });
     return;
   }
   await sendGmailReply(input);

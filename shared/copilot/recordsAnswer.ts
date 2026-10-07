@@ -31,7 +31,9 @@ export async function answerRecords(input: string, prior = ""): Promise<string |
   const text = input.replace(/\n?Attached:.*$/is, "").trim();
   if (!text) return null;
   try {
-    if (MESSAGE.test(text)) return await lastMessage();
+    if (MESSAGE.test(text) && !/\bHM[A-Z0-9]{8,}\b|charlotte|roseglor|blue jays|\bshaw\b|markham|\b(606|1103|1104|2104)\b|this reservation/i.test(text)) {
+      return await lastMessage();
+    }
     if (REVIEWS.test(text)) return await newReviews();
     if (UNITS.test(text) || (ABOUT_UNITS.test(prior) && UNIT_FOLLOW.test(text))) return await unitList(text);
   } catch {
