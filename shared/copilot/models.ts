@@ -38,9 +38,9 @@ export type PictureModel = {
 
 export const WORK_MODELS: WorkModel[] = [
   { id: "auto", name: "Auto", line: "The cheapest model that can do this." },
-  { id: "haiku", name: "Haiku", line: "A short answer, or a simple skill." },
+  { id: "haiku", name: "Haiku", line: "Clicks in the browser, or writes a short answer." },
   { id: "sonnet", name: "Sonnet", line: "Better writing for a skill or anything a person will read." },
-  { id: "cursor", name: "Cursor", line: "Opens the web. This is the team bill." },
+  { id: "cursor", name: "Cursor", line: "Company questions. Uses the Cursor plan." },
 ];
 
 export const PICTURE_MODELS: PictureModel[] = [

@@ -776,6 +776,13 @@ html.cp-app[data-cp-theme="light"] #root {
   margin: 0;
   text-wrap: pretty;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.cp-bot p a {
+  color: #c4a35a;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .cp-think {
@@ -1612,20 +1619,6 @@ html.cp-app[data-cp-theme="light"] #root {
   height: 10px;
   border-radius: 2px;
   background: #f5f5f7;
-}
-
-.cp-showpage {
-  align-self: flex-start;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
 }
 
 .cp-deskpad {

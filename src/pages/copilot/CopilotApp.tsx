@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, SkillRow } from "../../../shared/copilot/types";
 import "./copilot.css";
@@ -509,9 +509,26 @@ function ThinkCheck() {
   );
 }
 
-function foundPages(body: string): string[] {
-  const found = body.match(/https?:\/\/[^\s<>"']+/g) ?? [];
-  return [...new Set(found.map((url) => url.replace(/[),.;]+$/, "")))];
+function ChatText({ text, muted }: { text: string; muted?: boolean }) {
+  const nodes: ReactNode[] = [];
+  const re = /https?:\/\/[^\s<>"']+/g;
+  let last = 0;
+  for (const match of text.matchAll(re)) {
+    const raw = match[0];
+    const start = match.index ?? 0;
+    const url = raw.replace(/[),.;]+$/, "");
+    const tail = raw.slice(url.length);
+    if (start > last) nodes.push(text.slice(last, start));
+    nodes.push(
+      <a key={`${start}-${url}`} href={url} target="_blank" rel="noopener noreferrer">
+        {url}
+      </a>,
+    );
+    if (tail) nodes.push(tail);
+    last = start + raw.length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return <p className={muted ? "cp-muted" : undefined}>{nodes}</p>;
 }
 
 function Address({ url }: { url: string }) {
@@ -527,14 +544,6 @@ function Address({ url }: { url: string }) {
     );
   } catch {
     return <span>{url}</span>;
-  }
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
   }
 }
 
@@ -2028,20 +2037,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             thought={shownTrail(message).thought}
                             steps={shownTrail(message).steps}
                           />
-                          {message.draft?.status === "waiting" ? <p>{message.body}</p> : <p className={message.draft ? "cp-muted" : undefined}>{message.body}</p>}
+                          <ChatText text={message.body} muted={message.draft?.status !== "waiting" && !!message.draft} />
                           {message.body.includes("Tell me when you're in.") && !messages.slice(messages.findIndex((item) => item.id === message.id) + 1).some((item) => item.role === "user") ? (
                             <button type="button" className="cp-imin" disabled={busy} onClick={() => void send("I'm in", true)}>I'm in</button>
                           ) : null}
-                          {foundPages(message.body).map((url) => (
-                            <button
-                              key={url}
-                              type="button"
-                              className="cp-showpage"
-                              onClick={() => setStage({ kind: "page", control: false, open: true, url })}
-                            >
-                              Show {hostOf(url)}
-                            </button>
-                          ))}
                           {message.choices?.length ? (
                             <ChoiceCard
                               message={message}

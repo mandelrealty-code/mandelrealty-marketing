@@ -11,7 +11,7 @@ import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cl
 import { accountSpend } from "../copilot/accounts.js";
 import { answerWithClaude } from "../copilot/claudeAnswer.js";
 import { CURSOR_MISSING, answerSignIn, cancelCursorRun, collectCursorRun, settleOpenCursorRuns, startCursorRun } from "../copilot/cursorThink.js";
-import { cancelBrowser, collectBrowser, publicError, resumeBrowser, settleOpenBrowsers, startBrowser } from "../copilot/webBrowser.js";
+import { cancelBrowser, collectBrowser, browserIsLive, publicError, resumeBrowser, settleOpenBrowsers, startBrowser } from "../copilot/webBrowser.js";
 import { nameChat } from "../copilot/chatTitle.js";
 import { pictureModel, wantsWeb, workModel } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
@@ -338,6 +338,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!chatId) {
         const chat = await createChat(await nameChat(text), kind);
         chatId = chat.id;
+      }
+      if (chatId && /^(please\s+)?(stop|stop running|stop the browser|stop it|cancel)(\s+running)?[.!]*$/i.test(text) && (await browserIsLive(chatId))) {
+        await addMessage({ chatId, role: "user", body: text });
+        await cancelBrowser(chatId);
+        const messages = await listMessages(chatId);
+        const chats = await listChats();
+        return res.status(200).json({ chatId, messages, chats, pending: false });
       }
       const pictureMode = body.pictureMode === true;
       const skillMode = body.skillMode === true;

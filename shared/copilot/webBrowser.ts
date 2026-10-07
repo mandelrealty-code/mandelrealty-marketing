@@ -35,6 +35,7 @@ type Act = {
 };
 
 const tails = new Map<string, Promise<unknown>>();
+const stopping = new Set<string>();
 
 function gate<T>(chatId: string, fn: () => Promise<T>): Promise<T> {
   const prev = tails.get(chatId) ?? Promise.resolve();
@@ -209,7 +210,8 @@ async function finish(chatId: string, row: StoredBrowser, answer: string): Promi
   const body = answer.trim() || "I opened the page, and I couldn’t read a result from it. Nothing was sent.";
   row.status = "done";
   row.thought = "Haiku chose the clicks. This was read from the open page. Nothing was sent.";
-  row.steps = [...row.steps, { text: "Read the page" }];
+  row.steps = [...row.steps, { text: "Read the page" }, { text: "Closed the browser" }];
+  await release(row);
   await saveBrowser(chatId, row);
   await addMessage({
     chatId,
@@ -260,7 +262,7 @@ async function openSession(chatId: string, goal: string, reuseContext: boolean):
   try {
     session = await bb().sessions.create({
       keepAlive: true,
-      api_timeout: 900,
+      api_timeout: 360,
       proxies: target.proxy ? true : undefined,
       browserSettings: settings,
       userMetadata: { chatId, site: target.siteKey },
@@ -270,7 +272,7 @@ async function openSession(chatId: string, goal: string, reuseContext: boolean):
     if (!target.proxy) throw err;
     session = await bb().sessions.create({
       keepAlive: true,
-      api_timeout: 900,
+      api_timeout: 360,
       browserSettings: settings,
       userMetadata: { chatId, site: target.siteKey },
     });
@@ -300,25 +302,13 @@ async function openSession(chatId: string, goal: string, reuseContext: boolean):
     site: target.site,
     siteKey: target.siteKey,
     status: "running",
-    steps: [{ text: "Opening the browser" }, { text: `Opened ${target.site}` }],
+    steps: [{ text: "Opening the browser" }],
     thought: usedProxy ? "The residential proxy is on for this site." : "The browser is open.",
     acts: 0,
     fails: 0,
   };
   if (target.proxy && !usedProxy) row.steps.push({ text: "Opened without the residential proxy" });
-  let landed = "";
-  try {
-    landed = await withPage(session.connectUrl, async (page) => {
-      await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 25_000 });
-      return page.url();
-    });
-  } catch {
-    landed = "";
-  }
-  if (landed) row.pageUrl = landed;
   await saveBrowser(chatId, row);
-  const wall = loginWall(row.pageUrl);
-  if (wall) return handoff(chatId, row, wall);
   return stateOf(row, true);
 }
 
@@ -349,7 +339,17 @@ export async function resumeBrowser(chatId: string): Promise<BrowserState> {
   });
 }
 
+async function halt(chatId: string, row: StoredBrowser): Promise<BrowserState | null> {
+  if (!stopping.has(chatId)) return null;
+  await release(row);
+  row.status = "done";
+  await saveBrowser(chatId, row);
+  return stateOf(row, false);
+}
+
 async function oneStep(chatId: string, row: StoredBrowser): Promise<BrowserState> {
+  const halted = await halt(chatId, row);
+  if (halted) return halted;
   if (!(await sessionAlive(row.sessionId))) {
     row.status = "done";
     await saveBrowser(chatId, row);
@@ -382,6 +382,8 @@ async function oneStep(chatId: string, row: StoredBrowser): Promise<BrowserState
     const result = await withPage(row.connectUrl, async (page) => {
       if (!page.url() || page.url() === "about:blank") {
         await page.goto(row.startUrl, { waitUntil: "domcontentloaded", timeout: 25_000 });
+        const url = page.url();
+        return { url, wall: loginWall(url), act: null as Act | null, label: `Opened ${row.site}` };
       }
       const url = page.url();
       const wall = loginWall(url);
@@ -408,21 +410,27 @@ async function oneStep(chatId: string, row: StoredBrowser): Promise<BrowserState
     act = result.act;
     label = result.label;
     row.pageUrl = pageUrl;
+    const haltedAfter = await halt(chatId, row);
+    if (haltedAfter) return haltedAfter;
     if (result.wall) return handoff(chatId, row, result.wall);
   } catch {
+    const haltedAfter = await halt(chatId, row);
+    if (haltedAfter) return haltedAfter;
     row.fails += 1;
     row.pageUrl = pageUrl;
     row.steps = [...row.steps, { text: "The click didn’t land" }];
     await saveBrowser(chatId, row);
     if (row.fails >= 3) {
       row.status = "done";
+      row.steps = [...row.steps, { text: "Closed the browser" }];
+      await release(row);
       await saveBrowser(chatId, row);
       await addMessage({
         chatId,
         role: "assistant",
-        body: "I opened the browser, and the clicks stopped landing. You can use the page yourself. Nothing was sent.",
+        body: "I opened the browser, and the clicks stopped landing. The browser is closed. Nothing was sent.",
         steps: row.steps,
-        thought: "The browser is still there until it times out. Nothing was sent.",
+        thought: "The browser session was closed. Nothing was sent.",
       });
       return stateOf(row, false);
     }
@@ -430,6 +438,13 @@ async function oneStep(chatId: string, row: StoredBrowser): Promise<BrowserState
   }
   if (act?.kind === "signin") return handoff(chatId, row, row.site);
   if (act?.kind === "done") return finish(chatId, row, act.answer || "");
+  if (label.startsWith("Opened ")) {
+    row.fails = 0;
+    row.steps = [...row.steps, { text: label }];
+    row.thought = "The page is open. You can watch the next click.";
+    await saveBrowser(chatId, row);
+    return stateOf(row, true);
+  }
   if (label) {
     row.acts += 1;
     row.fails = 0;
@@ -452,21 +467,47 @@ export async function collectBrowser(chatId: string, hold: boolean): Promise<Bro
   return gate(chatId, () => oneStep(chatId, row));
 }
 
-export async function cancelBrowser(chatId: string): Promise<boolean> {
+export async function browserIsLive(chatId: string): Promise<boolean> {
   const row = await readBrowser(chatId);
-  if (!row || row.status === "done") return false;
-  await release(row).catch(() => undefined);
+  if (!row?.sessionId) return false;
+  if (row.status === "running" || row.status === "signin") return true;
+  return sessionAlive(row.sessionId);
+}
+
+export async function cancelBrowser(chatId: string): Promise<boolean> {
+  stopping.add(chatId);
+  const row = await readBrowser(chatId);
+  if (!row?.sessionId) {
+    stopping.delete(chatId);
+    return false;
+  }
+  const live = row.status !== "done" || (await sessionAlive(row.sessionId));
+  if (!live) {
+    stopping.delete(chatId);
+    return false;
+  }
+  await release(row);
+  const answered = row.status === "done";
   row.status = "done";
+  row.steps = [...row.steps, { text: "Closed the browser" }];
   await saveBrowser(chatId, row);
   const messages = await listMessages(chatId);
   const last = messages[messages.length - 1];
-  if (!last || last.role === "user") {
+  if (!answered && (!last || last.role === "user")) {
     await addMessage({
       chatId,
       role: "assistant",
-      body: "Stopped. Nothing was sent.",
-      steps: [...row.steps, { text: "Stopped" }],
-      thought: "The browser was closed. Nothing was sent.",
+      body: "Stopped. The browser is closed. Nothing was sent.",
+      steps: row.steps,
+      thought: "The browser session was closed. Nothing was sent.",
+    });
+  } else if (answered) {
+    await addMessage({
+      chatId,
+      role: "assistant",
+      body: "The browser is closed.",
+      steps: [{ text: "Closed the browser" }],
+      thought: "The browser session was closed. Nothing was sent.",
     });
   }
   return true;
