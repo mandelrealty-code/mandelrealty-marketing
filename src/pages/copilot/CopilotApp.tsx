@@ -1179,6 +1179,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     abortRef.current?.abort();
     if (id) {
       closedBrowsers.current.add(id);
+      delete deskMemory.current[id];
       setLiveRuns((prev) => prev.filter((item) => item !== id));
       void api("cancel-think", { chatId: id }).catch(() => undefined);
     }
@@ -1447,6 +1448,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const modelLabel = pictureMode
     ? `${PICTURE_MODELS.find((row) => row.id === activePicture)?.name ?? "Draft"} · ${PICTURE_MODELS.find((row) => row.id === activePicture)?.price ?? ""}`
     : (WORK_MODELS.find((row) => row.id === shownWork)?.name ?? "Auto");
+  const signInOpen = Boolean(stage?.liveUrl) && [...messages].reverse().find((message) => message.role === "assistant")?.choices?.[0] === "Keep me signed in";
+  const showStop = Boolean(pending || thinking || signInOpen);
   const focus = (boot?.brief.focus ?? []).filter((c) => !hidden.includes(c.id));
   const eating = (boot?.brief.eating ?? []).filter((c) => !hidden.includes(c.id));
   const chromeOnPhone = /CriOS|FxiOS|EdgiOS/i.test(typeof navigator === "undefined" ? "" : navigator.userAgent);
@@ -2245,22 +2248,22 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     </div>
                     <button
                       type="button"
-                      className={`cp-up${pending || thinking ? " stop" : ""}`}
-                      aria-label={pending || thinking ? "Stop" : "Send"}
-                      disabled={!(pending || thinking) && !text.trim() && files.length === 0}
-                      style={{ opacity: pending || thinking || text.trim() || files.length ? 1 : 0.45 }}
+                      className={`cp-up${showStop ? " stop" : ""}`}
+                      aria-label={showStop ? "Stop" : "Send"}
+                      disabled={!showStop && !text.trim() && files.length === 0}
+                      style={{ opacity: showStop || text.trim() || files.length ? 1 : 0.45 }}
                       onMouseDown={() => { sendDown.current = true; }}
                       onClick={() => {
                         const fromHere = sendDown.current;
                         sendDown.current = false;
-                        if (pending || thinking) {
+                        if (showStop) {
                           if (fromHere) stopRun();
                           return;
                         }
                         void send();
                       }}
                     >
-                      {pending || thinking ? <span className="sq" /> : <Up />}
+                      {showStop ? <span className="sq" /> : <Up />}
                     </button>
                     </div>
                   </div>
@@ -2308,6 +2311,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       </button>
                     ) : null}
                     <button type="button" onClick={() => {
+                      if (stage.liveUrl) {
+                        stopRun();
+                        return;
+                      }
                       if (chatId) {
                         deskMemory.current[chatId] = stage;
                         closedBrowsers.current.add(chatId);

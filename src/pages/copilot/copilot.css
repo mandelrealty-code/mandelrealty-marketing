@@ -850,9 +850,9 @@ html.cp-app[data-cp-theme="light"] #root {
   height: 32px;
   padding: 0 14px;
   border-radius: 999px;
-  border: 1px solid rgba(22, 20, 30, 0.12);
-  background: #fff;
-  color: #16151b;
+  border: 1px solid var(--line);
+  background: var(--surf);
+  color: var(--text);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -870,17 +870,26 @@ html.cp-app[data-cp-theme="light"] #root {
 
 .cp-choices.signin .cp-choice {
   min-height: 42px;
-  border: 1px solid rgba(22, 20, 30, 0.12);
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surf);
+  color: var(--text);
   justify-content: center;
   font-weight: 600;
 }
 
+.cp-choices.signin .cp-choice:hover:not(:disabled) {
+  background: var(--surf2);
+}
+
 .cp-choices.signin .cp-choice:first-child {
-  background: #16151b;
-  color: #fff;
-  border-color: #16151b;
+  background: var(--primary);
+  color: #16151b;
+  border-color: var(--primary);
+}
+
+.cp-choices.signin .cp-choice:first-child:hover:not(:disabled) {
+  background: var(--primary-hover);
 }
 
 .cp-choices.signin .cp-choice-letter,

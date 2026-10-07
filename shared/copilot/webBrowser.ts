@@ -493,7 +493,8 @@ export async function cancelBrowser(chatId: string): Promise<boolean> {
   await saveBrowser(chatId, row);
   const messages = await listMessages(chatId);
   const last = messages[messages.length - 1];
-  if (!answered && (!last || last.role === "user")) {
+  const waitingOnSignIn = last?.choices?.includes("Keep me signed in") === true;
+  if (!answered && (!last || last.role === "user" || waitingOnSignIn)) {
     await addMessage({
       chatId,
       role: "assistant",

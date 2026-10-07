@@ -4,13 +4,15 @@
  */
 
 import { getHospitablePat } from "../pm/clientStore.js";
-import { listHospitableReservations, listReservationMessages } from "../pm/hospitableClient.js";
+import { listAllHospitableProperties, listHospitableReservations, listReservationMessages } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { getSupabaseAdmin } from "../supabase.js";
 import { addDays, torontoToday } from "./time.js";
 
 const UNITS =
-  /\b(how many|number of|count of)\b[\s\S]{0,48}\b(units?|properties|listings|homes)\b|\b(units?|properties) (do|did) we (manage|have|run)\b/i;
+  /\b(how many|number of|count of|what|which|list|name|show|tell)\b[\s\S]{0,60}\b(units?|properties|listings|homes)\b|\b(units?|properties) (do|did|are) (we|they|ours)\b/i;
+const ABOUT_UNITS = /Hospitable lists|from Hospitable/i;
+const UNIT_FOLLOW = /\b(what|which)\b[\s\S]{0,40}\b(they|them|those|names?|addresses|ones)\b|\b(their|the) (names?|addresses)\b/i;
 const MESSAGE =
   /\b(who sent|last)\b[\s\S]{0,48}\b(guest )?messages?\b|\bwho (sent|messaged|texted)\b/i;
 const REVIEWS =
@@ -18,35 +20,48 @@ const REVIEWS =
 
 const DEAD = /cancel|declin|denied|expired|not_possible|withdrawn|inquiry/i;
 
-export function asksRecords(input: string): boolean {
+export function asksRecords(input: string, prior = ""): boolean {
   const text = input.replace(/\n?Attached:.*$/is, "").trim();
-  return UNITS.test(text) || MESSAGE.test(text) || REVIEWS.test(text);
+  return UNITS.test(text) || (ABOUT_UNITS.test(prior) && UNIT_FOLLOW.test(text)) || MESSAGE.test(text) || REVIEWS.test(text);
 }
 
 /** A spoken answer, or null when this is not one of the record questions. */
-export async function answerRecords(input: string): Promise<string | null> {
+export async function answerRecords(input: string, prior = ""): Promise<string | null> {
   const text = input.replace(/\n?Attached:.*$/is, "").trim();
   if (!text) return null;
   try {
     if (MESSAGE.test(text)) return await lastMessage();
     if (REVIEWS.test(text)) return await newReviews();
-    if (UNITS.test(text)) return await unitCount();
+    if (UNITS.test(text) || (ABOUT_UNITS.test(prior) && UNIT_FOLLOW.test(text))) return await unitList();
   } catch {
-    return "I couldn't read that from the records just now. I didn't guess a number or a name.";
+    return "Hospitable didn't return that. I didn't guess a number or a name.";
   }
   return null;
 }
 
-async function unitCount(): Promise<string> {
-  const properties = await listPmProperties();
-  const active = properties.filter((property) => property.active !== false);
-  const inactive = properties.length - active.length;
-  const linked = active.filter((property) => property.hospitable_property_id).length;
-  if (!active.length) {
-    return "The admin property book has no active units. I didn't guess a count.";
+async function unitList(): Promise<string> {
+  const properties = await propertiesFromHospitable();
+  if (properties === null) {
+    return "Hospitable isn't connected, so I can't see the units. Add the key in OPS Settings. I didn't guess a count.";
   }
-  const inactiveLine = inactive ? ` ${inactive} more ${inactive === 1 ? "is" : "are"} marked inactive.` : "";
-  return `We have ${active.length} active ${active.length === 1 ? "unit" : "units"} in the admin property book. ${linked} ${linked === 1 ? "is" : "are"} linked to Hospitable.${inactiveLine}`;
+  if (!properties.length) {
+    return "Hospitable returned no properties. I didn't guess a count.";
+  }
+  const lines = properties.map((property) => {
+    const name = property.name.trim() || "Untitled property";
+    const address = property.address.trim();
+    const where = address && address.toLowerCase() !== name.toLowerCase() ? ` — ${address}` : "";
+    const listed = property.listed === false ? " (not listed)" : "";
+    return `${name}${where}${listed}`;
+  });
+  const noun = properties.length === 1 ? "property" : "properties";
+  return `Hospitable lists ${properties.length} ${noun}.\n${lines.join("\n")}`;
+}
+
+async function propertiesFromHospitable() {
+  const pat = await getHospitablePat().catch(() => "");
+  if (!pat) return null;
+  return listAllHospitableProperties(pat);
 }
 
 async function newReviews(): Promise<string> {
@@ -93,15 +108,15 @@ async function lastMessage(): Promise<string> {
   if (!pat) {
     return "Hospitable isn't connected, so I can't see who sent the last guest message. Add the key in OPS Settings. I didn't guess a name.";
   }
-  const properties = (await listPmProperties()).filter((property) => property.hospitable_property_id);
-  if (!properties.length) {
-    return "No units are linked to Hospitable, so I can't see a guest thread. I didn't guess a name.";
+  const properties = await propertiesFromHospitable();
+  if (!properties?.length) {
+    return "Hospitable returned no properties, so I can't see a guest thread. I didn't guess a name.";
   }
-  const unitFor = new Map(properties.map((property) => [property.hospitable_property_id, property.name]));
+  const unitFor = new Map(properties.map((property) => [property.id, property.name]));
   const today = torontoToday();
   const reservations = await listHospitableReservations({
     pat,
-    propertyIds: properties.map((property) => property.hospitable_property_id),
+    propertyIds: properties.map((property) => property.id),
     startDate: addDays(today, -21),
     endDate: addDays(today, 45),
     include: ["guest"],

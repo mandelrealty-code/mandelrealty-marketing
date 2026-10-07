@@ -413,15 +413,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return done();
       }
       if (!webSearch && !skillMode) {
-        const records = await answerRecords(text);
+        const history = await listMessages(chatId);
+        let prior = "";
+        for (let i = history.length - 1; i >= 0; i -= 1) {
+          if (history[i]?.role === "assistant") {
+            prior = history[i]?.body ?? "";
+            break;
+          }
+        }
+        const records = await answerRecords(text, prior);
         if (records) {
-          const missed = /isn't connected|didn't guess|couldn't read|isn't set up|isn't available/i.test(records);
+          const missed = /isn't connected|didn't guess|couldn't read|isn't set up|isn't available|didn't return/i.test(records);
           await addMessage({
             chatId,
             role: "assistant",
             body: records,
             steps: [{ text: missed ? "Couldn't read the records" : "Read the records" }],
-            thought: "This came from the property book or Hospitable. Nothing was sent.",
+            thought: "This came from Hospitable. Nothing was sent.",
           });
           return done();
         }
