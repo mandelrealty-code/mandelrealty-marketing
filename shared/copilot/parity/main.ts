@@ -374,6 +374,16 @@ async function fixtureCleanerFailed(): Promise<void> {
   expect(capturedPurchases() === 0, "nothing was purchased", "a purchase was made");
 }
 
+async function fixtureTodayCheckins(): Promise<void> {
+  installWorld(worldAt("2026-10-07T11:00:00-04:00"));
+  const answer = (await answerStay("How many check-ins are today?")) ?? "";
+  expect(/0 accepted check-ins on 2026-10-07/.test(answer), "today's check-in count is zero", answer || "no answer");
+  expect(/8 Charlotte 606/.test(answer) && /Roseglor/.test(answer) && /20 Blue Jays Way/.test(answer) && /1065 Shaw Street/.test(answer), "the count covers every managed property", answer);
+  expect(!/1104|Partner Loft|Wes|Ned/.test(answer), "out-of-scope listings stay out of the count", answer);
+  expect(!/sync|other platform|not connected|isn't connected|managed elsewhere|confirm the connection/i.test(answer), "the answer does not speculate about the connection", answer);
+  expect(!/incomplete|failed read/i.test(answer), "a complete read is not described as failed", answer);
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -389,6 +399,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "12", title: "Unit 318 turnover state", run: fixtureTurnover },
   { id: "13", title: "Low stock offer with no purchase", run: fixtureLowStock },
   { id: "14", title: "Failed cleaner read", run: fixtureCleanerFailed },
+  { id: "15", title: "Today's check-ins across managed properties", run: fixtureTodayCheckins },
 ];
 
 function guard(): void {

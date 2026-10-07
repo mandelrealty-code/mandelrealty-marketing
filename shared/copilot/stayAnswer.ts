@@ -6,6 +6,7 @@
 
 import { getHospitablePat } from "../pm/clientStore.js";
 import { hospitableFetch, listAllHospitableProperties } from "../pm/hospitableClient.js";
+import { listPmProperties } from "../pm/propertyStore.js";
 import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
 import { isManagedUnit } from "./managedUnits.js";
 import { addDays, torontoToday } from "./time.js";
@@ -32,27 +33,39 @@ export async function answerStay(question: string, prior = ""): Promise<string |
       return "Hospitable didn't return that reservation. I didn't guess.";
     }
   }
-  if (!STAY.test(asked)) return null;
+  const inventory = asksInventory(asked);
+  if (!STAY.test(asked) && !inventory) return null;
   const aboutThis = /\b(this|that) (unit|reservation|stay|property)\b/i.test(asked);
-  if (!code && !aboutThis && !hasPlace(asked)) return null;
+  if (!code && !aboutThis && !hasPlace(asked) && !inventory) return null;
   try {
     if (code && /\bmessage\b/i.test(asked)) return await messageFor(code);
     if (code && !/\bhow many\b/i.test(asked)) return await messageFor(code, false);
-    const listings = await loadProperties();
-    if (!listings.length) {
-      return "Hospitable isn't connected, so I can't see that reservation. Add the MCP token in Connectors. I didn't guess.";
+    const managed = await managedListings();
+    if (/\bpropert(?:y|ies)\b/i.test(asked) && !/\b(check|reservation|stay|guest)\b/i.test(asked)) {
+      return propertyRoster(managed);
     }
-    const picked = pickListings(aboutThis ? `${asked}\n${prior}` : asked, listings);
-    if (!picked.length) {
-      return "I couldn't match that to a Hospitable listing. I didn't guess a count.";
+    const named = Boolean(code || aboutThis || hasPlace(asked));
+    const picked = named ? pickListings(aboutThis ? `${asked}\n${prior}` : asked, managed) : managed;
+    if (named && !picked.length) {
+      return "I couldn't match that to a managed property. I didn't guess a count.";
     }
-    if (/\b(next guest|who is (the )?next|next check-?in)\b/i.test(asked)) return await nextGuest(picked);
-    if (/\blast check-?in\b/i.test(asked)) return await lastCheckIn(picked);
+    const listings = picked.length ? picked : managed;
+    if (/\b(today|tomorrow)\b/i.test(asked) && /\bcheck/i.test(asked)) {
+      const today = torontoToday();
+      const day = /\btomorrow\b/i.test(asked) ? addDays(today, 1) : today;
+      const checkins = !/\bcheck[\s-]?outs?\b/i.test(asked);
+      return await dayCount(listings, day, checkins);
+    }
+    if (/\b(next guest|who is (the )?next|next check-?in)\b/i.test(asked)) return await nextGuest(listings);
+    if (/\blast check-?in\b/i.test(asked)) return await lastCheckIn(listings);
     const month = monthWindow(asked, torontoToday());
-    const checkins = /\bcheck-?ins?\b|\bchecking in\b/i.test(asked);
-    return await monthCount(picked, month, checkins);
+    const checkins = /\bcheck[\s-]?ins?\b|\bchecking in\b/i.test(asked);
+    return await monthCount(listings, month, checkins);
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
+    if (inventory && /isn't connected|not connected|MCP token/i.test(message)) {
+      return "This read is incomplete. The managed properties failed read.";
+    }
     if (/isn't connected|not connected|MCP token/i.test(message)) {
       return "Hospitable isn't connected, so I can't see that reservation. Add the MCP token in Connectors. I didn't guess.";
     }
@@ -69,6 +82,62 @@ export async function propertyLines(): Promise<string> {
 
 function hasPlace(text: string): boolean {
   return /charlotte|roseglor|blue jays|shaw|markham|\b(606|1103|1104|2104)\b/i.test(text);
+}
+
+function asksInventory(text: string): boolean {
+  if (/\bmessage\b/i.test(text)) return false;
+  const topic = /\b(reservations?|check[\s-]?ins?|check[\s-]?outs?|checking in|checking out|propert(?:y|ies))\b/i.test(text);
+  return topic && /\b(how many|count of|number of|today|tomorrow)\b/i.test(text);
+}
+
+/** The stay-check join: managed units, then each Hospitable id. Not the account property list. */
+async function managedListings(): Promise<Listing[]> {
+  const rows = (await listPmProperties().catch(() => [])).filter((row) => isManagedUnit(row.name, row.address));
+  return rows.map((row) => {
+    const address = row.address;
+    const name = row.name;
+    return {
+      id: (row.hospitable_property_id || row.id).trim(),
+      name,
+      address,
+      label: labelFor(name, address),
+      publicName: name,
+    };
+  });
+}
+
+function propertyRoster(listings: Listing[]): string {
+  if (!listings.length) return "This read is incomplete. The managed properties failed read.";
+  const noun = listings.length === 1 ? "property" : "properties";
+  return `${listings.length} managed ${noun}.\n${listings.map((row) => row.label).join("\n")}`;
+}
+
+async function dayCount(listings: Listing[], day: string, checkins: boolean): Promise<string> {
+  if (!listings.length) return "This read is incomplete. The managed properties failed read.";
+  const noun = checkins ? "check-in" : "check-out";
+  const lines: string[] = [];
+  const missed: string[] = [];
+  let total = 0;
+  for (const listing of listings) {
+    if (!listing.id) {
+      missed.push(listing.label);
+      continue;
+    }
+    try {
+      const stays = await loadStays([listing.id], day, day, checkins ? "checkin" : "checkout");
+      const accepted = stays.filter((stay) => stay.status === "accepted" && (checkins ? stay.checkIn === day : stay.checkOut === day));
+      total += accepted.length;
+      lines.push(`${listing.label}: ${accepted.length} accepted ${noun}${accepted.length === 1 ? "" : "s"}`);
+    } catch {
+      missed.push(listing.label);
+    }
+  }
+  const head = `${total} accepted ${noun}${total === 1 ? "" : "s"} on ${day}.`;
+  if (missed.length || lines.length < listings.length) {
+    const names = missed.join(", ");
+    return `${head}\n${lines.join("\n")}\nThis read is incomplete. ${names} failed read.`.trim();
+  }
+  return `${head}\n${lines.join("\n")}\nCounted accepted ${noun}s on ${day} across every managed property.`;
 }
 
 export function pickListings(text: string, listings: Listing[]): Listing[] {
