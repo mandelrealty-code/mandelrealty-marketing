@@ -19,12 +19,15 @@ import {
   capturedReminders,
   capturedReports,
   clearAccountWide,
+  resetCaptures,
   type DraftCapture,
   type ReportCapture,
 } from "./capture.js";
-import { BUILDING_MEMORY, CODE, OPEN_ITEM, ryanMail, worldAt } from "./catalog.js";
+import { BUILDING_MEMORY, CODE, ID, OPEN_ITEM, ryanMail, worldAt } from "./catalog.js";
 import { parityEnabled } from "./flag.js";
-import { installWorld, type ParityWorld } from "./world.js";
+import { parityNow, setParityClock } from "./clock.js";
+import { chooseOpenItem } from "../openItems.js";
+import { parityItems, parityMemory, installWorld, type ParityWorld } from "./world.js";
 
 class Gap extends Error {
   assertion: string;
@@ -52,6 +55,20 @@ async function scan(world: ParityWorld): Promise<Scan> {
   let inbox = "";
   try {
     inbox = JSON.stringify(await readGuestInbox(["arrival time", "licence plate", "number of guests"], world.now));
+  } catch (err) {
+    inbox = err instanceof Error ? err.message : String(err);
+  }
+  return { brief: JSON.stringify(brief), inbox, drafts: capturedDrafts(), reports: capturedReports() };
+}
+
+async function rescan(now?: Date): Promise<Scan> {
+  resetCaptures();
+  const clock = now ?? parityNow() ?? new Date();
+  if (now) setParityClock(now);
+  const brief = await buildBrief(clock);
+  let inbox = "";
+  try {
+    inbox = JSON.stringify(await readGuestInbox(["arrival time", "licence plate", "number of guests"], clock));
   } catch (err) {
     inbox = err instanceof Error ? err.message : String(err);
   }
@@ -98,13 +115,22 @@ function namesOutOfScope(text: string): boolean {
 }
 
 async function fixtureOpenItem(): Promise<void> {
-  // Closing the item (Already upgraded marks it closed) waits for the open-items step, where the store exists.
-  // This fixture only checks that the stored item is shown and that Still pending does not create a reminder.
   const result = await scan(worldAt("2026-10-06T09:00:00-04:00"));
   expectNothingSent();
   expect(/1\.14 GB/.test(result.brief) && /Oct|October/.test(result.brief), "brief shows the Supabase item and the Oct 5 verification date", "the brief did not show the stored Supabase limit item");
   expect(/Already upgraded/.test(result.brief) && /Still pending/.test(result.brief), "brief offers Already upgraded and Still pending", "the two choices were not on the brief");
   expect(capturedReminders().length === 0, "Still pending creates no reminder", "a reminder was created");
+  const before = parityItems().find((item) => item.id === "supabase-storage");
+  await chooseOpenItem("supabase-storage", "pending");
+  const pending = await rescan();
+  const after = parityItems().find((item) => item.id === "supabase-storage");
+  expect(/1\.14 GB/.test(pending.brief), "Still pending leaves the item on the brief", "the item disappeared after Still pending");
+  expect(after?.status === "open" && after.text === before?.text && after.verifiedOn === before?.verifiedOn, "Still pending leaves the record unchanged", "the open item changed");
+  expect(capturedReminders().length === 0, "Still pending creates no reminder", "a reminder was created");
+  await scan(worldAt("2026-10-06T09:00:00-04:00"));
+  await chooseOpenItem("supabase-storage", "closed");
+  const later = await rescan(new Date("2026-10-20T09:00:00-04:00"));
+  expect(!/1\.14 GB/.test(later.brief), "Already upgraded stays closed on a later brief", "the closed item came back");
   expectDraftRules(result.drafts, result.reports);
 }
 
@@ -177,7 +203,7 @@ async function fixtureCancellation(): Promise<void> {
   const blob = raised(first);
   expect(blob.includes(CODE.cancelled) && /open/i.test(blob), "raised once as dates back open", "the cancellation was not raised as dates back open");
   expect(first.drafts.length === 0, "no building draft and no guest draft", `found ${first.drafts.length} drafts`);
-  const second = await scan(worldAt("2026-10-07T11:00:00-04:00"));
+  const second = await rescan();
   expect(!raised(second).includes(CODE.cancelled), "never raised again on a rerun", "the cancellation was raised again");
   expectDraftRules(first.drafts, first.reports);
 }
@@ -221,6 +247,27 @@ async function fixtureCodePin(): Promise<void> {
   expect(accountWideRan() === false, "the account-wide last-message path does not run when the unit is named", "list reservations across the account ran");
 }
 
+async function fixtureOnboarding(): Promise<void> {
+  const bare = worldAt("2026-10-07T11:00:00-04:00");
+  bare.memory = bare.memory.filter((file) => file.path === "memory/units-we-manage.md");
+  bare.hub = (bare.hub ?? []).map((row) => row.propertyId === ID.rose
+    ? { propertyId: row.propertyId, body: "Dishwasher: close the door fully, press and hold start for a few seconds." }
+    : row);
+  const first = await scan(bare);
+  expect(/close the door fully/i.test(raised(first)), "a managed unit with a Hub and no memory file still answers from the Hub", "the dishwasher steps were not read from the Hub");
+  expect((parityMemory() ?? []).every((file) => file.path === "memory/units-we-manage.md"), "the stay check does not seed a memory file", "a memory file was written");
+  const disagree = worldAt("2026-10-07T11:00:00-04:00");
+  disagree.memory = [
+    ...disagree.memory.filter((file) => file.path === "memory/units-we-manage.md"),
+    { path: "memory/roseglor.md", body: "Dishwasher: press the red button." },
+  ];
+  disagree.hub = bare.hub;
+  const second = await scan(disagree);
+  const blob = raised(second);
+  expect(/close the door fully/i.test(blob) && !/red button/i.test(blob), "the Hub wins when memory disagrees", blob.slice(0, 400));
+  expectDraftRules(second.drafts, second.reports);
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -231,6 +278,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "7", title: "Out-of-scope silence", run: fixtureOutOfScope },
   { id: "8", title: "Late arrival", run: fixtureLateArrival },
   { id: "9", title: "Code pinning", run: fixtureCodePin },
+  { id: "10", title: "Hub onboarding without memory seeding", run: fixtureOnboarding },
 ];
 
 function guard(): void {

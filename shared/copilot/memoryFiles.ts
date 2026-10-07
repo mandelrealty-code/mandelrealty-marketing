@@ -11,6 +11,7 @@ import { getSupabaseAdmin } from "../supabase.js";
 import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { parityMemory } from "./parity/world.js";
 import { parityEnabled } from "./parity/flag.js";
+import { BLUE_JAYS_PROCESS, isBlueJaysLine } from "./processFacts.js";
 import { reservationTimes } from "./standing.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { addDays, torontoToday } from "./time.js";
@@ -325,10 +326,22 @@ export async function ensureUnitFiles(): Promise<void> {
     if (name.length < 4) continue;
     const target = filePath(name);
     if (target === UNITS_PATH || target === GUIDANCE_PATH || isDaily(target) || isDream(target)) continue;
-    if (files.some((file) => file.path === target)) continue;
+    const existing = files.find((file) => file.path === target);
+    if (existing) {
+      if (isBlueJaysLine(line) && existing.body.trim() === line.trim()) {
+        await saveFile({
+          path: target,
+          body: `${line}\n${BLUE_JAYS_PROCESS}`,
+          origin: existing.origin,
+          updated_at: existing.updated_at,
+        });
+        added = true;
+      }
+      continue;
+    }
     await saveFile({
       path: target,
-      body: line,
+      body: isBlueJaysLine(line) ? `${line}\n${BLUE_JAYS_PROCESS}` : line,
       origin: units?.origin ?? "you",
       updated_at: units?.updated_at ?? SEED_AT,
     });
@@ -347,6 +360,15 @@ export async function listMemoryFiles(): Promise<MemoryFileView[]> {
   return files
     .map((file) => viewMemoryFile(file, today))
     .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** Files already stored. Does not seed a unit file. */
+export async function memoryBodies(): Promise<{ path: string; body: string }[]> {
+  if (parityEnabled()) {
+    return (parityMemory() ?? []).map((file) => ({ path: file.path, body: file.body }));
+  }
+  const { files } = await loadAll();
+  return files.map((file) => ({ path: file.path, body: file.body }));
 }
 
 export async function readMemoryFile(filePath: string): Promise<MemoryFile | null> {

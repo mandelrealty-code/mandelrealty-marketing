@@ -7,6 +7,7 @@ import { getHospitablePat } from "../pm/clientStore.js";
 import { listAllHospitableProperties, listHospitableReservations, listReservationMessages } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { getSupabaseAdmin } from "../supabase.js";
+import { findPinnedStay } from "./stayAnswer.js";
 import { unitsAnswer } from "./memoryFiles.js";
 import { addDays, torontoToday } from "./time.js";
 
@@ -31,7 +32,9 @@ export async function answerRecords(input: string, prior = ""): Promise<string |
   const text = input.replace(/\n?Attached:.*$/is, "").trim();
   if (!text) return null;
   try {
-    if (MESSAGE.test(text) && !/\bHM[A-Z0-9]{8,}\b|charlotte|roseglor|blue jays|\bshaw\b|markham|\b(606|1103|1104|2104)\b|this reservation/i.test(text)) {
+    if (MESSAGE.test(text)) {
+      if (/\bHM[A-Z0-9]{8,}\b|charlotte|roseglor|blue jays|\bshaw\b|markham|\b(606|1103|1104|2104)\b|this reservation|spacious|scarborough/i.test(text)) return null;
+      if (await findPinnedStay(text)) return null;
       return await lastMessage();
     }
     if (REVIEWS.test(text)) return await newReviews();

@@ -25,6 +25,7 @@ import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFro
 import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
 import { draftForCard, skillTurn } from "../copilot/reply.js";
+import { chooseOpenItem, listOpenItems, openItemChoice } from "../copilot/openItems.js";
 import { toE164 } from "../followUpSequences.js";
 import {
   addMessage,
@@ -374,6 +375,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
         return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
       }
+      if (/Already upgraded/.test(text) && /Still pending/.test(text)) {
+        await addMessage({
+          chatId: chat.id,
+          role: "assistant",
+          body: text,
+          choices: ["Already upgraded", "Still pending"],
+          thought: "Nothing was sent.",
+        });
+        return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
+      }
       if (ASKS_HOSPITABLE.test(text) && (await hospitableMessage(chat.id, "auto", text, []))) {
         return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
       }
@@ -500,6 +511,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chats = await listChats();
         return res.status(200).json({ chatId, messages, chats, pending });
       };
+      const choice = openItemChoice(text);
+      if (choice && !pictureMode && !skillMode) {
+        const open = (await listOpenItems()).filter((item) => item.status === "open");
+        const target = open.length === 1 ? open[0] : null;
+        if (target) {
+          await chooseOpenItem(target.id, choice);
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: choice === "closed" ? "Closed. It will not come back." : "Still open. I didn't add a reminder.",
+            thought: "Nothing was sent.",
+          });
+          return done();
+        }
+      }
       if (pictureMode) {
         if (pictureChoice.needsPhoto && !images.length) {
           await addMessage({

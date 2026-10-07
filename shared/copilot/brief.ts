@@ -5,6 +5,8 @@ import { latestInboxOffer } from "../adminApi/gmail.js";
 import { latestOutlookOffer } from "../adminApi/outlook.js";
 import { listDismissed, listDueReminders, listRuns, listSkills, listWaitingDrafts, saveGmailOffer } from "./store.js";
 import { runsOnItsOwn } from "./skillRunner.js";
+import { listOpenItems, verifiedLabel } from "./openItems.js";
+import { runUnattendedChecks } from "./stayCheck.js";
 
 const MAX_CARDS = 4;
 
@@ -20,6 +22,27 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const focus: BriefCard[] = [];
   const eating: BriefCard[] = [];
   const skipped = new Set(await listDismissed().catch(() => []));
+  try {
+    await runUnattendedChecks(now);
+  } catch {
+    /* The overview still loads when a check cannot finish. */
+  }
+  try {
+    const items = await listOpenItems();
+    for (const item of items) {
+      if (item.status !== "open") continue;
+      const ask = item.askedOn === today ? "" : " Already upgraded. Still pending.";
+      take(focus, {
+        id: `open:${item.id}`,
+        group: "focus",
+        text: `${item.text}. Last verified ${verifiedLabel(item.verifiedOn)}.${ask}`,
+        action: item.askedOn === today ? "Open" : "Already upgraded",
+        source: item.source || "Records",
+      }, skipped);
+    }
+  } catch {
+    /* The overview still loads when open items cannot be read. */
+  }
   try {
     const offer = await latestInboxOffer();
     if (offer) {

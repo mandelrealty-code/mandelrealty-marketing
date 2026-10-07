@@ -1,5 +1,6 @@
 import type { PmPropertyListItem } from "../../pm/types.js";
 import { captureCommit, markAccountWide, resetCaptures } from "./capture.js";
+import { resetCancellations } from "../checkState.js";
 import { setParityClock } from "./clock.js";
 import { parityEnabled } from "./flag.js";
 
@@ -54,7 +55,11 @@ export type ParityItem = {
   text: string;
   verifiedOn: string;
   status: "open" | "closed";
+  source?: string;
+  askedOn?: string;
 };
+
+export type ParityHub = { propertyId: string; body: string };
 
 export type ParityWorld = {
   now: Date;
@@ -64,6 +69,7 @@ export type ParityWorld = {
   outlook: ParityMail[];
   memory: ParityMemory[];
   items: ParityItem[];
+  hub?: ParityHub[];
 };
 
 let world: ParityWorld | null = null;
@@ -78,9 +84,11 @@ export function installWorld(next: ParityWorld): void {
     outlook: next.outlook.map((row) => ({ ...row })),
     memory: next.memory.map((row) => ({ ...row })),
     items: next.items.map((row) => ({ ...row })),
+    hub: (next.hub ?? []).map((row) => ({ ...row })),
   };
   setParityClock(next.now);
   resetCaptures();
+  resetCancellations();
 }
 
 export function clearWorld(): void {
@@ -115,6 +123,11 @@ export function parityMemory(): { path: string; body: string; origin: "you"; upd
 
 export function parityItems(): ParityItem[] {
   return live()?.items.map((row) => ({ ...row })) ?? [];
+}
+
+export function updateParityItem(id: string, patch: Partial<ParityItem>): void {
+  const row = live()?.items.find((item) => item.id === id);
+  if (row) Object.assign(row, patch);
 }
 
 export function closeParityItem(id: string): void {
@@ -310,6 +323,11 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
     });
     return { handled: true, value: { data: rows.map((row) => mcpReservation(row, current)), meta: { last_page: 1, total: rows.length } } };
   }
+  if (name === "get-property-knowledge-hub") {
+    const id = String(args.property_id ?? args.uuid ?? args.id ?? "");
+    const row = (current.hub ?? []).find((item) => item.propertyId === id);
+    return { handled: true, value: { data: { text: row?.body ?? "" } } };
+  }
   return { handled: true, value: { data: [] } };
 }
 
@@ -339,6 +357,12 @@ export function parityHttp(method: string, path: string, query: Record<string, u
     if (ids.length !== 1) markAccountWide();
     const rows = current.reservations.filter((row) => !ids.length || ids.includes(row.propertyId));
     return { handled: true, value: { data: rows.map((row) => mcpReservation(row, current)), meta: { last_page: 1 } } };
+  }
+  const hubPath = path.match(/^\/properties\/([^/]+)\/knowledge-hub$/);
+  if (hubPath) {
+    const id = decodeURIComponent(hubPath[1]);
+    const row = (current.hub ?? []).find((item) => item.propertyId === id);
+    return { handled: true, value: { data: { text: row?.body ?? "" } } };
   }
   return { handled: true, value: { data: [] } };
 }

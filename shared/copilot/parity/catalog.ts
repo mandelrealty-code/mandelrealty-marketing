@@ -1,4 +1,5 @@
 import type { ParityMail, ParityMemory, ParityMessage, ParityProperty, ParityReservation, ParityWorld } from "./world.js";
+import { BLUE_JAYS_PROCESS } from "../processFacts.js";
 
 export const ID = {
   charlotte: "00000000-0000-4000-8000-000000000606",
@@ -19,12 +20,40 @@ export const CODE = {
 
 export const OPEN_ITEM = "Supabase org over its free storage limit, 1.14 GB of 1.1 GB, grace period ends Oct 27 2026, Pro upgrade pending";
 
-export const BUILDING_MEMORY = [
-  "Building contacts: supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com.",
-  "Parking at 20 Blue Jays Way Unit 318: one tandem spot P4-62 that fits two cars.",
-  "Sign-off: Shane, Co-Host 647-822-0448.",
-  "Snack rule: note diet flags, promise no specific items.",
-].join("\n");
+export const BUILDING_MEMORY = BLUE_JAYS_PROCESS;
+
+const HUB = {
+  charlotte: [
+    "Check-in 3:00 PM. Check-out 11:00 AM.",
+    "Luggage drop-off from 12:30 PM may be allowed.",
+    "Free parking on premises.",
+    "No pets, no smoking, no events.",
+    "Two paper towel rolls are left on the sink.",
+  ].join("\n"),
+  rose: [
+    "Sleeps 10. Check-in 4:00 PM. Check-out 11:00 AM.",
+    "Side-door private entrance.",
+    "Free driveway parking, right side facing the house.",
+    "Garbage bags and laundry detergent are in the gift basket on the kitchen counter.",
+    "Two toilet paper rolls at check-in. Further supply is the guest's.",
+    "Dishwasher: close the door fully, press and hold start for a few seconds. If there is no power, check the breaker (panel opposite the washer and dryer, or behind the picture in the third bedroom). If it trips again, message the host.",
+  ].join("\n"),
+  blue: [
+    "No smoking, no events.",
+    "Pets are allowed with restrictions. The pet fee is paid through Airbnb.",
+    "Welcome items include teas, coffees, cream, brown sugar, water, pops, juice, cookies and fruit.",
+  ].join("\n"),
+  shaw: [
+    "Sleeps 4. Check-out 12:00 PM.",
+    "Free parking, deck and backyard.",
+    "Quiet hours 10:00 PM to 9:00 AM.",
+    "No visitors beyond confirmed guests.",
+    "Shoes off inside.",
+    "Laundry after 7:00 PM on weekdays.",
+    "Garbage bags go to the bins at the front side of the house.",
+    "Netflix on the Shaw profile only.",
+  ].join("\n"),
+};
 
 const PROPERTIES: ParityProperty[] = [
   { id: ID.charlotte, name: "Unit #606", address: "606, 8 Charlotte Street, Toronto", managed: true },
@@ -194,7 +223,14 @@ export function worldAt(iso: string, shawHostReply = false, mail: ParityMail[] =
         text: OPEN_ITEM,
         verifiedOn: "2026-10-05",
         status: "open",
+        source: "Supabase",
       },
+    ],
+    hub: [
+      { propertyId: ID.charlotte, body: HUB.charlotte },
+      { propertyId: ID.rose, body: HUB.rose },
+      { propertyId: ID.blue, body: HUB.blue },
+      { propertyId: ID.shaw, body: HUB.shaw },
     ],
   };
 }

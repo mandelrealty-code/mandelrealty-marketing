@@ -7,19 +7,32 @@
 import { getHospitablePat } from "../pm/clientStore.js";
 import { hospitableFetch, listAllHospitableProperties } from "../pm/hospitableClient.js";
 import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
+import { isManagedUnit } from "./managedUnits.js";
 import { addDays, torontoToday } from "./time.js";
 
 const CODE = /\b(HM[A-Z0-9]{8,12})\b/i;
 const STAY = /\b(reservations?|check-?ins?|checking in|next guest|guest messages?|booking history)\b/i;
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
-type Listing = { id: string; name: string; address: string; label: string };
+type Listing = { id: string; name: string; address: string; label: string; publicName: string };
 type Stay = { id: string; code: string; status: string; checkIn: string; checkOut: string; guest: string };
+
+const STOP = new Set(["what", "was", "the", "last", "guest", "message", "messages", "on", "reservation", "stay", "for", "at", "and", "from", "who", "sent", "about"]);
 
 export async function answerStay(question: string, prior = ""): Promise<string | null> {
   const asked = question.trim();
-  if (!asked || !STAY.test(asked)) return null;
+  if (!asked) return null;
   const code = asked.match(CODE)?.[1]?.toUpperCase() ?? "";
+  if (/\bmessage\b/i.test(asked)) {
+    try {
+      if (code) return await messageFor(code);
+      const pinned = await findPinnedStay(asked);
+      if (pinned) return await messageFor(pinned);
+    } catch {
+      return "Hospitable didn't return that reservation. I didn't guess.";
+    }
+  }
+  if (!STAY.test(asked)) return null;
   const aboutThis = /\b(this|that) (unit|reservation|stay|property)\b/i.test(asked);
   if (!code && !aboutThis && !hasPlace(asked)) return null;
   try {
@@ -71,8 +84,11 @@ export function pickListings(text: string, listings: Listing[]): Listing[] {
 function scoreText(text: string, row: Listing): number {
   const q = text.toLowerCase();
   const label = row.label.toLowerCase();
+  const pub = row.publicName.toLowerCase();
+  const head = pub.split("|")[0]?.trim() ?? "";
   let score = 0;
   if (label && q.includes(label)) score += 10;
+  if (head.length > 6 && q.includes(head)) score += 12;
   const unit = label.match(/\b(\d{3,4})\b/);
   if (unit && new RegExp(`\\b${unit[1]}\\b`).test(q)) score += 8;
   if (/roseglor/.test(label) && /roseglor/.test(q)) score += 10;
@@ -192,6 +208,38 @@ function listedAs(listing: Listing): string {
   return listing.name.toLowerCase() === listing.label.toLowerCase() ? "" : ` Hospitable lists it as ${listing.name}.`;
 }
 
+function guestTokens(question: string): string[] {
+  return question.split(/\s+/).map((word) => word.replace(/[^A-Za-z]/g, "")).filter((word) => word.length > 2 && !STOP.has(word.toLowerCase()));
+}
+
+/** One stay named by a code, a unit, a public title, or a guest. Does not list the whole account. */
+export async function findPinnedStay(question: string): Promise<string | null> {
+  const listings = (await loadProperties()).filter((row) => isManagedUnit(row.name, row.address, `${row.label} ${row.publicName}`));
+  if (!listings.length) return null;
+  const picked = pickListings(question, listings);
+  const names = guestTokens(question);
+  const windowStart = addDays(torontoToday(), -60);
+  const windowEnd = addDays(torontoToday(), 120);
+  if (picked.length === 1) {
+    const stays = await loadStays([picked[0].id], windowStart, windowEnd, "checkin", true);
+    const live = stays.filter((stay) => stay.code && !/cancel|declin/i.test(stay.status));
+    const named = names.length ? live.filter((stay) => names.some((name) => stay.guest.toLowerCase() === name.toLowerCase())) : [];
+    if (named.length === 1) return named[0].code;
+    if (live.length === 1) return live[0].code;
+    return null;
+  }
+  if (picked.length > 1 || !names.length) return null;
+  const hits: Stay[] = [];
+  for (const listing of listings) {
+    const stays = await loadStays([listing.id], windowStart, windowEnd, "checkin", true);
+    for (const stay of stays) {
+      if (!stay.code || /cancel|declin/i.test(stay.status)) continue;
+      if (names.some((name) => stay.guest.toLowerCase() === name.toLowerCase())) hits.push(stay);
+    }
+  }
+  return hits.length === 1 ? hits[0].code : null;
+}
+
 async function loadProperties(): Promise<Listing[]> {
   if (await hospitableMcpConfigured()) {
     const raw = await callHospitableMcp("get-properties", { per_page: 100 });
@@ -250,7 +298,8 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
 function toListing(row: Record<string, unknown>): Listing {
   const address = addressOf(row.address);
   const name = text(row.name) || text(row.public_name) || "Untitled property";
-  return { id: text(row.id), name, address, label: labelFor(name, address) };
+  const publicName = text(row.public_name);
+  return { id: text(row.id), name, address, label: labelFor(name, address), publicName };
 }
 
 function labelFor(name: string, address: string): string {
