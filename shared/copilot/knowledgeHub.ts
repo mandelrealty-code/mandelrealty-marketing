@@ -35,16 +35,28 @@ export function hubPlain(raw: unknown): string {
   }).join("\n");
 }
 
+/** A readable Hub document, or a failed read. An empty document is still a success. */
+export type HubRead = { ok: true; text: string } | { ok: false };
+
+function usableHub(raw: unknown): boolean {
+  if (typeof raw === "string") return true;
+  if (!raw || typeof raw !== "object") return false;
+  const row = raw as Record<string, unknown>;
+  const failed = (row.error || row.message) && row.data == null && row.text == null && row.items == null && row.topics == null;
+  return !failed;
+}
+
 /** Live Knowledge Hub text for one property. Secrets stay out. Reservation times replace Hub clocks. */
-export async function readPropertyHub(propertyId: string, checkIn?: string, checkOut?: string): Promise<string> {
+export async function readPropertyHub(propertyId: string, checkIn?: string, checkOut?: string): Promise<HubRead> {
   const id = propertyId.trim();
-  if (!id) return "";
+  if (!id) return { ok: false };
   try {
     const pat = await getHospitablePat();
-    if (!pat) return "";
+    if (!pat) return { ok: false };
     const raw = await getPropertyKnowledgeHub(pat, id);
-    return reservationTimes(withoutHubSecrets(hubPlain(raw)).text, checkIn, checkOut);
+    if (!usableHub(raw)) return { ok: false };
+    return { ok: true, text: reservationTimes(withoutHubSecrets(hubPlain(raw)).text, checkIn, checkOut) };
   } catch {
-    return "";
+    return { ok: false };
   }
 }

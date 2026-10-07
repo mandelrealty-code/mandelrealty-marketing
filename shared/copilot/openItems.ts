@@ -1,7 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
 import { parityEnabled } from "./parity/flag.js";
-import { parityItems, updateParityItem } from "./parity/world.js";
+import { listStoredOpenItems, saveStoredOpenItem } from "./store.js";
 import { torontoToday } from "./time.js";
 
 export type OpenItem = {
@@ -13,8 +11,6 @@ export type OpenItem = {
   askedOn: string;
 };
 
-const FILE = path.join(process.cwd(), "data", "copilot-open-items.json");
-
 const SUPABASE: OpenItem = {
   id: "supabase-storage",
   text: "Supabase org over its free storage limit, 1.14 GB of 1.1 GB, grace period ends Oct 27 2026, Pro upgrade pending",
@@ -24,53 +20,21 @@ const SUPABASE: OpenItem = {
   askedOn: "",
 };
 
-function readDisk(): OpenItem[] {
-  try {
-    const raw = JSON.parse(readFileSync(FILE, "utf8")) as OpenItem[];
-    return Array.isArray(raw) ? raw : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeDisk(items: OpenItem[]): void {
-  mkdirSync(path.dirname(FILE), { recursive: true });
-  writeFileSync(FILE, JSON.stringify(items, null, 2));
-}
-
 export async function listOpenItems(): Promise<OpenItem[]> {
-  if (parityEnabled()) {
-    return parityItems().map((row) => ({
-      id: row.id,
-      text: row.text,
-      verifiedOn: row.verifiedOn,
-      status: row.status,
-      source: row.source || "Supabase",
-      askedOn: row.askedOn || "",
-    }));
-  }
-  const items = readDisk();
-  if (!items.some((row) => row.id === SUPABASE.id)) {
-    items.push({ ...SUPABASE });
-    writeDisk(items);
-  }
-  return items;
+  const items = await listStoredOpenItems();
+  if (parityEnabled() || items.some((row) => row.id === SUPABASE.id)) return items;
+  const seed = { ...SUPABASE };
+  await saveStoredOpenItem(seed);
+  return [...items, seed];
 }
 
 /** Closed never returns. Still pending leaves the record unchanged and creates no reminder. */
 export async function chooseOpenItem(id: string, choice: "closed" | "pending"): Promise<void> {
-  const today = torontoToday();
-  if (parityEnabled()) {
-    if (choice === "closed") updateParityItem(id, { status: "closed" });
-    else updateParityItem(id, { askedOn: today });
-    return;
-  }
   const items = await listOpenItems();
   const row = items.find((item) => item.id === id);
   if (!row || row.status === "closed") return;
-  if (choice === "closed") row.status = "closed";
-  else row.askedOn = today;
-  writeDisk(items);
+  const today = torontoToday();
+  await saveStoredOpenItem(choice === "closed" ? { ...row, status: "closed" } : { ...row, askedOn: today });
 }
 
 export function openItemChoice(text: string): "closed" | "pending" | null {

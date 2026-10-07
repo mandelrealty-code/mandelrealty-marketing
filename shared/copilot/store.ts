@@ -4,6 +4,9 @@ import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../supabase.js";
 import { captureReminder } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
+import { parityItems, updateParityItem } from "./parity/world.js";
+import { parityCancellationRaised, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts } from "./parity/storeStub.js";
+import type { OpenItem } from "./openItems.js";
 import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, SkillRunResult } from "./types.js";
 
 type FileShape = {
@@ -16,13 +19,16 @@ type FileShape = {
   textNumbers: string[];
   textLog: CopilotTextSend[];
   runs: CopilotRun[];
+  openItems: OpenItem[];
+  cancellations: string[];
+  draftKeys: string[];
 };
 
 const FILE = path.join(process.cwd(), "data", "copilot-store.json");
 let useFile = false;
 
 function empty(): FileShape {
-  return { chats: [], messages: [], reminders: [], memory: [], skills: [], dismissals: [], textNumbers: [], textLog: [], runs: [] };
+  return { chats: [], messages: [], reminders: [], memory: [], skills: [], dismissals: [], textNumbers: [], textLog: [], runs: [], openItems: [], cancellations: [], draftKeys: [] };
 }
 
 function readFileStore(): FileShape {
@@ -37,6 +43,9 @@ function readFileStore(): FileShape {
     data.textNumbers ??= [];
     data.textLog ??= [];
     data.runs ??= [];
+    data.openItems ??= [];
+    data.cancellations ??= [];
+    data.draftKeys ??= [];
     data.skills = data.skills.map((skill) => asSkill(skill));
     return data;
   } catch {
@@ -1257,4 +1266,135 @@ export async function listRunningRuns(): Promise<CopilotRun[]> {
     if (!runsMissing(error)) throw new Error(error.message);
   }
   return readFileStore().runs.filter((row) => row.status === "running" && row.skill_id).map(asRun);
+}
+
+const CHECK_SQL =
+  "Copilot open items are not set up yet. Run supabase/copilot_v5.sql in the Supabase SQL editor, then try again.";
+
+let checksInFile = false;
+
+function asOpenItem(row: Partial<OpenItem> & { statement?: string; verified_on?: string; asked_on?: string }): OpenItem {
+  const status = row.status === "closed" ? "closed" : "open";
+  return {
+    id: String(row.id ?? ""),
+    text: String(row.text ?? row.statement ?? ""),
+    verifiedOn: String(row.verifiedOn ?? row.verified_on ?? ""),
+    status,
+    source: String(row.source ?? ""),
+    askedOn: String(row.askedOn ?? row.asked_on ?? ""),
+  };
+}
+
+function openRow(item: OpenItem) {
+  return {
+    id: item.id,
+    statement: item.text,
+    verified_on: item.verifiedOn,
+    status: item.status,
+    source: item.source,
+    asked_on: item.askedOn,
+  };
+}
+
+export async function listStoredOpenItems(): Promise<OpenItem[]> {
+  if (parityEnabled()) {
+    return parityItems().map((row) => ({
+      id: row.id,
+      text: row.text,
+      verifiedOn: row.verifiedOn,
+      status: row.status,
+      source: row.source || "Supabase",
+      askedOn: row.askedOn || "",
+    }));
+  }
+  const client = sb();
+  if (!useFile && !checksInFile && client) {
+    const { data, error } = await client.from("copilot_open_items").select("*");
+    if (!error) return (data ?? []).map((row) => asOpenItem(row as Partial<OpenItem> & { statement?: string; verified_on?: string; asked_on?: string }));
+    if (missingTable(error)) {
+      if (process.env.VERCEL) throw new Error(CHECK_SQL);
+      checksInFile = true;
+    } else throw new Error(error.message);
+  }
+  return readFileStore().openItems.map((row) => asOpenItem(row));
+}
+
+export async function saveStoredOpenItem(item: OpenItem): Promise<void> {
+  if (parityEnabled()) {
+    updateParityItem(item.id, {
+      text: item.text,
+      verifiedOn: item.verifiedOn,
+      status: item.status,
+      source: item.source,
+      askedOn: item.askedOn,
+    });
+    return;
+  }
+  const client = sb();
+  if (!useFile && !checksInFile && client) {
+    const { error } = await client.from("copilot_open_items").upsert(openRow(item));
+    if (!error) return;
+    if (missingTable(error)) {
+      if (process.env.VERCEL) throw new Error(CHECK_SQL);
+      checksInFile = true;
+    } else throw new Error(error.message);
+  }
+  const data = readFileStore();
+  const index = data.openItems.findIndex((row) => row.id === item.id);
+  if (index >= 0) data.openItems[index] = item;
+  else data.openItems.push(item);
+  writeFileStore(data);
+}
+
+async function checkMarked(kind: "cancellation" | "drafts", key: string): Promise<boolean> {
+  if (parityEnabled()) return kind === "cancellation" ? parityCancellationRaised(key) : parityDraftsIssued(key);
+  const client = sb();
+  if (!useFile && !checksInFile && client) {
+    const { data, error } = await client.from("copilot_check_state").select("key").eq("kind", kind).eq("key", key).maybeSingle();
+    if (!error) return Boolean(data);
+    if (missingTable(error)) {
+      if (process.env.VERCEL) throw new Error(CHECK_SQL);
+      checksInFile = true;
+    } else throw new Error(error.message);
+  }
+  const data = readFileStore();
+  return kind === "cancellation" ? data.cancellations.includes(key) : data.draftKeys.includes(key);
+}
+
+async function markCheck(kind: "cancellation" | "drafts", key: string): Promise<void> {
+  if (!key) return;
+  if (parityEnabled()) {
+    if (kind === "cancellation") parityMarkCancellation(key);
+    else parityMarkDrafts(key);
+    return;
+  }
+  const client = sb();
+  if (!useFile && !checksInFile && client) {
+    const { error } = await client.from("copilot_check_state").upsert({ kind, key });
+    if (!error) return;
+    if (missingTable(error)) {
+      if (process.env.VERCEL) throw new Error(CHECK_SQL);
+      checksInFile = true;
+    } else throw new Error(error.message);
+  }
+  const data = readFileStore();
+  const list = kind === "cancellation" ? data.cancellations : data.draftKeys;
+  if (!list.includes(key)) list.push(key);
+  writeFileStore(data);
+}
+
+export async function cancellationRecorded(code: string): Promise<boolean> {
+  return checkMarked("cancellation", code);
+}
+
+export async function recordCancellation(code: string): Promise<void> {
+  await markCheck("cancellation", code);
+}
+
+export async function draftsRecorded(key: string): Promise<boolean> {
+  return checkMarked("drafts", key);
+}
+
+export async function recordDrafts(key: string): Promise<void> {
+  await markCheck("drafts", key);
 }

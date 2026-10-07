@@ -1,6 +1,6 @@
 import type { PmPropertyListItem } from "../../pm/types.js";
 import { captureCommit, markAccountWide, resetCaptures } from "./capture.js";
-import { resetCancellations } from "../checkState.js";
+import { resetParityCancellations } from "./storeStub.js";
 import { setParityClock } from "./clock.js";
 import { parityEnabled } from "./flag.js";
 
@@ -88,7 +88,7 @@ export function installWorld(next: ParityWorld): void {
   };
   setParityClock(next.now);
   resetCaptures();
-  resetCancellations();
+  resetParityCancellations();
 }
 
 export function clearWorld(): void {

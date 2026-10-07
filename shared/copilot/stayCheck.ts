@@ -8,8 +8,7 @@ import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
 import { hospitableFetch } from "../pm/hospitableClient.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
-import { cancellationRaised, draftsAlreadyIssued, markCancellation, markDraftsIssued } from "./checkState.js";
-import { addMessage, createChat, listChats } from "./store.js";
+import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, recordCancellation, recordDrafts } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
 
@@ -49,17 +48,6 @@ function text(value: unknown): string {
 
 function day(value: string): string {
   return value.slice(0, 10);
-}
-
-function torontoDay(iso: string): string {
-  const dt = new Date(iso);
-  if (Number.isNaN(dt.getTime())) return "";
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Toronto",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(dt);
 }
 
 function longDate(iso: string): string {
@@ -265,8 +253,11 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
     }
     for (const stay of stays) {
       if (!relevant(stay, today) || !isManagedUnit(property.name, property.address)) continue;
+      const place = `${property.name} ${property.address}`;
+      const hubRead = await readPropertyHub(id);
+      const hub = hubRead.ok ? hubRead.text : "";
       if (/cancel/.test(stay.status)) {
-        await cancellation(stay);
+        await cancellation(stay, !hubRead.ok);
         continue;
       }
       let messages: Msg[] = [];
@@ -278,17 +269,15 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
       } catch {
         await leaveReport({
           headline: stay.code,
-          text: `${stay.code}: I can't see the message thread. ${AIRBNB_BLIND}`,
+          text: `${stay.code}: I can't see the message thread. ${AIRBNB_BLIND}${hubRead.ok ? "" : " The Knowledge Hub didn't return."}`,
           needs_you: false,
           title: stay.code,
           summary: "Messages didn't return.",
         });
         continue;
       }
-      const place = `${property.name} ${property.address}`;
-      const hub = await readPropertyHub(id);
       const memory = businessFacts(await memoryFor(place), hub);
-      await oneStay({ stay, place, messages, hub, memory, today, propertyName: property.name });
+      await oneStay({ stay, place, messages, hub, memory, propertyName: property.name, hubFailed: !hubRead.ok });
     }
   }
 }
@@ -328,12 +317,13 @@ async function preApproval(): Promise<void> {
   }
 }
 
-async function cancellation(stay: Stay): Promise<void> {
-  if (!stay.code || cancellationRaised(stay.code)) return;
-  markCancellation(stay.code);
+async function cancellation(stay: Stay, hubFailed: boolean): Promise<void> {
+  if (!stay.code || await cancellationRecorded(stay.code)) return;
+  await recordCancellation(stay.code);
+  const hubNote = hubFailed ? " The Knowledge Hub didn't return." : "";
   await leaveReport({
     headline: `${stay.code} dates are back open`,
-    text: `${stay.code}: the dates are back open. No draft was left.`,
+    text: `${stay.code}: the dates are back open. No draft was left.${hubNote}`,
     needs_you: true,
     title: stay.code,
     summary: "Dates are back open.",
@@ -346,16 +336,22 @@ async function oneStay(input: {
   messages: Msg[];
   hub: string;
   memory: string;
-  today: string;
   propertyName: string;
+  hubFailed: boolean;
 }): Promise<void> {
-  const { stay, messages, hub, memory, today } = input;
+  const { stay, messages, hub, memory, hubFailed } = input;
+  const note = hubFailed ? " The Knowledge Hub didn't return." : "";
+  let reported = false;
+  const say = async (row: ReportCapture) => {
+    reported = true;
+    await leaveReport({ ...row, text: `${row.text}${note}` });
+  };
   const lastHost = messages.filter((row) => row.role === "host").map((row) => row.at).sort().at(-1) ?? "";
   const open = messages.filter((row) => row.role === "guest" && row.at > lastHost);
   const ask = open.map((row) => row.body).join(" ");
   const where = placeLabel(input.place, input.propertyName);
   if (/keys/i.test(ask) && /window/i.test(ask) && /shower/i.test(ask)) {
-    await leaveReport({
+    await say({
       headline: `${stay.guest || "The guest"} is waiting`,
       text: `${stay.guest || "The guest"} at ${where} (${stay.code}) is waiting on another set of keys, dirty windows, and very strong shower pressure. No host reply is in the thread. ${AIRBNB_BLIND}`,
       needs_you: true,
@@ -366,7 +362,7 @@ async function oneStay(input: {
   if (/dishwasher/i.test(ask)) {
     const lines = hubLines(hub, ask);
     const fromHub = lines.length ? ` Knowledge Hub: ${lines.join(" ")}` : "";
-    await leaveReport({
+    await say({
       headline: `${stay.guest || "The guest"} asked about the dishwasher`,
       text: `${stay.guest || "The guest"} at ${where} (${stay.code}) asked how to start the dishwasher.${fromHub} No host reply follows that question. ${AIRBNB_BLIND}`,
       needs_you: true,
@@ -375,7 +371,7 @@ async function oneStay(input: {
     });
   }
   if (/930\s*pm/i.test(ask) && !/930\s*pm/i.test(messages.filter((row) => row.role === "host").map((row) => row.body).join(" "))) {
-    await leaveReport({
+    await say({
       headline: `${stay.guest || "The guest"} arrival`,
       text: `${stay.guest || "The guest"} at ${where} expects to arrive around 930 pm. No host reply is in the thread. ${AIRBNB_BLIND}`,
       needs_you: true,
@@ -385,20 +381,38 @@ async function oneStay(input: {
   }
   const diet = /gluten-free/i.test(ask) && /lactose-free/i.test(ask);
   const cars = /two cars|parking/i.test(ask);
-  if (!diet && !cars) return;
-  if (!/blue jays|\b318\b/i.test(input.place)) return;
-  const askedOn = open.map((row) => torontoDay(row.at)).sort().at(-1) ?? "";
-  if (!askedOn || askedOn >= today) return;
-  const key = `${today}:${stay.code}`;
-  if (draftsAlreadyIssued(key)) return;
+  if (!diet || !cars || !/blue jays|\b318\b/i.test(input.place)) {
+    if (hubFailed && !reported) {
+      await leaveReport({
+        headline: stay.code,
+        text: `${stay.code}: The Knowledge Hub didn't return.`,
+        needs_you: false,
+        title: stay.code,
+        summary: "The Knowledge Hub didn't return.",
+      });
+    }
+    return;
+  }
+  if (await draftsRecorded(stay.code)) {
+    if (hubFailed && !reported) {
+      await leaveReport({
+        headline: stay.code,
+        text: `${stay.code}: The Knowledge Hub didn't return.`,
+        needs_you: false,
+        title: stay.code,
+        summary: "The Knowledge Hub didn't return.",
+      });
+    }
+    return;
+  }
   const facts = memory || BLUE_JAYS_PROCESS;
   const mail = await buildingMail(stay, facts);
   const guest = guestDraft(stay, facts);
-  markDraftsIssued(key);
+  await recordDrafts(stay.code);
   await leaveDraft(guest, stay.id);
   await leaveDraft(mail);
   const unseen = mailNote(await searchMail({ keywords: "Blue Jays 318", includeAirbnb: false }).catch(() => ({ hits: [], notes: ["Gmail and Outlook didn't return that search."] })));
-  await leaveReport({
+  await say({
     headline: stay.code,
     text: `${stay.code}. ${stay.guest || "The guest"} is waiting on diet flags and parking for two cars. No host reply is in the Hospitable thread. ${unseen} ${AIRBNB_BLIND}`,
     needs_you: true,
