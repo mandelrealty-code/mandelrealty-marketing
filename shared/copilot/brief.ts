@@ -3,11 +3,12 @@ import { addDays, greeting, torontoToday } from "./time.js";
 import type { BriefCard, BriefPayload } from "./types.js";
 import { latestInboxOffer } from "../adminApi/gmail.js";
 import { latestOutlookOffer } from "../adminApi/outlook.js";
-import { listDismissed, listDueReminders, listRuns, listSkills, listWaitingDrafts, saveGmailOffer } from "./store.js";
+import { listDismissed, listDueReminders, listRuns, listSkills, listWaitingDrafts, readGmailOffer, saveGmailOffer } from "./store.js";
 import { runsOnItsOwn } from "./skillRunner.js";
 import { listOpenItems, verifiedLabel } from "./openItems.js";
 import { runUnattendedChecks } from "./stayCheck.js";
 import { listConnectorFailures } from "./connectorFailures.js";
+import { parityEnabled } from "./parity/flag.js";
 
 const MAX_CARDS = 4;
 
@@ -23,10 +24,14 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const focus: BriefCard[] = [];
   const eating: BriefCard[] = [];
   const skipped = new Set(await listDismissed().catch(() => []));
-  try {
-    await runUnattendedChecks(now);
-  } catch {
-    /* The overview still loads when a check cannot finish. */
+  // The live page reads checks the morning and afternoon passes already saved.
+  // The parity suite still runs them here, because that is how a fixture scan works.
+  if (parityEnabled()) {
+    try {
+      await runUnattendedChecks(now);
+    } catch {
+      /* The overview still loads when a check cannot finish. */
+    }
   }
   try {
     for (const failure of await listConnectorFailures()) {
@@ -57,35 +62,53 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   } catch {
     /* The overview still loads when open items cannot be read. */
   }
-  try {
-    const offer = await latestInboxOffer();
-    if (offer) {
-      await saveGmailOffer({ ...offer, mailbox: "gmail" });
-      take(focus, {
-        id: `gmail:${offer.messageId}`,
-        group: "focus",
-        text: `${offer.from} wrote about ${offer.subject} in Gmail. Want me to reply?`,
-        action: "Reply",
-        source: "Gmail",
-      }, skipped);
+  if (parityEnabled()) {
+    try {
+      const offer = await latestInboxOffer();
+      if (offer) {
+        await saveGmailOffer({ ...offer, mailbox: "gmail" });
+        take(focus, {
+          id: `gmail:${offer.messageId}`,
+          group: "focus",
+          text: `${offer.from} wrote about ${offer.subject} in Gmail. Want me to reply?`,
+          action: "Reply",
+          source: "Gmail",
+        }, skipped);
+      }
+    } catch {
+      /* The overview still loads when Gmail is not connected. */
     }
-  } catch {
-    /* The overview still loads when Gmail is not connected. */
-  }
-  try {
-    const offer = await latestOutlookOffer();
-    if (offer) {
-      await saveGmailOffer({ ...offer, mailbox: "outlook" });
-      take(focus, {
-        id: `outlook:${offer.messageId}`,
-        group: "focus",
-        text: `${offer.from} wrote about ${offer.subject} in Outlook. Want me to reply?`,
-        action: "Reply",
-        source: "Outlook",
-      }, skipped);
+    try {
+      const offer = await latestOutlookOffer();
+      if (offer) {
+        await saveGmailOffer({ ...offer, mailbox: "outlook" });
+        take(focus, {
+          id: `outlook:${offer.messageId}`,
+          group: "focus",
+          text: `${offer.from} wrote about ${offer.subject} in Outlook. Want me to reply?`,
+          action: "Reply",
+          source: "Outlook",
+        }, skipped);
+      }
+    } catch {
+      /* The overview still loads when Outlook is not connected. */
     }
-  } catch {
-    /* The overview still loads when Outlook is not connected. */
+  } else {
+    try {
+      const offer = await readGmailOffer();
+      if (offer) {
+        const where = offer.mailbox === "outlook" ? "Outlook" : "Gmail";
+        take(focus, {
+          id: `${where === "Outlook" ? "outlook" : "gmail"}:${offer.messageId}`,
+          group: "focus",
+          text: `${offer.from} wrote about ${offer.subject} in ${where}. Want me to reply?`,
+          action: "Reply",
+          source: where,
+        }, skipped);
+      }
+    } catch {
+      /* The overview still loads when the saved offer cannot be read. */
+    }
   }
   // Today's skill reports go first, so waiting drafts cannot push them off the page.
   const skills = (await listSkills().catch(() => [])).filter((row) => row.enabled && row.chat_id && runsOnItsOwn(row));

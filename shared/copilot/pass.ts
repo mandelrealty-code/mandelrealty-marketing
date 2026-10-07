@@ -3,8 +3,11 @@
  * A failed connector is named. Nothing is sent and nothing is purchased.
  */
 
+import { latestInboxOffer } from "../adminApi/gmail.js";
+import { latestOutlookOffer } from "../adminApi/outlook.js";
 import { connectorHealthReport } from "./connectorHealth.js";
 import { saveConnectorFailures } from "./connectorFailures.js";
+import { saveGmailOffer } from "./store.js";
 import { publishCheckReport, runUnattendedChecks } from "./stayCheck.js";
 
 export async function runCopilotPass(now = new Date()): Promise<void> {
@@ -29,5 +32,25 @@ export async function runCopilotPass(now = new Date()): Promise<void> {
       title: row.connector,
       summary: "Failed read.",
     });
+  }
+  await refreshMailboxOffers();
+}
+
+/** Saves the latest partner mailbox card so opening Copilot does not scan the inbox. */
+async function refreshMailboxOffers(): Promise<void> {
+  try {
+    const offer = await latestInboxOffer();
+    if (offer) {
+      await saveGmailOffer({ ...offer, mailbox: "gmail" });
+      return;
+    }
+  } catch {
+    /* A mailbox miss does not fail the pass. */
+  }
+  try {
+    const offer = await latestOutlookOffer();
+    if (offer) await saveGmailOffer({ ...offer, mailbox: "outlook" });
+  } catch {
+    /* A mailbox miss does not fail the pass. */
   }
 }
