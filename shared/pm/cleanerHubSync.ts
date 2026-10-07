@@ -1,6 +1,8 @@
 /** Push / link Admin properties into Cleaner Hub via ops-hub-sync edge function. */
 
 import { getPmPropertyDetail, updatePmProperty } from "./propertyStore.js";
+import { captureCleaner } from "../copilot/parity/capture.js";
+import { parityEnabled } from "../copilot/parity/flag.js";
 
 function cleanerSyncUrl(): string {
   const explicit = (process.env.CLEANER_HUB_SYNC_URL || "").trim();
@@ -61,6 +63,10 @@ export async function pushPropertyToCleanerHub(adminPropertyId: string): Promise
   created: boolean;
   open_url: string;
 }> {
+  if (parityEnabled()) {
+    captureCleaner();
+    throw new Error("Parity mode does not call the cleaner app. Nothing was sent.");
+  }
   const key = cleanerSyncKey();
   if (!key) {
     throw new Error(

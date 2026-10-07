@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "parity": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/parity/main.ts"
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.21.0",
@@ -36,6 +37,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
     "tailwindcss": "^4.3.2",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   }

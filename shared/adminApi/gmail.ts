@@ -3,6 +3,9 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
 import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
 import { readGmailLogin, saveGmailLogin } from "../copilot/store.js";
+import { captureCommit } from "../copilot/parity/capture.js";
+import { parityEnabled } from "../copilot/parity/flag.js";
+import { parityGmailOffer, paritySearchGmail } from "../copilot/parity/world.js";
 
 const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/gmail/callback";
 const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
@@ -21,6 +24,7 @@ export function gmailKeysReady(): boolean {
 }
 
 export async function gmailConnected(): Promise<boolean> {
+  if (parityEnabled()) return true;
   return Boolean(await readGmailLogin());
 }
 
@@ -251,6 +255,8 @@ export async function searchGmail(input: {
   where: MailFolder | "both";
   includeAirbnb: boolean;
 }): Promise<GmailHit[]> {
+  const parity = paritySearchGmail(input);
+  if (parity) return parity;
   const token = await accessToken();
   const keywords = mailKeywords(input.keywords);
   const folders: MailFolder[] = input.where === "both" ? ["sent", "inbox"] : [input.where];
@@ -289,6 +295,7 @@ export async function readGmailMessage(id: string, includeAirbnb: boolean): Prom
 }
 
 export async function latestInboxOffer(): Promise<InboxOffer | null> {
+  if (parityEnabled()) return parityGmailOffer();
   const token = await accessToken();
   const login = await readGmailLogin();
   const q = "in:inbox category:primary newer_than:3d -category:promotions -category:social -from:airbnb.com";
@@ -333,6 +340,10 @@ export async function sendGmailReply(input: {
   threadId?: string;
   rfcId?: string;
 }): Promise<void> {
+  if (parityEnabled()) {
+    captureCommit("gmail", input.to);
+    return;
+  }
   const token = await accessToken();
   const subject = /^re:/i.test(input.subject) ? input.subject : `Re: ${input.subject}`;
   const headers = [

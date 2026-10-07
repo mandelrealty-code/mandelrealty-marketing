@@ -8,6 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../supabase.js";
+import { parityMemory } from "./parity/world.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { addDays, torontoToday } from "./time.js";
 import {
@@ -166,6 +167,8 @@ export function viewMemoryFile(file: MemoryFile, today: string): MemoryFileView 
 }
 
 async function loadAll(): Promise<{ files: MemoryFile[]; claims: Claim[] }> {
+  const parity = parityMemory();
+  if (parity) return { files: parity, claims: [] };
   const client = sb();
   if (!useFile && client) {
     const [filesRes, claimsRes] = await Promise.all([

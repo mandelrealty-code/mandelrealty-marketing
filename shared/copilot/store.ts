@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../supabase.js";
+import { captureReminder } from "./parity/capture.js";
+import { parityEnabled } from "./parity/flag.js";
 import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, SkillRunResult } from "./types.js";
 
 type FileShape = {
@@ -141,6 +143,7 @@ function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; dr
 }
 
 export async function listWaitingDrafts(): Promise<WaitingDraft[]> {
+  if (parityEnabled()) return [];
   const client = sb();
   if (!useFile && client) {
     const { data, error } = await client
@@ -401,6 +404,10 @@ export async function updateDraft(
 }
 
 export async function addReminder(text: string, dueOn: string): Promise<CopilotReminder> {
+  if (parityEnabled()) {
+    captureReminder(text, dueOn);
+    return { id: "parity-reminder", created_at: "2026-10-07T14:00:00.000Z", due_on: dueOn, text, done: false };
+  }
   const reminder: CopilotReminder = {
     id: randomUUID(),
     created_at: new Date().toISOString(),
@@ -422,6 +429,7 @@ export async function addReminder(text: string, dueOn: string): Promise<CopilotR
 }
 
 export async function listDueReminders(dueOn: string): Promise<CopilotReminder[]> {
+  if (parityEnabled()) return [];
   const client = sb();
   if (!useFile && client) {
     const { data, error } = await client
@@ -489,6 +497,7 @@ export async function deleteChat(id: string): Promise<void> {
 let skillsInFile = false;
 
 export async function listSkills(): Promise<CopilotSkill[]> {
+  if (parityEnabled()) return [];
   const client = sb();
   if (!useFile && !skillsInFile && client) {
     const { data, error } = await client
@@ -564,6 +573,7 @@ export async function deleteSkill(id: string): Promise<void> {
 let dismissalsInFile = false;
 
 export async function listDismissed(): Promise<string[]> {
+  if (parityEnabled()) return [];
   const client = sb();
   if (!useFile && !dismissalsInFile && client) {
     const { data, error } = await client.from("copilot_dismissals").select("card_id");
@@ -853,6 +863,7 @@ export async function readGmailOffer(): Promise<GmailOffer | null> {
 }
 
 export async function saveGmailOffer(offer: GmailOffer): Promise<void> {
+  if (parityEnabled()) return;
   await writePrefixed("gmail-offer|", JSON.stringify(offer));
 }
 
@@ -1214,6 +1225,7 @@ export async function updateRun(
 
 /** Newest runs first. */
 export async function listRuns(skillId: string, limit = 5): Promise<CopilotRun[]> {
+  if (parityEnabled()) return [];
   const client = sb();
   if (!useFile && !runsInFile && client) {
     const { data, error } = await client

@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
+import { parityManagedProperties } from "../copilot/parity/world.js";
 import { getPmSettings } from "./clientStore.js";
 import { normalizeCommissionBaseMode } from "./financialBreakdown.js";
 import {
@@ -79,6 +80,8 @@ function pickCurrentTerm(
 }
 
 export async function listPmProperties(clientId?: string): Promise<PmPropertyListItem[]> {
+  const parity = parityManagedProperties();
+  if (parity) return clientId ? parity.filter((row) => row.client_id === clientId) : parity;
   let q = db()
     .from("pm_properties")
     .select("*, pm_clients(name), pm_commission_terms(*)")

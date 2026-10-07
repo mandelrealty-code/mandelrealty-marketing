@@ -3,6 +3,9 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
 import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
 import { readOutlookLogin, saveOutlookLogin } from "../copilot/store.js";
+import { captureCommit } from "../copilot/parity/capture.js";
+import { parityEnabled } from "../copilot/parity/flag.js";
+import { parityOutlookOffer, paritySearchOutlook } from "../copilot/parity/world.js";
 
 const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/outlook/callback";
 const SCOPE = "offline_access User.Read Mail.Read Mail.Send";
@@ -25,6 +28,7 @@ export function outlookKeysReady(): boolean {
 }
 
 export async function outlookConnected(): Promise<boolean> {
+  if (parityEnabled()) return true;
   return Boolean(await readOutlookLogin());
 }
 
@@ -237,6 +241,8 @@ export async function searchOutlook(input: {
   where: MailFolder | "both";
   includeAirbnb: boolean;
 }): Promise<OutlookHit[]> {
+  const parity = paritySearchOutlook(input);
+  if (parity) return parity;
   const token = await accessToken();
   const keywords = mailKeywords(input.keywords);
   if (!keywords) return [];
@@ -282,6 +288,7 @@ export async function readOutlookMessage(id: string, includeAirbnb: boolean): Pr
 }
 
 export async function latestOutlookOffer(): Promise<OutlookOffer | null> {
+  if (parityEnabled()) return parityOutlookOffer();
   const token = await accessToken();
   const login = await readOutlookLogin();
   const sinceMs = Date.now() - 3 * 24 * 60 * 60 * 1000;
@@ -332,6 +339,10 @@ export async function latestOutlookOffer(): Promise<OutlookOffer | null> {
 }
 
 export async function sendOutlookMail(input: { to: string; subject: string; body: string }): Promise<void> {
+  if (parityEnabled()) {
+    captureCommit("outlook", input.to);
+    return;
+  }
   const token = await accessToken();
   const res = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
     method: "POST",
@@ -351,6 +362,10 @@ export async function sendOutlookMail(input: { to: string; subject: string; body
 }
 
 export async function sendOutlookReply(input: { messageId: string; body: string }): Promise<void> {
+  if (parityEnabled()) {
+    captureCommit("outlook", input.messageId);
+    return;
+  }
   const token = await accessToken();
   const res = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(input.messageId)}/reply`, {
     method: "POST",

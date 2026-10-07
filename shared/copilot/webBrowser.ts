@@ -1,4 +1,6 @@
 import Browserbase from "@browserbasehq/sdk";
+import { captureBrowser } from "./parity/capture.js";
+import { parityEnabled } from "./parity/flag.js";
 import { chromium, type Page } from "playwright-core";
 import { loginWall } from "./cursorThink.js";
 import {
@@ -45,6 +47,10 @@ function gate<T>(chatId: string, fn: () => Promise<T>): Promise<T> {
 }
 
 function bb(): Browserbase {
+  if (parityEnabled()) {
+    captureBrowser();
+    throw new Error("Parity mode does not open Browserbase. Nothing was sent.");
+  }
   const apiKey = process.env.BROWSERBASE_API_KEY?.trim();
   if (!apiKey) throw new Error("Browserbase isn’t connected on the server, so the browser didn’t open. Nothing was sent.");
   return new Browserbase({ apiKey });

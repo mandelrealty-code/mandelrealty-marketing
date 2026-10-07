@@ -6,6 +6,8 @@ import { readRunToken } from "./runToken.js";
 import { addMessage, addReminder, flagChatNeedsYou, getRun, listSkills, updateRun } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotReport, CopilotRun, CopilotSkill } from "./types.js";
+import { captureDraft, captureReport } from "./parity/capture.js";
+import { parityEnabled } from "./parity/flag.js";
 
 /**
  * Copilot tools for Cursor cloud agents (MCP over HTTP, stateless JSON).
@@ -146,6 +148,16 @@ const TOOLS: Record<string, Tool> = {
       if (!body) throw new Error("text is required.");
       const headline = text(args.headline, 160);
       const needsYou = args.needs_you === true;
+      if (parityEnabled()) {
+        captureReport({
+          headline,
+          text: body,
+          needs_you: needsYou,
+          title: text(args.title, 120),
+          summary: text(args.summary, 200),
+        });
+        return { posted: true };
+      }
       await addMessage({ chatId: ctx.chatId, role: "assistant", body, report: asReport(args, headline), runId: ctx.run.id });
       if (needsYou) await flagChatNeedsYou(ctx.chatId);
       await noteTool(ctx, "post_report", { headline, needs_you: needsYou, posted: true });
@@ -196,6 +208,17 @@ const TOOLS: Record<string, Tool> = {
       if (!draftBody && !text(args.hospitable_tool, 80)) throw new Error("body is required.");
       const warnings = Array.isArray(args.warnings) ? args.warnings.map((w) => text(w, 200)).filter(Boolean).slice(0, 6) : [];
       const toolName = text(args.hospitable_tool, 80);
+      if (parityEnabled()) {
+        captureDraft({
+          channel: toolName ? "hospitable" : args.channel === "note" ? "note" : "email",
+          to: text(args.to, 180),
+          subject: text(args.subject, 180),
+          body: draftBody,
+          warnings,
+          needs_you: true,
+        });
+        return { waiting_for_approval: true, message_id: "parity-draft" };
+      }
       const toolArgs = args.hospitable_args && typeof args.hospitable_args === "object" && !Array.isArray(args.hospitable_args)
         ? args.hospitable_args as Record<string, unknown>
         : {};

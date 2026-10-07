@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
+import { parityMcpToken, parityPat } from "../copilot/parity/world.js";
 import type { PmClient, PmClientListItem, PmClientStatus, PmSettings } from "./types.js";
 
 function db() {
@@ -133,6 +134,8 @@ export async function getPmSettings(): Promise<PmSettings> {
 
 /** Resolve PAT: DB first, then env fallback. Never send to the browser. */
 export async function getHospitablePat(): Promise<string> {
+  const parity = parityPat();
+  if (parity !== null) return parity;
   const { data, error } = await db()
     .from("pm_settings")
     .select("hospitable_pat")
@@ -151,6 +154,8 @@ export async function isHospitableConfigured(): Promise<boolean> {
 
 /** MCP fallback bearer token. Not the Public API personal access token. */
 export async function getHospitableMcpToken(): Promise<string> {
+  const parity = parityMcpToken();
+  if (parity !== null) return parity;
   const fromEnv = () => process.env.HOSPITABLE_MCP_TOKEN?.trim() ?? "";
   try {
     const { data, error } = await db()

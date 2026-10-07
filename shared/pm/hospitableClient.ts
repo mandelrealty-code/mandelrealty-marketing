@@ -1,4 +1,5 @@
 import { breakdownFromFinancials } from "./financialBreakdown.js";
+import { parityHttp } from "../copilot/parity/world.js";
 
 const HOSPITABLE_BASE = "https://public.api.hospitable.com/v2";
 
@@ -100,6 +101,8 @@ export async function hospitableFetch(
   query: HospitableQuery = {},
   init?: { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown },
 ): Promise<unknown> {
+  const parity = parityHttp(init?.method || "GET", path.startsWith("/") ? path : `/${path}`, query as Record<string, unknown>);
+  if (parity.handled) return parity.value;
   const token = pat.trim();
   if (!token) throw new Error("Hospitable PAT is not configured.");
 
