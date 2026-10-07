@@ -34,6 +34,8 @@ export type ParityReservation = {
   checkIn: string;
   checkOut: string;
   guest: string;
+  /** Present only when the reservation actually has one. */
+  phone?: string;
   adults: number;
   children: number;
   messages: ParityMessage[];
@@ -427,7 +429,7 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     departure_date: row.checkOut,
     check_in: `${row.checkIn}T16:00:00-04:00`,
     check_out: `${row.checkOut}T11:00:00-04:00`,
-    guest: { first_name: row.guest },
+    guest: { first_name: row.guest, ...(row.phone ? { phone: row.phone } : {}) },
     guests: { adult_count: row.adults, child_count: row.children, total: row.adults + row.children },
     properties: property ? [mcpProperty(property)] : [],
   };

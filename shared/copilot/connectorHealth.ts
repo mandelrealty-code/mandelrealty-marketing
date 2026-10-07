@@ -178,7 +178,7 @@ export async function connectorHealthReport(now = new Date()): Promise<Connector
       "chat-only",
       "one public page title",
       null,
-      "The scheduled skill runner has no browser tool. Browserbase is only opened from chat. This check did not fetch a page.",
+      "This health check did not open a page. A skill run can call research_web when Browserbase is connected.",
     ),
     cleaner,
     row(

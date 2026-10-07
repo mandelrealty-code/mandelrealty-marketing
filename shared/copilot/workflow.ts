@@ -220,6 +220,40 @@ export function simulateRun(wf: Workflow, emit: (e: RunEvent) => void, failAt: F
   return () => timers.forEach(clearTimeout);   // cancel
 }
 
+/** Plays real step results with the same trail rules as the prototype. */
+export function playResults(wf: Workflow, results: Record<string, NodeResult>, emit: (e: RunEvent) => void) {
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const at = (ms: number, f: () => void) => timers.push(setTimeout(f, ms));
+  const FLOW_MS = 560, RUN_MS = 750, GAP_MS = 120;
+  let t = 250;
+  for (const id of runOrder(wf)) {
+    const result = results[id] ?? { st: 'skip' as const };
+    const ins = wf.edges.filter(e => e.to === id);
+    const okIns = ins.filter(e => (results[e.from]?.st ?? 'skip') === 'ok');
+    if (result.st === 'skip') {
+      at(t, () => {
+        ins.forEach(e => emit({ type: 'edge', edgeId: e.id, st: results[e.from]?.st === 'fail' ? 'block' : 'skip' }));
+        emit({ type: 'node', nodeId: id, result: { st: 'skip' } });
+      });
+      continue;
+    }
+    if (okIns.length) {
+      at(t, () => okIns.forEach(e => emit({ type: 'edge', edgeId: e.id, st: 'flow' })));
+      t += FLOW_MS;
+      at(t, () => okIns.forEach(e => emit({ type: 'edge', edgeId: e.id, st: 'pass' })));
+    }
+    at(t, () => emit({ type: 'node', nodeId: id, result: { st: 'run' } }));
+    t += RUN_MS;
+    at(t, () => {
+      emit({ type: 'node', nodeId: id, result });
+      if (result.st === 'fail') wf.edges.filter(e => e.from === id).forEach(e => emit({ type: 'edge', edgeId: e.id, st: 'block' }));
+    });
+    t += GAP_MS;
+  }
+  at(t + 80, () => emit({ type: 'done' }));
+  return () => timers.forEach(clearTimeout);
+}
+
 export function runSummary(order: string[], nodes: Record<string, NodeResult>, wf: Workflow, status: 'running' | 'done', current?: string, failed?: string) {
   const fn = (id?: string) => wf.nodes.find(n => n.id === id)?.fn;
   if (status === 'running') return current ? `Running ${fn(current)}…` : 'Starting…';

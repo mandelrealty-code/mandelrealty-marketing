@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "parity": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/parity/main.ts",
     "skill-probe": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/skillProbe.ts",
+    "skill-harness": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/skillHarness.ts",
     "connectors": "tsx shared/copilot/connectorHealthMain.ts"
   },
   "dependencies": {

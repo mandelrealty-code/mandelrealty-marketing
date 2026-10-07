@@ -16,6 +16,7 @@ import {
 } from "./store.js";
 import { skillMemoryText } from "./memoryFiles.js";
 import { torontoToday } from "./time.js";
+import { skillDue } from "./skillSchedule.js";
 import type { CopilotRun, CopilotSkill } from "./types.js";
 
 /**
@@ -44,7 +45,12 @@ function explain(err: unknown): string {
 }
 
 export function runsOnItsOwn(skill: CopilotSkill): boolean {
-  return skill.kind === "playbook" && skill.schedule === "daily";
+  return skill.kind === "playbook" && (skill.schedule === "daily" || skill.schedule.startsWith("weekly:"));
+}
+
+/** Skills whose switch is on and whose morning has arrived. Afternoon passes do not start them. */
+export function skillsToStart(skills: CopilotSkill[], now: Date, lastRunDay: (id: string) => string | null = () => null): CopilotSkill[] {
+  return skills.filter((skill) => skillDue(skill, now, lastRunDay(skill.id)));
 }
 
 async function lastReport(chatId: string): Promise<string> {
@@ -70,11 +76,15 @@ async function promptFor(skill: CopilotSkill, trigger: CopilotRun["trigger"], pr
     "Use search_mail and read_mail for mail. They search Gmail and Outlook, inbox and Sent, and read one message in full. They do not send. Set include_airbnb only when the question is about Airbnb email.",
     "To see whether an email thread about a stay already exists, including a building thread, search_mail for the unit or the stay. To see whether anyone replied later, read_mail on that thread and compare the dates.",
     "Use read_memory for a unit's standing file. Pass check_in and check_out from the reservation when you have them. If those times disagree with the file, the tool returns the reservation times.",
+    "Use guest_contacts for names and phone numbers on a reservation. If a reservation has no phone, say no phone on this reservation. Do not invent a number.",
+    "Use read_knowledge_hub for a property's Knowledge Hub. Use cleaner_read for turnovers and stock. Both are read only.",
+    "Use research_web to open a page. Cite the page title it returns. Use make_pdf to make a PDF from that report. Use sheet_read and sheet_write with a sheet link or id.",
+    "Deliver a finished run to the partners with deliver_to_partners: in the app, by email, or by text. If a channel is not configured, say so. Do not switch to a different channel.",
     "Access codes, door codes, and WiFi passwords are not in memory files. They stay in the Hospitable Knowledge Hub. Do not put them in a draft.",
     "The copilot tools are the only way to leave something for the partners.",
     "Rules:",
-    "- Never send a guest message, post a review, change a calendar, change a task, or change an owner statement yourself. To propose one, call propose_draft with hospitable_tool and hospitable_args. It waits until a partner presses Submit. Never say it was sent or changed.",
-    "- For an email or a note, call propose_draft. It waits for a partner. Never say an email was sent.",
+    "- Deliver to the partners with deliver_to_partners. Anything for a guest, a client, a building, or any third party is propose_draft and waits until a partner presses Submit. Never say that one was sent.",
+    "- Never purchase anything. A purchase is only an offer a partner approves.",
     "- Do not invent fees, names, clauses, products, links, or facts. If a fact is missing, leave a blank like [fee] in the draft and list it in warnings.",
     "- If a tool fails, say so in the report. Never report an all-clear after a failed read.",
     "- For details found in guest messages, say the guest may have sent it, and quote the line. Never say they sent it.",
@@ -213,17 +223,21 @@ export async function collectSkillRuns(now = Date.now()): Promise<void> {
   }
 }
 
-/** The 5:00 AM pass. Starts each daily skill once per Toronto day. */
+/** The morning pass, Toronto time. Starts each due skill once that day. The afternoon pass does not. */
 export async function runScheduledSkills(now = new Date()): Promise<{ started: string[]; skipped: string[]; failed: string[] }> {
   await collectSkillRuns(now.getTime()).catch(() => undefined);
-  const today = torontoToday(now);
   const out = { started: [] as string[], skipped: [] as string[], failed: [] as string[] };
-  for (const skill of (await listSkills()).filter((row) => row.enabled && runsOnItsOwn(row))) {
-    const last = (await listRuns(skill.id, 5)).find((run) => run.trigger === "schedule");
-    if (last && torontoToday(new Date(last.started_at)) === today) {
-      out.skipped.push(skill.name);
-      continue;
-    }
+  const skills = await listSkills();
+  const lastDay = async (id: string) => {
+    const last = (await listRuns(id, 5)).find((run) => run.trigger === "schedule");
+    return last ? torontoToday(new Date(last.started_at)) : null;
+  };
+  const due: CopilotSkill[] = [];
+  for (const skill of skills.filter((row) => row.enabled && runsOnItsOwn(row))) {
+    if (skillDue(skill, now, await lastDay(skill.id))) due.push(skill);
+    else out.skipped.push(skill.name);
+  }
+  for (const skill of due) {
     try {
       await startSkillRun(skill.id, "schedule");
       out.started.push(skill.name);

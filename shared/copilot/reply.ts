@@ -1,5 +1,6 @@
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
+import { describedJob, draftFromSkill, skillFromWords } from "./skillShape.js";
 
 export function skillDraft(text: string): CopilotDraft {
   const cleaned = text.replace(/^create a skill that\s+/i, "").trim();
@@ -109,6 +110,16 @@ export function skillTurn(
 ): ReplyResult {
   const assistants = prior.filter((message) => message.role === "assistant").map((message) => message.body);
   const said = [...prior.filter((message) => message.role === "user").map((message) => message.body), text].join("\n");
+  if (describedJob(said)) {
+    const shaped = skillFromWords(said);
+    return {
+      body: "Here is the skill. It is saved and off. It will not run until you turn it on. Nothing was sent.",
+      draft: draftFromSkill(shaped, said),
+      choices: null,
+      reminder: null,
+      memory: `Skill discussed: ${shaped.name}`,
+    };
+  }
   const lower = said.toLowerCase();
   const askedInclude = assistants.some((body) => body.startsWith("What should the text include?"));
   const askedWho = assistants.some((body) => body.startsWith("Who should get this text?"));

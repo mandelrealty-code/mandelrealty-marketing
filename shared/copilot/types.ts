@@ -1,3 +1,5 @@
+import type { Workflow } from "./workflow.js";
+
 export type DraftStatus = "waiting" | "held" | "approved_unsent" | "sent";
 
 export type CopilotDraft = {
@@ -22,8 +24,10 @@ export type CopilotDraft = {
   choices?: string[];
 };
 
-/** "" = runs only when asked in chat. "daily" = Cursor runs it every morning around 5:00. */
-export type SkillSchedule = "" | "daily";
+export type Weekday = "Sunday" | "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday";
+
+/** "" = runs only when asked. "daily" and "weekly:Monday" run on the 5:00 Toronto morning pass. */
+export type SkillSchedule = "" | "daily" | `weekly:${Weekday}`;
 
 export type CopilotSkill = {
   id: string;
@@ -40,6 +44,8 @@ export type CopilotSkill = {
   schedule: SkillSchedule;
   chat_id: string | null;
   last_run_at: string | null;
+  /** The builder canvas. The same skill the runner executes. */
+  workflow?: Workflow | null;
 };
 
 export type CopilotTextSend = {

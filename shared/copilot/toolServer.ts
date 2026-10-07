@@ -7,6 +7,11 @@ import { readStanding } from "./memoryFiles.js";
 import { DEFAULT_CHECKLIST, listStays, readGuestInbox, readThread } from "./guestInbox.js";
 import { readRunToken } from "./runToken.js";
 import { addMessage, addReminder, flagChatNeedsYou, getRun, listSkills, updateRun } from "./store.js";
+import { cleanerTool, hubTool, readSheetTool, writeSheetTool } from "./skillExecute.js";
+import { guestCheckins, formatCheckins } from "./skillContacts.js";
+import { deliverToPartners, channelsFor } from "./skillDelivery.js";
+import { reportPdf } from "./skillPdf.js";
+import { researchWeb } from "./skillResearch.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotReport, CopilotRun, CopilotSkill } from "./types.js";
 import { captureDraft, captureReport } from "./parity/capture.js";
@@ -320,6 +325,96 @@ const TOOLS: Record<string, Tool> = {
       await addReminder(body, due);
       await noteTool(ctx, "add_reminder");
       return { saved: true, due_on: due };
+    },
+  },
+  guest_contacts: {
+    description: "Guest name, unit, check-in date, and phone for check-ins in the Toronto week that contains today. If a reservation has no phone, the phone is exactly: no phone on this reservation. Managed units only. Read only. Do not invent a number.",
+    inputSchema: { type: "object", properties: {} },
+    readOnly: true,
+    call: async () => {
+      const found = await guestCheckins();
+      if (found.error) return { error: found.error, lines: [] };
+      return { lines: found.lines, text: formatCheckins(found.lines) };
+    },
+  },
+  research_web: {
+    description: "Opens a page through Browserbase and returns its title, address, and text. Cite the title. Read only. This does not buy anything.",
+    inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+    readOnly: true,
+    call: async (args) => researchWeb(text(args.query, 200)),
+  },
+  make_pdf: {
+    description: "Makes a PDF from a report title and lines. Returns the file name and the plain text. It does not email anyone by itself.",
+    inputSchema: {
+      type: "object",
+      properties: { title: { type: "string" }, lines: { type: "array", items: { type: "string" } } },
+      required: ["title", "lines"],
+    },
+    readOnly: true,
+    call: async (args) => {
+      const lines = Array.isArray(args.lines) ? args.lines.map((line) => text(line, 180)).filter(Boolean).slice(0, 40) : [];
+      const pdf = await reportPdf(text(args.title, 120) || "Report", lines);
+      return { filename: pdf.filename, text: pdf.plain };
+    },
+  },
+  sheet_read: {
+    description: "Reads a Google Sheet by its link or id. Read only.",
+    inputSchema: { type: "object", properties: { sheet: { type: "string" } }, required: ["sheet"] },
+    readOnly: true,
+    call: async (args) => readSheetTool(text(args.sheet, 200)),
+  },
+  sheet_write: {
+    description: "Appends one row to a Google Sheet by its link or id. This does not email anyone and does not purchase anything.",
+    inputSchema: {
+      type: "object",
+      properties: { sheet: { type: "string" }, row: { type: "array", items: { type: "string" } } },
+      required: ["sheet", "row"],
+    },
+    readOnly: false,
+    call: async (args) => writeSheetTool(text(args.sheet, 200), Array.isArray(args.row) ? args.row.map((cell) => text(cell, 200)) : []),
+  },
+  read_knowledge_hub: {
+    description: "Reads one property's Hospitable Knowledge Hub. Secrets are left out. Read only.",
+    inputSchema: { type: "object", properties: { property_id: { type: "string" } }, required: ["property_id"] },
+    readOnly: true,
+    call: async (args) => hubTool(text(args.property_id, 80)),
+  },
+  cleaner_read: {
+    description: "Reads one unit's turnovers and supply quantities from the cleaner app. Read only. It does not name a cleaner and it does not purchase anything.",
+    inputSchema: {
+      type: "object",
+      properties: { property_id: { type: "string" }, from: { type: "string" }, to: { type: "string" } },
+      required: ["property_id"],
+    },
+    readOnly: true,
+    call: async (args) => cleanerTool(text(args.property_id, 80), text(args.from, 20), text(args.to, 20)),
+  },
+  deliver_to_partners: {
+    description: "Delivers a finished run to the partners: in the app, by email to the connected partner mailbox, or by text if a text channel is configured. channels is any of app, email, text. If a channel is not configured, the result says so and does not substitute another. Never use this for a guest, a client, a building, or any third party. Those wait on propose_draft. This never purchases anything.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        headline: { type: "string" },
+        text: { type: "string" },
+        channels: { type: "array", items: { type: "string" } },
+        audience: { type: "string" },
+      },
+      required: ["headline", "text"],
+    },
+    readOnly: false,
+    call: async (args, ctx) => {
+      const audience = text(args.audience, 40);
+      if (audience && audience !== "partners") throw new Error("That is not a partner. Call propose_draft. Nothing was sent.");
+      const asked = Array.isArray(args.channels) ? args.channels.map((item) => text(item, 20)) : channelsFor(ctx.skill);
+      const channels = asked.filter((item): item is "app" | "email" | "text" => item === "app" || item === "email" || item === "text");
+      const delivered = await deliverToPartners({
+        skill: ctx.skill,
+        headline: text(args.headline, 160),
+        text: text(args.text, 8000),
+        channels: channels.length ? channels : ["app"],
+      });
+      await noteTool(ctx, "deliver_to_partners", { headline: text(args.headline, 160), posted: true });
+      return { notes: delivered.notes };
     },
   },
 };

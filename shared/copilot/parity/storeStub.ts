@@ -1,3 +1,5 @@
+import type { CopilotSkill } from "../types.js";
+
 /**
  * Parity stand-in for copilot_check_state.
  * A new world clears cancellations. Issued draft keys stay for the rest of the run.
@@ -50,4 +52,17 @@ export function parityDraftsIssued(key: string): boolean {
 
 export function parityMarkDrafts(key: string): void {
   issued.add(key);
+}
+
+const skills: CopilotSkill[] = [];
+
+export function paritySkillList(): CopilotSkill[] {
+  return skills.map((row) => ({ ...row }));
+}
+
+export function paritySaveSkill(skill: CopilotSkill): CopilotSkill {
+  const idx = skills.findIndex((row) => row.id === skill.id);
+  if (idx >= 0) skills[idx] = skill;
+  else skills.unshift(skill);
+  return skill;
 }

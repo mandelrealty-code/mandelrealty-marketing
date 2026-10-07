@@ -2,6 +2,8 @@ import { Agent, AgentBusyError, CursorAgentError } from "@cursor/sdk";
 import { withoutHubSecrets } from "./hubSecrets.js";
 import { addMessage, addReminder, clearDesk, listCursorRuns, listMessages, readCursorLink, readDesk, remember, renameChat, saveCursorLink, saveDesk } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
+import { normalizeSchedule } from "./skillSchedule.js";
+import { persistDescribedSkill } from "./skillPersist.js";
 import type { CopilotDraft } from "./types.js";
 
 export const CURSOR_MISSING =
@@ -52,7 +54,7 @@ function promptFor(facts: string, history: string, skillMode: boolean, hasImages
       ? "They pressed Create a skill. Ask what you still need, one question at a time. When you have enough, put a skill draft in the JSON. Do not save it yourself."
       : "Only include a draft when they need to approve a note, an email, or a skill.",
     `Today is ${torontoToday()} in Toronto.`,
-    "Skills are how work runs on its own. When a partner asks for something recurring, draft a skill. Set skillSchedule to \"daily\" when it should run by itself every morning around 5:00, or \"\" when it should only run when they ask. Every morning is the only schedule today. For an event such as a new booking, say it will check every morning, not the moment it happens.",
+    "Skills are how work runs on its own. When a partner describes a recurring job, draft a skill. skillSchedule is \"daily\" for every morning, or \"weekly:Monday\" (or another weekday) for a named day. Both run on the 5:00 Toronto morning pass. Use \"\" only when it should run when they ask. A new skill stays off until they turn it on. For an event such as a new booking, say it will check on that morning pass, not the moment it happens.",
     "When a skill runs on its own, it can read Hospitable, search and read Gmail and Outlook, and leave a report, a draft, or a reminder. It cannot read WhatsApp, the cleaner calendar, or AirROI yet. A Hospitable change is a draft until they press Submit. If a skill needs something it cannot do, say so in the skill draft.",
     "To save a reminder, set reminder to {\"due_on\":\"YYYY-MM-DD\",\"text\":\"what to remind them\"}. It shows as a card on that morning.",
     "Never say a skill or reminder is saved or turned on. A skill is saved only when they press Save on its card. The app adds the reminder line after it actually saves it.",
@@ -63,7 +65,7 @@ function promptFor(facts: string, history: string, skillMode: boolean, hasImages
     "Reply with one JSON object and no markdown fence:",
     '{"body":"plain text the person reads","choices":null,"draft":null,"reminder":null}',
     "choices is two or three short labels when a guess would send the work the wrong way, otherwise null.",
-    'draft is null or {"channel":"email"|"note"|"skill","subject":"","body":"","to":"","skillName":"","skillWhen":"","skillReads":"","skillDrafts":"","skillMustNot":"","skillKind":"playbook"|"text","skillPhone":"","skillSchedule":"daily"|""}.',
+    'draft is null or {"channel":"email"|"note"|"skill","subject":"","body":"","to":"","skillName":"","skillWhen":"","skillReads":"","skillDrafts":"","skillMustNot":"","skillKind":"playbook"|"text","skillPhone":"","skillSchedule":"daily"|"weekly:Monday"|""}.',
     "For a text skill, skillKind is text and skillPhone is their number. Saving still waits for them.",
     "",
     "Facts:",
@@ -104,7 +106,7 @@ function asDraft(value: unknown): CopilotDraft | null {
     skillMustNot: text("skillMustNot", 400),
     skillKind: row.skillKind === "text" ? "text" : "playbook",
     skillPhone: text("skillPhone", 20),
-    skillSchedule: row.skillSchedule === "daily" ? "daily" : "",
+    skillSchedule: normalizeSchedule(String(row.skillSchedule ?? ""), String(row.skillWhen ?? "")).schedule,
   };
 }
 
@@ -669,6 +671,10 @@ async function readCursorRun(chatId: string, follow: boolean): Promise<ThinkStat
     });
     const skillName = parsed.draft?.channel === "skill" ? parsed.draft.skillName?.trim() : "";
     if (skillName) await renameChat(chatId, skillName);
+    if (parsed.draft?.channel === "skill") {
+      const said = (await listMessages(chatId)).filter((message) => message.role === "user").map((message) => message.body).join("\n");
+      await persistDescribedSkill(parsed.draft, said).catch(() => undefined);
+    }
   }
   const latest = { steps: deskSteps(chatId), view: deskView(chatId) };
   await clearDesk(chatId).catch(() => undefined);

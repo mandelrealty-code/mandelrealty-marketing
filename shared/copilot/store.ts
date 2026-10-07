@@ -5,7 +5,9 @@ import { getSupabaseAdmin } from "../supabase.js";
 import { captureReminder } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityItems, updateParityItem } from "./parity/world.js";
-import { parityCancellationRaised, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReportIssued } from "./parity/storeStub.js";
+import { parityCancellationRaised, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReportIssued, paritySaveSkill, paritySkillList } from "./parity/storeStub.js";
+import { normalizeSchedule } from "./skillSchedule.js";
+import type { Workflow } from "./workflow.js";
 import type { OpenItem } from "./openItems.js";
 import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, SkillRunResult } from "./types.js";
 
@@ -78,22 +80,37 @@ function sb() {
   return getSupabaseAdmin();
 }
 
+function asWorkflow(value: unknown): Workflow | null {
+  let row = value;
+  if (typeof row === "string" && row.trim()) {
+    try {
+      row = JSON.parse(row) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!row || typeof row !== "object" || !Array.isArray((row as Workflow).nodes) || !Array.isArray((row as Workflow).edges)) return null;
+  return row as Workflow;
+}
+
 function asSkill(row: Partial<CopilotSkill>): CopilotSkill {
+  const when = String(row.when_text ?? "");
   return {
     id: String(row.id ?? ""),
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
     name: String(row.name ?? ""),
-    when_text: String(row.when_text ?? ""),
+    when_text: when,
     reads: String(row.reads ?? ""),
     drafts: String(row.drafts ?? ""),
     must_not: String(row.must_not ?? ""),
     enabled: row.enabled !== false,
     kind: row.kind === "text" ? "text" : "playbook",
     phone: String(row.phone ?? ""),
-    schedule: row.schedule === "daily" ? "daily" : "",
+    schedule: normalizeSchedule(String(row.schedule ?? ""), when).schedule,
     chat_id: row.chat_id ? String(row.chat_id) : null,
     last_run_at: row.last_run_at ? String(row.last_run_at) : null,
+    workflow: asWorkflow(row.workflow),
   };
 }
 
@@ -110,8 +127,11 @@ function missingColumn(error: { message?: string } | null): boolean {
 
 function missingSkillColumn(error: { message?: string } | null): boolean {
   const m = error?.message ?? "";
-  return /column|schema cache/i.test(m) && /schedule|chat_id|last_run_at|skill_id|agent_id|cursor_run_id/i.test(m);
+  return /column|schema cache/i.test(m) && /schedule|chat_id|last_run_at|skill_id|agent_id|cursor_run_id|workflow/i.test(m);
 }
+
+const WORKFLOW_SQL =
+  "Copilot skills are missing the workflow column. Run supabase/copilot_v6.sql in the Supabase SQL editor, then try again.";
 
 export async function listChats(): Promise<CopilotChat[]> {
   const client = sb();
@@ -506,7 +526,7 @@ export async function deleteChat(id: string): Promise<void> {
 let skillsInFile = false;
 
 export async function listSkills(): Promise<CopilotSkill[]> {
-  if (parityEnabled()) return [];
+  if (parityEnabled()) return paritySkillList();
   const client = sb();
   if (!useFile && !skillsInFile && client) {
     const { data, error } = await client
@@ -520,29 +540,32 @@ export async function listSkills(): Promise<CopilotSkill[]> {
   return readFileStore().skills.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
 }
 
-type SkillInput = Omit<CopilotSkill, "id" | "created_at" | "updated_at" | "schedule" | "chat_id" | "last_run_at"> &
-  Partial<Pick<CopilotSkill, "schedule" | "chat_id" | "last_run_at">> & { id?: string };
+type SkillInput = Omit<CopilotSkill, "id" | "created_at" | "updated_at" | "schedule" | "chat_id" | "last_run_at" | "workflow"> &
+  Partial<Pick<CopilotSkill, "schedule" | "chat_id" | "last_run_at" | "workflow">> & { id?: string };
 
 /** Schedule, chat and last run are kept from the saved row unless the caller sets them. */
 export async function saveSkill(input: SkillInput): Promise<CopilotSkill> {
   const now = new Date().toISOString();
   const before = input.id ? (await listSkills()).find((row) => row.id === input.id) : undefined;
+  const shaped = normalizeSchedule(String(input.schedule ?? before?.schedule ?? ""), input.when_text);
   const skill: CopilotSkill = {
     id: input.id || randomUUID(),
     created_at: now,
     updated_at: now,
     name: input.name.slice(0, 120),
-    when_text: input.when_text,
+    when_text: shaped.when_text.includes("No weekday was named") ? shaped.when_text : input.when_text,
     reads: input.reads,
     drafts: input.drafts,
     must_not: input.must_not,
     enabled: input.enabled,
     kind: input.kind === "text" ? "text" : "playbook",
     phone: input.phone.trim(),
-    schedule: input.schedule ?? before?.schedule ?? "",
+    schedule: shaped.schedule,
     chat_id: input.chat_id !== undefined ? input.chat_id : before?.chat_id ?? null,
     last_run_at: input.last_run_at !== undefined ? input.last_run_at : before?.last_run_at ?? null,
+    workflow: input.workflow !== undefined ? input.workflow : before?.workflow ?? null,
   };
+  if (parityEnabled()) return paritySaveSkill(skill);
   const client = sb();
   if (!useFile && !skillsInFile && client) {
     const { data: existing } = input.id
@@ -551,6 +574,7 @@ export async function saveSkill(input: SkillInput): Promise<CopilotSkill> {
     if (existing?.created_at) skill.created_at = existing.created_at as string;
     const { error } = await client.from("copilot_skills").upsert(skill);
     if (!error) return skill;
+    if (missingSkillColumn(error) && /workflow/i.test(error.message ?? "")) throw new Error(WORKFLOW_SQL);
     if (missingSkillColumn(error)) throw new Error(SKILLS_SQL);
     if (missingColumn(error)) throw new Error(SQL_AGAIN);
     if (missingTable(error)) skillsInFile = true;

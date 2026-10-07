@@ -375,3 +375,45 @@ export async function sendGmailReply(input: {
     throw new Error("Gmail didn't send it. Nothing went out.");
   }
 }
+
+/** A new message to a partner, with an optional PDF. Parity delivery does not call this. */
+export async function sendGmailNew(input: {
+  to: string;
+  subject: string;
+  body: string;
+  pdf?: { filename: string; bytes: Uint8Array };
+}): Promise<void> {
+  if (parityEnabled()) throw new Error("Parity does not send Gmail.");
+  const token = await accessToken();
+  const headers = [`To: ${input.to}`, `Subject: ${input.subject}`, "MIME-Version: 1.0"];
+  let rawBody: string;
+  if (input.pdf) {
+    const boundary = "copilot-pdf";
+    headers.push(`Content-Type: multipart/mixed; boundary=${boundary}`);
+    const file = Buffer.from(input.pdf.bytes).toString("base64");
+    rawBody = [
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      input.body,
+      `--${boundary}`,
+      `Content-Type: application/pdf; name="${input.pdf.filename}"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-Disposition: attachment; filename="${input.pdf.filename}"`,
+      "",
+      file,
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+  } else {
+    headers.push("Content-Type: text/plain; charset=utf-8");
+    rawBody = input.body;
+  }
+  const raw = Buffer.from(`${headers.join("\r\n")}\r\n\r\n${rawBody}`).toString("base64url");
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw }),
+  });
+  if (!res.ok) throw new Error("Gmail didn't send it. Nothing went out.");
+}

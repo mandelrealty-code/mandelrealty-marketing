@@ -7,7 +7,8 @@ import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraf
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
 import type { AccountSpend } from "../../../shared/copilot/models";
-import { BLANK, SEED } from "../../../shared/copilot/workflow";
+import { BLANK, SEED, type NodeResult, type Workflow } from "../../../shared/copilot/workflow";
+import { workflowFromSkill } from "../../../shared/copilot/skillShape";
 import { runWhen } from "./skillsTime";
 
 type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
@@ -638,7 +639,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [mcpToken, setMcpToken] = useState("");
   const [mcpBusy, setMcpBusy] = useState(false);
   const [screen, setScreen] = useState<Screen>("brief");
-  const [boardKind, setBoardKind] = useState<"seed" | "blank">("seed");
+  const [boardSeed, setBoardSeed] = useState<Workflow>(SEED);
+  const [boardTick, setBoardTick] = useState(0);
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [text, setText] = useState("");
@@ -1368,7 +1370,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         mustNot: draft.skillMustNot,
         kind: draft.skillKind === "text" ? "text" : "playbook",
         phone,
-        schedule: draft.skillSchedule === "daily" ? "daily" : "",
+        schedule: draft.skillKind === "text" ? "" : draft.skillSchedule ?? "",
       });
       setBoot((prev) => (prev ? { ...prev, skills: data.skills, textNumbers: data.textNumbers ?? prev.textNumbers, chats: data.chats ?? prev.chats } : prev));
       if (chatId) await openChat(chatId);
@@ -1592,7 +1594,20 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         </button>
       </header>
       {screen === "board" ? (
-        <WorkflowBuilder key={boardKind} seed={boardKind === "blank" ? BLANK : SEED} theme={theme} onBack={() => setScreen("skills")} />
+        <WorkflowBuilder
+          key={`${boardSeed.id}-${boardTick}`}
+          seed={boardSeed}
+          theme={theme}
+          onBack={() => setScreen("skills")}
+          onSave={async (next) => {
+            const data = await api<{ skills: SkillRow[] }>("workflow", { workflow: next });
+            setBoot((prev) => (prev ? { ...prev, skills: data.skills } : prev));
+          }}
+          onTest={async (next) => {
+            const data = await api<{ results: Record<string, NodeResult> }>("workflow-test", { workflow: next });
+            return data.results;
+          }}
+        />
       ) : (
       <div className={`cp-body${stage && !inSettings ? " work" : ""}`}>
         <aside className="cp-side">{sideList()}</aside>
@@ -1691,7 +1706,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         onOpen={(skill) => openSkill(skill)}
                         onToggle={(skill) => void toggleSkill(skill)}
                         onNew={startSkill}
-                        onBoard={(kind) => { setBoardKind(kind); setScreen("board"); }}
+                        onBoard={(target) => {
+                          if (target === "seed") {
+                            const saved = boot?.skills.find((skill) => skill.name === "Review text");
+                            setBoardSeed(saved ? workflowFromSkill(saved) : SEED);
+                          } else if (target === "blank") setBoardSeed(BLANK);
+                          else setBoardSeed(workflowFromSkill(target));
+                          setBoardTick((tick) => tick + 1);
+                          setScreen("board");
+                        }}
                       />
                     ) : null}
                     {screen === "skill" && openSkillRecord ? (

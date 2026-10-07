@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { CopilotMessage, CopilotReport, CopilotTextSend, SkillRow } from "../../../shared/copilot/types";
+import { isUnattended, schedulePhrase } from "../../../shared/copilot/skillSchedule";
 import { runWhen, whenLabel } from "./skillsTime";
 
 /** Skills screens, built from docs Claude Design "MRG Copilot Skills". */
@@ -38,7 +39,7 @@ function rowStatus(skill: SkillRow, log: CopilotTextSend[]): { dot: string; text
   }
   const run = skill.lastRun;
   if (!run) {
-    return { dot: "var(--quiet)", text: skill.schedule === "daily" ? "Hasn’t run yet · first run tomorrow, ~5:00" : "Hasn’t run yet" };
+    return { dot: "var(--quiet)", text: isUnattended(skill.schedule) ? `Hasn’t run yet · ${schedulePhrase(skill.schedule)}` : "Hasn’t run yet" };
   }
   if (run.status === "running") return { dot: "var(--primary)", text: "Running now · the report lands in its chat" };
   if (run.status === "failed") return { dot: "var(--danger)", text: `Failed ${runWhen(run.started_at)} · ${run.error || "it couldn’t finish"}` };
@@ -62,7 +63,7 @@ export function SkillsList({
   onOpen: (skill: SkillRow) => void;
   onToggle: (skill: SkillRow) => void;
   onNew: () => void;
-  onBoard: (kind: "seed" | "blank") => void;
+  onBoard: (target: "seed" | "blank" | SkillRow) => void;
 }) {
   return (
     <>
@@ -75,6 +76,12 @@ export function SkillsList({
           <span><strong>New workflow</strong><em>A blank board. Add the first step.</em></span>
           <Chev />
         </button>
+        {skills.filter((skill) => skill.kind === "playbook" && skill.workflow?.nodes?.length).map((skill) => (
+          <button key={skill.id} type="button" onClick={() => onBoard(skill)}>
+            <span><strong>{skill.name}</strong><em>{skill.workflow?.boundary || skill.must_not}</em></span>
+            <Chev />
+          </button>
+        ))}
       </div>
       <div className="cp-sk-head">
         <div className="cp-sk-headcopy">
@@ -208,7 +215,7 @@ export function SkillDetail({
     card = {
       word: "Not run yet",
       time: "",
-      line: skill.schedule === "daily" ? "The first run is tomorrow, ~5:00." : "Press Run now to try it.",
+      line: isUnattended(skill.schedule) ? `The first run is ${schedulePhrase(skill.schedule)}.` : "Press Run now to try it.",
       sub: "Nothing was sent.",
       dot: "var(--quiet)",
       color: "var(--muted)",
@@ -233,7 +240,7 @@ export function SkillDetail({
       : {
           label: "When it runs",
           value: whenLabel(skill),
-          hint: skill.schedule === "daily" ? "Fixed schedule." : "Runs when you ask in chat.",
+          hint: isUnattended(skill.schedule) ? "Fixed schedule." : "Runs when you ask in chat.",
           readOnly: true,
         },
     ...(text ? [] : [{ label: "What it reads", key: "reads" as const }]),
@@ -246,8 +253,8 @@ export function SkillDetail({
 
   const note = text
     ? "Saving doesn’t text anyone. The next clean texts only the numbers below."
-    : skill.schedule === "daily"
-      ? "Saving doesn’t run it. The next run is tomorrow, ~5:00."
+    : isUnattended(skill.schedule)
+      ? `Saving doesn’t run it. ${schedulePhrase(skill.schedule)}.`
       : "Saving doesn’t send anything. It runs when you ask in chat.";
 
   return (
@@ -349,10 +356,11 @@ export function SkillDraftCard({
   const d = message.draft;
   if (!d) return null;
   const text = d.skillKind === "text";
-  const daily = !text && d.skillSchedule === "daily";
+  const schedule = d.skillSchedule ?? "";
+  const unattended = !text && isUnattended(schedule);
   const rows: [string, string][] = [
     ["Name", d.skillName ?? ""],
-    ["When it runs", daily ? "Every morning, ~5:00" : d.skillWhen ?? ""],
+    ["When it runs", unattended ? schedulePhrase(schedule) : d.skillWhen ?? ""],
     ...(text ? [] : ([["What it reads", d.skillReads ?? ""]] as [string, string][])),
     [text ? "Text message" : "What it leaves you", d.skillDrafts ?? ""],
     ["It must not", d.skillMustNot ?? ""],
@@ -396,8 +404,8 @@ export function SkillDraftCard({
           <p className="cp-sk-after">
             {text
               ? "Once saved, it texts only your number. It never texts a guest."
-              : daily
-                ? "Once saved, it runs on its own every morning. Turn it off any time in Skills."
+              : unattended
+                ? "Once saved, it stays off until you turn it on. Then it runs on that morning."
                 : "Once saved, it runs when you ask in chat. Turn it off any time in Skills."}
           </p>
         </>
@@ -406,8 +414,8 @@ export function SkillDraftCard({
         <p>
           {text
             ? "Saved. It texts your number when that happens."
-            : daily
-              ? "Saved. First run tomorrow, ~5:00. The report lands in its own chat."
+            : unattended
+              ? "Saved, and off. Turn it on when you want it to run. The report lands in its own chat."
               : "Saved. Ask for it in chat when you need it."}
         </p>
       ) : null}

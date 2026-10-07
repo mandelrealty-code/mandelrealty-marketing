@@ -1,4 +1,5 @@
 import type { SkillRow } from "../../../shared/copilot/types";
+import { schedulePhrase } from "../../../shared/copilot/skillSchedule";
 
 const TZ = "America/Toronto";
 
@@ -20,5 +21,5 @@ export function runWhen(iso: string, capital = false): string {
 
 export function whenLabel(skill: SkillRow): string {
   if (skill.kind === "text") return skill.when_text || "When it happens";
-  return skill.schedule === "daily" ? "Every morning, ~5:00" : "When you ask in chat";
+  return schedulePhrase(skill.schedule);
 }

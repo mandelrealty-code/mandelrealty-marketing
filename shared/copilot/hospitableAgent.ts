@@ -14,6 +14,7 @@ import { withoutHubSecrets } from "./hubSecrets.js";
 import { keepWay } from "./memoryFiles.js";
 import type { WorkModelId } from "./models.js";
 import { addDays, torontoToday } from "./time.js";
+import { normalizeSchedule } from "./skillSchedule.js";
 import type { CopilotDraft } from "./types.js";
 
 /**
@@ -290,7 +291,7 @@ function mailTools(): ToolDef[] {
               skillDrafts: { type: "string" },
               skillMustNot: { type: "string" },
               skillKind: { type: "string", enum: ["playbook", "text"] },
-              skillSchedule: { type: "string", enum: ["daily", ""] },
+              skillSchedule: { type: "string", description: "daily, weekly:Monday (or another weekday), or empty." },
             },
           },
         },
@@ -502,8 +503,8 @@ async function runLoop(
   if (draft?.channel === "email" && !/submit/i.test(body)) {
     body = `${body}\n\nNothing was sent. Press Submit to send it, or Hold to leave it.`.trim();
   }
-  if (draft?.channel === "skill" && !/save/i.test(body)) {
-    body = `${body}\n\nNothing was saved. Press Save to keep the skill.`.trim();
+  if (draft?.channel === "skill" && !/saved, and off/i.test(body)) {
+    body = `${body}\n\nSaved, and off. It will not run until you turn it on.`.trim();
   }
   const steps = [...new Set(used.filter((name) => name !== "finish").map((name) => stepFor(name, Boolean(held.action))))].slice(0, 8).map((text) => ({ text }));
   if (!steps.length) steps.push({ text: "Answered" });
@@ -760,7 +761,7 @@ function offerDraft(value: unknown): CopilotDraft | null {
       skillMustNot: text(row.skillMustNot).slice(0, 400) || "Do not send until a partner presses Submit.",
       skillKind: row.skillKind === "text" ? "text" : "playbook",
       skillPhone: text(row.skillPhone).slice(0, 20),
-      skillSchedule: row.skillSchedule === "daily" ? "daily" : "",
+      skillSchedule: normalizeSchedule(String(row.skillSchedule ?? ""), text(row.skillWhen)).schedule,
     };
   }
   return null;

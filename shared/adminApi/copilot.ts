@@ -25,6 +25,10 @@ import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFro
 import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
 import { draftForCard, skillTurn } from "../copilot/reply.js";
+import { skillFromWords, skillFromWorkflow } from "../copilot/skillShape.js";
+import { persistDescribedSkill } from "../copilot/skillPersist.js";
+import { testWorkflow } from "../copilot/skillExecute.js";
+import { missingNumber, type Workflow } from "../copilot/workflow.js";
 import { chooseOpenItem, listOpenItems, openItemChoice } from "../copilot/openItems.js";
 import { toE164 } from "../followUpSequences.js";
 import {
@@ -47,9 +51,10 @@ import {
   saveSkill,
   updateDraft,
 } from "../copilot/store.js";
-import { collectSkillRuns, runsOnItsOwn, startSkillRun } from "../copilot/skillRunner.js";
-import { listRuns } from "../copilot/store.js";
 import type { ConnectorRow, SkillRow } from "../copilot/types.js";
+import { collectSkillRuns, runsOnItsOwn, startSkillRun } from "../copilot/skillRunner.js";
+import { schedulePhrase, normalizeSchedule } from "../copilot/skillSchedule.js";
+import { listRuns } from "../copilot/store.js";
 
 const HOSPITABLE_TOOLS = ["guest_inbox", "list_stays", "read_guest_messages"];
 
@@ -115,6 +120,7 @@ async function hospitableMessage(
     draft: turn.draft,
     choices: turn.choices,
   });
+  if (turn.draft?.channel === "skill") await persistDescribedSkill(turn.draft, question).catch(() => undefined);
   return true;
 }
 
@@ -244,7 +250,7 @@ async function factsFor(): Promise<string> {
   if (!skills.length) lines.push("No saved skills.");
   for (const skill of skills) {
     lines.push(
-      `Skill ${skill.name} (${skill.enabled ? "on" : "off"}, ${skill.kind}, ${runsOnItsOwn(skill) ? "runs on its own every morning" : "runs only when asked"}, last run ${skill.lastRun ? skill.lastRun.status : "never"}): when ${skill.when_text}. Reads ${skill.reads}. Writes ${skill.drafts}. Must not ${skill.must_not}. Phone ${skill.phone || "none"}.`,
+      `Skill ${skill.name} (${skill.enabled ? "on" : "off"}, ${skill.kind}, ${runsOnItsOwn(skill) ? schedulePhrase(skill.schedule) : "runs only when asked"}, last run ${skill.lastRun ? skill.lastRun.status : "never"}): when ${skill.when_text}. Reads ${skill.reads}. Writes ${skill.drafts}. Must not ${skill.must_not}. Phone ${skill.phone || "none"}.`,
     );
   }
   for (const note of memory) lines.push(`Remembered: ${note}`);
@@ -672,14 +678,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const history = await listMessages(chatId);
         const prior = history.slice(0, -1).map((message) => ({ role: message.role, body: message.body }));
         const result = skillTurn(text, prior);
+        let bodyText = result.body;
+        if (result.draft?.channel === "skill") {
+          const saved = await persistDescribedSkill(result.draft, [...prior.map((message) => message.body), text].join("\n")).catch(() => null);
+          if (saved) bodyText = bodyText.replace(/Nothing was saved\.[^\n]*/gi, "Saved, and off. It will not run until you turn it on.");
+        }
         await addMessage({
           chatId,
           role: "assistant",
-          body: result.body,
+          body: bodyText,
           draft: result.draft,
           choices: result.choices ?? null,
           steps: [{ text: result.draft ? "Drafted the skill" : "Asked about the skill" }],
-          thought: "Nothing was saved, and nothing was sent.",
+          thought: result.draft?.channel === "skill" && result.draft.skillKind !== "text"
+            ? "Saved, and off until you turn it on. Nothing was sent."
+            : "Nothing was saved, and nothing was sent.",
         });
         return done();
       }
@@ -753,16 +766,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (kind === "text" && !phone) {
           return res.status(400).json({ error: "Add your mobile number. Nothing was saved." });
         }
+        const name = String(body.name ?? "New skill").slice(0, 120);
+        const when = String(body.when ?? "");
+        const reads = String(body.reads ?? "");
+        const drafts = String(body.drafts ?? "");
+        const shaped = skillFromWords(`${when}\n${name}\n${reads}\n${drafts}`);
+        const existing = (await listSkills()).find((row) => row.name === name);
         const skill = await saveSkill({
-          name: String(body.name ?? "New skill"),
-          when_text: String(body.when ?? ""),
-          reads: String(body.reads ?? ""),
-          drafts: String(body.drafts ?? ""),
-          must_not: String(body.mustNot ?? ""),
-          enabled: true,
+          id: existing?.id,
+          name,
+          when_text: when || shaped.when_text,
+          reads: reads || shaped.reads,
+          drafts: drafts || shaped.drafts,
+          must_not: String(body.mustNot ?? shaped.must_not),
+          enabled: existing?.enabled ?? false,
           kind,
           phone: phone ?? "",
-          schedule: kind === "playbook" && body.schedule === "daily" ? "daily" : "",
+          schedule: kind === "playbook" ? normalizeSchedule(String(body.schedule ?? shaped.schedule), when || shaped.when_text).schedule : "",
+          workflow: existing?.workflow ?? shaped.workflow,
         });
         if (phone) {
           try {
@@ -850,6 +871,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ message });
       }
       return res.status(400).json({ error: "Unknown action." });
+    }
+
+    if (op === "workflow-test") {
+      const wf = body.workflow as Workflow;
+      if (!wf || !Array.isArray(wf.nodes)) return res.status(400).json({ error: "Missing workflow." });
+      const results = await testWorkflow(wf);
+      return res.status(200).json({ results });
+    }
+
+    if (op === "workflow") {
+      const wf = body.workflow as Workflow;
+      if (!wf || !Array.isArray(wf.nodes)) return res.status(400).json({ error: "Missing workflow." });
+      if (wf.on && missingNumber(wf)) return res.status(400).json({ error: "Add a number first. Nothing was turned on." });
+      const shaped = skillFromWorkflow(wf);
+      const phone = shaped.phone ? toE164(shaped.phone) ?? "" : "";
+      if (shaped.phone.trim() && !phone) return res.status(400).json({ error: "That mobile number is not valid." });
+      const existing = (await listSkills()).find((row) => row.name === shaped.name)
+        ?? (wf.id && wf.id !== "new" ? (await listSkills()).find((row) => row.workflow?.id === wf.id) : undefined);
+      const skill = await saveSkill({
+        ...shaped,
+        id: existing?.id,
+        phone,
+        enabled: Boolean(wf.on),
+        workflow: shaped.workflow,
+      });
+      if (phone) {
+        try {
+          await addTextNumber(phone);
+        } catch {
+          /* The skill still keeps the number if the allowlist table is not there yet. */
+        }
+      }
+      return res.status(200).json({ skill, skills: await skillRows() });
     }
 
     if (op === "skill") {

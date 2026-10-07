@@ -10,6 +10,7 @@ import {
   type FnName,
   type NodeResult,
   type Port,
+  type RunEvent,
   type Workflow,
   type WfNode,
   canConnect,
@@ -19,6 +20,7 @@ import {
   linkTarget,
   missingNumber,
   placeNewNode,
+  playResults,
   runOrder,
   runSummary,
   simulateRun,
@@ -97,10 +99,14 @@ export function WorkflowBuilder({
   seed,
   theme,
   onBack,
+  onSave,
+  onTest,
 }: {
   seed: Workflow;
   theme: "dark" | "light";
   onBack: () => void;
+  onSave?: (wf: Workflow) => Promise<void>;
+  onTest?: (wf: Workflow) => Promise<Record<string, NodeResult>>;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const seq = useRef(seed.id === BLANK.id ? 1 : 10);
@@ -349,10 +355,14 @@ export function WorkflowBuilder({
     const snapshot = wfRef.current;
     setPicker(null);
     setRun({ status: "running", order: runOrder(snapshot), nodes: {}, edges: {} });
-    cancelRun.current = simulateRun(snapshot, (event) => {
+    const apply = (event: RunEvent) => {
       setRun((prev) => {
         if (!prev) return prev;
-        if (event.type === "done") return { ...prev, status: "done", current: undefined };
+        if (event.type === "done") {
+          const last = [...prev.order].reverse().find((id) => (prev.nodes[id]?.out?.length ?? 0) > 0) ?? prev.order.at(-1);
+          if (last) setSel(last);
+          return { ...prev, status: "done", current: undefined };
+        }
         if (event.type === "edge") return { ...prev, edges: { ...prev.edges, [event.edgeId]: event.st } };
         const nodes = { ...prev.nodes, [event.nodeId]: event.result };
         return {
@@ -362,7 +372,44 @@ export function WorkflowBuilder({
           failed: event.result.st === "fail" ? prev.failed || event.nodeId : prev.failed,
         };
       });
+    };
+    if (!onTest) {
+      cancelRun.current = simulateRun(snapshot, apply);
+      return;
+    }
+    void onTest(snapshot).then((results) => {
+      cancelRun.current = playResults(snapshot, results, apply);
+    }).catch((err: unknown) => {
+      const first = runOrder(snapshot)[0];
+      const message = err instanceof Error ? err.message : "The test failed.";
+      cancelRun.current = playResults(snapshot, first ? { [first]: { st: "fail", ms: 0.1, err: message, out: [] } } : {}, apply);
     });
+  }
+
+  async function leave() {
+    if (onSave && wfRef.current.nodes.length) {
+      try {
+        await onSave(wfRef.current);
+      } catch {
+        return;
+      }
+    }
+    onBack();
+  }
+
+  async function toggleArmed() {
+    if (missingNumber(wfRef.current)) return;
+    const previous = wfRef.current;
+    const next = { ...previous, on: !previous.on };
+    wfRef.current = next;
+    setWf(next);
+    if (!onSave) return;
+    try {
+      await onSave(next);
+    } catch {
+      wfRef.current = previous;
+      setWf(previous);
+    }
   }
 
   function closeRun() {
@@ -421,7 +468,7 @@ export function WorkflowBuilder({
   return (
     <div className="cp-wf">
       <div className="cp-wf-bar">
-        <button type="button" className="cp-wf-back" onClick={onBack}>
+        <button type="button" className="cp-wf-back" onClick={() => void leave()}>
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M12 4.5L6.5 10l5.5 5.5" />
           </svg>
@@ -439,7 +486,7 @@ export function WorkflowBuilder({
           )}
           {running ? "Running…" : "Test run"}
         </button>
-        <button type="button" className="cp-wf-switch" onClick={() => { if (!missing) setWf((current) => ({ ...current, on: !current.on })); }}>
+        <button type="button" className="cp-wf-switch" onClick={() => void toggleArmed()}>
           {armed ? "On" : "Off"}
           <span className={`track${armed ? " on" : ""}`}><span /></span>
         </button>
@@ -447,7 +494,7 @@ export function WorkflowBuilder({
           type="button"
           className={`cp-wf-turn${locked ? " off" : ""}${missing ? " need" : ""}`}
           style={{ cursor: missing ? "default" : "pointer" }}
-          onClick={() => { if (!missing) setWf((current) => ({ ...current, on: !current.on })); }}
+          onClick={() => void toggleArmed()}
         >
           {armed ? "Turn it off" : "Turn it on"}
         </button>
