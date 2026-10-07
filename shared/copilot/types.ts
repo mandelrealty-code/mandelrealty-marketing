@@ -119,6 +119,8 @@ export type BriefCard = {
   group: "focus" | "eating";
   text: string;
   action: string;
+  /** Every choice the card can take. The overview renders each one as a button. */
+  actions?: string[];
   source: string;
   chatId?: string;
   purchaseStatus?: "ordered" | "shipped" | "delivered";

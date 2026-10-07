@@ -34,7 +34,7 @@ import { skillFromWords, skillFromWorkflow } from "../copilot/skillShape.js";
 import { persistDescribedSkill } from "../copilot/skillPersist.js";
 import { testWorkflow } from "../copilot/skillExecute.js";
 import { missingNumber, type Workflow } from "../copilot/workflow.js";
-import { chooseOpenItem, listOpenItems, openItemChoice } from "../copilot/openItems.js";
+import { chooseBriefOpenItem, chooseOpenItem, listOpenItems, openItemChoice } from "../copilot/openItems.js";
 import { toE164 } from "../followUpSequences.js";
 import {
   addMessage,
@@ -362,6 +362,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const cardId = String(body.cardId ?? "").trim();
       if (!cardId) return res.status(400).json({ error: "Missing card." });
       await dismissCard(cardId);
+      return res.status(200).json({ brief: await buildBrief() });
+    }
+
+    if (op === "open-item") {
+      const cardId = String(body.cardId ?? "").trim();
+      const label = String(body.choice ?? "").trim();
+      const applied = await chooseBriefOpenItem(cardId, label);
+      if (!applied) return res.status(400).json({ error: "Missing choice." });
       return res.status(200).json({ brief: await buildBrief() });
     }
 

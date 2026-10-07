@@ -80,12 +80,13 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
     const items = await listOpenItems();
     for (const item of items) {
       if (item.status !== "open") continue;
-      const ask = item.askedOn === today ? "" : " Already upgraded. Still pending.";
+      const choices = item.askedOn === today ? undefined : ["Already upgraded", "Still pending"];
       take(focus, {
         id: `open:${item.id}`,
         group: "focus",
-        text: `${item.text}. Last verified ${verifiedLabel(item.verifiedOn)}.${ask}`,
-        action: item.askedOn === today ? "Open" : "Already upgraded",
+        text: `${item.text}. Last verified ${verifiedLabel(item.verifiedOn)}.`,
+        action: choices ? choices[0] : "Open",
+        actions: choices,
         source: item.source || "Records",
       }, skipped);
     }

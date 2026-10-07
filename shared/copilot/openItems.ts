@@ -37,6 +37,15 @@ export async function chooseOpenItem(id: string, choice: "closed" | "pending"): 
   await saveStoredOpenItem(choice === "closed" ? { ...row, status: "closed" } : { ...row, askedOn: today });
 }
 
+/** The brief card id is `open:<item id>`. The label is the same choice Checks chat accepts. */
+export async function chooseBriefOpenItem(cardId: string, label: string): Promise<boolean> {
+  const choice = openItemChoice(label);
+  const id = cardId.startsWith("open:") ? cardId.slice("open:".length) : "";
+  if (!choice || !id) return false;
+  await chooseOpenItem(id, choice);
+  return true;
+}
+
 export function openItemChoice(text: string): "closed" | "pending" | null {
   const line = text.trim();
   if (/^(?:[a-d]\.\s*)?already upgraded\.?$/i.test(line)) return "closed";

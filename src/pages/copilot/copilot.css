@@ -652,6 +652,18 @@ html.cp-app[data-cp-theme="light"] #root {
   opacity: 0.6;
 }
 
+.cp-card-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.cp-card-actions .cp-cta {
+  margin-top: 0;
+}
+
 .cp-cta-label {
   min-width: 0;
   overflow: hidden;

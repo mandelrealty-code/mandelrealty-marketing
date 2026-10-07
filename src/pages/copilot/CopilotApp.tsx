@@ -1456,7 +1456,27 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
+  async function pickOpenItem(item: BriefCard, choice: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await api<{ brief: BriefPayload }>("open-item", { cardId: item.id, choice });
+      setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update that item.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function cardAction(item: BriefCard, label: string) {
+    if (item.actions?.includes(label)) return () => void pickOpenItem(item, label);
+    if (item.chatId) return () => void openChat(item.chatId as string);
+    return () => void openCard(item.text, label);
+  }
+
   function card(item: BriefCard) {
+    const actions = item.actions?.length ? item.actions : [item.action];
     return (
       <article key={item.id} className="cp-card">
         <div className="cp-card-top">
@@ -1485,10 +1505,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         ) : item.purchaseStatus && item.trackingUrl ? (
           <a className="cp-purchase-link" href={item.trackingUrl} target="_blank" rel="noreferrer">Track order</a>
         ) : (
-          <button type="button" className="cp-cta" disabled={busy} onClick={() => void (item.chatId ? openChat(item.chatId) : openCard(item.text, item.action))}>
-            <span className="cp-cta-label">{item.action}</span>
-            <span className="cp-go"><Arrow /></span>
-          </button>
+          <div className="cp-card-actions">
+            {actions.map((label) => (
+              <button key={label} type="button" className="cp-cta" disabled={busy} onClick={cardAction(item, label)}>
+                <span className="cp-cta-label">{label}</span>
+                <span className="cp-go"><Arrow /></span>
+              </button>
+            ))}
+          </div>
         )}
       </article>
     );

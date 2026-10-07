@@ -28,7 +28,8 @@ import {
 import { BUILDING_MEMORY, CODE, ID, OPEN_ITEM, ryanMail, worldAt } from "./catalog.js";
 import { parityEnabled } from "./flag.js";
 import { parityNow, setParityClock } from "./clock.js";
-import { chooseOpenItem } from "../openItems.js";
+import { chooseBriefOpenItem } from "../openItems.js";
+import type { BriefCard, BriefPayload } from "../types.js";
 import { parityItems, parityMemory, installWorld, type ParityReservation, type ParityWorld } from "./world.js";
 import { runCopilotPass } from "../pass.js";
 
@@ -114,6 +115,11 @@ function invented(text: string): boolean {
   return false;
 }
 
+function openItemCard(brief: string): BriefCard | undefined {
+  const payload = JSON.parse(brief) as BriefPayload;
+  return [...payload.focus, ...payload.eating].find((row) => row.id.startsWith("open:"));
+}
+
 function namesOutOfScope(text: string): boolean {
   return /1104|King St W Condo|Partner Loft/i.test(text);
 }
@@ -122,17 +128,21 @@ async function fixtureOpenItem(): Promise<void> {
   const result = await scan(worldAt("2026-10-06T09:00:00-04:00"));
   expectNothingSent();
   expect(/1\.14 GB/.test(result.brief) && /Oct|October/.test(result.brief), "brief shows the Supabase item and the Oct 5 verification date", "the brief did not show the stored Supabase limit item");
-  expect(/Already upgraded/.test(result.brief) && /Still pending/.test(result.brief), "brief offers Already upgraded and Still pending", "the two choices were not on the brief");
+  const card = openItemCard(result.brief);
+  expect(Boolean(card), "the open item is a brief card", "the brief had no open-item card");
+  const actions = card?.actions ?? [];
+  expect(actions[0] === "Already upgraded" && actions[1] === "Still pending", "both choices are actions on the brief card", actions.join(", ") || "no actions");
+  expect(!/Already upgraded|Still pending/.test(card?.text ?? ""), "the choices are not body text", card?.text ?? "");
   expect(capturedReminders().length === 0, "Still pending creates no reminder", "a reminder was created");
   const before = parityItems().find((item) => item.id === "supabase-storage");
-  await chooseOpenItem("supabase-storage", "pending");
+  expect(await chooseBriefOpenItem(card?.id ?? "", actions[1] ?? ""), "Still pending is picked from the brief", "Still pending was not a brief action");
   const pending = await rescan();
   const after = parityItems().find((item) => item.id === "supabase-storage");
   expect(/1\.14 GB/.test(pending.brief), "Still pending leaves the item on the brief", "the item disappeared after Still pending");
   expect(after?.status === "open" && after.text === before?.text && after.verifiedOn === before?.verifiedOn, "Still pending leaves the record unchanged", "the open item changed");
   expect(capturedReminders().length === 0, "Still pending creates no reminder", "a reminder was created");
   await scan(worldAt("2026-10-06T09:00:00-04:00"));
-  await chooseOpenItem("supabase-storage", "closed");
+  expect(await chooseBriefOpenItem(card?.id ?? "", actions[0] ?? ""), "Already upgraded is picked from the brief", "Already upgraded was not a brief action");
   const later = await rescan(new Date("2026-10-20T09:00:00-04:00"));
   expect(!/1\.14 GB/.test(later.brief), "Already upgraded stays closed on a later brief", "the closed item came back");
   expectDraftRules(result.drafts, result.reports);
