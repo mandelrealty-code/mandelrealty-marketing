@@ -10,6 +10,7 @@ import { addMessage, addReminder, flagChatNeedsYou, getRun, listSkills, updateRu
 import { cleanerTool, hubTool, readSheetTool, writeSheetTool } from "./skillExecute.js";
 import { guestCheckins, formatCheckins } from "./skillContacts.js";
 import { answerOps, createOpsSop, prepareCleanerAssignment, prepareContractAmendment } from "./ops.js";
+import { buildProposal, editProposal, prepareProposalSend } from "./proposal.js";
 import { deliverToPartners, channelsFor } from "./skillDelivery.js";
 import { reportPdf } from "./skillPdf.js";
 import { researchWeb } from "./skillResearch.js";
@@ -36,6 +37,14 @@ type Tool = {
 };
 
 const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
+
+function harnessNow(value: unknown): Date | undefined {
+  if (!parityEnabled()) return undefined;
+  const raw = text(value, 40);
+  if (!raw) return undefined;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
 
 function text(value: unknown, max = 4000): string {
   return String(value ?? "").trim().slice(0, max);
@@ -478,6 +487,64 @@ const TOOLS: Record<string, Tool> = {
       scheduledOn: text(args.scheduled_on, 20),
       cleanerName: text(args.cleaner_name, 80),
     }),
+  },
+  build_proposal: {
+    description: "Builds a unit proposal in OPS for a client or a new prospect. Pass the address and each room's name, length, width, unit, and optional before photo (base64). Sources items and saves version 1. This does not email the client.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string" },
+        email: { type: "string" },
+        address: { type: "string" },
+        rooms: { type: "array", items: { type: "object" } },
+      },
+      required: ["client", "address", "rooms"],
+    },
+    readOnly: false,
+    call: async (args) => {
+      const rooms = Array.isArray(args.rooms) ? args.rooms.flatMap((room) => {
+        if (!room || typeof room !== "object") return [];
+        const row = room as { name?: unknown; length?: unknown; width?: unknown; unit?: unknown; photo?: unknown; photoMime?: unknown };
+        const photo = typeof row.photo === "string" ? row.photo : "";
+        return [{
+          name: text(row.name, 80),
+          length: typeof row.length === "number" ? row.length : Number(row.length),
+          width: typeof row.width === "number" ? row.width : Number(row.width),
+          unit: text(row.unit, 8) || "ft",
+          photo: photo.startsWith("data:") ? photo.slice(photo.indexOf(",") + 1) : photo,
+          photoMime: text(row.photoMime, 40) || "image/png",
+        }];
+      }) : [];
+      return buildProposal({
+        clientName: text(args.client, 120),
+        email: text(args.email, 180),
+        address: text(args.address, 200),
+        rooms,
+        now: harnessNow(args.now),
+      });
+    },
+  },
+  edit_proposal: {
+    description: "Edits the latest unit proposal, or the one with proposal_id. Instruction examples: make this cheaper, move the desk to the bedroom, take out the rug. Saves a new version and regenerates images only for rooms the edit touches. This does not email the client.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        instruction: { type: "string" },
+        proposal_id: { type: "string" },
+      },
+      required: ["instruction"],
+    },
+    readOnly: false,
+    call: async (args) => editProposal(text(args.instruction, 400), text(args.proposal_id, 80) || undefined, harnessNow(args.now)),
+  },
+  send_proposal: {
+    description: "Prepares the proposal email for a partner to approve. Nothing is sent until Submit.",
+    inputSchema: {
+      type: "object",
+      properties: { proposal_id: { type: "string" } },
+    },
+    readOnly: false,
+    call: async (args) => prepareProposalSend(text(args.proposal_id, 80) || undefined),
   },
 };
 

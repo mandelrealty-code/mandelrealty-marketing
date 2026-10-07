@@ -26,6 +26,8 @@ export type CopilotDraft = {
   contractSend?: { clientId: string; contractId: string };
   /** Set when Submit should assign this cleaner. Nothing is written until then. */
   cleanerAssign?: { propertyId: string; scheduledOn: string; cleanerName: string; unit: string };
+  /** Set when Submit should email this proposal. Nothing is sent until then. */
+  proposalSend?: { proposalId: string; to: string };
 };
 
 export type Weekday = "Sunday" | "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday";

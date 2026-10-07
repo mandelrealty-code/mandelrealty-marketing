@@ -20,6 +20,7 @@ import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js
 import { answerRecords } from "../copilot/recordsAnswer.js";
 import { answerStay } from "../copilot/stayAnswer.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
+import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, editProposal, prepareProposalSend, proposalFromWords } from "../copilot/proposal.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
@@ -663,6 +664,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
+        if (asksProposalSend(text)) {
+          const prepared = await prepareProposalSend();
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: prepared.body,
+            draft: prepared.draft,
+            steps: [{ text: prepared.draft ? "Prepared the proposal email" : "Did not prepare a send" }],
+            thought: "Nothing was sent.",
+          });
+          return done();
+        }
+        if (asksProposalEdit(text)) {
+          const edited = await editProposal(text);
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: edited.body,
+            steps: [{ text: edited.proposal && edited.regenerated.length ? "Saved a new proposal version" : "Did not change the proposal" }],
+            thought: "Nothing was sent.",
+          });
+          return done();
+        }
+        if (asksProposal(text)) {
+          const prepared = await proposalFromWords(text, images);
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: prepared.body,
+            steps: [{ text: prepared.proposal ? "Saved the proposal" : "Did not save a proposal" }],
+            thought: "Nothing was sent.",
+          });
+          return done();
+        }
         if (asksCleanerAssignment(text)) {
           const job = cleanerFromWords(text);
           const prepared = job
@@ -864,6 +899,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const note = body.channel === "note";
         const current = await readMessage(messageId);
         const draft = current?.draft;
+        if (draft?.proposalSend?.proposalId) {
+          try {
+            const said = await commitProposalSend(draft.proposalSend.proposalId);
+            const message = await updateDraft(messageId, {
+              status: /was sent on/.test(said) ? "sent" : "waiting",
+              bodyText: said,
+            });
+            return res.status(200).json({ message });
+          } catch (err) {
+            const message = await updateDraft(messageId, {
+              status: "waiting",
+              bodyText: err instanceof Error ? `${err.message} Nothing was sent.` : "Nothing was sent.",
+            });
+            return res.status(200).json({ message });
+          }
+        }
         if (draft?.contractSend?.contractId) {
           try {
             const said = await commitContractResend(draft.contractSend.contractId);

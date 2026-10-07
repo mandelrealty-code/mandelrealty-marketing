@@ -8,6 +8,7 @@ import type { PmContract, PmContractStatus } from "../../pm/contractStore.js";
 import type { PmReservationRow } from "../../pm/reservationStore.js";
 import type { SopItem, SopStep, SopTargetRole } from "../../pm/sopTypes.js";
 import type { SignField } from "../../pm/signFields.js";
+import type { ProposalDraft, ProposalRecord, ProposalRoom } from "../../pm/proposalStore.js";
 import type { PmClient, PmClientListItem } from "../../pm/types.js";
 import { parityEnabled } from "./flag.js";
 
@@ -21,12 +22,14 @@ let clients: PmClient[] = [];
 let reservations: PmReservationRow[] = [];
 let contracts: OpsContractFile[] = [];
 let sops: SopItem[] = [];
+let proposals: ProposalRecord[] = [];
 
 export function resetOps(): void {
   clients = [];
   reservations = [];
   contracts = [];
   sops = [];
+  proposals = [];
 }
 
 export function opsActive(): boolean {
@@ -59,6 +62,24 @@ export function opsClients(): PmClientListItem[] | null {
 export function opsClient(id: string): PmClient | null {
   if (!opsActive()) return null;
   return clients.find((row) => row.id === id) ?? null;
+}
+
+export function opsCreateClient(input: { name: string; email?: string }): PmClient {
+  const name = input.name.trim();
+  const existing = clients.find((row) => row.name.toLowerCase() === name.toLowerCase());
+  if (existing) return { ...existing };
+  const row: PmClient = {
+    id: randomUUID(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    name,
+    email: (input.email ?? "").trim(),
+    phone: "",
+    status: "active",
+    lead_id: null,
+  };
+  clients.push(row);
+  return { ...row };
 }
 
 export function opsClientByName(name: string): PmClient | null {
@@ -201,4 +222,52 @@ export function opsUpsertSop(input: { title: string; target_role?: SopTargetRole
   if (existing) sops = sops.map((row) => (row.id === existing.id ? item : row));
   else sops.push(item);
   return { ...item, steps: item.steps.map((step) => ({ ...step })) };
+}
+
+function copyRoom(room: ProposalRoom): ProposalRoom {
+  return { ...room, items: room.items.map((item) => ({ ...item })) };
+}
+
+function copyProposal(row: ProposalRecord): ProposalRecord {
+  return { ...row, rooms: row.rooms.map(copyRoom), pdf: Buffer.from(row.pdf) };
+}
+
+export function opsProposals(clientId?: string): ProposalRecord[] | null {
+  if (!opsActive()) return null;
+  return proposals
+    .filter((row) => !clientId || row.client_id === clientId)
+    .map(copyProposal)
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+}
+
+export function opsProposal(id: string): ProposalRecord | null {
+  if (!opsActive()) return null;
+  const row = proposals.find((item) => item.id === id);
+  return row ? copyProposal(row) : null;
+}
+
+export function opsCreateProposal(input: ProposalDraft): ProposalRecord {
+  const row: ProposalRecord = {
+    id: randomUUID(),
+    created_at: new Date().toISOString(),
+    client_id: input.client_id,
+    address: input.address,
+    version: input.version,
+    status: "draft",
+    sourced_on: input.sourced_on,
+    total_cents: input.total_cents,
+    currency: "CAD",
+    estimate: input.estimate,
+    images_note: input.images_note,
+    ready: input.ready,
+    rooms: input.rooms.map(copyRoom),
+    pdf: Buffer.from(input.pdf),
+  };
+  proposals.push(row);
+  return copyProposal(row);
+}
+
+export function opsMarkProposalSent(id: string): void {
+  const row = proposals.find((item) => item.id === id);
+  if (row) row.status = "sent";
 }

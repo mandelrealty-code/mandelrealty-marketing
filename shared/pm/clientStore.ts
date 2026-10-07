@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
-import { opsClient, opsClients } from "../copilot/parity/opsState.js";
+import { opsActive, opsClient, opsClients, opsCreateClient } from "../copilot/parity/opsState.js";
 import { parityMcpToken, parityPat } from "../copilot/parity/world.js";
 import type { PmClient, PmClientListItem, PmClientStatus, PmSettings } from "./types.js";
 
@@ -48,6 +48,7 @@ export async function createPmClient(input: {
 }): Promise<PmClient> {
   const name = input.name.trim();
   if (!name) throw new Error("Name is required.");
+  if (opsActive()) return opsCreateClient({ name, email: input.email });
   const status = input.status === "paused" ? "paused" : "active";
   const { data, error } = await db()
     .from("pm_clients")
