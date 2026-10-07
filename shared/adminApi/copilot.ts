@@ -15,6 +15,7 @@ import { answerSignIn, cancelCursorRun, collectCursorRun } from "../copilot/curs
 import { cancelBrowser, collectBrowser, browserIsLive, publicError, resumeBrowser, startBrowser } from "../copilot/webBrowser.js";
 import { nameChat } from "../copilot/chatTitle.js";
 import { pictureFor, wantsWeb, workModel } from "../copilot/models.js";
+import { answerWebLookup, asksWebLookup } from "../copilot/webLookup.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords } from "../copilot/recordsAnswer.js";
@@ -555,6 +556,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               : { chatId, role: "assistant", body: "The picture didn’t come back. Nothing was saved." },
           );
         }
+        return done();
+      }
+      if (!pictureMode && !skillMode && asksWebLookup(text)) {
+        const said = await answerWebLookup(text);
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: said,
+          steps: [{ text: /that read failed/i.test(said) ? "That read failed" : "Opened the page" }],
+          thought: "This came from the page. Nothing was purchased.",
+        });
         return done();
       }
       if (!pictureMode && !skillMode) {

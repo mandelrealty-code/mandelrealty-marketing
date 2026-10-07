@@ -25,6 +25,17 @@ export async function researchWeb(query: string): Promise<ResearchPage | { error
   return liveResearch(asked);
 }
 
+function destination(query: string): string {
+  if (/^https:\/\//i.test(query.trim())) return query.trim();
+  const product = query
+    .replace(/\b(please|can you|search amazon for|search amazon|search the web for|search for|search|look up|find me|find|thats|that's|that is)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const q = encodeURIComponent(product || query);
+  if (/\bamazon\b/i.test(query)) return `https://www.amazon.ca/s?k=${q}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+}
+
 async function liveResearch(query: string): Promise<ResearchPage | { error: string }> {
   const apiKey = process.env.BROWSERBASE_API_KEY?.trim();
   if (!apiKey) return { error: "Browserbase isn't connected on the server, so the page was not opened." };
@@ -39,7 +50,7 @@ async function liveResearch(query: string): Promise<ResearchPage | { error: stri
     const browser = await chromium.connectOverCDP(session.connectUrl);
     const context = browser.contexts()[0] ?? await browser.newContext();
     const page = context.pages()[0] ?? await context.newPage();
-    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    const url = destination(query);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
     const title = (await page.title()) || "Untitled page";
     const text = (await page.locator("body").innerText()).replace(/\s+/g, " ").trim().slice(0, 2000);

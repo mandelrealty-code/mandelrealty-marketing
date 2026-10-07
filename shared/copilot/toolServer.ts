@@ -348,7 +348,7 @@ const TOOLS: Record<string, Tool> = {
     },
   },
   research_web: {
-    description: "Opens a page through Browserbase and returns its title, address, and text. Cite the title. Read only. This does not buy anything.",
+    description: "Opens a web page or a named retailer through Browserbase and returns its title, address, and text. Amazon opens on Amazon.ca. Cite the page and the prices it shows. Read only. This does not buy anything. If the page does not load, say that read failed.",
     inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
     readOnly: true,
     call: async (args) => researchWeb(text(args.query, 200)),
