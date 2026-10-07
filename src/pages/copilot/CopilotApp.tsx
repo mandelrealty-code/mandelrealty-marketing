@@ -4,6 +4,7 @@ import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage
 import "./copilot.css";
 import { MemoryFileDetail, MemoryFileList, MemoryWrote } from "./memoryUi";
 import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
+import { PurchaseCard } from "./PurchaseCard";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
 import type { AccountSpend } from "../../../shared/copilot/models";
@@ -1167,7 +1168,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setPending(null);
   }
 
-  async function act(message: CopilotMessage, action: "send" | "hold") {
+  async function act(message: CopilotMessage, action: "send" | "hold" | "purchase" | "not-now" | "skip" | "alternative", extra?: Record<string, unknown>) {
     setBusy(true);
     try {
       await api("draft", {
@@ -1175,6 +1176,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         action,
         channel: message.draft?.channel ?? "email",
         edited: edits[message.id] ?? message.draft?.body ?? "",
+        ...extra,
       });
       if (chatId) await openChat(chatId);
     } catch (e) {
@@ -1469,10 +1471,25 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           </button>
         </div>
         <p>{item.text}</p>
-        <button type="button" className="cp-cta" disabled={busy} onClick={() => void (item.chatId ? openChat(item.chatId) : openCard(item.text, item.action))}>
-          <span className="cp-cta-label">{item.action}</span>
-          <span className="cp-go"><Arrow /></span>
-        </button>
+        {item.purchaseStatus ? (
+          <p className="cp-segments">
+            {(["Ordered", "Shipped", "Out for delivery", "Delivered"] as const).map((label) => (
+              <span key={label} className={(label === "Ordered" && item.purchaseStatus === "ordered") || (label === "Shipped" && item.purchaseStatus === "shipped") || (label === "Delivered" && item.purchaseStatus === "delivered") ? "on" : ""}>
+                {label}
+              </span>
+            ))}
+          </p>
+        ) : null}
+        {item.purchaseStatus === "delivered" ? (
+          <button type="button" className="cp-quiet" disabled={busy} onClick={() => void dismissCard(item.id)}>Dismiss</button>
+        ) : item.purchaseStatus && item.trackingUrl ? (
+          <a className="cp-purchase-link" href={item.trackingUrl} target="_blank" rel="noreferrer">Track order</a>
+        ) : (
+          <button type="button" className="cp-cta" disabled={busy} onClick={() => void (item.chatId ? openChat(item.chatId) : openCard(item.text, item.action))}>
+            <span className="cp-cta-label">{item.action}</span>
+            <span className="cp-go"><Arrow /></span>
+          </button>
+        )}
       </article>
     );
   }
@@ -2170,7 +2187,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                               onElse={(value) => void send(value, true)}
                             />
                           ) : null}
-                          {message.draft?.status === "waiting" && message.draft.channel === "note" ? (
+                          {message.draft?.purchase && (message.draft.status === "waiting" || message.draft.status === "held" || message.draft.status === "sent") ? (
+                            <PurchaseCard
+                              purchase={message.draft.purchase}
+                              busy={busy}
+                              onPurchase={(quantity) => void act(message, "purchase", { quantity })}
+                              onNotNow={() => void act(message, "not-now")}
+                              onSkip={() => void act(message, "skip")}
+                              onAlternative={(next) => void act(message, "alternative", next)}
+                            />
+                          ) : message.draft?.status === "waiting" && message.draft.channel === "note" ? (
                             <>
                               <div className="cp-mail">
                                 <div className="cp-mail-meta">

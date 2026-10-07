@@ -13,6 +13,7 @@ import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats
 import { addDays, torontoToday } from "./time.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
 import { readCleanerUnit, type CleanerPicture, type CleanerSupply, type CleanerTurnover } from "./cleanerRead.js";
+import { describePurchase } from "./purchase.js";
 
 const AIRBNB_BLIND = "I cannot see replies sent inside the Airbnb app.";
 const CONTACTS = [
@@ -160,6 +161,7 @@ async function leaveDraft(row: DraftCapture, reservationId = ""): Promise<void> 
         status: "waiting",
         channel: row.channel === "hospitable" ? "hospitable" : row.channel === "note" ? "note" : "email",
         ...(row.cleanerAssign ? { cleanerAssign: row.cleanerAssign } : {}),
+        ...(row.purchase ? { purchase: row.purchase } : {}),
         ...(row.channel === "hospitable" && reservationId && !row.cleanerAssign
           ? { hospitable: { tool: "send-reservation-message", args: { reservation_id: reservationId, body: row.body } } }
           : {}),
@@ -299,7 +301,7 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
       const memory = businessFacts(await memoryFor(place), hub);
       await oneStay({ stay, place, messages, hub, memory, propertyName: property.name, hubFailed: !hubRead.ok, picture, now });
     }
-    if (picture.ok) await offerLowStock(property.name, property.address, picture.supplies);
+    if (picture.ok) await offerLowStock(id, property.name, property.address, picture.supplies);
   }
 }
 
@@ -380,7 +382,7 @@ function describeTurnover(row: CleanerTurnover, now: Date): { line: string; need
   return { line: `A cleaner is assigned, ${when}.${issue}`, needsYou: Boolean(row.issue) };
 }
 
-async function offerLowStock(name: string, address: string, supplies: CleanerSupply[]): Promise<void> {
+async function offerLowStock(propertyId: string, name: string, address: string, supplies: CleanerSupply[]): Promise<void> {
   const where = placeLabel(`${name} ${address}`, name);
   for (const item of supplies) {
     if (!item.low || !item.item) continue;
@@ -389,6 +391,21 @@ async function offerLowStock(name: string, address: string, supplies: CleanerSup
     await recordDrafts(key);
     const product = item.product || item.item;
     const left = Number.isInteger(item.left) ? String(item.left) : String(item.left);
+    const purchase = describePurchase({
+      propertyId,
+      property: where,
+      item: item.item,
+      category: item.category,
+      left: item.left,
+      threshold: item.threshold,
+      restockQty: item.restockQty,
+      productName: item.product,
+      retailer: item.retailer,
+      priceCents: item.priceCents,
+      imageUrl: item.imageUrl,
+      productUrl: item.productUrl,
+      shipTo: item.shipTo || address,
+    });
     await publishCheckReport({
       headline: `${where} is low on ${item.item}`,
       text: `${where} is low on ${item.item}. ${left} left.`,
@@ -403,6 +420,7 @@ async function offerLowStock(name: string, address: string, supplies: CleanerSup
       body: `${where} is low on ${item.item}. ${left} left. Approve the purchase of ${product}. Nothing is purchased until you approve.`,
       warnings: [],
       needs_you: true,
+      purchase,
     });
   }
 }

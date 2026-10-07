@@ -1,4 +1,5 @@
 import { parityEnabled } from "./flag.js";
+import type { PurchaseDetail } from "../purchaseTypes.js";
 
 export type DraftCapture = {
   channel: string;
@@ -8,6 +9,7 @@ export type DraftCapture = {
   warnings: string[];
   needs_you: boolean;
   cleanerAssign?: { propertyId: string; scheduledOn: string; cleanerName: string; unit: string };
+  purchase?: PurchaseDetail;
 };
 
 export type ReportCapture = {

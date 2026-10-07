@@ -1,4 +1,5 @@
 import type { Workflow } from "./workflow.js";
+import type { PurchaseState } from "./purchaseTypes.js";
 
 export type DraftStatus = "waiting" | "held" | "approved_unsent" | "sent";
 
@@ -28,6 +29,8 @@ export type CopilotDraft = {
   cleanerAssign?: { propertyId: string; scheduledOn: string; cleanerName: string; unit: string };
   /** Set when Submit should email this proposal. Nothing is sent until then. */
   proposalSend?: { proposalId: string; to: string };
+  /** Low-stock purchase. Nothing is ordered until Purchase item. */
+  purchase?: PurchaseState;
 };
 
 export type Weekday = "Sunday" | "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday";
@@ -118,6 +121,8 @@ export type BriefCard = {
   action: string;
   source: string;
   chatId?: string;
+  purchaseStatus?: "ordered" | "shipped" | "delivered";
+  trackingUrl?: string;
 };
 
 export type BriefPayload = {

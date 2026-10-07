@@ -155,6 +155,8 @@ export type WaitingDraft = {
   channel: "email" | "note" | "skill" | "hospitable";
   subject: string;
   skillName: string;
+  purchaseLine: string;
+  purchaseProperty: string;
 };
 
 function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; draft?: CopilotDraft | null }): WaitingDraft | null {
@@ -168,6 +170,8 @@ function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; dr
     channel: draft.channel,
     subject: draft.subject || "",
     skillName: draft.skillName || "",
+    purchaseLine: draft.purchase?.kind === "detail" ? draft.purchase.overview : "",
+    purchaseProperty: draft.purchase?.kind === "detail" ? draft.purchase.property : "",
   };
 }
 

@@ -22,6 +22,14 @@ export type CleanerSupply = {
   left: number;
   low: boolean;
   product: string;
+  retailer?: string;
+  priceCents?: number | null;
+  imageUrl?: string;
+  productUrl?: string;
+  threshold?: number | null;
+  restockQty?: number | null;
+  category?: string;
+  shipTo?: string;
 };
 
 export type CleanerPicture =
@@ -114,6 +122,14 @@ function parityPicture(input: { propertyId: string; from: string; to: string }):
       left: row.left,
       low: row.low,
       product: row.product,
+      retailer: row.retailer,
+      priceCents: row.priceCents,
+      imageUrl: row.imageUrl,
+      productUrl: row.productUrl,
+      threshold: row.threshold,
+      restockQty: row.restockQty,
+      category: row.category,
+      shipTo: row.shipTo,
     }));
   return { ok: true, turnovers, supplies };
 }
@@ -143,11 +159,23 @@ function asSupplies(raw: unknown): CleanerSupply[] {
     const name = typeof item.item_name === "string" ? item.item_name.trim() : "";
     if (!name) return [];
     const left = Number(item.in_stock_qty);
+    const asNumber = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
+    const price = asNumber(item.price_cents);
+    const threshold = asNumber(item.threshold_count);
+    const restock = asNumber(item.replenish_order_quantity);
     return [{
       item: name,
       left: Number.isFinite(left) ? left : 0,
       low: Boolean(item.is_low_stock) || item.forecast === "low",
       product: typeof item.product === "string" ? item.product.trim() : "",
+      retailer: typeof item.retailer === "string" ? item.retailer.trim() : "",
+      priceCents: price,
+      imageUrl: typeof item.photo_url === "string" ? item.photo_url.trim() : "",
+      productUrl: typeof item.vendor_url === "string" ? item.vendor_url.trim() : "",
+      threshold,
+      restockQty: restock != null && restock > 0 ? restock : null,
+      category: typeof item.category === "string" ? item.category.trim() : "",
+      shipTo: typeof item.ship_to === "string" ? item.ship_to.trim() : "",
     }];
   });
 }

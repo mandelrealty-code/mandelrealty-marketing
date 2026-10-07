@@ -9,6 +9,7 @@ import { listOpenItems, verifiedLabel } from "./openItems.js";
 import { runUnattendedChecks } from "./stayCheck.js";
 import { listConnectorFailures } from "./connectorFailures.js";
 import { parityEnabled } from "./parity/flag.js";
+import { purchaseCardText, recordedSupplies } from "./purchase.js";
 
 const MAX_CARDS = 4;
 
@@ -24,6 +25,17 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const focus: BriefCard[] = [];
   const eating: BriefCard[] = [];
   const skipped = new Set(await listDismissed().catch(() => []));
+  for (const row of recordedSupplies()) {
+    take(focus, {
+      id: `supply:${row.confirmation}`,
+      group: "focus",
+      text: purchaseCardText(row),
+      action: row.status === "delivered" ? "Dismiss" : "Track order",
+      source: `Supplies · ${row.property}`,
+      purchaseStatus: row.status,
+      trackingUrl: row.tracking,
+    }, skipped);
+  }
   // The live page reads checks the morning and afternoon passes already saved.
   // The parity suite still runs them here, because that is how a fixture scan works.
   if (parityEnabled()) {
@@ -138,9 +150,11 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
       id: `draft:${item.messageId}`,
       chatId: item.chatId,
       group: "focus",
-      text: item.channel === "hospitable" ? `${ready} Nothing was changed.` : `${ready} Nothing was sent.`,
+      text: item.purchaseLine
+        ? item.purchaseLine
+        : item.channel === "hospitable" ? `${ready} Nothing was changed.` : `${ready} Nothing was sent.`,
       action: "Review",
-      source: "Copilot",
+      source: item.purchaseLine ? `Supplies · ${item.purchaseProperty}` : "Copilot",
     }, skipped);
   }
   const sb = getSupabaseAdmin();

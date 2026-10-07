@@ -21,6 +21,7 @@ import { answerRecords } from "../copilot/recordsAnswer.js";
 import { answerStay } from "../copilot/stayAnswer.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, editProposal, prepareProposalSend, proposalFromWords } from "../copilot/proposal.js";
+import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
@@ -848,6 +849,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const action = String(body.action ?? "");
       const edited = String(body.edited ?? "");
       if (!messageId) return res.status(400).json({ error: "Missing draft." });
+      if (action === "purchase" || action === "not-now" || action === "skip" || action === "alternative") {
+        const current = await readMessage(messageId);
+        const purchase = current?.draft?.purchase;
+        const detail = purchase?.kind === "detail" ? purchase : purchase?.kind === "failed" ? purchase.detail : null;
+        if (!detail) return res.status(200).json({ message: current });
+        if (action === "not-now") {
+          const held = holdPurchase(detail);
+          const message = await updateDraft(messageId, { status: "held", purchase: held, bodyText: heldText(held) });
+          return res.status(200).json({ message });
+        }
+        if (action === "skip") {
+          const skipped = skipPurchase(detail);
+          const message = await updateDraft(messageId, { status: "held", purchase: skipped, bodyText: skippedText(skipped) });
+          return res.status(200).json({ message });
+        }
+        if (action === "alternative") {
+          const rawPrice = body.priceCents;
+          const next = offerAlternative(detail, {
+            productName: String(body.productName ?? ""),
+            retailer: String(body.retailer ?? ""),
+            priceCents: rawPrice == null || rawPrice === "" ? null : Number(rawPrice),
+            imageUrl: String(body.imageUrl ?? ""),
+            productUrl: String(body.productUrl ?? ""),
+          });
+          const message = await updateDraft(messageId, {
+            status: "waiting",
+            purchase: next,
+            bodyText: next.missing || "Here is the purchase to approve. Nothing was purchased.",
+          });
+          return res.status(200).json({ message });
+        }
+        const quantity = Number(body.quantity ?? detail.quantity);
+        const result = await commitPurchase(detail, Number.isInteger(quantity) ? quantity : detail.quantity);
+        if (result.kind === "ordered") {
+          const message = await updateDraft(messageId, {
+            status: "sent",
+            purchase: result,
+            bodyText: `Ordered. Confirmation ${result.confirmation}. Estimated delivery ${result.delivery}. Tracking was added to the cleaner app for ${result.item} at ${result.property}.`,
+          });
+          return res.status(200).json({ message });
+        }
+        const message = await updateDraft(messageId, {
+          status: "waiting",
+          purchase: result.kind === "failed" ? result : detail,
+          bodyText: result.kind === "failed" ? failedText(result) : "Nothing was ordered.",
+        });
+        return res.status(200).json({ message });
+      }
       if (action === "save-skill") {
         const kind = body.kind === "text" ? "text" : "playbook";
         const phone = kind === "text" ? toE164(String(body.phone ?? "")) : "";

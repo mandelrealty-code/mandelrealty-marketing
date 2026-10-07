@@ -4,6 +4,7 @@ import { resetOps } from "./opsState.js";
 import { resetParityCancellations, resetParityConnectorFailures, resetParityReports } from "./storeStub.js";
 import { setParityClock } from "./clock.js";
 import { parityEnabled } from "./flag.js";
+import { resetPurchaseFlow } from "../purchase.js";
 
 export type ParityMail = {
   id: string;
@@ -80,6 +81,14 @@ export type ParityCleanerSupply = {
   left: number;
   low: boolean;
   product: string;
+  retailer?: string;
+  priceCents?: number | null;
+  imageUrl?: string;
+  productUrl?: string;
+  threshold?: number | null;
+  restockQty?: number | null;
+  category?: string;
+  shipTo?: string;
 };
 
 export type ParityCleaner = {
@@ -129,6 +138,7 @@ export function installWorld(next: ParityWorld): void {
   resetParityCancellations();
   resetParityConnectorFailures();
   resetParityReports();
+  resetPurchaseFlow();
 }
 
 export function clearWorld(): void {
