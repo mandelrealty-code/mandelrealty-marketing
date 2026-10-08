@@ -3,9 +3,8 @@ import { listPmProperties } from "../pm/propertyStore.js";
 import { readMail, searchMail } from "./mailSearch.js";
 import { readPropertyHub } from "./knowledgeHub.js";
 import { memoryBodies } from "./memoryFiles.js";
-import { isManagedUnit } from "./managedUnits.js";
 import { listReservationMessages } from "../pm/hospitableClient.js";
-import { copilotHospitableToken, hospitableRead } from "./hospitableConnection.js";
+import { copilotHospitableToken, copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
 import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -192,7 +191,10 @@ export type RecentStay = {
 /** Managed stays the checks would read, plus any property whose reservation list failed. */
 export async function loadRecentStays(now: Date): Promise<{ stays: RecentStay[]; failed: string[] }> {
   const today = torontoToday(now);
-  const properties = (await listPmProperties().catch(() => [])).filter((row) => isManagedUnit(row.name, row.address));
+  const properties = [];
+  for (const row of await listPmProperties().catch(() => [])) {
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) properties.push(row);
+  }
   const stays: RecentStay[] = [];
   const failed: string[] = [];
   for (const property of properties) {
@@ -214,7 +216,7 @@ export async function loadRecentStays(now: Date): Promise<{ stays: RecentStay[];
       });
       const rows = rowsOf(raw)
         .map((row) => toStay(row, id))
-        .filter((stay) => stay.id && relevant(stay, today) && !/cancel/.test(stay.status) && isManagedUnit(property.name, property.address));
+        .filter((stay) => stay.id && relevant(stay, today) && !/cancel/.test(stay.status));
       for (const stay of rows) {
         stays.push({ stay, propertyName: property.name, address: property.address, label });
       }
@@ -276,7 +278,10 @@ export async function memoryFor(blob: string): Promise<string> {
 
 export async function runUnattendedChecks(now = new Date()): Promise<void> {
   const today = torontoToday(now);
-  const properties = (await listPmProperties().catch(() => [])).filter((row) => isManagedUnit(row.name, row.address));
+  const properties = [];
+  for (const row of await listPmProperties().catch(() => [])) {
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) properties.push(row);
+  }
   await preApproval();
   for (const property of properties) {
     const id = property.hospitable_property_id || property.id;
@@ -292,7 +297,7 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
         page: 1,
         include: "guest",
       });
-      stays = rowsOf(raw).map((row) => toStay(row, id)).filter((stay) => stay.id && isManagedUnit(property.name, property.address));
+      stays = rowsOf(raw).map((row) => toStay(row, id)).filter((stay) => stay.id);
     } catch {
       await publishCheckReport({
         headline: property.name,
@@ -318,7 +323,7 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
       });
     }
     for (const stay of stays) {
-      if (!relevant(stay, today) || !isManagedUnit(property.name, property.address)) continue;
+      if (!relevant(stay, today)) continue;
       const place = `${property.name} ${property.address}`;
       const hubRead = await readPropertyHub(id);
       const hub = hubRead.ok ? hubRead.text : "";
@@ -358,7 +363,7 @@ async function preApproval(): Promise<void> {
   const found = await searchMail({ keywords: "pre-approval", includeAirbnb: true }).catch(() => ({ hits: [], notes: [] as string[] }));
   for (const hit of found.hits) {
     const blob = `${hit.subject} ${hit.snippet}`;
-    if (!isManagedUnit(blob) || /1104|partner loft|king st w/i.test(blob)) continue;
+    if (!(await copilotKeepsProperty({ name: blob, extra: blob }))) continue;
     let body = hit.snippet;
     try {
       const letter = await readMail({ mailbox: hit.mailbox, id: hit.id, includeAirbnb: true });
@@ -366,7 +371,7 @@ async function preApproval(): Promise<void> {
     } catch {
       /* The snippet still names the pre-approval. */
     }
-    if (!isManagedUnit(body) || /1104|partner loft|king st w/i.test(body)) continue;
+    if (!(await copilotKeepsProperty({ name: body, extra: body }))) continue;
     const sent = new Date(hit.date);
     const exp = new Date(sent.getTime() + 24 * 60 * 60 * 1000);
     const when = new Intl.DateTimeFormat("en-US", {

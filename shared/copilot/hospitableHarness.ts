@@ -4,11 +4,13 @@
  */
 
 import {
+  copilotKeepsProperty,
   disconnectHospitable,
   hospitableCard,
   hospitableCipherForTest,
   hospitableRead,
   resetHospitableConnection,
+  saveHospitableSelection,
   saveHospitableToken,
   setHospitableProbe,
 } from "./hospitableConnection.js";
@@ -34,7 +36,7 @@ setHospitableProbe(async (token, name) => {
   seen.push(`${name}:${which}`);
   if (which === "bad") throw new Error("rejected");
   if (name === "get-properties") {
-    return { data: [{ id: "p1", name: "Charlotte" }, { id: "p2", name: "Shaw" }] };
+    return { data: [{ id: "p1", name: "Charlotte", picture: "https://example.test/charlotte.jpg" }, { id: "p2", name: "Shaw" }] };
   }
   if (name === "get-reservations") return { data: [{ id: "r1", property_id: "p1" }] };
   return { data: [] };
@@ -52,6 +54,15 @@ if (saved.card.last4 !== "7Kq2") fail("last four");
 if (saved.card.canRead !== "Reservations, guest messages and the Knowledge Hub, for all 2 properties.") fail("can read");
 if (!saved.card.statusLine.startsWith("Working. Last checked")) fail("last checked");
 if (saved.card.properties.map((row) => row.name).join(",") !== "Charlotte,Shaw") fail("properties on the page");
+if (saved.card.properties[0]?.photo !== "https://example.test/charlotte.jpg") fail("property photo");
+if (saved.card.choiceSaved) fail("choice before a save");
+const picked = await saveHospitableSelection(["p1"]);
+if (!picked.choiceSaved || picked.chosenCount !== 1) fail("saved choice");
+if (!picked.properties.find((row) => row.name === "Charlotte")?.selected) fail("charlotte selected");
+if (picked.properties.find((row) => row.name === "Shaw")?.selected) fail("shaw selected");
+if (!(await copilotKeepsProperty({ id: "p1", name: "Charlotte" }))) fail("charlotte stays");
+if (await copilotKeepsProperty({ id: "p2", name: "Shaw" })) fail("shaw stays");
+hides(picked);
 if (saved.card.reads.length !== 3 || saved.card.reads.some((row) => row.state !== "Working" || !row.checked)) fail("read capabilities");
 if (!saved.card.reads.some((row) => row.name === "Reservations") || !saved.card.reads.some((row) => row.name === "Guest messages") || !saved.card.reads.some((row) => row.name === "Knowledge Hub")) fail("read names");
 hides(saved);

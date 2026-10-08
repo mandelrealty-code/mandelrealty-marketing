@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ConnectorRow, HospitableCard } from "../../../shared/copilot/types";
 
 const EMPTY: HospitableCard = {
@@ -11,6 +11,8 @@ const EMPTY: HospitableCard = {
   savedLine: "",
   properties: [],
   reads: [],
+  choiceSaved: false,
+  chosenCount: 0,
 };
 
 const ORDER = ["hospitable", "gmail", "outlook", "browser", "cleaner", "ops"];
@@ -73,6 +75,7 @@ export function HospitablePage({
   busy = false,
   error = "",
   onSave,
+  onSelect,
   onDisconnect,
   onBack,
 }: {
@@ -80,11 +83,18 @@ export function HospitablePage({
   busy?: boolean;
   error?: string;
   onSave?: (token: string) => void;
+  onSelect?: (ids: string[]) => void;
   onDisconnect?: () => void;
   onBack: () => void;
 }) {
   const [mode, setMode] = useState<"idle" | "replace" | "confirm">("idle");
   const [draft, setDraft] = useState("");
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const listKey = card.properties.map((property) => `${property.id}:${property.selected ? 1 : 0}`).join("|");
+  useEffect(() => { setPicked(null); }, [listKey]);
+  const savedIds = card.properties.filter((property) => property.selected).map((property) => property.id);
+  const chosenIds = picked ?? savedIds;
+  const choiceDirty = chosenIds.slice().sort().join("|") !== savedIds.slice().sort().join("|");
   const ready = draft.trim().length > 0;
   const showResults = card.connected && mode !== "idle" ? true : card.connected;
 
@@ -133,16 +143,33 @@ export function HospitablePage({
         <>
           <div className="cp-cn-found">
             <strong>{card.properties.length ? `Found ${card.properties.length} ${card.properties.length === 1 ? "property" : "properties"}` : "Connected"}</strong>
+            <p>{card.choiceSaved
+              ? `${card.chosenCount} ${card.chosenCount === 1 ? "property is" : "properties are"} in Copilot. Turn the others off.`
+              : "Turn on the properties Copilot should use, then save. Until you save, Copilot still uses Charlotte 606, Shaw, Blue Jays, and Roseglor when the name matches."}</p>
             {card.properties.length ? (
               <div className="cp-cn-props">
-                {card.properties.map((property) => (
-                  <div key={property.id || property.name}>
-                    {property.photo ? <img src={property.photo} alt="" /> : <span className="tile" aria-label={`${property.name} photo from Hospitable`} />}
-                    <strong>{property.name}</strong>
-                  </div>
-                ))}
+                {card.properties.map((property) => {
+                  const on = chosenIds.includes(property.id);
+                  return (
+                    <button
+                      key={property.id || property.name}
+                      type="button"
+                      className={on ? "on" : ""}
+                      aria-pressed={on}
+                      onClick={() => setPicked(on ? chosenIds.filter((id) => id !== property.id) : [...chosenIds, property.id])}
+                    >
+                      <PropertyPhoto name={property.name} photo={property.photo} />
+                      <strong>{property.name}</strong>
+                      <small>{on ? "In Copilot" : "Not in Copilot"}</small>
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
+            <div className="cp-cn-actions">
+              <button type="button" className={choiceDirty ? "on" : ""} disabled={!choiceDirty || busy} onClick={() => onSelect?.(chosenIds)}>{busy ? "Saving…" : "Save properties"}</button>
+              <span>Copilot reads reservations, guest messages, and the Knowledge Hub for these only</span>
+            </div>
           </div>
           {card.reads.length ? (
             <div className="cp-cn-reads">
@@ -198,6 +225,12 @@ export function HospitablePage({
       {error ? <p className="cp-cn-fail">{error}</p> : null}
     </div>
   );
+}
+
+function PropertyPhoto({ name, photo }: { name: string; photo: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!photo || failed) return <span className="tile" aria-label={`${name} photo from Hospitable`} />;
+  return <img src={photo} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
 }
 
 function mark(name: string): string {

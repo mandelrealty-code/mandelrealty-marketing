@@ -166,6 +166,8 @@ export type HospitableSeenProperty = {
   id: string;
   name: string;
   photo: string;
+  /** Turned on for Copilot. Off until a choice is saved. */
+  selected: boolean;
 };
 
 /** One capability checked during Connect. The token is never included. */
@@ -187,6 +189,9 @@ export type HospitableCard = {
   savedLine: string;
   properties: HospitableSeenProperty[];
   reads: HospitableReadLine[];
+  /** True after a property choice is saved. False means Copilot still uses the four managed names. */
+  choiceSaved: boolean;
+  chosenCount: number;
 };
 
 export type InboxGuest = {

@@ -6975,11 +6975,45 @@ html.cp-app[data-cp-theme="dark"] #root {
   border-top: 1px solid var(--line);
 }
 
+.cp-cn-found > p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 22px;
+}
+
 .cp-cn-props {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin-top: 14px;
+}
+
+.cp-cn-props button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cp-cn-props button.on img,
+.cp-cn-props button.on .tile {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cp-cn-props small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cp-cn-props button.on small {
+  color: var(--accent-ink);
 }
 
 .cp-cn-props .tile,

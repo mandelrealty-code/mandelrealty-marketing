@@ -8,6 +8,7 @@ export type HospitablePropertySummary = {
   name: string;
   address: string;
   listed?: boolean;
+  picture?: string;
 };
 
 type HospitableListResponse = {
@@ -63,7 +64,11 @@ function normalizeProperty(raw: unknown): HospitablePropertySummary | null {
       : typeof p.listed === "number"
         ? p.listed === 1
         : undefined;
-  return { id, name, address, listed };
+  const pictureObject = asRecord(p.picture);
+  const picture = [p.picture, p.picture_url, p.thumbnail, pictureObject.url, pictureObject.original, pictureObject.thumbnail]
+    .map(str)
+    .find((value) => /^https?:\/\//i.test(value)) || "";
+  return { id, name, address, listed, ...(picture ? { picture } : {}) };
 }
 
 type HospitableQuery = Record<string, string | string[] | undefined>;

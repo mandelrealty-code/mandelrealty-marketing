@@ -33,7 +33,7 @@ import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, e
 import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
-import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableToken } from "../copilot/hospitableConnection.js";
+import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { loadGuestQueue, openGuestAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { answerMailChain } from "../copilot/mailChain.js";
@@ -237,7 +237,9 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
       detail: "Lets Copilot read your stays in Hospitable. It never changes anything there.",
       status: hospitable?.connected ? "connected" : "not_connected",
       statusLabel: hospitable?.connected
-        ? `Connected${(hospitable.properties?.length ?? 0) ? ` · ${hospitable.properties.length} ${hospitable.properties.length === 1 ? "property" : "properties"}` : ""}`
+        ? hospitable.choiceSaved
+          ? `Connected · ${hospitable.chosenCount} in Copilot`
+          : `Connected${(hospitable.properties?.length ?? 0) ? ` · ${hospitable.properties.length} ${hospitable.properties.length === 1 ? "property" : "properties"}` : ""}`
         : "Not connected",
       setup: hospitable?.connected ? "pat" : "none",
       note: hospitable?.connected
@@ -483,6 +485,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (body.action === "disconnect") {
         const card = await disconnectHospitable();
         return res.status(200).json({ hospitable: card, connectors: await connectors() });
+      }
+      if (body.action === "select") {
+        try {
+          const ids = Array.isArray(body.propertyIds) ? body.propertyIds.map(String) : [];
+          const card = await saveHospitableSelection(ids);
+          return res.status(200).json({ hospitable: card, connectors: await connectors() });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Hospitable is not connected.";
+          return res.status(400).json({ error: message });
+        }
       }
       const saved = await saveHospitableToken(String(body.token ?? ""));
       if (saved.error) return res.status(400).json({ error: saved.error, hospitable: saved.card });

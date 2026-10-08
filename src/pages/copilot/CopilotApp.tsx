@@ -2027,6 +2027,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         busy={hospitableBusy}
                         error={hospitableError}
                         onBack={() => { setConnectorId(""); setHospitableError(""); }}
+                        onSelect={(ids) => {
+                          setHospitableBusy(true);
+                          setHospitableError("");
+                          void api<{ hospitable: HospitableCard; connectors: ConnectorRow[] }>("hospitable-connection", { action: "select", propertyIds: ids })
+                            .then((data) => {
+                              setBoot((prev) => (prev ? { ...prev, hospitable: data.hospitable, connectors: data.connectors } : prev));
+                            })
+                            .catch((err) => setHospitableError(err instanceof Error ? err.message : "Hospitable is not connected."))
+                            .finally(() => setHospitableBusy(false));
+                        }}
                         onSave={(token) => {
                           setHospitableBusy(true);
                           setHospitableError("");

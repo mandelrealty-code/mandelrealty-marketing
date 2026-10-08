@@ -3,9 +3,8 @@
  * A thanks-only note never waits and never gets a draft.
  */
 
-import { hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
+import { copilotKeepsProperty, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
 import { hubPlain } from "./knowledgeHub.js";
-import { isManagedUnit } from "./managedUnits.js";
 import { leaveDraft } from "./stayCheck.js";
 import { isThanksOnly, messageLanguage, toEnglish, toGuestLanguage } from "./guestTranslate.js";
 import type { GuestDraftView, GuestQueue, GuestRow } from "./guestTypes.js";
@@ -133,7 +132,10 @@ async function writeAndConfirm(propertyId: string, fact: string): Promise<boolea
 export async function loadGuestQueue(now = new Date()): Promise<GuestQueue> {
   try {
     const listed = await hospitableRead("get-properties", {});
-    const properties = propertiesOf(listed).filter((row) => isManagedUnit(row.name));
+    const properties = [];
+    for (const row of propertiesOf(listed)) {
+      if (await copilotKeepsProperty({ id: row.id, name: row.name })) properties.push(row);
+    }
     const waiting: GuestRow[] = [];
     const thanks: GuestRow[] = [];
     const failed: string[] = [];

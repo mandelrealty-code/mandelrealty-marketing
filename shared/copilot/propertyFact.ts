@@ -7,7 +7,7 @@ import { listPmProperties } from "../pm/propertyStore.js";
 import { asksBuildingRegistration } from "./buildingRegistration.js";
 import { hasHubSecret, HUB_SECRET_NOTE } from "./hubSecrets.js";
 import { readPropertyHub } from "./knowledgeHub.js";
-import { isManagedUnit } from "./managedUnits.js";
+import { copilotKeepsProperty } from "./hospitableConnection.js";
 import { activeMemoryClaims } from "./memoryFiles.js";
 
 type Listing = { id: string; label: string; blob: string };
@@ -50,7 +50,10 @@ export async function answerPropertyFact(question: string): Promise<string | nul
 }
 
 async function managedListings(): Promise<Listing[]> {
-  const rows = (await listPmProperties().catch(() => [])).filter((row) => isManagedUnit(row.name, row.address));
+  const rows = [];
+  for (const row of await listPmProperties().catch(() => [])) {
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) rows.push(row);
+  }
   return rows.map((row) => {
     const label = labelFor(row.name, row.address);
     return {

@@ -1,5 +1,4 @@
-import { HOSPITABLE_NOT_CONNECTED, hospitableRead } from "./hospitableConnection.js";
-import { isManagedUnit } from "./managedUnits.js";
+import { copilotKeepsProperty, HOSPITABLE_NOT_CONNECTED, hospitableRead } from "./hospitableConnection.js";
 import { torontoToday } from "./time.js";
 import { torontoWeekday } from "./skillSchedule.js";
 
@@ -79,8 +78,8 @@ export async function guestCheckins(now = new Date()): Promise<{ lines: CheckinL
   for (const property of properties) {
     const name = typeof property.name === "string" ? property.name : "";
     const address = property.address && typeof property.address === "object" ? String((property.address as { display?: unknown }).display ?? "") : "";
-    if (!isManagedUnit(name, address, typeof property.public_name === "string" ? property.public_name : "")) continue;
     const id = String(property.id ?? "");
+    if (!(await copilotKeepsProperty({ id, name, address, extra: typeof property.public_name === "string" ? property.public_name : "" }))) continue;
     if (!id) continue;
     let stays: Record<string, unknown>[] = [];
     try {

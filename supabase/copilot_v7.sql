@@ -7,5 +7,6 @@ create table if not exists copilot_hospitable (
   last4 text not null default '',
   saved_at timestamptz,
   checked_at timestamptz,
-  property_count int not null default 0
+  property_count int not null default 0,
+  selected_ids text
 );

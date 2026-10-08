@@ -34,9 +34,9 @@ export function GuestMessaging({
       <div className="cp-gm">
         <button type="button" className="cp-gm-back" onClick={onBack}>← All waiting guests</button>
         <div className="cp-gm-head">
-          {answer.guestPhoto ? <img src={answer.guestPhoto} alt="" /> : <span className="face">{answer.initials}</span>}
+          {answer.guestPhoto ? <img src={answer.guestPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="face">{answer.initials}</span>}
           <strong>{answer.guest}</strong>
-          {answer.propertyPhoto ? <img className="prop" src={answer.propertyPhoto} alt="" /> : <span className="tile" />}
+          {answer.propertyPhoto ? <img className="prop" src={answer.propertyPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="tile" />}
           <em>{answer.property}</em>
           <span className="wait">Waiting {answer.wait}</span>
         </div>
@@ -91,10 +91,10 @@ export function GuestMessaging({
       <div className="cp-gm-list">
         {queue.waiting.map((row) => (
           <button key={row.id} type="button" className="cp-gm-row" onClick={() => { setDraft(null); setTyped(""); setNote(""); setFail(""); onOpen(row); }}>
-            {row.guestPhoto ? <img src={row.guestPhoto} alt="" /> : <span className="face">{row.initials}</span>}
+            {row.guestPhoto ? <img src={row.guestPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="face">{row.initials}</span>}
             <span>
               <strong>{row.guest}</strong>
-              <em>{row.propertyPhoto ? <img src={row.propertyPhoto} alt="" /> : <i className="tile" />}{row.property}</em>
+              <em>{row.propertyPhoto ? <img src={row.propertyPhoto} alt="" referrerPolicy="no-referrer" /> : <i className="tile" />}{row.property}</em>
               <q>“{row.asked}”</q>
               {row.language ? <small>“{row.askedEn}” · Translated from {row.language}</small> : null}
             </span>

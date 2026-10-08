@@ -6,8 +6,7 @@
 
 import { asksBuildingRegistration } from "./buildingRegistration.js";
 import { listPmProperties } from "../pm/propertyStore.js";
-import { hospitableRead } from "./hospitableConnection.js";
-import { isManagedUnit } from "./managedUnits.js";
+import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
 import { addDays, torontoToday } from "./time.js";
 
 const CODE = /\b(HM[A-Z0-9]{8,12})\b/i;
@@ -124,7 +123,10 @@ function asksInventory(text: string): boolean {
 
 /** The stay-check join: managed units, then each Hospitable id. Not the account property list. */
 async function managedListings(): Promise<Listing[]> {
-  const rows = (await listPmProperties().catch(() => [])).filter((row) => isManagedUnit(row.name, row.address));
+  const rows = [];
+  for (const row of await listPmProperties().catch(() => [])) {
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) rows.push(row);
+  }
   return rows.map((row) => {
     const address = row.address;
     const name = row.name;
@@ -372,7 +374,10 @@ function guestTokens(question: string): string[] {
 
 /** One stay named by a code, a unit, a public title, or a guest. Does not list the whole account. */
 export async function findPinnedStay(question: string): Promise<string | null> {
-  const listings = (await loadProperties()).filter((row) => isManagedUnit(row.name, row.address, `${row.label} ${row.publicName}`));
+  const listings = [];
+  for (const row of await loadProperties()) {
+    if (await copilotKeepsProperty({ id: row.id, name: row.name, address: row.address, extra: `${row.label} ${row.publicName}` })) listings.push(row);
+  }
   if (!listings.length) return null;
   const picked = pickListings(question, listings);
   const names = guestTokens(question);

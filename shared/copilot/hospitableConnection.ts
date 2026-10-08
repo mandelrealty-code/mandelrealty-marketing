@@ -11,6 +11,7 @@ import {
   hospitableFetch,
   listAllHospitableProperties,
 } from "../pm/hospitableClient.js";
+import { isManagedUnit } from "./managedUnits.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityPat } from "./parity/world.js";
 import type { HospitableCard, HospitableSeenProperty } from "./types.js";
@@ -24,6 +25,8 @@ const FILE = path.join(process.cwd(), "data", "copilot-hospitable.json");
 
 type StoredRead = { name: string; detail: string; ok: boolean; checkedAt: string };
 
+type ChosenProperty = { id: string; name: string };
+
 type Row = {
   cipher: string;
   last4: string;
@@ -32,6 +35,8 @@ type Row = {
   propertyCount: number;
   properties: HospitableSeenProperty[];
   reads: StoredRead[];
+  /** Null until a partner saves a choice. An empty list means they chose none. */
+  chosen: ChosenProperty[] | null;
 };
 
 type Probe = (token: string, name: string, args: Record<string, unknown>) => Promise<unknown>;
@@ -69,6 +74,7 @@ export async function saveHospitableToken(raw: string, now = new Date()): Promis
   }
   try {
     const found = await prove(token, now);
+    const previous = current?.chosen ?? null;
     const row: Row = {
       cipher: seal(token),
       last4: maskEnd(token),
@@ -77,6 +83,9 @@ export async function saveHospitableToken(raw: string, now = new Date()): Promis
       propertyCount: found.count,
       properties: found.properties,
       reads: found.reads,
+      chosen: previous
+        ? previous.filter((item) => found.properties.some((property) => property.id === item.id))
+        : null,
     };
     if (row.cipher.includes(token) || row.last4 === token) {
       throw new Error(REJECTED);
@@ -85,7 +94,7 @@ export async function saveHospitableToken(raw: string, now = new Date()): Promis
     return { card: cardFrom(row, now), error: "" };
   } catch (err) {
     const raw = scrub(err instanceof Error ? err.message : "", token);
-    if (/admin sign-in|copilot_v7/i.test(raw)) {
+    if (/admin sign-in|copilot_v7|copilot_v8/i.test(raw)) {
       return { card: current ? cardFrom(current, now) : emptyCard(), error: raw };
     }
     if (current) return { card: cardFrom(current, now), error: STILL_IN_USE };
@@ -150,6 +159,8 @@ function emptyCard(): HospitableCard {
     savedLine: "",
     properties: [],
     reads: [],
+    choiceSaved: false,
+    chosenCount: 0,
   };
 }
 
@@ -160,6 +171,7 @@ function cardFrom(row: Row, now: Date): HospitableCard {
     : count === 1
       ? "Reservations, guest messages and the Knowledge Hub, for 1 property."
       : `Reservations, guest messages and the Knowledge Hub, for all ${count} properties.`;
+  const chosen = Array.isArray(row.chosen) ? row.chosen : null;
   return {
     connected: true,
     statusLabel: "Connected",
@@ -168,14 +180,49 @@ function cardFrom(row: Row, now: Date): HospitableCard {
     cant: CANT,
     last4: row.last4,
     savedLine: savedLine(row.savedAt),
-    properties: row.properties ?? [],
+    properties: (row.properties ?? []).map((property) => ({
+      id: property.id,
+      name: property.name,
+      photo: property.photo || "",
+      selected: Boolean(chosen?.some((item) => item.id === property.id)),
+    })),
     reads: (row.reads ?? []).map((line) => ({
       name: line.name,
       detail: line.detail,
       state: line.ok ? "Working" : "Not working",
       checked: clock(line.checkedAt),
     })),
+    choiceSaved: chosen !== null,
+    chosenCount: chosen?.length ?? 0,
   };
+}
+
+/** True for a property Copilot may read. A saved choice wins. Otherwise the four managed names still apply. */
+export async function copilotKeepsProperty(input: { id?: string; name?: string; address?: string; extra?: string }): Promise<boolean> {
+  const row = await storedRow();
+  const chosen = row?.chosen;
+  if (!chosen) return isManagedUnit(input.name || "", input.address || "", input.extra || "");
+  if (input.id && chosen.some((item) => item.id === input.id)) return true;
+  const blob = `${input.name ?? ""} ${input.address ?? ""} ${input.extra ?? ""}`.toLowerCase();
+  return chosen.some((item) => item.name && blob.includes(item.name.toLowerCase()));
+}
+
+export async function saveHospitableSelection(ids: string[], now = new Date()): Promise<HospitableCard> {
+  const token = await copilotHospitableToken();
+  const current = await storedRow();
+  if (!token || !current) return emptyCard();
+  const found = await prove(token, now);
+  const want = new Set(ids.map((id) => id.trim()).filter(Boolean));
+  const row: Row = {
+    ...current,
+    checkedAt: now.toISOString(),
+    propertyCount: found.count,
+    properties: found.properties,
+    reads: found.reads,
+    chosen: found.properties.filter((property) => want.has(property.id)).map((property) => ({ id: property.id, name: property.name })),
+  };
+  await persist(row);
+  return cardFrom(row, now);
 }
 
 function checkedLine(iso: string, now: Date): string {
@@ -210,6 +257,7 @@ export async function hospitablePage(now = new Date()): Promise<HospitableCard> 
       propertyCount: found.count,
       properties: found.properties,
       reads: found.reads,
+      chosen: current.chosen ?? null,
     };
     await persist(row);
     return cardFrom(row, now);
@@ -267,7 +315,7 @@ function propertiesOf(raw: unknown): HospitableSeenProperty[] {
     const name = String(row.name ?? row.public_name ?? "").trim();
     const id = String(row.id ?? row.uuid ?? name);
     if (!name && !id) continue;
-    out.push({ id, name: name || id, photo: photoOf(row) });
+    out.push({ id, name: name || id, photo: photoOf(row), selected: false });
   }
   return out;
 }
@@ -384,26 +432,67 @@ function scrub(message: string, token: string): string {
   return next.slice(0, 240);
 }
 
+function missingTable(message: string): boolean {
+  return /does not exist|could not find the table/i.test(message) && !/selected_ids/i.test(message);
+}
+
+function missingChoiceColumn(message: string): boolean {
+  return /selected_ids/i.test(message);
+}
+
+function chosenFrom(value: unknown): ChosenProperty[] | null {
+  if (value == null || value === "") return null;
+  const parsed = typeof value === "string" ? safeJson(value) : value;
+  if (!Array.isArray(parsed)) return null;
+  return parsed.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const id = String((item as { id?: unknown }).id ?? "").trim();
+    const name = String((item as { name?: unknown }).name ?? "").trim();
+    return id ? [{ id, name }] : [];
+  });
+}
+
+function safeJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function rowFromDb(row: { cipher?: string; last4?: string; saved_at?: string; checked_at?: string; property_count?: number; selected_ids?: string | null }): Row | null {
+  if (!row.cipher) return null;
+  return {
+    cipher: String(row.cipher),
+    last4: String(row.last4 ?? ""),
+    savedAt: String(row.saved_at ?? ""),
+    checkedAt: String(row.checked_at ?? row.saved_at ?? ""),
+    propertyCount: Number(row.property_count ?? 0),
+    properties: [],
+    reads: [],
+    chosen: chosenFrom(row.selected_ids),
+  };
+}
+
 async function readStore(): Promise<Row | null> {
   const sb = getSupabaseAdmin();
   if (sb) {
-    const { data, error } = await sb.from("copilot_hospitable").select("cipher, last4, saved_at, checked_at, property_count").eq("id", 1).maybeSingle();
-    if (error) {
-      if (/does not exist|schema cache|could not find the table/i.test(error.message || "")) return readFile();
+    const first = await sb.from("copilot_hospitable").select("cipher, last4, saved_at, checked_at, property_count, selected_ids").eq("id", 1).maybeSingle();
+    if (first.error && missingChoiceColumn(first.error.message || "")) {
+      const second = await sb.from("copilot_hospitable").select("cipher, last4, saved_at, checked_at, property_count").eq("id", 1).maybeSingle();
+      if (second.error) {
+        if (missingTable(second.error.message || "")) return readFile();
+        throw new Error("Hospitable is not connected.");
+      }
+      if (!second.data) return null;
+      return rowFromDb(second.data as { cipher?: string });
+    }
+    if (first.error) {
+      if (missingTable(first.error.message || "")) return readFile();
       throw new Error("Hospitable is not connected.");
     }
-    if (!data) return null;
-    const row = data as { cipher?: string; last4?: string; saved_at?: string; checked_at?: string; property_count?: number };
-    if (!row.cipher) return null;
-    return {
-      cipher: String(row.cipher),
-      last4: String(row.last4 ?? ""),
-      savedAt: String(row.saved_at ?? ""),
-      checkedAt: String(row.checked_at ?? row.saved_at ?? ""),
-      propertyCount: Number(row.property_count ?? 0),
-      properties: [],
-      reads: [],
-    };
+    if (!first.data) return null;
+    return rowFromDb(first.data as { cipher?: string; selected_ids?: string | null });
   }
   return readFile();
 }
@@ -418,8 +507,11 @@ function readFile(): Row | null {
       savedAt: String(raw.savedAt ?? ""),
       checkedAt: String(raw.checkedAt ?? raw.savedAt ?? ""),
       propertyCount: Number(raw.propertyCount ?? 0),
-      properties: Array.isArray(raw.properties) ? raw.properties : [],
+      properties: Array.isArray(raw.properties)
+        ? raw.properties.map((property) => ({ id: property.id, name: property.name, photo: property.photo || "", selected: false }))
+        : [],
       reads: Array.isArray(raw.reads) ? raw.reads : [],
+      chosen: chosenFrom(raw.chosen),
     };
   } catch {
     return null;
@@ -431,21 +523,31 @@ async function writeStore(row: Row | null): Promise<void> {
   if (sb) {
     if (!row) {
       const { error } = await sb.from("copilot_hospitable").delete().eq("id", 1);
-      if (error && !/does not exist|schema cache|could not find the table/i.test(error.message || "")) {
+      if (error && !missingTable(error.message || "")) {
         throw new Error("Hospitable is not connected.");
       }
       if (!error) return;
     } else {
-      const { error } = await sb.from("copilot_hospitable").upsert({
+      const base = {
         id: 1,
         cipher: row.cipher,
         last4: row.last4,
         saved_at: row.savedAt,
         checked_at: row.checkedAt,
         property_count: row.propertyCount,
+      };
+      let { error } = await sb.from("copilot_hospitable").upsert({
+        ...base,
+        selected_ids: row.chosen == null ? null : JSON.stringify(row.chosen),
       }, { onConflict: "id" });
+      if (error && missingChoiceColumn(error.message || "") && row.chosen == null) {
+        ({ error } = await sb.from("copilot_hospitable").upsert(base, { onConflict: "id" }));
+      }
+      if (error && missingChoiceColumn(error.message || "")) {
+        throw new Error("Run supabase/copilot_v8.sql in the Supabase SQL editor, then save the properties again.");
+      }
       if (!error) return;
-      if (!/does not exist|schema cache|could not find the table/i.test(error.message || "")) {
+      if (!missingTable(error.message || "")) {
         throw new Error("Hospitable is not connected.");
       }
     }

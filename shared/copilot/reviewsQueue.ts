@@ -4,9 +4,8 @@
 
 import { listHospitableReviews, respondToHospitableReview } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
-import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
+import { copilotHospitableToken, copilotKeepsProperty, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
 import { hubPlain } from "./knowledgeHub.js";
-import { isManagedUnit } from "./managedUnits.js";
 import { addDays, torontoToday } from "./time.js";
 import type { PostedReviewLine, ReviewFact, ReviewQueuePayload, ReviewQueueRow } from "./reviewTypes.js";
 
@@ -173,7 +172,10 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
   if (!token) {
     return { connected: false, line: "Hospitable is not connected.", reviews: [], postedToday: [...posted.values()] };
   }
-  const properties = (await listPmProperties().catch(() => [])).filter((row) => isManagedUnit(row.name, row.address));
+  const properties = [];
+  for (const row of await listPmProperties().catch(() => [])) {
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) properties.push(row);
+  }
   const reviews: ReviewQueueRow[] = [];
   for (const property of properties) {
     const propertyId = (property.hospitable_property_id || "").trim();
