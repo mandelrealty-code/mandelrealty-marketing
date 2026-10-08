@@ -71,6 +71,12 @@ P.when("A").register("s-result", function () { return { init: function () {} }; 
     </h2>
     <span class="a-price" data-a-size="xl"><span class="a-offscreen">$214.50</span></span>
   </div>
+  <div role="listitem" data-asin="B0FARAWAY" data-index="3">${" ".repeat(6000)}
+    <h2 class="a-size-base-plus a-color-base a-text-normal">
+      <a class="a-link-normal s-line-clamp-2" href="/Far-Muskoka-Chair/dp/B0FARAWAY"><span>Far Muskoka Chair</span></a>
+    </h2>
+    <span class="a-price" data-a-size="xl"><span class="a-offscreen">$149.00</span></span>
+  </div>
 </div>
 <a class="s-pagination-next" href="/s?k=muskoka+chair+red&amp;page=2" aria-label="Go to next page">Next</a>
 <script>window.ue && window.ue.count("search", 1); var decoy = "$999.00 https://www.amazon.ca/dp/B0NOISE999";</script>
@@ -79,6 +85,7 @@ P.when("A").register("s-result", function () { return { init: function () {} }; 
 const marked = await answerWebLookup(QUESTION);
 if (!/Red Muskoka Chair/.test(marked) || !/\$189\.99 CAD/.test(marked) || !marked.includes("https://www.amazon.ca/dp/B0REDCHAIR")) fail(marked);
 if (!/Red Adirondack Muskoka Chair/.test(marked) || !/\$214\.50 CAD/.test(marked) || !marked.includes("https://www.amazon.ca/dp/B0ADIRED")) fail(marked);
+if (!/Far Muskoka Chair/.test(marked) || !/\$149\.00 CAD/.test(marked) || !marked.includes("https://www.amazon.ca/dp/B0FARAWAY")) fail(marked);
 if (/window\.ue_ibe|B0NOISE999|\$999\.00/.test(marked)) fail(marked);
 if (/^https?:\/\/\S+$/.test(marked.trim())) fail(marked);
 

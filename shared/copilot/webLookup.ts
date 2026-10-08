@@ -6,7 +6,7 @@
 import { researchWeb } from "./skillResearch.js";
 
 type Page = { title: string; url: string; text: string };
-type Item = { name: string; price: string; url: string };
+type Item = { name: string; price: string; url: string; image?: string };
 type Retailer = { name: string; cad: boolean; url: (query: string) => string };
 
 const FAILED = "That read failed.";
@@ -133,16 +133,72 @@ function amazonCards(html: string): Item[] {
   for (const mark of marks) {
     const asin = mark[1] ?? "";
     if (!asin) continue;
-    const window = html.slice(mark.index ?? 0, (mark.index ?? 0) + 4000);
-    const name = decode(/<h2\b[^>]*>[\s\S]*?<span[^>]*>([^<]{2,180})<\/span>/i.exec(window)?.[1] ?? "");
+    const start = mark.index ?? 0;
+    const nextCard = html.indexOf('role="listitem"', start + 120);
+    const end = nextCard > start ? nextCard : start + 20000;
+    const window = html.slice(start, Math.min(end, start + 24000));
+    const name = decode(/<h2\b[^>]*>[\s\S]*?<span[^>]*>([^<]{2,300})<\/span>/i.exec(window)?.[1] ?? "");
     const amount = /class="a-offscreen"[^>]*>\s*\$?\s*([\d,.]+)/i.exec(window)?.[1] ?? "";
+    const image = /<img[^>]+src="(https:\/\/m\.media-amazon\.com\/images\/I\/[^"]+)"/i.exec(window)?.[1] ?? "";
     if (!name || !amount) continue;
     pushProduct(out, seen, {
       name,
       price: priceLabel(amount, true, "CAD"),
       url: `https://www.amazon.ca/dp/${asin}`,
+      image,
     });
   }
+  return out;
+}
+
+function walmartProduct(row: Record<string, unknown>, out: Item[], seen: Set<string>): void {
+  const name = typeof row.name === "string" ? decode(row.name) : "";
+  const price = typeof row.price === "number" ? row.price : 0;
+  const path = typeof row.canonicalUrl === "string" ? row.canonicalUrl : "";
+  if (!name || price <= 0 || !/\/ip\//i.test(path)) return;
+  const url = /^https?:\/\//i.test(path) ? path.split("?")[0] : `https://www.walmart.ca${path.split("?")[0]}`;
+  pushProduct(out, seen, { name, price: priceLabel(price.toFixed(2), true, "CAD"), url });
+}
+
+function walmartCards(html: string): Item[] {
+  const raw = /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i.exec(html)?.[1];
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  const stacks: unknown[] = [];
+  const pile: unknown[] = [parsed];
+  let steps = 0;
+  while (pile.length && steps < 4000) {
+    steps += 1;
+    const node = pile.pop();
+    if (!node || typeof node !== "object") continue;
+    if (Array.isArray(node)) {
+      for (const entry of node) pile.push(entry);
+      continue;
+    }
+    const row = node as Record<string, unknown>;
+    if (Array.isArray(row.itemStacks)) stacks.push(row.itemStacks);
+    for (const value of Object.values(row)) {
+      if (value && typeof value === "object") pile.push(value);
+    }
+  }
+  const out: Item[] = [];
+  const seen = new Set<string>();
+  const visit = (node: unknown) => {
+    if (out.length >= 8 || !node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const entry of node) visit(entry);
+      return;
+    }
+    const row = node as Record<string, unknown>;
+    walmartProduct(row, out, seen);
+    if (Array.isArray(row.items)) visit(row.items);
+  };
+  for (const stack of stacks) visit(stack);
   return out;
 }
 
@@ -151,7 +207,7 @@ export function productsFrom(text: string, cad: boolean): Item[] {
   if (!html) return itemsOn(text, cad);
   const seen = new Set<string>();
   const out: Item[] = [];
-  for (const item of [...jsonLdItems(text, cad), ...amazonCards(text)]) pushProduct(out, seen, item);
+  for (const item of [...jsonLdItems(text, cad), ...amazonCards(text), ...walmartCards(text)]) pushProduct(out, seen, item);
   return out;
 }
 
@@ -165,7 +221,7 @@ function productQuery(text: string): string {
 function retailersFor(text: string): Retailer[] {
   const q = (query: string) => encodeURIComponent(query);
   const amazon: Retailer = { name: "Amazon.ca", cad: true, url: (query) => `https://www.amazon.ca/s?k=${q(query)}` };
-  const walmart: Retailer = { name: "Walmart.ca", cad: true, url: (query) => `https://www.walmart.ca/search?q=${q(query)}` };
+  const walmart: Retailer = { name: "Walmart.ca", cad: true, url: (query) => `https://www.walmart.ca/en/search?q=${q(query)}` };
   const tire: Retailer = { name: "Canadian Tire", cad: true, url: (query) => `https://www.canadiantire.ca/en/search-results.html?q=${q(query)}` };
   if (/\bamazon\b/i.test(text)) return [amazon, walmart, tire];
   if (/\bwalmart\b/i.test(text)) return [walmart, amazon, tire];
@@ -253,6 +309,43 @@ function synthesizePage(page: Page): string {
   const facts = factsFrom(page.text);
   if (!facts.length) return FAILED;
   return `${facts.join(" ")} That is from ${sourceName(page)}.`;
+}
+
+function centsOf(price: string): number | null {
+  const found = price.replace(/,/g, "").match(/(\d+(?:\.\d{1,2})?)/);
+  if (!found) return null;
+  const value = Number(found[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.round(value * 100);
+}
+
+export type ListedProduct = {
+  productName: string;
+  retailer: string;
+  priceCents: number;
+  productUrl: string;
+  imageUrl: string;
+};
+
+/** The first priced product from a retailer search. Nothing is purchased. */
+export async function listedProduct(item: string): Promise<ListedProduct | null> {
+  const query = item.trim();
+  if (!query) return null;
+  for (const retailer of retailersFor("amazon")) {
+    const read = await readRetailer(retailer, query);
+    if ("failed" in read) continue;
+    const found = read.items[0];
+    const priceCents = found ? centsOf(found.price) : null;
+    if (!found || priceCents == null) continue;
+    return {
+      productName: found.name,
+      retailer: retailer.name,
+      priceCents,
+      productUrl: found.url,
+      imageUrl: found.image || "",
+    };
+  }
+  return null;
 }
 
 async function readRetailer(retailer: Retailer, query: string): Promise<{ items: Item[]; url: string } | { failed: true; opened: boolean }> {

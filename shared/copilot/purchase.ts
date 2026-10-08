@@ -3,6 +3,7 @@
  * Nothing is ordered until commitPurchase, which is the Purchase item click.
  */
 
+import { connectReadBrowser } from "./skillResearch.js";
 import { parityEnabled } from "./parity/flag.js";
 import { capturePurchase } from "./parity/capture.js";
 import type { DeliveryStatus, PurchaseDetail, PurchaseFailed, PurchaseHeld, PurchaseOrdered, PurchaseSkipped, PurchaseSource, PurchaseState, RecordedSupply, SupplyWrite } from "./purchaseTypes.js";
@@ -72,11 +73,9 @@ export function describePurchase(source: PurchaseSource): PurchaseDetail {
   const left = Number.isFinite(source.left) ? source.left : 0;
   const threshold = source.threshold == null || !Number.isFinite(source.threshold) ? null : source.threshold;
   const restock = source.restockQty == null || !Number.isFinite(source.restockQty) ? null : source.restockQty;
-  const quantity = restock != null && restock > 0
-    ? restock
-    : threshold != null && threshold > left
-      ? threshold - left
-      : 0;
+  const short = threshold != null && left < threshold ? threshold - left : 0;
+  const atLine = threshold != null && left <= threshold && short < 1 ? 1 : 0;
+  const quantity = restock != null && restock > 0 ? restock : Math.max(short, atLine);
   const gaps: string[] = [];
   if (!productName) gaps.push("the product");
   if (!priceOk(source.priceCents)) gaps.push("the price");
@@ -163,29 +162,21 @@ async function placeOnce(detail: PurchaseDetail): Promise<{ ok: true; confirmati
 
 async function readRetailerPage(url: string): Promise<{ ok: true; text: string } | { ok: false }> {
   if (!/^https:\/\//i.test(url)) return { ok: false };
-  const apiKey = process.env.BROWSERBASE_API_KEY?.trim();
-  if (!apiKey) return { ok: false };
+  const opened = await connectReadBrowser();
+  if ("error" in opened) return { ok: false };
   try {
-    const { default: Browserbase } = await import("@browserbasehq/sdk");
     const { chromium } = await import("playwright-core");
-    const bb = new Browserbase({ apiKey });
-    let sessionId = "";
-    try {
-      const session = await bb.sessions.create({ keepAlive: false, api_timeout: 120 });
-      sessionId = session.id;
-      if (!session.connectUrl) return { ok: false };
-      const browser = await chromium.connectOverCDP(session.connectUrl);
-      const context = browser.contexts()[0] ?? await browser.newContext();
-      const page = context.pages()[0] ?? await context.newPage();
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-      const text = (await page.locator("body").innerText()).replace(/\s+/g, " ").trim().slice(0, 4000);
-      await browser.close().catch(() => undefined);
-      return { ok: true, text };
-    } finally {
-      if (sessionId) await bb.sessions.update(sessionId, { status: "REQUEST_RELEASE" }).catch(() => undefined);
-    }
+    const browser = await chromium.connectOverCDP(opened.connectUrl);
+    const context = browser.contexts()[0] ?? await browser.newContext();
+    const page = context.pages()[0] ?? await context.newPage();
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    const text = (await page.locator("body").innerText()).replace(/\s+/g, " ").trim().slice(0, 4000);
+    await browser.close().catch(() => undefined);
+    return { ok: true, text };
   } catch {
     return { ok: false };
+  } finally {
+    await opened.release();
   }
 }
 

@@ -5,9 +5,11 @@
 
 import { listPmProperties } from "../pm/propertyStore.js";
 import { readCleanerUnit, type CleanerPicture, type CleanerSupply } from "./cleanerRead.js";
+import { parityEnabled } from "./parity/flag.js";
 import { describePurchase, type PurchaseDetail } from "./purchase.js";
 import { placeLabel } from "./stayCheck.js";
 import type { CopilotDraft, CopilotMessage } from "./types.js";
+import { listedProduct } from "./webLookup.js";
 
 export type LegacyOffer = { property: string; item: string; product: string; left: number };
 
@@ -101,6 +103,12 @@ export async function openLegacyPurchase(
     if (!read.ok) return unread(offer, propertyId, property?.address || "", `I couldn't read the cleaner app. ${read.error}`);
     const supply = pickSupply(read.supplies, offer);
     if (!supply) return unread(offer, propertyId, property?.address || "", `I couldn't read the product for ${offer.item} at ${offer.property}.`);
+    const named = supply.product.trim();
+    const priced = typeof supply.priceCents === "number" && Number.isFinite(supply.priceCents);
+    const needsListing = !named || !priced || !supply.retailer.trim();
+    const found = needsListing && !parityEnabled()
+      ? await listedProduct(supply.item || offer.item || offer.product)
+      : null;
     return describePurchase({
       propertyId,
       property: offer.property,
@@ -109,11 +117,11 @@ export async function openLegacyPurchase(
       left: supply.left,
       threshold: supply.threshold,
       restockQty: supply.restockQty,
-      productName: supply.product || offer.product || supply.item,
-      retailer: supply.retailer,
-      priceCents: supply.priceCents,
-      imageUrl: supply.imageUrl,
-      productUrl: supply.productUrl,
+      productName: named || found?.productName || offer.product || supply.item,
+      retailer: supply.retailer.trim() || found?.retailer || "",
+      priceCents: priced ? supply.priceCents : found?.priceCents ?? null,
+      imageUrl: supply.imageUrl || found?.imageUrl || "",
+      productUrl: supply.productUrl || found?.productUrl || "",
       shipTo: supply.shipTo || property?.address || "",
     });
   } catch (err) {
