@@ -397,7 +397,11 @@ export async function buildProposal(input: {
   }
   const regenerated = await regenerate(rooms, rooms.map((room) => room.name));
   const estimate = await estimateFor(address, rooms);
-  const proposal = await saveVersion({ clientId: client.id, address, rooms, estimate, now });
+  const written = await saveVersion({ clientId: client.id, address, rooms, estimate, now });
+  const proposal = await getProposal(written.id).catch(() => null);
+  if (!proposal || proposal.id !== written.id || proposal.version !== written.version) {
+    return { body: "The creation failed.", proposal: null, draft: null, regenerated: [] };
+  }
   const gap = gaps.length ? ` ${gaps.join(" ")}` : "";
   return {
     body: `${client.name}, ${proposal.address}. Version ${proposal.version}. ${summary(proposal)}${gap}`,
@@ -484,7 +488,11 @@ export async function editProposal(instruction: string, proposalId?: string, now
   }
   const regenerated = await regenerate(rooms, [...touched]);
   const estimate = await estimateFor(current.address, rooms);
-  const proposal = await saveVersion({ clientId: current.client_id, address: current.address, rooms, estimate, now });
+  const written = await saveVersion({ clientId: current.client_id, address: current.address, rooms, estimate, now });
+  const proposal = await getProposal(written.id).catch(() => null);
+  if (!proposal || proposal.id !== written.id || proposal.version !== written.version) {
+    return { body: "The creation failed.", proposal: null, draft: null, regenerated: [], changed: [] };
+  }
   return {
     body: `Version ${proposal.version}. ${changed.join(" ")} ${summary(proposal)}`,
     proposal,

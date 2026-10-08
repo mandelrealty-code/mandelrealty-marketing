@@ -13,7 +13,9 @@ import { NO_PHONE } from "./skillContacts.js";
 import { TEXT_MISSING, capturedPartnerDeliveries, resetPartnerDeliveries, setPartnerMailbox } from "./skillDelivery.js";
 import { installResearch } from "./skillResearch.js";
 import { installSheet, writeSheet } from "./skillSheet.js";
-import { applyBuilderSave, skillFromWords, skillFromWorkflow, workflowFromSkill } from "./skillShape.js";
+import { failSkillSaves } from "./parity/storeStub.js";
+import { CREATION_FAILED, reportSkillCreation } from "./skillPersist.js";
+import { draftFromSkill, applyBuilderSave, skillFromWords, skillFromWorkflow, workflowFromSkill } from "./skillShape.js";
 import { BLANK, FN, type Workflow } from "./workflow.js";
 
 const MONDAY = "Every Monday, text me the guest names and phone numbers for the week's check-ins";
@@ -326,6 +328,24 @@ const assigned = await commitCleanerAssignment(assignment.draft.cleanerAssign);
 if (!/Priya/.test(assigned)) fail(assigned);
 const after = parityCleaner()?.turnovers?.find((row) => row.propertyId === ID.blue);
 if (!after?.assigned || after.cleanerName !== "Priya") fail("the turnover cleaner was not set");
+
+const FRIDAY = "every Friday, email me the weekend check-ins";
+const fridayDraft = draftFromSkill(skillFromWords(FRIDAY), FRIDAY);
+const fridayAnswer = await reportSkillCreation(fridayDraft, FRIDAY);
+const fridayRow = (await listSkills()).find((row) => row.name === fridayDraft.skillName && row.schedule === "weekly:Friday" && row.enabled === false);
+if (!fridayRow) fail("the Friday skill was not in the skill list");
+if (!fridayAnswer.includes(fridayRow.name) || !fridayAnswer.includes("Every Friday morning, ~5:00") || !/\boff\b/.test(fridayAnswer)) fail(fridayAnswer);
+if (/\blive\b|set up/i.test(fridayAnswer)) fail(fridayAnswer);
+failSkillSaves("The skill store refused the write.");
+try {
+  const failedAsk = "every Friday, email me the next weekend check-ins";
+  const failed = await reportSkillCreation(draftFromSkill(skillFromWords(failedAsk), failedAsk), failedAsk);
+  if (failed !== CREATION_FAILED) fail(failed);
+  if (/\b(live|set up|saved|off)\b/i.test(failed)) fail(failed);
+  if ((await listSkills()).some((row) => row.name === failedAsk)) fail("a failed create left a skill row");
+} finally {
+  failSkillSaves(null);
+}
 
 console.log("Monday list:");
 console.log(listLines(live.text));

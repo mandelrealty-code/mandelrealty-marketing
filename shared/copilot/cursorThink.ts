@@ -4,7 +4,7 @@ import { withoutHubSecrets } from "./hubSecrets.js";
 import { addMessage, addReminder, clearDesk, listCursorRuns, listMessages, readCursorLink, readDesk, remember, renameChat, saveCursorLink, saveDesk } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import { normalizeSchedule } from "./skillSchedule.js";
-import { persistDescribedSkill } from "./skillPersist.js";
+import { CREATION_FAILED, reportSkillCreation } from "./skillPersist.js";
 import type { CopilotDraft } from "./types.js";
 
 export const CURSOR_MISSING =
@@ -663,21 +663,24 @@ async function readCursorRun(chatId: string, follow: boolean): Promise<ThinkStat
     if (run.status === "finished" && site) {
       parsed = { ...parsed, body: handoffBody(site), choices: null, draft: null, reminder: null };
     }
+    let body = run.status === "finished" ? await applyAsks(parsed) : parsed.body;
+    let draft = parsed.draft;
+    if (run.status === "finished" && draft?.channel === "skill" && draft.skillKind !== "text") {
+      const said = messages.filter((message) => message.role === "user").map((message) => message.body).join("\n");
+      body = await reportSkillCreation(draft, said);
+      if (body === CREATION_FAILED) draft = null;
+    }
     await addMessage({
       chatId,
       role: "assistant",
-      body: run.status === "finished" ? await applyAsks(parsed) : parsed.body,
-      draft: parsed.draft,
+      body,
+      draft,
       choices: parsed.choices,
       steps: looking.steps,
-      thought: undefined,
+      thought: draft?.channel === "skill" ? "The skill is saved and off. Nothing was sent." : body === CREATION_FAILED ? "The creation failed." : undefined,
     });
-    const skillName = parsed.draft?.channel === "skill" ? parsed.draft.skillName?.trim() : "";
-    if (skillName) await renameChat(chatId, skillName);
-    if (parsed.draft?.channel === "skill") {
-      const said = (await listMessages(chatId)).filter((message) => message.role === "user").map((message) => message.body).join("\n");
-      await persistDescribedSkill(parsed.draft, said).catch(() => undefined);
-    }
+    const skillName = draft?.channel === "skill" ? draft.skillName?.trim() : "";
+    if (skillName && body !== CREATION_FAILED) await renameChat(chatId, skillName);
   }
   const latest = { steps: deskSteps(chatId), view: deskView(chatId) };
   await clearDesk(chatId).catch(() => undefined);

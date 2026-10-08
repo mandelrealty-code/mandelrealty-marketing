@@ -113,7 +113,7 @@ export function skillTurn(
   if (describedJob(said)) {
     const shaped = skillFromWords(said);
     return {
-      body: "Here is the skill. It is saved and off. It will not run until you turn it on. Nothing was sent.",
+      body: "Here is the skill.",
       draft: draftFromSkill(shaped, said),
       choices: null,
       reminder: null,

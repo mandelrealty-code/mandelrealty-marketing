@@ -505,9 +505,6 @@ async function runLoop(
   if (draft?.channel === "email" && !/submit/i.test(body)) {
     body = `${body}\n\nNothing was sent. Press Submit to send it, or Hold to leave it.`.trim();
   }
-  if (draft?.channel === "skill" && !/saved, and off/i.test(body)) {
-    body = `${body}\n\nSaved, and off. It will not run until you turn it on.`.trim();
-  }
   const steps = [...new Set(used.filter((name) => name !== "finish").map((name) => stepFor(name, Boolean(held.action))))].slice(0, 8).map((text) => ({ text }));
   if (!steps.length) steps.push({ text: "Answered" });
   return {

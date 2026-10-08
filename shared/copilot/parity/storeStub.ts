@@ -55,12 +55,19 @@ export function parityMarkDrafts(key: string): void {
 }
 
 const skills: CopilotSkill[] = [];
+let skillSaveError: string | null = null;
+
+/** The next skill save throws, so a chat cannot claim a skill that was not stored. */
+export function failSkillSaves(message: string | null): void {
+  skillSaveError = message;
+}
 
 export function paritySkillList(): CopilotSkill[] {
   return skills.map((row) => ({ ...row }));
 }
 
 export function paritySaveSkill(skill: CopilotSkill): CopilotSkill {
+  if (skillSaveError) throw new Error(skillSaveError);
   const idx = skills.findIndex((row) => row.id === skill.id);
   if (idx >= 0) skills[idx] = skill;
   else skills.unshift(skill);

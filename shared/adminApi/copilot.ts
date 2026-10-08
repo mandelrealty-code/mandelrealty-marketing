@@ -37,7 +37,7 @@ import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "
 import { makePicture } from "../copilot/picture.js";
 import { draftForCard, skillTurn } from "../copilot/reply.js";
 import { skillFromWords, skillFromWorkflow } from "../copilot/skillShape.js";
-import { persistDescribedSkill } from "../copilot/skillPersist.js";
+import { CREATION_FAILED, reportSkillCreation, storedSkill } from "../copilot/skillPersist.js";
 import { testWorkflow } from "../copilot/skillExecute.js";
 import { missingNumber, type Workflow } from "../copilot/workflow.js";
 import { chooseBriefOpenItem, chooseOpenItem, listOpenItems, openItemChoice } from "../copilot/openItems.js";
@@ -125,16 +125,27 @@ async function hospitableMessage(
     .join("\n\n");
   const turn = await answerHospitable({ model, question, prior, facts: await factsFor(), images });
   if (!turn) return false;
+  let body = turn.body;
+  let draft = turn.draft;
+  let thought = turn.thought;
+  if (draft?.channel === "skill" && draft.skillKind !== "text") {
+    body = await reportSkillCreation(draft, `${prior}\n${question}`);
+    if (body === CREATION_FAILED) {
+      draft = null;
+      thought = "The creation failed.";
+    } else {
+      thought = "The skill is saved and off. Nothing was sent.";
+    }
+  }
   await addMessage({
     chatId,
     role: "assistant",
-    body: turn.body,
+    body,
     steps: turn.steps,
-    thought: turn.thought,
-    draft: turn.draft,
+    thought,
+    draft,
     choices: turn.choices,
   });
-  if (turn.draft?.channel === "skill") await persistDescribedSkill(turn.draft, question).catch(() => undefined);
   return true;
 }
 
@@ -684,12 +695,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (asksSop(text)) {
           const shaped = sopFromWords(text);
           const saved = shaped ? await createOpsSop(shaped) : "An SOP needs a title and the steps. Nothing was saved.";
+          const sopFailed = /creation failed|nothing was saved|needs a title|needs the steps/i.test(saved);
           await addMessage({
             chatId,
             role: "assistant",
             body: saved,
-            steps: [{ text: "Saved the SOP" }],
-            thought: "This is in OPS.",
+            steps: [{ text: sopFailed ? "The SOP was not created" : "Saved the SOP" }],
+            thought: sopFailed ? "The creation failed." : "This is in OPS.",
           });
           return done();
         }
@@ -863,20 +875,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const prior = history.slice(0, -1).map((message) => ({ role: message.role, body: message.body }));
         const result = skillTurn(text, prior);
         let bodyText = result.body;
-        if (result.draft?.channel === "skill") {
-          const saved = await persistDescribedSkill(result.draft, [...prior.map((message) => message.body), text].join("\n")).catch(() => null);
-          if (saved) bodyText = bodyText.replace(/Nothing was saved\.[^\n]*/gi, "Saved, and off. It will not run until you turn it on.");
+        let draft = result.draft;
+        const said = [...prior.map((message) => message.body), text].join("\n");
+        if (draft?.channel === "skill" && draft.skillKind !== "text") {
+          bodyText = await reportSkillCreation(draft, said);
+          if (bodyText === CREATION_FAILED) draft = null;
         }
+        const created = bodyText !== CREATION_FAILED && draft?.channel === "skill" && draft.skillKind !== "text";
         await addMessage({
           chatId,
           role: "assistant",
           body: bodyText,
-          draft: result.draft,
+          draft,
           choices: result.choices ?? null,
-          steps: [{ text: result.draft ? "Drafted the skill" : "Asked about the skill" }],
-          thought: result.draft?.channel === "skill" && result.draft.skillKind !== "text"
-            ? "Saved, and off until you turn it on. Nothing was sent."
-            : "Nothing was saved, and nothing was sent.",
+          steps: [{ text: created ? "Saved the skill" : draft ? "Drafted the skill" : bodyText === CREATION_FAILED ? "The skill was not created" : "Asked about the skill" }],
+          thought: created ? "The skill is saved and off. Nothing was sent." : bodyText === CREATION_FAILED ? "The creation failed." : "Nothing was saved, and nothing was sent.",
         });
         return done();
       }
@@ -1025,6 +1038,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             /* The skill still keeps the number if the allowlist table is not there yet. */
           }
         }
+        if (!(await storedSkill(skill))) return res.status(500).json({ error: CREATION_FAILED });
         const message = await updateDraft(messageId, { status: "approved_unsent" });
         if (message?.chat_id) await renameChat(message.chat_id, skill.name);
         return res.status(200).json({ message, skill, skills: await skillRows(), textNumbers: await listTextNumbers(), chats: await listChats() });
@@ -1184,6 +1198,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           /* The skill still keeps the number if the allowlist table is not there yet. */
         }
       }
+      if (!(await storedSkill(skill))) return res.status(500).json({ error: CREATION_FAILED });
       return res.status(200).json({ skill, skills: await skillRows() });
     }
 
@@ -1216,6 +1231,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           /* The skill still keeps the number if the allowlist table is not there yet. */
         }
       }
+      if (!(await storedSkill(skill))) return res.status(500).json({ error: CREATION_FAILED });
       return res.status(200).json({ skill, skills: await skillRows(), textNumbers: await listTextNumbers().catch(() => []) });
     }
 

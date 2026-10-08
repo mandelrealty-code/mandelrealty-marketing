@@ -208,7 +208,7 @@ export async function createOpsSop(input: { title: string; audience?: string; st
     })),
   });
   const listed = await listSops();
-  if (!listed.some((row) => row.id === saved.id)) return "The SOP did not save in OPS.";
+  if (!listed.some((row) => row.id === saved.id && row.title === saved.title)) return "The creation failed.";
   return `${saved.title} is saved in OPS for ${saved.target_role === "va" ? "VAs" : saved.target_role}. It is in the SOP list.`;
 }
 
