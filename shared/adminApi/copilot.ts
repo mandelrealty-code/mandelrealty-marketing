@@ -23,7 +23,7 @@ import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
 import { answerBuildingRegistration } from "../copilot/buildingRegistration.js";
-import { answerStay } from "../copilot/stayAnswer.js";
+import { answerStay, asksDayCount } from "../copilot/stayAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft } from "../copilot/guestInboxAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
@@ -109,6 +109,27 @@ function mcpSaveError(err: unknown): string {
     return "The MCP token column is not on the database yet. Run supabase/pm_hospitable_mcp_token_v1.sql, then save the token again.";
   }
   return message;
+}
+
+/** Check-in counts and email-chain breakdowns are pinned. The model does not answer them. */
+async function pinnedCompanyAnswer(text: string): Promise<{ body: string; step: string; thought: string } | null> {
+  const chain = await answerMailChain(text);
+  if (chain) {
+    const missed = /didn't find|didn't return|isn't connected/.test(chain);
+    return {
+      body: chain,
+      step: missed ? "The mail read failed" : "Read the email chain",
+      thought: "This came from the mailbox. Nothing was sent.",
+    };
+  }
+  if (!asksDayCount(text)) return null;
+  const stay = await answerStay(text);
+  if (!stay) return null;
+  return {
+    body: stay,
+    step: "Read the reservation",
+    thought: "This came from Hospitable. Nothing was sent.",
+  };
 }
 
 async function hospitableMessage(
@@ -433,6 +454,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
         return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
       }
+      const pinned = await pinnedCompanyAnswer(text);
+      if (pinned) {
+        await addMessage({
+          chatId: chat.id,
+          role: "assistant",
+          body: pinned.body,
+          steps: [{ text: pinned.step }],
+          thought: pinned.thought,
+        });
+        return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
+      }
       if (ASKS_HOSPITABLE.test(text) && (await hospitableMessage(chat.id, "auto", text, []))) {
         return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
       }
@@ -593,6 +625,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
         }
         return done();
+      }
+      if (!pictureMode) {
+        const pinned = await pinnedCompanyAnswer(text);
+        if (pinned) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: pinned.body,
+            steps: [{ text: pinned.step }],
+            thought: pinned.thought,
+          });
+          return done();
+        }
       }
       if (!pictureMode && !skillMode && !skipsWeb(text) && asksWebLookup(text)) {
         const said = await answerWebLookup(text);

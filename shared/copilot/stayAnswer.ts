@@ -14,12 +14,46 @@ import { addDays, torontoToday } from "./time.js";
 
 const CODE = /\b(HM[A-Z0-9]{8,12})\b/i;
 const STAY = /\b(reservations?|check[\s-]?ins?|check[\s-]?outs?|checking[\s-]?in|checking[\s-]?out|next guest|guest messages?|booking history)\b/i;
+const CHECK = /\b(check[\s-]?ins?|check[\s-]?outs?|checking[\s-]?in|checking[\s-]?out)\b/i;
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 type Listing = { id: string; name: string; address: string; label: string; publicName: string };
-type Stay = { id: string; code: string; status: string; checkIn: string; checkOut: string; guest: string };
+type Stay = { id: string; code: string; propertyId: string; status: string; checkIn: string; checkOut: string; guest: string };
 
 const STOP = new Set(["what", "was", "the", "last", "guest", "message", "messages", "on", "reservation", "stay", "for", "at", "and", "from", "who", "sent", "about"]);
+
+/** A check-in or check-out count for today, tomorrow, or a named day. The split is the whole answer. */
+export function asksDayCount(text: string): boolean {
+  const asked = text.trim();
+  if (!asked || asksBuildingRegistration(asked) || /\bmessage\b/i.test(asked)) return false;
+  return Boolean(askedDay(asked)) && CHECK.test(asked);
+}
+
+/** Today, tomorrow, an ISO date, "October 9", or a weekday, as YYYY-MM-DD. */
+export function askedDay(question: string, today = torontoToday()): string | null {
+  const asked = question.trim();
+  if (/\btoday\b/i.test(asked)) return today;
+  if (/\btomorrow\b/i.test(asked)) return addDays(today, 1);
+  const iso = asked.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+  if (iso?.[1]) return iso[1];
+  const monthDay = asked.toLowerCase().match(new RegExp(`\\b(${MONTHS.join("|")})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(20\\d{2}))?\\b`));
+  if (monthDay?.[1] && monthDay[2]) {
+    const month = MONTHS.indexOf(monthDay[1]) + 1;
+    const date = Number(monthDay[2]);
+    const year = monthDay[3] ? Number(monthDay[3]) : Number(today.slice(0, 4));
+    if (month > 0 && date >= 1 && date <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
+    }
+  }
+  const weekday = asked.toLowerCase().match(new RegExp(`\\b(${WEEKDAYS.join("|")})\\b`));
+  if (weekday?.[1]) {
+    const target = WEEKDAYS.indexOf(weekday[1]);
+    const current = new Date(`${today}T12:00:00Z`).getUTCDay();
+    return addDays(today, (target - current + 7) % 7);
+  }
+  return null;
+}
 
 export async function answerStay(question: string, prior = ""): Promise<string | null> {
   const asked = question.trim();
@@ -34,7 +68,8 @@ export async function answerStay(question: string, prior = ""): Promise<string |
       return "Hospitable didn't return that reservation. I didn't guess.";
     }
   }
-  const inventory = asksInventory(asked);
+  const day = askedDay(asked);
+  const inventory = asksInventory(asked) || Boolean(day && CHECK.test(asked));
   if (!STAY.test(asked) && !inventory) return null;
   const aboutThis = /\b(this|that) (unit|reservation|stay|property)\b/i.test(asked);
   if (!code && !aboutThis && !hasPlace(asked) && !inventory) return null;
@@ -42,6 +77,10 @@ export async function answerStay(question: string, prior = ""): Promise<string |
     if (code && /\bmessage\b/i.test(asked)) return await messageFor(code);
     if (code && !/\bhow many\b/i.test(asked)) return await messageFor(code, false);
     const managed = await managedListings();
+    if (day && CHECK.test(asked)) {
+      const checkins = !/\bcheck[\s-]?outs?\b/i.test(asked);
+      return await dayCount(managed, day, checkins);
+    }
     if (/\bpropert(?:y|ies)\b/i.test(asked) && !/\b(check|reservation|stay|guest)\b/i.test(asked)) {
       return propertyRoster(managed);
     }
@@ -51,12 +90,6 @@ export async function answerStay(question: string, prior = ""): Promise<string |
       return "I couldn't match that to a managed property. I didn't guess a count.";
     }
     const listings = picked.length ? picked : managed;
-    if (/\b(today|tomorrow)\b/i.test(asked) && /\bcheck/i.test(asked)) {
-      const today = torontoToday();
-      const day = /\btomorrow\b/i.test(asked) ? addDays(today, 1) : today;
-      const checkins = !/\bcheck[\s-]?outs?\b/i.test(asked);
-      return await dayCount(listings, day, checkins);
-    }
     if (/\b(next guest|who is (the )?next|next check-?in)\b/i.test(asked)) return await nextGuest(listings);
     if (/\blast check-?in\b/i.test(asked)) return await lastCheckIn(listings);
     const month = monthWindow(asked, torontoToday());
@@ -125,8 +158,11 @@ async function dayCount(listings: Listing[], day: string, checkins: boolean): Pr
       continue;
     }
     try {
-      const stays = await loadStays([listing.id], day, day, checkins ? "checkin" : "checkout");
-      const accepted = stays.filter((stay) => stay.status === "accepted" && (checkins ? stay.checkIn === day : stay.checkOut === day));
+      const stays = await loadStays([listing.id], addDays(day, -1), addDays(day, 1), checkins ? "checkin" : "checkout");
+      const accepted = stays.filter((stay) => {
+        if (stay.propertyId && listing.id && stay.propertyId !== listing.id) return false;
+        return stay.status === "accepted" && (checkins ? stay.checkIn === day : stay.checkOut === day);
+      });
       total += accepted.length;
       lines.push(`${listing.label}: ${accepted.length} accepted ${noun}${accepted.length === 1 ? "" : "s"}`);
     } catch {
@@ -446,6 +482,7 @@ function toStay(row: Record<string, unknown>): Stay {
   return {
     id: text(row.id),
     code: text(row.code) || text(row.platform_id),
+    propertyId: text(row.property_id) || text(row.propertyId) || listingFrom(row)?.id || "",
     status: text(row.status).toLowerCase() || "unknown",
     checkIn: day(text(row.arrival_date) || text(row.check_in)),
     checkOut: day(text(row.departure_date) || text(row.check_out)),
@@ -502,7 +539,13 @@ function addressOf(value: unknown): string {
 }
 
 function day(value: string): string {
-  return value.slice(0, 10);
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  if (/T/.test(trimmed)) {
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) return torontoToday(parsed);
+  }
+  return trimmed.slice(0, 10);
 }
 
 function text(value: unknown): string {

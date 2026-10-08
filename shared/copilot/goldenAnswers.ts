@@ -18,7 +18,7 @@ import { GENERAL_ANSWER_SYSTEM } from "./plainAnswer.js";
 import { takeMemoryTurn } from "./memoryFiles.js";
 import { answerPropertyFact } from "./propertyFact.js";
 import { answerInboxToday } from "./mailInbox.js";
-import { answerMailChain } from "./mailChain.js";
+import { answerMailChain, asksMailBreakdown } from "./mailChain.js";
 import { questionRoute, skipsWeb } from "./route.js";
 import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerRecords, asksUnitRoster, missingSourceAnswer } from "./recordsAnswer.js";
@@ -26,7 +26,7 @@ import { answerOwnStore } from "./storeQuestions.js";
 import { createProposal } from "../pm/proposalStore.js";
 import { listPmClients } from "../pm/clientStore.js";
 import { upsertSop } from "../pm/sopStore.js";
-import { answerStay } from "./stayAnswer.js";
+import { answerStay, asksDayCount } from "./stayAnswer.js";
 import { answerOutsideRentals } from "./topicScope.js";
 
 function fail(name: string, message: string): never {
@@ -206,6 +206,9 @@ if (/\*\*/.test(summary) || !summary.includes("<strong>23</strong>")) fail("mark
 const routes: Array<[string, string]> = [
   ["Any new emails come in today from Gmail?", "mail"],
   ["How many check ins are today?", "stay"],
+  ["How many check ins are tomorrow?", "stay"],
+  ["How many check ins are on Friday, October 9?", "stay"],
+  ["Break down the email chain with Manik in 2-3 paragraphs", "mail"],
   ["How many reservations do we have this month?", "reservation"],
   ["What does the cleaner app show for turnovers?", "cleaner"],
   ["Where is the SOP for guest arrival?", "sop"],
@@ -640,4 +643,101 @@ if (!assigned) fail("cleaner", "no assigned answer");
 shape("cleaner assigned", assigned.body, /^Yes\./, ["20 Blue Jays Way", "Friday, October 9, 2026"]);
 if (/does not appear|didn't appear|couldn't match|hospitable/i.test(assigned.body)) fail("cleaner assigned", assigned.body);
 
-console.log("golden answers: 8 passed");
+const tomorrowWorld = worldAt("2026-10-07T11:00:00-04:00");
+tomorrowWorld.reservations.push(
+  { id: "tmrw-charlotte", code: "HMTMRW606", propertyId: ID.charlotte, status: "accepted", checkIn: "2026-10-08", checkOut: "2026-10-10", guest: "Ava", adults: 2, children: 0, messages: [] },
+  { id: "tmrw-rose", code: "HMTMRW041", propertyId: ID.rose, status: "accepted", checkIn: "2026-10-08", checkOut: "2026-10-11", guest: "Ben", adults: 2, children: 0, messages: [] },
+  { id: "tmrw-shaw", code: "HMTMRW065", propertyId: ID.shaw, status: "accepted", checkIn: "2026-10-08", checkOut: "2026-10-09", guest: "Cara", adults: 1, children: 0, messages: [] },
+);
+installWorld(tomorrowWorld);
+const tomorrowQ = "How many check ins are tomorrow?";
+if (!asksDayCount(tomorrowQ) || await answerOutsideRentals(tomorrowQ)) fail("tomorrow check-ins", "the day count was not pinned");
+const tomorrowSplit = [
+  "3 accepted check-ins on 2026-10-08.",
+  "8 Charlotte 606: 1 accepted check-in",
+  "Roseglor: 1 accepted check-in",
+  "20 Blue Jays Way: 0 accepted check-ins",
+  "1065 Shaw Street: 1 accepted check-in",
+].join("\n");
+const tomorrowA = await answerStay(tomorrowQ);
+const tomorrowB = await answerStay(tomorrowQ);
+if (tomorrowA !== tomorrowSplit || tomorrowB !== tomorrowA) fail("tomorrow check-ins", tomorrowA ?? "no answer");
+if (/doesn.?t show which units|couldn.?t match|failed read|1104|Partner Loft|Wes|Ned/i.test(tomorrowA)) fail("tomorrow check-ins", tomorrowA);
+
+const fridayQ = "How many check ins are on Friday, October 9?";
+if (!asksDayCount(fridayQ)) fail("friday check-ins", "a named day was not a day count");
+const fridaySplit = [
+  "1 accepted check-in on 2026-10-09.",
+  "8 Charlotte 606: 0 accepted check-ins",
+  "Roseglor: 0 accepted check-ins",
+  "20 Blue Jays Way: 1 accepted check-in",
+  "1065 Shaw Street: 0 accepted check-ins",
+].join("\n");
+const fridayA = await answerStay(fridayQ);
+const fridayB = await answerStay("How many check ins are on Friday?");
+if (fridayA !== fridaySplit || fridayB !== fridayA) fail("friday check-ins", `${fridayA ?? "no answer"}\n${fridayB ?? "no second answer"}`);
+if (/doesn.?t show which units|couldn.?t match/i.test(fridayA)) fail("friday check-ins", fridayA);
+
+const manikQ = "Break down the email chain with Manik in 2-3 paragraphs";
+installWorld(worldAt("2026-10-07T11:00:00-04:00", false, [
+  {
+    id: "manik-1",
+    threadId: "manik-thread",
+    mailbox: "gmail",
+    folder: "inbox",
+    from: "Manik",
+    email: "manik@example.com",
+    to: "shane@mandelrealtygroup.com",
+    date: "2026-10-01T09:00:00-04:00",
+    subject: "Dishwasher at 8 Charlotte 606",
+    snippet: "The dishwasher is leaking.",
+    body: "The dishwasher at 8 Charlotte 606 is leaking. Can you send a plumber?",
+    airbnb: false,
+  },
+  {
+    id: "manik-2",
+    threadId: "manik-thread",
+    mailbox: "gmail",
+    folder: "sent",
+    from: "Shane",
+    email: "shane@mandelrealtygroup.com",
+    to: "manik@example.com",
+    date: "2026-10-02T10:00:00-04:00",
+    subject: "Re: Dishwasher at 8 Charlotte 606",
+    snippet: "Thursday morning.",
+    body: "I can send a plumber Thursday morning.",
+    airbnb: false,
+  },
+  {
+    id: "manik-3",
+    threadId: "manik-thread",
+    mailbox: "gmail",
+    folder: "inbox",
+    from: "Manik",
+    email: "manik@example.com",
+    to: "shane@mandelrealtygroup.com",
+    date: "2026-10-03T11:00:00-04:00",
+    subject: "Re: Dishwasher at 8 Charlotte 606",
+    snippet: "Please confirm.",
+    body: "Thursday works. Please confirm once the plumber is booked.",
+    airbnb: false,
+  },
+]));
+if (!asksMailBreakdown(manikQ) || await answerOutsideRentals(manikQ)) fail("manik chain", "the breakdown was not pinned");
+const manikA = await answerMailChain(manikQ);
+const manikB = await answerMailChain(manikQ);
+if (!manikA || manikA !== manikB) fail("manik chain", manikA ?? "no answer");
+const manikParagraphs = manikA.split(/\n\n/).filter(Boolean);
+if (manikParagraphs.length < 2 || manikParagraphs.length > 3) fail("manik chain", manikA);
+if (!manikA.includes("Manik") || !manikA.includes("Thursday morning") || !manikA.includes("plumber is booked") || !/outstanding/i.test(manikA)) {
+  fail("manik chain", manikA);
+}
+for (const body of [
+  "The dishwasher at 8 Charlotte 606 is leaking. Can you send a plumber?",
+  "I can send a plumber Thursday morning.",
+  "Thursday works. Please confirm once the plumber is booked.",
+]) {
+  if (manikA.includes(body)) fail("manik chain", `pasted a message body\n${manikA}`);
+}
+
+console.log("golden answers passed");

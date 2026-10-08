@@ -65,13 +65,21 @@ function outstanding(last: MailLetter): string {
   return "Nothing further is waiting in the last note.";
 }
 
-/** Two or three paragraphs: who said what, in order, then what is still open. */
+/** Two or three paragraphs: who said what, in order, then what is still open. Message bodies stay out. */
 export function breakdownFrom(letters: MailLetter[]): string {
   const ordered = [...letters].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const first = ordered[0];
   if (!first) return "I didn't find that email chain. I didn't guess.";
-  if (ordered.length === 1) return `${first.from} wrote that ${told(first)}.\n\n${outstanding(first)}`;
+  const narrative = ordered.length === 1
+    ? `${first.from} wrote that ${told(first)}.\n\n${outstanding(first)}`
+    : chainNarrative(ordered);
+  return withoutBodies(narrative, ordered);
+}
+
+function chainNarrative(ordered: MailLetter[]): string {
+  const first = ordered[0];
   const last = ordered[ordered.length - 1] ?? first;
+  if (!first || !last) return "I didn't find that email chain. I didn't guess.";
   const middle = ordered.slice(1, -1);
   const opening = `${first.from} wrote first that ${told(first)}.`;
   const between = middle.map((row) => `${row.from} replied that ${told(row)}.`).join(" ");
@@ -79,7 +87,18 @@ export function breakdownFrom(letters: MailLetter[]): string {
   return [opening, between, closing].filter(Boolean).join("\n\n");
 }
 
-async function openChain(hits: MailHit[]): Promise<MailLetter[]> {
+function withoutBodies(narrative: string, letters: MailLetter[]): string {
+  let text = narrative;
+  for (const letter of letters) {
+    const body = plain(letter);
+    if (body.length > 12 && text.includes(body)) text = text.split(body).join("a note");
+  }
+  const paragraphs = text.split(/\n\n/).map((row) => row.trim()).filter(Boolean).slice(0, 3);
+  if (paragraphs.length >= 2) return paragraphs.join("\n\n");
+  return `${text.trim()}\n\nNothing further is waiting in the last note.`;
+}
+
+async function openChain(hits: MailHit[], who: string): Promise<MailLetter[]> {
   const groups = new Map<string, MailHit[]>();
   for (const hit of hits) {
     const key = `${hit.mailbox}:${hit.threadId || hit.id}`;
@@ -87,9 +106,11 @@ async function openChain(hits: MailHit[]): Promise<MailLetter[]> {
     list.push(hit);
     groups.set(key, list);
   }
+  const needle = who.toLowerCase();
   const best = [...groups.values()].sort((a, b) => {
+    const named = (rows: MailHit[]) => rows.some((row) => `${row.from} ${row.subject} ${row.snippet}`.toLowerCase().includes(needle)) ? 1 : 0;
     const latest = (rows: MailHit[]) => rows.reduce((max, row) => (row.date > max ? row.date : max), "");
-    return b.length - a.length || latest(b).localeCompare(latest(a));
+    return named(b) - named(a) || b.length - a.length || latest(b).localeCompare(latest(a)) || (a[0]?.id ?? "").localeCompare(b[0]?.id ?? "");
   })[0];
   if (!best?.[0]) return [];
   const mailbox = best[0].mailbox;
@@ -117,7 +138,7 @@ export async function answerMailChain(text: string): Promise<string | null> {
     const note = found.notes.find((line) => /isn't connected|didn't return/i.test(line));
     return note ?? "I didn't find that email chain. I didn't guess.";
   }
-  const letters = await openChain(found.hits);
+  const letters = await openChain(found.hits, keywords);
   if (!letters.length) return "I didn't find that email chain. I didn't guess.";
   return breakdownFrom(letters);
 }
