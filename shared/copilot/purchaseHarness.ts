@@ -7,6 +7,7 @@ import { buildBrief } from "./brief.js";
 import { capturedPurchases, resetCaptures } from "./parity/capture.js";
 import { ID, worldAt } from "./parity/catalog.js";
 import { installWorld } from "./parity/world.js";
+import { openLegacyPurchase } from "./openPurchase.js";
 import {
   applyCleanerStatus,
   commitPurchase,
@@ -125,6 +126,34 @@ const after = await buildBrief(world.now);
 const deliveredCard = after.focus.find((card) => card.purchaseStatus === "delivered");
 if (!deliveredCard || !/Cleaners notified in the cleaner app/.test(deliveredCard.text) || !/Ready for pickup at 8 Charlotte 606/.test(deliveredCard.text)) {
   fail(after.focus.map((card) => card.text).join("\n").slice(0, 500) || "the delivered card was missing");
+}
+
+const ordersBeforeOpen = placedOrders().length;
+const writesBeforeOpen = supplyWrites().length;
+const opened = await openLegacyPurchase({
+  id: "legacy-charlotte-note",
+  chat_id: "checks",
+  created_at: "2026-10-01T12:00:00.000Z",
+  role: "assistant",
+  body: "8 Charlotte 606 is low on paper towels. 1 left. Approve the purchase of Bounty paper towels. Nothing is purchased until you approve.",
+  draft: {
+    channel: "note",
+    status: "waiting",
+    to: "",
+    subject: "Buy Bounty paper towels for 8 Charlotte 606",
+    body: "8 Charlotte 606 is low on paper towels. 1 left. Approve the purchase of Bounty paper towels. Nothing is purchased until you approve.",
+  },
+});
+if (!opened || opened.kind !== "detail") fail("an older note did not open as a purchase");
+if (opened.productName !== "Bounty Select-A-Size, 12 Rolls" || opened.retailer !== "Amazon" || opened.priceCents !== 2499) {
+  fail(`opened ${opened.productName} ${opened.retailer} ${opened.priceCents}`);
+}
+if (opened.imageUrl !== "https://retailer.example/bounty.jpg" || !opened.canBuy) fail("the opened detail was missing the product photo or could not be bought");
+if (opened.property !== "8 Charlotte 606" || opened.item !== "paper towels") fail("the opened detail was for the wrong item");
+const parked = holdPurchase(opened);
+if (parked.kind !== "not_now") fail("Not now did not hold the opened offer");
+if (placedOrders().length !== ordersBeforeOpen || supplyWrites().length !== writesBeforeOpen || capturedPurchases() !== 1) {
+  fail("opening an older note or pressing Not now wrote an order");
 }
 
 console.log("Purchase harness passed.");

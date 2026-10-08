@@ -51,6 +51,7 @@ import {
   listMessages,
   listOpenBrowsers,
   readMessage,
+  ensureLegacyPurchase,
   listSkills,
   listTextLog,
   listTextNumbers,
@@ -894,7 +895,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const edited = String(body.edited ?? "");
       if (!messageId) return res.status(400).json({ error: "Missing draft." });
       if (action === "purchase" || action === "not-now" || action === "skip" || action === "alternative") {
-        const current = await readMessage(messageId);
+        const loaded = await readMessage(messageId);
+        const current = loaded ? await ensureLegacyPurchase(loaded) : loaded;
         const purchase = current?.draft?.purchase;
         const detail = purchase?.kind === "detail" ? purchase : purchase?.kind === "failed" ? purchase.detail : null;
         if (!detail) return res.status(200).json({ message: current });

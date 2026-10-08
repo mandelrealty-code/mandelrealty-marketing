@@ -9,6 +9,8 @@ import { parityCancellationRaised, parityDeleteSkill, parityDraftsIssued, parity
 import { normalizeSchedule } from "./skillSchedule.js";
 import type { Workflow } from "./workflow.js";
 import type { OpenItem } from "./openItems.js";
+import type { CleanerPicture } from "./cleanerRead.js";
+import { openLegacyPurchase } from "./openPurchase.js";
 import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, SkillRunResult } from "./types.js";
 
 type FileShape = {
@@ -159,6 +161,17 @@ export type WaitingDraft = {
   purchaseProperty: string;
 };
 
+function waitingMessage(row: { id?: string; chat_id?: string; created_at?: string; body?: string; draft?: CopilotDraft | null }): CopilotMessage {
+  return {
+    id: String(row.id ?? ""),
+    chat_id: String(row.chat_id ?? ""),
+    created_at: String(row.created_at ?? ""),
+    role: "assistant",
+    body: typeof row.body === "string" ? row.body : "",
+    draft: row.draft ?? null,
+  };
+}
+
 function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; draft?: CopilotDraft | null }): WaitingDraft | null {
   const draft = row.draft;
   if (!draft || draft.status !== "waiting") return null;
@@ -181,19 +194,19 @@ export async function listWaitingDrafts(): Promise<WaitingDraft[]> {
   if (!useFile && client) {
     const { data, error } = await client
       .from("copilot_messages")
-      .select("id, chat_id, created_at, draft")
+      .select("id, chat_id, created_at, body, draft")
       .order("created_at", { ascending: false })
       .limit(200);
     if (!error) {
-      return (data ?? [])
-        .map((row) => asWaiting(row as { id?: string; chat_id?: string; created_at?: string; draft?: CopilotDraft | null }))
-        .filter((item): item is WaitingDraft => Boolean(item));
+      const opened = await ensureLegacyPurchases((data ?? []).map((row) => waitingMessage(row as { id?: string; chat_id?: string; created_at?: string; body?: string; draft?: CopilotDraft | null })));
+      return opened.map((row) => asWaiting(row)).filter((item): item is WaitingDraft => Boolean(item));
     }
     if (useLocalFile(error)) { /* local file store */ }
     else throw new Error(error.message);
   }
-  return readFileStore()
-    .messages.map((message) => asWaiting(message))
+  const opened = await ensureLegacyPurchases(readFileStore().messages.map((message) => waitingMessage(message)));
+  return opened
+    .map((message) => asWaiting(message))
     .filter((item): item is WaitingDraft => Boolean(item))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
@@ -356,6 +369,28 @@ function unpackMessage(row: CopilotMessage): CopilotMessage {
   return { ...row, draft, choices, steps, thought, images, report, run_id, picture, memoryFile };
 }
 
+export async function ensureLegacyPurchase(message: CopilotMessage): Promise<CopilotMessage> {
+  const [next] = await ensureLegacyPurchases([message]);
+  return next ?? message;
+}
+
+async function ensureLegacyPurchases(messages: CopilotMessage[]): Promise<CopilotMessage[]> {
+  if (parityEnabled()) return messages;
+  const pictures = new Map<string, Promise<CleanerPicture>>();
+  const out: CopilotMessage[] = [];
+  for (const message of messages) {
+    const built = await openLegacyPurchase(message, pictures);
+    if (!built || JSON.stringify(message.draft?.purchase ?? null) === JSON.stringify(built)) {
+      out.push(message);
+      continue;
+    }
+    const saved = await updateDraft(message.id, { purchase: built });
+    const purchase = saved?.draft?.purchase ?? built;
+    out.push({ ...message, draft: message.draft ? { ...message.draft, purchase } : message.draft });
+  }
+  return out;
+}
+
 export async function listMessages(chatId: string): Promise<CopilotMessage[]> {
   const client = sb();
   if (!useFile && client) {
@@ -365,15 +400,15 @@ export async function listMessages(chatId: string): Promise<CopilotMessage[]> {
       .eq("chat_id", chatId)
       .order("created_at", { ascending: true });
     if (!error) {
-      return (data ?? []).map((row) => unpackMessage(row as CopilotMessage));
+      return ensureLegacyPurchases((data ?? []).map((row) => unpackMessage(row as CopilotMessage)));
     }
     if (useLocalFile(error)) { /* local file store */ }
     else throw new Error(error.message);
   }
-  return readFileStore()
+  return ensureLegacyPurchases(readFileStore()
     .messages.filter((m) => m.chat_id === chatId)
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
-    .map(unpackMessage);
+    .map(unpackMessage));
 }
 
 export async function createChat(title: string, kind: CopilotChat["kind"] = "chat"): Promise<CopilotChat> {
