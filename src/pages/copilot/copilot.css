@@ -7154,3 +7154,359 @@ html.cp-app[data-cp-theme="dark"] #root {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+.cp-gm {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 40px 48px 56px;
+  color: var(--ink);
+}
+
+.cp-gm h1,
+.cp-gm-head strong {
+  margin: 0;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-weight: 500;
+}
+
+.cp-gm h1 {
+  font-size: 28px;
+  line-height: 36px;
+}
+
+.cp-gm-summary {
+  margin: 8px 0 28px;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 17px;
+  line-height: 28px;
+}
+
+.cp-gm-summary strong {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.cp-gm-quiet,
+.cp-gm-stay {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cp-gm-list {
+  border-bottom: 1px solid var(--line);
+}
+
+.cp-gm-row,
+.cp-gm-thanks {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 16px;
+  width: 100%;
+  padding: 18px 12px;
+  margin: 0 -12px;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.cp-gm-row {
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.cp-gm .face,
+.cp-gm-head .face {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--tint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink2);
+}
+
+.cp-gm-row strong {
+  display: block;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.cp-gm-row em {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink2);
+}
+
+.cp-gm-row q {
+  display: block;
+  margin-top: 6px;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 16px;
+  line-height: 26px;
+  quotes: none;
+  color: var(--ink2);
+}
+
+.cp-gm-row small,
+.cp-gm-thread small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cp-gm .tile,
+.cp-gm-row .tile {
+  width: 32px;
+  height: 22px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(135deg, var(--tint) 0 4px, var(--line) 4px 8px);
+}
+
+.cp-gm-row .wait,
+.cp-gm-head .wait {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-gm-row .wait b {
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.cp-gm-row .wait small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.cp-gm-thanks {
+  align-items: center;
+  font-size: 14px;
+  color: var(--ink2);
+}
+
+.cp-gm-thanks span:first-child {
+  text-align: center;
+  color: var(--muted);
+}
+
+.cp-gm-back {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cp-gm-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+}
+
+.cp-gm-head strong {
+  font-size: 22px;
+  line-height: 30px;
+}
+
+.cp-gm-head .tile,
+.cp-gm-head img.prop {
+  width: 44px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.cp-gm-head em {
+  font-style: normal;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink2);
+}
+
+.cp-gm-head .wait {
+  margin-left: auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--needs);
+}
+
+.cp-gm-head .wait::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--needs);
+}
+
+.cp-gm-stay {
+  margin: 0 0 18px 52px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cp-gm-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px 0;
+}
+
+.cp-gm-thread .guest,
+.cp-gm-thread .host {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 78%;
+}
+
+.cp-gm-thread .host {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.cp-gm-thread span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cp-gm-thread p {
+  margin: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.cp-gm-thread .guest p {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.cp-gm-thread .host p {
+  background: var(--tint);
+  color: var(--ink2);
+}
+
+.cp-gm-thread em {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-style: normal;
+  color: var(--ink2);
+}
+
+.cp-gm-gap,
+.cp-gm-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.cp-gm-gap label,
+.cp-gm-draft label,
+.cp-gm-draft span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cp-gm textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px 18px;
+  color: var(--ink);
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 16px;
+  line-height: 26px;
+  resize: vertical;
+}
+
+.cp-gm-draft p {
+  margin: 0;
+  border: 1px dashed var(--line2);
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--ink2);
+}
+
+.cp-gm-draft .hub {
+  border: none;
+  padding: 0;
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cp-gm .fail {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--failed);
+  border-top: none;
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink2);
+}
+
+.cp-gm-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cp-gm-actions button.submit {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cp-gm-actions button:disabled {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+}
+
+.cp-gm button:focus-visible,
+.cp-gm textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

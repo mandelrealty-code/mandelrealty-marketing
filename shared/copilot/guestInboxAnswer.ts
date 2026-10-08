@@ -1,13 +1,12 @@
 /**
  * Partner questions about Hospitable guest messages.
- * Reads the same threads the checks read. Drafts land in Checks and wait for Submit.
+ * Reads the same threads Guest messaging reads. Drafts wait in that tab, not in Checks.
  */
 
 import { readPropertyHub } from "./knowledgeHub.js";
 import { parityNow } from "./parity/clock.js";
-import { draftsRecorded, recordDrafts } from "./store.js";
-import { confirmedChecksDraft, waitingDraftFor } from "./checksClaim.js";
-import { leaveDraft, loadRecentStays, memoryFor, readStayThread, type RecentStay } from "./stayCheck.js";
+import { guestDrafts, isThanksOnly, rememberGuestDraft } from "./guestMessaging.js";
+import { loadRecentStays, memoryFor, readStayThread, type RecentStay } from "./stayCheck.js";
 
 const NAME_STOP = new Set(["the", "guest", "guests", "someone", "anyone", "they", "she", "he", "we", "i", "you", "hospitable", "our", "my"]);
 
@@ -85,20 +84,8 @@ export async function answerNamedGuestDraft(question: string, now?: Date): Promi
   if (!stay) return `I didn't find ${name} on a managed stay. Which guest should I draft for?`;
   const guest = stay.stay.guest || name;
   const body = thankYouReply(guest, question);
-  const saved = await leaveDraft(
-    {
-      channel: "hospitable",
-      to: guest,
-      subject: "",
-      body,
-      warnings: [],
-      needs_you: true,
-    },
-    stay.stay.id,
-  );
-  const stored = await confirmedChecksDraft(saved, { includes: [body] });
-  if (!stored) return "The reply was not saved in Checks.";
-  return `The reply to ${guest} at ${stay.label} is in Checks. Nothing is sent until you press Submit.`;
+  rememberGuestDraft({ to: guest, body, reservationId: stay.stay.id });
+  return `The reply to ${guest} at ${stay.label} is in Guest messaging. Nothing is sent until you press Submit.`;
 }
 
 export function asksGuestThreads(text: string): boolean {
@@ -224,6 +211,7 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
     const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
     const last = spoken[spoken.length - 1];
     if (last?.role === "guest" && pending.length) {
+      if (isThanksOnly(pending.map((item) => item.body).join(" "))) continue;
       open.push({
         row,
         ask: pending.map((item) => item.body.trim()).join(" "),
@@ -240,11 +228,9 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
   const drafted: string[] = [];
   const missed: string[] = [];
   for (const item of open) {
-    const key = `guest-inbox:${item.row.stay.id}:${item.at}`;
     const guest = item.row.stay.guest || "A guest";
-    if (await draftsRecorded(key)) {
-      if (await waitingDraftFor(guest)) drafted.push(guest);
-      else missed.push(guest);
+    if (guestDrafts().some((row) => row.reservationId === item.row.stay.id)) {
+      drafted.push(guest);
       continue;
     }
     const place = `${item.row.propertyName} ${item.row.address}`;
@@ -258,23 +244,7 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
       hubFailed: !hubRead.ok,
       memory,
     });
-    const saved = await leaveDraft(
-      {
-        channel: "hospitable",
-        to: guest,
-        subject: "",
-        body,
-        warnings: [],
-        needs_you: true,
-      },
-      item.row.stay.id,
-    );
-    const stored = await confirmedChecksDraft(saved, { includes: [body] });
-    if (!stored) {
-      missed.push(guest);
-      continue;
-    }
-    await recordDrafts(key);
+    rememberGuestDraft({ to: guest, body, reservationId: item.row.stay.id });
     drafted.push(guest);
   }
   const failedLine = [...failed].map((label) => `${label} failed read.`).join("\n");
@@ -287,10 +257,10 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
 
 function claimLines(drafted: string[], missed: string[]): string[] {
   const tail: string[] = [];
-  if (drafted.length === 1) tail.push(`A draft for ${drafted[0]} is in Checks. Nothing is sent until you press Submit.`);
-  else if (drafted.length > 1) tail.push(`Drafts for ${drafted.join(" and ")} are in Checks. Nothing is sent until you press Submit.`);
-  if (missed.length === 1) tail.push(`The draft for ${missed[0]} was not saved in Checks.`);
-  else if (missed.length > 1) tail.push(`The drafts for ${missed.join(" and ")} were not saved in Checks.`);
+  if (drafted.length === 1) tail.push(`A draft for ${drafted[0]} is in Guest messaging. Nothing is sent until you press Submit.`);
+  else if (drafted.length > 1) tail.push(`Drafts for ${drafted.join(" and ")} are in Guest messaging. Nothing is sent until you press Submit.`);
+  if (missed.length === 1) tail.push(`The draft for ${missed[0]} was not saved in Guest messaging.`);
+  else if (missed.length > 1) tail.push(`The drafts for ${missed.join(" and ")} were not saved in Guest messaging.`);
   return tail;
 }
 

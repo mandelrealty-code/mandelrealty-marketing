@@ -35,6 +35,7 @@ import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitabl
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableToken } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
+import { loadGuestQueue, openGuestAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { answerMailChain } from "../copilot/mailChain.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
@@ -395,6 +396,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const run = await startSkillRun(id, "manual");
       const skills = await skillRows();
       return res.status(200).json({ run, skills, connectors: await connectors(skills), chats: await listChats() });
+    }
+
+    if (op === "guests-queue") {
+      return res.status(200).json(await loadGuestQueue());
+    }
+
+    if (op === "guests-open") {
+      const row = await openGuestAnswer({
+        id: String(body.id ?? ""),
+        guest: String(body.guest ?? ""),
+        first: String(body.first ?? ""),
+        initials: String(body.initials ?? ""),
+        guestPhoto: String(body.guestPhoto ?? ""),
+        property: String(body.property ?? ""),
+        propertyId: String(body.propertyId ?? ""),
+        propertyPhoto: String(body.propertyPhoto ?? ""),
+        asked: String(body.asked ?? ""),
+        askedEn: String(body.askedEn ?? ""),
+        language: String(body.language ?? ""),
+        wait: String(body.wait ?? ""),
+        waitedMs: Number(body.waitedMs ?? 0),
+        thanks: false,
+      });
+      return res.status(200).json(row);
+    }
+
+    if (op === "guests-submit") {
+      try {
+        const result = await submitGuestReply({
+          reservationId: String(body.id ?? ""),
+          propertyId: String(body.propertyId ?? ""),
+          property: String(body.property ?? ""),
+          guest: String(body.guest ?? ""),
+          english: String(body.english ?? ""),
+          language: String(body.language ?? ""),
+          fact: String(body.fact ?? ""),
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Couldn't reach Hospitable. Nothing was sent.";
+        return res.status(400).json({ error: /not connected/i.test(message) ? "Hospitable is not connected. Nothing was sent." : "Couldn't reach Hospitable. Nothing was sent." });
+      }
     }
 
     if (op === "reviews-queue") {

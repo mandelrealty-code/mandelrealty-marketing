@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, HospitableCard, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
 import type { ReviewQueuePayload, ReviewQueueRow } from "../../../shared/copilot/reviewTypes";
+import type { GuestDraftView, GuestQueue } from "../../../shared/copilot/guestTypes";
 import { ConnectorStatusPage, ConnectorsList, HospitablePage } from "./HospitableConnection";
 import { ReviewsQueue } from "./ReviewsQueue";
+import { GuestMessaging } from "./GuestMessaging";
 import "./copilot.css";
 import { MemoryFileDetail, MemoryFileList, MemoryWrote } from "./memoryUi";
 import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
@@ -46,7 +48,7 @@ function signInSite(body: string): string {
   return named?.[1]?.trim() || "This site";
 }
 
-type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
+type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "guests" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
 
 type Boot = {
   brief: BriefPayload;
@@ -778,6 +780,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [hospitableError, setHospitableError] = useState("");
   const [connectorId, setConnectorId] = useState("");
   const [reviewQueue, setReviewQueue] = useState<ReviewQueuePayload | null>(null);
+  const [guestQueue, setGuestQueue] = useState<GuestQueue | null>(null);
+  const [guestAnswer, setGuestAnswer] = useState<GuestDraftView | null>(null);
   const [screen, setScreen] = useState<Screen>("brief");
   const [boardSeed, setBoardSeed] = useState<Workflow>(BLANK);
   const [boardSkillId, setBoardSkillId] = useState<string | null>(null);
@@ -1427,6 +1431,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const title = useMemo(() => {
     if (screen === "brief") return "Overview";
     if (screen === "reviews") return "Reviews";
+    if (screen === "guests") return "Guest messaging";
     if (screen === "empty") return "New chat";
     return boot?.chats.find((c) => c.id === chatId)?.title || "New chat";
   }, [boot, chatId, screen]);
@@ -1698,6 +1703,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         Overview
         {boot?.brief.overview?.count ? <span className="cp-ov-count">{boot.brief.overview.count}</span> : null}
       </button>
+      <button type="button" className={`cp-row${screen === "guests" ? " on" : ""}`} onClick={() => { setScreen("guests"); setGuestAnswer(null); setSheet(false); void api<GuestQueue>("guests-queue", {}).then(setGuestQueue).catch((err) => setGuestQueue({ connected: false, line: err instanceof Error ? err.message : "Hospitable is not connected.", summaryLead: "No one", summaryRest: " is waiting. Every guest has a reply.", waiting: [], thanks: [], failed: [] })); }}>
+        <span>Guest messaging</span>
+        {guestQueue?.connected && guestQueue.waiting.length ? <span className="cp-ov-count">{guestQueue.waiting.length}</span> : null}
+      </button>
       <button type="button" className={`cp-row${screen === "reviews" ? " on" : ""}`} onClick={() => { setScreen("reviews"); setSheet(false); void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch((err) => setReviewQueue({ connected: false, line: err instanceof Error ? err.message : "Hospitable is not connected.", reviews: [], postedToday: [] })); }}>
         <span>Reviews</span>
         {reviewQueue?.connected && reviewQueue.reviews.length ? <span className="cp-ov-count">{reviewQueue.reviews.length}</span> : null}
@@ -1836,7 +1845,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           }}
         />
       ) : (
-      <div className={`cp-body${stage && !inSettings && screen !== "reviews" ? " work" : ""}`}>
+      <div className={`cp-body${stage && !inSettings && screen !== "reviews" && screen !== "guests" ? " work" : ""}`}>
         <aside className="cp-side">{sideList()}</aside>
         <main className="cp-main">
           <header className="cp-mobilebar">
@@ -2186,6 +2195,29 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     ) : null}
                   </div>
                 ) : null}
+                {screen === "guests" ? (
+                  <GuestMessaging
+                    queue={guestQueue}
+                    answer={guestAnswer}
+                    onOpen={(row) => {
+                      void api<GuestDraftView>("guests-open", { ...row }).then(setGuestAnswer).catch(() => setGuestAnswer(null));
+                    }}
+                    onBack={() => setGuestAnswer(null)}
+                    onSubmit={async (draft, fact) => {
+                      const row = guestAnswer;
+                      const result = await api<{ savedLine: string; failedLine: string; sentText: string }>("guests-submit", {
+                        id: row?.id,
+                        propertyId: row?.propertyId,
+                        property: row?.property,
+                        guest: row?.guest,
+                        english: draft,
+                        language: row?.language,
+                        fact,
+                      });
+                      return result;
+                    }}
+                  />
+                ) : null}
                 {screen === "reviews" ? (
                   <ReviewsQueue
                     rows={reviewQueue?.reviews ?? []}
@@ -2469,7 +2501,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   </div>
                 ) : null}
               </div>
-              {inSettings || screen === "reviews" ? null : (
+              {inSettings || screen === "reviews" || screen === "guests" ? null : (
               <div className="cp-composer-wrap">
                 <div className="cp-confirm">Nothing goes out until you confirm.</div>
                 <div className="cp-pluswrap" data-plus="1">
@@ -2587,7 +2619,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
               )}
             </>
         </main>
-        {stage && !inSettings && screen !== "reviews" ? (
+        {stage && !inSettings && screen !== "reviews" && screen !== "guests" ? (
           <aside className={`cp-stage${stage.control ? " control" : ""}`}>
             <div className="cp-stage-frame">
               {stage.kind === "pdf" ? (

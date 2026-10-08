@@ -591,9 +591,7 @@ async function oneStay(input: {
   }
   const facts = memory || BLUE_JAYS_PROCESS;
   const mail = await buildingMail(stay, facts);
-  const guest = guestDraft(stay, facts);
   await recordDrafts(stay.code);
-  await leaveDraft(guest, stay.id);
   await leaveDraft(mail);
   const unseen = mailNote(await searchMail({ keywords: "Blue Jays 318", includeAirbnb: false }).catch(() => ({ hits: [], notes: ["Gmail and Outlook didn't return that search."] })));
   await say({
@@ -618,24 +616,6 @@ export function placeLabel(place: string, name: string): string {
   if (/charlotte/i.test(place) && /\b606\b/.test(place)) return "8 Charlotte 606";
   if (/\bshaw\b/i.test(place)) return "1065 Shaw Street";
   return name;
-}
-
-function guestDraft(stay: Stay, memory: string): DraftCapture {
-  const close = signOff(memory);
-  return {
-    channel: "hospitable",
-    to: stay.guest || "",
-    subject: "",
-    body: [
-      `Hi ${stay.guest || "there"},`,
-      "",
-      "One guest is gluten-free and one is lactose-free. I won't promise specific snacks. Parking is one tandem spot, P4-62, for two cars. Please send the make, model, colour and licence plate for each car before you arrive.",
-      "",
-      close,
-    ].join("\n"),
-    warnings: [],
-    needs_you: true,
-  };
 }
 
 function buildingMail(stay: Stay, memory: string): DraftCapture {

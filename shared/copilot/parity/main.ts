@@ -13,7 +13,7 @@ import { listStoredWaitingDrafts } from "../checksClaim.js";
 import { answerStay } from "../stayAnswer.js";
 import { answerPropertyFact } from "../propertyFact.js";
 import { answerGuestThreads, answerNamedGuestDraft } from "../guestInboxAnswer.js";
-import { callHospitableMcp } from "../hospitableMcp.js";
+import { guestDrafts } from "../guestMessaging.js";
 import {
   accountWideRan,
   capturedBrowserCalls,
@@ -157,25 +157,17 @@ async function fixtureTwoApprovals(): Promise<void> {
   expectNothingSent();
   expect(result.brief.includes(CODE.diane) || result.reports.some((row) => row.text.includes(CODE.diane)), "one check result pinned to HMESPTA3TJ", "nothing pinned the check to HMESPTA3TJ");
   expect(/Airbnb app|cannot see replies sent in the Airbnb/i.test(textOf(result)), "the check says Airbnb-app replies are invisible", "the check did not say it cannot see replies sent in the Airbnb app");
-  expect(result.drafts.length === 2, "exactly two drafts", `found ${result.drafts.length} drafts`);
-  const guest = result.drafts.find((row) => row.channel === "hospitable");
+  expect(result.drafts.length === 1, "Checks holds the building email and no guest draft", `found ${result.drafts.length} drafts`);
+  expect(!result.drafts.some((row) => row.channel === "hospitable"), "a guest reply is not a Checks card", "Checks held a guest draft");
   const mail = result.drafts.find((row) => row.channel === "email");
-  expect(Boolean(guest && mail), "one Hospitable draft and one email draft", "the two drafts were not one guest reply and one building email");
-  expect(/gluten-free/i.test(guest?.body ?? "") && /lactose-free/i.test(guest?.body ?? ""), "guest reply notes both diet flags", "the guest reply missed a diet flag");
-  expect(/tandem/i.test(guest?.body ?? "") && /P4-62/.test(guest?.body ?? ""), "guest reply explains the one tandem spot", "the guest reply did not explain P4-62");
-  expect(/make, model, colour and (licence|license) plate/i.test(guest?.body ?? ""), "guest reply asks for both cars' details", "the guest reply did not ask for make, model, colour and plate");
+  expect(Boolean(mail), "the building email is the Checks draft", "the building email was missing");
   const to = mail?.to ?? "";
   for (const email of ["supervisorelement@gmail.com", "conciergetscc1851@gmail.com", "tscc1851office@gmail.com", "kshewnarain@rogers.com"]) {
     expect(to.includes(email), "building email goes to the four contacts", `${email} was missing`);
   }
   expect(/\[weekday\]/.test(mail?.body ?? ""), "vehicle weekday stays a blank", "the building email filled in a weekday");
   expect((mail?.warnings ?? []).some((warning) => /weekday/i.test(warning)), "the blank weekday is listed in warnings", "warnings did not mention the weekday blank");
-  const before = mail?.body ?? "";
-  await callHospitableMcp("send-reservation-message", { reservation_id: "00000000-0000-4000-8000-000000000d01", body: guest?.body ?? "" });
-  const after = capturedDrafts().find((row) => row.channel === "email");
-  expect(after?.body === before, "submitting the guest draft leaves the email byte-identical", "the building email changed when the guest draft was submitted");
-  expect(capturedCommits().some((row) => row.detail === "send-reservation-message"), "Submit on the guest draft is the only commit", "the guest draft was not the commit");
-  expect(!capturedCommits().some((row) => row.connector === "gmail" || row.connector === "outlook"), "the building email stays unsent", "mail was sent");
+  expect(!capturedCommits().some((row) => row.connector === "gmail" || row.connector === "outlook" || row.detail === "send-reservation-message"), "the building email stays unsent and no guest reply was posted", "something was sent");
   expectDraftRules(result.drafts, result.reports);
 }
 
@@ -445,26 +437,25 @@ async function fixtureGuestInbox(): Promise<void> {
   expect(/Gaspard/.test(answer) && /How do I start the dishwasher\? It looks unplugged/.test(answer), "Gaspard's question is in his words", answer);
   expect(/Roseglor/.test(answer) && /Oct 3, 8:45 AM/.test(answer), "Gaspard's property and arrival time are named", answer);
   expect(/Diane/.test(answer) && /gluten-free/.test(answer) && /two cars/.test(answer), "Diane's question is in her words", answer);
-  expect(/Checks/.test(answer) && /Submit/.test(answer), "the answer names the drafts in Checks", answer);
+  expect(/Guest messaging/.test(answer) && /Submit/.test(answer), "the answer points at Guest messaging", answer);
+  expect(!/in Checks/.test(answer), "the answer does not put the guest draft in Checks", answer);
   expect(!/Michael|930\s*pm|See you this evening/.test(answer), "an answered thread is absent", answer);
   expect(!/Yingjia|Wes|Ned|1104|Partner Loft/.test(answer), "cancelled and out-of-scope threads stay out", answer);
   expect(/8 Charlotte 606 failed read/.test(answer), "a failed property read is named", answer);
   expect(!/does not flag unread|flag unread|Do you want me to create one/i.test(answer), "the answer does not lecture or offer to draft later", answer);
-  const gaspard = capturedDrafts().find((row) => row.to === "Gaspard");
-  expect(Boolean(gaspard), "Gaspard's draft is attached", "no draft for Gaspard");
-  expect(gaspard?.channel === "hospitable", "the card is a guest reply", gaspard?.channel ?? "");
+  const gaspard = guestDrafts().find((row) => row.to === "Gaspard");
+  expect(Boolean(gaspard), "Gaspard's draft is in Guest messaging", "no draft for Gaspard");
   expect(/close the door fully, press and hold start/i.test(gaspard?.body ?? ""), "the card answers the dishwasher from the Knowledge Hub", gaspard?.body ?? "");
   expect(!/frying pan|garbage bags|cleaner/i.test(gaspard?.body ?? ""), "the card does not revive an answered ask or mention a cleaner", gaspard?.body ?? "");
-  expect(gaspard?.hospitable?.tool === "send-reservation-message", "Submit is the send", gaspard?.hospitable?.tool ?? "");
-  expect(gaspard?.hospitable?.args.reservation_id === "00000000-0000-4000-8000-000000000b01", "the card is tied to Gaspard's stay", String(gaspard?.hospitable?.args.reservation_id ?? ""));
-  expect(gaspard?.hospitable?.args.body === gaspard?.body, "the card body is what Submit would send", "the submit body drifted");
-  const diane = capturedDrafts().find((row) => row.to === "Diane");
+  expect(gaspard?.reservationId === "00000000-0000-4000-8000-000000000b01", "the card is tied to Gaspard's stay", gaspard?.reservationId ?? "");
+  expect(!capturedDrafts().some((row) => row.channel === "hospitable"), "Checks does not hold the guest draft", "a guest card was saved in Checks");
+  const diane = guestDrafts().find((row) => row.to === "Diane");
   expect(/gluten-free/i.test(diane?.body ?? "") && /lactose-free/i.test(diane?.body ?? "") && /won't promise specific snacks/i.test(diane?.body ?? ""), "Diane's card notes the diets and promises no snacks", diane?.body ?? "");
   expect(/P4-62/.test(diane?.body ?? "") && !/\bcleaners?\b/i.test(diane?.body ?? ""), "Diane's card explains the tandem spot and does not mention a cleaner", diane?.body ?? "");
   expectNothingSent();
   const before = capturedDrafts().length;
   const again = (await answerGuestThreads("what did Gaspard ask?")) ?? "";
-  expect(/How do I start the dishwasher\? It looks unplugged/.test(again) && /Checks/.test(again), "a named guest is read from the Hospitable thread", again || "no answer");
+  expect(/How do I start the dishwasher\? It looks unplugged/.test(again) && /Guest messaging/.test(again), "a named guest is read from the Hospitable thread", again || "no answer");
   expect(!/\b(gmail|outlook|e-?mail)\b/i.test(again), "a guest question does not search email", again);
   expect(capturedDrafts().length === before, "asking again does not attach a second card", `drafts grew from ${before}`);
   const michael = (await answerGuestThreads("what did Michael ask?")) ?? "";
@@ -602,15 +593,13 @@ async function fixtureNamedGuestDraft(): Promise<void> {
   );
   installWorld(recent);
   const answer = (await answerNamedGuestDraft(asked)) ?? "";
-  expect(/Isabelle/.test(answer) && /1065 Shaw Street/.test(answer) && /Checks/.test(answer) && /Submit/.test(answer), "the answer names Isabelle, the property, and Checks", answer || "no answer");
+  expect(/Isabelle/.test(answer) && /1065 Shaw Street/.test(answer) && /Guest messaging/.test(answer) && /Submit/.test(answer), "the answer names Isabelle, the property, and Guest messaging", answer || "no answer");
   expect(!/Charlotte|which one|which guest/i.test(answer), "the newer thread is chosen without a question", answer);
-  const card = capturedDrafts().find((row) => row.to === "Isabelle");
-  expect(Boolean(card), "Isabelle's reply is a draft card", "no draft");
-  expect(card?.channel === "hospitable" && card.needs_you === true, "the card waits for Submit", card?.channel ?? "");
+  const card = guestDrafts().find((row) => row.to === "Isabelle");
+  expect(Boolean(card), "Isabelle's reply is in Guest messaging", "no draft");
   expect(card?.body === "Hi Isabelle,\n\nThank you for staying with us.", "the card thanks her for staying", card?.body ?? "");
-  expect(card?.hospitable?.tool === "send-reservation-message", "Submit is the send", card?.hospitable?.tool ?? "");
-  expect(card?.hospitable?.args.reservation_id === shawId, "the card is tied to the newer stay", String(card?.hospitable?.args.reservation_id ?? ""));
-  expect(card?.hospitable?.args.body === card?.body, "the card body is what Submit would send", "the submit body drifted");
+  expect(card?.reservationId === shawId, "the card is tied to the newer stay", card?.reservationId ?? "");
+  expect(!capturedDrafts().some((row) => row.channel === "hospitable"), "Checks does not hold the guest draft", "a guest card was saved in Checks");
   expectNothingSent();
   expectDraftRules(capturedDrafts(), capturedReports());
 
@@ -714,9 +703,9 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "15", title: "Today's check-ins across managed properties", run: fixtureTodayCheckins },
   { id: "16", title: "Unreadable thread names the stay", run: fixtureThreadUnread },
   { id: "17", title: "Scarborough garbage bags from the Hub", run: fixtureHubGarbageBags },
-  { id: "18", title: "Unread guest threads draft in Checks", run: fixtureGuestInbox },
+  { id: "18", title: "Unread guest threads wait in Guest messaging", run: fixtureGuestInbox },
   { id: "19", title: "Building registration follows the last sent email", run: fixtureBuildingRegistration },
-  { id: "20", title: "Named guest draft waits in Checks", run: fixtureNamedGuestDraft },
+  { id: "20", title: "Named guest draft waits in Guest messaging", run: fixtureNamedGuestDraft },
   { id: "21", title: "Building email is claimed only after Checks read-back", run: fixtureBuildingReadBack },
 ];
 
