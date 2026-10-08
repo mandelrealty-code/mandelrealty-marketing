@@ -19,7 +19,7 @@ function pushText(node: unknown, out: string[], depth: number): void {
   for (const key of ["content", "body", "text", "value", "answer", "description", "title"]) {
     if (typeof row[key] === "string") pushText(row[key], out, depth + 1);
   }
-  for (const key of ["items", "topics", "data", "children", "knowledge"]) {
+  for (const key of ["items", "topics", "data", "children", "knowledge", "aggregate_items"]) {
     if (row[key] != null) pushText(row[key], out, depth + 1);
   }
 }

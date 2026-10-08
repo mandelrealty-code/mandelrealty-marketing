@@ -403,6 +403,15 @@ async function fixtureHubGarbageBags(): Promise<void> {
   expect(/garbage bags/i.test(said) && /gift basket/i.test(said) && /kitchen counter/i.test(said), "the Scarborough garbage bags come from the Knowledge Hub", said || "no answer");
   expect(/Roseglor/.test(said) && /Knowledge Hub/.test(said), "the answer names the property and the Hub", said);
   expect(!/no information|don't have|do not have|nothing on file/i.test(said), "the answer does not claim the property has no information", said);
+  const blocked = worldAt("2026-10-07T11:00:00-04:00");
+  const charlotteHub = blocked.hub?.find((row) => row.propertyId === ID.charlotte);
+  if (!charlotteHub) throw new Gap("Charlotte has a Hub", "the Charlotte Hub was missing");
+  charlotteHub.unreadable = true;
+  installWorld(blocked);
+  const still = (await answerPropertyFact("Where are the garbage bags at the Scarborough house?")) ?? "";
+  expect(/gift basket/i.test(still) && /Roseglor/.test(still), "a failed Hub on another property does not block Roseglor", still || "no answer");
+  const missed = (await answerPropertyFact("Where are the paper towels at 8 Charlotte 606?")) ?? "";
+  expect(/didn't return for 8 Charlotte 606/.test(missed), "a genuine failed read stays the fallback", missed || "no answer");
 }
 
 async function fixtureThreadUnread(): Promise<void> {

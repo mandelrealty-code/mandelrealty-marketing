@@ -65,7 +65,7 @@ export type ParityItem = {
   askedOn?: string;
 };
 
-export type ParityHub = { propertyId: string; body: string };
+export type ParityHub = { propertyId: string; body: string; unreadable?: boolean };
 
 export type ParityCleanerTurnover = {
   propertyId: string;
@@ -395,7 +395,7 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
   if (name === "get-property-knowledge-hub") {
     const id = String(args.property_id ?? args.uuid ?? args.id ?? "");
     const row = (current.hub ?? []).find((item) => item.propertyId === id);
-    return { handled: true, value: { data: { text: row?.body ?? "" } } };
+    return { handled: true, value: hubDocument(row) };
   }
   return { handled: true, value: { data: [] } };
 }
@@ -432,9 +432,19 @@ export function parityHttp(method: string, path: string, query: Record<string, u
   if (hubPath) {
     const id = decodeURIComponent(hubPath[1]);
     const row = (current.hub ?? []).find((item) => item.propertyId === id);
-    return { handled: true, value: { data: { text: row?.body ?? "" } } };
+    return { handled: true, value: hubDocument(row) };
   }
   return { handled: true, value: { data: [] } };
+}
+
+function hubDocument(row: ParityHub | undefined): { data: { topics: { name: string; aggregate_items: { content: string }[] }[] } } {
+  if (row?.unreadable) throw new Error("The Knowledge Hub didn't return.");
+  const items = (row?.body ?? "")
+    .split("\n")
+    .map((content) => content.trim())
+    .filter(Boolean)
+    .map((content) => ({ content }));
+  return { data: { topics: [{ name: "Hub", aggregate_items: items }] } };
 }
 
 function mcpProperty(row: ParityProperty) {

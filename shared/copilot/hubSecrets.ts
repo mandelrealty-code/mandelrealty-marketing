@@ -7,7 +7,10 @@ export const HUB_SECRET_NOTE =
 
 export function hasHubSecret(text: string): boolean {
   if (CODE.test(text)) return true;
-  return /\bwi-?fi\b/i.test(text) && /\bpasswords?\b/i.test(text);
+  if (/\bwi-?fi\b/i.test(text) && /\bpasswords?\b/i.test(text)) return true;
+  if (/^\s*password\s*:/i.test(text)) return true;
+  if (/\b(lock\s?box|door)\b/i.test(text) && /\b(code|passcode)\b/i.test(text) && /\d{3,}/.test(text)) return true;
+  return false;
 }
 
 /** Drops lines that carry a hub secret. Other lines stay. */
