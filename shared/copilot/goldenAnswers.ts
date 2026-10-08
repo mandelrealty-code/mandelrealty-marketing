@@ -8,7 +8,7 @@ import { ANSWER_STYLE, firstSentence, HEDGE, hasAnswerStyle } from "./answerStyl
 import { claudeChatSystem } from "./claudeAnswer.js";
 import { promptFor } from "./cursorThink.js";
 import { instructions } from "./hospitableAgent.js";
-import { readSavedBrief, waitingDraftCard } from "./brief.js";
+import { briefFromChecksMessages, readSavedBrief, waitingDraftCard } from "./brief.js";
 import { isDemoted, noteSignal, rankOverview, signalKey, type OverviewInput, type RankSignals } from "./overviewRank.js";
 import { answerOps } from "./ops.js";
 import { ID, worldAt } from "./parity/catalog.js";
@@ -515,6 +515,45 @@ for (const answer of [maintenance, channels]) {
 if (asksUnitRoster(maintenanceQ) || asksUnitRoster(channelQ)) fail("missing source", "the question was treated as a unit roster");
 if (!asksUnitRoster("How many units do we manage?") || missingSourceAnswer("How many units do we manage?")) {
   fail("missing source", "a roster question was treated as a missing source");
+}
+
+const checksNow = new Date("2026-10-08T12:40:00Z");
+const checksBrief = briefFromChecksMessages([
+  {
+    id: "draft-sam",
+    chat_id: "checks",
+    created_at: "2026-10-08T12:00:00.000Z",
+    role: "assistant",
+    body: "Here is the guest reply. Nothing was sent.",
+    draft: {
+      subject: "",
+      body: "Hi Sam,\n\nThank you for staying with us.",
+      to: "Sam",
+      status: "waiting",
+      channel: "hospitable",
+    },
+  },
+  {
+    id: "turn-diane",
+    chat_id: "checks",
+    created_at: "2026-10-08T12:05:00.000Z",
+    role: "assistant",
+    body: "Diane arrives tomorrow at Blue Jays Way. no cleaner assigned, turnover in 1 day.",
+    draft: null,
+  },
+], [], [], checksNow);
+const checksOverview = checksBrief.overview;
+if (!checksOverview || checksOverview.count !== 2) fail("checks overview", String(checksOverview?.count ?? "none"));
+if (!checksOverview.summary.startsWith("Two things need you today.")) fail("checks overview", checksOverview.summary);
+if (!checksOverview.summary.includes("Diane")) fail("checks overview", checksOverview.summary);
+if (!checksOverview.today[0]?.id.startsWith("turnover:")) fail("checks overview", checksOverview.today.map((row) => row.id).join(",") || "empty");
+if (!/Diane/.test(checksOverview.today[0]?.title ?? "") || !/cleaner/i.test(checksOverview.today[0]?.title ?? "")) {
+  fail("checks overview", checksOverview.today[0]?.title ?? "no first row");
+}
+if (!checksOverview.today.some((row) => row.id === "draft:draft-sam")) fail("checks overview", "the waiting draft was left out");
+const emptyChecks = briefFromChecksMessages([], [], [], checksNow);
+if (!emptyChecks.overview?.empty || emptyChecks.overview.count !== 0 || !emptyChecks.overview.summary.startsWith("Nothing needs you today")) {
+  fail("checks overview", emptyChecks.overview?.summary ?? "no empty overview");
 }
 
 console.log("golden answers: 8 passed");

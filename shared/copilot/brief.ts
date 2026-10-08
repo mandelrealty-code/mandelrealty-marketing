@@ -1,14 +1,14 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { addDays, greeting, torontoToday } from "./time.js";
-import type { BriefCard, BriefPayload } from "./types.js";
+import type { BriefCard, BriefPayload, CopilotMessage } from "./types.js";
 import { latestInboxOffer } from "../adminApi/gmail.js";
 import { latestOutlookOffer } from "../adminApi/outlook.js";
-import { chooseBriefOpenItem, listOpenItems, openItemChoice, verifiedLabel } from "./openItems.js";
+import { chooseBriefOpenItem, listOpenItems, openItemChoice, verifiedLabel, type OpenItem } from "./openItems.js";
 import { inputFromCard, noteSignal, rankOverview } from "./overviewRank.js";
-import { dismissCard, listDismissed, listDueReminders, listRuns, listSkills, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, readRankSignals, saveBriefSnapshot, saveGmailOffer, writeRankSignals, type WaitingDraft } from "./store.js";
+import { listConnectorFailures, type ConnectorFailure } from "./connectorFailures.js";
+import { dismissCard, listChecksMessages, listDismissed, listDueReminders, listRuns, listSkills, listStoredOpenItems, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, readRankSignals, saveBriefSnapshot, saveGmailOffer, writeRankSignals, type WaitingDraft } from "./store.js";
 import { runsOnItsOwn } from "./skillRunner.js";
 import { runUnattendedChecks } from "./stayCheck.js";
-import { listConnectorFailures } from "./connectorFailures.js";
 import { parityEnabled } from "./parity/flag.js";
 import { purchaseCardText, recordedSupplies } from "./purchase.js";
 
@@ -27,10 +27,26 @@ export function quietBrief(now = new Date()): BriefPayload {
   return { hello: greet.hello, line: greet.line, quiet: true, focus: [], eating: [], overview: rankOverview([], {}, now) };
 }
 
-/** The last pass, already stored. This does not scan mail, stays, or the cleaner app. */
+/** The Checks chat's stored items, ranked. This does not scan mail, stays, or the cleaner app. */
 export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
   const saved = await readBriefSnapshot();
-  return saved ?? quietBrief(now);
+  if (parityEnabled()) return saved ?? quietBrief(now);
+  try {
+    const [messages, open, failed, signals, skipped] = await Promise.all([
+      listChecksMessages(),
+      listStoredOpenItems(),
+      listConnectorFailures(),
+      readRankSignals(),
+      listDismissed(),
+    ]);
+    return briefFromChecksMessages(messages, open.filter((item) => item.status === "open"), failed, now, {
+      saved,
+      signals,
+      skipped,
+    });
+  } catch {
+    return saved ?? quietBrief(now);
+  }
 }
 
 /** Rebuilds the brief off the page-load path and stores it for the next open. */
@@ -226,6 +242,14 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   for (const item of waiting) {
     const card = waitingDraftCard(item);
     if (card) ship(focus, card, skipped);
+  }
+  try {
+    for (const card of storedCheckCards(await listChecksMessages(), [], [], now)) {
+      if ([...focus, ...eating].some((row) => row.id === card.id || (row.messageId && row.messageId === card.messageId && row.rank?.kind === "cleaner" && card.rank?.kind === "cleaner"))) continue;
+      ship(focus, card, skipped);
+    }
+  } catch {
+    /* The overview still loads when the Checks chat cannot be read. */
   }
   const sb = getSupabaseAdmin();
 
@@ -550,6 +574,212 @@ function cleanPlace(unit: string): string {
   if (/\bshaw\b/i.test(unit)) return "Shaw Street";
   const street = unit.split(",").map((part) => part.trim()).find((part) => /\d/.test(part) && /[A-Za-z]/.test(part));
   return street || "";
+}
+
+/** Ranked overview of the same stored Checks rows, open items, and failed reads. An empty list is an empty day. */
+export function briefFromChecksMessages(
+  messages: CopilotMessage[],
+  open: OpenItem[] = [],
+  failed: ConnectorFailure[] = [],
+  now = new Date(),
+  extra: { saved?: BriefPayload | null; signals?: Parameters<typeof noteSignal>[0]; skipped?: string[] } = {},
+): BriefPayload {
+  const skipped = new Set(extra.skipped ?? []);
+  const cards = storedCheckCards(messages, open, failed, now).filter((card) => !skipped.has(card.id));
+  const saved = extra.saved ?? null;
+  const base = saved ?? quietBrief(now);
+  if (!cards.length) {
+    const overview = rankOverview([], extra.signals ?? {}, now, base.overview?.done ?? [], base.overview?.checked ?? []);
+    return { ...base, quiet: true, focus: [], eating: [], overview };
+  }
+  return finishBrief(
+    base,
+    cards.filter((card) => card.group !== "eating"),
+    cards.filter((card) => card.group === "eating"),
+    extra.signals ?? {},
+    now,
+    base.overview?.done ?? [],
+  );
+}
+
+function storedCheckCards(messages: CopilotMessage[], open: OpenItem[], failed: ConnectorFailure[], now: Date): BriefCard[] {
+  const cards: BriefCard[] = [];
+  const cleaners = new Set<string>();
+  const failedNames = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    const draft = waitingFromMessage(message);
+    const card = draft ? waitingDraftCard(draft) ?? plainWaitingCard(draft) : null;
+    if (card) {
+      if (card.rank?.kind === "cleaner") cleaners.add(cleanerKey(card));
+      cards.push(card);
+      continue;
+    }
+    const turnover = turnoverCard(message, now);
+    if (turnover) {
+      const key = cleanerKey(turnover);
+      if (cleaners.has(key)) continue;
+      cleaners.add(key);
+      cards.push(turnover);
+      continue;
+    }
+    const missed = failedCard(message);
+    if (missed) {
+      failedNames.add(missed.rank?.property.toLowerCase() ?? missed.id);
+      cards.push(missed);
+    }
+  }
+  for (const item of open) {
+    if (item.status !== "open") continue;
+    const today = torontoToday(now);
+    const choices = item.askedOn === today ? undefined : ["Already upgraded", "Still pending"];
+    const headline = item.text.trim();
+    if (!headline) continue;
+    const detail = `Last verified ${verifiedLabel(item.verifiedOn)}. A choice here updates this item. Nothing has been changed yet.`;
+    cards.push({
+      id: `open:${item.id}`,
+      group: "focus",
+      headline,
+      detail,
+      text: `${headline}. Last verified ${verifiedLabel(item.verifiedOn)}.`,
+      action: choices ? choices[0] : "Open",
+      actions: choices,
+      source: item.source || "Records",
+      rank: { kind: "expiring", property: item.source || "Records", deadline: "", when: `Verified ${verifiedLabel(item.verifiedOn)}`, lead: headline },
+    });
+  }
+  for (const failure of failed) {
+    if (failedNames.has(failure.connector.toLowerCase())) continue;
+    const headline = `${failure.connector} failed read`;
+    const detail = `${failure.error} Nothing was read.`;
+    cards.push({
+      id: `failed-read:${failure.connector}`,
+      group: "focus",
+      headline,
+      detail,
+      text: `${headline}: ${failure.error}`,
+      action: "Open",
+      source: "Checks",
+      rank: { kind: "failed", property: failure.connector, deadline: "", when: "Last pass", lead: `${failure.connector} could not be read. ${failure.error}` },
+    });
+  }
+  return cards;
+}
+
+function plainWaitingCard(item: WaitingDraft): BriefCard | null {
+  if (!item.chatId || !item.messageId) return null;
+  const line = item.body.trim().split("\n").find((row) => row.trim()) || item.subject.trim();
+  const headline = item.to.trim() ? `Reply to ${item.to.trim()} is waiting` : (line || "A draft is waiting");
+  const detail = "It is waiting in Checks. Nothing has been sent.";
+  return {
+    id: `draft:${item.messageId}`,
+    chatId: item.chatId,
+    messageId: item.messageId,
+    group: "focus",
+    headline,
+    detail,
+    text: `${headline}. ${detail}`,
+    action: "Review",
+    source: "Checks",
+    rank: {
+      kind: item.channel === "hospitable" ? "guest" : "draft",
+      property: cleanPlace(`${item.subject} ${item.body}`) || item.to.trim() || "the portfolio",
+      deadline: "",
+      when: "Waiting",
+      lead: headline,
+    },
+  };
+}
+
+function waitingFromMessage(message: CopilotMessage): WaitingDraft | null {
+  const draft = message.draft;
+  if (!draft || draft.status !== "waiting") return null;
+  if (draft.channel !== "email" && draft.channel !== "note" && draft.channel !== "skill" && draft.channel !== "hospitable") return null;
+  return {
+    messageId: message.id,
+    chatId: message.chat_id,
+    createdAt: message.created_at,
+    channel: draft.channel,
+    subject: draft.subject || "",
+    body: draft.body || "",
+    to: draft.to || "",
+    skillName: draft.skillName || "",
+    purchaseLine: draft.purchase?.kind === "detail" ? draft.purchase.overview : "",
+    purchaseProperty: draft.purchase?.kind === "detail" ? draft.purchase.property : "",
+    cleanerName: draft.cleanerAssign?.cleanerName || "",
+    cleanerUnit: draft.cleanerAssign?.unit || "",
+    cleanerOn: draft.cleanerAssign?.scheduledOn || "",
+  };
+}
+
+function checkText(message: CopilotMessage): string {
+  const rows = message.report?.sections.flatMap((section) => section.rows.map((row) => `${row.who} ${row.meta}`)) ?? [];
+  return [message.report?.title, message.report?.summary, message.body, ...rows].filter(Boolean).join(" ");
+}
+
+function turnoverCard(message: CopilotMessage, now: Date): BriefCard | null {
+  const text = checkText(message);
+  if (!/no cleaner assigned/i.test(text)) return null;
+  const place = cleanPlace(text) || "the unit";
+  const guest = text.match(/\b([A-Z][a-z]+) arrives\b/)?.[1] ?? text.match(/\b([A-Z][a-z]+)'s\b/)?.[1] ?? "";
+  const day = turnoverDay(text, now);
+  const when = spokenWhen(day);
+  const soon = day === torontoToday(now) ? "today" : day === addDays(torontoToday(now), 1) ? "tomorrow" : when;
+  const headline = guest
+    ? `No cleaner for ${guest}'s turnover at ${place}${when ? ` on ${when}` : ""}`
+    : `No cleaner on the ${place} turnover${when ? ` on ${when}` : ""}`;
+  const lead = guest
+    ? `${guest} arrives ${soon} at ${place} and the turnover has no cleaner.`
+    : `${place} has no cleaner${when ? ` on ${when}` : ""}.`;
+  const detail = "The turnover has no cleaner. Nothing has been assigned yet.";
+  return {
+    id: `turnover:${message.id}`,
+    chatId: message.chat_id,
+    messageId: message.id,
+    group: "focus",
+    headline,
+    detail,
+    text: `${headline}. ${detail}`,
+    action: "Review",
+    source: "Checks",
+    rank: { kind: "cleaner", property: place, deadline: day ? `${day}T15:00:00Z` : "", when: when || "Waiting", lead },
+  };
+}
+
+function turnoverDay(text: string, now: Date): string {
+  const today = torontoToday(now);
+  const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/)?.[1];
+  if (iso) return iso;
+  if (/turnover today|arrives today|arriving today/i.test(text)) return today;
+  if (/turnover in 1 day|arrives tomorrow|arriving tomorrow|\btomorrow\b/i.test(text)) return addDays(today, 1);
+  const days = text.match(/turnover in (\d+) days/i);
+  if (days) return addDays(today, Number(days[1]));
+  return "";
+}
+
+function failedCard(message: CopilotMessage): BriefCard | null {
+  const text = checkText(message);
+  const named = text.match(/\b([A-Za-z][A-Za-z0-9 .'-]{1,40}) failed read\b/);
+  if (!named) return null;
+  const connector = named[1].trim();
+  const headline = `${connector} failed read`;
+  const detail = `${text} Nothing was read.`;
+  return {
+    id: `failed-read:${message.id}`,
+    chatId: message.chat_id,
+    messageId: message.id,
+    group: "focus",
+    headline,
+    detail,
+    text: headline,
+    action: "Open",
+    source: "Checks",
+    rank: { kind: "failed", property: connector, deadline: "", when: "Last pass", lead: `${connector} could not be read.` },
+  };
+}
+
+function cleanerKey(card: BriefCard): string {
+  return `${(card.rank?.property ?? "").toLowerCase()}|${card.rank?.deadline.slice(0, 10) ?? ""}`;
 }
 
 function spokenWhen(iso: string): string {

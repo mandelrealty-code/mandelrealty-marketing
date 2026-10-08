@@ -199,6 +199,22 @@ function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; dr
   };
 }
 
+/** Messages in the Checks chat. This is the list that chat shows. It does not scan mail, stays, or the cleaner app. */
+export async function listChecksMessages(): Promise<CopilotMessage[]> {
+  if (parityEnabled()) return [];
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_chats").select("id").eq("title", "Checks").limit(1);
+    if (!error) {
+      const id = String((data?.[0] as { id?: string } | undefined)?.id ?? "");
+      return id ? listMessages(id, { lookup: false }) : [];
+    }
+    if (!useLocalFile(error)) throw new Error(error.message);
+  }
+  const chat = readFileStore().chats.find((row) => row.title === "Checks");
+  return chat ? listMessages(chat.id, { lookup: false }) : [];
+}
+
 export async function listWaitingDrafts(): Promise<WaitingDraft[]> {
   if (parityEnabled()) return [];
   const client = sb();
