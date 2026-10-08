@@ -34,6 +34,7 @@ import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, s
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { disconnectHospitable, hospitableCard, saveHospitableToken } from "../copilot/hospitableConnection.js";
+import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { answerMailChain } from "../copilot/mailChain.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
@@ -376,6 +377,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const run = await startSkillRun(id, "manual");
       const skills = await skillRows();
       return res.status(200).json({ run, skills, connectors: await connectors(skills), chats: await listChats() });
+    }
+
+    if (op === "reviews-queue") {
+      return res.status(200).json(await loadReviewQueue());
+    }
+
+    if (op === "reviews-regenerate") {
+      const result = await regenerateFromConnection({
+        guest: String(body.guest ?? ""),
+        review: String(body.review ?? ""),
+        current: String(body.current ?? ""),
+        reservationId: String(body.reservationId ?? ""),
+        propertyId: String(body.propertyId ?? ""),
+      });
+      return res.status(200).json(result);
+    }
+
+    if (op === "reviews-submit") {
+      try {
+        await submitReviewReply(String(body.id ?? ""), String(body.text ?? ""), String(body.guest ?? "Guest"), String(body.property ?? ""), Number(body.stars ?? 0));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Couldn't reach Airbnb. Nothing posted.";
+        return res.status(400).json({ error: /not connected/i.test(message) ? "Hospitable is not connected. Nothing was posted." : "Couldn't reach Airbnb. Nothing posted." });
+      }
+      return res.status(200).json({ posted: true });
+    }
+
+    if (op === "reviews-skip") {
+      skipReview(String(body.id ?? ""));
+      return res.status(200).json({ skipped: true });
+    }
+
+    if (op === "reviews-undo") {
+      undoSkip(String(body.id ?? ""));
+      return res.status(200).json({ skipped: false });
     }
 
     if (op === "hospitable-connection") {

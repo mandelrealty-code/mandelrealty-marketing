@@ -6294,3 +6294,528 @@ html.cp-app[data-cp-theme="dark"] #root {
   font-size: 14px;
   line-height: 22px;
 }
+
+.cp-rv-page {
+  padding: 40px 48px 56px;
+}
+
+.cp-rv {
+  max-width: 760px;
+  margin: 0 auto;
+  color: var(--ink);
+}
+
+.cp-rv h1 {
+  margin: 0;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.cp-rv-summary {
+  margin: 6px 0 0;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 17px;
+  line-height: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-rv-quiet {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cp-rv-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 24px 0 16px;
+}
+
+.cp-rv-filters button {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cp-rv-filters button.on {
+  border-color: var(--tint);
+  background: var(--tint);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.cp-rv button:focus-visible,
+.cp-rv textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cp-rv-filters button span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-rv-legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 4px;
+  font-size: 13px;
+}
+
+.cp-rv-legend span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cp-rv-row {
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr);
+  gap: 24px;
+  padding: 24px 0;
+  border-top: 1px solid var(--line);
+}
+
+.cp-rv-who {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cp-rv-who > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cp-rv-who strong {
+  display: block;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cp-rv-who em,
+.cp-rv-who span span {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  font-style: normal;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.cp-rv-initials {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--tint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink2);
+  flex-shrink: 0;
+}
+
+.cp-rv-who img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.cp-rv-tile,
+.cp-rv-who img.prop {
+  width: 44px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.cp-rv-tile {
+  background: repeating-linear-gradient(135deg, var(--tint) 0 4px, var(--line) 4px 8px);
+}
+
+.cp-rv-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cp-rv-stars {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cp-rv-stars i {
+  color: var(--ink);
+  font-style: normal;
+  letter-spacing: 2px;
+}
+
+.cp-rv-stars b {
+  color: var(--line2);
+  font-weight: 400;
+  letter-spacing: 2px;
+}
+
+.cp-rv-stars em {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cp-rv-body > p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink2);
+}
+
+.cp-rv-flag {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.cp-rv-flag i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--info);
+  flex-shrink: 0;
+}
+
+.cp-rv-flag strong {
+  color: var(--info);
+  white-space: nowrap;
+}
+
+.cp-rv-flag span {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cp-rv-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.cp-rv-draft > span,
+.cp-rv-source,
+.cp-rv-prev > span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cp-rv-draft > div:not(.cp-rv-source):not(.cp-rv-prev),
+.cp-rv-draft textarea {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--ink2);
+  white-space: pre-wrap;
+}
+
+.cp-rv-draft textarea {
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--ink);
+  resize: vertical;
+}
+
+.cp-rv-draft .dim {
+  opacity: 0.5;
+}
+
+.cp-rv-draft p[role="status"] {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cp-rv-source {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-weight: 400;
+}
+
+.cp-rv-source > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-rv-source button,
+.cp-rv-line button,
+.cp-rv-facts > div button,
+.cp-rv-more button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cp-rv-draft > .cp-rv-prev {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: transparent;
+}
+
+.cp-rv-prev p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.cp-rv-prev button,
+.cp-rv-actions button,
+.cp-rv-facts button {
+  align-self: flex-start;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line2);
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.cp-rv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-rv-actions button {
+  height: 32px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.cp-rv-actions button.submit {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.cp-rv-actions button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.cp-rv-actions button.submit:disabled {
+  opacity: 0.5;
+}
+
+.cp-rv-dispute {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+
+.cp-rv-note {
+  margin: -4px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
+
+.cp-rv-fail {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--failed);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cp-rv-fail button {
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cp-rv-facts {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cp-rv-facts > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.cp-rv-facts > div:first-child button {
+  border: none;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: var(--muted);
+  height: auto;
+  padding: 0;
+}
+
+.cp-rv-table {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr) minmax(0, 0.8fr);
+  gap: 10px 20px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cp-rv-table > span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cp-rv-fact {
+  display: contents;
+}
+
+.cp-rv-fact span {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--ink2);
+}
+
+.cp-rv-fact span:nth-child(2) {
+  color: var(--ink);
+}
+
+.cp-rv-fact span:nth-child(3) {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cp-rv-facts > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cp-rv-line,
+.cp-rv-more {
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: baseline;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cp-rv-line > span:first-child,
+.cp-rv-more > span:first-child {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cp-rv-line > span:nth-child(2) {
+  color: var(--ink2);
+}
+
+.cp-rv-line > span:last-child,
+.cp-rv-more > span {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.cp-rv-more {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  padding: 20px 0;
+}
+
+.cp-rv-more > span {
+  flex: 1;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-rv-empty {
+  padding: 20px 0 8px;
+  border-top: 1px solid var(--line);
+}
+
+.cp-rv-empty p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cp-rv-empty p + p {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted);
+}
+
+.cp-rv h2 {
+  margin: 32px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}

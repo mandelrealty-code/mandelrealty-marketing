@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, HospitableCard, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
+import type { ReviewQueuePayload, ReviewQueueRow } from "../../../shared/copilot/reviewTypes";
 import { HospitableConnectionCard } from "./HospitableConnection";
+import { ReviewsQueue } from "./ReviewsQueue";
 import "./copilot.css";
 import { MemoryFileDetail, MemoryFileList, MemoryWrote } from "./memoryUi";
 import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
@@ -44,7 +46,7 @@ function signInSite(body: string): string {
   return named?.[1]?.trim() || "This site";
 }
 
-type Screen = "brief" | "empty" | "chat" | "browser" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
+type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
 
 type Boot = {
   brief: BriefPayload;
@@ -775,6 +777,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [connectHint, setConnectHint] = useState<Record<string, boolean>>({});
   const [hospitableBusy, setHospitableBusy] = useState(false);
   const [hospitableError, setHospitableError] = useState("");
+  const [reviewQueue, setReviewQueue] = useState<ReviewQueuePayload | null>(null);
   const [screen, setScreen] = useState<Screen>("brief");
   const [boardSeed, setBoardSeed] = useState<Workflow>(BLANK);
   const [boardSkillId, setBoardSkillId] = useState<string | null>(null);
@@ -1423,6 +1426,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
 
   const title = useMemo(() => {
     if (screen === "brief") return "Overview";
+    if (screen === "reviews") return "Reviews";
     if (screen === "empty") return "New chat";
     return boot?.chats.find((c) => c.id === chatId)?.title || "New chat";
   }, [boot, chatId, screen]);
@@ -1694,6 +1698,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         Overview
         {boot?.brief.overview?.count ? <span className="cp-ov-count">{boot.brief.overview.count}</span> : null}
       </button>
+      <button type="button" className={`cp-row${screen === "reviews" ? " on" : ""}`} onClick={() => { setScreen("reviews"); setSheet(false); void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch((err) => setReviewQueue({ connected: false, line: err instanceof Error ? err.message : "Hospitable is not connected.", reviews: [], postedToday: [] })); }}>
+        <span>Reviews</span>
+        {reviewQueue?.connected && reviewQueue.reviews.length ? <span className="cp-ov-count">{reviewQueue.reviews.length}</span> : null}
+      </button>
       <button type="button" className={`cp-row${screen === "browser" ? " on" : ""}`} onClick={() => { setScreen("browser"); setSheet(false); }}>
         <span>Browser</span>
         {sidebarMark(browserSession) ? <span className={`cp-br-nav${browserSession?.status === "stuck" ? " needs" : ""}`}>{sidebarMark(browserSession)}</span> : null}
@@ -1828,7 +1836,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           }}
         />
       ) : (
-      <div className={`cp-body${stage && !inSettings ? " work" : ""}`}>
+      <div className={`cp-body${stage && !inSettings && screen !== "reviews" ? " work" : ""}`}>
         <aside className="cp-side">{sideList()}</aside>
         <main className="cp-main">
           <header className="cp-mobilebar">
@@ -2202,6 +2210,45 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     ) : null}
                   </div>
                 ) : null}
+                {screen === "reviews" ? (
+                  <ReviewsQueue
+                    rows={reviewQueue?.reviews ?? []}
+                    postedToday={reviewQueue?.postedToday ?? []}
+                    disconnected={reviewQueue && !reviewQueue.connected ? reviewQueue.line : reviewQueue ? "" : "Loading reviews."}
+                    onRegenerate={async (row, current) => {
+                      const result = await api<{ draft: string; previous: string; sourceLine: string; dispute: string; facts: ReviewQueueRow["facts"]; unchanged: boolean }>("reviews-regenerate", {
+                        guest: row.guest,
+                        review: row.review,
+                        current,
+                        reservationId: row.reservationId,
+                        propertyId: row.propertyId,
+                      });
+                      return {
+                        draft: result.draft,
+                        previous: result.previous,
+                        sourceLine: result.sourceLine,
+                        dispute: result.dispute,
+                        facts: result.facts,
+                        error: result.unchanged ? result.sourceLine : "",
+                      };
+                    }}
+                    onSubmit={async (row, text) => {
+                      await api("reviews-submit", { id: row.id, text, guest: row.guest, property: row.property, stars: row.stars });
+                    }}
+                    onSkip={async (row) => { await api("reviews-skip", { id: row.id }); }}
+                    onUndo={async (row) => { await api("reviews-undo", { id: row.id }); }}
+                    onPrepare={async (row) => {
+                      const result = await api<{ dispute: string; facts: ReviewQueueRow["facts"]; unchanged: boolean; sourceLine: string }>("reviews-regenerate", {
+                        guest: row.guest,
+                        review: row.review,
+                        current: row.draft,
+                        reservationId: row.reservationId,
+                        propertyId: row.propertyId,
+                      });
+                      return { dispute: result.dispute, facts: result.facts, error: result.unchanged ? result.sourceLine : "" };
+                    }}
+                  />
+                ) : null}
                 {screen === "browser" ? (
                   <BrowserSurface
                     session={browserSession}
@@ -2446,7 +2493,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   </div>
                 ) : null}
               </div>
-              {inSettings ? null : (
+              {inSettings || screen === "reviews" ? null : (
               <div className="cp-composer-wrap">
                 <div className="cp-confirm">Nothing goes out until you confirm.</div>
                 <div className="cp-pluswrap" data-plus="1">
@@ -2564,7 +2611,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
               )}
             </>
         </main>
-        {stage && !inSettings ? (
+        {stage && !inSettings && screen !== "reviews" ? (
           <aside className={`cp-stage${stage.control ? " control" : ""}`}>
             <div className="cp-stage-frame">
               {stage.kind === "pdf" ? (
