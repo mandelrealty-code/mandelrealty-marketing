@@ -5,7 +5,7 @@ import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/
 import { readOutlookLogin, saveOutlookLogin } from "../copilot/store.js";
 import { captureCommit } from "../copilot/parity/capture.js";
 import { parityEnabled } from "../copilot/parity/flag.js";
-import { parityOutlookOffer, parityReadMail, paritySearchOutlook } from "../copilot/parity/world.js";
+import { parityOutlookOffer, parityReadMailThread, paritySearchOutlook } from "../copilot/parity/world.js";
 
 const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/outlook/callback";
 const SCOPE = "offline_access User.Read Mail.Read Mail.Send";
@@ -182,6 +182,7 @@ type OutlookMessage = {
 
 export type OutlookHit = {
   id: string;
+  threadId: string;
   folder: MailFolder;
   from: string;
   email: string;
@@ -193,7 +194,7 @@ export type OutlookHit = {
 
 export type OutlookLetter = OutlookHit & { body: string };
 
-const OUTLOOK_SELECT = "id,from,toRecipients,subject,bodyPreview,receivedDateTime,sentDateTime,inferenceClassification,parentFolderId";
+const OUTLOOK_SELECT = "id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,sentDateTime,inferenceClassification,parentFolderId";
 
 function outlookHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, Prefer: 'outlook.body-content-type="text"' };
@@ -212,6 +213,7 @@ function outlookHit(item: OutlookMessage, folder: MailFolder): OutlookHit | null
   if (!item.id) return null;
   return {
     id: item.id,
+    threadId: item.conversationId || item.id,
     folder,
     from: name,
     email: address,
@@ -268,29 +270,69 @@ export async function searchOutlook(input: {
   return hits.slice(0, 16);
 }
 
-export async function readOutlookMessage(id: string, includeAirbnb: boolean): Promise<OutlookLetter> {
-  if (parityEnabled()) {
-    const mail = parityReadMail("outlook", id);
-    if (!mail) throw new Error("Outlook didn't return that message.");
-    if (!includeAirbnb && isAirbnbNotification(mail.email)) throw new Error("That Airbnb notice stays out of this search.");
-    return mail;
-  }
-  const token = await accessToken();
-  const [inboxId, sentId] = await Promise.all([outlookFolderId(token, "inbox"), outlookFolderId(token, "sentitems")]);
+function outlookBody(item: OutlookMessage): string {
+  const html = item.body?.contentType === "html";
+  const text = html ? (item.bodyPreview ?? "") : (item.body?.content ?? item.bodyPreview ?? "");
+  return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000);
+}
+
+async function outlookGet(token: string, id: string): Promise<OutlookMessage | null> {
   const url = new URL(`https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(id)}`);
   url.searchParams.set("$select", `${OUTLOOK_SELECT},body`);
   const res = await fetch(url, { headers: outlookHeaders(token) });
-  const item = (await res.json().catch(() => ({}))) as OutlookMessage & { error?: { message?: string } };
-  if (!res.ok) throw new Error(item.error?.message || "Outlook didn't return that message.");
-  const folder: MailFolder | null = item.parentFolderId === sentId ? "sent" : item.parentFolderId === inboxId ? "inbox" : null;
-  if (!folder) throw new Error("That message isn't in Sent or the Focused inbox.");
-  if (folder === "inbox" && !outlookInboxOk(item)) throw new Error("That message is in Outlook Other, so it stays out of this search.");
-  const hit = outlookHit(item, folder);
-  if (!hit) throw new Error("Outlook didn't return that message.");
-  if (!includeAirbnb && isAirbnbNotification(hit.email)) throw new Error("That Airbnb notice stays out of this search.");
-  const html = item.body?.contentType === "html";
-  const text = html ? (item.bodyPreview ?? "") : (item.body?.content ?? item.bodyPreview ?? "");
-  return { ...hit, body: text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000) };
+  if (!res.ok) return null;
+  return (await res.json().catch(() => null)) as OutlookMessage | null;
+}
+
+async function outlookConversation(token: string, conversationId: string): Promise<OutlookMessage[]> {
+  const url = new URL("https://graph.microsoft.com/v1.0/me/messages");
+  url.searchParams.set("$filter", `conversationId eq '${conversationId.replace(/'/g, "''")}'`);
+  url.searchParams.set("$top", "20");
+  url.searchParams.set("$select", `${OUTLOOK_SELECT},body`);
+  const res = await fetch(url, { headers: outlookHeaders(token) });
+  if (!res.ok) return [];
+  const data = (await res.json().catch(() => null)) as { value?: OutlookMessage[] } | null;
+  return data?.value ?? [];
+}
+
+/** The whole chain. A message id opens its conversation. A conversation id is used when the message read misses. */
+export async function readOutlookThread(id: string, includeAirbnb: boolean): Promise<OutlookLetter[]> {
+  if (parityEnabled()) {
+    const letters = parityReadMailThread("outlook", id);
+    if (!letters.length) throw new Error("Outlook didn't return that message.");
+    const kept = includeAirbnb ? letters : letters.filter((row) => !isAirbnbNotification(row.email));
+    if (!kept.length) throw new Error("That Airbnb notice stays out of this search.");
+    return kept;
+  }
+  const token = await accessToken();
+  const [inboxId, sentId] = await Promise.all([outlookFolderId(token, "inbox"), outlookFolderId(token, "sentitems")]);
+  const opened = await outlookGet(token, id);
+  const conversation = opened?.conversationId || id;
+  let raw = await outlookConversation(token, conversation);
+  if (!raw.length && opened) raw = [opened];
+  if (!raw.length && conversation !== id) raw = await outlookConversation(token, id);
+  const letters: OutlookLetter[] = [];
+  for (const item of raw) {
+    const folder: MailFolder | null = item.parentFolderId === sentId ? "sent" : item.parentFolderId === inboxId ? "inbox" : null;
+    if (!folder || (folder === "inbox" && !outlookInboxOk(item))) continue;
+    const hit = outlookHit(item, folder);
+    if (!hit || (!includeAirbnb && isAirbnbNotification(hit.email))) continue;
+    letters.push({ ...hit, body: outlookBody(item) });
+  }
+  if (letters.length) return letters;
+  if (opened) {
+    const folder: MailFolder | null = opened.parentFolderId === sentId ? "sent" : opened.parentFolderId === inboxId ? "inbox" : null;
+    const hit = folder ? outlookHit(opened, folder) : null;
+    if (hit && !includeAirbnb && isAirbnbNotification(hit.email)) throw new Error("That Airbnb notice stays out of this search.");
+    if (!folder) throw new Error("That message isn't in Sent or the Focused inbox.");
+    if (folder === "inbox" && !outlookInboxOk(opened)) throw new Error("That message is in Outlook Other, so it stays out of this search.");
+  }
+  throw new Error("Outlook didn't return that message.");
+}
+
+export async function readOutlookMessage(id: string, includeAirbnb: boolean): Promise<OutlookLetter> {
+  const letters = await readOutlookThread(id, includeAirbnb);
+  return letters.find((row) => row.id === id) ?? letters[letters.length - 1];
 }
 
 export async function latestOutlookOffer(): Promise<OutlookOffer | null> {

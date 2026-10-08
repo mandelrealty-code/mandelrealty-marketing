@@ -206,7 +206,7 @@ const TOOLS: Record<string, Tool> = {
   },
   read_mail: {
     description:
-      "Read one message returned by search_mail, in full. Pass that result's mailbox and id. Set include_airbnb only when the search did. Read only. This does not send.",
+      "Read one message returned by search_mail, or the whole thread when that message does not open. Pass mailbox and id. id may be the message id or the threadId from search_mail. Set include_airbnb only when the search did. Read only. This does not send.",
     inputSchema: {
       type: "object",
       properties: {

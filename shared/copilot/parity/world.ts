@@ -8,6 +8,8 @@ import { resetPurchaseFlow } from "../purchase.js";
 
 export type ParityMail = {
   id: string;
+  /** Shared by every message in one chain. Absent when the message is its own thread. */
+  threadId?: string;
   mailbox: "gmail" | "outlook";
   folder: "inbox" | "sent";
   from: string;
@@ -281,8 +283,9 @@ function offer(mail: ParityMail) {
   };
 }
 
-export function parityReadMail(mailbox: "gmail" | "outlook", id: string): {
+export type ParityLetter = {
   id: string;
+  threadId: string;
   folder: "inbox" | "sent";
   from: string;
   email: string;
@@ -291,14 +294,12 @@ export function parityReadMail(mailbox: "gmail" | "outlook", id: string): {
   subject: string;
   snippet: string;
   body: string;
-} | null {
-  const current = live();
-  if (!current) return null;
-  const rows = mailbox === "gmail" ? current.gmail : current.outlook;
-  const mail = rows.find((row) => row.id === id);
-  if (!mail) return null;
+};
+
+function letterOf(mail: ParityMail): ParityLetter {
   return {
     id: mail.id,
+    threadId: mail.threadId || mail.id,
     folder: mail.folder,
     from: mail.from,
     email: mail.email,
@@ -310,8 +311,26 @@ export function parityReadMail(mailbox: "gmail" | "outlook", id: string): {
   };
 }
 
+export function parityReadMail(mailbox: "gmail" | "outlook", id: string): ParityLetter | null {
+  const letters = parityReadMailThread(mailbox, id);
+  return letters.find((row) => row.id === id) ?? letters.at(-1) ?? null;
+}
+
+/** Every message in the chain. A thread id that is not itself a message id still opens the chain. */
+export function parityReadMailThread(mailbox: "gmail" | "outlook", id: string): ParityLetter[] {
+  const current = live();
+  if (!current) return [];
+  const rows = mailbox === "gmail" ? current.gmail : current.outlook;
+  const direct = rows.find((row) => row.id === id);
+  const threadId = direct?.threadId || id;
+  return rows
+    .filter((row) => row.id === id || (row.threadId || row.id) === threadId)
+    .map(letterOf);
+}
+
 export function paritySearchGmail(input: { keywords: string; where: "inbox" | "sent" | "both"; includeAirbnb: boolean }): {
   id: string;
+  threadId: string;
   folder: "inbox" | "sent";
   from: string;
   email: string;
@@ -327,6 +346,7 @@ export function paritySearchGmail(input: { keywords: string; where: "inbox" | "s
 
 export function paritySearchOutlook(input: { keywords: string; where: "inbox" | "sent" | "both"; includeAirbnb: boolean }): {
   id: string;
+  threadId: string;
   folder: "inbox" | "sent";
   from: string;
   email: string;
@@ -351,6 +371,7 @@ function searchBox(rows: ParityMail[], input: { keywords: string; where: "inbox"
     })
     .map((row) => ({
       id: row.id,
+      threadId: row.threadId || row.id,
       folder: row.folder,
       from: row.from,
       email: row.email,

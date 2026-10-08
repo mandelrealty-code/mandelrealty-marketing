@@ -1,10 +1,11 @@
-import { gmailConnected, readGmailMessage, searchGmail } from "../adminApi/gmail.js";
-import { outlookConnected, readOutlookMessage, searchOutlook } from "../adminApi/outlook.js";
+import { gmailConnected, readGmailThread, searchGmail } from "../adminApi/gmail.js";
+import { outlookConnected, readOutlookThread, searchOutlook } from "../adminApi/outlook.js";
 import { mailKeywords, type MailFolder, type MailboxName } from "./mailScope.js";
 
 export type MailHit = {
   mailbox: MailboxName;
   id: string;
+  threadId: string;
   folder: MailFolder;
   from: string;
   email: string;
@@ -54,17 +55,24 @@ export async function searchMail(input: {
   return { hits, notes };
 }
 
-export async function readMail(input: { mailbox?: string; id?: string; includeAirbnb?: boolean }): Promise<MailLetter> {
+/** Every message in the chain, oldest first. A thread id works when the message id does not. */
+export async function readMailThread(input: { mailbox?: string; id?: string; includeAirbnb?: boolean }): Promise<MailLetter[]> {
   const id = String(input.id ?? "").trim();
   const mailbox = input.mailbox === "outlook" ? "outlook" : input.mailbox === "gmail" ? "gmail" : "";
   if (!id || !mailbox) throw new Error("mailbox and id are required.");
   const includeAirbnb = Boolean(input.includeAirbnb);
   if (mailbox === "outlook") {
     if (!(await outlookConnected().catch(() => false))) throw new Error("Outlook isn't connected.");
-    const letter = await readOutlookMessage(id, includeAirbnb);
-    return { mailbox, ...letter };
+    const letters = await readOutlookThread(id, includeAirbnb);
+    return letters.map((letter) => ({ mailbox, ...letter }));
   }
   if (!(await gmailConnected().catch(() => false))) throw new Error("Gmail isn't connected.");
-  const letter = await readGmailMessage(id, includeAirbnb);
-  return { mailbox, ...letter };
+  const letters = await readGmailThread(id, includeAirbnb);
+  return letters.map((letter) => ({ mailbox, ...letter }));
+}
+
+export async function readMail(input: { mailbox?: string; id?: string; includeAirbnb?: boolean }): Promise<MailLetter> {
+  const letters = await readMailThread(input);
+  const id = String(input.id ?? "").trim();
+  return letters.find((row) => row.id === id) ?? letters[letters.length - 1];
 }

@@ -28,6 +28,7 @@ import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, e
 import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
+import { answerMailChain } from "../copilot/mailChain.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
@@ -735,6 +736,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             draft: prepared.draft,
             steps: [{ text: prepared.draft ? "Prepared the assignment" : "Asked who to assign" }],
             thought: "Nothing was written to the cleaner app.",
+          });
+          return done();
+        }
+        const chain = await answerMailChain(text);
+        if (chain) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: chain,
+            steps: [{ text: /didn't find|didn't return|isn't connected/.test(chain) ? "The mail read failed" : "Read the email chain" }],
+            thought: "This came from the mailbox. Nothing was sent.",
           });
           return done();
         }

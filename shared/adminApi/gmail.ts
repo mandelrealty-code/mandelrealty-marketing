@@ -5,7 +5,7 @@ import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/
 import { readGmailLogin, saveGmailLogin } from "../copilot/store.js";
 import { captureCommit } from "../copilot/parity/capture.js";
 import { parityEnabled } from "../copilot/parity/flag.js";
-import { parityGmailOffer, parityReadMail, paritySearchGmail } from "../copilot/parity/world.js";
+import { parityGmailOffer, parityReadMailThread, paritySearchGmail } from "../copilot/parity/world.js";
 
 const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/gmail/callback";
 const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
@@ -177,6 +177,7 @@ const SENT = "in:sent";
 
 export type GmailHit = {
   id: string;
+  threadId: string;
   folder: MailFolder;
   from: string;
   email: string;
@@ -203,6 +204,7 @@ type GmailPayload = {
 
 type GmailMessage = {
   id?: string;
+  threadId?: string;
   snippet?: string;
   internalDate?: string;
   labelIds?: string[];
@@ -231,6 +233,7 @@ function gmailHit(msg: GmailMessage, folder: MailFolder): GmailHit | null {
   if (!msg.id) return null;
   return {
     id: msg.id,
+    threadId: msg.threadId || msg.id,
     folder,
     from: who.name,
     email: who.email,
@@ -267,11 +270,12 @@ export async function searchGmail(input: {
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=8&q=${encodeURIComponent(q)}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
-    const list = (await listRes.json().catch(() => ({}))) as { messages?: { id: string }[]; error?: { message?: string } };
+    const list = (await listRes.json().catch(() => ({}))) as { messages?: { id: string; threadId?: string }[]; error?: { message?: string } };
     if (!listRes.ok) throw new Error(list.error?.message || "Gmail didn't return that search.");
     for (const item of list.messages ?? []) {
       const msg = await gmailGet(token, item.id, "metadata");
       if (!msg) continue;
+      if (!msg.threadId && item.threadId) msg.threadId = item.threadId;
       const hit = gmailHit(msg, folder);
       if (!hit) continue;
       if (!input.includeAirbnb && isAirbnbNotification(hit.email)) continue;
@@ -283,21 +287,57 @@ export async function searchGmail(input: {
   return hits.slice(0, 16);
 }
 
-export async function readGmailMessage(id: string, includeAirbnb: boolean): Promise<GmailLetter> {
+async function gmailThreadMessages(token: string, id: string): Promise<GmailMessage[]> {
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(id)}?format=full`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) return [];
+  const data = (await res.json().catch(() => null)) as { messages?: GmailMessage[] } | null;
+  return data?.messages ?? [];
+}
+
+function gmailLetter(msg: GmailMessage): GmailLetter | null {
+  const labels = msg.labelIds ?? [];
+  const set = new Set(labels);
+  if (set.has("CATEGORY_SOCIAL") || set.has("CATEGORY_PROMOTIONS")) return null;
+  const folder = gmailFolder(labels) ?? (set.has("SENT") ? "sent" : "inbox");
+  const hit = gmailHit(msg, folder);
+  if (!hit) return null;
+  return { ...hit, body: plainText(msg.payload).replace(/\s+/g, " ").trim().slice(0, 4000) };
+}
+
+/** The whole chain. A message id opens its thread. A thread id opens the chain when the message read misses. */
+export async function readGmailThread(id: string, includeAirbnb: boolean): Promise<GmailLetter[]> {
   if (parityEnabled()) {
-    const mail = parityReadMail("gmail", id);
-    if (!mail) throw new Error("Gmail didn't return that message.");
-    if (!includeAirbnb && isAirbnbNotification(mail.email)) throw new Error("That Airbnb notice stays out of this search.");
-    return mail;
+    const letters = parityReadMailThread("gmail", id);
+    if (!letters.length) throw new Error("Gmail didn't return that message.");
+    const kept = includeAirbnb ? letters : letters.filter((row) => !isAirbnbNotification(row.email));
+    if (!kept.length) throw new Error("That Airbnb notice stays out of this search.");
+    return kept;
   }
   const token = await accessToken();
-  const msg = await gmailGet(token, id, "full");
-  if (!msg) throw new Error("Gmail didn't return that message.");
-  const folder = gmailFolder(msg.labelIds ?? []);
-  const hit = folder ? gmailHit(msg, folder) : null;
-  if (!hit || !folder) throw new Error("That message isn't in Sent or the Primary inbox.");
-  if (!includeAirbnb && isAirbnbNotification(hit.email)) throw new Error("That Airbnb notice stays out of this search.");
-  return { ...hit, body: plainText(msg.payload).replace(/\s+/g, " ").trim().slice(0, 4000) };
+  const opened = await gmailGet(token, id, "full");
+  const threadKey = opened?.threadId || id;
+  let raw = await gmailThreadMessages(token, threadKey);
+  if (!raw.length && opened) raw = [opened];
+  if (!raw.length && threadKey !== id) raw = await gmailThreadMessages(token, id);
+  const letters = raw
+    .map((msg) => gmailLetter(msg))
+    .filter((row): row is GmailLetter => Boolean(row))
+    .filter((row) => includeAirbnb || !isAirbnbNotification(row.email));
+  if (letters.length) return letters;
+  if (opened) {
+    const hit = gmailHit(opened, gmailFolder(opened.labelIds ?? []) ?? "inbox");
+    if (hit && !includeAirbnb && isAirbnbNotification(hit.email)) throw new Error("That Airbnb notice stays out of this search.");
+    if (!gmailFolder(opened.labelIds ?? [])) throw new Error("That message isn't in Sent or the Primary inbox.");
+  }
+  throw new Error("Gmail didn't return that message.");
+}
+
+export async function readGmailMessage(id: string, includeAirbnb: boolean): Promise<GmailLetter> {
+  const letters = await readGmailThread(id, includeAirbnb);
+  return letters.find((row) => row.id === id) ?? letters[letters.length - 1];
 }
 
 export async function latestInboxOffer(): Promise<InboxOffer | null> {
