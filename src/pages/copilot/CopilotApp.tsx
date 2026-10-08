@@ -158,7 +158,15 @@ function initial(source: string) {
   return (word[0] ?? "M").toUpperCase();
 }
 
-function Moon() {
+function ThemeIcon({ theme }: { theme: "dark" | "light" }) {
+  if (theme === "dark") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+        <circle cx="8" cy="8" r="2.6" />
+        <path d="M8 1.6v1.6M8 12.8v1.6M1.6 8H3.2M12.8 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" />
+      </svg>
+    );
+  }
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
       <circle cx="8" cy="8" r="5.5" />
@@ -627,9 +635,9 @@ function Mark({ size }: { size: number }) {
 export default function CopilotApp({ onModeChange }: { onModeChange: (mode: AdminProductMode) => void }) {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     try {
-      return localStorage.getItem("mrg_copilot_theme") === "light" ? "light" : "dark";
+      return localStorage.getItem("mrg_copilot_theme") === "dark" ? "dark" : "light";
     } catch {
-      return "dark";
+      return "light";
     }
   });
   const [boot, setBoot] = useState<Boot | null>(null);
@@ -716,7 +724,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     document.head.appendChild(appleBar);
     const paint = () => {
       const light = root.dataset.cpTheme === "light";
-      themeMeta.content = light ? "#f4f3f7" : "#0b0a10";
+      themeMeta.content = light ? "#f7f4ee" : "#1e1c19";
     };
     paint();
     const observer = new MutationObserver(paint);
@@ -1624,15 +1632,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   return (
-    <div className="cp" data-theme={theme}>
+    <div className={`cp${screen === "board" ? " board" : ""}`} data-theme={theme}>
       <header className="cp-top desk">
         <div className="cp-brand">
           <Mark size={22} />
           <span className="cp-brand-name">Mandel Realty Group</span>
         </div>
         <Switcher onModeChange={onModeChange} />
-        <button type="button" className="cp-theme" aria-label="Night mode" onClick={() => setThemeAndSave(theme === "dark" ? "light" : "dark")}>
-          <Moon />
+        <button type="button" className="cp-theme" aria-label={theme === "dark" ? "Light mode" : "Night mode"} onClick={() => setThemeAndSave(theme === "dark" ? "light" : "dark")}>
+          <ThemeIcon theme={theme} />
         </button>
       </header>
       {screen === "board" ? (
@@ -1667,8 +1675,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           <header className="cp-mobilebar">
             <Mark size={22} />
             <Switcher onModeChange={onModeChange} />
-            <button type="button" className="cp-theme" aria-label="Night mode" onClick={() => setThemeAndSave(theme === "dark" ? "light" : "dark")}>
-              <Moon />
+            <button type="button" className="cp-theme" aria-label={theme === "dark" ? "Light mode" : "Night mode"} onClick={() => setThemeAndSave(theme === "dark" ? "light" : "dark")}>
+              <ThemeIcon theme={theme} />
             </button>
           </header>
           {inSettings ? (
@@ -2523,8 +2531,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
             <header className="cp-mobilebar">
               <Mark size={22} />
               <Switcher onModeChange={onModeChange} />
-              <button type="button" className="cp-theme" aria-label="Night mode" onClick={() => setThemeAndSave(theme === "dark" ? "light" : "dark")}>
-                <Moon />
+              <button type="button" className="cp-theme" aria-label={theme === "dark" ? "Light mode" : "Night mode"} onClick={() => setThemeAndSave(theme === "dark" ? "light" : "dark")}>
+                <ThemeIcon theme={theme} />
               </button>
             </header>
             <div className="cp-sheet-head">

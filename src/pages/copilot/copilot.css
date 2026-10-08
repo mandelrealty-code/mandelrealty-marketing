@@ -1,25 +1,38 @@
 .cp {
-  --page: #0b0a10;
-  --side: #121119;
-  --surf: #1b1a23;
-  --surf2: #24232e;
-  --bar: #100f16;
-  --text: #f5f5f7;
-  --muted: #a4a2ae;
-  --quiet: #7a7884;
-  --line: rgba(255, 255, 255, 0.08);
-  --primary: #c4a35a;
-  --primary-hover: #dcc084;
-  --accent: oklch(0.76 0.13 295);
-  --done: oklch(0.72 0.13 155);
-  --danger: oklch(0.72 0.12 20);
-  --on-danger: #0a0a0a;
-  --menu-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  --glass: rgba(255, 255, 255, 0.06);
-  --glass-line: rgba(255, 255, 255, 0.12);
-  --glass-chip: rgba(255, 255, 255, 0.08);
-  --glass-ring: rgba(20, 18, 28, 0.9);
-  --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  --canvas: #f7f4ee;
+  --side: #f0ece4;
+  --surface: #fffdf9;
+  --tint: #eae5dc;
+  --ink: #211f1b;
+  --ink2: #3b3731;
+  --muted: #6f685e;
+  --line: #e4ded4;
+  --line2: #d3cbbe;
+  --accent-fill: #b5562a;
+  --accent-hover: #a04b23;
+  --accent-ink: #a04b23;
+  --on-accent: #fffdf9;
+  --needs: #8a620e;
+  --info: #56656d;
+  --failed: #9a4450;
+  --page: var(--canvas);
+  --surf: var(--surface);
+  --surf2: var(--tint);
+  --bar: var(--side);
+  --text: var(--ink);
+  --quiet: var(--muted);
+  --primary: var(--accent-fill);
+  --primary-hover: var(--accent-hover);
+  --accent: var(--accent-ink);
+  --done: var(--muted);
+  --danger: var(--failed);
+  --on-danger: var(--on-accent);
+  --menu-shadow: none;
+  --glass: transparent;
+  --glass-line: var(--line);
+  --glass-chip: transparent;
+  --glass-ring: var(--canvas);
+  --glass-shadow: none;
   position: fixed;
   inset: 0;
   width: auto;
@@ -30,9 +43,10 @@
   overscroll-behavior: none;
   background: var(--page);
   color: var(--text);
-  font-family: Manrope, system-ui, sans-serif;
-  font-size: 15px;
-  line-height: 1.65;
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   box-sizing: border-box;
 }
@@ -43,26 +57,23 @@
   box-sizing: border-box;
 }
 
-.cp[data-theme="light"] {
-  --page: #f4f3f7;
-  --side: #ffffff;
-  --surf: #ffffff;
-  --surf2: #efeef3;
-  --bar: #ffffff;
-  --text: #16151b;
-  --muted: #6b6975;
-  --quiet: #8f8d99;
-  --line: rgba(22, 20, 30, 0.09);
-  --accent: oklch(0.55 0.2 295);
-  --done: oklch(0.58 0.13 155);
-  --danger: oklch(0.56 0.17 25);
-  --on-danger: #ffffff;
-  --menu-shadow: 0 12px 32px rgba(40, 30, 80, 0.14);
-  --glass: rgba(255, 255, 255, 0.55);
-  --glass-line: rgba(255, 255, 255, 0.9);
-  --glass-chip: rgba(255, 255, 255, 0.7);
-  --glass-ring: rgba(255, 255, 255, 0.9);
-  --glass-shadow: 0 10px 40px rgba(60, 40, 120, 0.08);
+.cp[data-theme="dark"] {
+  --canvas: #1e1c19;
+  --side: #191815;
+  --surface: #282521;
+  --tint: #302c27;
+  --ink: #ede8e0;
+  --ink2: #d3cdc3;
+  --muted: #a29b90;
+  --line: #34302a;
+  --line2: #47423a;
+  --accent-fill: #d57a4a;
+  --accent-hover: #e08a5b;
+  --accent-ink: #e2895a;
+  --on-accent: #1e1c19;
+  --needs: #d4a65a;
+  --info: #9aaab1;
+  --failed: #d78c95;
 }
 
 .cp button,
@@ -442,7 +453,7 @@ html.cp-app #root {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
-  background: #0b0a10;
+  background: #f7f4ee;
 }
 
 html.cp-app body {
@@ -453,10 +464,10 @@ html.cp-app body {
   touch-action: none;
 }
 
-html.cp-app[data-cp-theme="light"],
-html.cp-app[data-cp-theme="light"] body,
-html.cp-app[data-cp-theme="light"] #root {
-  background: #f4f3f7;
+html.cp-app[data-cp-theme="dark"],
+html.cp-app[data-cp-theme="dark"] body,
+html.cp-app[data-cp-theme="dark"] #root {
+  background: #1e1c19;
 }
 
 .cp-home {
@@ -4850,4 +4861,333 @@ html.cp-app[data-cp-theme="light"] #root {
 .cp-segments .on {
   color: var(--text);
   font-weight: 700;
+}
+
+/* v3 skin. Layout stays. Workflow builder and the browser keep their own chrome. */
+.cp-wf,
+.cp-stage {
+  font-family: Manrope, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+  font-variant-numeric: normal;
+}
+
+.cp-top button,
+.cp-side button,
+.cp-main button,
+.cp-dialog button,
+.cp-sheet button,
+.cp-install-card button {
+  border-radius: 8px;
+}
+
+.cp-main button:focus-visible,
+.cp-top button:focus-visible,
+.cp-side button:focus-visible,
+.cp-dialog button:focus-visible,
+.cp-sheet button:focus-visible {
+  outline: 2px solid var(--accent-fill);
+  outline-offset: 2px;
+}
+
+.cp-greet,
+.cp-sethead h1,
+.cp-sk-headcopy h1,
+.cp-sk-dheadcopy h1,
+.cp-connectors h1,
+.cp-empty h2,
+.cp-mem-file h1 {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.cp-bot {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 17px;
+  line-height: 28px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.cp-bot .cp-think,
+.cp-bot .cp-choices,
+.cp-bot .cp-sk-card,
+.cp-bot .cp-sk-prop,
+.cp-bot .cp-sk-report,
+.cp-bot button,
+.cp-bot input,
+.cp-bot textarea,
+.cp-bot .cp-actions {
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cp-user {
+  background: var(--tint);
+  border: none;
+  border-radius: 8px;
+  color: var(--ink);
+}
+
+.cp-card,
+.cp-composer,
+.cp-menu,
+.cp-dialog .card,
+.cp-install-card,
+.cp-modelmenu,
+.cp-plusmenu {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.cp-card {
+  border-radius: 8px;
+  border-color: var(--line2);
+}
+
+.cp-composer {
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+}
+
+.cp-composer textarea,
+.cp-composer-row textarea {
+  color: var(--ink);
+  background: transparent;
+}
+
+.cp-composer textarea::placeholder {
+  color: var(--muted);
+}
+
+.cp-doc,
+.cp-thumb {
+  border-color: var(--line2);
+  background: var(--tint);
+}
+
+.cp-doc .ext {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+
+.cp-doc .name {
+  color: var(--ink);
+}
+
+.cp-doc .size {
+  color: var(--muted);
+}
+
+.cp-switch button.on,
+.cp-switch button.on:hover {
+  background: var(--tint);
+  color: var(--accent-ink);
+}
+
+.cp-row.on,
+.cp-footbtn.on {
+  background: var(--tint);
+  color: var(--accent-ink);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.cp-unread,
+.cp-navdot {
+  background: var(--needs);
+}
+
+.cp-theme {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line2);
+  background: transparent;
+  color: var(--ink2);
+}
+
+.cp-theme:hover {
+  background: var(--tint);
+}
+
+.cp-up,
+.cp-else-send,
+.cp-send,
+.cp-cta,
+.cp-sk-gold,
+.cp-gold {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  border-color: var(--accent-fill);
+}
+
+.cp-up:hover,
+.cp-else-send:hover,
+.cp-send:hover,
+.cp-cta:hover,
+.cp-sk-gold:hover:not(:disabled),
+.cp-gold:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.cp-up {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.cp-up.stop {
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  color: var(--ink);
+}
+
+.cp-up.stop .sq {
+  background: var(--ink);
+}
+
+.cp-go {
+  background: var(--on-accent);
+  color: var(--accent-fill);
+  border-radius: 8px;
+}
+
+.cp-pulse,
+.cp-showbrowser i,
+.cp-paused i {
+  background: var(--accent-fill);
+}
+
+.cp-bot p a,
+.cp-plusmenu .cp-check,
+.cp-time.work {
+  color: var(--accent-ink);
+}
+
+.cp-showbrowser {
+  border-radius: 8px;
+  border: 1px solid var(--line2);
+  background: transparent;
+  color: var(--ink);
+}
+
+.cp-paused,
+.cp-think-step .meta {
+  color: var(--muted);
+}
+
+.cp-modelbtn {
+  color: var(--muted);
+}
+
+.cp-modelbtn:hover {
+  color: var(--ink);
+  background: var(--tint);
+}
+
+.cp-modelmenu {
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  color: var(--ink);
+}
+
+.cp-dialog .card,
+.cp-menu,
+.cp-plusmenu {
+  border-color: var(--line2);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.cp-sk-fail {
+  border-left: 2px solid var(--failed);
+  padding-left: 12px;
+  color: var(--ink2);
+}
+
+.cp-err {
+  color: var(--failed);
+}
+
+.cp[data-theme] .cp-think-head .label,
+.cp[data-theme] .cp-think-body p,
+.cp[data-theme] .cp-think-step,
+.cp[data-theme] .cp-think-step svg,
+.cp[data-theme] .cp-think-head .count,
+.cp[data-theme] .cp-think-head svg {
+  color: var(--muted);
+}
+
+.cp[data-theme] .cp-think-body {
+  border-left-color: var(--line);
+}
+
+.cp[data-theme] .cp-shimmer,
+.cp[data-theme] .cp-think-head.live .label {
+  background-image: linear-gradient(90deg, var(--muted) 0%, var(--muted) 40%, var(--ink) 50%, var(--muted) 60%, var(--muted) 100%);
+}
+
+.cp-stop,
+.cp[data-theme="light"] .cp-stop {
+  border-color: var(--line2);
+  color: var(--ink);
+  background: transparent;
+}
+
+.cp-stop:hover,
+.cp[data-theme="light"] .cp-stop:hover {
+  background: var(--tint);
+}
+
+.cp-stop .sq,
+.cp[data-theme="light"] .cp-stop .sq {
+  background: var(--ink);
+}
+
+.cp-choices.signin .cp-choice:first-child,
+.cp-choices.signin .cp-choice:first-child:hover:not(:disabled) {
+  color: var(--on-accent);
+}
+
+.cp-step b {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+
+.cp-modelmenu > button,
+.cp-modelmenu b {
+  color: var(--ink);
+}
+
+.cp-modelmenu > button:hover:not(:disabled) {
+  background: var(--tint);
+}
+
+.cp-modelmenu em {
+  color: var(--muted);
+}
+
+.cp-modelmenu .cp-check {
+  color: var(--accent-ink);
+}
+
+.cp-making-frame {
+  background:
+    linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent-fill) 28%, transparent) 50%, transparent 70%),
+    var(--tint);
+}
+
+@media (max-width: 700px) {
+  .cp.board .cp-top.desk {
+    display: flex;
+  }
 }
