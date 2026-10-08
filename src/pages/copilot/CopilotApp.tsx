@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
 import "./copilot.css";
@@ -11,6 +11,7 @@ import type { AccountSpend } from "../../../shared/copilot/models";
 import { BLANK, type NodeResult, type Workflow } from "../../../shared/copilot/workflow";
 import { workflowFromSkill } from "../../../shared/copilot/skillShape";
 import { runWhen } from "./skillsTime";
+import { renderAnswer } from "../../../shared/copilot/answerMarkup";
 
 type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
 
@@ -513,25 +514,12 @@ function ThinkCheck() {
 }
 
 function ChatText({ text, muted }: { text: string; muted?: boolean }) {
-  const nodes: ReactNode[] = [];
-  const re = /https?:\/\/[^\s<>"']+/g;
-  let last = 0;
-  for (const match of text.matchAll(re)) {
-    const raw = match[0];
-    const start = match.index ?? 0;
-    const url = raw.replace(/[),.;]+$/, "");
-    const tail = raw.slice(url.length);
-    if (start > last) nodes.push(text.slice(last, start));
-    nodes.push(
-      <a key={`${start}-${url}`} href={url} target="_blank" rel="noopener noreferrer">
-        {url}
-      </a>,
-    );
-    if (tail) nodes.push(tail);
-    last = start + raw.length;
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return <p className={muted ? "cp-muted" : undefined}>{nodes}</p>;
+  return (
+    <div
+      className={muted ? "cp-answer cp-muted" : "cp-answer"}
+      dangerouslySetInnerHTML={{ __html: renderAnswer(text) }}
+    />
+  );
 }
 
 function Address({ url }: { url: string }) {
@@ -610,7 +598,7 @@ function Thinking({
             event.stopPropagation();
           }}
         >
-          {thought ? <p>{thought}</p> : null}
+          {thought ? <div className="cp-answer" dangerouslySetInnerHTML={{ __html: renderAnswer(thought) }} /> : null}
           {steps.length > 0 ? (
             <div className="cp-think-steps">
               {steps.map((step, index) => (

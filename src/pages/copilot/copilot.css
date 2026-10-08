@@ -802,6 +802,38 @@ html.cp-app[data-cp-theme="dark"] #root {
   white-space: pre-wrap;
 }
 
+.cp-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  white-space: normal;
+}
+
+.cp-bot .cp-answer p,
+.cp-sk-rephead .s.cp-answer p {
+  margin: 0;
+  white-space: normal;
+}
+
+.cp-answer ul,
+.cp-answer ol {
+  margin: 0;
+  padding-left: 1.25em;
+}
+
+.cp-answer li {
+  margin: 2px 0;
+}
+
+.cp-answer strong {
+  font-weight: 650;
+}
+
+.cp-answer em {
+  font-style: italic;
+}
+
 .cp-bot p a {
   color: #c4a35a;
   text-decoration: underline;
@@ -5067,6 +5099,7 @@ html.cp-app[data-cp-theme="dark"] #root {
 }
 
 .cp-bot p a,
+.cp-answer a,
 .cp-plusmenu .cp-check,
 .cp-time.work {
   color: var(--accent-ink);

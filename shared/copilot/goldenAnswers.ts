@@ -3,6 +3,7 @@
  * Each case pins the facts and the shape: answer first, those values present, no hedge.
  */
 
+import { renderAnswer } from "./answerMarkup.js";
 import { ANSWER_STYLE, firstSentence, HEDGE, hasAnswerStyle } from "./answerStyle.js";
 import { claudeChatSystem } from "./claudeAnswer.js";
 import { promptFor } from "./cursorThink.js";
@@ -122,5 +123,14 @@ const prompts = [
 for (const prompt of prompts) {
   if (!prompt.includes(ANSWER_STYLE) || !hasAnswerStyle(prompt)) fail("style", "a chat prompt dropped the answer style");
 }
+
+const marked = renderAnswer("**Two** open items:\n- Keys are with the desk\n- Windows were checked");
+if (/\*\*/.test(marked) || marked.includes("*")) fail("markup", marked);
+if (!marked.includes("<strong>Two</strong>")) fail("markup", marked);
+if (!marked.includes("<ul>") || !marked.includes("<li>Keys are with the desk</li>") || !marked.includes("<li>Windows were checked</li>")) {
+  fail("markup", marked);
+}
+const summary = renderAnswer("Read **23** of 23 stays.");
+if (/\*\*/.test(summary) || !summary.includes("<strong>23</strong>")) fail("markup summary", summary);
 
 console.log("golden answers: 5 passed");

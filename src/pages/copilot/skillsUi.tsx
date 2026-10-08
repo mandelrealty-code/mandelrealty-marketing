@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { CopilotMessage, CopilotReport, CopilotTextSend, SkillRow } from "../../../shared/copilot/types";
+import { renderAnswer } from "../../../shared/copilot/answerMarkup";
 import { isUnattended, schedulePhrase } from "../../../shared/copilot/skillSchedule";
 import { runWhen, whenLabel } from "./skillsTime";
 
@@ -453,7 +454,7 @@ export function ReportCard({
       <div className="cp-sk-card">
         <div className="cp-sk-rephead">
           <span className="t">{report.title}</span>
-          {report.summary ? <span className="s">{report.summary}</span> : null}
+          {report.summary ? <span className="s cp-answer" dangerouslySetInnerHTML={{ __html: renderAnswer(report.summary) }} /> : null}
         </div>
         {report.failed ? (
           <div className="cp-sk-fail">
