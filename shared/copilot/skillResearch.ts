@@ -1,4 +1,5 @@
 import { parityEnabled } from "./parity/flag.js";
+import type { Page } from "playwright-core";
 
 export type ResearchPage = { title: string; url: string; text: string };
 
@@ -17,6 +18,23 @@ export async function researchWeb(query: string): Promise<ResearchPage | { error
   const asked = query.trim();
   if (!asked) return { error: "Say what to look up." };
   if (parityEnabled()) {
+    if (/^https?:\/\//i.test(asked)) {
+      let host = "";
+      try {
+        host = new URL(asked).host.replace(/^www\./, "");
+      } catch {
+        return { error: "The browser didn't return a page." };
+      }
+      const hit = pages.find((page) => {
+        try {
+          return new URL(page.url).host.replace(/^www\./, "") === host;
+        } catch {
+          return false;
+        }
+      });
+      if (!hit) return { error: "The browser didn't return a page." };
+      return { ...hit };
+    }
     const q = asked.toLowerCase();
     const hit = pages.find((page) => page.title.toLowerCase().includes(q) || page.text.toLowerCase().includes(q)) ?? pages[0];
     if (!hit) return { error: "The browser didn't return a page." };
@@ -36,6 +54,37 @@ function destination(query: string): string {
   return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 
+async function pageText(page: Page, startUrl: string): Promise<string> {
+  const retailer = /amazon\.|walmart\.|canadiantire\.|homedepot\.|ikea\./i.test(startUrl);
+  if (!retailer) {
+    return (await page.locator("body").innerText()).replace(/[ \t]+\n/g, "\n").trim().slice(0, 8000);
+  }
+  await page
+    .waitForSelector('[data-component-type="s-search-result"], script[type="application/ld+json"]', { timeout: 8000 })
+    .catch(() => undefined);
+  let html = await retailerMarkup(page);
+  if (!/data-asin=|application\/ld\+json|a-offscreen/i.test(html)) {
+    const next = await page.locator("a.s-pagination-next").first().getAttribute("href").catch(() => null);
+    if (next) {
+      await page.goto(new URL(next, page.url()).toString(), { waitUntil: "domcontentloaded", timeout: 30000 });
+      await page
+        .waitForSelector('[data-component-type="s-search-result"], script[type="application/ld+json"]', { timeout: 8000 })
+        .catch(() => undefined);
+      html = await retailerMarkup(page);
+    }
+  }
+  return html.slice(0, 500000);
+}
+
+async function retailerMarkup(page: Page): Promise<string> {
+  const slot = page.locator(".s-main-slot");
+  const slotHtml = (await slot.count()) > 0 ? await slot.first().innerHTML() : "";
+  const ld = await page.locator('script[type="application/ld+json"]').allInnerTexts().catch(() => [] as string[]);
+  const blocks = ld.map((json) => `<script type="application/ld+json">${json}</script>`).join("");
+  if (slotHtml || blocks) return `${slotHtml}\n${blocks}`;
+  return page.content();
+}
+
 async function liveResearch(query: string): Promise<ResearchPage | { error: string }> {
   const apiKey = process.env.BROWSERBASE_API_KEY?.trim();
   if (!apiKey) return { error: "Browserbase isn't connected on the server, so the page was not opened." };
@@ -53,7 +102,7 @@ async function liveResearch(query: string): Promise<ResearchPage | { error: stri
     const url = destination(query);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
     const title = (await page.title()) || "Untitled page";
-    const text = (await page.locator("body").innerText()).replace(/\s+/g, " ").trim().slice(0, 2000);
+    const text = await pageText(page, url);
     const pageUrl = page.url() || url;
     await browser.close().catch(() => undefined);
     return { title, url: pageUrl, text };
