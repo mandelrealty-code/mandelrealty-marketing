@@ -3,9 +3,10 @@
  * A thanks-only note never waits and never gets a draft.
  */
 
-import { copilotKeepsProperty, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
+import { hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
 import { hubPlain } from "./knowledgeHub.js";
-import { leaveDraft } from "./stayCheck.js";
+import { readGuestQueueSnapshot, saveGuestQueueSnapshot } from "./store.js";
+import { leaveDraft, loadRecentStays, readStayThread } from "./stayCheck.js";
 import { isThanksOnly, messageLanguage, toEnglish, toGuestLanguage } from "./guestTranslate.js";
 import type { GuestDraftView, GuestQueue, GuestRow } from "./guestTypes.js";
 
@@ -15,11 +16,13 @@ export { isThanksOnly, messageLanguage, toEnglish, toGuestLanguage } from "./gue
 let poster: ((id: string, text: string) => Promise<void>) | null = null;
 let hubWrite: ((propertyId: string, fact: string) => Promise<string>) | null = null;
 const drafts = new Map<string, { to: string; body: string; reservationId: string; language: string }>();
+let rememberedQueue: GuestQueue | null = null;
 
 export function resetGuestMessaging(): void {
   poster = null;
   hubWrite = null;
   drafts.clear();
+  rememberedQueue = null;
 }
 
 export function setGuestPoster(next: ((id: string, text: string) => Promise<void>) | null): void {
@@ -129,33 +132,52 @@ async function writeAndConfirm(propertyId: string, fact: string): Promise<boolea
   }
 }
 
+/** The last saved guest pass. This does not scan Hospitable. */
+export async function readSavedGuestQueue(): Promise<GuestQueue | null> {
+  if (rememberedQueue) return rememberedQueue;
+  const saved = await readGuestQueueSnapshot<GuestQueue>();
+  if (!saved || !Array.isArray(saved.waiting) || !Array.isArray(saved.thanks)) return null;
+  rememberedQueue = saved;
+  return saved;
+}
+
+/** Same stays and threads as Checks and the unanswered-messages report. Saves the pass for the next open. */
 export async function loadGuestQueue(now = new Date()): Promise<GuestQueue> {
+  const queue = await scanGuestQueue(now);
+  if (queue.connected) {
+    rememberedQueue = queue;
+    await saveGuestQueueSnapshot(queue).catch(() => undefined);
+  }
+  return queue;
+}
+
+async function scanGuestQueue(now: Date): Promise<GuestQueue> {
   try {
-    const listed = await hospitableRead("get-properties", {});
-    const properties = [];
-    for (const row of propertiesOf(listed)) {
-      if (await copilotKeepsProperty({ id: row.id, name: row.name })) properties.push(row);
-    }
+    const loaded = await loadRecentStays(now);
+    const photos = await propertyPhotos();
     const waiting: GuestRow[] = [];
     const thanks: GuestRow[] = [];
-    const failed: string[] = [];
-    for (const property of properties) {
+    const failed = loaded.failed.map((label) => `Couldn't read reservations for ${label}, so anyone waiting there isn't listed. Nothing was sent.`);
+    for (const stay of loaded.stays) {
+      let messages: { at: string; role: string; body: string }[];
       try {
-        const stays = await hospitableRead("get-reservations", { properties: [property.id] });
-        for (const stay of reservationsOf(stays)) {
-          const messages = messagesOf(await hospitableRead("get-reservation-messages", { uuid: stay.id }));
-          const spoken = messages.filter((row) => row.role !== "system" && row.body.trim());
-          const last = spoken[spoken.length - 1];
-          if (!last || last.role !== "guest") continue;
-          const language = messageLanguage(last.body);
-          const row = rowFrom(stay, property, last, language, now);
-          if (isThanksOnly(last.body)) thanks.push(row);
-          else waiting.push(row);
-        }
+        messages = await readStayThread(stay.stay.id, now);
       } catch (err) {
-        if (err instanceof Error && err.message === HOSPITABLE_NOT_CONNECTED) throw err;
-        failed.push(`Couldn't read messages for ${property.name}, so anyone waiting there isn't listed. Nothing was sent.`);
+        if (err instanceof Error && /not connected/i.test(err.message)) throw err;
+        failed.push(`Couldn't read messages for ${stay.label}, so anyone waiting there isn't listed. Nothing was sent.`);
+        continue;
       }
+      const spoken = messages.filter((item) => item.role !== "system" && item.body.trim());
+      const lastHost = spoken.filter((item) => item.role === "host").map((item) => item.at).sort().at(-1) ?? "";
+      const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
+      const last = spoken[spoken.length - 1];
+      if (!last || last.role !== "guest" || !pending.length) continue;
+      const ask = pending.map((item) => item.body.trim()).join(" ");
+      const at = pending[pending.length - 1]?.at || last.at;
+      const language = messageLanguage(ask);
+      const row = rowFrom(stay, ask, at, language, photos.get(stay.stay.propertyId) || "", now);
+      if (isThanksOnly(ask)) thanks.push(row);
+      else waiting.push(row);
     }
     waiting.sort((a, b) => b.waitedMs - a.waitedMs || a.guest.localeCompare(b.guest));
     const summary = guestSummary(waiting.length, waiting[0]?.wait || "");
@@ -174,8 +196,24 @@ export async function loadGuestQueue(now = new Date()): Promise<GuestQueue> {
   }
 }
 
+async function propertyPhotos(): Promise<Map<string, string>> {
+  const photos = new Map<string, string>();
+  try {
+    for (const row of propertiesOf(await hospitableRead("get-properties", {}))) {
+      if (row.photo) photos.set(row.id, row.photo);
+    }
+  } catch {
+    /* The list still names the property when the photo does not return. */
+  }
+  return photos;
+}
+
 export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<GuestDraftView> {
-  const messages = messagesOf(await hospitableRead("get-reservation-messages", { uuid: row.id }));
+  const messages = (await readStayThread(row.id, now)).map((item) => ({
+    role: item.role,
+    body: item.body,
+    at: item.at,
+  }));
   const stayRaw = await hospitableRead("get-reservation", { identifier: row.id }).catch(() => null);
   const hubRaw = await hospitableRead("get-property-knowledge-hub", { property_id: row.propertyId }).catch(() => null);
   const hub = hubRaw ? hubPlain(hubRaw) : "";
@@ -203,24 +241,32 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
   };
 }
 
-function rowFrom(stay: { id: string; guest: string; photo: string; at: string }, property: { id: string; name: string; photo: string }, last: { body: string; at: string }, language: string, now: Date): GuestRow {
-  const waitedMs = Math.max(0, now.getTime() - new Date(last.at || now.toISOString()).getTime());
-  const first = stay.guest.trim().split(/\s+/)[0] || "Guest";
+function rowFrom(
+  stay: { stay: { id: string; guest: string; propertyId: string }; label: string },
+  ask: string,
+  at: string,
+  language: string,
+  propertyPhoto: string,
+  now: Date,
+): GuestRow {
+  const waitedMs = Math.max(0, now.getTime() - new Date(at || now.toISOString()).getTime());
+  const guest = stay.stay.guest || "Guest";
+  const first = guest.trim().split(/\s+/)[0] || "Guest";
   return {
-    id: stay.id,
-    guest: stay.guest || "Guest",
+    id: stay.stay.id,
+    guest,
     first,
-    initials: initials(stay.guest || "Guest"),
-    guestPhoto: stay.photo,
-    property: property.name,
-    propertyId: property.id,
-    propertyPhoto: property.photo,
-    asked: clip(last.body, 140),
-    askedEn: language ? toEnglish(last.body, language) : "",
+    initials: initials(guest),
+    guestPhoto: "",
+    property: stay.label,
+    propertyId: stay.stay.propertyId,
+    propertyPhoto,
+    asked: clip(ask, 140),
+    askedEn: language ? toEnglish(ask, language) : "",
     language,
     wait: waitLabel(waitedMs),
     waitedMs,
-    thanks: isThanksOnly(last.body),
+    thanks: isThanksOnly(ask),
   };
 }
 
@@ -232,30 +278,6 @@ function propertiesOf(raw: unknown): { id: string; name: string; photo: string }
     const name = String(row.name ?? "").trim();
     if (!name) return [];
     return [{ id: String(row.id ?? name), name, photo: http(row.picture) }];
-  });
-}
-
-function reservationsOf(raw: unknown): { id: string; guest: string; photo: string; at: string }[] {
-  const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: unknown[] }).data : [];
-  return data.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const row = item as Record<string, unknown>;
-    const guest = row.guest && typeof row.guest === "object" ? row.guest as Record<string, unknown> : {};
-    const name = String(guest.first_name ?? guest.name ?? "Guest");
-    return [{ id: String(row.id ?? ""), guest: name, photo: http(guest.picture), at: String(row.check_in ?? "") }];
-  }).filter((row) => row.id);
-}
-
-function messagesOf(raw: unknown): { role: string; body: string; at: string }[] {
-  const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: unknown[] }).data : [];
-  return data.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const row = item as Record<string, unknown>;
-    const body = String(row.body ?? "").trim();
-    if (!body) return [];
-    const roleRaw = String(row.sender_role ?? row.role ?? "").toLowerCase();
-    const role = roleRaw.includes("host") ? "host" : roleRaw.includes("guest") ? "guest" : "system";
-    return [{ role, body, at: String(row.created_at ?? row.at ?? "") }];
   });
 }
 

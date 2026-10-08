@@ -35,7 +35,7 @@ import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitabl
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
-import { loadGuestQueue, openGuestAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
+import { loadGuestQueue, openGuestAnswer, readSavedGuestQueue, submitGuestReply } from "../copilot/guestMessaging.js";
 import { answerMailChain } from "../copilot/mailChain.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
@@ -354,7 +354,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ]);
       const runningChatIds = [...new Set([...cursorRuns.map((row) => row.chatId), ...browserRuns.map((row) => row.chatId)])];
       const skills = await skillRows().catch(() => [] as Awaited<ReturnType<typeof skillRows>>);
-      const [brief, chats, memory, textLog, textNumbers, memoryFiles, connectorRows] = await Promise.all([
+      const [brief, chats, memory, textLog, textNumbers, memoryFiles, connectorRows, guestQueue] = await Promise.all([
         readSavedBrief().catch(() => quietBrief()),
         listChats().catch(() => []),
         listMemory().catch(() => []),
@@ -362,9 +362,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         listTextNumbers().catch(() => []),
         listMemoryFiles().catch(() => []),
         connectors(skills).catch(() => [] as ConnectorRow[]),
+        readSavedGuestQueue().catch(() => null),
       ]);
       return res.status(200).json({
         brief,
+        guestQueue,
         chats,
         skills,
         textLog,
@@ -401,6 +403,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (op === "guests-queue") {
+      return res.status(200).json(await readSavedGuestQueue());
+    }
+
+    if (op === "guests-refresh") {
       return res.status(200).json(await loadGuestQueue());
     }
 

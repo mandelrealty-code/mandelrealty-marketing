@@ -32,6 +32,7 @@ export function ReviewsQueue({
   rows,
   postedToday = [],
   disconnected = "",
+  loading = false,
   onRegenerate,
   onSubmit,
   onPrepare,
@@ -41,6 +42,7 @@ export function ReviewsQueue({
   rows: ReviewQueueRow[];
   postedToday?: { text: string; at: string }[];
   disconnected?: string;
+  loading?: boolean;
   onRegenerate?: (row: ReviewQueueRow, current: string) => Promise<{ draft: string; previous: string; sourceLine: string; dispute: string; facts: ReviewFact[]; error: string }>;
   onSubmit?: (row: ReviewQueueRow, text: string) => Promise<void>;
   onPrepare?: (row: ReviewQueueRow) => Promise<{ dispute: string; facts: ReviewFact[]; error: string }>;
@@ -157,6 +159,17 @@ export function ReviewsQueue({
         [row.id]: { ...current, status: "", error: err instanceof Error ? err.message : "Couldn't reach Airbnb. Nothing posted." },
       }));
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="cp-rv-page">
+        <div className="cp-rv">
+          <h1>Reviews</h1>
+          <p className="cp-rv-summary">Loading reviews.</p>
+        </div>
+      </div>
+    );
   }
 
   if (disconnected) {

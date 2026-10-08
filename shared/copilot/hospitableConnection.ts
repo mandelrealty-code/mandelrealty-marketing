@@ -12,6 +12,7 @@ import {
   listAllHospitableProperties,
 } from "../pm/hospitableClient.js";
 import { isManagedUnit } from "./managedUnits.js";
+import { addDays, torontoToday } from "./time.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityPat } from "./parity/world.js";
 import type { HospitableCard, HospitableSeenProperty } from "./types.js";
@@ -278,17 +279,31 @@ async function prove(token: string, now: Date): Promise<{ count: number; propert
   const properties = propertiesOf(listed);
   const when = now.toISOString();
   const scope = properties.length === 1 ? "1 property" : `all ${properties.length} properties`;
-  const checks: { name: string; detail: string; call: () => Promise<unknown> }[] = probe
-    ? [
-        { name: "Reservations", detail: `Past, current and upcoming stays at ${scope}`, call: () => probe!(token, "get-reservations", {}) },
-        { name: "Guest messages", detail: "Every guest conversation, to find who is waiting", call: () => probe!(token, "get-reservation-messages", { uuid: "connection-check" }) },
-        { name: "Knowledge Hub", detail: `House facts for ${scope}, used to write drafts`, call: () => probe!(token, "get-property-knowledge-hub", { property_id: properties[0]?.id || "connection-check" }) },
-      ]
-    : [
-        { name: "Reservations", detail: `Past, current and upcoming stays at ${scope}`, call: () => readLive(token, "get-reservations", {}) },
-        { name: "Guest messages", detail: "Every guest conversation, to find who is waiting", call: () => readLive(token, "get-reservations", { include: "guest" }) },
-        { name: "Knowledge Hub", detail: `House facts for ${scope}, used to write drafts`, call: () => readLive(token, "get-property-knowledge-hub", { property_id: properties[0]?.id || "" }) },
-      ];
+  const today = torontoToday(now);
+  const reservationArgs = {
+    properties: properties.map((property) => property.id).filter(Boolean),
+    start_date: addDays(today, -30),
+    end_date: addDays(today, 60),
+    date_query: "checkout",
+    include: "guest",
+  };
+  const read = probe
+    ? (name: string, args: Record<string, unknown>) => probe!(token, name, args)
+    : (name: string, args: Record<string, unknown>) => readLive(token, name, args);
+  const checks: { name: string; detail: string; call: () => Promise<unknown> }[] = [
+    { name: "Reservations", detail: `Past, current and upcoming stays at ${scope}`, call: () => read("get-reservations", reservationArgs) },
+    {
+      name: "Guest messages",
+      detail: "Every guest conversation, to find who is waiting",
+      call: async () => {
+        const stays = await read("get-reservations", reservationArgs);
+        const id = firstReservationId(stays);
+        if (!id) return stays;
+        return read("get-reservation-messages", { uuid: id });
+      },
+    },
+    { name: "Knowledge Hub", detail: `House facts for ${scope}, used to write drafts`, call: () => read("get-property-knowledge-hub", { property_id: properties[0]?.id || "connection-check" }) },
+  ];
   const reads: StoredRead[] = [];
   for (const check of checks) {
     try {
@@ -300,6 +315,18 @@ async function prove(token: string, now: Date): Promise<{ count: number; propert
     }
   }
   return { count: properties.length, properties, reads };
+}
+
+function firstReservationId(raw: unknown): string {
+  const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data)
+    ? (raw as { data: unknown[] }).data
+    : [];
+  for (const item of data) {
+    if (!item || typeof item !== "object") continue;
+    const id = String((item as { id?: unknown }).id ?? "").trim();
+    if (id) return id;
+  }
+  return "";
 }
 
 function propertiesOf(raw: unknown): HospitableSeenProperty[] {

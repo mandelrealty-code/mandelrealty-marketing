@@ -10,6 +10,7 @@ import {
   isThanksOnly,
   loadGuestQueue,
   messageLanguage,
+  readSavedGuestQueue,
   replyFromAnswer,
   resetGuestMessaging,
   setGuestPoster,
@@ -18,6 +19,7 @@ import {
   toEnglish,
   toGuestLanguage,
 } from "./guestMessaging.js";
+import { installWorld } from "./parity/world.js";
 
 const GOOD = "copilot-guest-token-not-a-secret-7Kq2";
 const FRENCH = "Est-ce qu'on pourrait arriver à 13 h au lieu de 16 h ? Notre vol atterrit à 11 h.";
@@ -25,6 +27,21 @@ const HUB = "Early check-in from 2 PM when no one checks out that day.";
 
 function fail(label: string): never {
   throw new Error(`Guest messaging harness failed: ${label}`);
+}
+
+function stay(id: string, code: string, propertyId: string, guest: string, body: string, at: string) {
+  return {
+    id,
+    code,
+    propertyId,
+    status: "accepted",
+    checkIn: "2026-10-08",
+    checkOut: "2026-10-11",
+    guest,
+    adults: 2,
+    children: 0,
+    messages: [{ id: `${id}-m`, at, role: "guest" as const, name: guest, body }],
+  };
 }
 
 resetHospitableConnection();
@@ -68,13 +85,37 @@ setHospitableProbe(async (token, name, args) => {
 });
 
 await saveHospitableToken(GOOD);
+setHospitableProbe(null);
+installWorld({
+  now: new Date("2026-10-08T16:06:00Z"),
+  properties: [
+    { id: "prop-charlotte", name: "Unit #606", address: "606, 8 Charlotte Street, Toronto", managed: true },
+    { id: "prop-shaw", name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true },
+    { id: "prop-extra", name: "Partner Loft", address: "99 Partner Street, Toronto", managed: false },
+  ],
+  reservations: [
+    stay("stay-isabelle", "HMISA1", "prop-charlotte", "Isabelle", FRENCH, "2026-10-08T15:24:00Z"),
+    stay("stay-alyssa", "HMALY1", "prop-charlotte", "Alyssa", "Where do we leave the keys at checkout?", "2026-10-08T15:00:00Z"),
+    stay("stay-tom", "HMTOM1", "prop-shaw", "Tom Becker", "Thanks so much!", "2026-10-08T15:40:00Z"),
+  ],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
 const queue = await loadGuestQueue(new Date("2026-10-08T16:06:00Z"));
 if (!queue.connected) fail("queue");
-if (queue.waiting.length !== 1 || queue.waiting[0]?.guest !== "Isabelle Fournier") fail("waiting row");
+const names = queue.waiting.map((row) => row.guest).sort().join(",");
+if (queue.waiting.length !== 2 || names !== "Alyssa,Isabelle") fail("two waiting guests");
+if (queue.waiting.some((row) => !/Charlotte/.test(row.property))) fail("charlotte label");
 if (queue.waiting.some((row) => row.property === "Partner Loft") || queue.thanks.some((row) => row.property === "Partner Loft")) fail("unmanaged property");
 if (queue.thanks.length !== 1 || queue.thanks[0]?.guest !== "Tom Becker") fail("thanks row");
 if (queue.waiting.some((row) => /thanks so much/i.test(row.asked))) fail("thanks is waiting");
-const isabelle = queue.waiting[0];
+const started = performance.now();
+const saved = await readSavedGuestQueue();
+if (performance.now() - started > 200) fail("saved queue wait");
+if (!saved || saved.waiting.map((row) => row.guest).sort().join(",") !== "Alyssa,Isabelle") fail("saved pass");
+const isabelle = queue.waiting.find((row) => row.guest === "Isabelle");
 if (!isabelle) fail("isabelle");
 if (messageLanguage(FRENCH) !== "French") fail("language");
 if (!/check in|1 PM|flight/i.test(isabelle.askedEn)) fail("english line");

@@ -1077,6 +1077,24 @@ export async function saveBriefSnapshot(brief: BriefPayload): Promise<void> {
   await writePrefixed(BRIEF_PREFIX, JSON.stringify(brief));
 }
 
+const GUEST_QUEUE_PREFIX = "guest-queue|";
+
+export async function readGuestQueueSnapshot<T>(): Promise<T | null> {
+  const raw = await readPrefixed(GUEST_QUEUE_PREFIX);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as T;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveGuestQueueSnapshot(queue: unknown): Promise<void> {
+  await writePrefixed(GUEST_QUEUE_PREFIX, JSON.stringify(queue));
+}
+
 const RANK_PREFIX = "rank-signal|";
 
 export async function readRankSignals(): Promise<RankSignals> {

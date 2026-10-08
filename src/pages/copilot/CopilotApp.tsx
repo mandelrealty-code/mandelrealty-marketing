@@ -52,6 +52,7 @@ type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "guests" | "s
 
 type Boot = {
   brief: BriefPayload;
+  guestQueue?: GuestQueue | null;
   chats: CopilotChat[];
   skills: SkillRow[];
   connectors: ConnectorRow[];
@@ -942,6 +943,12 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         void api<{ brief: BriefPayload }>("refresh-brief")
           .then((data) => setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev)))
           .catch(() => undefined);
+        void api<GuestQueue>("guests-refresh")
+          .then((queue) => {
+            setGuestQueue((current) => current ?? queue);
+            setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+          })
+          .catch(() => undefined);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load Copilot."));
   }, []);
@@ -1703,7 +1710,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         Overview
         {boot?.brief.overview?.count ? <span className="cp-ov-count">{boot.brief.overview.count}</span> : null}
       </button>
-      <button type="button" className={`cp-row${screen === "guests" ? " on" : ""}`} onClick={() => { setScreen("guests"); setGuestAnswer(null); setSheet(false); void api<GuestQueue>("guests-queue", {}).then(setGuestQueue).catch((err) => setGuestQueue({ connected: false, line: err instanceof Error ? err.message : "Hospitable is not connected.", summaryLead: "No one", summaryRest: " is waiting. Every guest has a reply.", waiting: [], thanks: [], failed: [] })); }}>
+      <button type="button" className={`cp-row${screen === "guests" ? " on" : ""}`} onClick={() => { setScreen("guests"); setGuestAnswer(null); setSheet(false); setGuestQueue((current) => current ?? boot?.guestQueue ?? null); void api<GuestQueue>("guests-refresh", {}).then((queue) => { setGuestQueue(queue); setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev)); }).catch(() => undefined); }}>
         <span>Guest messaging</span>
         {guestQueue?.connected && guestQueue.waiting.length ? <span className="cp-ov-count">{guestQueue.waiting.length}</span> : null}
       </button>
@@ -2232,7 +2239,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   <ReviewsQueue
                     rows={reviewQueue?.reviews ?? []}
                     postedToday={reviewQueue?.postedToday ?? []}
-                    disconnected={reviewQueue && !reviewQueue.connected ? reviewQueue.line : reviewQueue ? "" : "Loading reviews."}
+                    loading={!reviewQueue}
+                    disconnected={reviewQueue && !reviewQueue.connected ? reviewQueue.line : ""}
                     onRegenerate={async (row, current) => {
                       const result = await api<{ draft: string; previous: string; sourceLine: string; dispute: string; facts: ReviewQueueRow["facts"]; unchanged: boolean }>("reviews-regenerate", {
                         guest: row.guest,
