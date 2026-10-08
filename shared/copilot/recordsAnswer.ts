@@ -11,8 +11,36 @@ import { findPinnedStay } from "./stayAnswer.js";
 import { unitsAnswer } from "./memoryFiles.js";
 import { addDays, torontoToday } from "./time.js";
 
-const UNITS =
-  /\b(how many|number of|count of|what|which|list|name|show|tell)\b[\s\S]{0,60}\b(units?|properties|listings|homes)\b|\b(units?|properties) (do|did|are) (we|they|ours)\b/i;
+const COUNT =
+  /\b(how many|number of|count of)\b[\s\S]{0,48}\b(units?|properties|listings|homes)\b/i;
+const NAMED =
+  /\b(list|name|show)\b[\s\S]{0,32}\b(?:our |the )?(units?|properties|homes)\b/i;
+const MANAGE =
+  /\b(what|which)\b[\s\S]{0,40}\b(units?|properties|homes)\b[\s\S]{0,32}\b(manage|have|track|own)\b|\b(what|which) (are|were) (our|the) (units?|properties|homes|listings)\b|\b(units?|properties) (do|did|are) (we|they|ours)\b/i;
+const MAINTENANCE = /\bmaintenance\b/i;
+const CHANNELS = /\b(booking\.com|vrbo)\b/i;
+
+/** The question is asking for the managed-unit roster, not a fact about those units. */
+export function asksUnitRoster(text: string): boolean {
+  return COUNT.test(text) || NAMED.test(text) || MANAGE.test(text);
+}
+
+/**
+ * One sentence when no connected source holds the answer.
+ * A roster is not a substitute for the missing source.
+ */
+export function missingSourceAnswer(input: string): string | null {
+  const text = input.replace(/\n?Attached:.*$/is, "").trim();
+  if (!text || asksUnitRoster(text)) return null;
+  if (MAINTENANCE.test(text) && /\b(due|overdue|outstanding|scheduled|upcoming|what|which)\b/i.test(text)) {
+    return "Maintenance tracking is not connected to Copilot yet.";
+  }
+  if (CHANNELS.test(text) && /\b(listed|listings?|on booking\.com|on vrbo)\b/i.test(text)) {
+    return "I cannot see Booking.com or VRBO listings.";
+  }
+  return null;
+}
+
 const ABOUT_UNITS = /Hospitable lists|from Hospitable/i;
 const UNIT_FOLLOW = /\b(what|which)\b[\s\S]{0,40}\b(they|them|those|names?|addresses|ones)\b|\b(their|the) (names?|addresses)\b/i;
 const MESSAGE =
@@ -24,13 +52,15 @@ const DEAD = /cancel|declin|denied|expired|not_possible|withdrawn|inquiry/i;
 
 export function asksRecords(input: string, prior = ""): boolean {
   const text = input.replace(/\n?Attached:.*$/is, "").trim();
-  return UNITS.test(text) || (ABOUT_UNITS.test(prior) && UNIT_FOLLOW.test(text)) || MESSAGE.test(text) || REVIEWS.test(text);
+  return Boolean(missingSourceAnswer(text)) || asksUnitRoster(text) || (ABOUT_UNITS.test(prior) && UNIT_FOLLOW.test(text)) || MESSAGE.test(text) || REVIEWS.test(text);
 }
 
 /** A spoken answer, or null when this is not one of the record questions. */
 export async function answerRecords(input: string, prior = ""): Promise<string | null> {
   const text = input.replace(/\n?Attached:.*$/is, "").trim();
   if (!text) return null;
+  const gap = missingSourceAnswer(text);
+  if (gap) return gap;
   try {
     if (MESSAGE.test(text)) {
       if (/\bHM[A-Z0-9]{8,}\b|charlotte|roseglor|blue jays|\bshaw\b|markham|\b(606|1103|1104|2104)\b|this reservation|spacious|scarborough/i.test(text)) return null;
@@ -38,7 +68,7 @@ export async function answerRecords(input: string, prior = ""): Promise<string |
       return await lastMessage();
     }
     if (REVIEWS.test(text)) return await newReviews();
-    if (UNITS.test(text) || (ABOUT_UNITS.test(prior) && UNIT_FOLLOW.test(text))) return await unitList(text);
+    if (asksUnitRoster(text) || (ABOUT_UNITS.test(prior) && UNIT_FOLLOW.test(text))) return await unitList(text);
   } catch {
     return "Hospitable didn't return that. I didn't guess a number or a name.";
   }

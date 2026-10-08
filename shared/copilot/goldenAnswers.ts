@@ -20,6 +20,7 @@ import { answerPropertyFact } from "./propertyFact.js";
 import { answerInboxToday } from "./mailInbox.js";
 import { questionRoute, skipsWeb } from "./route.js";
 import { installResearch, resetResearch } from "./skillResearch.js";
+import { answerRecords, asksUnitRoster, missingSourceAnswer } from "./recordsAnswer.js";
 import { answerStay } from "./stayAnswer.js";
 import { answerOutsideRentals } from "./topicScope.js";
 
@@ -497,6 +498,23 @@ if (!demoted.summary.includes("Lena Park")) fail("overview rank", demoted.summar
 if (signalKey("stock", "Roseglor") !== "stock|roseglor") fail("overview rank", "signal key");
 if (signals["stock|roseglor"]?.dismissals !== 2 || signals["stock|roseglor"]?.passed !== 0) {
   fail("overview rank", JSON.stringify(signals));
+}
+
+const maintenanceQ = "What maintenance is due or overdue at our units?";
+const channelQ = "Which of our units are listed on Booking.com and VRBO?";
+const maintenance = await answerRecords(maintenanceQ);
+const channels = await answerRecords(channelQ);
+if (maintenance !== "Maintenance tracking is not connected to Copilot yet.") fail("missing source", maintenance ?? "no answer");
+if (channels !== "I cannot see Booking.com or VRBO listings.") fail("missing source", channels ?? "no answer");
+if (missingSourceAnswer(maintenanceQ) !== maintenance || missingSourceAnswer(channelQ) !== channels) {
+  fail("missing source", "the chat sentence and the record sentence differ");
+}
+for (const answer of [maintenance, channels]) {
+  if (!answer || answer.includes("\n") || /we manage/i.test(answer)) fail("missing source", answer ?? "empty");
+}
+if (asksUnitRoster(maintenanceQ) || asksUnitRoster(channelQ)) fail("missing source", "the question was treated as a unit roster");
+if (!asksUnitRoster("How many units do we manage?") || missingSourceAnswer("How many units do we manage?")) {
+  fail("missing source", "a roster question was treated as a missing source");
 }
 
 console.log("golden answers: 8 passed");

@@ -21,7 +21,7 @@ import { skipsWeb } from "../copilot/route.js";
 import { answerInboxToday } from "../copilot/mailInbox.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
-import { answerRecords } from "../copilot/recordsAnswer.js";
+import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
 import { answerBuildingRegistration } from "../copilot/buildingRegistration.js";
 import { answerStay } from "../copilot/stayAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft } from "../copilot/guestInboxAnswer.js";
@@ -676,6 +676,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             prior = history[i]?.body ?? "";
             break;
           }
+        }
+        const gap = missingSourceAnswer(text);
+        if (gap) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: gap,
+            steps: [{ text: "That source is not connected" }],
+            thought: "No connected source holds that. Nothing was guessed.",
+          });
+          return done();
         }
         const opsAnswer = await answerOps(text, new Date(), prior);
         if (opsAnswer) {
