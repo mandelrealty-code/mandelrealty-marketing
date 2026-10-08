@@ -13,6 +13,7 @@ import { ID, worldAt } from "./parity/catalog.js";
 import { installOpsClients, installOpsReservations } from "./parity/opsState.js";
 import { installWorld } from "./parity/world.js";
 import { GENERAL_ANSWER_SYSTEM } from "./plainAnswer.js";
+import { takeMemoryTurn } from "./memoryFiles.js";
 import { answerPropertyFact } from "./propertyFact.js";
 import { answerInboxToday } from "./mailInbox.js";
 import { questionRoute, skipsWeb } from "./route.js";
@@ -262,5 +263,40 @@ if (!/that is from Rogers Centre box office/i.test(venue.body) || !venue.body.in
 }
 if (/Buy tickets|See the map|Google search results|Page:/.test(venue.body)) fail("venue", venue.body);
 if (venue.body.trim() === "Rogers Centre box office hours are 10:00 a.m. to 6:00 p.m.") fail("venue", venue.body);
+
+installWorld(worldAt("2026-10-07T11:00:00-04:00"));
+const SAVED = "remember the Shaw Street house gate code is kept in the kitchen junk drawer";
+const ASK = "Where is the Shaw Street house gate code kept?";
+async function keepFact(chatId: string, messageId: string): Promise<void> {
+  const offered = await takeMemoryTurn({ text: SAVED, messageId, chatId });
+  if (!offered) fail("memory recall", "the fact was not saved");
+  const kept = offered.choices
+    ? await takeMemoryTurn({
+      text: "Yes",
+      messageId: `${messageId}-yes`,
+      chatId,
+      priorAssistant: offered.body,
+      priorUser: SAVED,
+    })
+    : offered;
+  if (!kept || !/saved|added/i.test(kept.body)) fail("memory recall", kept?.body ?? "the fact was not saved");
+}
+await keepFact("chat-save", "gate-save");
+const recalled = await answerPropertyFact(ASK);
+if (!recalled) fail("memory recall", "a fresh conversation did not answer");
+if (!/kitchen junk drawer/i.test(recalled) || !/from saved memory/i.test(recalled)) fail("memory recall", recalled);
+if (/parking|netflix|network|shaw profile|Knowledge Hub/i.test(recalled)) fail("memory recall", recalled);
+
+const conflictWorld = worldAt("2026-10-07T11:00:00-04:00");
+const shawHub = conflictWorld.hub?.find((row) => row.propertyId === ID.shaw);
+if (!shawHub) fail("memory recall", "Shaw has no Hub");
+shawHub.body += "\nThe gate code is kept in the lockbox by the front door.";
+installWorld(conflictWorld);
+await keepFact("chat-fresh", "gate-conflict");
+const differed = await answerPropertyFact(ASK);
+if (!differed) fail("memory recall", "the conflicting fact was not answered");
+if (!/lockbox by the front door/i.test(firstSentence(differed)) || !/Knowledge Hub/.test(differed)) fail("memory recall", differed);
+if (!/saved memory differs/i.test(differed) || !/kitchen junk drawer/i.test(differed)) fail("memory recall", differed);
+if (/parking|netflix|network|shaw profile/i.test(differed)) fail("memory recall", differed);
 
 console.log("golden answers: 8 passed");

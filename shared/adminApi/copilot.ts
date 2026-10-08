@@ -798,12 +798,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         const fact = await answerPropertyFact(text);
         if (fact) {
+          const fromMemory = /from saved memory/i.test(fact) && !/saved memory differs/i.test(fact);
           await addMessage({
             chatId,
             role: "assistant",
             body: fact,
-            steps: [{ text: /didn't return/.test(fact) ? "The Knowledge Hub didn't return" : "Read the Knowledge Hub" }],
-            thought: "This came from the Knowledge Hub. Nothing was sent.",
+            steps: [{ text: /didn't return/.test(fact) ? "The Knowledge Hub didn't return" : fromMemory ? "Read saved memory" : "Read the Knowledge Hub" }],
+            thought: fromMemory ? "This came from saved memory. Nothing was sent." : "This came from the Knowledge Hub. Nothing was sent.",
           });
           return done();
         }

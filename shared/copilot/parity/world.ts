@@ -58,6 +58,17 @@ export type ParityProperty = {
 
 export type ParityMemory = { path: string; body: string };
 
+export type ParityClaim = {
+  id: string;
+  created_at: string;
+  path: string;
+  quote: string;
+  message_id: string;
+  chat_id: string;
+  status: "active" | "superseded" | "retracted";
+  supersedes_claim_id: string | null;
+};
+
 export type ParityItem = {
   id: string;
   text: string;
@@ -109,6 +120,7 @@ export type ParityWorld = {
   gmail: ParityMail[];
   outlook: ParityMail[];
   memory: ParityMemory[];
+  claims?: ParityClaim[];
   items: ParityItem[];
   hub?: ParityHub[];
   cleaner?: ParityCleaner;
@@ -125,6 +137,7 @@ export function installWorld(next: ParityWorld): void {
     gmail: next.gmail.map((row) => ({ ...row })),
     outlook: next.outlook.map((row) => ({ ...row })),
     memory: next.memory.map((row) => ({ ...row })),
+    claims: (next.claims ?? []).map((row) => ({ ...row })),
     items: next.items.map((row) => ({ ...row })),
     hub: (next.hub ?? []).map((row) => ({ ...row })),
     cleaner: next.cleaner
@@ -190,6 +203,35 @@ export function parityMemory(): { path: string; body: string; origin: "you"; upd
     origin: "you" as const,
     updated_at: "2026-10-05T16:00:00.000Z",
   }));
+}
+
+export function parityClaims(): ParityClaim[] | null {
+  const current = live();
+  if (!current) return null;
+  return (current.claims ?? []).map((row) => ({ ...row }));
+}
+
+export function writeParityFile(file: { path: string; body: string }): void {
+  const current = live();
+  if (!current) return;
+  const index = current.memory.findIndex((row) => row.path === file.path);
+  if (index >= 0) current.memory[index] = { path: file.path, body: file.body };
+  else current.memory.push({ path: file.path, body: file.body });
+}
+
+export function removeParityFile(filePath: string): void {
+  const current = live();
+  if (!current) return;
+  current.memory = current.memory.filter((row) => row.path !== filePath);
+}
+
+export function writeParityClaim(claim: ParityClaim): void {
+  const current = live();
+  if (!current) return;
+  current.claims ??= [];
+  const index = current.claims.findIndex((row) => row.id === claim.id);
+  if (index >= 0) current.claims[index] = { ...claim };
+  else current.claims.push({ ...claim });
 }
 
 export function parityItems(): ParityItem[] {

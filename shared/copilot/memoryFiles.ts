@@ -9,7 +9,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../supabase.js";
 import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
-import { parityMemory } from "./parity/world.js";
+import { parityClaims, parityMemory, removeParityFile, writeParityClaim, writeParityFile } from "./parity/world.js";
 import { parityEnabled } from "./parity/flag.js";
 import { BLUE_JAYS_PROCESS, isBlueJaysLine } from "./processFacts.js";
 import { reservationTimes } from "./standing.js";
@@ -172,7 +172,7 @@ export function viewMemoryFile(file: MemoryFile, today: string): MemoryFileView 
 
 async function loadAll(): Promise<{ files: MemoryFile[]; claims: Claim[] }> {
   const parity = parityMemory();
-  if (parity) return { files: parity, claims: [] };
+  if (parity) return { files: parity, claims: parityClaims() ?? [] };
   const client = sb();
   if (!useFile && client) {
     const [filesRes, claimsRes] = await Promise.all([
@@ -193,6 +193,10 @@ async function loadAll(): Promise<{ files: MemoryFile[]; claims: Claim[] }> {
 }
 
 async function saveFile(file: MemoryFile): Promise<void> {
+  if (parityEnabled()) {
+    writeParityFile(file);
+    return;
+  }
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_memory_files").upsert(file);
@@ -207,6 +211,10 @@ async function saveFile(file: MemoryFile): Promise<void> {
 }
 
 async function removeFile(filePath: string): Promise<void> {
+  if (parityEnabled()) {
+    removeParityFile(filePath);
+    return;
+  }
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_memory_files").delete().eq("path", filePath);
@@ -219,6 +227,10 @@ async function removeFile(filePath: string): Promise<void> {
 }
 
 async function saveClaim(claim: Claim): Promise<void> {
+  if (parityEnabled()) {
+    writeParityClaim(claim);
+    return;
+  }
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_memory_claims").upsert(claim);
@@ -360,6 +372,18 @@ export async function listMemoryFiles(): Promise<MemoryFileView[]> {
   return files
     .map((file) => viewMemoryFile(file, today))
     .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** Active claims and the file each one wrote. A later chat can recall these. */
+export async function activeMemoryClaims(): Promise<{ path: string; quote: string; body: string }[]> {
+  const { files, claims } = await loadAll();
+  return claims
+    .filter((claim) => claim.status === "active")
+    .map((claim) => ({
+      path: claim.path,
+      quote: claim.quote,
+      body: files.find((file) => file.path === claim.path)?.body ?? "",
+    }));
 }
 
 /** Files already stored. Does not seed a unit file. */
