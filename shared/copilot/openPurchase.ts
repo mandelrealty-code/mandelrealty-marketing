@@ -105,7 +105,8 @@ export async function openLegacyPurchase(
     if (!supply) return unread(offer, propertyId, property?.address || "", `I couldn't read the product for ${offer.item} at ${offer.property}.`);
     const named = supply.product.trim();
     const priced = typeof supply.priceCents === "number" && Number.isFinite(supply.priceCents);
-    const needsListing = !named || !priced || !supply.retailer.trim();
+    const retailer = supply.retailer?.trim() ?? "";
+    const needsListing = !named || !priced || !retailer;
     const found = needsListing && !parityEnabled()
       ? await listedProduct(supply.item || offer.item || offer.product)
       : null;
@@ -118,7 +119,7 @@ export async function openLegacyPurchase(
       threshold: supply.threshold,
       restockQty: supply.restockQty,
       productName: named || found?.productName || offer.product || supply.item,
-      retailer: supply.retailer.trim() || found?.retailer || "",
+      retailer: retailer || found?.retailer || "",
       priceCents: priced ? supply.priceCents : found?.priceCents ?? null,
       imageUrl: supply.imageUrl || found?.imageUrl || "",
       productUrl: supply.productUrl || found?.productUrl || "",
