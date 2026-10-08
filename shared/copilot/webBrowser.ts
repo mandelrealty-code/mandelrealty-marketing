@@ -480,6 +480,21 @@ export async function browserIsLive(chatId: string): Promise<boolean> {
   return sessionAlive(row.sessionId);
 }
 
+/** Closes the live Browserbase session without writing a chat line. Findings are posted separately. */
+export async function releaseBrowser(chatId: string): Promise<void> {
+  stopping.delete(chatId);
+  const row = await readBrowser(chatId);
+  if (!row?.sessionId || row.status === "done") return;
+  try {
+    await release(row);
+  } catch {
+    // Parity mode and an already closed session leave the row finished.
+  }
+  row.status = "done";
+  row.steps = [...row.steps, { text: "Closed the browser" }];
+  await saveBrowser(chatId, row);
+}
+
 export async function cancelBrowser(chatId: string): Promise<boolean> {
   stopping.add(chatId);
   const row = await readBrowser(chatId);

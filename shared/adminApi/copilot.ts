@@ -12,7 +12,8 @@ import { applyOpenItemOnBrief, dismissSavedCard, noteRankPass, quietBrief, readS
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
 import { answerSignIn, cancelCursorRun, collectCursorRun } from "../copilot/cursorThink.js";
-import { cancelBrowser, collectBrowser, browserIsLive, publicError, resumeBrowser, startBrowser } from "../copilot/webBrowser.js";
+import { beginSession, publishFindings, readPage, type SessionPage } from "../copilot/browserSession.js";
+import { cancelBrowser, collectBrowser, browserIsLive, publicError, releaseBrowser, resumeBrowser, startBrowser } from "../copilot/webBrowser.js";
 import { nameChat } from "../copilot/chatTitle.js";
 import { pictureFor, wantsWeb, workModel } from "../copilot/models.js";
 import { answerWebLookup, asksWebLookup } from "../copilot/webLookup.js";
@@ -101,6 +102,20 @@ function readImages(value: unknown): { mimeType: string; data: string }[] {
 
 function unauthorized(res: VercelResponse) {
   return res.status(401).json({ error: "Sign in required." });
+}
+
+function sessionPages(value: unknown): SessionPage[] {
+  if (!Array.isArray(value)) return [];
+  const pages: SessionPage[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object") continue;
+    const item = row as { title?: unknown; url?: unknown; note?: unknown; at?: unknown };
+    const title = String(item.title ?? "").trim();
+    const url = String(item.url ?? "").trim();
+    if (!title || !/^https?:\/\//i.test(url)) continue;
+    pages.push({ at: String(item.at ?? ""), title, url, note: String(item.note ?? "") });
+  }
+  return pages.slice(0, 12);
 }
 
 function mcpSaveError(err: unknown): string {
@@ -479,6 +494,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         thought: "Nothing was sent.",
       });
       return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
+    }
+
+    if (op === "end-browser") {
+      const chatId = String(body.chatId ?? "");
+      if (!chatId) return res.status(400).json({ error: "Missing chat." });
+      const pages = sessionPages(body.pages);
+      let session = beginSession({ chatId, goal: String(body.goal ?? ""), askedBy: "Chat" });
+      for (const page of pages) session = readPage(session, page);
+      const ended = await publishFindings(session, async (entry) => {
+        await addMessage({
+          chatId: entry.chatId,
+          role: "assistant",
+          body: entry.body,
+          thought: "This came from the browser session. Nothing was sent.",
+        });
+      });
+      await releaseBrowser(chatId).catch(() => undefined);
+      return res.status(200).json({
+        chatId,
+        messages: await listMessages(chatId),
+        chats: await listChats(),
+        body: ended.body,
+      });
     }
 
     if (op === "think") {

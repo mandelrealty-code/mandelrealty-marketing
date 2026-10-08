@@ -14,8 +14,36 @@ import { BLANK, type NodeResult, type Workflow } from "../../../shared/copilot/w
 import { workflowFromSkill } from "../../../shared/copilot/skillShape";
 import { runWhen } from "./skillsTime";
 import { renderAnswer } from "../../../shared/copilot/answerMarkup";
+import {
+  beginSession,
+  keptSessions,
+  pauseSession,
+  readPage,
+  resumeSession,
+  sidebarMark,
+  skipStuck,
+  stopAtLogin,
+  takeOver,
+  type BrowserSession,
+} from "../../../shared/copilot/browserSession";
+import BrowserSurface, { SessionLine } from "./BrowserSurface";
 
-type Screen = "brief" | "empty" | "chat" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
+function pageTitle(url: string): string {
+  try {
+    const page = new URL(url);
+    const host = page.hostname.replace(/^www\./, "");
+    return `${host}${page.pathname === "/" ? "" : page.pathname}`.slice(0, 80);
+  } catch {
+    return url.slice(0, 80);
+  }
+}
+
+function signInSite(body: string): string {
+  const named = /opened ([^.]+)\./i.exec(body);
+  return named?.[1]?.trim() || "This site";
+}
+
+type Screen = "brief" | "empty" | "chat" | "browser" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
 
 type Boot = {
   brief: BriefPayload;
@@ -767,6 +795,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [pictureMode, setPictureMode] = useState(false);
   const [pendingPicture, setPendingPicture] = useState(false);
   const [stage, setStage] = useState<Stage | null>(null);
+  const [browserSession, setBrowserSession] = useState<BrowserSession | null>(null);
+  const [recentBrowsers, setRecentBrowsers] = useState<BrowserSession[]>([]);
+  const browserRef = useRef<BrowserSession | null>(null);
+  function putBrowser(next: BrowserSession | null) {
+    browserRef.current = next;
+    setBrowserSession(next);
+  }
   const [skillMode, setSkillMode] = useState(false);
   const [viaPlus, setViaPlus] = useState<Record<string, boolean>>({});
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -924,15 +959,30 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           }
           if (signal.aborted) return;
           try {
+            const liveBrowser = browserRef.current;
+            const holding = Boolean(deskMemory.current[id]?.control) || (liveBrowser?.chatId === id && (liveBrowser.status === "paused" || liveBrowser.status === "driving" || liveBrowser.status === "stuck"));
             const next = await api<{ messages: CopilotMessage[]; pending?: boolean; steps?: { text: string; meta?: string; url?: string }[]; thought?: string; view?: DeskView }>("think", {
               chatId: id,
               viewRev: id === chatIdRef.current ? deskRev.current : "",
-              hold: Boolean(deskMemory.current[id]?.control),
+              hold: holding,
             }, signal);
             if (signal.aborted) return;
             if (next.view?.rev && id === chatIdRef.current) deskRev.current = next.view.rev;
             const opened = [...(next.steps ?? [])].reverse().find((step) => step.url && /^https?:\/\//i.test(step.url));
-            if (next.view || opened?.url) {
+            if (next.view?.liveUrl && !next.view.image) {
+              const current = browserRef.current;
+              if (current && current.chatId === id) {
+                let followed = { ...current, liveUrl: next.view.liveUrl, pageUrl: next.view.url || current.pageUrl };
+                if (next.view.url && next.view.url !== current.pageUrl) {
+                  followed = readPage(followed, { title: pageTitle(next.view.url), url: next.view.url, note: "Read" });
+                }
+                const signIn = [...next.messages].reverse().find((message) => message.role === "assistant" && /needs you to sign in/i.test(message.body));
+                if (signIn && followed.status !== "stuck" && followed.status !== "finished") {
+                  followed = stopAtLogin(followed, { site: signInSite(signIn.body), url: followed.pageUrl || next.view.url || "", title: `Sign in · ${signInSite(signIn.body)}` });
+                }
+                if (id === chatIdRef.current) putBrowser(followed);
+              }
+            } else if (next.view || opened?.url) {
               const saved = withDesk(deskMemory.current[id] ?? null, next.view, opened?.url);
               if (saved) deskMemory.current[id] = saved;
               if (id === chatIdRef.current && screenRef.current === "chat" && saved && !closedBrowsers.current.has(id)) setStage(saved);
@@ -1163,7 +1213,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       });
     } else if (searching) {
       if (chatId) closedBrowsers.current.delete(chatId);
-      setStage({ kind: "page", control: false, open: true, url: "" });
+      putBrowser(beginSession({ chatId: chatId || "", goal: typed, liveUrl: "" }));
     } else if (!makingPicture) {
       setStage(null);
     }
@@ -1205,11 +1255,12 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (data.memoryFiles) setBoot((prev) => (prev ? { ...prev, memoryFiles: data.memoryFiles } : prev));
       if (searching) {
         closedBrowsers.current.delete(data.chatId);
-        const saved = withDesk(deskMemory.current[data.chatId] ?? { kind: "page", control: false, open: true, url: "" }, data.view);
-        if (saved) {
-          deskMemory.current[data.chatId] = saved;
-          if (!closedBrowsers.current.has(data.chatId)) setStage(saved);
-        }
+        const opened = beginSession({
+          chatId: data.chatId,
+          goal: typed,
+          liveUrl: data.view?.liveUrl || "",
+        });
+        putBrowser(data.view?.url ? readPage(opened, { title: pageTitle(data.view.url), url: data.view.url, note: "Opened" }) : { ...opened, pageUrl: data.view?.url || "" });
       }
       if (data.steps?.length) setLiveSteps(data.steps);
       if (data.thought) setLiveThought(data.thought);
@@ -1283,6 +1334,27 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setThinking(false);
     setStopped(true);
     setPending(null);
+  }
+
+  async function endBrowser() {
+    const current = browserRef.current;
+    if (!current || current.status === "finished") return;
+    const endedAt = new Date().toISOString();
+    try {
+      const data = await api<{ messages: CopilotMessage[] }>("end-browser", {
+        chatId: current.chatId,
+        goal: current.goal,
+        pages: current.pages,
+      });
+      if (current.chatId === chatIdRef.current && data.messages) setMessages(data.messages);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not end the session.");
+      return;
+    }
+    const ended: BrowserSession = { ...current, status: "finished", endedAt, submitted: false };
+    putBrowser(ended);
+    setRecentBrowsers((prev) => keptSessions([ended, ...prev.filter((row) => row.id !== ended.id)]));
+    setLiveRuns((prev) => prev.filter((id) => id !== current.chatId));
   }
 
   async function act(message: CopilotMessage, action: "send" | "hold" | "purchase" | "not-now" | "skip" | "alternative", extra?: Record<string, unknown>) {
@@ -1617,6 +1689,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       <button type="button" className={`cp-row${screen === "brief" ? " on" : ""}`} onClick={goHome}>
         Overview
         {boot?.brief.overview?.count ? <span className="cp-ov-count">{boot.brief.overview.count}</span> : null}
+      </button>
+      <button type="button" className={`cp-row${screen === "browser" ? " on" : ""}`} onClick={() => { setScreen("browser"); setSheet(false); }}>
+        <span>Browser</span>
+        {sidebarMark(browserSession) ? <span className={`cp-br-nav${browserSession?.status === "stuck" ? " needs" : ""}`}>{sidebarMark(browserSession)}</span> : null}
       </button>
       <div className="cp-chats">
         {(boot?.chats ?? []).map((chat) => {
@@ -2150,6 +2226,23 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     ) : null}
                   </div>
                 ) : null}
+                {screen === "browser" ? (
+                  <BrowserSurface
+                    session={browserSession}
+                    recent={recentBrowsers}
+                    onPause={() => { if (browserSession) putBrowser(pauseSession(browserSession)); }}
+                    onResume={() => { if (browserSession) putBrowser(resumeSession(browserSession)); }}
+                    onTakeOver={() => { if (browserSession) putBrowser(takeOver(browserSession)); }}
+                    onHandBack={() => { if (browserSession) putBrowser(resumeSession(browserSession)); }}
+                    onEnd={() => void endBrowser()}
+                    onSkip={() => { if (browserSession) putBrowser(skipStuck(browserSession)); }}
+                    onBack={() => { if (browserSession?.chatId) { setChatId(browserSession.chatId); setScreen("chat"); } }}
+                    onAsk={goEmpty}
+                    onOpen={(row) => putBrowser(row)}
+                    onRunAgain={() => { if (browserSession) { setText(browserSession.goal); setChatId(browserSession.chatId); setScreen("chat"); } }}
+                    onTell={(text) => { if (browserSession) putBrowser({ ...browserSession, narration: [...browserSession.narration, { at: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }), text }] }); }}
+                  />
+                ) : null}
                 {screen === "brief" && !boot ? (
                   <div className="cp-home">
                     <p className={error ? "cp-err" : "cp-note"}>{error || "Loading the overview."}</p>
@@ -2336,6 +2429,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         </div>
                       ),
                     )}
+                    {browserSession && browserSession.chatId === chatId && browserSession.status !== "finished" ? (
+                      <SessionLine
+                        session={browserSession}
+                        onWatch={() => { setScreen("browser"); setSheet(false); }}
+                        onPause={() => putBrowser(browserSession.status === "paused" ? resumeSession(browserSession) : pauseSession(browserSession))}
+                      />
+                    ) : null}
                     {pending ? (
                       <div className="cp-userwrap">
                         {pendingPicture ? <span className="cp-via">Make a picture</span> : null}
