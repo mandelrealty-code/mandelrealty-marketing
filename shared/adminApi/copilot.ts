@@ -16,6 +16,7 @@ import { cancelBrowser, collectBrowser, browserIsLive, publicError, resumeBrowse
 import { nameChat } from "../copilot/chatTitle.js";
 import { pictureFor, wantsWeb, workModel } from "../copilot/models.js";
 import { answerWebLookup, asksWebLookup } from "../copilot/webLookup.js";
+import { answerOutsideRentals } from "../copilot/topicScope.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords } from "../copilot/recordsAnswer.js";
@@ -734,6 +735,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             draft: prepared.draft,
             steps: [{ text: prepared.draft ? "Prepared the assignment" : "Asked who to assign" }],
             thought: "Nothing was written to the cleaner app.",
+          });
+          return done();
+        }
+        const outside = await answerOutsideRentals(text);
+        if (outside) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: outside.body,
+            steps: [{ text: outside.kind === "refused" ? "Left that listing alone" : /that read failed/i.test(outside.body) ? "That read failed" : "Opened the page" }],
+            thought: outside.kind === "refused" ? "That listing is not one we manage. Nothing was drafted." : "This came from the page. Nothing was sent.",
           });
           return done();
         }

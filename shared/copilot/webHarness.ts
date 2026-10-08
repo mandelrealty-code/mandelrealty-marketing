@@ -4,6 +4,7 @@
  */
 
 import { installResearch, resetResearch } from "./skillResearch.js";
+import { answerOutsideRentals, UNMANAGED_REFUSAL } from "./topicScope.js";
 import { answerWebLookup } from "./webLookup.js";
 
 const QUESTION = "search amazon for a muskoka chair thats red";
@@ -104,5 +105,22 @@ resetResearch();
 const missed = await answerWebLookup(QUESTION);
 if (!/that read failed/i.test(missed)) fail(missed);
 if (/don'?t have access|do not have access|no web|search tools|search Amazon directly/i.test(missed)) fail(missed);
+
+const HOURS = "What are the Rogers Centre box office hours?";
+installResearch([{
+  title: HOURS,
+  url: "https://www.rogerscentre.com/box-office",
+  text: "Rogers Centre box office hours are 10:00 a.m. to 6:00 p.m.",
+}]);
+const hours = await answerOutsideRentals(HOURS);
+if (!hours || hours.kind !== "lookup") fail(hours?.body ?? "the venue question was not looked up");
+if (!/10:00 a\.m\. to 6:00 p\.m\./.test(hours.body) || !hours.body.includes("https://www.rogerscentre.com/box-office")) fail(hours.body);
+if (/only answer questions about your rentals/i.test(hours.body)) fail(hours.body);
+
+const refused = await answerOutsideRentals("Draft a guest message for 8 Charlotte 1104 about the lockbox.");
+if (!refused || refused.kind !== "refused" || refused.body !== UNMANAGED_REFUSAL) fail(refused?.body ?? "the 1104 draft was not refused");
+if (/lockbox|Hi /i.test(refused.body)) fail(refused.body);
+const managed = await answerOutsideRentals("Draft a guest message for 8 Charlotte 606.");
+if (managed) fail(managed.body);
 
 console.log("Web harness passed.");
