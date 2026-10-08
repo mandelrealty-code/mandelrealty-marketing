@@ -8,7 +8,7 @@ import { passwordMatches } from "../adminAuth.js";
 import { getHospitablePat, isHospitableMcpConfigured, updatePmSettings } from "../pm/clientStore.js";
 import { gmailConnected, gmailKeysReady } from "./gmail.js";
 import { outlookConnected, outlookKeysReady } from "./outlook.js";
-import { buildBrief } from "../copilot/brief.js";
+import { buildBrief, quietBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
 import { answerSignIn, cancelCursorRun, collectCursorRun } from "../copilot/cursorThink.js";
@@ -291,15 +291,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         listOpenBrowsers().catch(() => []),
       ]);
       const runningChatIds = [...new Set([...cursorRuns.map((row) => row.chatId), ...browserRuns.map((row) => row.chatId)])];
-      const skills = await skillRows();
+      const skills = await skillRows().catch(() => [] as Awaited<ReturnType<typeof skillRows>>);
       const [brief, chats, memory, textLog, textNumbers, memoryFiles, connectorRows] = await Promise.all([
-        buildBrief(),
-        listChats(),
+        buildBrief().catch(() => quietBrief()),
+        listChats().catch(() => []),
         listMemory().catch(() => []),
         listTextLog().catch(() => []),
         listTextNumbers().catch(() => []),
         listMemoryFiles().catch(() => []),
-        connectors(skills),
+        connectors(skills).catch(() => [] as ConnectorRow[]),
       ]);
       return res.status(200).json({
         brief,

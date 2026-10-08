@@ -2060,6 +2060,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     ) : null}
                   </div>
                 ) : null}
+                {screen === "brief" && !boot ? (
+                  <div className="cp-home">
+                    <p className={error ? "cp-err" : "cp-note"}>{error || "Loading the overview."}</p>
+                  </div>
+                ) : null}
                 {screen === "brief" && boot ? (
                   <div className="cp-home">
                     {error ? <p className="cp-err">{error}</p> : null}

@@ -18,6 +18,11 @@ function take(cards: BriefCard[], next: BriefCard, skipped: Set<string>) {
   cards.push(next);
 }
 
+export function quietBrief(now = new Date()): BriefPayload {
+  const greet = greeting(now);
+  return { hello: greet.hello, line: greet.line, quiet: true, focus: [], eating: [] };
+}
+
 export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const greet = greeting(now);
   const today = torontoToday(now);

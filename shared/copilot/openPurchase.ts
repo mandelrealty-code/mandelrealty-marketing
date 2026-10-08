@@ -81,6 +81,7 @@ function unread(offer: LegacyOffer, propertyId: string, shipTo: string, missing:
 export async function openLegacyPurchase(
   message: CopilotMessage,
   cache = new Map<string, Promise<CleanerPicture>>(),
+  options: { lookup?: boolean } = {},
 ): Promise<PurchaseDetail | null> {
   const offer = legacyLowStockOffer(message.draft, message.body);
   if (!offer || !message.draft) return null;
@@ -107,8 +108,11 @@ export async function openLegacyPurchase(
     const priced = typeof supply.priceCents === "number" && Number.isFinite(supply.priceCents);
     const retailer = supply.retailer?.trim() ?? "";
     const needsListing = !named || !priced || !retailer;
-    const found = needsListing && !parityEnabled()
-      ? await listedProduct(supply.item || offer.item || offer.product)
+    const found = needsListing && options.lookup !== false && !parityEnabled()
+      ? await Promise.race([
+          listedProduct(supply.item || offer.item || offer.product).catch(() => null),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+        ])
       : null;
     return describePurchase({
       propertyId,

@@ -198,13 +198,13 @@ export async function listWaitingDrafts(): Promise<WaitingDraft[]> {
       .order("created_at", { ascending: false })
       .limit(200);
     if (!error) {
-      const opened = await ensureLegacyPurchases((data ?? []).map((row) => waitingMessage(row as { id?: string; chat_id?: string; created_at?: string; body?: string; draft?: CopilotDraft | null })));
+      const opened = await ensureLegacyPurchases((data ?? []).map((row) => waitingMessage(row as { id?: string; chat_id?: string; created_at?: string; body?: string; draft?: CopilotDraft | null })), false);
       return opened.map((row) => asWaiting(row)).filter((item): item is WaitingDraft => Boolean(item));
     }
     if (useLocalFile(error)) { /* local file store */ }
     else throw new Error(error.message);
   }
-  const opened = await ensureLegacyPurchases(readFileStore().messages.map((message) => waitingMessage(message)));
+  const opened = await ensureLegacyPurchases(readFileStore().messages.map((message) => waitingMessage(message)), false);
   return opened
     .map((message) => asWaiting(message))
     .filter((item): item is WaitingDraft => Boolean(item))
@@ -374,12 +374,12 @@ export async function ensureLegacyPurchase(message: CopilotMessage): Promise<Cop
   return next ?? message;
 }
 
-async function ensureLegacyPurchases(messages: CopilotMessage[]): Promise<CopilotMessage[]> {
+async function ensureLegacyPurchases(messages: CopilotMessage[], lookup = true): Promise<CopilotMessage[]> {
   if (parityEnabled()) return messages;
   const pictures = new Map<string, Promise<CleanerPicture>>();
   const out: CopilotMessage[] = [];
   for (const message of messages) {
-    const built = await openLegacyPurchase(message, pictures);
+    const built = await openLegacyPurchase(message, pictures, { lookup });
     if (!built || JSON.stringify(message.draft?.purchase ?? null) === JSON.stringify(built)) {
       out.push(message);
       continue;
