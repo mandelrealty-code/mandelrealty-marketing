@@ -1,4 +1,4 @@
-import type { CopilotSkill } from "../types.js";
+import type { CopilotMessage, CopilotSkill } from "../types.js";
 
 /**
  * Parity stand-in for copilot_check_state.
@@ -77,4 +77,23 @@ export function paritySaveSkill(skill: CopilotSkill): CopilotSkill {
 export function parityDeleteSkill(id: string): void {
   const idx = skills.findIndex((row) => row.id === id);
   if (idx >= 0) skills.splice(idx, 1);
+}
+
+const checksMessages: CopilotMessage[] = [];
+let checksSaveError: string | null = null;
+
+/** The next Checks draft write throws, so chat cannot claim a draft that was not stored. */
+export function failChecksDrafts(message: string | null): void {
+  checksSaveError = message;
+}
+
+export function parityChecksMessages(): CopilotMessage[] {
+  return checksMessages.map((row) => ({ ...row, draft: row.draft ? { ...row.draft } : null }));
+}
+
+export function paritySaveChecksMessage(message: CopilotMessage): CopilotMessage {
+  if (checksSaveError) throw new Error(checksSaveError);
+  const stored: CopilotMessage = { ...message, draft: message.draft ? { ...message.draft } : null };
+  checksMessages.push(stored);
+  return { ...stored, draft: stored.draft ? { ...stored.draft } : null };
 }

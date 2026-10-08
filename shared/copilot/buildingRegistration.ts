@@ -7,6 +7,7 @@
 
 import { readMailThread, searchMail, type MailLetter } from "./mailSearch.js";
 import { parityNow } from "./parity/clock.js";
+import { confirmedChecksDraft } from "./checksClaim.js";
 import { leaveDraft, loadRecentStays, readStayThread, type RecentStay } from "./stayCheck.js";
 import { torontoToday } from "./time.js";
 
@@ -56,16 +57,54 @@ function clean(value: string): string {
   return value.replace(/[.,;]+$/g, "").replace(/\s+/g, " ").trim();
 }
 
-function vehicleFromThread(messages: { at: string; role: string; body: string }[], guest: string): Vehicle {
+function vehiclesFromThread(messages: { at: string; role: string; body: string }[], guest: string): Vehicle[] {
   const guestLines = messages
     .filter((row) => row.role === "guest")
     .slice()
     .sort((a, b) => a.at.localeCompare(b.at));
   for (let index = guestLines.length - 1; index >= 0; index -= 1) {
-    const found = vehicleFrom(guestLines[index]?.body ?? "", guest);
-    if (found.make || found.model || found.plate || found.colour || found.count) return found;
+    const found = vehiclesFrom(guestLines[index]?.body ?? "", guest);
+    if (found.length) return found;
   }
-  return { guest, make: "", model: "", plate: "", colour: "", count: "" };
+  return [];
+}
+
+function vehiclesFrom(text: string, guest: string): Vehicle[] {
+  const labeled = text
+    .split(/(?=make\s*:)/i)
+    .map((part) => part.trim())
+    .filter((part) => /^make\s*:/i.test(part));
+  let vehicles: Vehicle[] = [];
+  if (labeled.length) {
+    vehicles = labeled.map((part) => vehicleFrom(part, guest)).filter((item) => item.make || item.model || item.plate);
+  }
+  if (!vehicles.length) vehicles = proseVehicles(text, guest);
+  if (!vehicles.length) {
+    const one = vehicleFrom(text, guest);
+    if (one.make || one.model || one.plate || one.colour || one.count) vehicles = [one];
+  }
+  if (vehicles.length > 1) {
+    const count = String(vehicles.length);
+    for (const item of vehicles) item.count = count;
+  }
+  return vehicles;
+}
+
+function proseVehicles(text: string, guest: string): Vehicle[] {
+  const found: Vehicle[] = [];
+  for (const line of text.split(/\n|;/)) {
+    const match = /^\s*([A-Z][A-Za-z]+)\s+(.+?)\s*,\s*([A-Z0-9]{2,4}(?:\s+[A-Z0-9]{2,4})+)\s*$/.exec(line.trim());
+    if (!match?.[1] || !match[2] || !match[3]) continue;
+    found.push({
+      guest,
+      make: clean(match[1]),
+      model: clean(match[2]),
+      plate: clean(match[3]),
+      colour: "",
+      count: "",
+    });
+  }
+  return found;
 }
 
 function vehicleFrom(text: string, guest: string): Vehicle {
@@ -99,7 +138,18 @@ function valueFor(label: string, vehicle: Vehicle): string {
   return "";
 }
 
-function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string, vehicle: Vehicle): { subject: string; body: string; warnings: string[] } {
+function vehicleBlock(vehicle: Vehicle, warnings: string[]): string {
+  return ["Make", "Model", "Plate", "Colour"].map((label) => {
+    const next = valueFor(label, vehicle);
+    if (next) return `${label}: ${next}`;
+    const blank = blankFor(label);
+    warnings.push(`${label} is still a blank: ${blank}.`);
+    return `${label}: ${blank}`;
+  }).join("\n");
+}
+
+function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string, vehicles: Vehicle[]): { subject: string; body: string; warnings: string[] } {
+  const vehicle = vehicles[0] ?? { guest: "", make: "", model: "", plate: "", colour: "", count: "" };
   const dates = letter.subject.match(DATE) ?? [];
   const checkInDate = longDate(checkIn);
   const checkOutDate = longDate(checkOut);
@@ -126,6 +176,10 @@ function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string,
     warnings.push(`${label} is still a blank: ${blank}.`);
     return line.replace(match[0], `${label}: ${blank}`);
   }).join("\n");
+  if (vehicles.length > 1) {
+    const extra = vehicles.slice(1).map((item) => vehicleBlock(item, warnings)).join("\n\n");
+    body = body.replace(/^(Colour|Color):\s*.+$/m, (line) => `${line}\n\n${extra}`);
+  }
   return { subject, body, warnings };
 }
 
@@ -184,9 +238,11 @@ export async function answerBuildingRegistration(text: string): Promise<string |
   } catch {
     return `I couldn't read ${next.stay.guest || "the guest"}'s messages. I didn't draft the email or fill in a vehicle.`;
   }
-  const vehicle = vehicleFromThread(messages, next.stay.guest || "");
-  const filled = fillFromTemplate(template, next.stay.checkIn, next.stay.checkOut, vehicle);
-  await leaveDraft({
+  const guest = next.stay.guest || "";
+  const found = vehiclesFromThread(messages, guest);
+  const vehicles = found.length ? found : [{ guest, make: "", model: "", plate: "", colour: "", count: "" }];
+  const filled = fillFromTemplate(template, next.stay.checkIn, next.stay.checkOut, vehicles);
+  const saved = await leaveDraft({
     channel: "email",
     to: template.to,
     subject: filled.subject,
@@ -194,6 +250,9 @@ export async function answerBuildingRegistration(text: string): Promise<string |
     warnings: filled.warnings,
     needs_you: true,
   });
-  const who = next.stay.guest || "the next guest";
+  const marks = vehicles.flatMap((item) => [item.make, item.model, item.plate].filter(Boolean));
+  const stored = await confirmedChecksDraft(saved, { subject: filled.subject, includes: marks });
+  if (!stored) return "The building email was not saved in Checks.";
+  const who = guest || "the next guest";
   return `The building email for ${who} at ${next.label} is in Checks. Nothing is sent until you press Submit.`;
 }

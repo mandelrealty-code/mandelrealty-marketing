@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getHospitablePat } from "../pm/clientStore.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { readMail, searchMail } from "./mailSearch.js";
@@ -9,8 +10,10 @@ import { hospitableFetch, listReservationMessages } from "../pm/hospitableClient
 import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
+import { paritySaveChecksMessage } from "./parity/storeStub.js";
 import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, recordCancellation, recordDrafts, recordReport, refreshSupplyDrafts, reportRecorded } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
+import type { CopilotDraft, CopilotMessage } from "./types.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
 import { readCleanerUnit, type CleanerPicture, type CleanerSupply, type CleanerTurnover } from "./cleanerRead.js";
 import { describePurchase } from "./purchase.js";
@@ -147,36 +150,44 @@ export async function publishCheckReport(row: ReportCapture): Promise<void> {
   }
 }
 
-export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise<void> {
+export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise<CopilotMessage | null> {
   const hospitable =
     row.hospitable ??
     (row.channel === "hospitable" && reservationId && !row.cleanerAssign
       ? { tool: "send-reservation-message", args: { reservation_id: reservationId, body: row.body } }
       : undefined);
   captureDraft(hospitable ? { ...row, hospitable } : row);
-  if (parityEnabled()) return;
+  const warnings = row.warnings.length ? `\n\nCheck before approving:\n${row.warnings.map((warning) => `• ${warning}`).join("\n")}` : "";
+  const draft: CopilotDraft = {
+    subject: row.subject,
+    body: row.body,
+    to: row.to,
+    status: "waiting",
+    channel: row.channel === "hospitable" ? "hospitable" : row.channel === "note" ? "note" : "email",
+    ...(row.cleanerAssign ? { cleanerAssign: row.cleanerAssign } : {}),
+    ...(row.purchase ? { purchase: row.purchase } : {}),
+    ...(hospitable ? { hospitable } : {}),
+  };
+  const body = `${row.cleanerAssign ? row.body : row.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : row.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : "Here is the building email. Nothing was sent."}${warnings}`;
+  if (parityEnabled()) {
+    try {
+      return paritySaveChecksMessage({
+        id: randomUUID(),
+        chat_id: "checks",
+        created_at: new Date().toISOString(),
+        role: "assistant",
+        body,
+        draft,
+      });
+    } catch {
+      return null;
+    }
+  }
   try {
     const chatId = await checksChat();
-    const warnings = row.warnings.length ? `\n\nCheck before approving:\n${row.warnings.map((warning) => `• ${warning}`).join("\n")}` : "";
-    await addMessage({
-      chatId,
-      role: "assistant",
-      body: `${row.cleanerAssign ? row.body : row.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : row.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : "Here is the building email. Nothing was sent."}${warnings}`,
-      draft: {
-        subject: row.subject,
-        body: row.body,
-        to: row.to,
-        status: "waiting",
-        channel: row.channel === "hospitable" ? "hospitable" : row.channel === "note" ? "note" : "email",
-        ...(row.cleanerAssign ? { cleanerAssign: row.cleanerAssign } : {}),
-        ...(row.purchase ? { purchase: row.purchase } : {}),
-        ...(row.channel === "hospitable" && reservationId && !row.cleanerAssign
-          ? { hospitable: { tool: "send-reservation-message", args: { reservation_id: reservationId, body: row.body } } }
-          : {}),
-      },
-    });
+    return await addMessage({ chatId, role: "assistant", body, draft });
   } catch {
-    /* The brief still loads when the draft cannot be stored. */
+    return null;
   }
 }
 

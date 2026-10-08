@@ -808,7 +808,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         const namedDraft = await answerNamedGuestDraft(text);
         if (namedDraft) {
-          const asked = /which guest|which one|couldn't read/i.test(namedDraft);
+          const asked = /which guest|which one|couldn't read|was not saved/i.test(namedDraft);
           await addMessage({
             chatId,
             role: "assistant",
@@ -825,7 +825,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             role: "assistant",
             body: guestThreads,
             steps: [{ text: "Read guest threads" }],
-            thought: "Drafts are in Checks. Nothing is sent until Submit.",
+            thought: /is in Checks/.test(guestThreads)
+              ? "Drafts are in Checks. Nothing is sent until Submit."
+              : "Nothing new was left in Checks.",
           });
           return done();
         }
@@ -835,8 +837,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             chatId,
             role: "assistant",
             body: building,
-            steps: [{ text: /didn't find|didn't draft|couldn't read|didn't return/i.test(building) ? "The building email was not drafted" : "Drafted the building email" }],
-            thought: "The draft is in Checks. Nothing was sent. Submit is what sends it.",
+            steps: [{ text: /didn't find|didn't draft|couldn't read|didn't return|was not saved/i.test(building) ? "The building email was not drafted" : "Drafted the building email" }],
+            thought: /is in Checks/.test(building)
+              ? "The draft is in Checks. Nothing was sent. Submit is what sends it."
+              : "The building email was not saved.",
           });
           return done();
         }

@@ -6,6 +6,7 @@
 import { readPropertyHub } from "./knowledgeHub.js";
 import { parityNow } from "./parity/clock.js";
 import { draftsRecorded, recordDrafts } from "./store.js";
+import { confirmedChecksDraft, waitingDraftFor } from "./checksClaim.js";
 import { leaveDraft, loadRecentStays, memoryFor, readStayThread, type RecentStay } from "./stayCheck.js";
 
 const NAME_STOP = new Set(["the", "guest", "guests", "someone", "anyone", "they", "she", "he", "we", "i", "you", "hospitable", "our", "my"]);
@@ -84,7 +85,7 @@ export async function answerNamedGuestDraft(question: string, now?: Date): Promi
   if (!stay) return `I didn't find ${name} on a managed stay. Which guest should I draft for?`;
   const guest = stay.stay.guest || name;
   const body = thankYouReply(guest, question);
-  await leaveDraft(
+  const saved = await leaveDraft(
     {
       channel: "hospitable",
       to: guest,
@@ -95,6 +96,8 @@ export async function answerNamedGuestDraft(question: string, now?: Date): Promi
     },
     stay.stay.id,
   );
+  const stored = await confirmedChecksDraft(saved, { includes: [body] });
+  if (!stored) return "The reply was not saved in Checks.";
   return `The reply to ${guest} at ${stay.label} is in Checks. Nothing is sent until you press Submit.`;
 }
 
@@ -235,11 +238,13 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
   }
   open.sort((a, b) => a.at.localeCompare(b.at));
   const drafted: string[] = [];
+  const missed: string[] = [];
   for (const item of open) {
     const key = `guest-inbox:${item.row.stay.id}:${item.at}`;
     const guest = item.row.stay.guest || "A guest";
     if (await draftsRecorded(key)) {
-      drafted.push(guest);
+      if (await waitingDraftFor(guest)) drafted.push(guest);
+      else missed.push(guest);
       continue;
     }
     const place = `${item.row.propertyName} ${item.row.address}`;
@@ -253,8 +258,7 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
       hubFailed: !hubRead.ok,
       memory,
     });
-    await recordDrafts(key);
-    await leaveDraft(
+    const saved = await leaveDraft(
       {
         channel: "hospitable",
         to: guest,
@@ -265,40 +269,48 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
       },
       item.row.stay.id,
     );
+    const stored = await confirmedChecksDraft(saved, { includes: [body] });
+    if (!stored) {
+      missed.push(guest);
+      continue;
+    }
+    await recordDrafts(key);
     drafted.push(guest);
   }
   const failedLine = [...failed].map((label) => `${label} failed read.`).join("\n");
   if (disconnected && !open.length && !answered.length) {
     return ["Hospitable isn't connected, so I can't see guest messages. I didn't guess.", failedLine].filter(Boolean).join("\n");
   }
-  if (who) return namedAnswer(who, open, answered, drafted, failedLine);
-  return inboxAnswer(open, drafted, failedLine);
+  if (who) return namedAnswer(who, open, answered, drafted, missed, failedLine);
+  return inboxAnswer(open, drafted, missed, failedLine);
 }
 
-function namedAnswer(who: string, open: OpenThread[], answered: OpenThread[], drafted: string[], failedLine: string): string {
+function claimLines(drafted: string[], missed: string[]): string[] {
+  const tail: string[] = [];
+  if (drafted.length === 1) tail.push(`A draft for ${drafted[0]} is in Checks. Nothing is sent until you press Submit.`);
+  else if (drafted.length > 1) tail.push(`Drafts for ${drafted.join(" and ")} are in Checks. Nothing is sent until you press Submit.`);
+  if (missed.length === 1) tail.push(`The draft for ${missed[0]} was not saved in Checks.`);
+  else if (missed.length > 1) tail.push(`The drafts for ${missed.join(" and ")} were not saved in Checks.`);
+  return tail;
+}
+
+function namedAnswer(who: string, open: OpenThread[], answered: OpenThread[], drafted: string[], missed: string[], failedLine: string): string {
   if (!open.length && !answered.length) {
     return [`I didn't find ${who} on a Hospitable thread for a managed stay.`, failedLine].filter(Boolean).join("\n");
   }
   const lines = [...open, ...answered].map(lineFor);
-  const tail: string[] = [];
-  if (open.length && drafted.length) {
-    const names = drafted.join(" and ");
-    tail.push(`A draft for ${names} is in Checks. Nothing is sent until you press Submit.`);
-  } else if (answered.length) {
-    tail.push("The host already replied in that thread, so there is no draft.");
-  }
+  const tail = open.length ? claimLines(drafted, missed) : [];
+  if (!open.length && answered.length) tail.push("The host already replied in that thread, so there is no draft.");
   if (failedLine) tail.push(failedLine);
   return [...lines, ...tail].join("\n");
 }
 
-function inboxAnswer(open: OpenThread[], drafted: string[], failedLine: string): string {
+function inboxAnswer(open: OpenThread[], drafted: string[], missed: string[], failedLine: string): string {
   const head = open.length === 0
     ? "No guest is waiting on a reply."
     : `${open.length} ${open.length === 1 ? "guest is" : "guests are"} waiting on a reply.`;
   const lines = open.map(lineFor);
-  const tail: string[] = [];
-  if (drafted.length === 1) tail.push(`A draft for ${drafted[0]} is in Checks. Nothing is sent until you press Submit.`);
-  else if (drafted.length > 1) tail.push(`Drafts for ${drafted.join(" and ")} are in Checks. Nothing is sent until you press Submit.`);
+  const tail = [...claimLines(drafted, missed)];
   if (failedLine) tail.push(failedLine);
   return [head, ...lines, ...tail].filter(Boolean).join("\n");
 }

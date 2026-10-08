@@ -9,6 +9,7 @@ import { buildBrief } from "../brief.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
 import { answerBuildingRegistration } from "../buildingRegistration.js";
+import { listStoredWaitingDrafts } from "../checksClaim.js";
 import { answerStay } from "../stayAnswer.js";
 import { answerPropertyFact } from "../propertyFact.js";
 import { answerGuestThreads, answerNamedGuestDraft } from "../guestInboxAnswer.js";
@@ -29,6 +30,7 @@ import {
 } from "./capture.js";
 import { BUILDING_MEMORY, CODE, ID, OPEN_ITEM, ryanMail, worldAt } from "./catalog.js";
 import { parityEnabled } from "./flag.js";
+import { failChecksDrafts } from "./storeStub.js";
 import { parityNow, setParityClock } from "./clock.js";
 import { chooseBriefOpenItem } from "../openItems.js";
 import type { BriefCard, BriefPayload } from "../types.js";
@@ -560,6 +562,8 @@ async function fixtureBuildingRegistration(): Promise<void> {
   expect(/Shane, Co-Host 647-822-0448/.test(body), "the sign-off stays the one in the sent email", body);
   expect(!/Priya|Honda|Civic|ABCD123|Grey|archive@building|Omar|Registration notice/.test(body), "the previous guest and the older email are not reused", body);
   expect(draft?.needs_you === true, "the draft waits for Submit", String(draft?.needs_you));
+  const stored = (await listStoredWaitingDrafts()).find((row) => row.channel === "email" && row.subject === draft?.subject);
+  expect(Boolean(stored) && stored?.body === body, "Checks read-back has that subject and body", stored?.body ?? "no stored email");
   expectNothingSent();
 }
 
@@ -629,6 +633,69 @@ async function fixtureNamedGuestDraft(): Promise<void> {
   expectNothingSent();
 }
 
+async function fixtureBuildingReadBack(): Promise<void> {
+  const recipients = "concierge@building.example, supervisor@building.example";
+  const recent: ParityMail = {
+    id: "reg-two-recent",
+    mailbox: "gmail",
+    folder: "sent",
+    from: "Shane",
+    email: "shane@mandelrealtygroup.com",
+    to: recipients,
+    date: "2026-10-06T15:00:00-04:00",
+    subject: "AirBNB Rental for Unit 318 from Thursday, October 8, 2026 - Saturday, October 10, 2026",
+    snippet: "20 Blue Jays Way Unit 318",
+    body: [
+      "Hello,",
+      "",
+      "Please register this vehicle with the building.",
+      "Guest: Priya Shah",
+      "Check-in is Thursday, October 8, 2026 and check-out is Saturday, October 10, 2026.",
+      "This stay is at 20 Blue Jays Way.",
+      "Vehicle count: 2",
+      "Make: Honda",
+      "Model: Civic",
+      "Plate: ABCD123",
+      "Colour: Grey",
+      "",
+      "Shane, Co-Host 647-822-0448",
+    ].join("\n"),
+    airbnb: false,
+  };
+  const world = worldAt("2026-10-07T11:00:00-04:00", false, [recent]);
+  const diane = world.reservations.find((row) => row.code === CODE.diane);
+  expect(Boolean(diane), "Diane's stay is in the fixture", "Diane was missing");
+  diane?.messages.push({
+    id: "diane-two-cars",
+    at: "2026-10-07T10:00:00-04:00",
+    role: "guest",
+    name: "Diane",
+    body: "Two cars.\nHyundai Ioniq 5, W26 VPD\nToyota Sienna, AVJ 01L",
+  });
+  installWorld(world);
+  const answer = (await answerBuildingRegistration(REGISTRATION_QUESTION)) ?? "";
+  const subject = "AirBNB Rental for Unit 318 from Friday, October 9, 2026 - Monday, October 12, 2026";
+  expect(/is in Checks/.test(answer) && /Submit/.test(answer) && /Diane/.test(answer), "the answer claims the draft only after it is stored", answer || "no answer");
+  const stored = (await listStoredWaitingDrafts()).filter((row) => row.channel === "email" && row.subject === subject).at(-1);
+  expect(Boolean(stored), "Checks read-back returned the building email", "no stored email");
+  const text = stored?.body ?? "";
+  expect(text.includes("Hyundai") && text.includes("Ioniq 5") && text.includes("W26 VPD"), "the stored draft names the Ioniq", text);
+  expect(text.includes("Toyota") && text.includes("Sienna") && text.includes("AVJ 01L"), "the stored draft names the Sienna", text);
+  expect(text.includes("Friday, October 9, 2026") && text.includes("Monday, October 12, 2026"), "the stored draft keeps October 9 to October 12", text);
+  expect(!/Honda|Civic|ABCD123|Priya/.test(text), "the sent template's previous car is not reused", text);
+  const before = (await listStoredWaitingDrafts()).length;
+  failChecksDrafts("The Checks store refused the write.");
+  try {
+    const failed = (await answerBuildingRegistration(REGISTRATION_QUESTION)) ?? "";
+    expect(failed === "The building email was not saved in Checks.", "a refused write is reported as a failure", failed || "no answer");
+    expect(!/is in Checks/.test(failed) && !/Submit/.test(failed), "a refused write is not described as waiting", failed);
+    expect((await listStoredWaitingDrafts()).length === before, "a refused write adds nothing to Checks", `store grew past ${before}`);
+  } finally {
+    failChecksDrafts(null);
+  }
+  expectNothingSent();
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -650,6 +717,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "18", title: "Unread guest threads draft in Checks", run: fixtureGuestInbox },
   { id: "19", title: "Building registration follows the last sent email", run: fixtureBuildingRegistration },
   { id: "20", title: "Named guest draft waits in Checks", run: fixtureNamedGuestDraft },
+  { id: "21", title: "Building email is claimed only after Checks read-back", run: fixtureBuildingReadBack },
 ];
 
 function guard(): void {
