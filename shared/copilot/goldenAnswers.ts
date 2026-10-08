@@ -9,6 +9,7 @@ import { claudeChatSystem } from "./claudeAnswer.js";
 import { promptFor } from "./cursorThink.js";
 import { instructions } from "./hospitableAgent.js";
 import { readSavedBrief, waitingDraftCard } from "./brief.js";
+import { isDemoted, noteSignal, rankOverview, signalKey, type OverviewInput, type RankSignals } from "./overviewRank.js";
 import { answerOps } from "./ops.js";
 import { ID, worldAt } from "./parity/catalog.js";
 import { failNextOpsPropertyRead, installOpsClients, installOpsReservations } from "./parity/opsState.js";
@@ -399,5 +400,103 @@ const savedOverview = await readSavedBrief(new Date("2026-10-07T15:00:00Z"));
 const overviewMs = performance.now() - started;
 if (!savedOverview.hello) fail("overview load", "no saved overview");
 if (overviewMs > 200) fail("overview load", `${overviewMs.toFixed(1)}ms`);
+
+const morningAt = new Date("2026-10-08T12:40:00Z");
+const morning: OverviewInput[] = [
+  {
+    id: "reg",
+    kind: "registration",
+    property: "Charlotte 606",
+    title: "Lena Park arrives today and Charlotte 606 still has no registration",
+    why: "The building form is filled in and unsent.",
+    lead: "Lena Park arrives today and Charlotte 606 still has no registration.",
+    when: "Due today",
+    deadline: "2026-10-08T20:00:00Z",
+    action: "Review",
+  },
+  {
+    id: "clean",
+    kind: "cleaner",
+    property: "Blue Jays Way",
+    title: "No cleaner on tomorrow's turnover at Blue Jays Way",
+    why: "The guest arrives tomorrow and the turnover has no cleaner.",
+    lead: "Blue Jays Way has no cleaner for tomorrow's arrival.",
+    when: "Tomorrow",
+    deadline: "2026-10-09T15:00:00Z",
+    action: "Review",
+  },
+  {
+    id: "expire",
+    kind: "expiring",
+    property: "Shaw Street",
+    title: "Shaw Street parking notice takes effect tomorrow",
+    why: "The notice date is inside 48 hours.",
+    lead: "Shaw Street's notice takes effect tomorrow.",
+    when: "Tomorrow",
+    deadline: "2026-10-09T22:00:00Z",
+    action: "Review",
+    actions: ["Already upgraded", "Still pending"],
+  },
+  {
+    id: "stock",
+    kind: "stock",
+    property: "Roseglor",
+    title: "Paper towels at Roseglor are down to 1",
+    why: "A stay arrives inside 7 days.",
+    lead: "Roseglor needs paper towels before the next stay.",
+    when: "This week",
+    deadline: "2026-10-12T12:00:00Z",
+    action: "Review",
+  },
+  {
+    id: "failed",
+    kind: "failed",
+    property: "VRBO",
+    title: "Couldn't read VRBO messages",
+    why: "Couldn't read VRBO messages. Airbnb was read.",
+    lead: "VRBO could not be read.",
+    when: "Last pass",
+    deadline: "2026-10-08T12:00:00Z",
+    action: "Open",
+  },
+];
+const rankedMorning = rankOverview(morning, {}, morningAt);
+const morningIds = rankedMorning.today.map((row) => row.id);
+if (morningIds.join(",") !== "reg,clean,expire,stock,failed") fail("overview rank", morningIds.join(",") || "empty");
+if (!rankedMorning.summary.startsWith("Four things need you today.")) fail("overview rank", rankedMorning.summary);
+if (!rankedMorning.summary.includes("Lena Park arrives today and Charlotte 606 still has no registration.")) {
+  fail("overview rank", rankedMorning.summary);
+}
+if (rankedMorning.today.find((row) => row.id === "failed")?.rank !== 0) fail("overview rank", "the failed read was counted");
+if (rankedMorning.today.find((row) => row.id === "expire")?.actions?.join(",") !== "Already upgraded,Still pending") {
+  fail("overview rank", "the expiring item lost its choices");
+}
+const other: OverviewInput = {
+  id: "other",
+  kind: "other",
+  property: "Roseglor",
+  title: "A reminder for Roseglor sits in the file",
+  why: "No deadline inside the higher tiers.",
+  lead: "A Roseglor reminder is still open.",
+  when: "Today",
+  deadline: "2026-10-08T23:00:00Z",
+  action: "Review",
+};
+const stockAgain: OverviewInput = { ...morning[3], id: "stock-later", title: "Paper towels at Roseglor are down to 2" };
+let signals: RankSignals = {};
+signals = noteSignal(signals, "dismiss", "stock", "Roseglor");
+if (isDemoted(signals, "stock", "Roseglor", 5)) fail("overview rank", "one dismissal demoted the stock");
+signals = noteSignal(signals, "dismiss", "stock", "Roseglor");
+if (!isDemoted(signals, "stock", "Roseglor", 5) || isDemoted(signals, "registration", "Charlotte 606", 1)) {
+  fail("overview rank", "the demotion rule missed");
+}
+const demoted = rankOverview([morning[0], other, stockAgain, morning[4]], signals, morningAt);
+const demotedIds = demoted.today.map((row) => row.id);
+if (demotedIds.join(",") !== "reg,other,stock-later,failed") fail("overview rank", demotedIds.join(",") || "empty");
+if (!demoted.summary.includes("Lena Park")) fail("overview rank", demoted.summary);
+if (signalKey("stock", "Roseglor") !== "stock|roseglor") fail("overview rank", "signal key");
+if (signals["stock|roseglor"]?.dismissals !== 2 || signals["stock|roseglor"]?.passed !== 0) {
+  fail("overview rank", JSON.stringify(signals));
+}
 
 console.log("golden answers: 8 passed");

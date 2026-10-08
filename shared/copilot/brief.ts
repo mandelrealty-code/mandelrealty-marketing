@@ -4,7 +4,8 @@ import type { BriefCard, BriefPayload } from "./types.js";
 import { latestInboxOffer } from "../adminApi/gmail.js";
 import { latestOutlookOffer } from "../adminApi/outlook.js";
 import { chooseBriefOpenItem, listOpenItems, openItemChoice, verifiedLabel } from "./openItems.js";
-import { dismissCard, listDismissed, listDueReminders, listRuns, listSkills, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, saveBriefSnapshot, saveGmailOffer, type WaitingDraft } from "./store.js";
+import { inputFromCard, noteSignal, rankOverview } from "./overviewRank.js";
+import { dismissCard, listDismissed, listDueReminders, listRuns, listSkills, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, readRankSignals, saveBriefSnapshot, saveGmailOffer, writeRankSignals, type WaitingDraft } from "./store.js";
 import { runsOnItsOwn } from "./skillRunner.js";
 import { runUnattendedChecks } from "./stayCheck.js";
 import { listConnectorFailures } from "./connectorFailures.js";
@@ -23,7 +24,7 @@ function ship(cards: BriefCard[], next: BriefCard, skipped: Set<string>) {
 
 export function quietBrief(now = new Date()): BriefPayload {
   const greet = greeting(now);
-  return { hello: greet.hello, line: greet.line, quiet: true, focus: [], eating: [] };
+  return { hello: greet.hello, line: greet.line, quiet: true, focus: [], eating: [], overview: rankOverview([], {}, now) };
 }
 
 /** The last pass, already stored. This does not scan mail, stays, or the cleaner app. */
@@ -42,9 +43,23 @@ export async function refreshSavedBrief(now = new Date()): Promise<BriefPayload>
 export async function dismissSavedCard(cardId: string, now = new Date()): Promise<BriefPayload> {
   await dismissCard(cardId);
   const current = await readSavedBrief(now);
-  const focus = current.focus.filter((card) => card.id !== cardId);
-  const eating = current.eating.filter((card) => card.id !== cardId);
-  const next = { ...current, focus, eating, quiet: focus.length + eating.length === 0 };
+  const card = [...current.focus, ...current.eating].find((row) => row.id === cardId);
+  let signals = await readRankSignals().catch(() => ({}));
+  const kind = card?.rank?.kind ?? inputFromCard(card ?? { id: cardId, text: "", action: "" }).kind;
+  const property = card?.rank?.property || inputFromCard(card ?? { id: cardId, text: cardId, action: "" }).property;
+  if (card && kind !== "failed") {
+    signals = noteSignal(signals, "dismiss", kind, property);
+    await writeRankSignals(signals);
+  }
+  const focus = current.focus.filter((row) => row.id !== cardId);
+  const eating = current.eating.filter((row) => row.id !== cardId);
+  const done = [...(current.overview?.done ?? []), {
+    id: cardId,
+    at: "Just now",
+    who: "You",
+    text: `Set aside ${card?.headline || card?.text || "an item"}.`,
+  }];
+  const next = finishBrief(current, focus, eating, signals, now, done);
   await saveBriefSnapshot(next);
   return next;
 }
@@ -54,6 +69,9 @@ export async function applyOpenItemOnBrief(cardId: string, label: string, now = 
   if (!applied) return null;
   const choice = openItemChoice(label);
   const current = await readSavedBrief(now);
+  let signals = await readRankSignals().catch(() => ({}));
+  signals = notePassedAbove(current, cardId, signals);
+  await writeRankSignals(signals);
   const keep = (cards: BriefCard[]) => cards.flatMap((card) => {
     if (card.id !== cardId) return [card];
     if (choice === "closed") return [];
@@ -61,7 +79,17 @@ export async function applyOpenItemOnBrief(cardId: string, label: string, now = 
   });
   const focus = keep(current.focus);
   const eating = keep(current.eating);
-  const next = { ...current, focus, eating, quiet: focus.length + eating.length === 0 };
+  const next = finishBrief(current, focus, eating, signals, now, current.overview?.done ?? []);
+  await saveBriefSnapshot(next);
+  return next;
+}
+
+export async function noteRankPass(cardId: string, now = new Date()): Promise<BriefPayload> {
+  const current = await readSavedBrief(now);
+  let signals = await readRankSignals().catch(() => ({}));
+  signals = notePassedAbove(current, cardId, signals);
+  await writeRankSignals(signals);
+  const next = finishBrief(current, current.focus, current.eating, signals, now, current.overview?.done ?? []);
   await saveBriefSnapshot(next);
   return next;
 }
@@ -109,6 +137,7 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
         text: `${headline}: ${failure.error}`,
         action: "Open",
         source: "Checks",
+        rank: { kind: "failed", property: failure.connector, deadline: "", when: "Last pass", lead: `${failure.connector} could not be read. ${failure.error}` },
       }, skipped);
     }
   } catch {
@@ -130,6 +159,7 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
         action: choices ? choices[0] : "Open",
         actions: choices,
         source: item.source || "Records",
+        rank: { kind: "expiring", property: item.source || "Records", deadline: "", when: `Verified ${verifiedLabel(item.verifiedOn)}`, lead: headline },
       }, skipped);
     }
   } catch {
@@ -314,14 +344,60 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
     }, skipped);
   }
 
-  const all = [...focus, ...eating].slice(0, MAX_CARDS);
+  const failed = [...focus, ...eating].filter((card) => card.id.startsWith("failed-read:"));
+  const rest = [...focus, ...eating].filter((card) => !card.id.startsWith("failed-read:"));
+  const all = [...rest.slice(0, MAX_CARDS), ...failed.filter((card) => !rest.slice(0, MAX_CARDS).includes(card))];
+  const keptFocus = all.filter((card) => card.group === "focus");
+  const keptEating = all.filter((card) => card.group === "eating");
+  const signals = await readRankSignals().catch(() => ({}));
+  return finishBrief({ hello: greet.hello, line: greet.line, quiet: false, focus: [], eating: [] }, keptFocus, keptEating, signals, now, []);
+}
+
+function finishBrief(
+  current: BriefPayload,
+  focus: BriefCard[],
+  eating: BriefCard[],
+  signals: Parameters<typeof noteSignal>[0],
+  now: Date,
+  done: NonNullable<BriefPayload["overview"]>["done"],
+): BriefPayload {
+  const live = [...focus, ...eating].filter((card) => card.purchaseStatus !== "delivered");
+  const arrived = [...focus, ...eating].filter((card) => card.purchaseStatus === "delivered");
+  const handed = [
+    ...done.filter((row) => !arrived.some((card) => card.id === row.id)),
+    ...arrived.map((card) => ({
+      id: card.id,
+      at: "Today",
+      who: "Copilot",
+      text: card.headline || card.text,
+    })),
+  ];
+  const overview = rankOverview(
+    live.map((card) => inputFromCard(card)),
+    signals,
+    now,
+    handed,
+    current.overview?.checked ?? [],
+  );
   return {
-    hello: greet.hello,
-    line: greet.line,
-    quiet: all.length === 0,
-    focus: all.filter((c) => c.group === "focus"),
-    eating: all.filter((c) => c.group === "eating"),
+    ...current,
+    quiet: focus.length + eating.length === 0,
+    focus,
+    eating,
+    overview,
   };
+}
+
+function notePassedAbove(current: BriefPayload, cardId: string, signals: Parameters<typeof noteSignal>[0]) {
+  const today = current.overview?.today ?? [];
+  const acted = today.find((row) => row.id === cardId);
+  if (!acted || acted.failed) return signals;
+  let next = signals;
+  for (const row of today) {
+    if (row.failed || row.rank <= 0 || row.rank >= acted.rank) continue;
+    next = noteSignal(next, "passed", row.kind, row.property);
+  }
+  return next;
 }
 
 function supplyCard(row: { status: "ordered" | "shipped" | "delivered"; product: string; property: string; item: string; confirmation: string; delivery: string; tracking: string }): BriefCard | null {
@@ -341,6 +417,7 @@ function supplyCard(row: { status: "ordered" | "shipped" | "delivered"; product:
       source: `Supplies · ${place}`,
       purchaseStatus: row.status,
       trackingUrl: row.tracking,
+      rank: { kind: "stock", property: place, deadline: "", when: "Delivered", lead: headline },
     };
   }
   if (!row.tracking.trim()) return null;
@@ -358,6 +435,7 @@ function supplyCard(row: { status: "ordered" | "shipped" | "delivered"; product:
     source: `Supplies · ${place}`,
     purchaseStatus: row.status,
     trackingUrl: row.tracking,
+    rank: { kind: "stock", property: place, deadline: "", when: row.delivery || "This week", lead: headline },
   };
 }
 
@@ -394,12 +472,30 @@ export function waitingDraftCard(item: WaitingDraft): BriefCard | null {
     if (!place || !when) return null;
     const headline = `Assign ${item.cleanerName} to the ${place} clean on ${when}`;
     const detail = `Approving writes ${item.cleanerName} onto that turnover in the cleaner app. Nothing has been written yet.`;
-    return { ...base, headline, detail, text: `${headline}. ${detail}` };
+    return {
+      ...base,
+      headline,
+      detail,
+      text: `${headline}. ${detail}`,
+      rank: {
+        kind: "cleaner",
+        property: place,
+        deadline: `${item.cleanerOn.slice(0, 10)}T15:00:00Z`,
+        when,
+        lead: `${place} has no cleaner on ${when}.`,
+      },
+    };
   }
   if (item.purchaseLine && item.purchaseProperty) {
     const headline = item.purchaseLine.trim();
     const detail = "Approving places the order. Nothing has been ordered yet.";
-    return { ...base, headline, detail, text: `${headline} ${detail}` };
+    return {
+      ...base,
+      headline,
+      detail,
+      text: `${headline} ${detail}`,
+      rank: { kind: "stock", property: item.purchaseProperty, deadline: "", when: "This week", lead: headline },
+    };
   }
   if (item.channel === "skill" && item.skillName.trim()) {
     const headline = `${item.skillName.trim()} is ready to save`;
@@ -413,12 +509,31 @@ export function waitingDraftCard(item: WaitingDraft): BriefCard | null {
     const detail = who
       ? `Approving sends it to ${who}. Nothing has been sent.`
       : "Approving sends this email. Nothing has been sent.";
-    return { ...base, headline, detail, text: `${headline}. ${detail}` };
+    const registration = /registration|building/i.test(`${item.subject} ${item.body}`);
+    return {
+      ...base,
+      headline,
+      detail,
+      text: `${headline}. ${detail}`,
+      rank: {
+        kind: registration ? "registration" : "draft",
+        property: cleanPlace(`${item.subject} ${item.body}`) || who || "the portfolio",
+        deadline: "",
+        when: "Today",
+        lead: headline,
+      },
+    };
   }
   if (item.channel === "hospitable" && item.to.trim()) {
     const headline = `Reply to ${item.to.trim()} is waiting`;
     const detail = "Submitting sends it. Nothing has been sent.";
-    return { ...base, headline, detail, text: `${headline}. ${detail}` };
+    return {
+      ...base,
+      headline,
+      detail,
+      text: `${headline}. ${detail}`,
+      rank: { kind: "guest", property: cleanPlace(item.body) || item.to.trim(), deadline: "", when: "Waiting", lead: headline },
+    };
   }
   if (item.channel === "note" && item.subject.trim() && !/^a note$/i.test(item.subject.trim())) {
     const headline = item.subject.trim();

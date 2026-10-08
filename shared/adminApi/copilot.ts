@@ -8,7 +8,7 @@ import { passwordMatches } from "../adminAuth.js";
 import { getHospitablePat, isHospitableMcpConfigured, updatePmSettings } from "../pm/clientStore.js";
 import { gmailConnected, gmailKeysReady } from "./gmail.js";
 import { outlookConnected, outlookKeysReady } from "./outlook.js";
-import { applyOpenItemOnBrief, dismissSavedCard, quietBrief, readSavedBrief, refreshSavedBrief } from "../copilot/brief.js";
+import { applyOpenItemOnBrief, dismissSavedCard, noteRankPass, quietBrief, readSavedBrief, refreshSavedBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
 import { answerSignIn, cancelCursorRun, collectCursorRun } from "../copilot/cursorThink.js";
@@ -373,6 +373,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action !== "delete" || !filePath) return res.status(400).json({ error: "Missing file." });
       const memoryFiles = await deleteMemoryFile(filePath);
       return res.status(200).json({ memoryFiles });
+    }
+
+    if (op === "rank-pass") {
+      const cardId = String(body.cardId ?? "").trim();
+      if (!cardId) return res.status(400).json({ error: "Missing card." });
+      return res.status(200).json({ brief: await noteRankPass(cardId) });
     }
 
     if (op === "refresh-brief") {

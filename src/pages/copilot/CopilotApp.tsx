@@ -7,6 +7,7 @@ import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraf
 import { PurchaseCard } from "./PurchaseCard";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
+import { inputFromCard, rankOverview, type OverviewRow } from "../../../shared/copilot/overviewRank";
 import { skipsWeb } from "../../../shared/copilot/route";
 import type { AccountSpend } from "../../../shared/copilot/models";
 import { BLANK, type NodeResult, type Workflow } from "../../../shared/copilot/workflow";
@@ -151,13 +152,127 @@ function when(iso: string) {
   return date.toLocaleDateString(undefined, { weekday: "short" });
 }
 
-function greetLead(hello: string) {
-  return hello.replace(/,?\s*team\.?$/i, ",");
+function OverviewHome({
+  brief,
+  busy,
+  comingOpen,
+  hidden,
+  onToggleComing,
+  onPress,
+  onDismiss,
+  error,
+}: {
+  brief: BriefPayload;
+  busy: boolean;
+  comingOpen: boolean;
+  hidden: string[];
+  onToggleComing: () => void;
+  onPress: (row: OverviewRow, label: string) => void;
+  onDismiss: (id: string) => void;
+  error: string | null;
+}) {
+  const overview = brief.overview ?? rankOverview(
+    [...brief.focus, ...brief.eating].filter((card) => !hidden.includes(card.id)).map((card) => inputFromCard(card)),
+  );
+  const today = overview.today.filter((row) => !hidden.includes(row.id));
+  const coming = overview.coming.filter((row) => !hidden.includes(row.id));
+  const ranked = today.filter((row) => !row.failed);
+  const failed = today.filter((row) => row.failed);
+  const checks = overview.checked.length
+    ? overview.checked
+    : [{ what: "Last pass", result: "Nothing was waiting.", src: "Saved brief" }];
+  return (
+    <div className="cp-ov">
+      {error ? <p className="cp-err">{error}</p> : null}
+      <header className="cp-ov-head">
+        <div className="cp-ov-date">
+          <h1>{overview.dateLabel}</h1>
+          <span>{overview.checkedAt}</span>
+        </div>
+        <p>{overview.summary}</p>
+      </header>
+      {overview.empty ? (
+        <section className="cp-ov-sec">
+          <div className="cp-ov-label"><span>What Copilot checked</span><span>This morning</span></div>
+          {checks.map((row) => (
+            <div key={row.what} className="cp-ov-check">
+              <span>{row.what}</span>
+              <span>{row.result}</span>
+              <span>{row.src}</span>
+            </div>
+          ))}
+        </section>
+      ) : (
+        <section className="cp-ov-sec">
+          <div className="cp-ov-label"><span>Needs you today</span><span>Most important first</span></div>
+          {ranked.map((row) => (
+            <div key={row.id} className="cp-ov-row">
+              <span className="cp-ov-rank">{row.rank}</span>
+              <div className="cp-ov-copy">
+                <div className="cp-ov-kind"><span>{kindLabel(row.kind)}</span><span>·</span><span>{row.property}</span></div>
+                <span className="cp-ov-title">{row.title}</span>
+                <span className="cp-ov-why">{row.why}</span>
+              </div>
+              <div className="cp-ov-side">
+                <span className={row.soon ? "cp-ov-soon" : "cp-ov-when"}>{row.soon ? <i /> : null}{row.when}</span>
+                <div className="cp-ov-actions">
+                  {(row.actions?.length ? row.actions : [row.action]).map((label) => (
+                    <button key={label} type="button" disabled={busy} onClick={() => onPress(row, label)}>{label}</button>
+                  ))}
+                </div>
+                <button type="button" className="cp-ov-aside" disabled={busy} onClick={() => onDismiss(row.id)}>Not important</button>
+              </div>
+            </div>
+          ))}
+          {ranked.length === 0 ? <p className="cp-ov-clear">Everything for today is handled. It’s listed under Done below.</p> : null}
+          {failed.map((row) => (
+            <div key={row.id} className="cp-ov-fail">
+              <span />
+              <span>{row.why}</span>
+              <button type="button" disabled={busy} onClick={() => onPress(row, row.action)}>{row.action}</button>
+            </div>
+          ))}
+        </section>
+      )}
+      <section className="cp-ov-sec">
+        <button type="button" className="cp-ov-fold" onClick={onToggleComing}>
+          <span>Coming up <span>· {coming.length}</span></span>
+          <span>{comingOpen ? "Hide" : "Show"}</span>
+        </button>
+        {comingOpen ? coming.map((row) => (
+          <div key={row.id} className="cp-ov-soonrow">
+            <span>{row.when}</span>
+            <div>
+              <span className="cp-ov-title">{row.title}</span>
+              <span className="cp-ov-why">{kindLabel(row.kind)} · {row.why}</span>
+            </div>
+            <button type="button" disabled={busy} onClick={() => onPress(row, row.action)}>{row.action}</button>
+          </div>
+        )) : <p className="cp-ov-peek">{overview.comingPeek}</p>}
+      </section>
+      <section className="cp-ov-sec">
+        <div className="cp-ov-label"><span className="cp-ov-donehead">Done today <span>· {overview.done.length}</span></span><span>By Copilot and partners, since midnight</span></div>
+        {overview.done.length ? overview.done.map((row) => (
+          <div key={row.id} className="cp-ov-done">
+            <span>{row.at}</span>
+            <span>{row.who}</span>
+            <span>{row.text}</span>
+          </div>
+        )) : <p className="cp-ov-peek">Nothing has been handled yet today.</p>}
+      </section>
+    </div>
+  );
 }
 
-function initial(source: string) {
-  const word = source.trim().split(/\s+/)[0] ?? "";
-  return (word[0] ?? "M").toUpperCase();
+function kindLabel(kind: OverviewRow["kind"]): string {
+  if (kind === "registration") return "Registration";
+  if (kind === "guest") return "Guest";
+  if (kind === "cleaner") return "Cleaner";
+  if (kind === "expiring") return "Expiring";
+  if (kind === "stock") return "Low stock";
+  if (kind === "draft") return "Draft";
+  if (kind === "failed") return "Failed read";
+  return "Item";
 }
 
 function ThemeIcon({ theme }: { theme: "dark" | "light" }) {
@@ -173,14 +288,6 @@ function ThemeIcon({ theme }: { theme: "dark" | "light" }) {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
       <circle cx="8" cy="8" r="5.5" />
       <path d="M8 2.5a5.5 5.5 0 010 11z" fill="currentColor" />
-    </svg>
-  );
-}
-
-function Arrow() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M4 10L10 4M5 4h5v5" />
     </svg>
   );
 }
@@ -651,6 +758,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [hidden, setHidden] = useState<string[]>([]);
+  const [comingOpen, setComingOpen] = useState(false);
   const [trail, setTrail] = useState<Record<string, boolean>>({});
   const [report, setReport] = useState(false);
   const [plusOpen, setPlusOpen] = useState(false);
@@ -1441,8 +1549,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const waiting = messages.some((m) => m.draft?.status === "waiting");
   const signInOpen = Boolean(stage?.liveUrl) && [...messages].reverse().find((message) => message.role === "assistant")?.choices?.[0] === "Keep me signed in";
   const showStop = Boolean(pending || thinking || signInOpen);
-  const focus = (boot?.brief.focus ?? []).filter((c) => !hidden.includes(c.id));
-  const eating = (boot?.brief.eating ?? []).filter((c) => !hidden.includes(c.id));
   const chromeOnPhone = /CriOS|FxiOS|EdgiOS/i.test(typeof navigator === "undefined" ? "" : navigator.userAgent);
 
   function askInstall() {
@@ -1478,55 +1584,25 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
-  function cardAction(item: BriefCard, label: string) {
-    if (item.actions?.includes(label)) return () => void pickOpenItem(item, label);
-    const chatId = item.chatId;
-    if (chatId) return () => void openChat(chatId, item.messageId);
-    return () => void openCard(item.text, label);
-  }
-
-  function card(item: BriefCard) {
-    const actions = item.actions?.length ? item.actions : [item.action];
-    return (
-      <article key={item.id} className="cp-card">
-        <div className="cp-card-top">
-          <span className="cp-tag">{item.source}</span>
-          <div className="cp-people">
-            <span className="cp-avatar">{initial(item.source)}</span>
-          </div>
-          <button type="button" className="cp-x" aria-label="Remove card" onClick={() => void dismissCard(item.id)}>
-            <svg width="11" height="11" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
-              <path d="M2 2l6 6M8 2L2 8" />
-            </svg>
-          </button>
-        </div>
-        <p>{item.headline || item.text}</p>
-        {item.detail ? <p className="cp-card-detail">{item.detail}</p> : null}
-        {item.purchaseStatus ? (
-          <p className="cp-segments">
-            {(["Ordered", "Shipped", "Out for delivery", "Delivered"] as const).map((label) => (
-              <span key={label} className={(label === "Ordered" && item.purchaseStatus === "ordered") || (label === "Shipped" && item.purchaseStatus === "shipped") || (label === "Delivered" && item.purchaseStatus === "delivered") ? "on" : ""}>
-                {label}
-              </span>
-            ))}
-          </p>
-        ) : null}
-        {item.purchaseStatus === "delivered" ? (
-          <button type="button" className="cp-quiet" disabled={busy} onClick={() => void dismissCard(item.id)}>Dismiss</button>
-        ) : item.purchaseStatus && item.trackingUrl ? (
-          <a className="cp-purchase-link" href={item.trackingUrl} target="_blank" rel="noreferrer">Track order</a>
-        ) : (
-          <div className="cp-card-actions">
-            {actions.map((label) => (
-              <button key={label} type="button" className="cp-cta" disabled={busy} onClick={cardAction(item, label)}>
-                <span className="cp-cta-label">{label}</span>
-                <span className="cp-go"><Arrow /></span>
-              </button>
-            ))}
-          </div>
-        )}
-      </article>
-    );
+  function pressRow(row: OverviewRow, label: string) {
+    const card = [...(boot?.brief.focus ?? []), ...(boot?.brief.eating ?? [])].find((item) => item.id === row.id);
+    void api<{ brief: BriefPayload }>("rank-pass", { cardId: row.id })
+      .then((data) => setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev)))
+      .catch(() => undefined);
+    if (!card) return;
+    if (card.actions?.includes(label)) {
+      void pickOpenItem(card, label);
+      return;
+    }
+    if (row.trackingUrl && /track/i.test(label)) {
+      window.open(row.trackingUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (card.chatId) {
+      void openChat(card.chatId, card.messageId);
+      return;
+    }
+    void openCard(card.text, label);
   }
 
   function sideList() {
@@ -1540,6 +1616,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       </button>
       <button type="button" className={`cp-row${screen === "brief" ? " on" : ""}`} onClick={goHome}>
         Overview
+        {boot?.brief.overview?.count ? <span className="cp-ov-count">{boot.brief.overview.count}</span> : null}
       </button>
       <div className="cp-chats">
         {(boot?.chats ?? []).map((chat) => {
@@ -2079,32 +2156,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   </div>
                 ) : null}
                 {screen === "brief" && boot ? (
-                  <div className="cp-home">
-                    {error ? <p className="cp-err">{error}</p> : null}
-                    <h1 className="cp-greet">
-                      {greetLead(boot.brief.hello)} <strong>team,</strong>
-                      <br />
-                      <span className="dim">here is what the focus should be today.</span>
-                    </h1>
-                    {focus.length > 0 ? (
-                      <section className="cp-group">
-                        <div className="cp-glabel">
-                          <h2>Focus today</h2>
-                          <span className="cp-badge">{focus.length}</span>
-                        </div>
-                        <div className="cp-grid">{focus.map(card)}</div>
-                      </section>
-                    ) : null}
-                    {eating.length > 0 ? (
-                      <section className="cp-group">
-                        <div className="cp-glabel">
-                          <h2>Eating time</h2>
-                          <span className="cp-badge">{eating.length}</span>
-                        </div>
-                        <div className="cp-grid">{eating.map(card)}</div>
-                      </section>
-                    ) : null}
-                  </div>
+                  <OverviewHome
+                    brief={boot.brief}
+                    busy={busy}
+                    comingOpen={comingOpen}
+                    onToggleComing={() => setComingOpen((open) => !open)}
+                    hidden={hidden}
+                    onPress={pressRow}
+                    onDismiss={(id) => void dismissCard(id)}
+                    error={error}
+                  />
                 ) : null}
                 {screen === "empty" ? (
                   <div className="cp-empty">

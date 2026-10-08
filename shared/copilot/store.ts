@@ -11,6 +11,7 @@ import type { Workflow } from "./workflow.js";
 import type { OpenItem } from "./openItems.js";
 import type { CleanerPicture } from "./cleanerRead.js";
 import { openLegacyPurchase } from "./openPurchase.js";
+import type { RankSignals } from "./overviewRank.js";
 import type { BriefPayload, CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, SkillRunResult } from "./types.js";
 
 type FileShape = {
@@ -797,7 +798,8 @@ function hiddenMemoryNote(note: string): boolean {
     || note.startsWith("gmail-offer|")
     || note.startsWith("outlook|")
     || note.startsWith("failed-read|")
-    || note.startsWith("brief|");
+    || note.startsWith("brief|")
+    || note.startsWith("rank-signal|");
 }
 
 function parseCursorNote(note: string, chatId: string): { agentId: string; runId: string } | null {
@@ -1057,6 +1059,23 @@ export async function readBriefSnapshot(): Promise<BriefPayload | null> {
 
 export async function saveBriefSnapshot(brief: BriefPayload): Promise<void> {
   await writePrefixed(BRIEF_PREFIX, JSON.stringify(brief));
+}
+
+const RANK_PREFIX = "rank-signal|";
+
+export async function readRankSignals(): Promise<RankSignals> {
+  const raw = await readPrefixed(RANK_PREFIX);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as RankSignals;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function writeRankSignals(signals: RankSignals): Promise<void> {
+  await writePrefixed(RANK_PREFIX, JSON.stringify(signals));
 }
 
 async function readPrefixed(prefix: string): Promise<string> {

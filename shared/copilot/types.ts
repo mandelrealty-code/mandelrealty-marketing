@@ -1,3 +1,4 @@
+import type { OverviewModel } from "./overviewRank.js";
 import type { Workflow } from "./workflow.js";
 import type { PurchaseState } from "./purchaseTypes.js";
 
@@ -130,6 +131,14 @@ export type BriefCard = {
   messageId?: string;
   purchaseStatus?: "ordered" | "shipped" | "delivered";
   trackingUrl?: string;
+  /** Ranking facts. Absent cards are inferred from the headline. */
+  rank?: {
+    kind: "registration" | "guest" | "cleaner" | "expiring" | "stock" | "draft" | "failed" | "other";
+    property: string;
+    deadline: string;
+    when?: string;
+    lead?: string;
+  };
 };
 
 export type BriefPayload = {
@@ -138,6 +147,7 @@ export type BriefPayload = {
   quiet: boolean;
   focus: BriefCard[];
   eating: BriefCard[];
+  overview?: OverviewModel;
 };
 
 export type ConnectorRow = {

@@ -480,6 +480,380 @@ html.cp-app[data-cp-theme="dark"] #root {
   gap: 36px;
 }
 
+.cp-ov {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 48px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.cp-ov-date {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cp-ov-date h1 {
+  margin: 0;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.cp-ov-date > span,
+.cp-ov-label > span:last-child,
+.cp-ov-when,
+.cp-ov-peek,
+.cp-ov-done span {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-ov-head p {
+  margin: 8px 0 0;
+  max-width: 640px;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 17px;
+  line-height: 28px;
+  color: var(--ink2);
+  text-wrap: pretty;
+}
+
+.cp-ov-sec {
+  display: flex;
+  flex-direction: column;
+}
+
+.cp-ov-label,
+.cp-ov-fold {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cp-ov-fold {
+  border: none;
+  background: transparent;
+  padding: 0 0 4px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.cp-ov-fold span span,
+.cp-ov-donehead span {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cp-ov-fold > span:last-child {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cp-ov-row,
+.cp-ov-fail,
+.cp-ov-soonrow,
+.cp-ov-check,
+.cp-ov-done,
+.cp-ov-clear,
+.cp-ov-peek {
+  border-top: 1px solid var(--line);
+}
+
+.cp-ov-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  column-gap: 16px;
+  padding: 20px 0;
+}
+
+.cp-ov-rank {
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-ov-copy,
+.cp-ov-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cp-ov-copy {
+  gap: 4px;
+}
+
+.cp-ov-side {
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.cp-ov-kind {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cp-ov-kind span:first-child {
+  color: var(--ink2);
+  font-weight: 600;
+}
+
+.cp-ov-title {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.cp-ov-why {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink2);
+  text-wrap: pretty;
+}
+
+.cp-ov-soon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--needs);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-ov-soon i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--needs);
+}
+
+.cp-ov-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cp-ov-actions button,
+.cp-ov-fail button,
+.cp-ov-soonrow button {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line2);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cp-ov-fail button,
+.cp-ov-soonrow button {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.cp-ov button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cp-ov-actions button:hover,
+.cp-ov-fail button:hover,
+.cp-ov-soonrow button:hover {
+  background: var(--tint);
+}
+
+.cp-ov-aside {
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.cp-ov-clear {
+  margin: 0;
+  padding: 20px 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink2);
+}
+
+.cp-ov-fail {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  column-gap: 16px;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.cp-ov-fail > span:nth-child(2) {
+  border-left: 2px solid var(--failed);
+  padding-left: 12px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink2);
+}
+
+.cp-ov-peek {
+  margin: 0;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cp-ov-soonrow {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  padding: 14px 0;
+}
+
+.cp-ov-soonrow > span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cp-ov-soonrow div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cp-ov-soonrow .cp-ov-title {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cp-ov-soonrow .cp-ov-why {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted);
+}
+
+.cp-ov-check {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: baseline;
+  padding: 14px 0;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cp-ov-check span:first-child {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cp-ov-check span:nth-child(2) {
+  color: var(--ink2);
+}
+
+.cp-ov-check span:last-child {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.cp-ov-donehead {
+  color: var(--ink2);
+}
+
+.cp-ov-done {
+  display: grid;
+  grid-template-columns: 64px 64px minmax(0, 1fr);
+  gap: 16px;
+  align-items: baseline;
+  padding: 12px 0;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cp-ov-done span:nth-child(2) {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cp-ov-done span:last-child {
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.cp-ov-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--needs);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 700px) {
+  .cp-ov {
+    padding: 28px 16px 40px;
+  }
+  .cp-ov-row,
+  .cp-ov-fail,
+  .cp-ov-check,
+  .cp-ov-soonrow {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+  .cp-ov-side,
+  .cp-ov-fail button,
+  .cp-ov-soonrow button,
+  .cp-ov-check span:last-child {
+    grid-column: 2;
+    align-items: flex-start;
+  }
+}
+
 .cp-greet {
   margin: 0;
   font-size: 52px;
