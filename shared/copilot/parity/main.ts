@@ -10,6 +10,7 @@ import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
 import { answerStay } from "../stayAnswer.js";
 import { answerPropertyFact } from "../propertyFact.js";
+import { answerGuestThreads } from "../guestInboxAnswer.js";
 import { callHospitableMcp } from "../hospitableMcp.js";
 import {
   accountWideRan,
@@ -421,6 +422,47 @@ async function fixtureThreadUnread(): Promise<void> {
   expectDraftRules(result.drafts, result.reports);
 }
 
+async function fixtureGuestInbox(): Promise<void> {
+  const world = worldAt("2026-10-07T11:00:00-04:00", true);
+  const charlotte = world.reservations.find((row) => row.code === CODE.charlotte);
+  if (!charlotte) throw new Gap("Eloise is in the fixture", "the Charlotte stay was missing");
+  charlotte.threadUnreadable = true;
+  installWorld(world);
+  const answer = (await answerGuestThreads("Any unread messages in Hospitable?")) ?? "";
+  expect(/2 guests are waiting on a reply/.test(answer), "two unanswered guests are listed", answer || "no answer");
+  expect(/Gaspard/.test(answer) && /How do I start the dishwasher\? It looks unplugged/.test(answer), "Gaspard's question is in his words", answer);
+  expect(/Roseglor/.test(answer) && /Oct 3, 8:45 AM/.test(answer), "Gaspard's property and arrival time are named", answer);
+  expect(/Diane/.test(answer) && /gluten-free/.test(answer) && /two cars/.test(answer), "Diane's question is in her words", answer);
+  expect(/Checks/.test(answer) && /Submit/.test(answer), "the answer names the drafts in Checks", answer);
+  expect(!/Michael|930\s*pm|See you this evening/.test(answer), "an answered thread is absent", answer);
+  expect(!/Yingjia|Wes|Ned|1104|Partner Loft/.test(answer), "cancelled and out-of-scope threads stay out", answer);
+  expect(/8 Charlotte 606 failed read/.test(answer), "a failed property read is named", answer);
+  expect(!/does not flag unread|flag unread|Do you want me to create one/i.test(answer), "the answer does not lecture or offer to draft later", answer);
+  const gaspard = capturedDrafts().find((row) => row.to === "Gaspard");
+  expect(Boolean(gaspard), "Gaspard's draft is attached", "no draft for Gaspard");
+  expect(gaspard?.channel === "hospitable", "the card is a guest reply", gaspard?.channel ?? "");
+  expect(/close the door fully, press and hold start/i.test(gaspard?.body ?? ""), "the card answers the dishwasher from the Knowledge Hub", gaspard?.body ?? "");
+  expect(!/frying pan|garbage bags|cleaner/i.test(gaspard?.body ?? ""), "the card does not revive an answered ask or mention a cleaner", gaspard?.body ?? "");
+  expect(gaspard?.hospitable?.tool === "send-reservation-message", "Submit is the send", gaspard?.hospitable?.tool ?? "");
+  expect(gaspard?.hospitable?.args.reservation_id === "00000000-0000-4000-8000-000000000b01", "the card is tied to Gaspard's stay", String(gaspard?.hospitable?.args.reservation_id ?? ""));
+  expect(gaspard?.hospitable?.args.body === gaspard?.body, "the card body is what Submit would send", "the submit body drifted");
+  const diane = capturedDrafts().find((row) => row.to === "Diane");
+  expect(/gluten-free/i.test(diane?.body ?? "") && /lactose-free/i.test(diane?.body ?? "") && /won't promise specific snacks/i.test(diane?.body ?? ""), "Diane's card notes the diets and promises no snacks", diane?.body ?? "");
+  expect(/P4-62/.test(diane?.body ?? "") && !/\bcleaners?\b/i.test(diane?.body ?? ""), "Diane's card explains the tandem spot and does not mention a cleaner", diane?.body ?? "");
+  expectNothingSent();
+  const before = capturedDrafts().length;
+  const again = (await answerGuestThreads("what did Gaspard ask?")) ?? "";
+  expect(/How do I start the dishwasher\? It looks unplugged/.test(again) && /Checks/.test(again), "a named guest is read from the Hospitable thread", again || "no answer");
+  expect(!/\b(gmail|outlook|e-?mail)\b/i.test(again), "a guest question does not search email", again);
+  expect(capturedDrafts().length === before, "asking again does not attach a second card", `drafts grew from ${before}`);
+  const michael = (await answerGuestThreads("what did Michael ask?")) ?? "";
+  expect(/930\s*pm/.test(michael) && /already replied/i.test(michael), "an answered guest is found in the thread and not drafted", michael || "no answer");
+  expect(!/\b(gmail|outlook|e-?mail)\b/i.test(michael), "the answered guest is not looked up in email", michael);
+  expect(capturedDrafts().length === before, "an answered thread does not grow a draft", `drafts grew from ${before}`);
+  expectNothingSent();
+  expectDraftRules(capturedDrafts(), capturedReports());
+}
+
 async function fixtureTodayCheckins(): Promise<void> {
   installWorld(worldAt("2026-10-07T11:00:00-04:00"));
   const answer = (await answerStay("How many check-ins are today?")) ?? "";
@@ -449,6 +491,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "15", title: "Today's check-ins across managed properties", run: fixtureTodayCheckins },
   { id: "16", title: "Unreadable thread names the stay", run: fixtureThreadUnread },
   { id: "17", title: "Scarborough garbage bags from the Hub", run: fixtureHubGarbageBags },
+  { id: "18", title: "Unread guest threads draft in Checks", run: fixtureGuestInbox },
 ];
 
 function guard(): void {

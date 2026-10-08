@@ -20,6 +20,7 @@ import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords } from "../copilot/recordsAnswer.js";
 import { answerStay } from "../copilot/stayAnswer.js";
+import { answerGuestThreads } from "../copilot/guestInboxAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, editProposal, prepareProposalSend, proposalFromWords } from "../copilot/proposal.js";
@@ -732,6 +733,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             draft: prepared.draft,
             steps: [{ text: prepared.draft ? "Prepared the assignment" : "Asked who to assign" }],
             thought: "Nothing was written to the cleaner app.",
+          });
+          return done();
+        }
+        const guestThreads = await answerGuestThreads(text);
+        if (guestThreads) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: guestThreads,
+            steps: [{ text: "Read guest threads" }],
+            thought: "Drafts are in Checks. Nothing is sent until Submit.",
           });
           return done();
         }

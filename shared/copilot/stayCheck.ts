@@ -24,7 +24,7 @@ const CONTACTS = [
 ];
 
 type Msg = { at: string; role: string; name: string; body: string };
-type Stay = {
+export type Stay = {
   id: string;
   code: string;
   status: string;
@@ -99,7 +99,7 @@ function toStay(row: Record<string, unknown>, propertyId: string): Stay {
   };
 }
 
-async function readStayThread(reservationId: string, now: Date): Promise<Msg[]> {
+export async function readStayThread(reservationId: string, now: Date): Promise<Msg[]> {
   const pat = await getHospitablePat().catch(() => "");
   if (!pat) throw new Error("Hospitable is not connected, so the message thread could not be read.");
   const messages = await listReservationMessages(pat, reservationId);
@@ -147,8 +147,13 @@ export async function publishCheckReport(row: ReportCapture): Promise<void> {
   }
 }
 
-async function leaveDraft(row: DraftCapture, reservationId = ""): Promise<void> {
-  captureDraft(row);
+export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise<void> {
+  const hospitable =
+    row.hospitable ??
+    (row.channel === "hospitable" && reservationId && !row.cleanerAssign
+      ? { tool: "send-reservation-message", args: { reservation_id: reservationId, body: row.body } }
+      : undefined);
+  captureDraft(hospitable ? { ...row, hospitable } : row);
   if (parityEnabled()) return;
   try {
     const chatId = await checksChat();
@@ -182,6 +187,49 @@ function relevant(stay: Stay, today: string): boolean {
   if (stay.checkIn >= today && stay.checkIn <= addDays(today, 21)) return true;
   if (stay.checkOut <= today && stay.checkOut >= addDays(today, -7)) return true;
   return false;
+}
+
+export type RecentStay = {
+  stay: Stay;
+  propertyName: string;
+  address: string;
+  label: string;
+};
+
+/** Managed stays the checks would read, plus any property whose reservation list failed. */
+export async function loadRecentStays(now: Date): Promise<{ stays: RecentStay[]; failed: string[] }> {
+  const today = torontoToday(now);
+  const properties = (await listPmProperties().catch(() => [])).filter((row) => isManagedUnit(row.name, row.address));
+  const stays: RecentStay[] = [];
+  const failed: string[] = [];
+  for (const property of properties) {
+    const label = placeLabel(`${property.name} ${property.address}`, property.name);
+    const id = property.hospitable_property_id || property.id;
+    if (!id) {
+      failed.push(label);
+      continue;
+    }
+    try {
+      const raw = await callTool("get-reservations", {
+        properties: [id],
+        start_date: addDays(today, -30),
+        end_date: addDays(today, 60),
+        date_query: "checkout",
+        per_page: 100,
+        page: 1,
+        include: "guest",
+      });
+      const rows = rowsOf(raw)
+        .map((row) => toStay(row, id))
+        .filter((stay) => stay.id && relevant(stay, today) && !/cancel/.test(stay.status) && isManagedUnit(property.name, property.address));
+      for (const stay of rows) {
+        stays.push({ stay, propertyName: property.name, address: property.address, label });
+      }
+    } catch {
+      failed.push(label);
+    }
+  }
+  return { stays, failed };
 }
 
 function hubLines(hub: string, ask: string): string[] {
@@ -220,7 +268,7 @@ function signOff(memory: string): string {
   return line.replace(/^.*sign-off:\s*/i, "").trim() || "Shane, Co-Host 647-822-0448";
 }
 
-async function memoryFor(blob: string): Promise<string> {
+export async function memoryFor(blob: string): Promise<string> {
   const files = await memoryBodies().catch(() => []);
   const hits = files.filter((file) => {
     const hay = `${file.path} ${file.body}`.toLowerCase();
@@ -571,7 +619,7 @@ function mailNote(found: { hits: { date: string; from: string }[]; notes: string
   return later ? `A mail thread exists. The later note is from ${later.from}.` : "No building thread turned up in Gmail or Outlook.";
 }
 
-function placeLabel(place: string, name: string): string {
+export function placeLabel(place: string, name: string): string {
   if (/blue jays/i.test(place)) return "20 Blue Jays Way Unit 318";
   if (/roseglor|spacious/i.test(place)) return "41 Roseglor Cres";
   if (/charlotte/i.test(place) && /\b606\b/.test(place)) return "8 Charlotte 606";

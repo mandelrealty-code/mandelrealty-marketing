@@ -10,6 +10,8 @@ export type DraftCapture = {
   needs_you: boolean;
   cleanerAssign?: { propertyId: string; scheduledOn: string; cleanerName: string; unit: string };
   purchase?: PurchaseDetail;
+  /** What Submit on this card will send. Absent until the card exists. */
+  hospitable?: { tool: string; args: Record<string, unknown> };
 };
 
 export type ReportCapture = {
