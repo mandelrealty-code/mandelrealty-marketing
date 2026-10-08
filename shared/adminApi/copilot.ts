@@ -17,6 +17,8 @@ import { nameChat } from "../copilot/chatTitle.js";
 import { pictureFor, wantsWeb, workModel } from "../copilot/models.js";
 import { answerWebLookup, asksWebLookup } from "../copilot/webLookup.js";
 import { answerOutsideRentals } from "../copilot/topicScope.js";
+import { skipsWeb } from "../copilot/route.js";
+import { answerInboxToday } from "../copilot/mailInbox.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords } from "../copilot/recordsAnswer.js";
@@ -494,7 +496,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const pictureMode = body.pictureMode === true;
       const skillMode = body.skillMode === true;
-      const webSearch = body.webSearch === true || wantsWeb(text);
+      const webSearch = !skipsWeb(text) && (body.webSearch === true || wantsWeb(text));
       const pictureChoice = pictureFor(text, images.length > 0);
       const userMessage = await addMessage({ chatId, role: "user", body: text, images, picture: pictureMode });
       const signIn = await answerSignIn(chatId);
@@ -571,7 +573,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         return done();
       }
-      if (!pictureMode && !skillMode && asksWebLookup(text)) {
+      if (!pictureMode && !skillMode && !skipsWeb(text) && asksWebLookup(text)) {
         const said = await answerWebLookup(text);
         await addMessage({
           chatId,
@@ -746,6 +748,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             role: "assistant",
             body: chain,
             steps: [{ text: /didn't find|didn't return|isn't connected/.test(chain) ? "The mail read failed" : "Read the email chain" }],
+            thought: "This came from the mailbox. Nothing was sent.",
+          });
+          return done();
+        }
+        const inbox = await answerInboxToday(text);
+        if (inbox) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: inbox,
+            steps: [{ text: /isn't connected|didn't return|couldn't read/i.test(inbox) ? "The mail read failed" : "Read the inbox" }],
             thought: "This came from the mailbox. Nothing was sent.",
           });
           return done();

@@ -12,7 +12,7 @@ import { isManagedUnit } from "./managedUnits.js";
 import { addDays, torontoToday } from "./time.js";
 
 const CODE = /\b(HM[A-Z0-9]{8,12})\b/i;
-const STAY = /\b(reservations?|check-?ins?|checking in|next guest|guest messages?|booking history)\b/i;
+const STAY = /\b(reservations?|check[\s-]?ins?|check[\s-]?outs?|checking[\s-]?in|checking[\s-]?out|next guest|guest messages?|booking history)\b/i;
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 type Listing = { id: string; name: string; address: string; label: string; publicName: string };

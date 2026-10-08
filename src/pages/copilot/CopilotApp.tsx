@@ -7,6 +7,7 @@ import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraf
 import { PurchaseCard } from "./PurchaseCard";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
+import { skipsWeb } from "../../../shared/copilot/route";
 import type { AccountSpend } from "../../../shared/copilot/models";
 import { BLANK, type NodeResult, type Workflow } from "../../../shared/copilot/workflow";
 import { workflowFromSkill } from "../../../shared/copilot/skillShape";
@@ -1027,7 +1028,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     abortRef.current = ctrl;
     const pdf = docs.find((file) => file.file.type === "application/pdf" || /\.pdf$/i.test(file.name));
     const makingPicture = pictureMode && !preset;
-    const searching = !makingPicture && !preset && (webSearch || wantsWeb(typed));
+    const searching = !makingPicture && !preset && !skipsWeb(typed) && (webSearch || wantsWeb(typed));
     if (searching) deskRev.current = "";
     setPending(value || "Look at the attached photo.");
     setPendingPicture(makingPicture);

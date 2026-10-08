@@ -247,16 +247,17 @@ export async function searchOutlook(input: {
   if (parity) return parity;
   const token = await accessToken();
   const keywords = mailKeywords(input.keywords);
-  if (!keywords) return [];
   const folders: MailFolder[] = input.where === "both" ? ["sent", "inbox"] : [input.where];
   const hits: OutlookHit[] = [];
   for (const folder of folders) {
     const name = folder === "sent" ? "sentitems" : "inbox";
     const url = new URL(`https://graph.microsoft.com/v1.0/me/mailFolders/${name}/messages`);
-    url.searchParams.set("$search", `"${keywords}"`);
-    url.searchParams.set("$top", "8");
+    url.searchParams.set("$top", keywords ? "8" : "12");
     url.searchParams.set("$select", OUTLOOK_SELECT);
-    const listRes = await fetch(url, { headers: { ...outlookHeaders(token), ConsistencyLevel: "eventual" } });
+    if (keywords) url.searchParams.set("$search", `"${keywords}"`);
+    else url.searchParams.set("$orderby", folder === "sent" ? "sentDateTime desc" : "receivedDateTime desc");
+    const headers = keywords ? { ...outlookHeaders(token), ConsistencyLevel: "eventual" } : outlookHeaders(token);
+    const listRes = await fetch(url, { headers });
     const list = (await listRes.json().catch(() => ({}))) as { value?: OutlookMessage[]; error?: { message?: string } };
     if (!listRes.ok) throw new Error(list.error?.message || "Outlook didn't return that search.");
     for (const item of list.value ?? []) {

@@ -116,6 +116,8 @@ const hours = await answerOutsideRentals(HOURS);
 if (!hours || hours.kind !== "lookup") fail(hours?.body ?? "the venue question was not looked up");
 if (!/10:00 a\.m\. to 6:00 p\.m\./.test(hours.body) || !hours.body.includes("https://www.rogerscentre.com/box-office")) fail(hours.body);
 if (/only answer questions about your rentals/i.test(hours.body)) fail(hours.body);
+if (hours.body.includes("\n") || !/that is from/i.test(hours.body)) fail(hours.body);
+if (hours.body.trim() === "Rogers Centre box office hours are 10:00 a.m. to 6:00 p.m.") fail(hours.body);
 
 const refused = await answerOutsideRentals("Draft a guest message for 8 Charlotte 1104 about the lockbox.");
 if (!refused || refused.kind !== "refused" || refused.body !== UNMANAGED_REFUSAL) fail(refused?.body ?? "the 1104 draft was not refused");

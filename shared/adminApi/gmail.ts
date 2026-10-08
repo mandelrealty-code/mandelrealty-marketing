@@ -189,10 +189,11 @@ export type GmailHit = {
 
 export type GmailLetter = GmailHit & { body: string };
 
-function gmailQuery(folder: MailFolder, keywords: string, includeAirbnb: boolean): string {
+function gmailQuery(folder: MailFolder, keywords: string, includeAirbnb: boolean, after = ""): string {
   const scope = folder === "sent" ? SENT : PRIMARY;
   const airbnb = includeAirbnb ? "" : "-from:airbnb.com";
-  return [scope, airbnb, keywords].filter(Boolean).join(" ");
+  const since = after ? `after:${after}` : "";
+  return [scope, airbnb, since, keywords].filter(Boolean).join(" ");
 }
 
 type GmailPayload = {
@@ -257,6 +258,8 @@ export async function searchGmail(input: {
   keywords: string;
   where: MailFolder | "both";
   includeAirbnb: boolean;
+  /** Gmail after: date, YYYY/MM/DD. Empty lists without a date. */
+  after?: string;
 }): Promise<GmailHit[]> {
   const parity = paritySearchGmail(input);
   if (parity) return parity;
@@ -265,7 +268,7 @@ export async function searchGmail(input: {
   const folders: MailFolder[] = input.where === "both" ? ["sent", "inbox"] : [input.where];
   const hits: GmailHit[] = [];
   for (const folder of folders) {
-    const q = gmailQuery(folder, keywords, input.includeAirbnb);
+    const q = gmailQuery(folder, keywords, input.includeAirbnb, input.after ?? "");
     const listRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=8&q=${encodeURIComponent(q)}`,
       { headers: { Authorization: `Bearer ${token}` } },

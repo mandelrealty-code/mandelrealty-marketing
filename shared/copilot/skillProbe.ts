@@ -134,5 +134,12 @@ if (!breakdown.includes("Manik") || !breakdown.includes("Thursday morning") || !
 }
 if (!/outstanding/i.test(breakdown)) throw new Error(breakdown);
 if (/try opening it directly in gmail|cannot read that email|did not return|didn't return/i.test(breakdown)) throw new Error(breakdown);
+for (const body of [
+  "The dishwasher at 8 Charlotte 606 is leaking. Can you send a plumber?",
+  "I can send a plumber Thursday morning.",
+  "Thursday works. Please confirm once the plumber is booked.",
+]) {
+  if (breakdown.includes(body)) throw new Error(`pasted a message body: ${breakdown}`);
+}
 console.log("Mail chain:");
 console.log(breakdown);

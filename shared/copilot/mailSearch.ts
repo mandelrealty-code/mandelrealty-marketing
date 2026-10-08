@@ -55,6 +55,30 @@ export async function searchMail(input: {
   return { hits, notes };
 }
 
+/** Recent inbox mail, with no keyword filter. `after` is a Gmail after: date, YYYY/MM/DD. */
+export async function listInbox(mailbox: "gmail" | "outlook", after = ""): Promise<{ hits: MailHit[]; notes: string[] }> {
+  const hits: MailHit[] = [];
+  const notes: string[] = [];
+  if (mailbox === "gmail") {
+    if (!(await gmailConnected().catch(() => false))) return { hits, notes: ["Gmail isn't connected."] };
+    try {
+      const rows = await searchGmail({ keywords: "", where: "inbox", includeAirbnb: false, after });
+      for (const row of rows) hits.push({ mailbox: "gmail", ...row });
+    } catch (err) {
+      notes.push(err instanceof Error ? err.message : "Gmail didn't return the inbox.");
+    }
+    return { hits, notes };
+  }
+  if (!(await outlookConnected().catch(() => false))) return { hits, notes: ["Outlook isn't connected."] };
+  try {
+    const rows = await searchOutlook({ keywords: "", where: "inbox", includeAirbnb: false });
+    for (const row of rows) hits.push({ mailbox: "outlook", ...row });
+  } catch (err) {
+    notes.push(err instanceof Error ? err.message : "Outlook didn't return the inbox.");
+  }
+  return { hits, notes };
+}
+
 /** Every message in the chain, oldest first. A thread id works when the message id does not. */
 export async function readMailThread(input: { mailbox?: string; id?: string; includeAirbnb?: boolean }): Promise<MailLetter[]> {
   const id = String(input.id ?? "").trim();

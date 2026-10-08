@@ -14,7 +14,11 @@ import { installOpsClients, installOpsReservations } from "./parity/opsState.js"
 import { installWorld } from "./parity/world.js";
 import { GENERAL_ANSWER_SYSTEM } from "./plainAnswer.js";
 import { answerPropertyFact } from "./propertyFact.js";
+import { answerInboxToday } from "./mailInbox.js";
+import { questionRoute, skipsWeb } from "./route.js";
+import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerStay } from "./stayAnswer.js";
+import { answerOutsideRentals } from "./topicScope.js";
 
 function fail(name: string, message: string): never {
   throw new Error(`${name}: ${message}`);
@@ -133,4 +137,130 @@ if (!marked.includes("<ul>") || !marked.includes("<li>Keys are with the desk</li
 const summary = renderAnswer("Read **23** of 23 stays.");
 if (/\*\*/.test(summary) || !summary.includes("<strong>23</strong>")) fail("markup summary", summary);
 
-console.log("golden answers: 5 passed");
+const routes: Array<[string, string]> = [
+  ["Any new emails come in today from Gmail?", "mail"],
+  ["How many check ins are today?", "stay"],
+  ["How many reservations do we have this month?", "reservation"],
+  ["What does the cleaner app show for turnovers?", "cleaner"],
+  ["Where is the SOP for guest arrival?", "sop"],
+  ["How many clients do we have?", "client"],
+  ["What was the host revenue in August?", "revenue"],
+  ["What have we remembered about parking?", "memory"],
+  ["What are the Rogers Centre box office hours?", "web"],
+  ["search amazon for a muskoka chair thats red", "web"],
+];
+for (const [question, route] of routes) {
+  if (questionRoute(question) !== route) fail("route", `${question} → ${questionRoute(question)}`);
+  if (route === "web") {
+    if (skipsWeb(question)) fail("route", `${question} was kept off the web`);
+  } else if (!skipsWeb(question) || questionRoute(question) === "web") {
+    fail("route", `${question} can reach web search`);
+  }
+}
+
+const DECOY = "Unrelated Google results for new emails today.";
+installResearch([{
+  title: "Any new emails come in today from Gmail?",
+  url: "https://www.google.com/search?q=new+emails+today",
+  text: DECOY,
+}]);
+
+const checkinsToday = await answerStay("How many check ins are today?");
+if (!checkinsToday) fail("check-ins spaced", "no answer");
+shape("check-ins spaced", checkinsToday, /^0 accepted check-ins on 2026-10-07\./, [
+  "8 Charlotte 606",
+  "Roseglor",
+  "20 Blue Jays Way",
+  "1065 Shaw Street",
+]);
+if (checkinsToday.includes(DECOY) || /google\.com|search results/i.test(checkinsToday)) fail("check-ins spaced", checkinsToday);
+const webCheckins = await answerOutsideRentals("How many check ins are today?");
+if (webCheckins) fail("check-ins spaced", webCheckins.body);
+
+installWorld(worldAt("2026-10-07T11:00:00-04:00", false, [
+  {
+    id: "today-manik",
+    mailbox: "gmail",
+    folder: "inbox",
+    from: "Manik",
+    email: "manik@example.com",
+    to: "shane@mandelrealtygroup.com",
+    date: "2026-10-07T08:15:00-04:00",
+    subject: "Dishwasher at 8 Charlotte 606",
+    snippet: "SNIPPET-DUMP",
+    body: "BODY-DUMP the raw message",
+    airbnb: false,
+  },
+  {
+    id: "yesterday-note",
+    mailbox: "gmail",
+    folder: "inbox",
+    from: "Accounts",
+    email: "accounts@example.com",
+    to: "shane@mandelrealtygroup.com",
+    date: "2026-10-06T18:00:00-04:00",
+    subject: "Yesterday invoice",
+    snippet: "old",
+    body: "This arrived yesterday.",
+    airbnb: false,
+  },
+  {
+    id: "sent-today",
+    mailbox: "gmail",
+    folder: "sent",
+    from: "Shane",
+    email: "shane@mandelrealtygroup.com",
+    to: "manik@example.com",
+    date: "2026-10-07T09:00:00-04:00",
+    subject: "Sent this morning",
+    snippet: "sent",
+    body: "Sent from us.",
+    airbnb: false,
+  },
+  {
+    id: "airbnb-today",
+    mailbox: "gmail",
+    folder: "inbox",
+    from: "Airbnb",
+    email: "automated@airbnb.com",
+    to: "shane@mandelrealtygroup.com",
+    date: "2026-10-07T07:00:00-04:00",
+    subject: "Ryan sent a pre-approval",
+    snippet: "airbnb",
+    body: "Pre-approval notice.",
+    airbnb: true,
+  },
+]));
+const gmailQuestion = "Any new emails come in today from Gmail?";
+const gmailWeb = await answerOutsideRentals(gmailQuestion);
+if (gmailWeb) fail("gmail", gmailWeb.body);
+const gmail = await answerInboxToday(gmailQuestion);
+if (!gmail) fail("gmail", "no answer");
+shape("gmail", gmail, /^1 new email came in today in Gmail\./, ["Manik", "Dishwasher at 8 Charlotte 606"]);
+if (/BODY-DUMP|SNIPPET-DUMP|Yesterday invoice|Sent this morning|Ryan sent a pre-approval|google\.com|search results/i.test(gmail)) {
+  fail("gmail", gmail);
+}
+
+resetResearch();
+const VENUE = "What are the Rogers Centre box office hours?";
+installResearch([{
+  title: "Rogers Centre box office",
+  url: "https://www.rogerscentre.com/box-office",
+  text: [
+    "Rogers Centre box office hours are 10:00 a.m. to 6:00 p.m.",
+    "Buy tickets",
+    "See the map",
+    "Google search results for box office.",
+  ].join("\n"),
+}]);
+const venue = await answerOutsideRentals(VENUE);
+if (!venue || venue.kind !== "lookup") fail("venue", venue?.body ?? "the venue question was not looked up");
+if (venue.body.includes("\n")) fail("venue", venue.body);
+if (!/Rogers Centre box office hours are 10:00 a\.m\. to 6:00 p\.m\./.test(venue.body)) fail("venue", venue.body);
+if (!/that is from Rogers Centre box office/i.test(venue.body) || !venue.body.includes("https://www.rogerscentre.com/box-office")) {
+  fail("venue", venue.body);
+}
+if (/Buy tickets|See the map|Google search results|Page:/.test(venue.body)) fail("venue", venue.body);
+if (venue.body.trim() === "Rogers Centre box office hours are 10:00 a.m. to 6:00 p.m.") fail("venue", venue.body);
+
+console.log("golden answers: 8 passed");

@@ -179,10 +179,80 @@ function asksRetailer(text: string): boolean {
   return /\b(amazon|walmart|ikea|canadian tire|home depot|facebook marketplace|marketplace)\b/i.test(text);
 }
 
-function formatRetail(failures: string[], retailer: string, items: Item[], pageUrl: string): string {
-  const head = failures.map((name) => `${name}'s read failed.`);
-  const lines = items.slice(0, 8).map((item) => `${item.name}, ${item.price}\n${item.url}`);
-  return [...head, `On ${retailer}:`, ...lines, `Page: ${pageUrl}`].join("\n");
+function joinEnglish(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+}
+
+function productParagraph(failures: string[], retailer: string, items: Item[], pageUrl: string): string {
+  const missed = failures.map((name) => `${name}'s read failed.`);
+  const listed = items.slice(0, 8).map((item) => `${item.name} is ${item.price} (${item.url})`);
+  const found = `On ${retailer}, ${joinEnglish(listed)}. That is from ${retailer} (${pageUrl}).`;
+  return [...missed, found].join(" ");
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return "the page";
+  }
+}
+
+function retailerFrom(url: string): string {
+  if (/amazon\./i.test(url)) return "Amazon.ca";
+  if (/walmart\./i.test(url)) return "Walmart.ca";
+  if (/canadiantire\./i.test(url)) return "Canadian Tire";
+  if (/homedepot\./i.test(url)) return "Home Depot";
+  if (/ikea\./i.test(url)) return "IKEA";
+  return hostOf(url);
+}
+
+function visibleText(raw: string): string {
+  return raw
+    .replace(/<script[\s\S]*?<\/script>/gi, "\n")
+    .replace(/<style[\s\S]*?<\/style>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function sentencesOf(line: string): string[] {
+  const masked = line.replace(/\ba\.m\./gi, "a~m~").replace(/\bp\.m\./gi, "p~m~");
+  return masked
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.replace(/a~m~/g, "a.m.").replace(/p~m~/g, "p.m.").trim())
+    .filter(Boolean);
+}
+
+function factsFrom(raw: string): string[] {
+  const lines = visibleText(raw)
+    .split(/\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length >= 24);
+  const sentences: string[] = [];
+  for (const line of lines) {
+    for (const sentence of sentencesOf(line)) {
+      if (sentence.length >= 24 && sentence.length <= 320) sentences.push(sentence);
+    }
+  }
+  const useful = sentences.filter((sentence) => /\d/.test(sentence) || /\b(is|are|was|were|opens|costs|includes)\b/i.test(sentence));
+  return (useful.length ? useful : sentences).slice(0, 3);
+}
+
+function sourceName(page: Page): string {
+  const title = page.title.replace(/\s+/g, " ").trim();
+  const usable = title && !title.includes("?") && title.length <= 80 && !/^https?:/i.test(title);
+  return `${usable ? title : hostOf(page.url)} (${page.url})`;
+}
+
+/** Facts from the page, in one paragraph, with the source named. Never the raw page. */
+function synthesizePage(page: Page): string {
+  const facts = factsFrom(page.text);
+  if (!facts.length) return FAILED;
+  return `${facts.join(" ")} That is from ${sourceName(page)}.`;
 }
 
 async function readRetailer(retailer: Retailer, query: string): Promise<{ items: Item[]; url: string } | { failed: true; opened: boolean }> {
@@ -203,14 +273,10 @@ export async function answerWebLookup(text: string): Promise<string> {
     const page = await researchWeb(text).catch(() => null);
     if (!page || !("url" in page) || !page.url || "error" in page) return FAILED;
     const items = productsFrom(page.text, /amazon\.ca\b/i.test(page.url));
-    const where = `From ${page.title}:`;
-    if (!items.length) {
-      const body = page.text.trim();
-      if (!body || /^https?:\/\/\S+$/.test(body)) return FAILED;
-      return `${where}\n${body}\nPage: ${page.url}`;
-    }
-    const lines = items.slice(0, 8).map((item) => `${item.name}, ${item.price}\n${item.url}`);
-    return `${where}\n${lines.join("\n")}\nPage: ${page.url}`;
+    if (items.length) return productParagraph([], retailerFrom(page.url), items, page.url);
+    const body = page.text.trim();
+    if (!body || /^https?:\/\/\S+$/.test(body)) return FAILED;
+    return synthesizePage(page);
   }
   const query = productQuery(text);
   const failures: string[] = [];
@@ -222,7 +288,7 @@ export async function answerWebLookup(text: string): Promise<string> {
       if (read.opened) sawPage = true;
       continue;
     }
-    return formatRetail(failures, retailer.name, read.items, read.url);
+    return productParagraph(failures, retailer.name, read.items, read.url);
   }
   if (!sawPage) return FAILED;
   return failures.map((name) => `${name}'s read failed.`).join("\n");
