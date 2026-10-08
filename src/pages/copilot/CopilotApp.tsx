@@ -133,10 +133,12 @@ function usablePhone(phone: string) {
 }
 
 const SUGGESTIONS = [
-  "Email the next guest at 20 Blue Jays Way",
-  "How much is unit 606 making this month?",
-  "Did Elizabeth get her contract?",
-  "Add a new client",
+  "Any unanswered messages?",
+  "What's the plan for today?",
+  "Who's checking in and out today?",
+  "Any cleans without a cleaner assigned?",
+  "Anything running low at the units?",
+  "What's still open from yesterday?",
 ];
 
 async function api<T>(op: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
