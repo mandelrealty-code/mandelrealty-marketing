@@ -669,7 +669,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             break;
           }
         }
-        const opsAnswer = await answerOps(text);
+        const opsAnswer = await answerOps(text, new Date(), prior);
         if (opsAnswer) {
           await addMessage({
             chatId,

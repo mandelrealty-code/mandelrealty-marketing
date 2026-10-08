@@ -43,11 +43,15 @@ function monthOf(question: string, now: Date): string | null {
   return `${year}-${String(named + 1).padStart(2, "0")}`;
 }
 
-export function asksOps(text: string): boolean {
-  return /how many clients/i.test(text) || /total revenue|revenue for|host revenue/i.test(text);
+const PLACE = /blue jays|\b318\b|\bshaw\b|charlotte|\b606\b|roseglor|scarborough/i;
+
+export function asksOps(text: string, prior = ""): boolean {
+  if (/how many clients/i.test(text)) return true;
+  if (/\brevenue\b/i.test(text)) return true;
+  return /host revenue/i.test(prior) && PLACE.test(text);
 }
 
-export async function answerOps(question: string, now = new Date()): Promise<string | null> {
+export async function answerOps(question: string, now = new Date(), prior = ""): Promise<string | null> {
   if (/how many clients/i.test(question)) {
     try {
       const clients = await listPmClients();
@@ -57,15 +61,31 @@ export async function answerOps(question: string, now = new Date()): Promise<str
       return MISSING;
     }
   }
-  const month = /revenue/i.test(question) ? monthOf(question, now) : null;
+  const followUp = /host revenue/i.test(prior) && PLACE.test(question);
+  if (!/\brevenue\b/i.test(question) && !followUp) return null;
+  const month = monthOf(question, now) ?? (followUp ? monthOf(prior, now) : null);
   if (!month) return null;
+  const label = new Date(`${month}-02T12:00:00Z`).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
   try {
     const properties = await listPmProperties();
+    const named = properties.filter((property) => mentionsProperty(question, property));
+    if (followUp && named.length === 0) return "I didn't find that property in OPS.";
+    if (named.length > 1 && /\bonly\b/i.test(question)) {
+      return `Which property should I use? I found ${named.map((property) => spokenProperty(property)).join(" and ")}.`;
+    }
+    const targets = named.length > 0 ? named : properties;
+    const single = targets.length === 1 ? targets[0] : null;
     const covered: string[] = [];
     let total = 0;
     let currency = "CAD";
-    for (const property of properties) {
-      const stays = await listReservationsForPropertyMonth(property.id, month);
+    for (const property of targets) {
+      let stays;
+      try {
+        stays = await listReservationsForPropertyMonth(property.id, month);
+      } catch {
+        if (single) return `The OPS revenue read for ${spokenProperty(property)} failed.`;
+        throw new Error("pm_reservations read failed");
+      }
       let propertyTotal = 0;
       let any = false;
       for (const stay of stays) {
@@ -86,12 +106,34 @@ export async function answerOps(question: string, now = new Date()): Promise<str
         total += propertyTotal;
       }
     }
+    if (single) {
+      const place = spokenProperty(single);
+      return `${label} host revenue for ${place} was ${money(total)} ${currency}. The figure is host revenue.`;
+    }
     if (!covered.length) return MISSING;
-    const label = new Date(`${month}-02T12:00:00Z`).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
     return `${label} host revenue was ${money(total)} ${currency}. This covers ${covered.join(" and ")}. The figure is host revenue.`;
   } catch {
     return MISSING;
   }
+}
+
+function mentionsProperty(question: string, property: { name: string; address: string }): boolean {
+  const asked = question.toLowerCase();
+  const blob = `${property.name} ${property.address}`.toLowerCase();
+  if (/blue jays|\b318\b/.test(asked) && /blue jays|\b318\b/.test(blob)) return true;
+  if (/\bshaw\b/.test(asked) && /\bshaw\b/.test(blob)) return true;
+  if (/roseglor|scarborough/.test(asked) && /roseglor|scarborough/.test(blob)) return true;
+  if ((/\bcharlotte\b/.test(asked) || /\b606\b/.test(asked)) && /charlotte/.test(blob) && /\b606\b/.test(blob)) return true;
+  return false;
+}
+
+function spokenProperty(property: { name: string; address: string }): string {
+  const blob = `${property.name} ${property.address}`;
+  if (/blue jays/i.test(blob)) return "20 Blue Jays Way";
+  if (/roseglor|scarborough/i.test(blob)) return "41 Roseglor Cres";
+  if (/charlotte/i.test(blob) && /\b606\b/.test(blob)) return "8 Charlotte 606";
+  if (/\bshaw\b/i.test(blob)) return "1065 Shaw Street";
+  return property.name;
 }
 
 function fieldName(field: SignField): string {

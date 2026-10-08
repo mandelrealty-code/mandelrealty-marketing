@@ -10,7 +10,7 @@ import { promptFor } from "./cursorThink.js";
 import { instructions } from "./hospitableAgent.js";
 import { answerOps } from "./ops.js";
 import { ID, worldAt } from "./parity/catalog.js";
-import { installOpsClients, installOpsReservations } from "./parity/opsState.js";
+import { failNextOpsPropertyRead, installOpsClients, installOpsReservations } from "./parity/opsState.js";
 import { installWorld } from "./parity/world.js";
 import { GENERAL_ANSWER_SYSTEM } from "./plainAnswer.js";
 import { takeMemoryTurn } from "./memoryFiles.js";
@@ -75,6 +75,38 @@ installOpsReservations([
     financials_json: { currency: "CAD", host: { revenue: { amount: 45000, formatted: "$450.00" } } },
     synced_at: "2026-08-06T00:00:00.000Z",
   },
+  {
+    id: "sep-blue",
+    property_id: ID.blue,
+    hospitable_reservation_id: "sep-blue",
+    platform: "airbnb",
+    platform_id: "sep-blue",
+    status: "accepted",
+    check_in: "2026-09-04",
+    check_out: "2026-09-08",
+    nights: 4,
+    currency: "CAD",
+    gross_cents: 110000,
+    host_payout_cents: 100000,
+    financials_json: { currency: "CAD", host: { revenue: { amount: 100000, formatted: "$1,000.00" } } },
+    synced_at: "2026-09-08T00:00:00.000Z",
+  },
+  {
+    id: "sep-shaw",
+    property_id: ID.shaw,
+    hospitable_reservation_id: "sep-shaw",
+    platform: "airbnb",
+    platform_id: "sep-shaw",
+    status: "accepted",
+    check_in: "2026-09-12",
+    check_out: "2026-09-16",
+    nights: 4,
+    currency: "CAD",
+    gross_cents: 280000,
+    host_payout_cents: 250000,
+    financials_json: { currency: "CAD", host: { revenue: { amount: 250000, formatted: "$2,500.00" } } },
+    synced_at: "2026-09-16T00:00:00.000Z",
+  },
 ]);
 
 const checkins = await answerStay("How many check-ins are today?");
@@ -108,6 +140,31 @@ const revenue = await answerOps("What was the host revenue in August?");
 if (!revenue) fail("revenue", "no answer");
 shape("revenue", revenue, /\$1,250\.00 CAD/, ["August", "host revenue", "Unit #606", "Chic 2BR with Yard and Parking"]);
 if (!firstSentence(revenue).startsWith("August host revenue was $1,250.00 CAD.")) fail("revenue", firstSentence(revenue));
+
+const septemberWhen = new Date("2026-10-07T15:00:00Z");
+const septemberTotal = await answerOps("What was the revenue in September?", septemberWhen);
+if (!septemberTotal) fail("september revenue", "no total");
+shape("september revenue", septemberTotal, /\$3,500\.00 CAD/, ["September", "host revenue"]);
+if (septemberTotal.includes("$1,000.00") || septemberTotal.includes("$2,500.00")) {
+  fail("september revenue", septemberTotal);
+}
+const blueOnly = await answerOps("And for Blue Jays Way only?", septemberWhen, septemberTotal);
+if (!blueOnly) fail("blue jays revenue", "no answer");
+shape("blue jays revenue", blueOnly, /\$1,000\.00 CAD/, ["September", "20 Blue Jays Way", "host revenue"]);
+if (blueOnly.includes("$3,500.00") || blueOnly.includes("$2,500.00") || /started reading|didn't finish/i.test(blueOnly)) {
+  fail("blue jays revenue", blueOnly);
+}
+if (blueOnly === septemberTotal) fail("blue jays revenue", "same figure as the total");
+failNextOpsPropertyRead(ID.blue);
+try {
+  const failedRead = await answerOps("And for Blue Jays Way only?", septemberWhen, septemberTotal);
+  if (!failedRead || !/The OPS revenue read for 20 Blue Jays Way failed\./.test(failedRead)) {
+    fail("blue jays revenue read", String(failedRead));
+  }
+  if (/started reading|didn't finish|\$\d/i.test(failedRead)) fail("blue jays revenue read", failedRead);
+} finally {
+  failNextOpsPropertyRead(null);
+}
 
 const clients = await answerOps("How many clients do we have?");
 if (clients !== "We currently have 3 clients.") fail("clients", String(clients));

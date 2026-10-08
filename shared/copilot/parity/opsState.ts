@@ -88,8 +88,19 @@ export function opsClientByName(name: string): PmClient | null {
   return clients.find((row) => row.name.toLowerCase() === needle || row.name.toLowerCase().startsWith(`${needle} `) || row.name.toLowerCase().includes(needle)) ?? null;
 }
 
+let failingPropertyId: string | null = null;
+
+/** The next OPS reservation read for this property throws once, then clears. */
+export function failNextOpsPropertyRead(propertyId: string | null): void {
+  failingPropertyId = propertyId;
+}
+
 export function opsReservationsForProperty(propertyId: string): PmReservationRow[] | null {
   if (!opsActive()) return null;
+  if (failingPropertyId && failingPropertyId === propertyId) {
+    failingPropertyId = null;
+    throw new Error("pm_reservations read failed");
+  }
   return reservations.filter((row) => row.property_id === propertyId).map((row) => ({ ...row }));
 }
 
