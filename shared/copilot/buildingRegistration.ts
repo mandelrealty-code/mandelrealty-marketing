@@ -1,0 +1,199 @@
+/**
+ * A new building-registration email follows the last one the partner sent.
+ * Recipients, subject format, and body structure come from that Sent message.
+ * The next guest's thread supplies the vehicle details. Missing details stay blanks.
+ * The draft waits in Checks until Submit.
+ */
+
+import { readMailThread, searchMail, type MailLetter } from "./mailSearch.js";
+import { parityNow } from "./parity/clock.js";
+import { leaveDraft, loadRecentStays, readStayThread, type RecentStay } from "./stayCheck.js";
+import { torontoToday } from "./time.js";
+
+const DATE = /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}, \d{4}/g;
+
+type Vehicle = { guest: string; make: string; model: string; plate: string; colour: string; count: string };
+
+export function asksBuildingRegistration(text: string): boolean {
+  const asked = text.trim();
+  if (!/\b(e-?mails?|sent)\b/i.test(asked)) return false;
+  if (!/\b(write|draft|another)\b/i.test(asked)) return false;
+  if (!/\b(guest|car|vehicle|registration|subject|body)\b/i.test(asked)) return false;
+  if (!/\b(blue jays|\b318\b|charlotte|\b606\b|shaw|roseglor|scarborough)\b/i.test(asked)) return false;
+  return true;
+}
+
+function searchTerms(question: string): string {
+  if (/blue jays|\b318\b/i.test(question)) return "Blue Jays Way";
+  if (/\bshaw\b/i.test(question)) return "Shaw Street";
+  if (/roseglor|scarborough/i.test(question)) return "Roseglor";
+  if (/charlotte|\b606\b/i.test(question)) return "Charlotte";
+  return question;
+}
+
+function samePlace(question: string, row: RecentStay): boolean {
+  const blob = `${row.propertyName} ${row.address} ${row.label}`.toLowerCase();
+  if (/blue jays|\b318\b/i.test(question) && /blue jays|\b318\b/.test(blob)) return true;
+  if (/\bshaw\b/i.test(question) && /\bshaw\b/.test(blob)) return true;
+  if (/roseglor|scarborough/i.test(question) && /roseglor|scarborough/.test(blob)) return true;
+  if ((/charlotte/i.test(question) || /\b606\b/.test(question)) && /charlotte/.test(blob) && /\b606\b/.test(blob)) return true;
+  return false;
+}
+
+function longDate(iso: string): string {
+  const [year, month, dayNum] = iso.slice(0, 10).split("-").map(Number);
+  if (!year || !month || !dayNum) return iso;
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, dayNum)));
+}
+
+function clean(value: string): string {
+  return value.replace(/[.,;]+$/g, "").replace(/\s+/g, " ").trim();
+}
+
+function vehicleFromThread(messages: { at: string; role: string; body: string }[], guest: string): Vehicle {
+  const guestLines = messages
+    .filter((row) => row.role === "guest")
+    .slice()
+    .sort((a, b) => a.at.localeCompare(b.at));
+  for (let index = guestLines.length - 1; index >= 0; index -= 1) {
+    const found = vehicleFrom(guestLines[index]?.body ?? "", guest);
+    if (found.make || found.model || found.plate || found.colour || found.count) return found;
+  }
+  return { guest, make: "", model: "", plate: "", colour: "", count: "" };
+}
+
+function vehicleFrom(text: string, guest: string): Vehicle {
+  const make = clean(/make\s*:\s*([^.\n]+)/i.exec(text)?.[1] ?? "");
+  const model = clean(/model\s*:\s*([^.\n]+)/i.exec(text)?.[1] ?? "");
+  const plate = clean(/(?:plate|licence|license)\s*:\s*([^.\n]+)/i.exec(text)?.[1] ?? "");
+  const colour = clean(/colou?r\s*:\s*([^.\n]+)/i.exec(text)?.[1] ?? "");
+  let count = "";
+  if (/\bone\s+(?:car|vehicle)\b|\b1\s+(?:car|vehicle)\b/i.test(text)) count = "1";
+  else if (/\btwo\s+(?:cars|vehicles)\b|\b2\s+(?:cars|vehicles)\b/i.test(text)) count = "2";
+  else {
+    const numbered = /\b(\d+)\s+(?:cars|vehicles)\b/i.exec(text);
+    if (numbered?.[1]) count = numbered[1];
+  }
+  return { guest, make, model, plate, colour, count };
+}
+
+function blankFor(label: string): string {
+  if (/vehicle count/i.test(label)) return "[count]";
+  if (/colou?r/i.test(label)) return "[colour]";
+  return `[${label.toLowerCase()}]`;
+}
+
+function valueFor(label: string, vehicle: Vehicle): string {
+  if (/^guest$/i.test(label)) return vehicle.guest;
+  if (/^make$/i.test(label)) return vehicle.make;
+  if (/^model$/i.test(label)) return vehicle.model;
+  if (/^plate$/i.test(label)) return vehicle.plate;
+  if (/^colou?r$/i.test(label)) return vehicle.colour;
+  if (/vehicle count/i.test(label)) return vehicle.count;
+  return "";
+}
+
+function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string, vehicle: Vehicle): { subject: string; body: string; warnings: string[] } {
+  const dates = letter.subject.match(DATE) ?? [];
+  const checkInDate = longDate(checkIn);
+  const checkOutDate = longDate(checkOut);
+  let subject = letter.subject;
+  let body = letter.body;
+  if (dates[0]) {
+    subject = subject.replaceAll(dates[0], checkInDate);
+    body = body.replaceAll(dates[0], checkInDate);
+  }
+  if (dates[1]) {
+    subject = subject.replaceAll(dates[1], checkOutDate);
+    body = body.replaceAll(dates[1], checkOutDate);
+  }
+  const oldGuest = /^Guest:\s*(.+)$/im.exec(letter.body)?.[1]?.trim() ?? "";
+  if (oldGuest && vehicle.guest && oldGuest !== vehicle.guest) body = body.replaceAll(oldGuest, vehicle.guest);
+  const warnings: string[] = [];
+  body = body.split("\n").map((line) => {
+    const match = /^(Guest|Make|Model|Plate|Colour|Color|Vehicle count):\s*(.*)$/i.exec(line.trim());
+    if (!match) return line;
+    const label = match[1] ?? "";
+    const next = valueFor(label, vehicle);
+    if (next) return line.replace(match[0], `${label}: ${next}`);
+    const blank = blankFor(label);
+    warnings.push(`${label} is still a blank: ${blank}.`);
+    return line.replace(match[0], `${label}: ${blank}`);
+  }).join("\n");
+  return { subject, body, warnings };
+}
+
+function alreadySent(stay: RecentStay["stay"], letters: MailLetter[]): boolean {
+  const arrival = longDate(stay.checkIn);
+  const departure = longDate(stay.checkOut);
+  return letters.some((letter) => {
+    const hay = `${letter.subject}\n${letter.body}`;
+    return hay.includes(arrival) || hay.includes(departure);
+  });
+}
+
+async function sentLetters(question: string): Promise<{ letters: MailLetter[]; note: string }> {
+  const found = await searchMail({ keywords: searchTerms(question), where: "sent", includeAirbnb: false });
+  if (!found.hits.length) {
+    const note = found.notes.find((line) => /isn't connected|didn't return/i.test(line));
+    return { letters: [], note: note ?? "I didn't find a sent building email for that property. I didn't draft one." };
+  }
+  const letters: MailLetter[] = [];
+  for (const hit of [...found.hits].sort((a, b) => b.date.localeCompare(a.date))) {
+    try {
+      const thread = await readMailThread({ mailbox: hit.mailbox, id: hit.threadId || hit.id });
+      const letter = thread.find((row) => row.id === hit.id) ?? thread.at(-1);
+      if (letter) letters.push(letter);
+    } catch {
+      // A message that will not open is skipped. A later one can still be the template.
+    }
+  }
+  if (!letters.length) return { letters: [], note: "I didn't find a sent building email for that property. I didn't draft one." };
+  return { letters, note: "" };
+}
+
+export async function answerBuildingRegistration(text: string): Promise<string | null> {
+  if (!asksBuildingRegistration(text)) return null;
+  const clock = parityNow() ?? new Date();
+  const today = torontoToday(clock);
+  const sent = await sentLetters(text);
+  if (!sent.letters.length) return sent.note;
+  const template = sent.letters[0];
+  if (!template) return sent.note;
+  let loaded: Awaited<ReturnType<typeof loadRecentStays>>;
+  try {
+    loaded = await loadRecentStays(clock);
+  } catch {
+    return "Hospitable didn't return the reservations. I didn't draft the email.";
+  }
+  const upcoming = loaded.stays
+    .filter((row) => samePlace(text, row) && row.stay.checkIn >= today && !/cancel/.test(row.stay.status))
+    .filter((row) => !alreadySent(row.stay, sent.letters))
+    .sort((a, b) => a.stay.checkIn.localeCompare(b.stay.checkIn) || a.stay.id.localeCompare(b.stay.id));
+  const next = upcoming[0];
+  if (!next) return "I didn't find an upcoming guest there whose registration hasn't been sent. I didn't draft one.";
+  let messages: Awaited<ReturnType<typeof readStayThread>> = [];
+  try {
+    messages = await readStayThread(next.stay.id, clock);
+  } catch {
+    return `I couldn't read ${next.stay.guest || "the guest"}'s messages. I didn't draft the email or fill in a vehicle.`;
+  }
+  const vehicle = vehicleFromThread(messages, next.stay.guest || "");
+  const filled = fillFromTemplate(template, next.stay.checkIn, next.stay.checkOut, vehicle);
+  await leaveDraft({
+    channel: "email",
+    to: template.to,
+    subject: filled.subject,
+    body: filled.body,
+    warnings: filled.warnings,
+    needs_you: true,
+  });
+  const who = next.stay.guest || "the next guest";
+  return `The building email for ${who} at ${next.label} is in Checks. Nothing is sent until you press Submit.`;
+}

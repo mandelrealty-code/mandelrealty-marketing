@@ -22,6 +22,7 @@ import { answerInboxToday } from "../copilot/mailInbox.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords } from "../copilot/recordsAnswer.js";
+import { answerBuildingRegistration } from "../copilot/buildingRegistration.js";
 import { answerStay } from "../copilot/stayAnswer.js";
 import { answerGuestThreads } from "../copilot/guestInboxAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
@@ -782,6 +783,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: guestThreads,
             steps: [{ text: "Read guest threads" }],
             thought: "Drafts are in Checks. Nothing is sent until Submit.",
+          });
+          return done();
+        }
+        const building = await answerBuildingRegistration(text);
+        if (building) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: building,
+            steps: [{ text: /didn't find|didn't draft|couldn't read|didn't return/i.test(building) ? "The building email was not drafted" : "Drafted the building email" }],
+            thought: "The draft is in Checks. Nothing was sent. Submit is what sends it.",
           });
           return done();
         }

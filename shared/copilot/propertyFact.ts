@@ -4,6 +4,7 @@
  */
 
 import { listPmProperties } from "../pm/propertyStore.js";
+import { asksBuildingRegistration } from "./buildingRegistration.js";
 import { hasHubSecret, HUB_SECRET_NOTE } from "./hubSecrets.js";
 import { readPropertyHub } from "./knowledgeHub.js";
 import { isManagedUnit } from "./managedUnits.js";
@@ -22,6 +23,7 @@ const PLACE = new Set(["shaw", "street", "charlotte", "roseglor", "scarborough",
 export function asksPropertyFact(text: string): boolean {
   const asked = text.trim();
   if (!asked) return false;
+  if (asksBuildingRegistration(asked)) return false;
   if (/\b(reservation|check-?ins?|check-?outs?|checking in|guest messages?|how many)\b/i.test(asked)) return false;
   const place = /charlotte|roseglor|scarborough|spacious 3br|blue jays|\bshaw\b|\b606\b|\b318\b/i.test(asked);
   const fact = /\b(where|what|which|how|are the|is the|are there|is there)\b/i.test(asked);

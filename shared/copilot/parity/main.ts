@@ -8,6 +8,7 @@ import { latestInboxOffer } from "../../adminApi/gmail.js";
 import { buildBrief } from "../brief.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
+import { answerBuildingRegistration } from "../buildingRegistration.js";
 import { answerStay } from "../stayAnswer.js";
 import { answerPropertyFact } from "../propertyFact.js";
 import { answerGuestThreads } from "../guestInboxAnswer.js";
@@ -31,7 +32,7 @@ import { parityEnabled } from "./flag.js";
 import { parityNow, setParityClock } from "./clock.js";
 import { chooseBriefOpenItem } from "../openItems.js";
 import type { BriefCard, BriefPayload } from "../types.js";
-import { parityItems, parityMemory, installWorld, type ParityReservation, type ParityWorld } from "./world.js";
+import { parityItems, parityMemory, installWorld, type ParityMail, type ParityReservation, type ParityWorld } from "./world.js";
 import { runCopilotPass } from "../pass.js";
 
 class Gap extends Error {
@@ -472,6 +473,96 @@ async function fixtureGuestInbox(): Promise<void> {
   expectDraftRules(capturedDrafts(), capturedReports());
 }
 
+const REGISTRATION_QUESTION = "read the emails I've been sending for 20 Blue Jays Way, they're all in Sent, I need to write another one for the next guest, she sent us her car info. Make sure the subject is the same, the body is the same, just filled in with the next guest's details";
+
+async function fixtureBuildingRegistration(): Promise<void> {
+  const recipients = "concierge@building.example, supervisor@building.example";
+  const recent: ParityMail = {
+    id: "reg-recent",
+    mailbox: "gmail",
+    folder: "sent",
+    from: "Shane",
+    email: "shane@mandelrealtygroup.com",
+    to: recipients,
+    date: "2026-10-06T15:00:00-04:00",
+    subject: "AirBNB Rental for Unit 318 from Thursday, October 8, 2026 - Saturday, October 10, 2026",
+    snippet: "20 Blue Jays Way Unit 318",
+    body: [
+      "Hello,",
+      "",
+      "Please register this vehicle with the building.",
+      "Guest: Priya Shah",
+      "Check-in is Thursday, October 8, 2026 and check-out is Saturday, October 10, 2026.",
+      "This stay is at 20 Blue Jays Way.",
+      "Vehicle count: 2",
+      "Make: Honda",
+      "Model: Civic",
+      "Plate: ABCD123",
+      "Colour: Grey",
+      "",
+      "Shane, Co-Host 647-822-0448",
+    ].join("\n"),
+    airbnb: false,
+  };
+  const older: ParityMail = {
+    id: "reg-older",
+    mailbox: "gmail",
+    folder: "sent",
+    from: "Shane",
+    email: "shane@mandelrealtygroup.com",
+    to: "archive@building.example",
+    date: "2026-09-01T12:00:00-04:00",
+    subject: "Registration notice for Unit 318 from Wednesday, September 2, 2026 - Saturday, September 5, 2026",
+    snippet: "older registration 20 Blue Jays Way",
+    body: "OLD TEMPLATE for 20 Blue Jays Way. Guest: Omar.",
+    airbnb: false,
+  };
+  const world = worldAt("2026-10-07T11:00:00-04:00", false, [older, recent]);
+  const diane = world.reservations.find((row) => row.code === CODE.diane);
+  expect(Boolean(diane), "Diane's stay is in the fixture", "Diane was missing");
+  diane?.messages.push({
+    id: "diane-car",
+    at: "2026-10-07T09:00:00-04:00",
+    role: "guest",
+    name: "Diane",
+    body: "Make: Toyota. Model: Corolla. Plate: BKRP441. One car.",
+  });
+  world.reservations.push({
+    id: "00000000-0000-4000-8000-000000000d02",
+    code: "HMEARLIER1",
+    propertyId: ID.blue,
+    status: "accepted",
+    checkIn: "2026-10-08",
+    checkOut: "2026-10-10",
+    guest: "Priya Shah",
+    adults: 1,
+    children: 0,
+    messages: [],
+  });
+  installWorld(world);
+  const fact = await answerPropertyFact(REGISTRATION_QUESTION);
+  expect(fact === null, "the question is not answered from the Knowledge Hub", fact ?? "");
+  const stay = await answerStay(REGISTRATION_QUESTION);
+  expect(stay === null, "the question is not answered as a next-guest lookup", stay ?? "");
+  const answer = (await answerBuildingRegistration(REGISTRATION_QUESTION)) ?? "";
+  expect(/Diane/.test(answer) && /20 Blue Jays Way/.test(answer) && /Checks/.test(answer) && /Submit/.test(answer), "the answer points at the waiting draft", answer || "no answer");
+  expect(!/Knowledge Hub|No smoking|teas|coffees/.test(answer), "the answer is not a Knowledge Hub dump", answer);
+  const draft = capturedDrafts().find((row) => row.channel === "email");
+  expect(Boolean(draft), "a building email was drafted", "no email draft");
+  expect(draft?.to === recipients, "recipients come from the most recent sent email", draft?.to ?? "");
+  expect(draft?.subject === "AirBNB Rental for Unit 318 from Friday, October 9, 2026 - Monday, October 12, 2026", "the subject keeps the sent format with the next guest's dates", draft?.subject ?? "");
+  const body = draft?.body ?? "";
+  expect(/Please register this vehicle with the building\./.test(body), "the body keeps the sent email's structure", body);
+  expect(/Guest: Diane/.test(body), "the guest name is filled from the next stay", body);
+  expect(/Friday, October 9, 2026/.test(body) && /Monday, October 12, 2026/.test(body), "the stay dates are filled in", body);
+  expect(/Vehicle count: 1/.test(body) && /Make: Toyota/.test(body) && /Model: Corolla/.test(body) && /Plate: BKRP441/.test(body), "the car details come from the guest thread", body);
+  expect(/Colour: \[colour\]/.test(body), "a detail the guest did not give stays a blank", body);
+  expect(/Shane, Co-Host 647-822-0448/.test(body), "the sign-off stays the one in the sent email", body);
+  expect(!/Priya|Honda|Civic|ABCD123|Grey|archive@building|Omar|Registration notice/.test(body), "the previous guest and the older email are not reused", body);
+  expect(draft?.needs_you === true, "the draft waits for Submit", String(draft?.needs_you));
+  expectNothingSent();
+}
+
 async function fixtureTodayCheckins(): Promise<void> {
   installWorld(worldAt("2026-10-07T11:00:00-04:00"));
   const answer = (await answerStay("How many check-ins are today?")) ?? "";
@@ -501,6 +592,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "16", title: "Unreadable thread names the stay", run: fixtureThreadUnread },
   { id: "17", title: "Scarborough garbage bags from the Hub", run: fixtureHubGarbageBags },
   { id: "18", title: "Unread guest threads draft in Checks", run: fixtureGuestInbox },
+  { id: "19", title: "Building registration follows the last sent email", run: fixtureBuildingRegistration },
 ];
 
 function guard(): void {

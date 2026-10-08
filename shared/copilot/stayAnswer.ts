@@ -5,6 +5,7 @@
  */
 
 import { getHospitablePat } from "../pm/clientStore.js";
+import { asksBuildingRegistration } from "./buildingRegistration.js";
 import { hospitableFetch, listAllHospitableProperties } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
@@ -22,7 +23,7 @@ const STOP = new Set(["what", "was", "the", "last", "guest", "message", "message
 
 export async function answerStay(question: string, prior = ""): Promise<string | null> {
   const asked = question.trim();
-  if (!asked) return null;
+  if (!asked || asksBuildingRegistration(asked)) return null;
   const code = asked.match(CODE)?.[1]?.toUpperCase() ?? "";
   if (/\bmessage\b/i.test(asked)) {
     try {
