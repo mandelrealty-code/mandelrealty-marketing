@@ -33,7 +33,7 @@ import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, e
 import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
-import { disconnectHospitable, hospitableCard, saveHospitableToken } from "../copilot/hospitableConnection.js";
+import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableToken } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { answerMailChain } from "../copilot/mailChain.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
@@ -235,11 +235,13 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
       name: "Hospitable",
       detail: "Lets Copilot read your stays in Hospitable. It never changes anything there.",
       status: hospitable?.connected ? "connected" : "not_connected",
-      statusLabel: hospitable?.connected ? "Connected" : "Not connected",
+      statusLabel: hospitable?.connected
+        ? `Connected${(hospitable.properties?.length ?? 0) ? ` · ${hospitable.properties.length} ${hospitable.properties.length === 1 ? "property" : "properties"}` : ""}`
+        : "Not connected",
       setup: hospitable?.connected ? "pat" : "none",
       note: hospitable?.connected
         ? readsGuests
-          ? "Reservations, guest messages, and the Knowledge Hub. A reply waits until you press Keep."
+          ? "Reservations, guest messages, and the Knowledge Hub. A reply waits until you press Submit in Guest messaging."
           : "Reservations, guest messages, and the Knowledge Hub. Nothing in Hospitable changes from here."
         : "Hospitable is not connected.",
     },
@@ -274,6 +276,22 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
       detail: "Host groups only.",
       status: "not_connected",
       statusLabel: "Not connected",
+    },
+    {
+      id: "browser",
+      name: "Browser",
+      detail: "Looks things up on the web when you ask.",
+      status: process.env.BROWSERBASE_API_KEY?.trim() ? "connected" : "not_connected",
+      statusLabel: process.env.BROWSERBASE_API_KEY?.trim() ? "On" : "Not connected",
+      note: process.env.BROWSERBASE_API_KEY?.trim() ? "A lookup stays in chat until you watch, pause, or end it." : "Browser is not connected.",
+    },
+    {
+      id: "ops",
+      name: "OPS",
+      detail: "Property records and the operations tools in this app.",
+      status: "connected",
+      statusLabel: "On",
+      note: "Copilot reads OPS here. It does not use the Hospitable token stored for Copilot.",
     },
     {
       id: "cursor",
@@ -415,6 +433,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (op === "hospitable-connection") {
+      if (body.action === "open") {
+        const card = await hospitablePage();
+        return res.status(200).json({ hospitable: card, connectors: await connectors() });
+      }
       if (body.action === "disconnect") {
         const card = await disconnectHospitable();
         return res.status(200).json({ hospitable: card, connectors: await connectors() });

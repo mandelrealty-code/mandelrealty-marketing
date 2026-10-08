@@ -161,7 +161,22 @@ export type ConnectorRow = {
   setup?: "mcp" | "pat" | "none";
 };
 
-/** What the Settings card may show. The access token itself is never included. */
+/** One property the saved token could list. The photo is a URL or empty. */
+export type HospitableSeenProperty = {
+  id: string;
+  name: string;
+  photo: string;
+};
+
+/** One capability checked during Connect. The token is never included. */
+export type HospitableReadLine = {
+  name: string;
+  detail: string;
+  state: "Working" | "Not working";
+  checked: string;
+};
+
+/** What the Hospitable page may show. The access token itself is never included. */
 export type HospitableCard = {
   connected: boolean;
   statusLabel: "Connected" | "Not connected";
@@ -170,6 +185,8 @@ export type HospitableCard = {
   cant: string;
   last4: string;
   savedLine: string;
+  properties: HospitableSeenProperty[];
+  reads: HospitableReadLine[];
 };
 
 export type InboxGuest = {

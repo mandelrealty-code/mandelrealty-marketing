@@ -13,14 +13,16 @@ import {
 } from "../pm/hospitableClient.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityPat } from "./parity/world.js";
-import type { HospitableCard } from "./types.js";
+import type { HospitableCard, HospitableSeenProperty } from "./types.js";
 
 export const HOSPITABLE_NOT_CONNECTED = "Hospitable is not connected.";
 const REJECTED = "Hospitable didn't accept this token.";
 const STILL_IN_USE = "Hospitable didn't accept this token. The current one is still in use.";
 const EMPTY_LINE = "Not connected. Add a token to let Copilot read your stays.";
-const CANT = "Send messages, change prices or edit listings. Replies go out only when you press Keep in Checks.";
+const CANT = "It can't send messages, change prices or edit listings. Guest replies go out only when you press Submit in Guest messaging.";
 const FILE = path.join(process.cwd(), "data", "copilot-hospitable.json");
+
+type StoredRead = { name: string; detail: string; ok: boolean; checkedAt: string };
 
 type Row = {
   cipher: string;
@@ -28,6 +30,8 @@ type Row = {
   savedAt: string;
   checkedAt: string;
   propertyCount: number;
+  properties: HospitableSeenProperty[];
+  reads: StoredRead[];
 };
 
 type Probe = (token: string, name: string, args: Record<string, unknown>) => Promise<unknown>;
@@ -64,13 +68,15 @@ export async function saveHospitableToken(raw: string, now = new Date()): Promis
     return { card: current ? cardFrom(current, now) : emptyCard(), error: REJECTED };
   }
   try {
-    const count = await prove(token);
+    const found = await prove(token, now);
     const row: Row = {
       cipher: seal(token),
       last4: maskEnd(token),
       savedAt: now.toISOString(),
       checkedAt: now.toISOString(),
-      propertyCount: count,
+      propertyCount: found.count,
+      properties: found.properties,
+      reads: found.reads,
     };
     if (row.cipher.includes(token) || row.last4 === token) {
       throw new Error(REJECTED);
@@ -119,6 +125,7 @@ export async function hospitableRead(name: string, args: Record<string, unknown>
   } catch (err) {
     if (err instanceof Error && err.message === HOSPITABLE_NOT_CONNECTED) throw err;
     const message = scrub(err instanceof Error ? err.message : "", token);
+    if (/reject|unauth|401|403|invalid token/i.test(message)) throw new Error(HOSPITABLE_NOT_CONNECTED);
     throw new Error(message || "Hospitable didn't return that.");
   }
 }
@@ -141,6 +148,8 @@ function emptyCard(): HospitableCard {
     cant: CANT,
     last4: "",
     savedLine: "",
+    properties: [],
+    reads: [],
   };
 }
 
@@ -159,6 +168,13 @@ function cardFrom(row: Row, now: Date): HospitableCard {
     cant: CANT,
     last4: row.last4,
     savedLine: savedLine(row.savedAt),
+    properties: row.properties ?? [],
+    reads: (row.reads ?? []).map((line) => ({
+      name: line.name,
+      detail: line.detail,
+      state: line.ok ? "Working" : "Not working",
+      checked: clock(line.checkedAt),
+    })),
   };
 }
 
@@ -177,13 +193,91 @@ function savedLine(iso: string): string {
   return `Saved ${date}. For your security it can't be shown again.`;
 }
 
-async function prove(token: string): Promise<number> {
-  if (probe) {
-    const raw = await probe(token, "get-properties", {});
-    return countOf(raw);
+function clock(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }).format(new Date(iso));
+}
+
+export async function hospitablePage(now = new Date()): Promise<HospitableCard> {
+  const token = await copilotHospitableToken();
+  if (!token) return emptyCard();
+  const current = await storedRow();
+  if (!current) return emptyCard();
+  try {
+    const found = await prove(token, now);
+    const row: Row = {
+      ...current,
+      checkedAt: now.toISOString(),
+      propertyCount: found.count,
+      properties: found.properties,
+      reads: found.reads,
+    };
+    await persist(row);
+    return cardFrom(row, now);
+  } catch (err) {
+    const message = scrub(err instanceof Error ? err.message : "", token);
+    if (/not connected|didn't accept|reject|unauth|401|403/i.test(message)) {
+      await persist(null);
+      return { ...emptyCard(), statusLine: "Hospitable is not connected." };
+    }
+    return cardFrom(current, now);
   }
-  const rows = await listAllHospitableProperties(token);
-  return rows.length;
+}
+
+async function prove(token: string, now: Date): Promise<{ count: number; properties: HospitableSeenProperty[]; reads: StoredRead[] }> {
+  const listed = probe
+    ? await probe(token, "get-properties", {})
+    : await listAllHospitableProperties(token).then((rows) => ({ data: rows }));
+  const properties = propertiesOf(listed);
+  const when = now.toISOString();
+  const scope = properties.length === 1 ? "1 property" : `all ${properties.length} properties`;
+  const checks: { name: string; detail: string; call: () => Promise<unknown> }[] = probe
+    ? [
+        { name: "Reservations", detail: `Past, current and upcoming stays at ${scope}`, call: () => probe!(token, "get-reservations", {}) },
+        { name: "Guest messages", detail: "Every guest conversation, to find who is waiting", call: () => probe!(token, "get-reservation-messages", { uuid: "connection-check" }) },
+        { name: "Knowledge Hub", detail: `House facts for ${scope}, used to write drafts`, call: () => probe!(token, "get-property-knowledge-hub", { property_id: properties[0]?.id || "connection-check" }) },
+      ]
+    : [
+        { name: "Reservations", detail: `Past, current and upcoming stays at ${scope}`, call: () => readLive(token, "get-reservations", {}) },
+        { name: "Guest messages", detail: "Every guest conversation, to find who is waiting", call: () => readLive(token, "get-reservations", { include: "guest" }) },
+        { name: "Knowledge Hub", detail: `House facts for ${scope}, used to write drafts`, call: () => readLive(token, "get-property-knowledge-hub", { property_id: properties[0]?.id || "" }) },
+      ];
+  const reads: StoredRead[] = [];
+  for (const check of checks) {
+    try {
+      await check.call();
+      reads.push({ name: check.name, detail: check.detail, ok: true, checkedAt: when });
+    } catch (err) {
+      const message = scrub(err instanceof Error ? err.message : "", token);
+      reads.push({ name: check.name, detail: message || "Not working", ok: false, checkedAt: when });
+    }
+  }
+  return { count: properties.length, properties, reads };
+}
+
+function propertiesOf(raw: unknown): HospitableSeenProperty[] {
+  const data = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data)
+      ? (raw as { data: unknown[] }).data
+      : [];
+  const out: HospitableSeenProperty[] = [];
+  for (const item of data) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const name = String(row.name ?? row.public_name ?? "").trim();
+    const id = String(row.id ?? row.uuid ?? name);
+    if (!name && !id) continue;
+    out.push({ id, name: name || id, photo: photoOf(row) });
+  }
+  return out;
+}
+
+function photoOf(row: Record<string, unknown>): string {
+  const picture = row.picture && typeof row.picture === "object" ? row.picture as Record<string, unknown> : {};
+  for (const value of [row.picture, row.picture_url, row.thumbnail, row.photo, picture.url, picture.original]) {
+    if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
+  }
+  return "";
 }
 
 async function readLive(token: string, name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -215,13 +309,6 @@ async function readLive(token: string, name: string, args: Record<string, unknow
   }
   if (parityEnabled()) return { data: [] };
   throw new Error("Hospitable didn't return that.");
-}
-
-function countOf(raw: unknown): number {
-  if (Array.isArray(raw)) return raw.length;
-  if (!raw || typeof raw !== "object") return 0;
-  const data = (raw as { data?: unknown }).data;
-  return Array.isArray(data) ? data.length : 0;
 }
 
 async function storedRow(): Promise<Row | null> {
@@ -314,6 +401,8 @@ async function readStore(): Promise<Row | null> {
       savedAt: String(row.saved_at ?? ""),
       checkedAt: String(row.checked_at ?? row.saved_at ?? ""),
       propertyCount: Number(row.property_count ?? 0),
+      properties: [],
+      reads: [],
     };
   }
   return readFile();
@@ -329,6 +418,8 @@ function readFile(): Row | null {
       savedAt: String(raw.savedAt ?? ""),
       checkedAt: String(raw.checkedAt ?? raw.savedAt ?? ""),
       propertyCount: Number(raw.propertyCount ?? 0),
+      properties: Array.isArray(raw.properties) ? raw.properties : [],
+      reads: Array.isArray(raw.reads) ? raw.reads : [],
     };
   } catch {
     return null;

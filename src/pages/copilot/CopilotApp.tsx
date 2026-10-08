@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, HospitableCard, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
 import type { ReviewQueuePayload, ReviewQueueRow } from "../../../shared/copilot/reviewTypes";
-import { HospitableConnectionCard } from "./HospitableConnection";
+import { ConnectorStatusPage, ConnectorsList, HospitablePage } from "./HospitableConnection";
 import { ReviewsQueue } from "./ReviewsQueue";
 import "./copilot.css";
 import { MemoryFileDetail, MemoryFileList, MemoryWrote } from "./memoryUi";
@@ -774,9 +774,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [error, setError] = useState<string | null>(null);
   const [elseFor, setElseFor] = useState<string | null>(null);
   const [elseDraft, setElseDraft] = useState("");
-  const [connectHint, setConnectHint] = useState<Record<string, boolean>>({});
   const [hospitableBusy, setHospitableBusy] = useState(false);
   const [hospitableError, setHospitableError] = useState("");
+  const [connectorId, setConnectorId] = useState("");
   const [reviewQueue, setReviewQueue] = useState<ReviewQueuePayload | null>(null);
   const [screen, setScreen] = useState<Screen>("brief");
   const [boardSeed, setBoardSeed] = useState<Workflow>(BLANK);
@@ -1996,79 +1996,55 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         }}
                       />
                     ) : null}
-                    {screen === "connectors" ? (
-                      <>
-                        <div className="cp-sethead">
-                          <h1>Connectors</h1>
-                          <p>Accounts this chat can use.</p>
-                        </div>
-                        <HospitableConnectionCard
-                          card={boot?.hospitable}
-                          busy={hospitableBusy}
-                          error={hospitableError}
-                          onSave={(token) => {
+                    {screen === "connectors" && !connectorId ? (
+                      <ConnectorsList
+                        rows={boot?.connectors ?? []}
+                        onOpen={(id) => {
+                          setConnectorId(id);
+                          setHospitableError("");
+                          if (id === "hospitable") {
                             setHospitableBusy(true);
-                            setHospitableError("");
-                            void api<{ hospitable: HospitableCard; connectors: ConnectorRow[] }>("hospitable-connection", { action: "save", token })
-                              .then((data) => {
-                                setBoot((prev) => (prev ? { ...prev, hospitable: data.hospitable, connectors: data.connectors } : prev));
-                              })
-                              .catch((err) => setHospitableError(err instanceof Error ? err.message : "Hospitable didn't accept this token."))
-                              .finally(() => setHospitableBusy(false));
-                          }}
-                          onDisconnect={() => {
-                            setHospitableBusy(true);
-                            setHospitableError("");
-                            void api<{ hospitable: HospitableCard; connectors: ConnectorRow[] }>("hospitable-connection", { action: "disconnect" })
-                              .then((data) => {
-                                setBoot((prev) => (prev ? { ...prev, hospitable: data.hospitable, connectors: data.connectors } : prev));
-                              })
+                            void api<{ hospitable: HospitableCard; connectors: ConnectorRow[] }>("hospitable-connection", { action: "open" })
+                              .then((data) => setBoot((prev) => (prev ? { ...prev, hospitable: data.hospitable, connectors: data.connectors } : prev)))
                               .catch((err) => setHospitableError(err instanceof Error ? err.message : "Hospitable is not connected."))
                               .finally(() => setHospitableBusy(false));
-                          }}
-                        />
-                        {(boot?.connectors ?? []).filter((row) => row.id !== "hospitable").map((row) => {
-                          const openTwilio = row.id === "twilio" && row.status === "connected";
-                          return (
-                          <div key={row.id} className={`cp-crow${openTwilio ? " link" : ""}`} onClick={openTwilio ? () => setScreen("twilio") : undefined}>
-                            <div className="cp-crow-copy">
-                              <strong>{row.name}</strong>
-                              {row.detail ? <div className="desc">{row.detail}</div> : null}
-                              <div className={row.status === "connected" ? "ok" : "off"}>{row.statusLabel}</div>
-                              {row.note ? <div className="note">{row.note}</div> : null}
-                              {connectHint[row.id] ? (
-                                <div className="note">
-                                  {row.id === "gmail"
-                                    ? "Gmail sign-in isn't set up yet. Nothing was connected."
-                                    : "WhatsApp linking isn't set up yet. Nothing was connected."}
-                                </div>
-                              ) : null}
-                            </div>
-                            {(row.id === "gmail" || row.id === "outlook" || row.id === "whatsapp") && row.status !== "connected" ? (
-                              <button
-                                type="button"
-                                className="cp-gold"
-                                style={{ height: 36, padding: "0 18px" }}
-                                onClick={() => {
-                                  if (row.id === "gmail") {
-                                    window.location.href = "/api/admin/gmail/start";
-                                    return;
-                                  }
-                                  if (row.id === "outlook") {
-                                    window.location.href = "/api/admin/outlook/start";
-                                    return;
-                                  }
-                                  setConnectHint((prev) => ({ ...prev, [row.id]: true }));
-                                }}
-                              >
-                                Connect
-                              </button>
-                            ) : null}
-                            {openTwilio ? <Chevron /> : null}
-                          </div>
-                          );
-                        })}
-                      </>
+                          }
+                        }}
+                      />
+                    ) : null}
+                    {screen === "connectors" && connectorId === "hospitable" ? (
+                      <HospitablePage
+                        card={boot?.hospitable}
+                        busy={hospitableBusy}
+                        error={hospitableError}
+                        onBack={() => { setConnectorId(""); setHospitableError(""); }}
+                        onSave={(token) => {
+                          setHospitableBusy(true);
+                          setHospitableError("");
+                          void api<{ hospitable: HospitableCard; connectors: ConnectorRow[] }>("hospitable-connection", { action: "save", token })
+                            .then((data) => {
+                              setBoot((prev) => (prev ? { ...prev, hospitable: data.hospitable, connectors: data.connectors } : prev));
+                            })
+                            .catch((err) => setHospitableError(err instanceof Error ? err.message : "Hospitable didn't accept this token. Nothing changed."))
+                            .finally(() => setHospitableBusy(false));
+                        }}
+                        onDisconnect={() => {
+                          setHospitableBusy(true);
+                          setHospitableError("");
+                          void api<{ hospitable: HospitableCard; connectors: ConnectorRow[] }>("hospitable-connection", { action: "disconnect" })
+                            .then((data) => {
+                              setBoot((prev) => (prev ? { ...prev, hospitable: data.hospitable, connectors: data.connectors } : prev));
+                            })
+                            .catch((err) => setHospitableError(err instanceof Error ? err.message : "Hospitable is not connected."))
+                            .finally(() => setHospitableBusy(false));
+                        }}
+                      />
+                    ) : null}
+                    {screen === "connectors" && connectorId && connectorId !== "hospitable" ? (
+                      <ConnectorStatusPage
+                        row={(boot?.connectors ?? []).find((row) => row.id === connectorId) ?? { id: connectorId, name: connectorId, detail: "", status: "not_connected", statusLabel: "Not connected" }}
+                        onBack={() => setConnectorId("")}
+                      />
                     ) : null}
                     {screen === "twilio" ? (
                       <>
