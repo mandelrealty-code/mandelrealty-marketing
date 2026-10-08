@@ -1,4 +1,4 @@
-import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
+import { HOSPITABLE_NOT_CONNECTED, hospitableRead } from "./hospitableConnection.js";
 import { isManagedUnit } from "./managedUnits.js";
 import { torontoToday } from "./time.js";
 import { torontoWeekday } from "./skillSchedule.js";
@@ -64,15 +64,16 @@ function unitOf(property: Record<string, unknown>): string {
 
 /** Check-ins for the Toronto week that contains `now`. Managed units only. No invented phones. */
 export async function guestCheckins(now = new Date()): Promise<{ lines: CheckinLine[]; error?: string }> {
-  if (!(await hospitableMcpConfigured())) {
-    return { lines: [], error: "Hospitable MCP is not connected, so the check-in list was not read." };
-  }
   const { start, end } = weekRange(now);
   let properties: Record<string, unknown>[] = [];
   try {
-    properties = rowsOf(await callHospitableMcp("get-properties", {}));
+    properties = rowsOf(await hospitableRead("get-properties", {}));
   } catch (err) {
-    return { lines: [], error: err instanceof Error ? err.message : "Hospitable didn't return the properties." };
+    const message = err instanceof Error ? err.message : "Hospitable didn't return the properties.";
+    if (message === HOSPITABLE_NOT_CONNECTED) {
+      return { lines: [], error: "Hospitable is not connected, so the check-in list was not read." };
+    }
+    return { lines: [], error: message };
   }
   const lines: CheckinLine[] = [];
   for (const property of properties) {
@@ -83,7 +84,7 @@ export async function guestCheckins(now = new Date()): Promise<{ lines: CheckinL
     if (!id) continue;
     let stays: Record<string, unknown>[] = [];
     try {
-      stays = rowsOf(await callHospitableMcp("get-reservations", { properties: [id] }));
+      stays = rowsOf(await hospitableRead("get-reservations", { properties: [id] }));
     } catch (err) {
       return { lines: [], error: err instanceof Error ? err.message : "Hospitable didn't return the reservations." };
     }

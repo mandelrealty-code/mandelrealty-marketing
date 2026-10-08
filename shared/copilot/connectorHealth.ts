@@ -6,9 +6,8 @@
 
 import { Agent } from "@cursor/sdk";
 import { listHospitableReservations, listAllHospitableProperties } from "../pm/hospitableClient.js";
-import { getHospitablePat } from "../pm/clientStore.js";
 import { listPmProperties } from "../pm/propertyStore.js";
-import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
+import { copilotHospitableToken, hospitableRead } from "./hospitableConnection.js";
 import { searchMail } from "./mailSearch.js";
 import { listSkills } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
@@ -70,15 +69,13 @@ async function mailRow(connector: string, mailbox: "gmail" | "outlook"): Promise
 }
 
 async function mcpRow(): Promise<ConnectorRow> {
-  const read = "Hospitable MCP get-properties";
+  const read = "Hospitable properties";
   try {
-    if (!(await hospitableMcpConfigured())) {
-      return row("Hospitable MCP", "failed", read, null, "Hospitable MCP is not connected, so that read is not available. Nothing was changed.");
-    }
-    const raw = await callHospitableMcp("get-properties", { per_page: 100 });
-    return row("Hospitable MCP", "ok", read, countOf(raw));
+    const raw = await hospitableRead("get-properties", { per_page: 100 });
+    return row("Hospitable", "ok", read, countOf(raw));
   } catch (err) {
-    return row("Hospitable MCP", "failed", read, null, messageOf(err));
+    const message = messageOf(err);
+    return row("Hospitable", "failed", read, null, /not connected/i.test(message) ? "Hospitable is not connected, so that read is not available. Nothing was changed." : message);
   }
 }
 
@@ -88,7 +85,7 @@ async function publicApiRow(): Promise<ConnectorRow> {
   const end = addDays(today, 365);
   const read = `Public API reservations with checkout from ${start} to ${end}`;
   try {
-    const pat = await getHospitablePat();
+    const pat = await copilotHospitableToken();
     if (!pat) return row("Hospitable Public API", "failed", read, null, "Hospitable is not connected, so nothing was read.");
     const linked = (await listPmProperties()).map((property) => property.hospitable_property_id).filter(Boolean);
     const propertyIds = linked.length ? linked : (await listAllHospitableProperties(pat)).map((property) => property.id);

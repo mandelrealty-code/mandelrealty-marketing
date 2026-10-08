@@ -1,4 +1,4 @@
-import { getHospitablePat } from "../pm/clientStore.js";
+import { copilotHospitableToken } from "./hospitableConnection.js";
 import {
   hospitableFetch,
   listAllHospitableProperties,
@@ -7,7 +7,7 @@ import {
   listReservationMessages,
   respondToHospitableReview,
 } from "../pm/hospitableClient.js";
-import { callHospitableMcp, hospitableMcpConfigured, listHospitableAgentTools } from "./hospitableMcp.js";
+import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
 import { propertyLines } from "./stayAnswer.js";
 import { readMail, searchMail } from "./mailSearch.js";
 import { withoutHubSecrets } from "./hubSecrets.js";
@@ -17,71 +17,6 @@ import type { WorkModelId } from "./models.js";
 import { addDays, torontoToday } from "./time.js";
 import { normalizeSchedule } from "./skillSchedule.js";
 import type { CopilotDraft } from "./types.js";
-
-/**
- * One Hospitable tool list for every model.
- * MCP is the account. The Public API key is only the fallback for reads MCP is not connected for.
- */
-
-const MCP_TOOLS = [
-  "get-properties",
-  "get-property",
-  "search-properties",
-  "get-property-images",
-  "get-property-calendar",
-  "update-property-calendar",
-  "get-channels",
-  "get-reservations",
-  "get-reservation",
-  "get-reservation-messages",
-  "get-reservation-scheduled-messages",
-  "send-reservation-message",
-  "send-inquiry-message",
-  "get-inquiries",
-  "get-inquiry",
-  "create-quote",
-  "list-reservation-enrichment-data",
-  "get-reservation-enrichment-data",
-  "update-reservation-enrichment-data",
-  "get-messaging-rules",
-  "get-messaging-rule",
-  "update-scheduled-message",
-  "cancel-scheduled-message",
-  "restore-scheduled-message",
-  "get-property-reviews",
-  "get-guest-reviews",
-  "respond-to-review",
-  "submit-guest-review",
-  "get-tasks",
-  "get-task",
-  "create-task",
-  "update-task",
-  "delete-task",
-  "get-teammates",
-  "get-teammate",
-  "get-owner-statements",
-  "get-owner-statement",
-  "publish-owner-statement",
-  "unpublish-owner-statement",
-  "mark-owner-statement-as-paid",
-  "mark-owner-statement-as-unpaid",
-  "get-owner-statement-transactions",
-  "get-owner-statement-transaction",
-  "create-owner-statement-transaction",
-  "update-owner-statement-transaction",
-  "delete-owner-statement-transaction",
-  "get-owners",
-  "get-owner",
-  "get-businesses",
-  "get-business",
-  "get-payouts",
-  "get-payout",
-  "get-transactions",
-  "get-transaction",
-  "get-alerts",
-  "get-user",
-  "get-changelog",
-] as const;
 
 const LIVE = /^(send-|publish-|unpublish-|mark-|create-|update-|delete-|respond-|submit-|cancel-|restore-)/;
 
@@ -110,11 +45,11 @@ export function isHospitableWrite(name: string): boolean {
 /** Runs one Hospitable change. Chat and skills never call this until Submit. */
 export async function commitHospitable(name: string, args: Record<string, unknown>): Promise<unknown> {
   if (!isHospitableWrite(name)) throw new Error("That is not a Hospitable change. Nothing was changed.");
+  const connected = await copilotHospitableToken();
+  if (!connected) throw new Error("Hospitable is not connected. Nothing was changed.");
   if (await hospitableMcpConfigured()) return callHospitableMcp(name, args);
   if (name === "respond-to-review") {
-    const pat = await getHospitablePat().catch(() => "");
-    if (!pat) throw new Error("Hospitable isn't connected. Nothing was changed.");
-    return respondToHospitableReview(pat, text(args.review_id), text(args.response));
+    return respondToHospitableReview(connected, text(args.review_id), text(args.response));
   }
   throw new Error("That change needs the MCP token. Nothing was changed.");
 }
@@ -179,8 +114,9 @@ export async function answerHospitable(input: {
     let mcp = false;
     let hospitable: ToolDef[] = [];
     try {
-      mcp = await hospitableMcpConfigured();
-      hospitable = mcp ? await mcpTools() : await patTools();
+      const token = await copilotHospitableToken();
+      mcp = false;
+      hospitable = token ? await patTools() : [];
     } catch {
       hospitable = [];
       mcp = false;
@@ -303,18 +239,8 @@ function mailTools(): ToolDef[] {
   ];
 }
 
-async function mcpTools(): Promise<ToolDef[]> {
-  const listed = await listHospitableAgentTools(MCP_TOOLS);
-  return listed.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-    run: (args) => callHospitableMcp(tool.name, args),
-  }));
-}
-
 async function patTools(): Promise<ToolDef[]> {
-  const pat = await getHospitablePat().catch(() => "");
+  const pat = await copilotHospitableToken();
   if (!pat) return [];
   return [
     {
@@ -463,7 +389,7 @@ export function instructions(mcp: boolean, hasHospitable: boolean, facts: string
     hasHospitable
       ? mcp
         ? "Hospitable tools are the live account: messages, reservations, inquiries, calendars, tasks, reviews, payouts, and owner statements. A write tool does not commit. It only drafts. Ask them to press Submit."
-        : "Only the Hospitable Public API key is connected. You can read properties, reservations, messages, the calendar, and reviews. Sending a guest message, changing the calendar, tasks, and owner statements need the MCP token. Say that plainly."
+        : "Hospitable is connected. You can read reservations, guest messages, and the Knowledge Hub. A write does not commit. It only drafts. Ask them to press Keep."
       : "Hospitable is not connected. Say so when the question needs a stay, a guest, or a calendar. Do not invent one.",
     "Use a connected source the question needs. Say when one is not connected.",
     "Owner portal invitations and bank-account connection status are not their own tool. Read owners, alerts, and the user. Report those fields when Hospitable included them. If the field is missing, say Hospitable did not return it.",

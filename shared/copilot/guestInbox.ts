@@ -1,4 +1,4 @@
-import { getHospitablePat } from "../pm/clientStore.js";
+import { copilotHospitableToken } from "./hospitableConnection.js";
 import {
   listHospitableReservations,
   listReservationMessages,
@@ -96,7 +96,7 @@ export type UpcomingStay = {
 };
 
 async function upcoming(daysAhead: number, now: Date) {
-  const pat = await getHospitablePat();
+  const pat = await copilotHospitableToken();
   if (!pat) throw new Error("Hospitable is not connected, so nothing was read.");
 
   const properties = (await listPmProperties()).filter((p) => p.hospitable_property_id);
@@ -137,7 +137,7 @@ export async function listStays(daysAhead = LOOKAHEAD_DAYS, now = new Date()): P
 
 /** One reservation's thread, oldest first. Read only. */
 export async function readThread(reservationId: string): Promise<{ from: string; at: string | null; body: string }[]> {
-  const pat = await getHospitablePat();
+  const pat = await copilotHospitableToken();
   if (!pat) throw new Error("Hospitable is not connected, so nothing was read.");
   const messages = await listReservationMessages(pat, reservationId);
   return messages

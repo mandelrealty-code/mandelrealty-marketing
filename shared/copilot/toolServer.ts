@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
+import { hospitableRead } from "./hospitableConnection.js";
 import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { hospitableDraft, isHospitableWrite } from "./hospitableAgent.js";
 import { readMail, searchMail } from "./mailSearch.js";
@@ -252,8 +252,15 @@ const TOOLS: Record<string, Tool> = {
       if (!/^(get|list|search)-/.test(name) || isHospitableWrite(name)) {
         throw new Error("That would change Hospitable. Call propose_draft with hospitable_tool instead. Nothing was changed.");
       }
-      if (!(await hospitableMcpConfigured())) throw new Error("Hospitable MCP is not connected, so that read is not available. Nothing was changed.");
-      return callHospitableMcp(name, toolArgs);
+      try {
+        return await hospitableRead(name, toolArgs);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "";
+        if (message === "Hospitable is not connected.") {
+          throw new Error("Hospitable is not connected, so that read is not available. Nothing was changed.");
+        }
+        throw err;
+      }
     },
   },
   propose_draft: {

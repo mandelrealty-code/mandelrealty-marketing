@@ -1,4 +1,4 @@
-import { getHospitablePat } from "../pm/clientStore.js";
+import { copilotHospitableToken } from "./hospitableConnection.js";
 import { getPropertyKnowledgeHub } from "../pm/hospitableClient.js";
 import { withoutHubSecrets } from "./hubSecrets.js";
 import { reservationTimes } from "./standing.js";
@@ -51,7 +51,7 @@ export async function readPropertyHub(propertyId: string, checkIn?: string, chec
   const id = propertyId.trim();
   if (!id) return { ok: false };
   try {
-    const pat = await getHospitablePat();
+    const pat = await copilotHospitableToken();
     if (!pat) return { ok: false };
     const raw = await getPropertyKnowledgeHub(pat, id);
     if (!usableHub(raw)) return { ok: false };

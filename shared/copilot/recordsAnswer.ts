@@ -3,7 +3,7 @@
  * Read only. Nothing is sent to a guest.
  */
 
-import { getHospitablePat } from "../pm/clientStore.js";
+import { copilotHospitableToken } from "./hospitableConnection.js";
 import { listAllHospitableProperties, listHospitableReservations, listReservationMessages } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { getSupabaseAdmin } from "../supabase.js";
@@ -84,7 +84,7 @@ async function unitList(question: string): Promise<string> {
   }
   const properties = await propertiesFromHospitable();
   if (properties === null) {
-    return "Hospitable isn't connected, so I can't see the units. Add the key in OPS Settings. I didn't guess a count.";
+    return "Hospitable is not connected, so I can't see the units. I didn't guess a count.";
   }
   if (!properties.length) {
     return "Hospitable returned no properties. I didn't guess a count.";
@@ -101,7 +101,7 @@ async function unitList(question: string): Promise<string> {
 }
 
 async function propertiesFromHospitable() {
-  const pat = await getHospitablePat().catch(() => "");
+  const pat = await copilotHospitableToken();
   if (!pat) return null;
   return listAllHospitableProperties(pat);
 }
@@ -146,9 +146,9 @@ async function newReviews(): Promise<string> {
 }
 
 async function lastMessage(): Promise<string> {
-  const pat = await getHospitablePat().catch(() => "");
+  const pat = await copilotHospitableToken();
   if (!pat) {
-    return "Hospitable isn't connected, so I can't see who sent the last guest message. Add the key in OPS Settings. I didn't guess a name.";
+    return "Hospitable is not connected, so I can't see who sent the last guest message. I didn't guess a name.";
   }
   const properties = await propertiesFromHospitable();
   if (!properties?.length) {

@@ -157,8 +157,19 @@ export type ConnectorRow = {
   status: "connected" | "not_connected";
   statusLabel: string;
   note?: string;
-  /** Hospitable: mcp uses the agent token, pat is the Public API key only. */
+  /** Hospitable: pat is the Copilot connection. none means it is not connected. */
   setup?: "mcp" | "pat" | "none";
+};
+
+/** What the Settings card may show. The access token itself is never included. */
+export type HospitableCard = {
+  connected: boolean;
+  statusLabel: "Connected" | "Not connected";
+  statusLine: string;
+  canRead: string;
+  cant: string;
+  last4: string;
+  savedLine: string;
 };
 
 export type InboxGuest = {

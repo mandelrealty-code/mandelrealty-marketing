@@ -6145,3 +6145,152 @@ html.cp-app[data-cp-theme="dark"] #root {
     padding-top: 20px;
   }
 }
+
+.cp-hos {
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: var(--canvas);
+}
+
+.cp-hos-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.cp-hos-head strong {
+  display: block;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.cp-hos-head p,
+.cp-hos-grid p,
+.cp-hos-confirm p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink2);
+}
+
+.cp-hos-head > span {
+  font-size: 13px;
+  line-height: 22px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cp-hos-grid {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cp-hos-grid > span,
+.cp-hos-grid > div {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.cp-hos-grid > span:nth-child(odd) {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cp-hos-grid > span:nth-child(even),
+.cp-hos-grid > div {
+  color: var(--ink2);
+}
+
+.cp-hos-grid > span:nth-last-child(2),
+.cp-hos-grid > div:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.cp-hos-grid input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.cp-hos-grid p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.cp-hos-mask {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.cp-hos-mask span {
+  letter-spacing: 2px;
+}
+
+.cp-hos-mask em {
+  font-style: normal;
+  font-size: 12px;
+}
+
+.cp-hos-actions,
+.cp-hos-confirm div {
+  display: flex;
+  gap: 8px;
+}
+
+.cp-hos-actions button,
+.cp-hos-confirm button {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line2);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cp-hos-actions button.on {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.cp-hos-actions button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.cp-hos-fail {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--failed);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 22px;
+}

@@ -5,7 +5,7 @@ import {
   verifyAdminSessionToken,
 } from "../adminAuth.js";
 import { passwordMatches } from "../adminAuth.js";
-import { getHospitablePat, isHospitableMcpConfigured, updatePmSettings } from "../pm/clientStore.js";
+import { updatePmSettings } from "../pm/clientStore.js";
 import { gmailConnected, gmailKeysReady } from "./gmail.js";
 import { outlookConnected, outlookKeysReady } from "./outlook.js";
 import { applyOpenItemOnBrief, dismissSavedCard, noteRankPass, quietBrief, readSavedBrief, refreshSavedBrief } from "../copilot/brief.js";
@@ -33,6 +33,7 @@ import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, e
 import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
+import { disconnectHospitable, hospitableCard, saveHospitableToken } from "../copilot/hospitableConnection.js";
 import { answerMailChain } from "../copilot/mailChain.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
@@ -194,13 +195,7 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
       skill.lastRun?.status === "ok" &&
       skill.lastRun.result?.tools.some((tool) => HOSPITABLE_TOOLS.includes(tool)),
   );
-  let hospitable = false;
-  try {
-    hospitable = Boolean(await getHospitablePat());
-  } catch {
-    hospitable = Boolean(process.env.HOSPITABLE_PAT?.trim());
-  }
-  const hospitableMcp = await isHospitableMcpConfigured().catch(() => Boolean(process.env.HOSPITABLE_MCP_TOKEN?.trim()));
+  const hospitable = await hospitableCard().catch(() => null);
   const gmail = await gmailConnected().catch(() => false);
   const gmailReady = gmailKeysReady();
   const outlook = await outlookConnected().catch(() => false);
@@ -237,17 +232,15 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
     {
       id: "hospitable",
       name: "Hospitable",
-      detail: "Guest messages, bookings, calendar, tasks, reviews, and owner statements.",
-      status: hospitableMcp || hospitable ? "connected" : "not_connected",
-      statusLabel: hospitableMcp ? "Connected" : hospitable ? "API key only" : "Not connected",
-      setup: hospitableMcp ? "mcp" : hospitable ? "pat" : "none",
-      note: hospitableMcp
+      detail: "Lets Copilot read your stays in Hospitable. It never changes anything there.",
+      status: hospitable?.connected ? "connected" : "not_connected",
+      statusLabel: hospitable?.connected ? "Connected" : "Not connected",
+      setup: hospitable?.connected ? "pat" : "none",
+      note: hospitable?.connected
         ? readsGuests
-          ? "The agent uses Hospitable MCP, including the morning read. A change waits until you press Submit."
-          : "The agent uses Hospitable MCP. A change waits until you press Submit."
-        : hospitable
-          ? "The Public API key can read properties, stays, messages, the calendar, and reviews. Paste the MCP fallback token for guest replies, tasks, and owner statements."
-          : "Paste the MCP fallback token from Hospitable → Settings → Integrations → MCP. The Public API key in OPS Settings is only the fallback.",
+          ? "Reservations, guest messages, and the Knowledge Hub. A reply waits until you press Keep."
+          : "Reservations, guest messages, and the Knowledge Hub. Nothing in Hospitable changes from here."
+        : "Hospitable is not connected.",
     },
     {
       id: "cleaner",
@@ -358,6 +351,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         memory,
         memoryFiles,
         connectors: connectorRows,
+        hospitable: await hospitableCard().catch(() => null),
         runningChatIds,
         billing: process.env.CURSOR_API_KEY
           ? "Cursor Auto is connected. The team spend total appears when the admin key is set."
@@ -382,6 +376,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const run = await startSkillRun(id, "manual");
       const skills = await skillRows();
       return res.status(200).json({ run, skills, connectors: await connectors(skills), chats: await listChats() });
+    }
+
+    if (op === "hospitable-connection") {
+      if (body.action === "disconnect") {
+        const card = await disconnectHospitable();
+        return res.status(200).json({ hospitable: card, connectors: await connectors() });
+      }
+      const saved = await saveHospitableToken(String(body.token ?? ""));
+      if (saved.error) return res.status(400).json({ error: saved.error, hospitable: saved.card });
+      return res.status(200).json({ hospitable: saved.card, connectors: await connectors() });
     }
 
     if (op === "hospitable-mcp") {

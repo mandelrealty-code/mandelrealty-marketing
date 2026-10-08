@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
-import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
+import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, HospitableCard, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
+import { HospitableConnectionCard } from "./HospitableConnection";
 import "./copilot.css";
 import { MemoryFileDetail, MemoryFileList, MemoryWrote } from "./memoryUi";
 import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
@@ -50,6 +51,7 @@ type Boot = {
   chats: CopilotChat[];
   skills: SkillRow[];
   connectors: ConnectorRow[];
+  hospitable?: HospitableCard;
   billing: string;
   textLog?: CopilotTextSend[];
   textNumbers?: string[];
@@ -771,8 +773,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [elseFor, setElseFor] = useState<string | null>(null);
   const [elseDraft, setElseDraft] = useState("");
   const [connectHint, setConnectHint] = useState<Record<string, boolean>>({});
-  const [mcpToken, setMcpToken] = useState("");
-  const [mcpBusy, setMcpBusy] = useState(false);
+  const [hospitableBusy, setHospitableBusy] = useState(false);
+  const [hospitableError, setHospitableError] = useState("");
   const [screen, setScreen] = useState<Screen>("brief");
   const [boardSeed, setBoardSeed] = useState<Workflow>(BLANK);
   const [boardSkillId, setBoardSkillId] = useState<string | null>(null);
@@ -1992,7 +1994,32 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           <h1>Connectors</h1>
                           <p>Accounts this chat can use.</p>
                         </div>
-                        {(boot?.connectors ?? []).map((row) => {
+                        <HospitableConnectionCard
+                          card={boot?.hospitable}
+                          busy={hospitableBusy}
+                          error={hospitableError}
+                          onSave={(token) => {
+                            setHospitableBusy(true);
+                            setHospitableError("");
+                            void api<{ hospitable: HospitableCard; connectors: ConnectorRow[] }>("hospitable-connection", { action: "save", token })
+                              .then((data) => {
+                                setBoot((prev) => (prev ? { ...prev, hospitable: data.hospitable, connectors: data.connectors } : prev));
+                              })
+                              .catch((err) => setHospitableError(err instanceof Error ? err.message : "Hospitable didn't accept this token."))
+                              .finally(() => setHospitableBusy(false));
+                          }}
+                          onDisconnect={() => {
+                            setHospitableBusy(true);
+                            setHospitableError("");
+                            void api<{ hospitable: HospitableCard; connectors: ConnectorRow[] }>("hospitable-connection", { action: "disconnect" })
+                              .then((data) => {
+                                setBoot((prev) => (prev ? { ...prev, hospitable: data.hospitable, connectors: data.connectors } : prev));
+                              })
+                              .catch((err) => setHospitableError(err instanceof Error ? err.message : "Hospitable is not connected."))
+                              .finally(() => setHospitableBusy(false));
+                          }}
+                        />
+                        {(boot?.connectors ?? []).filter((row) => row.id !== "hospitable").map((row) => {
                           const openTwilio = row.id === "twilio" && row.status === "connected";
                           return (
                           <div key={row.id} className={`cp-crow${openTwilio ? " link" : ""}`} onClick={openTwilio ? () => setScreen("twilio") : undefined}>
@@ -2007,56 +2034,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                                     ? "Gmail sign-in isn't set up yet. Nothing was connected."
                                     : "WhatsApp linking isn't set up yet. Nothing was connected."}
                                 </div>
-                              ) : null}
-                              {row.id === "hospitable" && row.setup !== "mcp" ? (
-                                <form
-                                  className="cp-mcp"
-                                  onSubmit={(event) => {
-                                    event.preventDefault();
-                                    const token = mcpToken.trim();
-                                    if (!token) {
-                                      setError("Paste the MCP fallback token.");
-                                      return;
-                                    }
-                                    setMcpBusy(true);
-                                    void api<{ connectors: ConnectorRow[] }>("hospitable-mcp", { token })
-                                      .then((data) => {
-                                        setMcpToken("");
-                                        setError(null);
-                                        setBoot((prev) => (prev ? { ...prev, connectors: data.connectors } : prev));
-                                      })
-                                      .catch((err) => setError(err instanceof Error ? err.message : "Could not connect Hospitable."))
-                                      .finally(() => setMcpBusy(false));
-                                  }}
-                                >
-                                  <input
-                                    type="password"
-                                    autoComplete="off"
-                                    placeholder="MCP fallback token"
-                                    aria-label="Hospitable MCP token"
-                                    value={mcpToken}
-                                    onChange={(event) => setMcpToken(event.target.value)}
-                                  />
-                                  <button type="submit" className="cp-gold" style={{ height: 36, padding: "0 14px" }} disabled={mcpBusy}>
-                                    {mcpBusy ? "Checking…" : "Save"}
-                                  </button>
-                                </form>
-                              ) : null}
-                              {row.id === "hospitable" && row.setup === "mcp" ? (
-                                <button
-                                  type="button"
-                                  className="cp-textbtn"
-                                  disabled={mcpBusy}
-                                  onClick={() => {
-                                    setMcpBusy(true);
-                                    void api<{ connectors: ConnectorRow[] }>("hospitable-mcp", { action: "clear" })
-                                      .then((data) => setBoot((prev) => (prev ? { ...prev, connectors: data.connectors } : prev)))
-                                      .catch((err) => setError(err instanceof Error ? err.message : "Could not remove the token."))
-                                      .finally(() => setMcpBusy(false));
-                                  }}
-                                >
-                                  Remove token
-                                </button>
                               ) : null}
                             </div>
                             {(row.id === "gmail" || row.id === "outlook" || row.id === "whatsapp") && row.status !== "connected" ? (
@@ -2078,9 +2055,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                               >
                                 Connect
                               </button>
-                            ) : null}
-                            {row.id === "hospitable" ? (
-                              <button type="button" className="cp-linkish" onClick={() => onModeChange("ops")}>Open OPS Settings</button>
                             ) : null}
                             {openTwilio ? <Chevron /> : null}
                           </div>

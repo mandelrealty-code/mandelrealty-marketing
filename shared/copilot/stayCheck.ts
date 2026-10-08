@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { getHospitablePat } from "../pm/clientStore.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { readMail, searchMail } from "./mailSearch.js";
 import { readPropertyHub } from "./knowledgeHub.js";
 import { memoryBodies } from "./memoryFiles.js";
 import { isManagedUnit } from "./managedUnits.js";
-import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
-import { hospitableFetch, listReservationMessages } from "../pm/hospitableClient.js";
+import { listReservationMessages } from "../pm/hospitableClient.js";
+import { copilotHospitableToken, hospitableRead } from "./hospitableConnection.js";
 import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -69,24 +68,7 @@ function longDate(iso: string): string {
 }
 
 async function callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-  if (await hospitableMcpConfigured()) return callHospitableMcp(name, args);
-  const pat = await getHospitablePat().catch(() => "");
-  if (!pat) return { data: [] };
-  if (name === "get-reservations") {
-    return hospitableFetch(pat, "/reservations", {
-      properties: Array.isArray(args.properties) ? args.properties.map(String) : [],
-      start_date: String(args.start_date ?? ""),
-      end_date: String(args.end_date ?? ""),
-      date_query: String(args.date_query ?? "checkout"),
-      per_page: "100",
-      page: String(args.page ?? 1),
-      include: String(args.include ?? ""),
-    });
-  }
-  if (name === "get-reservation-messages") {
-    return hospitableFetch(pat, `/reservations/${encodeURIComponent(String(args.uuid ?? ""))}/messages`);
-  }
-  return { data: [] };
+  return hospitableRead(name, args);
 }
 
 function toStay(row: Record<string, unknown>, propertyId: string): Stay {
@@ -103,7 +85,7 @@ function toStay(row: Record<string, unknown>, propertyId: string): Stay {
 }
 
 export async function readStayThread(reservationId: string, now: Date): Promise<Msg[]> {
-  const pat = await getHospitablePat().catch(() => "");
+  const pat = await copilotHospitableToken();
   if (!pat) throw new Error("Hospitable is not connected, so the message thread could not be read.");
   const messages = await listReservationMessages(pat, reservationId);
   return messages

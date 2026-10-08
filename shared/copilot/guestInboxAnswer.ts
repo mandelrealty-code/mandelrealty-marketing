@@ -279,7 +279,7 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
   }
   const failedLine = [...failed].map((label) => `${label} failed read.`).join("\n");
   if (disconnected && !open.length && !answered.length) {
-    return ["Hospitable isn't connected, so I can't see guest messages. I didn't guess.", failedLine].filter(Boolean).join("\n");
+    return ["Hospitable is not connected, so I can't see guest messages. I didn't guess.", failedLine].filter(Boolean).join("\n");
   }
   if (who) return namedAnswer(who, open, answered, drafted, missed, failedLine);
   return inboxAnswer(open, drafted, missed, failedLine);

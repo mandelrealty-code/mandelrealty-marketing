@@ -4,11 +4,9 @@
  * "Roseglor" is only in the address. A reservation code is one stay, not the newest thread on the account.
  */
 
-import { getHospitablePat } from "../pm/clientStore.js";
 import { asksBuildingRegistration } from "./buildingRegistration.js";
-import { hospitableFetch, listAllHospitableProperties } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
-import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
+import { hospitableRead } from "./hospitableConnection.js";
 import { isManagedUnit } from "./managedUnits.js";
 import { addDays, torontoToday } from "./time.js";
 
@@ -101,7 +99,7 @@ export async function answerStay(question: string, prior = ""): Promise<string |
       return "This read is incomplete. The managed properties failed read.";
     }
     if (/isn't connected|not connected|MCP token/i.test(message)) {
-      return "Hospitable isn't connected, so I can't see that reservation. Add the MCP token in Connectors. I didn't guess.";
+      return "Hospitable is not connected, so I can't see that reservation. I didn't guess.";
     }
     return "Hospitable didn't return that reservation. I didn't guess.";
   }
@@ -401,14 +399,8 @@ export async function findPinnedStay(question: string): Promise<string | null> {
 }
 
 async function loadProperties(): Promise<Listing[]> {
-  if (await hospitableMcpConfigured()) {
-    const raw = await callHospitableMcp("get-properties", { per_page: 100 });
-    return rowsOf(raw).map(toListing).filter((row) => row.id);
-  }
-  const pat = await getHospitablePat().catch(() => "");
-  if (!pat) return [];
-  const rows = await listAllHospitableProperties(pat);
-  return rows.map((row) => toListing({ id: row.id, name: row.name, address: { display: row.address } }));
+  const raw = await hospitableRead("get-properties", { per_page: 100 });
+  return rowsOf(raw).map(toListing).filter((row) => row.id);
 }
 
 async function loadStays(ids: string[], start: string, end: string, dateQuery: "checkin" | "checkout", guests = false): Promise<Stay[]> {
@@ -432,27 +424,7 @@ async function loadStays(ids: string[], start: string, end: string, dateQuery: "
 }
 
 async function callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-  if (await hospitableMcpConfigured()) return callHospitableMcp(name, args);
-  const pat = await getHospitablePat().catch(() => "");
-  if (!pat) throw new Error("Hospitable isn't connected.");
-  if (name === "get-properties") return hospitableFetch(pat, "/properties", { per_page: "100" });
-  if (name === "get-reservation") {
-    return hospitableFetch(pat, `/reservations/${encodeURIComponent(String(args.identifier ?? ""))}`, {
-      include: String(args.include ?? ""),
-    });
-  }
-  if (name === "get-reservation-messages") {
-    return hospitableFetch(pat, `/reservations/${encodeURIComponent(String(args.uuid ?? ""))}/messages`);
-  }
-  return hospitableFetch(pat, "/reservations", {
-    properties: Array.isArray(args.properties) ? args.properties.map(String) : [],
-    start_date: String(args.start_date ?? ""),
-    end_date: String(args.end_date ?? ""),
-    date_query: String(args.date_query ?? "checkin"),
-    per_page: "100",
-    page: String(args.page ?? 1),
-    include: String(args.include ?? ""),
-  });
+  return hospitableRead(name, args);
 }
 
 function toListing(row: Record<string, unknown>): Listing {
