@@ -24,6 +24,80 @@ function namedGuest(text: string): string {
   return name;
 }
 
+/** "Draft a reply to Isabelle ..." names one guest. A bare "draft a reply" does not. */
+export function namedDraftGuest(text: string): string {
+  const match = text.match(/\b(?:draft|write)\s+(?:a\s+|an\s+)?(?:reply|message|note|response)\s+to\s+([A-Za-z][A-Za-z'-]{1,40})\b/i);
+  const name = (match?.[1] ?? "").trim();
+  if (!name || NAME_STOP.has(name.toLowerCase())) return "";
+  return name;
+}
+
+function sameGuest(guest: string, name: string): boolean {
+  const left = guest.trim().toLowerCase();
+  const right = name.trim().toLowerCase();
+  if (!left || !right) return false;
+  return left === right || left.startsWith(`${right} `);
+}
+
+function thankYouReply(name: string, request: string): string {
+  if (/\bthank/i.test(request) && /\bstay/i.test(request)) {
+    return `Hi ${name},\n\nThank you for staying with us.`;
+  }
+  return `Hi ${name},\n\n${oneLine(request)}`;
+}
+
+export async function answerNamedGuestDraft(question: string, now?: Date): Promise<string | null> {
+  const name = namedDraftGuest(question);
+  if (!name) return null;
+  const clock = now ?? parityNow() ?? new Date();
+  let loaded: Awaited<ReturnType<typeof loadRecentStays>>;
+  try {
+    loaded = await loadRecentStays(clock);
+  } catch {
+    return "Hospitable didn't return the reservations. I didn't draft a reply.";
+  }
+  const matches = loaded.stays.filter((row) => sameGuest(row.stay.guest, name) && !/cancel/.test(row.stay.status));
+  if (!matches.length) return `I didn't find ${name} on a managed stay. Which guest should I draft for?`;
+  const ranked: { row: RecentStay; at: string }[] = [];
+  const unread: string[] = [];
+  for (const row of matches) {
+    try {
+      const messages = await readStayThread(row.stay.id, clock);
+      const latest = messages.map((item) => item.at).filter(Boolean).sort().at(-1) ?? "";
+      ranked.push({ row, at: latest || `${row.stay.checkOut}T00:00:00Z` });
+    } catch {
+      unread.push(row.label);
+    }
+  }
+  if (!ranked.length) {
+    const where = unread.length ? ` ${unread.join(" and ")} didn't return a thread.` : "";
+    return `I couldn't read ${name}'s messages.${where} I didn't draft a reply.`;
+  }
+  ranked.sort((a, b) => b.at.localeCompare(a.at) || a.row.stay.id.localeCompare(b.row.stay.id));
+  const newest = ranked[0];
+  const tied = ranked.filter((item) => item.at === newest?.at);
+  if (tied.length > 1) {
+    const choices = tied.map((item) => item.row.label).join(" or ");
+    return `I found ${name} on more than one stay, and the threads are equally recent. Which one should I draft for? ${choices}.`;
+  }
+  const stay = newest?.row;
+  if (!stay) return `I didn't find ${name} on a managed stay. Which guest should I draft for?`;
+  const guest = stay.stay.guest || name;
+  const body = thankYouReply(guest, question);
+  await leaveDraft(
+    {
+      channel: "hospitable",
+      to: guest,
+      subject: "",
+      body,
+      warnings: [],
+      needs_you: true,
+    },
+    stay.stay.id,
+  );
+  return `The reply to ${guest} at ${stay.label} is in Checks. Nothing is sent until you press Submit.`;
+}
+
 export function asksGuestThreads(text: string): boolean {
   const asked = text.trim();
   if (!asked) return false;

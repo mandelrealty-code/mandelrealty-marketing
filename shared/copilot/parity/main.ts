@@ -11,7 +11,7 @@ import { answerRecords } from "../recordsAnswer.js";
 import { answerBuildingRegistration } from "../buildingRegistration.js";
 import { answerStay } from "../stayAnswer.js";
 import { answerPropertyFact } from "../propertyFact.js";
-import { answerGuestThreads } from "../guestInboxAnswer.js";
+import { answerGuestThreads, answerNamedGuestDraft } from "../guestInboxAnswer.js";
 import { callHospitableMcp } from "../hospitableMcp.js";
 import {
   accountWideRan,
@@ -573,6 +573,62 @@ async function fixtureTodayCheckins(): Promise<void> {
   expect(!/incomplete|failed read/i.test(answer), "a complete read is not described as failed", answer);
 }
 
+function isabelleStay(id: string, propertyId: string, checkIn: string, checkOut: string, at: string, body: string): ParityReservation {
+  return {
+    id,
+    code: `HMISA${id.slice(-4).toUpperCase()}`,
+    propertyId,
+    status: "accepted",
+    checkIn,
+    checkOut,
+    guest: "Isabelle",
+    adults: 1,
+    children: 0,
+    messages: [{ id: `${id}-m`, at, role: "guest", name: "Isabelle", body }],
+  };
+}
+
+async function fixtureNamedGuestDraft(): Promise<void> {
+  const asked = "Draft a reply to Isabelle thanking her for staying with us";
+  const recent = worldAt("2026-10-07T11:00:00-04:00");
+  const shawId = "00000000-0000-4000-8000-00000000aa01";
+  recent.reservations.push(
+    isabelleStay(shawId, ID.shaw, "2026-10-04", "2026-10-06", "2026-10-06T18:00:00-04:00", "We had a wonderful stay."),
+    isabelleStay("00000000-0000-4000-8000-00000000aa02", ID.charlotte, "2026-09-28", "2026-10-01", "2026-10-01T10:00:00-04:00", "Thanks for the stay."),
+  );
+  installWorld(recent);
+  const answer = (await answerNamedGuestDraft(asked)) ?? "";
+  expect(/Isabelle/.test(answer) && /1065 Shaw Street/.test(answer) && /Checks/.test(answer) && /Submit/.test(answer), "the answer names Isabelle, the property, and Checks", answer || "no answer");
+  expect(!/Charlotte|which one|which guest/i.test(answer), "the newer thread is chosen without a question", answer);
+  const card = capturedDrafts().find((row) => row.to === "Isabelle");
+  expect(Boolean(card), "Isabelle's reply is a draft card", "no draft");
+  expect(card?.channel === "hospitable" && card.needs_you === true, "the card waits for Submit", card?.channel ?? "");
+  expect(card?.body === "Hi Isabelle,\n\nThank you for staying with us.", "the card thanks her for staying", card?.body ?? "");
+  expect(card?.hospitable?.tool === "send-reservation-message", "Submit is the send", card?.hospitable?.tool ?? "");
+  expect(card?.hospitable?.args.reservation_id === shawId, "the card is tied to the newer stay", String(card?.hospitable?.args.reservation_id ?? ""));
+  expect(card?.hospitable?.args.body === card?.body, "the card body is what Submit would send", "the submit body drifted");
+  expectNothingSent();
+  expectDraftRules(capturedDrafts(), capturedReports());
+
+  const tied = worldAt("2026-10-07T11:00:00-04:00");
+  const sameTime = "2026-10-05T12:00:00-04:00";
+  tied.reservations.push(
+    isabelleStay("00000000-0000-4000-8000-00000000aa03", ID.shaw, "2026-10-03", "2026-10-05", sameTime, "Lovely house."),
+    isabelleStay("00000000-0000-4000-8000-00000000aa04", ID.rose, "2026-10-03", "2026-10-05", sameTime, "Lovely house."),
+  );
+  installWorld(tied);
+  const which = (await answerNamedGuestDraft(asked)) ?? "";
+  expect(/equally recent/i.test(which) && /1065 Shaw Street/.test(which) && /Roseglor/.test(which) && /Which one/i.test(which), "a tie asks which stay", which || "no answer");
+  expect(capturedDrafts().length === 0, "a tie does not draft", `drafts ${capturedDrafts().length}`);
+  expectNothingSent();
+
+  installWorld(worldAt("2026-10-07T11:00:00-04:00"));
+  const missing = (await answerNamedGuestDraft("Draft a reply to Marcel thanking him for staying with us")) ?? "";
+  expect(/didn't find Marcel/i.test(missing) && /Which guest/i.test(missing), "an unknown guest asks who", missing || "no answer");
+  expect(capturedDrafts().length === 0, "an unknown guest does not draft", `drafts ${capturedDrafts().length}`);
+  expectNothingSent();
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -593,6 +649,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "17", title: "Scarborough garbage bags from the Hub", run: fixtureHubGarbageBags },
   { id: "18", title: "Unread guest threads draft in Checks", run: fixtureGuestInbox },
   { id: "19", title: "Building registration follows the last sent email", run: fixtureBuildingRegistration },
+  { id: "20", title: "Named guest draft waits in Checks", run: fixtureNamedGuestDraft },
 ];
 
 function guard(): void {

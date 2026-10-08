@@ -24,7 +24,7 @@ import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js
 import { answerRecords } from "../copilot/recordsAnswer.js";
 import { answerBuildingRegistration } from "../copilot/buildingRegistration.js";
 import { answerStay } from "../copilot/stayAnswer.js";
-import { answerGuestThreads } from "../copilot/guestInboxAnswer.js";
+import { answerGuestThreads, answerNamedGuestDraft } from "../copilot/guestInboxAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, editProposal, prepareProposalSend, proposalFromWords } from "../copilot/proposal.js";
@@ -784,6 +784,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: outside.body,
             steps: [{ text: outside.kind === "refused" ? "Left that listing alone" : /that read failed/i.test(outside.body) ? "That read failed" : "Opened the page" }],
             thought: outside.kind === "refused" ? "That listing is not one we manage. Nothing was drafted." : "This came from the page. Nothing was sent.",
+          });
+          return done();
+        }
+        const namedDraft = await answerNamedGuestDraft(text);
+        if (namedDraft) {
+          const asked = /which guest|which one|couldn't read/i.test(namedDraft);
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: namedDraft,
+            steps: [{ text: asked ? "Asked which guest" : "Drafted the guest reply" }],
+            thought: asked ? "Nothing was drafted." : "The draft is in Checks. Nothing is sent until Submit.",
           });
           return done();
         }
