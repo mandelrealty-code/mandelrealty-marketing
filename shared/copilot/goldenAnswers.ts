@@ -8,6 +8,7 @@ import { ANSWER_STYLE, firstSentence, HEDGE, hasAnswerStyle } from "./answerStyl
 import { claudeChatSystem } from "./claudeAnswer.js";
 import { promptFor } from "./cursorThink.js";
 import { instructions } from "./hospitableAgent.js";
+import { readSavedBrief, waitingDraftCard } from "./brief.js";
 import { answerOps } from "./ops.js";
 import { ID, worldAt } from "./parity/catalog.js";
 import { failNextOpsPropertyRead, installOpsClients, installOpsReservations } from "./parity/opsState.js";
@@ -355,5 +356,48 @@ if (!differed) fail("memory recall", "the conflicting fact was not answered");
 if (!/lockbox by the front door/i.test(firstSentence(differed)) || !/Knowledge Hub/.test(differed)) fail("memory recall", differed);
 if (!/saved memory differs/i.test(differed) || !/kitchen junk drawer/i.test(differed)) fail("memory recall", differed);
 if (/parking|netflix|network|shaw profile/i.test(differed)) fail("memory recall", differed);
+
+const assign = waitingDraftCard({
+  messageId: "draft-blue",
+  chatId: "checks",
+  createdAt: "2026-10-07T12:00:00.000Z",
+  channel: "hospitable",
+  subject: "Assign a cleaner",
+  body: "318, 20 Blue Jays Way, Toronto, turnover 2026-10-09. Assign Maria. Nothing is written until you press Submit.",
+  to: "",
+  skillName: "",
+  purchaseLine: "",
+  purchaseProperty: "",
+  cleanerName: "Maria",
+  cleanerUnit: "318, 20 Blue Jays Way, Toronto",
+  cleanerOn: "2026-10-09",
+});
+if (!assign?.headline || !assign.detail) fail("cleaner card", "missing headline");
+if (assign.headline !== "Assign Maria to the Blue Jays Way clean on Fri Oct 9") fail("cleaner card", assign.headline);
+if (!/Approving writes Maria onto that turnover in the cleaner app\./.test(assign.detail) || !/Nothing has been written yet\./.test(assign.detail)) {
+  fail("cleaner card", assign.detail);
+}
+if (assign.action !== "Review" || assign.chatId !== "checks" || assign.messageId !== "draft-blue") fail("cleaner card", "Review does not open the draft");
+const vague = waitingDraftCard({
+  messageId: "draft-vague",
+  chatId: "",
+  createdAt: "2026-10-07T12:00:00.000Z",
+  channel: "hospitable",
+  subject: "Assign a cleaner",
+  body: "Assign a cleaner is ready. Nothing was changed.",
+  to: "",
+  skillName: "",
+  purchaseLine: "",
+  purchaseProperty: "",
+  cleanerName: "",
+  cleanerUnit: "",
+  cleanerOn: "",
+});
+if (vague) fail("cleaner card", vague.text);
+const started = performance.now();
+const savedOverview = await readSavedBrief(new Date("2026-10-07T15:00:00Z"));
+const overviewMs = performance.now() - started;
+if (!savedOverview.hello) fail("overview load", "no saved overview");
+if (overviewMs > 200) fail("overview load", `${overviewMs.toFixed(1)}ms`);
 
 console.log("golden answers: 8 passed");

@@ -783,7 +783,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   useEffect(() => {
-    load().catch((e) => setError(e instanceof Error ? e.message : "Could not load Copilot."));
+    load()
+      .then(() => {
+        void api<{ brief: BriefPayload }>("refresh-brief")
+          .then((data) => setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev)))
+          .catch(() => undefined);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not load Copilot."));
   }, []);
 
   useEffect(() => {
@@ -936,7 +942,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setPictureMode(false);
   }
 
-  async function openChat(id: string) {
+  async function openChat(id: string, messageId?: string) {
     const still = runningChat(id);
     setChatId(id);
     setScreen("chat");
@@ -955,6 +961,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
     const data = await api<{ messages: CopilotMessage[] }>(`messages&chatId=${encodeURIComponent(id)}`);
     setMessages(data.messages);
+    if (messageId) {
+      requestAnimationFrame(() => {
+        document.getElementById(`msg-${messageId}`)?.scrollIntoView({ block: "center" });
+      });
+    }
     await api("seen", { chatId: id }).catch(() => undefined);
     await load();
   }
@@ -1469,7 +1480,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
 
   function cardAction(item: BriefCard, label: string) {
     if (item.actions?.includes(label)) return () => void pickOpenItem(item, label);
-    if (item.chatId) return () => void openChat(item.chatId as string);
+    const chatId = item.chatId;
+    if (chatId) return () => void openChat(chatId, item.messageId);
     return () => void openCard(item.text, label);
   }
 
@@ -1488,7 +1500,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
             </svg>
           </button>
         </div>
-        <p>{item.text}</p>
+        <p>{item.headline || item.text}</p>
+        {item.detail ? <p className="cp-card-detail">{item.detail}</p> : null}
         {item.purchaseStatus ? (
           <p className="cp-segments">
             {(["Ordered", "Shipped", "Out for delivery", "Delivered"] as const).map((label) => (
@@ -2111,7 +2124,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     {error ? <p className="cp-err">{error}</p> : null}
                     {messages.map((message) =>
                       message.role === "user" ? (
-                        <div key={message.id} className="cp-userwrap">
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-userwrap">
                           {message.picture ? <span className="cp-via">Make a picture</span> : null}
                           {viaPlus[message.id] ? <span className="cp-via">New skill</span> : null}
                           <div className="cp-user">
@@ -2122,7 +2135,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           </div>
                         </div>
                       ) : message.draft?.channel === "skill" ? (
-                        <div key={message.id} className="cp-bot">
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
                           <Thinking
                             open={!!trail[message.id]}
                             onToggle={() => setTrail((prev) => ({ ...prev, [message.id]: !prev[message.id] }))}
@@ -2141,7 +2154,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           />
                         </div>
                       ) : message.report ? (
-                        <div key={message.id} className="cp-bot">
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
                           <ReportCard
                             message={message}
                             report={message.report}
@@ -2150,7 +2163,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           />
                         </div>
                       ) : message.draft?.channel === "hospitable" ? (
-                        <div key={message.id} className="cp-bot">
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
                           <HospitableDraftCard
                             message={message}
                             body={edits[message.id] ?? message.draft.body}
@@ -2161,7 +2174,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           />
                         </div>
                       ) : message.draft?.channel === "email" ? (
-                        <div key={message.id} className="cp-bot">
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
                           {message.run_id ? null : (
                             <Thinking
                               open={!!trail[message.id]}
@@ -2182,7 +2195,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           />
                         </div>
                       ) : message.picture && message.images?.length ? (
-                        <div key={message.id} className="cp-bot">
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
                           <figure className="cp-made">
                             {message.images.map((image, index) => (
                               <img key={index} src={`data:${image.mimeType};base64,${image.data}`} alt="" />
@@ -2191,12 +2204,12 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           </figure>
                         </div>
                       ) : message.run_id ? (
-                        <div key={message.id} className="cp-bot">
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
                           <span className="cp-sk-stamp">{runWhen(message.created_at, true)}</span>
                           <p className="cp-sk-pre">{message.body}</p>
                         </div>
                       ) : (
-                        <div key={message.id} className="cp-bot">
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
                           <Thinking
                             open={!!trail[message.id]}
                             onToggle={() => setTrail((prev) => ({ ...prev, [message.id]: !prev[message.id] }))}

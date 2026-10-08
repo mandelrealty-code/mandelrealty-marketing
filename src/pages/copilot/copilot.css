@@ -635,6 +635,14 @@ html.cp-app[data-cp-theme="dark"] #root {
   overflow-wrap: anywhere;
 }
 
+.cp-card-detail {
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 450;
+  color: var(--quiet);
+}
+
 .cp-cta {
   margin-top: auto;
   align-self: flex-start;

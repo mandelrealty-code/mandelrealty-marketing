@@ -161,7 +161,7 @@ export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise
     await addMessage({
       chatId,
       role: "assistant",
-      body: `${row.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : row.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : "Here is the building email. Nothing was sent."}${warnings}`,
+      body: `${row.cleanerAssign ? row.body : row.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : row.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : "Here is the building email. Nothing was sent."}${warnings}`,
       draft: {
         subject: row.subject,
         body: row.body,

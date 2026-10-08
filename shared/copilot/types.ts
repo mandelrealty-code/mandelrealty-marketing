@@ -119,10 +119,15 @@ export type BriefCard = {
   group: "focus" | "eating";
   text: string;
   action: string;
+  /** The concrete thing: property, date, and what is proposed. */
+  headline?: string;
+  /** What approval does, and what has or has not happened yet. */
+  detail?: string;
   /** Every choice the card can take. The overview renders each one as a button. */
   actions?: string[];
   source: string;
   chatId?: string;
+  messageId?: string;
   purchaseStatus?: "ordered" | "shipped" | "delivered";
   trackingUrl?: string;
 };

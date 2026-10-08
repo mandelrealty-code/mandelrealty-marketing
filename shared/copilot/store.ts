@@ -11,7 +11,7 @@ import type { Workflow } from "./workflow.js";
 import type { OpenItem } from "./openItems.js";
 import type { CleanerPicture } from "./cleanerRead.js";
 import { openLegacyPurchase } from "./openPurchase.js";
-import type { CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, SkillRunResult } from "./types.js";
+import type { BriefPayload, CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, SkillRunResult } from "./types.js";
 
 type FileShape = {
   chats: CopilotChat[];
@@ -156,9 +156,14 @@ export type WaitingDraft = {
   createdAt: string;
   channel: "email" | "note" | "skill" | "hospitable";
   subject: string;
+  body: string;
+  to: string;
   skillName: string;
   purchaseLine: string;
   purchaseProperty: string;
+  cleanerName: string;
+  cleanerUnit: string;
+  cleanerOn: string;
 };
 
 function waitingMessage(row: { id?: string; chat_id?: string; created_at?: string; body?: string; draft?: CopilotDraft | null }): CopilotMessage {
@@ -182,9 +187,14 @@ function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; dr
     createdAt: String(row.created_at ?? ""),
     channel: draft.channel,
     subject: draft.subject || "",
+    body: draft.body || "",
+    to: draft.to || "",
     skillName: draft.skillName || "",
     purchaseLine: draft.purchase?.kind === "detail" ? draft.purchase.overview : "",
     purchaseProperty: draft.purchase?.kind === "detail" ? draft.purchase.property : "",
+    cleanerName: draft.cleanerAssign?.cleanerName || "",
+    cleanerUnit: draft.cleanerAssign?.unit || "",
+    cleanerOn: draft.cleanerAssign?.scheduledOn || "",
   };
 }
 
@@ -391,21 +401,20 @@ async function ensureLegacyPurchases(messages: CopilotMessage[], lookup = true):
   return out;
 }
 
-export async function listMessages(chatId: string): Promise<CopilotMessage[]> {
+export async function listMessages(chatId: string, options: { lookup?: boolean } = {}): Promise<CopilotMessage[]> {
   const client = sb();
+  const finish = (rows: CopilotMessage[]) => (options.lookup === false ? rows : ensureLegacyPurchases(rows));
   if (!useFile && client) {
     const { data, error } = await client
       .from("copilot_messages")
       .select("*")
       .eq("chat_id", chatId)
       .order("created_at", { ascending: true });
-    if (!error) {
-      return ensureLegacyPurchases((data ?? []).map((row) => unpackMessage(row as CopilotMessage)));
-    }
+    if (!error) return finish((data ?? []).map((row) => unpackMessage(row as CopilotMessage)));
     if (useLocalFile(error)) { /* local file store */ }
     else throw new Error(error.message);
   }
-  return ensureLegacyPurchases(readFileStore()
+  return finish(readFileStore()
     .messages.filter((m) => m.chat_id === chatId)
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
     .map(unpackMessage));
@@ -764,7 +773,7 @@ export async function listMemory(): Promise<string[]> {
     if (!error) {
       return (data ?? [])
         .map((r) => String((r as { note: string }).note))
-        .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|") && !note.startsWith("outlook|") && !note.startsWith("failed-read|"))
+        .filter((note) => !hiddenMemoryNote(note))
         .slice(0, 20);
     }
     if (useLocalFile(error)) { /* local file store */ }
@@ -774,8 +783,21 @@ export async function listMemory(): Promise<string[]> {
     .memory.slice(-40)
     .reverse()
     .map((m) => m.note)
-    .filter((note) => !note.startsWith("cursor|") && !note.startsWith("seen|") && !note.startsWith("desk|") && !note.startsWith("browser|") && !note.startsWith("bbctx|") && !note.startsWith("gmail|") && !note.startsWith("gmail-offer|") && !note.startsWith("outlook|") && !note.startsWith("failed-read|"))
+    .filter((note) => !hiddenMemoryNote(note))
     .slice(0, 20);
+}
+
+function hiddenMemoryNote(note: string): boolean {
+  return note.startsWith("cursor|")
+    || note.startsWith("seen|")
+    || note.startsWith("desk|")
+    || note.startsWith("browser|")
+    || note.startsWith("bbctx|")
+    || note.startsWith("gmail|")
+    || note.startsWith("gmail-offer|")
+    || note.startsWith("outlook|")
+    || note.startsWith("failed-read|")
+    || note.startsWith("brief|");
 }
 
 function parseCursorNote(note: string, chatId: string): { agentId: string; runId: string } | null {
@@ -1017,6 +1039,24 @@ export async function readMessage(messageId: string): Promise<CopilotMessage | n
   }
   const row = readFileStore().messages.find((item) => item.id === messageId);
   return row ? unpackMessage(row) : null;
+}
+
+const BRIEF_PREFIX = "brief|";
+
+export async function readBriefSnapshot(): Promise<BriefPayload | null> {
+  const raw = await readPrefixed(BRIEF_PREFIX);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as BriefPayload;
+    if (!parsed || !Array.isArray(parsed.focus) || !Array.isArray(parsed.eating)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveBriefSnapshot(brief: BriefPayload): Promise<void> {
+  await writePrefixed(BRIEF_PREFIX, JSON.stringify(brief));
 }
 
 async function readPrefixed(prefix: string): Promise<string> {

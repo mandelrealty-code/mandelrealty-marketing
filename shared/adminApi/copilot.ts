@@ -8,7 +8,7 @@ import { passwordMatches } from "../adminAuth.js";
 import { getHospitablePat, isHospitableMcpConfigured, updatePmSettings } from "../pm/clientStore.js";
 import { gmailConnected, gmailKeysReady } from "./gmail.js";
 import { outlookConnected, outlookKeysReady } from "./outlook.js";
-import { buildBrief, quietBrief } from "../copilot/brief.js";
+import { applyOpenItemOnBrief, dismissSavedCard, quietBrief, readSavedBrief, refreshSavedBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
 import { answerSignIn, cancelCursorRun, collectCursorRun } from "../copilot/cursorThink.js";
@@ -40,7 +40,7 @@ import { skillFromWords, skillFromWorkflow } from "../copilot/skillShape.js";
 import { CREATION_FAILED, reportSkillCreation, storedSkill } from "../copilot/skillPersist.js";
 import { testWorkflow } from "../copilot/skillExecute.js";
 import { missingNumber, type Workflow } from "../copilot/workflow.js";
-import { chooseBriefOpenItem, chooseOpenItem, listOpenItems, openItemChoice } from "../copilot/openItems.js";
+import { chooseOpenItem, listOpenItems, openItemChoice } from "../copilot/openItems.js";
 import { toE164 } from "../followUpSequences.js";
 import {
   addMessage,
@@ -48,7 +48,6 @@ import {
   createChat,
   deleteChat,
   deleteSkill,
-  dismissCard,
   listChats,
   listCursorRuns,
   listMemory,
@@ -258,7 +257,7 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
 
 async function factsFor(): Promise<string> {
   const [brief, rows, skills, memory, memoryFiles] = await Promise.all([
-    buildBrief().catch(() => null),
+    readSavedBrief().catch(() => null),
     connectors(),
     skillRows().catch(() => [] as SkillRow[]),
     listMemory().catch(() => []),
@@ -295,7 +294,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const op = String(req.query.op ?? "boot");
       if (op === "messages") {
         const chatId = String(req.query.chatId ?? "");
-        return res.status(200).json({ messages: await listMessages(chatId) });
+        return res.status(200).json({ messages: await listMessages(chatId, { lookup: false }) });
       }
       const [cursorRuns, browserRuns] = await Promise.all([
         listCursorRuns().catch(() => []),
@@ -304,7 +303,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const runningChatIds = [...new Set([...cursorRuns.map((row) => row.chatId), ...browserRuns.map((row) => row.chatId)])];
       const skills = await skillRows().catch(() => [] as Awaited<ReturnType<typeof skillRows>>);
       const [brief, chats, memory, textLog, textNumbers, memoryFiles, connectorRows] = await Promise.all([
-        buildBrief().catch(() => quietBrief()),
+        readSavedBrief().catch(() => quietBrief()),
         listChats().catch(() => []),
         listMemory().catch(() => []),
         listTextLog().catch(() => []),
@@ -337,7 +336,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const chatId = String(body.chatId ?? "").trim();
       if (!chatId) return res.status(400).json({ error: "Missing chat." });
       await markChatSeen(chatId);
-      return res.status(200).json({ chats: await listChats(), brief: await buildBrief() });
+      return res.status(200).json({ chats: await listChats(), brief: await readSavedBrief() });
     }
 
     if (op === "run-skill") {
@@ -376,19 +375,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ memoryFiles });
     }
 
+    if (op === "refresh-brief") {
+      return res.status(200).json({ brief: await refreshSavedBrief() });
+    }
+
     if (op === "dismiss") {
       const cardId = String(body.cardId ?? "").trim();
       if (!cardId) return res.status(400).json({ error: "Missing card." });
-      await dismissCard(cardId);
-      return res.status(200).json({ brief: await buildBrief() });
+      return res.status(200).json({ brief: await dismissSavedCard(cardId) });
     }
 
     if (op === "open-item") {
       const cardId = String(body.cardId ?? "").trim();
       const label = String(body.choice ?? "").trim();
-      const applied = await chooseBriefOpenItem(cardId, label);
-      if (!applied) return res.status(400).json({ error: "Missing choice." });
-      return res.status(200).json({ brief: await buildBrief() });
+      const brief = await applyOpenItemOnBrief(cardId, label);
+      if (!brief) return res.status(400).json({ error: "Missing choice." });
+      return res.status(200).json({ brief });
     }
 
     if (op === "new") {

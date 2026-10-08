@@ -535,7 +535,7 @@ export function HospitableDraftCard({
             <button type="button" className="cp-sk-gold" disabled={busy} onClick={onApprove}>Submit</button>
             <button type="button" className="cp-sk-ghost" disabled={busy} onClick={onHold}>Hold</button>
           </div>
-          <p className="cp-sk-after muted">Submit commits this in Hospitable. Hold leaves it here.</p>
+          <p className="cp-sk-after muted">{draft.cleanerAssign ? `Submit writes ${draft.cleanerAssign.cleanerName} onto the turnover in the cleaner app. Nothing has been written yet.` : "Submit commits this in Hospitable. Hold leaves it here."}</p>
         </>
       ) : null}
       {draft.status === "sent" ? (

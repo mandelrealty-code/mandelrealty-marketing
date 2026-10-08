@@ -3,9 +3,9 @@ import { addDays, greeting, torontoToday } from "./time.js";
 import type { BriefCard, BriefPayload } from "./types.js";
 import { latestInboxOffer } from "../adminApi/gmail.js";
 import { latestOutlookOffer } from "../adminApi/outlook.js";
-import { listDismissed, listDueReminders, listRuns, listSkills, listSupplyDrafts, listWaitingDrafts, readGmailOffer, saveGmailOffer } from "./store.js";
+import { chooseBriefOpenItem, listOpenItems, openItemChoice, verifiedLabel } from "./openItems.js";
+import { dismissCard, listDismissed, listDueReminders, listRuns, listSkills, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, saveBriefSnapshot, saveGmailOffer, type WaitingDraft } from "./store.js";
 import { runsOnItsOwn } from "./skillRunner.js";
-import { listOpenItems, verifiedLabel } from "./openItems.js";
 import { runUnattendedChecks } from "./stayCheck.js";
 import { listConnectorFailures } from "./connectorFailures.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -13,14 +13,57 @@ import { purchaseCardText, recordedSupplies } from "./purchase.js";
 
 const MAX_CARDS = 4;
 
-function take(cards: BriefCard[], next: BriefCard, skipped: Set<string>) {
+function ship(cards: BriefCard[], next: BriefCard, skipped: Set<string>) {
   if (skipped.has(next.id) || cards.length >= MAX_CARDS) return;
-  cards.push(next);
+  if (!next.headline?.trim() || !next.detail?.trim()) return;
+  if (!next.action?.trim() && !next.actions?.length) return;
+  const text = next.text?.trim() || `${next.headline} ${next.detail}`;
+  cards.push({ ...next, text });
 }
 
 export function quietBrief(now = new Date()): BriefPayload {
   const greet = greeting(now);
   return { hello: greet.hello, line: greet.line, quiet: true, focus: [], eating: [] };
+}
+
+/** The last pass, already stored. This does not scan mail, stays, or the cleaner app. */
+export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
+  const saved = await readBriefSnapshot();
+  return saved ?? quietBrief(now);
+}
+
+/** Rebuilds the brief off the page-load path and stores it for the next open. */
+export async function refreshSavedBrief(now = new Date()): Promise<BriefPayload> {
+  const brief = await buildBrief(now);
+  await saveBriefSnapshot(brief);
+  return brief;
+}
+
+export async function dismissSavedCard(cardId: string, now = new Date()): Promise<BriefPayload> {
+  await dismissCard(cardId);
+  const current = await readSavedBrief(now);
+  const focus = current.focus.filter((card) => card.id !== cardId);
+  const eating = current.eating.filter((card) => card.id !== cardId);
+  const next = { ...current, focus, eating, quiet: focus.length + eating.length === 0 };
+  await saveBriefSnapshot(next);
+  return next;
+}
+
+export async function applyOpenItemOnBrief(cardId: string, label: string, now = new Date()): Promise<BriefPayload | null> {
+  const applied = await chooseBriefOpenItem(cardId, label);
+  if (!applied) return null;
+  const choice = openItemChoice(label);
+  const current = await readSavedBrief(now);
+  const keep = (cards: BriefCard[]) => cards.flatMap((card) => {
+    if (card.id !== cardId) return [card];
+    if (choice === "closed") return [];
+    return [{ ...card, action: "Open", actions: undefined }];
+  });
+  const focus = keep(current.focus);
+  const eating = keep(current.eating);
+  const next = { ...current, focus, eating, quiet: focus.length + eating.length === 0 };
+  await saveBriefSnapshot(next);
+  return next;
 }
 
 export async function buildBrief(now = new Date()): Promise<BriefPayload> {
@@ -33,28 +76,14 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const seenSupply = new Set<string>();
   for (const row of recordedSupplies()) {
     seenSupply.add(row.confirmation);
-    take(focus, {
-      id: `supply:${row.confirmation}`,
-      group: "focus",
-      text: purchaseCardText(row),
-      action: row.status === "delivered" ? "Dismiss" : "Track order",
-      source: `Supplies · ${row.property}`,
-      purchaseStatus: row.status,
-      trackingUrl: row.tracking,
-    }, skipped);
+    const card = supplyCard(row);
+    if (card) ship(focus, card, skipped);
   }
   try {
     for (const row of await listSupplyDrafts()) {
       if (seenSupply.has(row.confirmation)) continue;
-      take(focus, {
-        id: `supply:${row.confirmation}`,
-        group: "focus",
-        text: purchaseCardText(row),
-        action: row.status === "delivered" ? "Dismiss" : "Track order",
-        source: `Supplies · ${row.property}`,
-        purchaseStatus: row.status,
-        trackingUrl: row.tracking,
-      }, skipped);
+      const card = supplyCard(row);
+      if (card) ship(focus, card, skipped);
     }
   } catch {
     /* The overview still loads when a saved order cannot be read. */
@@ -70,10 +99,14 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   }
   try {
     for (const failure of await listConnectorFailures()) {
-      take(focus, {
+      const headline = `${failure.connector} failed read`;
+      const detail = `${failure.error} Nothing was read.`;
+      ship(focus, {
         id: `failed-read:${failure.connector}`,
         group: "focus",
-        text: `${failure.connector} failed read: ${failure.error}`,
+        headline,
+        detail,
+        text: `${headline}: ${failure.error}`,
         action: "Open",
         source: "Checks",
       }, skipped);
@@ -86,10 +119,14 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
     for (const item of items) {
       if (item.status !== "open") continue;
       const choices = item.askedOn === today ? undefined : ["Already upgraded", "Still pending"];
-      take(focus, {
+      const headline = item.text.trim();
+      const detail = `Last verified ${verifiedLabel(item.verifiedOn)}. A choice here updates this item. Nothing has been changed yet.`;
+      ship(focus, {
         id: `open:${item.id}`,
         group: "focus",
-        text: `${item.text}. Last verified ${verifiedLabel(item.verifiedOn)}.`,
+        headline,
+        detail,
+        text: `${headline}. Last verified ${verifiedLabel(item.verifiedOn)}.`,
         action: choices ? choices[0] : "Open",
         actions: choices,
         source: item.source || "Records",
@@ -103,13 +140,8 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
       const offer = await latestInboxOffer();
       if (offer) {
         await saveGmailOffer({ ...offer, mailbox: "gmail" });
-        take(focus, {
-          id: `gmail:${offer.messageId}`,
-          group: "focus",
-          text: `${offer.from} wrote about ${offer.subject} in Gmail. Want me to reply?`,
-          action: "Reply",
-          source: "Gmail",
-        }, skipped);
+        const card = mailCard(offer.from, offer.subject, "Gmail", offer.messageId);
+        if (card) ship(focus, card, skipped);
       }
     } catch {
       /* The overview still loads when Gmail is not connected. */
@@ -118,13 +150,8 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
       const offer = await latestOutlookOffer();
       if (offer) {
         await saveGmailOffer({ ...offer, mailbox: "outlook" });
-        take(focus, {
-          id: `outlook:${offer.messageId}`,
-          group: "focus",
-          text: `${offer.from} wrote about ${offer.subject} in Outlook. Want me to reply?`,
-          action: "Reply",
-          source: "Outlook",
-        }, skipped);
+        const card = mailCard(offer.from, offer.subject, "Outlook", offer.messageId);
+        if (card) ship(focus, card, skipped);
       }
     } catch {
       /* The overview still loads when Outlook is not connected. */
@@ -134,13 +161,8 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
       const offer = await readGmailOffer();
       if (offer) {
         const where = offer.mailbox === "outlook" ? "Outlook" : "Gmail";
-        take(focus, {
-          id: `${where === "Outlook" ? "outlook" : "gmail"}:${offer.messageId}`,
-          group: "focus",
-          text: `${offer.from} wrote about ${offer.subject} in ${where}. Want me to reply?`,
-          action: "Reply",
-          source: where,
-        }, skipped);
+        const card = mailCard(offer.from, offer.subject, where, offer.messageId);
+        if (card) ship(focus, card, skipped);
       }
     } catch {
       /* The overview still loads when the saved offer cannot be read. */
@@ -151,35 +173,29 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   for (const skill of skills.slice(0, 2)) {
     const last = (await listRuns(skill.id, 1).catch(() => []))[0];
     if (!last || last.status === "running" || torontoToday(new Date(last.started_at)) !== today) continue;
-    take(focus, {
+    const chatId = skill.chat_id as string;
+    if (!chatId) continue;
+    const headline = last.status === "failed"
+      ? `${skill.name} couldn't finish this time`
+      : last.result?.headline
+        ? `${skill.name}: ${last.result.headline}`
+        : `${skill.name} finished`;
+    const detail = "Opening this run shows what it did. Nothing was sent.";
+    ship(focus, {
       id: `run:${last.id}`,
-      chatId: skill.chat_id as string,
+      chatId,
       group: "focus",
-      text: last.status === "failed"
-        ? `${skill.name} couldn't finish this time. Nothing was sent.`
-        : last.result?.headline
-          ? `${skill.name}: ${last.result.headline}`
-          : `${skill.name} finished. Nothing was sent.`,
+      headline,
+      detail,
+      text: `${headline}. ${detail}`,
       action: "Open",
       source: "Skill",
     }, skipped);
   }
   const waiting = await listWaitingDrafts().catch(() => []);
   for (const item of waiting) {
-    const label = item.channel === "skill"
-      ? (item.skillName || "A skill")
-      : (item.subject || (item.channel === "note" ? "A note" : item.channel === "hospitable" ? "A Hospitable change" : "An email"));
-    const ready = item.channel === "skill" ? `${label} is ready to save.` : `${label} is ready.`;
-    take(focus, {
-      id: `draft:${item.messageId}`,
-      chatId: item.chatId,
-      group: "focus",
-      text: item.purchaseLine
-        ? item.purchaseLine
-        : item.channel === "hospitable" ? `${ready} Nothing was changed.` : `${ready} Nothing was sent.`,
-      action: "Review",
-      source: item.purchaseLine ? `Supplies · ${item.purchaseProperty}` : "Copilot",
-    }, skipped);
+    const card = waitingDraftCard(item);
+    if (card) ship(focus, card, skipped);
   }
   const sb = getSupabaseAdmin();
 
@@ -199,11 +215,17 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
       for (const client of clients ?? []) names.set(client.id as string, client.name as string);
     }
     for (const contract of contracts ?? []) {
-      const name = (contract.client_id && names.get(contract.client_id as string)) || "A client";
-      take(focus, {
+      const name = (contract.client_id && names.get(contract.client_id as string)) || "";
+      const title = String(contract.title || "").trim();
+      if (!name || !title) continue;
+      const headline = `${name} hasn't signed ${title}`;
+      const detail = "Drafting a message does not send it. Nothing has been sent.";
+      ship(focus, {
         id: `contract:${contract.id}`,
         group: "focus",
-        text: `${name} hasn't signed ${contract.title || "the contract"}. Let's get them going.`,
+        headline,
+        detail,
+        text: `${headline}. ${detail}`,
         action: "Draft a message",
         source: "Clients",
       }, skipped);
@@ -218,19 +240,27 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
     const propertyIds = [
       ...new Set((stays ?? []).map((s) => s.property_id).filter(Boolean)),
     ] as string[];
-    const properties = new Map<string, string>();
+    const properties = new Map<string, { name: string; address: string }>();
     if (propertyIds.length) {
-      const { data: rows } = await sb.from("pm_properties").select("id, name").in("id", propertyIds);
-      for (const row of rows ?? []) properties.set(row.id as string, row.name as string);
+      const { data: rows } = await sb.from("pm_properties").select("id, name, address").in("id", propertyIds);
+      for (const row of rows ?? []) {
+        properties.set(row.id as string, { name: String(row.name ?? ""), address: String(row.address ?? "") });
+      }
     }
     for (const stay of stays ?? []) {
       if (focus.length + eating.length >= MAX_CARDS) break;
-      const place = properties.get(stay.property_id as string) || "a unit";
-      const when = stay.check_in === today ? "today" : "tomorrow";
-      take(focus, {
+      const property = properties.get(stay.property_id as string);
+      const place = cleanPlace(`${property?.name ?? ""} ${property?.address ?? ""}`);
+      const when = spokenWhen(String(stay.check_in ?? ""));
+      if (!place || !when) continue;
+      const headline = `A guest checks in at ${place} on ${when}`;
+      const detail = "Drafting the arrival note does not send it to the guest. Nothing has been sent.";
+      ship(focus, {
         id: `stay:${stay.id}`,
         group: "focus",
-        text: `A guest checks in ${when} at ${place}. Confirm the arrival details before they arrive.`,
+        headline,
+        detail,
+        text: `${headline}. ${detail}`,
         action: "Draft the arrival note",
         source: "Hospitable",
       }, skipped);
@@ -249,10 +279,17 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
         task.task_type === "cleaning" ||
         task.task_type === "maintenance";
       if (!urgent) continue;
-      take(eating, {
+      const title = String(task.title ?? "").trim();
+      const when = spokenWhen(String(task.due_on ?? today));
+      if (!title || !when) continue;
+      const headline = `${title} is due ${when}`;
+      const detail = "Drafting the next step does not assign anyone. Nothing has been sent.";
+      ship(eating, {
         id: `task:${task.id}`,
         group: "eating",
-        text: `${task.title} is due today.`,
+        headline,
+        detail,
+        text: `${headline}. ${detail}`,
         action: "Draft the next step",
         source: "Today only",
       }, skipped);
@@ -262,10 +299,16 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const reminders = await listDueReminders(today).catch(() => []);
   for (const reminder of reminders) {
     if (focus.length + eating.length >= MAX_CARDS) break;
-    take(focus, {
+    const about = reminder.text.trim();
+    if (!about) continue;
+    const headline = `Reminder: ${about}`;
+    const detail = "Opening the follow-up drafts a note. Nobody has been contacted.";
+    ship(focus, {
       id: `reminder:${reminder.id}`,
       group: "focus",
-      text: `You asked me to remind you: ${reminder.text}`,
+      headline,
+      detail,
+      text: `You asked me to remind you: ${about}`,
       action: "Open the follow-up",
       source: "Reminder",
     }, skipped);
@@ -279,4 +322,127 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
     focus: all.filter((c) => c.group === "focus"),
     eating: all.filter((c) => c.group === "eating"),
   };
+}
+
+function supplyCard(row: { status: "ordered" | "shipped" | "delivered"; product: string; property: string; item: string; confirmation: string; delivery: string; tracking: string }): BriefCard | null {
+  const place = row.property.trim();
+  if (!place) return null;
+  const text = purchaseCardText(row);
+  if (row.status === "delivered") {
+    const headline = `Ready for pickup at ${place}`;
+    const detail = `Cleaners notified in the cleaner app. ${row.product || row.item} has arrived.`;
+    return {
+      id: `supply:${row.confirmation}`,
+      group: "focus",
+      headline,
+      detail,
+      text,
+      action: "Dismiss",
+      source: `Supplies · ${place}`,
+      purchaseStatus: row.status,
+      trackingUrl: row.tracking,
+    };
+  }
+  if (!row.tracking.trim()) return null;
+  const headline = row.status === "shipped"
+    ? `${row.product} is on the way to ${place}`
+    : `Ordered ${row.product} for ${row.item} at ${place}`;
+  const detail = `Confirmation ${row.confirmation}. Estimated delivery ${row.delivery}. Nothing else has been ordered.`;
+  return {
+    id: `supply:${row.confirmation}`,
+    group: "focus",
+    headline,
+    detail,
+    text,
+    action: "Track order",
+    source: `Supplies · ${place}`,
+    purchaseStatus: row.status,
+    trackingUrl: row.tracking,
+  };
+}
+
+function mailCard(from: string, subject: string, where: "Gmail" | "Outlook", messageId: string): BriefCard | null {
+  const who = from.trim();
+  const about = subject.trim();
+  if (!who || !about) return null;
+  const headline = `${who} wrote about ${about} in ${where}`;
+  const detail = "Reply drafts an answer in Checks. Nothing has been sent.";
+  return {
+    id: `${where === "Outlook" ? "outlook" : "gmail"}:${messageId}`,
+    group: "focus",
+    headline,
+    detail,
+    text: `${headline}. Want me to reply?`,
+    action: "Reply",
+    source: where,
+  };
+}
+
+export function waitingDraftCard(item: WaitingDraft): BriefCard | null {
+  if (!item.chatId || !item.messageId) return null;
+  const base = {
+    id: `draft:${item.messageId}`,
+    chatId: item.chatId,
+    messageId: item.messageId,
+    group: "focus" as const,
+    action: "Review",
+    source: item.purchaseLine ? `Supplies · ${item.purchaseProperty}` : "Checks",
+  };
+  if (item.cleanerName && item.cleanerUnit && item.cleanerOn) {
+    const place = cleanPlace(item.cleanerUnit);
+    const when = spokenWhen(item.cleanerOn);
+    if (!place || !when) return null;
+    const headline = `Assign ${item.cleanerName} to the ${place} clean on ${when}`;
+    const detail = `Approving writes ${item.cleanerName} onto that turnover in the cleaner app. Nothing has been written yet.`;
+    return { ...base, headline, detail, text: `${headline}. ${detail}` };
+  }
+  if (item.purchaseLine && item.purchaseProperty) {
+    const headline = item.purchaseLine.trim();
+    const detail = "Approving places the order. Nothing has been ordered yet.";
+    return { ...base, headline, detail, text: `${headline} ${detail}` };
+  }
+  if (item.channel === "skill" && item.skillName.trim()) {
+    const headline = `${item.skillName.trim()} is ready to save`;
+    const detail = "Approving saves it and leaves it off. It is not running.";
+    return { ...base, headline, detail, text: `${headline}. ${detail}` };
+  }
+  if (item.channel === "email" && item.subject.trim()) {
+    const who = item.to.trim();
+    const headline = who ? `Email ${item.subject.trim()} to ${who}` : item.subject.trim();
+    if (!who && /^an email$/i.test(headline)) return null;
+    const detail = who
+      ? `Approving sends it to ${who}. Nothing has been sent.`
+      : "Approving sends this email. Nothing has been sent.";
+    return { ...base, headline, detail, text: `${headline}. ${detail}` };
+  }
+  if (item.channel === "hospitable" && item.to.trim()) {
+    const headline = `Reply to ${item.to.trim()} is waiting`;
+    const detail = "Submitting sends it. Nothing has been sent.";
+    return { ...base, headline, detail, text: `${headline}. ${detail}` };
+  }
+  if (item.channel === "note" && item.subject.trim() && !/^a note$/i.test(item.subject.trim())) {
+    const headline = item.subject.trim();
+    const detail = "Approving keeps this note. Nothing has been sent.";
+    return { ...base, headline, detail, text: `${headline}. ${detail}` };
+  }
+  return null;
+}
+
+function cleanPlace(unit: string): string {
+  if (/blue jays/i.test(unit)) return "Blue Jays Way";
+  if (/roseglor|scarborough/i.test(unit)) return "Roseglor";
+  if (/charlotte/i.test(unit) && /\b606\b/.test(unit)) return "Charlotte 606";
+  if (/\bshaw\b/i.test(unit)) return "Shaw Street";
+  const street = unit.split(",").map((part) => part.trim()).find((part) => /\d/.test(part) && /[A-Za-z]/.test(part));
+  return street || "";
+}
+
+function spokenWhen(iso: string): string {
+  const day = iso.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return "";
+  const date = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return "";
+  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(date);
+  const month = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(date);
+  return `${weekday} ${month} ${date.getUTCDate()}`;
 }

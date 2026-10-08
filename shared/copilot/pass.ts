@@ -8,6 +8,8 @@ import { latestOutlookOffer } from "../adminApi/outlook.js";
 import { connectorHealthReport } from "./connectorHealth.js";
 import { saveConnectorFailures } from "./connectorFailures.js";
 import { saveGmailOffer } from "./store.js";
+import { refreshSavedBrief } from "./brief.js";
+import { parityEnabled } from "./parity/flag.js";
 import { publishCheckReport, runUnattendedChecks } from "./stayCheck.js";
 
 export async function runCopilotPass(now = new Date()): Promise<void> {
@@ -34,6 +36,7 @@ export async function runCopilotPass(now = new Date()): Promise<void> {
     });
   }
   await refreshMailboxOffers();
+  if (!parityEnabled()) await refreshSavedBrief(now);
 }
 
 /** Saves the latest partner mailbox card so opening Copilot does not scan the inbox. */
