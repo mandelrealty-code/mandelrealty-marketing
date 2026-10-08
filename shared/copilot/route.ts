@@ -10,8 +10,9 @@ const RENTAL = /\b(guests?|reservations?|bookings?|check[\s-]?ins?|check[\s-]?ou
 const MAIL = /\b(e-?mails?|inboxes?|gmail|outlook|mailbox)\b/i;
 const STAY = /\b(stays?|check[\s-]?ins?|check[\s-]?outs?|checking[\s-]?in|checking[\s-]?out)\b/i;
 const RESERVATION = /\b(reservations?|bookings?)\b/i;
-const CLEANER = /\b(cleaner\s+app|turnovers?|no cleaner assigned|assign(?:ed)?\s+(?:a\s+)?cleaner)\b/i;
+const CLEANER = /\b(cleaner\s+app|turnovers?|no cleaner assigned|cleaner assigned|assign(?:ed)?\s+(?:a\s+)?cleaner)\b/i;
 const SOP = /\bsops?\b|\bstandard operating procedures?\b/i;
+const PROPOSAL = /\bproposals?\b/i;
 const REVENUE = /\brevenues?\b|\bhost revenue\b/i;
 const CLIENT = /\bclients?\b/i;
 const MEMORY = /\b(remember(?:ed)?|memories|memory)\b/i;
@@ -28,6 +29,7 @@ export type QuestionRoute =
   | "reservation"
   | "cleaner"
   | "sop"
+  | "proposal"
   | "revenue"
   | "client"
   | "memory"
@@ -48,6 +50,7 @@ export function questionRoute(text: string): QuestionRoute {
   if (RESERVATION.test(asked)) return "reservation";
   if (CLEANER.test(asked)) return "cleaner";
   if (SOP.test(asked)) return "sop";
+  if (PROPOSAL.test(asked)) return "proposal";
   if (REVENUE.test(asked)) return "revenue";
   if (CLIENT.test(asked)) return "client";
   if (MEMORY.test(asked)) return "memory";

@@ -18,9 +18,14 @@ import { GENERAL_ANSWER_SYSTEM } from "./plainAnswer.js";
 import { takeMemoryTurn } from "./memoryFiles.js";
 import { answerPropertyFact } from "./propertyFact.js";
 import { answerInboxToday } from "./mailInbox.js";
+import { answerMailChain } from "./mailChain.js";
 import { questionRoute, skipsWeb } from "./route.js";
 import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerRecords, asksUnitRoster, missingSourceAnswer } from "./recordsAnswer.js";
+import { answerOwnStore } from "./storeQuestions.js";
+import { createProposal } from "../pm/proposalStore.js";
+import { listPmClients } from "../pm/clientStore.js";
+import { upsertSop } from "../pm/sopStore.js";
 import { answerStay } from "./stayAnswer.js";
 import { answerOutsideRentals } from "./topicScope.js";
 
@@ -205,6 +210,10 @@ const routes: Array<[string, string]> = [
   ["What does the cleaner app show for turnovers?", "cleaner"],
   ["Where is the SOP for guest arrival?", "sop"],
   ["How many clients do we have?", "client"],
+  ["List our clients", "client"],
+  ["What proposals do we have saved?", "proposal"],
+  ["List the SOPs", "sop"],
+  ["Is a cleaner assigned for the Blue Jays Way clean on Friday October 9?", "cleaner"],
   ["What was the host revenue in August?", "revenue"],
   ["What have we remembered about parking?", "memory"],
   ["What are the Rogers Centre box office hours?", "web"],
@@ -555,5 +564,80 @@ const emptyChecks = briefFromChecksMessages([], [], [], checksNow);
 if (!emptyChecks.overview?.empty || emptyChecks.overview.count !== 0 || !emptyChecks.overview.summary.startsWith("Nothing needs you today")) {
   fail("checks overview", emptyChecks.overview?.summary ?? "no empty overview");
 }
+
+const clientQ = "List our clients";
+installOpsClients([
+  { name: "Elizabeth Hart", email: "elizabeth@mandelrealtygroup.com" },
+  { name: "Mara Singh", email: "mara@mandelrealtygroup.com" },
+  { name: "Noah Patel", email: "noah@mandelrealtygroup.com" },
+]);
+if (await answerRecords(clientQ) || await answerStay(clientQ)) fail("clients list", "another source answered the client list");
+const clientList = await answerOwnStore(clientQ);
+if (!clientList) fail("clients list", "no answer");
+shape("clients list", clientList.body, /^3 clients\./, ["Elizabeth Hart", "Mara Singh", "Noah Patel"]);
+if (/hospitable|unit #606|charlotte|roseglor|shaw street|we manage/i.test(clientList.body)) fail("clients list", clientList.body);
+
+const proposalQ = "What proposals do we have saved?";
+const elizabeth = (await listPmClients()).find((row) => row.name === "Elizabeth Hart");
+if (!elizabeth) fail("proposals", "Elizabeth Hart is not in the client list");
+await createProposal({
+  client_id: elizabeth.id,
+  address: "12 King Street",
+  version: 1,
+  sourced_on: "2026-10-07",
+  total_cents: 10000,
+  currency: "CAD",
+  estimate: "A short estimate.",
+  images_note: "",
+  ready: "",
+  rooms: [],
+  pdf: Buffer.from("%PDF-1.1"),
+});
+if (await answerInboxToday(proposalQ) || await answerMailChain(proposalQ) || await answerOutsideRentals(proposalQ)) {
+  fail("proposals", "mail or the web answered the proposal question");
+}
+const proposalList = await answerOwnStore(proposalQ);
+if (!proposalList) fail("proposals", "no answer");
+shape("proposals", proposalList.body, /^1 saved proposal\./, ["12 King Street", "version 1", "draft"]);
+if (/gmail|inbox|e-?mail|search/i.test(proposalList.body)) fail("proposals", proposalList.body);
+
+const sopQ = "List the SOPs";
+await upsertSop({
+  title: "Guest arrival SOP",
+  target_role: "va",
+  summary: "Read the new message",
+  steps: [{ id: "step-1", step_number: 1, title: "Read the new message", description: "Read the new message" }],
+});
+const sopList = await answerOwnStore(sopQ);
+if (!sopList) fail("sops", "no answer");
+shape("sops", sopList.body, /^1 SOP\./, ["Guest arrival SOP"]);
+if (/don't have a tool|do not have a tool|no tool/i.test(sopList.body)) fail("sops", sopList.body);
+
+const cleanerQ = "Is a cleaner assigned for the Blue Jays Way clean on Friday October 9?";
+if (await answerStay(cleanerQ) || await answerRecords(cleanerQ)) fail("cleaner", "Hospitable answered the cleaner question");
+const cleanerWorld = worldAt("2026-10-07T11:00:00-04:00");
+cleanerWorld.cleaner = {
+  turnovers: [{
+    propertyId: ID.blue,
+    scheduledOn: "2026-10-09",
+    status: "scheduled",
+    assigned: false,
+    done: false,
+    issue: "",
+  }],
+};
+installWorld(cleanerWorld);
+const unassigned = await answerOwnStore(cleanerQ);
+if (!unassigned) fail("cleaner", "no answer");
+shape("cleaner", unassigned.body, /^No\./, ["20 Blue Jays Way", "Friday, October 9, 2026"]);
+if (/does not appear|didn't appear|couldn't match|hospitable/i.test(unassigned.body)) fail("cleaner", unassigned.body);
+const assignedTurnover = cleanerWorld.cleaner?.turnovers?.[0];
+if (!assignedTurnover) fail("cleaner", "the turnover fixture was missing");
+assignedTurnover.assigned = true;
+installWorld(cleanerWorld);
+const assigned = await answerOwnStore(cleanerQ);
+if (!assigned) fail("cleaner", "no assigned answer");
+shape("cleaner assigned", assigned.body, /^Yes\./, ["20 Blue Jays Way", "Friday, October 9, 2026"]);
+if (/does not appear|didn't appear|couldn't match|hospitable/i.test(assigned.body)) fail("cleaner assigned", assigned.body);
 
 console.log("golden answers: 8 passed");

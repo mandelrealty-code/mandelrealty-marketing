@@ -27,6 +27,7 @@ import { answerStay } from "../copilot/stayAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft } from "../copilot/guestInboxAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
+import { answerOwnStore } from "../copilot/storeQuestions.js";
 import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, editProposal, prepareProposalSend, proposalFromWords } from "../copilot/proposal.js";
 import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
@@ -685,6 +686,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: gap,
             steps: [{ text: "That source is not connected" }],
             thought: "No connected source holds that. Nothing was guessed.",
+          });
+          return done();
+        }
+        const stored = await answerOwnStore(text);
+        if (stored) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: stored.body,
+            steps: [{ text: stored.step }],
+            thought: stored.thought,
           });
           return done();
         }
