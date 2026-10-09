@@ -361,10 +361,18 @@ async function readRetailer(retailer: Retailer, query: string): Promise<{ items:
   return { items, url: page.url };
 }
 
+function isSearchDump(page: Page): boolean {
+  if (/https?:\/\/(?:www\.)?google\.[^/]+\/search\b/i.test(page.url)) return true;
+  if (/https?:\/\/(?:www\.)?bing\.com\/search\b/i.test(page.url)) return true;
+  if (/google search results/i.test(page.title)) return true;
+  return false;
+}
+
 export async function answerWebLookup(text: string): Promise<string> {
   if (!asksRetailer(text)) {
     const page = await researchWeb(text).catch(() => null);
     if (!page || !("url" in page) || !page.url || "error" in page) return FAILED;
+    if (isSearchDump(page)) return FAILED;
     const items = productsFrom(page.text, /amazon\.ca\b/i.test(page.url));
     if (items.length) return productParagraph([], retailerFrom(page.url), items, page.url);
     const body = page.text.trim();

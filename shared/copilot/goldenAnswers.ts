@@ -13,7 +13,7 @@ import { isDemoted, noteSignal, rankOverview, signalKey, type OverviewInput, typ
 import { answerOps } from "./ops.js";
 import { linesInPdf } from "./contractPdf.js";
 import { answerPdfReport } from "./revenueReport.js";
-import { ID, worldAt } from "./parity/catalog.js";
+import { ID, reservations, worldAt } from "./parity/catalog.js";
 import { failNextOpsPropertyRead, installOpsClients, installOpsReservations } from "./parity/opsState.js";
 import { installWorld } from "./parity/world.js";
 import { GENERAL_ANSWER_SYSTEM } from "./plainAnswer.js";
@@ -27,7 +27,7 @@ import { INTERNAL_TERMS, hasInternalContent } from "./marketingCopy.js";
 import { answerInboxToday } from "./mailInbox.js";
 import { asksMailBreakdown } from "./mailChain.js";
 import { questionRoute, skipsWeb } from "./route.js";
-import { installResearch, resetResearch } from "./skillResearch.js";
+import { installResearch, researchWebCalls, resetResearch } from "./skillResearch.js";
 import { answerRecords, asksUnitRoster, missingSourceAnswer } from "./recordsAnswer.js";
 import { answerOwnStore, CLIENT_STORE_EMPTY } from "./storeQuestions.js";
 import { createProposal } from "../pm/proposalStore.js";
@@ -841,5 +841,57 @@ for (const body of [
 ]) {
   if (manikA.includes(body)) fail("manik chain", `pasted a message body\n${manikA}`);
 }
+
+
+function moneyFigures(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(moneyFigures);
+  if (!value || typeof value !== "object") return [];
+  const row = value as { formatted?: unknown };
+  const own = typeof row.formatted === "string" && row.formatted.trim() ? [row.formatted.trim()] : [];
+  return [...own, ...Object.values(value as Record<string, unknown>).flatMap(moneyFigures)];
+}
+
+async function sendChat(chatId: string, text: string, webSearch = false): Promise<string> {
+  const previousPassword = process.env.ADMIN_PASSWORD;
+  const previousSecret = process.env.ADMIN_SESSION_SECRET;
+  process.env.ADMIN_PASSWORD = "parity-admin";
+  process.env.ADMIN_SESSION_SECRET = "parity-secret";
+  const token = createAdminSessionToken();
+  let status = 0;
+  let payload: { messages?: { role: string; body: string }[]; error?: string } = {};
+  await handleCopilot(
+    { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text, chatId, kind: "chat", webSearch }, query: {} } as never,
+    { status(code: number) { status = code; return this; }, json(body: typeof payload) { payload = body; return this; } } as never,
+  );
+  if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
+  else process.env.ADMIN_PASSWORD = previousPassword;
+  if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
+  else process.env.ADMIN_SESSION_SECRET = previousSecret;
+  if (status !== 200) fail("guest payment", payload.error || String(status));
+  return [...(payload.messages ?? [])].reverse().find((message) => message.role === "assistant")?.body ?? "";
+}
+
+installWorld(worldAt("2026-10-07T11:00:00-04:00"));
+const dianePay = reservations().find((row) => row.guest === "Diane");
+const figures = [...new Set(moneyFigures(dianePay?.financials))];
+if (!figures.includes("$1,847.35") || !figures.includes("$1,620.00")) fail("guest payment", figures.join(", ") || "no fixture figures");
+await sendChat("parity-diane-pay", "did diane respond to shane?");
+resetResearch();
+installResearch([{
+  title: "Google search results for reservation fees",
+  url: "https://www.google.com/search?q=reservation+fees",
+  text: "Restaurant reservation fees often run $25 to $50 a person.",
+}]);
+const webBefore = researchWebCalls();
+const paid = await sendChat("parity-diane-pay", "how much did she pay for her reservation?", true);
+if (researchWebCalls() !== webBefore) fail("guest payment", `web calls ${researchWebCalls() - webBefore}`);
+for (const figure of figures) {
+  if (!paid.includes(figure)) fail("guest payment", `missing ${figure}\n${paid}`);
+}
+if (!/in total/i.test(paid) || !/host revenue/i.test(paid)) fail("guest payment", paid);
+if (/google|search results|restaurant reservation fee|not its payment figures/i.test(paid)) fail("guest payment", paid);
+const eloisePay = await sendChat("parity-eloise-pay", "how much did Eloise pay for her reservation?", true);
+if (eloisePay !== "I can see her reservation but not its payment figures") fail("guest payment", eloisePay);
+if (researchWebCalls() !== webBefore) fail("guest payment", `web calls after eloise ${researchWebCalls() - webBefore}`);
 
 console.log("golden answers passed");

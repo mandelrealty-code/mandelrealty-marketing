@@ -45,6 +45,8 @@ export type ParityReservation = {
   adults: number;
   children: number;
   messages: ParityMessage[];
+  /** Hospitable financials, when the reservation record includes them. */
+  financials?: Record<string, unknown>;
   /** The public message read throws, the way a live thread read can fail. */
   threadUnreadable?: boolean;
   /** When set, the message read throws this instead of the generic thread failure. */
@@ -573,6 +575,7 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     guest: { first_name: row.guest, ...(row.phone ? { phone: row.phone } : {}) },
     guests: { adult_count: row.adults, child_count: row.children, total: row.adults + row.children },
     properties: property ? [mcpProperty(property)] : [],
+    ...(row.financials ? { financials: row.financials } : {}),
   };
 }
 

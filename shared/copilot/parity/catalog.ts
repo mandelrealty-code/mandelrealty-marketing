@@ -112,6 +112,23 @@ export function reservations(shawHostReply = false): ParityReservation[] {
       messages: [
         msg("diane-1", "2026-10-06T16:54:00-04:00", "guest", "Diane", "One guest is gluten-free and one is lactose-free. We are bringing two cars. Are there two parking spaces?"),
       ],
+      financials: {
+        currency: "CAD",
+        guest: {
+          total_price: { amount: 184735, formatted: "$1,847.35" },
+          accommodation: { amount: 150000, formatted: "$1,500.00" },
+          fees: [
+            { label: "Cleaning fee", amount: 22500, formatted: "$225.00" },
+            { label: "Guest service fee", amount: 12235, formatted: "$122.35" },
+          ],
+        },
+        host: {
+          revenue: { amount: 162000, formatted: "$1,620.00" },
+          accommodation: { amount: 150000, formatted: "$1,500.00" },
+          guest_fees: [{ label: "Cleaning fee", amount: 22500, formatted: "$225.00" }],
+          host_fees: [{ label: "Host service fee", amount: -10500, formatted: "-$105.00" }],
+        },
+      },
     }),
     stay({
       id: "00000000-0000-4000-8000-000000000c01",

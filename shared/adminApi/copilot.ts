@@ -34,6 +34,7 @@ import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
 import { answerStay } from "../copilot/stayAnswer.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
+import { answerGuestStay } from "../copilot/guestStayAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { answerPdfReport } from "../copilot/revenueReport.js";
@@ -916,7 +917,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return done();
         }
       }
-      if (!pictureMode && !skillMode && (asksFetchLookup(text) || (!skipsWeb(text) && asksWebLookup(text)))) {
+      if (!pictureMode && !skillMode) {
+        const history = await listMessages(chatId);
+        const earlier = history.slice(0, -1);
+        const prior = [
+          ...earlier.filter((message) => message.role === "assistant"),
+          ...earlier.filter((message) => message.role === "user"),
+        ].map((message) => message.body).join("\n");
+        const guestStay = await answerGuestStay(text, prior);
+        if (guestStay) {
+          const missingPay = /not its payment figures/.test(guestStay);
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: guestStay,
+            steps: [{ text: missingPay ? "The payment figures were not on the reservation" : "Read the reservation" }],
+            thought: missingPay
+              ? "The reservation is in Hospitable. Its payment figures were not. Nothing was searched."
+              : "This came from the reservation in Hospitable. Nothing was searched.",
+          });
+          return done();
+        }
+      }
+      if (!pictureMode && !skillMode && !skipsWeb(text) && (asksFetchLookup(text) || asksWebLookup(text))) {
         const said = asksFetchLookup(text) ? await runFetchLookup(text, () => answerWebLookup(text)) : await answerWebLookup(text);
         await addMessage({
           chatId,

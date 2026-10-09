@@ -4,6 +4,7 @@ import type { Page } from "playwright-core";
 export type ResearchPage = { title: string; url: string; text: string };
 
 let pages: ResearchPage[] = [];
+let calls = 0;
 
 export function installResearch(next: ResearchPage[]): void {
   pages = next.map((page) => ({ ...page }));
@@ -11,11 +12,18 @@ export function installResearch(next: ResearchPage[]): void {
 
 export function resetResearch(): void {
   pages = [];
+  calls = 0;
+}
+
+/** How many times an answer opened the web. A reservation question stays at zero. */
+export function researchWebCalls(): number {
+  return calls;
 }
 
 /** A page title and text a report can cite. Parity uses the installed page and does not open Browserbase. */
 export async function researchWeb(query: string): Promise<ResearchPage | { error: string }> {
   const asked = query.trim();
+  calls += 1;
   if (!asked) return { error: "Say what to look up." };
   if (parityEnabled()) {
     if (/^https?:\/\//i.test(asked)) {

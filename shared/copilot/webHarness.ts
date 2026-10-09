@@ -126,6 +126,16 @@ if (/only answer questions about your rentals/i.test(hours.body)) fail(hours.bod
 if (hours.body.includes("\n") || !/that is from/i.test(hours.body)) fail(hours.body);
 if (hours.body.trim() === "Rogers Centre box office hours are 10:00 a.m. to 6:00 p.m.") fail(hours.body);
 
+resetResearch();
+installResearch([{
+  title: "Google search results for reservation fees",
+  url: "https://www.google.com/search?q=reservation+fees",
+  text: "Restaurant reservation fees often run $25 to $50 a person.\nOpenTable charges a deposit.\nGoogle search results for reservation deposits.",
+}]);
+const dumped = await answerWebLookup("how much does a restaurant reservation cost?");
+if (/Restaurant reservation fees|OpenTable|Google search results/i.test(dumped)) fail(dumped);
+if (!/that read failed/i.test(dumped)) fail(dumped);
+
 const refused = await answerOutsideRentals("Draft a guest message for 8 Charlotte 1104 about the lockbox.");
 if (!refused || refused.kind !== "refused" || refused.body !== UNMANAGED_REFUSAL) fail(refused?.body ?? "the 1104 draft was not refused");
 if (/lockbox|Hi /i.test(refused.body)) fail(refused.body);

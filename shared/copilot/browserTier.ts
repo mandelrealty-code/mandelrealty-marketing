@@ -11,6 +11,7 @@ import {
   type BrowserSession,
   type ChatPost,
 } from "./browserSession.js";
+import { skipsWeb } from "./route.js";
 
 export const BROWSER_IDLE_MS = 10 * 60 * 1000;
 export const BROWSER_UNREAD_MS = 30 * 1000;
@@ -33,7 +34,7 @@ export function browserSessionsOpened(): number {
 /** A price, hours, or product lookup is search and fetch. It never opens a session. */
 export function asksFetchLookup(text: string): boolean {
   const asked = text.trim();
-  if (!asked) return false;
+  if (!asked || skipsWeb(asked)) return false;
   if (/\b(click(?:ing)?(?: through)?|sign(?:ed)?[\s-]?in|log(?:ged)?[\s-]?in|fill(?:ing)? (?:out |in )?(?:a |the )?form)\b/i.test(asked)) return false;
   const price = /\bhow much\b/i.test(asked) || /\bprice\b/i.test(asked) || /\bcosts?\b/i.test(asked);
   if (price && /\b(revenue|payout|clients?|invoice)\b/i.test(asked)) return false;
