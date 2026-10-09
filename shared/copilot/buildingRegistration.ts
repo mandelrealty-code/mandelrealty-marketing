@@ -5,16 +5,64 @@
  * The draft waits in Checks until Submit.
  */
 
+import { findPlanArrival } from "./dayBoard.js";
 import { readMailThread, searchMail, type MailLetter } from "./mailSearch.js";
 import { parityNow } from "./parity/clock.js";
 import { confirmedChecksDraft } from "./checksClaim.js";
 import { leaveDraft, loadRecentStays, readStayThread, type RecentStay } from "./stayCheck.js";
-import { platesFrom, sentProof } from "./partnerStandard.js";
+import { platesFrom, registrationAlreadySent, sentProof } from "./partnerStandard.js";
 import { torontoToday } from "./time.js";
 
 const DATE = /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}, \d{4}/g;
 
 type Vehicle = { guest: string; make: string; model: string; plate: string; colour: string; count: string };
+
+const NAME_STOP = new Set(["has", "the", "building", "been", "about", "for", "her", "his", "their", "stay", "starting", "today", "cars", "car", "draft", "sent", "email", "emailed"]);
+
+/** "Has it been sent?" or "Is there a draft?" about a building registration. Not a request to write one. */
+export function asksRegistrationStatus(text: string): boolean {
+  const asked = text.trim();
+  if (!asked) return false;
+  const aboutBuilding = /\b(building|registration|register)\b/i.test(asked) || (/\b(cars?|vehicles?)\b/i.test(asked) && /\b(emailed|e-?mailed|sent|draft)\b/i.test(asked));
+  if (!aboutBuilding) return false;
+  const sent = /\b(has|have|was|were|been)\b/i.test(asked) && /\b(sent|emailed|e-?mailed)\b/i.test(asked);
+  const draft = /\bdraft\b/i.test(asked) && /\b(is there|there a|do we have|any|waiting)\b/i.test(asked);
+  return sent || draft;
+}
+
+function guestInQuestion(text: string): string {
+  const possessive = text.match(/\b([A-Z][A-Za-z'-]{1,40})'s\b/);
+  const named = text.match(/\b(?:about|for|named)\s+([A-Z][A-Za-z'-]{1,40})\b/);
+  const name = (possessive?.[1] || named?.[1] || "").trim();
+  if (!name || NAME_STOP.has(name.toLowerCase())) return "";
+  return name;
+}
+
+export function missingGuestLine(name: string): string {
+  return `No guest named ${name} in the reservations starting today or nearby.`;
+}
+
+/**
+ * A status question checks the plan's arrivals, then Sent.
+ * An already-sent registration is reported with its date. No new draft is written.
+ */
+export async function answerRegistrationStatus(text: string, now?: Date): Promise<string | null> {
+  if (!asksRegistrationStatus(text)) return null;
+  const name = guestInQuestion(text);
+  if (!name) return "Which guest should I check? I didn't draft an email.";
+  const clock = now ?? parityNow() ?? new Date();
+  const arrival = await findPlanArrival(name, clock);
+  if (arrival === "unread") return "I can't read today's plan, so I didn't say the guest is missing. I didn't draft an email.";
+  if (!arrival) return missingGuestLine(name);
+  const sent = await sentLetters(`${arrival.guest} ${arrival.property}`);
+  if (!sent.letters.length) {
+    if (/isn't connected|didn't return/i.test(sent.note)) return `${sent.note} I didn't draft an email.`;
+    return `I didn't find a sent building registration for ${arrival.guest} at ${arrival.property}. Nothing was drafted.`;
+  }
+  const closed = registrationAlreadySent(sent.letters, arrival.date, []);
+  if (!closed) return `I didn't find a sent building registration for ${arrival.guest}'s stay starting ${arrival.date}. Nothing was drafted.`;
+  return sentProof(closed, platesFrom(`${closed.subject}\n${closed.body}`));
+}
 
 export function asksBuildingRegistration(text: string): boolean {
   const asked = text.trim();

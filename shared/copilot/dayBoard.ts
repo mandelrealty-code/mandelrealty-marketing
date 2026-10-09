@@ -7,7 +7,7 @@
 import { readCleanerUnit } from "./cleanerRead.js";
 import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
 import { listPmProperties } from "../pm/propertyStore.js";
-import { torontoToday } from "./time.js";
+import { addDays, torontoToday } from "./time.js";
 import { torontoWeekday } from "./skillSchedule.js";
 
 const DEAD = /cancel|declin|denied|expired|not_possible|withdrawn|inquiry/i;
@@ -194,6 +194,31 @@ export async function loadPeriod(from: string, to: string, assignments = false):
   departures.sort(byName);
   turnovers.sort((a, b) => a.date.localeCompare(b.date) || a.property.localeCompare(b.property));
   return { ok: true, board: { arrivals, departures, turnovers } };
+}
+
+/** Arrivals the daily plan would list, from a week back through two weeks ahead. */
+export async function planArrivals(now = new Date()): Promise<{ ok: true; today: string; arrivals: StayMove[] } | { ok: false; error: string }> {
+  const today = torontoToday(now);
+  const loaded = await loadPeriod(addDays(today, -7), addDays(today, 14), false);
+  if (!loaded.ok) return loaded;
+  return { ok: true, today, arrivals: loaded.board.arrivals };
+}
+
+/** A guest on those arrivals. A miss is only real after that list comes back. */
+export async function findPlanArrival(name: string, now = new Date()): Promise<StayMove | "unread" | null> {
+  const needle = name.trim().toLowerCase();
+  if (!needle) return null;
+  const loaded = await planArrivals(now);
+  if (!loaded.ok) return "unread";
+  const hits = loaded.arrivals.filter((row) => {
+    const guest = row.guest.trim().toLowerCase();
+    return guest === needle || guest.startsWith(`${needle} `);
+  });
+  const today = hits.find((row) => row.date === loaded.today);
+  if (today) return today;
+  const upcoming = hits.filter((row) => row.date > loaded.today).sort((a, b) => a.date.localeCompare(b.date));
+  if (upcoming[0]) return upcoming[0];
+  return [...hits].sort((a, b) => b.date.localeCompare(a.date))[0] ?? null;
 }
 
 export function asksDayPlan(text: string): boolean {

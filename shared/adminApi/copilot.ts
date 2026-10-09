@@ -23,7 +23,7 @@ import { answerInboxToday } from "../copilot/mailInbox.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
-import { answerBuildingRegistration } from "../copilot/buildingRegistration.js";
+import { answerBuildingRegistration, answerRegistrationStatus } from "../copilot/buildingRegistration.js";
 import { closeHandledAnswer } from "../copilot/partnerStandard.js";
 import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
 import { answerStay, asksDayCount } from "../copilot/stayAnswer.js";
@@ -1090,16 +1090,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        const building = await answerBuildingRegistration(text);
-        if (building) {
+        const registration = (await answerRegistrationStatus(text)) ?? (await answerBuildingRegistration(text));
+        if (registration) {
+          const already = /already sent/i.test(registration);
           await addMessage({
             chatId,
             role: "assistant",
-            body: building,
-            steps: [{ text: /didn't find|didn't draft|couldn't read|didn't return|was not saved/i.test(building) ? "The building email was not drafted" : "Drafted the building email" }],
-            thought: /is in Checks/.test(building)
-              ? "The draft is in Checks. Nothing was sent. Submit is what sends it."
-              : "The building email was not saved.",
+            body: registration,
+            steps: [{ text: already ? "Read the sent building email" : /didn't find|didn't draft|couldn't read|didn't return|was not saved|Nothing was drafted/i.test(registration) ? "The building email was not drafted" : "Drafted the building email" }],
+            thought: already
+              ? "This came from Sent mail. Nothing was drafted."
+              : /is in Checks/.test(registration)
+                ? "The draft is in Checks. Nothing was sent. Submit is what sends it."
+                : "The building email was not saved.",
           });
           return done();
         }

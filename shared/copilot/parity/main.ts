@@ -6,10 +6,10 @@
 
 import { latestInboxOffer } from "../../adminApi/gmail.js";
 import { buildBrief, briefFromChecksMessages } from "../brief.js";
-import { answerDayPlan, answerWeekCleans, turnoverLine } from "../dayBoard.js";
+import { answerDayPlan, answerWeekCleans, findPlanArrival, turnoverLine } from "../dayBoard.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
-import { answerBuildingRegistration } from "../buildingRegistration.js";
+import { answerBuildingRegistration, answerRegistrationStatus, missingGuestLine } from "../buildingRegistration.js";
 import { closeHandledAnswer, correctRelativeWording, presentApprovals } from "../partnerStandard.js";
 import { listStoredWaitingDrafts } from "../checksClaim.js";
 import { answerStay } from "../stayAnswer.js";
@@ -962,6 +962,71 @@ async function fixtureDianeSent(): Promise<void> {
   expectDraftRules(result.drafts, result.reports);
 }
 
+const DIANE_STATUS = "Has the building been emailed about Diane's cars for her stay starting today?";
+
+function dianeSentMail(): ParityMail {
+  const recipients = "supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com";
+  return {
+    id: "diane-sent",
+    mailbox: "gmail",
+    folder: "sent",
+    from: "Shane",
+    email: "shane@mandelrealtygroup.com",
+    to: recipients,
+    date: "2026-10-08T11:24:00-04:00",
+    subject: "AirBNB Rental for Unit 318 from Friday, October 9, 2026 - Monday, October 12, 2026",
+    snippet: "20 Blue Jays Way Unit 318",
+    body: [
+      "Hello,",
+      "",
+      "Please register these vehicles for Unit 318 at 20 Blue Jays Way.",
+      "Guest: Diane",
+      "Check-in is Friday, October 9, 2026 and check-out is Monday, October 12, 2026.",
+      "Vehicle count: 2",
+      "Make: Toyota",
+      "Model: Corolla",
+      "Plate: BKRP441",
+      "Colour: White",
+      "",
+      "Make: Honda",
+      "Model: Civic",
+      "Plate: CKLM220",
+      "Colour: Grey",
+    ].join("\n"),
+    airbnb: false,
+  };
+}
+
+async function fixtureDianeLookup(): Promise<void> {
+  const now = new Date("2026-10-09T10:00:00-04:00");
+  const world = worldAt("2026-10-09T10:00:00-04:00");
+  const diane = world.reservations.find((row) => row.code === CODE.diane);
+  expect(diane?.checkIn === "2026-10-09" && diane.checkOut === "2026-10-12", "Diane arrives today and does not leave today", `${diane?.checkIn} to ${diane?.checkOut}`);
+  installWorld(world);
+  const plan = (await answerDayPlan("What's the plan for today?", now)) ?? "";
+  expect(/Diane checks in at 20 Blue Jays Way/.test(plan), "the plan names Diane's arrival", plan || "no plan");
+  const found = await findPlanArrival("Diane", now);
+  expect(found !== "unread" && found?.guest === "Diane" && found.property === "20 Blue Jays Way" && found.date === "2026-10-09", "the name lookup uses that same arrival list", found === "unread" ? "unread" : found ? `${found.guest} ${found.property} ${found.date}` : "missing");
+  const answer = (await answerRegistrationStatus(DIANE_STATUS, now)) ?? "";
+  expect(!answer.includes(missingGuestLine("Diane")) && /Diane/.test(answer) && /20 Blue Jays Way/.test(answer), "the answer does not claim Diane is missing", answer || "no answer");
+  const absent = (await answerRegistrationStatus("Has the building been emailed about Marcel's cars for his stay starting today?", now)) ?? "";
+  expect(absent === missingGuestLine("Marcel"), "a name that is not arriving is missing only after that search", absent || "no answer");
+  expect(capturedDrafts().length === 0, "a status question does not write a draft", `drafts ${capturedDrafts().length}`);
+  expectNothingSent();
+}
+
+async function fixtureDianeAlreadySent(): Promise<void> {
+  const now = new Date("2026-10-09T10:00:00-04:00");
+  installWorld(worldAt("2026-10-09T10:00:00-04:00", false, [dianeSentMail()]));
+  const asked = (await answerRegistrationStatus(DIANE_STATUS, now)) ?? "";
+  expect(/already sent/.test(asked) && /October 8, 2026/.test(asked), "Sent mail is reported with its date", asked || "no answer");
+  expect(!asked.includes(missingGuestLine("Diane")) && !/Checks|Submit|I didn't draft/.test(asked), "a sent registration is not offered as a new draft", asked);
+  const draftAsk = (await answerRegistrationStatus("Is there a draft for the building registration about Diane's cars?", now)) ?? "";
+  expect(/already sent/.test(draftAsk) && /October 8, 2026/.test(draftAsk), "a draft question reports the sent email instead", draftAsk || "no answer");
+  expect(capturedDrafts().length === 0, "neither question writes a draft", `drafts ${capturedDrafts().length}`);
+  expectNothingSent();
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -988,6 +1053,8 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "25", title: "A closer closes the waiting reply in Checks and Overview", run: fixtureCloserPass },
   { id: "23", title: "Today's plan and the week's cleans share one turnover list", run: fixtureDayBoard },
   { id: "24", title: "A sent building email stays closed and the shutdown stays its own approval", run: fixtureDianeSent },
+  { id: "26", title: "Diane is found on the same arrivals the plan uses", run: fixtureDianeLookup },
+  { id: "27", title: "A sent building registration is reported instead of drafted", run: fixtureDianeAlreadySent },
 ];
 
 function guard(): void {
