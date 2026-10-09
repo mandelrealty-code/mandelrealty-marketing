@@ -1059,10 +1059,12 @@ async function fixtureDianeAlreadySent(): Promise<void> {
   const diane = world.reservations.find((row) => row.code === CODE.diane);
   if (diane) diane.guest = "Diane Castagnier";
   installWorld(world);
-  const asked = (await answerRegistrationStatus(DIANE_STATUS, now)) ?? "";
+  const asked = (await answerRegistrationStatus("Has the building been emailed about Diane Castagnier's cars for her stay that started today?", now)) ?? "";
   expect(/already sent/.test(asked) && /October 8, 2026/.test(asked), "Sent mail is reported with its date", asked || "no answer");
   expect(!asked.includes(missingGuestLine("Diane")) && !/Checks|Submit|I didn't draft/.test(asked), "a sent registration is not offered as a new draft", asked);
-  const draftAsk = (await answerRegistrationStatus("Is there a draft for the building registration about Diane's cars?", now)) ?? "";
+  const partial = (await answerRegistrationStatus(DIANE_STATUS, now)) ?? "";
+  expect(partial === missingGuestLine("Diane"), "a first name is not the full guest name", partial || "no answer");
+  const draftAsk = (await answerRegistrationStatus("Is there a draft for the building registration about Diane Castagnier's cars?", now)) ?? "";
   expect(/already sent/.test(draftAsk) && /October 8, 2026/.test(draftAsk), "a draft question reports the sent email instead", draftAsk || "no answer");
   expect(capturedDrafts().length === 0, "neither question writes a draft", `drafts ${capturedDrafts().length}`);
   expectNothingSent();

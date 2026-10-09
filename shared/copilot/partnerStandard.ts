@@ -3,11 +3,21 @@
  * A sent or completed item stays closed. Each item that is still open keeps its own draft.
  */
 
-import type { MailLetter } from "./mailSearch.js";
-import { draftsRecorded, recordDrafts } from "./store.js";
+import { readMail, searchMail, type MailLetter } from "./mailSearch.js";
+import { parityEnabled } from "./parity/flag.js";
+import { parityChecksMessages } from "./parity/storeStub.js";
+import { draftsRecorded, listChecksMessages, recordDrafts, updateDraft } from "./store.js";
 import { addDays } from "./time.js";
 
 const openKeys = new Set<string>();
+
+/** Names and titles match in full. A first name is not the rest of the name. */
+export function namesMatch(stored: string, asked: string): boolean {
+  const left = stored.trim().toLowerCase().replace(/\s+/g, " ");
+  const right = asked.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!left || !right) return false;
+  return left === right;
+}
 
 export function longDate(iso: string): string {
   const [year, month, dayNum] = iso.slice(0, 10).split("-").map(Number);
@@ -117,4 +127,69 @@ export async function closeHandledAnswer(text: string): Promise<string | null> {
     openKeys.delete(key);
   }
   return "Closed as already handled. I will not bring it up again.";
+}
+
+const WITHDRAWN = "I don't have a sent record for that email. The sent claim is withdrawn.";
+
+function proofStamp(letter: Pick<MailLetter, "date" | "from" | "mailbox" | "to">): string {
+  const at = new Date(letter.date);
+  const day = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/Toronto",
+  }).format(at);
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Toronto",
+  }).format(at);
+  const who = letter.from || "The sender";
+  const channel = letter.mailbox === "outlook" ? "Outlook" : "Gmail";
+  return `${who} sent it by ${channel} on ${day} at ${time} to ${letter.to}.`;
+}
+
+/**
+ * A sent claim stands only when Sent still has the message.
+ * An empty read-back withdraws the claim.
+ */
+export async function proveOutgoingMail(input: { subject: string; body: string; to: string }): Promise<{ sent: true; text: string } | { sent: false; text: string }> {
+  const subject = input.subject.trim();
+  const body = input.body.trim();
+  const keywords = subject || body.slice(0, 80);
+  if (keywords.length < 2) return { sent: false, text: WITHDRAWN };
+  const found = await searchMail({ keywords, where: "sent", includeAirbnb: false });
+  if (!found.hits.length) {
+    const offline = found.notes.find((line) => /isn't connected/i.test(line));
+    if (offline && found.notes.every((line) => /isn't connected/i.test(line))) {
+      return { sent: false, text: `${found.notes.join(" ")} The sent claim is withdrawn.` };
+    }
+    return { sent: false, text: WITHDRAWN };
+  }
+  for (const hit of found.hits) {
+    try {
+      const letter = await readMail({ mailbox: hit.mailbox, id: hit.id });
+      const hay = `${letter.subject}\n${letter.body}`;
+      const subjectOk = Boolean(subject) && letter.subject.trim() === subject;
+      const slice = body.slice(0, 80);
+      const bodyOk = slice.length > 12 && hay.includes(slice);
+      if (!subjectOk && !bodyOk) continue;
+      return { sent: true, text: `Sent. ${proofStamp(letter)}` };
+    } catch {
+      // A message that will not open is not proof it was sent.
+    }
+  }
+  return { sent: false, text: WITHDRAWN };
+}
+
+/** A waiting email proven sent is closed. Overview and Checks then read the closed row. */
+export async function closeResolvedSentDrafts(): Promise<void> {
+  const messages = parityEnabled() ? parityChecksMessages() : await listChecksMessages();
+  for (const message of messages) {
+    const draft = message.draft;
+    if (!draft || draft.status !== "waiting" || draft.channel !== "email" || !draft.subject.trim()) continue;
+    const proof = await proveOutgoingMail({ subject: draft.subject, body: draft.body, to: draft.to });
+    if (!proof.sent) continue;
+    await updateDraft(message.id, { status: "held", bodyText: proof.text });
+  }
 }

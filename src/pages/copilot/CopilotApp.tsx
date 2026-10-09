@@ -2283,7 +2283,23 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       void api<GuestDraftView>("guests-open", { ...row }).then(setGuestAnswer).catch(() => setGuestAnswer(null));
                     }}
                     onBack={() => setGuestAnswer(null)}
-                    onSubmit={async (draft, fact) => {
+                    onRefresh={() => {
+                      void api<GuestQueue>("guests-refresh", {}).then((queue) => {
+                        if (!isGuestQueue(queue)) return;
+                        setGuestQueue(queue);
+                        setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+                      }).catch(() => undefined);
+                    }}
+                    onHold={async (id) => {
+                      await api("guests-hold", { id });
+                    }}
+                    onStand={async (situation, wording) => {
+                      await api("guests-stand", { situation, wording });
+                    }}
+                    onUnstand={async (situation) => {
+                      await api("guests-unstand", { situation });
+                    }}
+                    onSubmit={async (draft, fact, attachments) => {
                       const row = guestAnswer;
                       const result = await api<{ savedLine: string; failedLine: string; sentText: string }>("guests-submit", {
                         id: row?.id,
@@ -2293,6 +2309,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         english: draft,
                         language: row?.language,
                         fact,
+                        attachments,
                       });
                       return result;
                     }}

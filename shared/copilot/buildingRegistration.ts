@@ -10,7 +10,7 @@ import { readMailThread, searchMail, type MailLetter } from "./mailSearch.js";
 import { parityNow } from "./parity/clock.js";
 import { confirmedChecksDraft } from "./checksClaim.js";
 import { leaveDraft, loadRecentStays, readStayThread, type RecentStay } from "./stayCheck.js";
-import { platesFrom, registrationAlreadySent, sentProof } from "./partnerStandard.js";
+import { namesMatch, platesFrom, registrationAlreadySent, sentProof } from "./partnerStandard.js";
 import { torontoToday } from "./time.js";
 
 const DATE = /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}, \d{4}/g;
@@ -31,8 +31,9 @@ export function asksRegistrationStatus(text: string): boolean {
 }
 
 function guestInQuestion(text: string): string {
-  const possessive = text.match(/\b([A-Z][A-Za-z'-]{1,40})'s\b/);
-  const named = text.match(/\b(?:about|for|named)\s+([A-Z][A-Za-z'-]{1,40})\b/);
+  const full = "([A-Z][A-Za-z'-]+(?:\\s+[A-Z][A-Za-z'-]+)*)";
+  const possessive = text.match(new RegExp(`\\b${full}'s\\b`));
+  const named = text.match(new RegExp(`\\b(?:about|for|named)\\s+${full}\\b`));
   const name = (possessive?.[1] || named?.[1] || "").trim();
   if (!name || NAME_STOP.has(name.toLowerCase())) return "";
   return name;
@@ -47,10 +48,7 @@ export function missingGuestLine(name: string): string {
  * An already-sent registration is reported with its date. No new draft is written.
  */
 function sameGuest(guest: string, name: string): boolean {
-  const needle = name.trim().toLowerCase();
-  const full = guest.trim().toLowerCase();
-  if (!needle || !full) return false;
-  return full === needle || full.split(/\s+/).includes(needle);
+  return namesMatch(guest, name);
 }
 
 /** The plan's arrivals when the wider name search does not already have this guest. */

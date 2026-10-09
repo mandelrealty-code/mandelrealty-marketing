@@ -27,6 +27,7 @@ import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
 import { answerBuildingRegistration, answerRegistrationStatus } from "../copilot/buildingRegistration.js";
 import { closeHandledAnswer } from "../copilot/partnerStandard.js";
+import { parityNow } from "../copilot/parity/clock.js";
 import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
 import { answerStay } from "../copilot/stayAnswer.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
@@ -41,7 +42,7 @@ import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitabl
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
-import { loadGuestQueue, openGuestAnswer, readSavedGuestQueue, submitGuestReply } from "../copilot/guestMessaging.js";
+import { forgetStandingAnswer, holdGuestThread, loadGuestQueue, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, listStoredMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
@@ -401,6 +402,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (op === "guests-open") {
+      const lane = body.lane === "guest" || body.lane === "none" ? body.lane : "reply";
       const row = await openGuestAnswer({
         id: String(body.id ?? ""),
         guest: String(body.guest ?? ""),
@@ -415,13 +417,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         language: String(body.language ?? ""),
         wait: String(body.wait ?? ""),
         waitedMs: Number(body.waitedMs ?? 0),
-        thanks: false,
+        thanks: Boolean(body.thanks),
+        lane,
+        status: String(body.status ?? ""),
+        statusLead: String(body.statusLead ?? ""),
+        statusRest: String(body.statusRest ?? ""),
+        watch: String(body.watch ?? ""),
+        when: String(body.when ?? ""),
+        urgent: Boolean(body.urgent),
+        dates: String(body.dates ?? ""),
+        checkIn: String(body.checkIn ?? ""),
+        checkOut: String(body.checkOut ?? ""),
+        mediaLabel: String(body.mediaLabel ?? ""),
+        lastNote: String(body.lastNote ?? ""),
       });
       return res.status(200).json(row);
     }
 
     if (op === "guests-submit") {
       try {
+        const files = Array.isArray(body.attachments) ? body.attachments.flatMap((item) => {
+          if (!item || typeof item !== "object") return [];
+          const file = item as { name?: unknown; mime?: unknown; data?: unknown };
+          const data = String(file.data ?? "");
+          if (!data) return [];
+          return [{ name: String(file.name ?? "file"), mime: String(file.mime ?? "application/octet-stream"), data }];
+        }) : [];
         const result = await submitGuestReply({
           reservationId: String(body.id ?? ""),
           propertyId: String(body.propertyId ?? ""),
@@ -430,12 +451,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           english: String(body.english ?? ""),
           language: String(body.language ?? ""),
           fact: String(body.fact ?? ""),
+          attachments: files,
         });
         return res.status(200).json(result);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Couldn't reach Hospitable. Nothing was sent.";
-        return res.status(400).json({ error: /not connected/i.test(message) ? "Hospitable is not connected. Nothing was sent." : "Couldn't reach Hospitable. Nothing was sent." });
+        if (/not connected/i.test(message)) return res.status(400).json({ error: "Hospitable is not connected. Nothing was sent." });
+        if (/nothing was sent/i.test(message)) return res.status(400).json({ error: message });
+        return res.status(400).json({ error: "Couldn't reach Hospitable. Nothing was sent." });
       }
+    }
+
+    if (op === "guests-hold") {
+      holdGuestThread(String(body.id ?? ""));
+      return res.status(200).json({ held: true });
+    }
+
+    if (op === "guests-stand") {
+      saveStandingAnswer(String(body.situation ?? ""), String(body.wording ?? ""));
+      return res.status(200).json({ saved: true });
+    }
+
+    if (op === "guests-unstand") {
+      forgetStandingAnswer(String(body.situation ?? ""));
+      return res.status(200).json({ saved: false });
     }
 
     if (op === "reviews-queue") {
@@ -786,6 +825,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chats = await listChats();
         return res.status(200).json({ chatId, messages, chats, pending });
       };
+      const clock = parityNow() ?? new Date();
       if (asksMailBreakdown(text)) {
         const narrative = await answerMailChain(text);
         await addMessage({
@@ -1081,7 +1121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        const shownDrafts = await answerWaitingDrafts(text);
+        const shownDrafts = await answerWaitingDrafts(text, clock);
         if (shownDrafts) {
           await addMessage({
             chatId,
@@ -1092,7 +1132,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        const namedDraft = await answerNamedGuestDraft(text);
+        const namedDraft = await answerNamedGuestDraft(text, clock);
         if (namedDraft) {
           const asked = /which guest|which one|couldn't read|was not saved/i.test(namedDraft);
           await addMessage({
@@ -1104,7 +1144,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        const guestThreads = await answerGuestThreads(text);
+        const guestThreads = await answerGuestThreads(text, clock);
         if (guestThreads) {
           await addMessage({
             chatId,
@@ -1128,7 +1168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        const registration = (await answerRegistrationStatus(text)) ?? (await answerBuildingRegistration(text));
+        const registration = (await answerRegistrationStatus(text, clock)) ?? (await answerBuildingRegistration(text));
         if (registration) {
           const already = /already sent/i.test(registration);
           await addMessage({
@@ -1144,7 +1184,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        const dayPlan = await answerDayPlan(text);
+        const dayPlan = await answerDayPlan(text, clock);
         if (dayPlan) {
           await addMessage({
             chatId,
@@ -1155,7 +1195,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        const weekCleans = await answerWeekCleans(text);
+        const weekCleans = await answerWeekCleans(text, clock);
         if (weekCleans) {
           await addMessage({
             chatId,

@@ -12,6 +12,7 @@ import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft, CopilotMessage } from "./types.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
+import { mediaFromMessage, type ThreadMedia } from "./guestMedia.js";
 import { isThanksOnly, needsGuestReply } from "./guestTranslate.js";
 import { readCleanerUnit, type CleanerPicture, type CleanerSupply, type CleanerTurnover } from "./cleanerRead.js";
 import { describePurchase } from "./purchase.js";
@@ -36,7 +37,7 @@ const CONTACTS = [
   "kshewnarain@rogers.com",
 ];
 
-type Msg = { at: string; role: string; name: string; body: string };
+type Msg = { at: string; role: string; name: string; body: string; media?: ThreadMedia[] };
 export type Stay = {
   id: string;
   code: string;
@@ -152,15 +153,17 @@ export async function readStayThread(reservationId: string, now: Date): Promise<
       const sender = isRow(row.sender) ? row.sender : {};
       const roleRaw = `${text(row.sender_role)} ${text(row.sender_type)} ${text(sender.type)}`.toLowerCase();
       const role = roleRaw.includes("guest") ? "guest" : roleRaw.includes("host") ? "host" : roleRaw.includes("system") ? "system" : "unknown";
+      const media = mediaFromMessage(row);
       return {
         at: text(row.created_at) || text(row.sent_at) || text(row.timestamp),
         role,
         name: text(author.name) || text(sender.name) || text(sender.full_name) || text(sender.first_name),
         body: text(row.body) || text(row.message) || text(row.content) || text(row.text),
+        media,
       };
     })
     .filter((row) => {
-      if (!row.body) return false;
+      if (!row.body && !row.media?.length) return false;
       const at = new Date(row.at);
       return !row.at || Number.isNaN(at.getTime()) || at <= now;
     });

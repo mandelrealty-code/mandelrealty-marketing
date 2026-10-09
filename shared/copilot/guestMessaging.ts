@@ -3,30 +3,60 @@
  * A thanks-only note never waits and never gets a draft.
  */
 
+import { randomUUID } from "node:crypto";
 import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
+import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIntelligence.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { readGuestQueueSnapshot, saveGuestQueueSnapshot } from "./store.js";
 import { leaveDraft, loadRecentStays, memoryFor, readStayThread } from "./stayCheck.js";
+import { parityNow } from "./parity/clock.js";
+import { addDays, torontoToday } from "./time.js";
 import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
-import type { GuestDraftView, GuestQueue, GuestRow } from "./guestTypes.js";
+import { getSupabaseAdmin } from "../supabase.js";
+import type { GuestDraftView, GuestFile, GuestQueue, GuestRow } from "./guestTypes.js";
 
 export type { GuestBubble, GuestDraftView, GuestQueue, GuestRow } from "./guestTypes.js";
 export { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
 
 let poster: ((id: string, text: string) => Promise<void>) | null = null;
+let uploader: ((file: GuestFile) => Promise<string>) | null = null;
 let hubWrite: ((propertyId: string, fact: string) => Promise<string>) | null = null;
 const drafts = new Map<string, { to: string; body: string; reservationId: string; language: string }>();
+const standing = new Map<string, string>();
+const heldIds = new Set<string>();
 let rememberedQueue: GuestQueue | null = null;
 
 export function resetGuestMessaging(): void {
   poster = null;
+  uploader = null;
   hubWrite = null;
   drafts.clear();
+  standing.clear();
+  heldIds.clear();
   rememberedQueue = null;
 }
 
 export function setGuestPoster(next: ((id: string, text: string) => Promise<void>) | null): void {
   poster = next;
+}
+
+export function setGuestUploader(next: ((file: GuestFile) => Promise<string>) | null): void {
+  uploader = next;
+}
+
+export function holdGuestThread(id: string): void {
+  if (id) heldIds.add(id);
+}
+
+export function saveStandingAnswer(situation: string, wording: string): void {
+  const key = situation.trim();
+  const text = wording.trim();
+  if (!key || !text) return;
+  standing.set(key, text);
+}
+
+export function forgetStandingAnswer(situation: string): void {
+  standing.delete(situation.trim());
 }
 
 export function setHubWriter(next: ((propertyId: string, fact: string) => Promise<string>) | null): void {
@@ -60,11 +90,32 @@ export function guestSummary(count: number, longest: string, unread: string[] = 
   return { lead: `${count} guests`, rest: ` waiting. Longest wait: ${longest}.` };
 }
 
+/** Chat and Guest messaging answer "who is waiting" with this text. A failed read is never an all-clear. */
+export function waitingSurfaceText(queue: Pick<GuestQueue, "connected" | "line" | "failed" | "waiting">): string {
+  if (!queue.connected) return queue.line || HOSPITABLE_NOT_CONNECTED;
+  const lines: string[] = [];
+  if (queue.failed.length) lines.push(...queue.failed);
+  if (queue.waiting.length) {
+    const count = queue.waiting.length;
+    lines.push(count === 1 ? "1 guest is waiting on a reply." : `${count} guests are waiting on a reply.`);
+    for (const row of queue.waiting) lines.push(`${row.guest} at ${row.property}: "${row.asked}"`);
+  } else if (!queue.failed.length) {
+    lines.push("No guest is waiting on a reply.");
+  }
+  return lines.join("\n");
+}
+
 /** What the Guest Messaging tab shows. Not connected only when the shared Hospitable check failed. */
 export function guestTabText(queue: GuestQueue | null): string {
   if (!queue) return "Loading guests.";
   if (queue.connected === false) return queue.line || HOSPITABLE_NOT_CONNECTED;
-  return [`${queue.summaryLead}${queue.summaryRest}`, ...queue.waiting.map((row) => row.guest), ...queue.thanks.map((row) => row.guest), ...queue.failed].filter(Boolean).join("\n");
+  return [
+    `${queue.summaryLead}${queue.summaryRest}`,
+    ...queue.waiting.map((row) => row.guest),
+    ...(queue.onGuest ?? []).map((row) => row.guest),
+    ...queue.thanks.map((row) => row.guest),
+    ...queue.failed,
+  ].filter(Boolean).join("\n");
 }
 
 function disconnectedQueue(): GuestQueue {
@@ -74,8 +125,12 @@ function disconnectedQueue(): GuestQueue {
     summaryLead: "No one",
     summaryRest: " is waiting. Every guest has a reply.",
     waiting: [],
+    onGuest: [],
+    held: [],
     thanks: [],
     failed: [],
+    properties: [],
+    answer: "",
   };
 }
 
@@ -201,11 +256,32 @@ export async function submitGuestReply(input: {
   english: string;
   language: string;
   fact: string;
+  attachments?: GuestFile[];
 }): Promise<{ sent: true; savedLine: string; failedLine: string; sentText: string }> {
   const sentText = toGuestLanguage(input.english, input.language);
+  const files = input.attachments ?? [];
+  if (!sentText.trim() && !files.length) throw new Error("The draft is empty. Nothing was sent.");
+  if (files.length > 3) throw new Error("Only 3 attachments can go with a guest message, so nothing was sent.");
+  let images: string[] = [];
+  if (files.length) {
+    try {
+      images = [];
+      for (const file of files) images.push(await publicGuestFile(file));
+    } catch (err) {
+      const reason = err instanceof Error && err.message ? err.message : "The file didn’t upload";
+      throw new Error(reason.includes("nothing was sent") ? reason : `${reason.replace(/\.$/, "")}, so nothing was sent.`);
+    }
+  }
   if (!sentText.trim()) throw new Error("The draft is empty. Nothing was sent.");
   if (poster) await poster(input.reservationId, sentText);
-  else await hospitableRead("send-reservation-message", { reservation_id: input.reservationId, body: sentText });
+  else {
+    await hospitableRead("send-reservation-message", {
+      uuid: input.reservationId,
+      reservation_id: input.reservationId,
+      body: sentText,
+      ...(images.length ? { images } : {}),
+    });
+  }
   if (!input.fact.trim()) return { sent: true, savedLine: "", failedLine: "", sentText };
   const saved = await writeAndConfirm(input.propertyId, input.fact.trim());
   if (saved) return { sent: true, savedLine: `Saved to the ${input.property} Knowledge Hub`, failedLine: "", sentText };
@@ -240,13 +316,18 @@ export async function readSavedGuestQueue(): Promise<GuestQueue | null> {
   if (rememberedQueue) return rememberedQueue;
   const saved = await readGuestQueueSnapshot<GuestQueue>();
   if (!saved || !Array.isArray(saved.waiting) || !Array.isArray(saved.thanks)) return null;
+  saved.onGuest = Array.isArray(saved.onGuest) ? saved.onGuest : [];
+  saved.held = Array.isArray(saved.held) ? saved.held : [];
+  saved.properties = Array.isArray(saved.properties) ? saved.properties : [];
+  saved.answer = waitingSurfaceText(saved);
   rememberedQueue = saved;
   return saved;
 }
 
 /** Same stays and threads as Checks and the unanswered-messages report. Saves the pass for the next open. */
-export async function loadGuestQueue(now = new Date()): Promise<GuestQueue> {
+export async function loadGuestQueue(now = parityNow() ?? new Date()): Promise<GuestQueue> {
   const queue = await scanGuestQueue(now);
+  queue.answer = waitingSurfaceText(queue);
   if (queue.connected) {
     rememberedQueue = queue;
     await saveGuestQueueSnapshot(queue).catch(() => undefined);
@@ -259,13 +340,23 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
   try {
     const loaded = await loadRecentStays(now);
     const photos = await propertyPhotos();
+    const today = torontoToday(now);
     const waiting: GuestRow[] = [];
+    const onGuest: GuestRow[] = [];
+    const held: GuestRow[] = [];
     const thanks: GuestRow[] = [];
     const unread = [...loaded.failed];
     const failed = loaded.failed.map((label) => `Couldn't read reservations for ${label}, so anyone waiting there isn't listed. Nothing was sent.`);
     const messageFailed = new Set<string>();
+    const seenProperties = new Map<string, { id: string; label: string; failed: boolean }>();
     for (const stay of loaded.stays) {
-      let messages: { at: string; role: string; body: string }[];
+      if (!seenProperties.has(stay.stay.propertyId)) seenProperties.set(stay.stay.propertyId, { id: stay.stay.propertyId, label: stay.label, failed: false });
+    }
+    for (const label of loaded.failed) {
+      if (![...seenProperties.values()].some((row) => row.label === label)) seenProperties.set(label, { id: label, label, failed: true });
+    }
+    for (const stay of loaded.stays) {
+      let messages: { at: string; role: string; name: string; body: string; media?: ThreadTurn["media"] }[];
       try {
         messages = await readStayThread(stay.stay.id, now);
       } catch {
@@ -273,24 +364,60 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
         messageFailed.add(stay.label);
         if (!unread.includes(stay.label)) unread.push(stay.label);
         failed.push(`Couldn't read messages for ${stay.label}, so anyone waiting there isn't listed. Nothing was sent.`);
+        const chip = seenProperties.get(stay.stay.propertyId);
+        if (chip) chip.failed = true;
         continue;
       }
-      const spoken = messages.filter((item) => item.role !== "system" && item.body.trim());
+      const turns = messages
+        .filter((item) => item.role !== "system")
+        .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body, media: item.media ?? [] }));
+      const spoken = turns.filter((item) => item.body.trim() || item.media.length);
       const lastHost = spoken.filter((item) => item.role === "host").map((item) => item.at).sort().at(-1) ?? "";
       const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
       const last = spoken[spoken.length - 1];
-      if (!last || last.role !== "guest" || !pending.length) continue;
-      const ask = pending.map((item) => item.body.trim()).join(" ");
-      if (!needsGuestReply(ask) && !isThanksOnly(ask)) continue;
+      if (!last) continue;
+      if (last.role !== "guest" || !pending.length) {
+        if (last.role === "host") {
+          const parked = readThread(turns, stay.stay.guest || "Guest");
+          const row = rowFrom(stay, "", last.at, "", photos.get(stay.stay.propertyId) || "", now, {
+            ...parked,
+            lane: "guest",
+            watch: parked.watch || "their next message",
+          });
+          row.thanks = false;
+          onGuest.push(row);
+        }
+        continue;
+      }
+      const ask = pending.map((item) => [item.body.trim(), ...item.media.map((media) => media.shows)].filter(Boolean).join(" ")).join(" ");
+      const read = readThread(turns, stay.stay.guest || "Guest");
+      if (read.lane === "none" && !isThanksOnly(ask)) continue;
       const at = pending[pending.length - 1]?.at || last.at;
       const language = messageLanguage(ask);
-      const row = rowFrom(stay, ask, at, language, photos.get(stay.stay.propertyId) || "", now);
-      if (needsGuestReply(ask)) waiting.push(row);
-      else thanks.push(row);
+      const row = rowFrom(stay, ask, at, language, photos.get(stay.stay.propertyId) || "", now, read);
+      if (read.lane === "guest") {
+        row.thanks = false;
+        onGuest.push(row);
+      } else if (read.lane === "reply") {
+        if (heldIds.has(stay.stay.id)) held.push(row);
+        else waiting.push(row);
+      } else if (isThanksOnly(ask)) thanks.push(row);
     }
-    waiting.sort((a, b) => b.waitedMs - a.waitedMs || a.guest.localeCompare(b.guest));
+    waiting.sort((a, b) => arrivalRank(a, today) - arrivalRank(b, today) || b.waitedMs - a.waitedMs || a.guest.localeCompare(b.guest));
     const summary = guestSummary(waiting.length, waiting[0]?.wait || "", unread);
-    return { connected: true, line: "", summaryLead: summary.lead, summaryRest: summary.rest, waiting, thanks, failed };
+    return {
+      connected: true,
+      line: "",
+      summaryLead: summary.lead,
+      summaryRest: summary.rest,
+      waiting,
+      onGuest,
+      held,
+      thanks,
+      failed,
+      properties: [...seenProperties.values()],
+      answer: "",
+    };
   } catch (err) {
     if (!(await copilotHospitableToken())) return disconnectedQueue();
     const message = err instanceof Error ? err.message : "Hospitable didn't return the guest list.";
@@ -300,8 +427,12 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       summaryLead: "The message read is incomplete",
       summaryRest: ".",
       waiting: [],
+      onGuest: [],
+      held: [],
       thanks: [],
       failed: [message],
+      properties: [],
+      answer: "",
     };
   }
 }
@@ -319,54 +450,79 @@ async function propertyPhotos(): Promise<Map<string, string>> {
 }
 
 export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<GuestDraftView> {
-  const messages = (await readStayThread(row.id, now)).map((item) => ({
-    role: item.role,
-    body: item.body,
-    at: item.at,
-  }));
+  const messages = await readStayThread(row.id, now);
+  const turns: ThreadTurn[] = messages
+    .filter((item) => item.role !== "system")
+    .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body, media: item.media ?? [] }));
   const stayRaw = await hospitableRead("get-reservation", { identifier: row.id }).catch(() => null);
   const hubRead = await readPropertyHub(row.propertyId);
   const hub = hubRead.ok ? hubRead.text : "";
-  const spoken = messages.filter((item) => item.role !== "system" && item.body.trim());
+  const read = readThread(turns, row.guest);
+  const spoken = turns.filter((item) => item.body.trim() || item.media.length);
   const lastHost = spoken.filter((item) => item.role === "host").map((item) => item.at).sort().at(-1) ?? "";
   const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
   const ask = pending.map((item) => item.body.trim()).join(" ") || row.asked;
   const memory = await memoryFor(row.property).catch(() => "");
-  const written = draftFromHub(row.guest, ask, hub, { place: row.property, memory });
-  const thread = messages.filter((item) => item.role === "guest" || item.role === "host").map((item) => ({
+  const fromHub = read.lane === "reply" ? draftFromHub(row.guest, ask, hub, { place: row.property, memory }) : { mode: "gap" as const, draft: "", facts: "", gap: "" };
+  const outside = read.situation ? await outsideDraft(read, row.guest, turns) : { draft: "", alternates: [], basedOn: "", pageTitle: "" };
+  const stood = read.situation ? standing.get(read.situation) ?? "" : "";
+  const held = read.lane === "guest";
+  const draft = held ? (stood || outside.draft) : stood || (fromHub.mode === "hub" ? fromHub.draft : outside.draft);
+  const mode = held ? "held" as const : draft ? "hub" as const : "gap" as const;
+  const thread = turns.filter((item) => item.role === "guest" || item.role === "host").map((item) => ({
     role: item.role as "guest" | "host",
-    who: item.role === "guest" ? row.first : "Host",
+    who: item.role === "guest" ? row.first : (item.name.trim().split(/\s+/)[0] || "Host"),
+    at: item.at,
     time: messageTime(item.at, now),
     text: item.body,
     english: item.role === "guest" || messageLanguage(item.body) ? toEnglish(item.body) : "",
     language: messageLanguage(item.body),
+    media: item.media,
+    flag: item.role === "host" && read.copied && /\b(he|his|him|she|her)\b/i.test(item.body) ? `Copied text: says “${read.copied}” for ${row.guest}` : "",
   }));
-  if (written.mode === "hub") rememberGuestDraft({ to: row.guest, body: written.draft, reservationId: row.id, language: row.language });
+  if (!held && mode === "hub" && draft) rememberGuestDraft({ to: row.guest, body: draft, reservationId: row.id, language: row.language });
+  const reservation = reservationSpan(stayRaw);
   return {
     ...row,
+    lane: read.lane,
+    status: read.status || row.status,
+    statusLead: read.statusLead,
+    statusRest: read.statusRest,
+    watch: read.watch,
     stay: stayLine(stayRaw),
     thread,
-    mode: written.mode,
-    draft: written.draft,
-    sentVersion: written.mode === "hub" ? toGuestLanguage(written.draft, row.language) : "",
-    facts: written.facts,
-    gap: written.gap,
+    mode: fromHub.mode === "gap" && !draft && !held ? "gap" : mode,
+    draft,
+    alternates: outside.alternates,
+    sendable: !held && Boolean(draft),
+    situation: read.situation,
+    waitingLine: read.waitingLine,
+    partnerNotes: read.partnerNotes,
+    basedOn: outside.basedOn || (fromHub.facts ? `the Knowledge Hub · ${fromHub.facts}` : ""),
+    sourceLine: sourceLine(read, reservation, outside.pageTitle),
+    mediaSlot: read.mediaSlot,
+    sentVersion: !held && draft ? toGuestLanguage(draft, row.language) : "",
+    facts: fromHub.facts,
+    gap: !draft && !held ? fromHub.gap : "",
     savedLine: "",
     failedLine: "",
   };
 }
 
 function rowFrom(
-  stay: { stay: { id: string; guest: string; propertyId: string }; label: string },
+  stay: { stay: { id: string; guest: string; propertyId: string; checkIn: string; checkOut: string }; label: string },
   ask: string,
   at: string,
   language: string,
   propertyPhoto: string,
   now: Date,
+  read: ReturnType<typeof readThread>,
 ): GuestRow {
   const waitedMs = Math.max(0, now.getTime() - new Date(at || now.toISOString()).getTime());
   const guest = stay.stay.guest || "Guest";
   const first = guest.trim().split(/\s+/)[0] || "Guest";
+  const today = torontoToday(now);
+  const arrival = whenLabel(stay.stay.checkIn, stay.stay.checkOut, today);
   return {
     id: stay.stay.id,
     guest,
@@ -381,8 +537,61 @@ function rowFrom(
     language,
     wait: waitLabel(waitedMs),
     waitedMs,
-    thanks: isThanksOnly(ask),
+    thanks: read.lane === "none",
+    lane: read.lane,
+    status: read.status,
+    statusLead: read.statusLead,
+    statusRest: read.statusRest,
+    watch: read.watch,
+    when: arrival.when,
+    urgent: arrival.urgent,
+    dates: shortRange(stay.stay.checkIn, stay.stay.checkOut),
+    checkIn: stay.stay.checkIn,
+    checkOut: stay.stay.checkOut,
+    mediaLabel: read.mediaLabel,
+    lastNote: read.lane === "guest" ? `Said they will check · ${waitLabel(waitedMs)} ago` : "",
   };
+}
+
+function arrivalRank(row: GuestRow, today: string): number {
+  if (!row.checkIn) return 2;
+  if (row.checkIn === today || row.checkIn === addDays(today, 1)) return 0;
+  if (row.checkIn < today && row.checkOut > today) return 1;
+  return 2;
+}
+
+function whenLabel(checkIn: string, checkOut: string, today: string): { when: string; urgent: boolean } {
+  if (!checkIn) return { when: "", urgent: false };
+  if (checkIn === today) return { when: "Arrives today", urgent: true };
+  if (checkIn === addDays(today, 1)) return { when: "Arrives tomorrow", urgent: true };
+  if (checkIn < today && checkOut > today) return { when: "In stay", urgent: false };
+  const days = Math.round((Date.parse(`${checkIn}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000);
+  if (days > 1) return { when: `Arrives in ${days} days`, urgent: false };
+  return { when: "", urgent: false };
+}
+
+function shortRange(checkIn: string, checkOut: string): string {
+  if (!checkIn || !checkOut) return "";
+  const start = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${checkIn}T12:00:00Z`));
+  const end = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${checkOut}T12:00:00Z`));
+  const [startMonth, startDay] = start.split(" ");
+  const [endMonth, endDay] = end.split(" ");
+  if (startMonth === endMonth) return `${startMonth} ${startDay}–${endDay}`;
+  return `${start}–${end}`;
+}
+
+async function publicGuestFile(file: GuestFile): Promise<string> {
+  if (uploader) return uploader(file);
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("The file didn’t upload");
+  const bytes = Buffer.from(file.data, "base64");
+  const safe = file.name.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "file";
+  const path = `guest-messages/${randomUUID()}-${safe}`;
+  const { error } = await db.storage.from("pm-contracts").upload(path, bytes, { contentType: file.mime || "application/octet-stream", upsert: false });
+  if (error) throw new Error(`The file didn’t upload (${error.message})`);
+  const { data } = db.storage.from("pm-contracts").getPublicUrl(path);
+  if (!data?.publicUrl) throw new Error("The file didn’t upload");
+  return data.publicUrl;
 }
 
 function propertiesOf(raw: unknown): { id: string; name: string; photo: string }[] {
@@ -402,13 +611,33 @@ function stayLine(raw: unknown): string {
     : {};
   const checkIn = String(data.arrival_date ?? data.check_in ?? "").slice(0, 10);
   const checkOut = String(data.departure_date ?? data.check_out ?? "").slice(0, 10);
-  const guests = Number(data.guests ?? data.adults ?? 0);
+  const guests = guestCount(data);
   if (!checkIn || !checkOut) return "";
   const nights = Math.max(1, Math.round((Date.parse(`${checkOut}T12:00:00Z`) - Date.parse(`${checkIn}T12:00:00Z`)) / 86400000));
   const start = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${checkIn}T12:00:00Z`));
   const end = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${checkOut}T12:00:00Z`));
   const people = guests > 0 ? ` · ${guests} ${guests === 1 ? "guest" : "guests"}` : "";
   return `${start} → ${end} · ${nights} ${nights === 1 ? "night" : "nights"}${people}`;
+}
+
+function guestCount(data: Record<string, unknown>): number {
+  if (typeof data.guests === "number") return data.guests;
+  if (data.guests && typeof data.guests === "object") {
+    const total = Number((data.guests as { total?: unknown }).total);
+    if (Number.isFinite(total) && total > 0) return total;
+  }
+  const adults = Number(data.adults ?? 0);
+  const children = Number(data.children ?? 0);
+  return (Number.isFinite(adults) ? adults : 0) + (Number.isFinite(children) ? children : 0);
+}
+
+function reservationSpan(raw: unknown): string {
+  const data = raw && typeof raw === "object" && (raw as { data?: unknown }).data && typeof (raw as { data?: unknown }).data === "object"
+    ? (raw as { data: Record<string, unknown> }).data
+    : {};
+  const checkIn = String(data.arrival_date ?? data.check_in ?? "").slice(0, 10);
+  const checkOut = String(data.departure_date ?? data.check_out ?? "").slice(0, 10);
+  return shortRange(checkIn, checkOut).replace("–", "-");
 }
 
 function messageTime(iso: string, now: Date): string {

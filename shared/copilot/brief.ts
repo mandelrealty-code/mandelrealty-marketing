@@ -11,6 +11,8 @@ import { dismissCard, listChecksMessages, listDismissed, listDueReminders, listR
 import { runsOnItsOwn } from "./skillRunner.js";
 import { runUnattendedChecks, checksOverviewMessages, revalidateWaitingReplies } from "./stayCheck.js";
 import { parityEnabled } from "./parity/flag.js";
+import { parityNow } from "./parity/clock.js";
+import { closeResolvedSentDrafts } from "./partnerStandard.js";
 import { purchaseCardText, recordedSupplies } from "./purchase.js";
 
 const MAX_CARDS = 4;
@@ -67,8 +69,9 @@ export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
 }
 
 /** Live overview read. The page calls this after the saved brief is already on screen. */
-export async function refreshSavedBrief(now = new Date()): Promise<BriefPayload> {
-  if (!parityEnabled()) await revalidateWaitingReplies(now).catch(() => undefined);
+export async function refreshSavedBrief(now = parityNow() ?? new Date()): Promise<BriefPayload> {
+  await closeResolvedSentDrafts().catch(() => undefined);
+  await revalidateWaitingReplies(now).catch(() => undefined);
   const brief = await buildBrief(now);
   await saveBriefSnapshot(brief);
   return brief;

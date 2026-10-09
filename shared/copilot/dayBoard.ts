@@ -239,7 +239,7 @@ export async function findPlanArrival(name: string, now = new Date()): Promise<S
   if (!loaded.ok) return "unread";
   const hits = loaded.arrivals.filter((row) => {
     const guest = row.guest.trim().toLowerCase();
-    return guest === needle || guest.startsWith(`${needle} `);
+    return guest === needle;
   });
   const today = hits.find((row) => row.date === loaded.today);
   if (today) return today;

@@ -5,6 +5,7 @@
  */
 
 import { resetHospitableConnection, saveHospitableToken, setHospitableProbe } from "./hospitableConnection.js";
+import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerWaitingDrafts } from "./guestInboxAnswer.js";
 import {
   draftFromHub,
@@ -17,6 +18,7 @@ import {
   replyFromAnswer,
   resetGuestMessaging,
   setGuestPoster,
+  setGuestUploader,
   setHubWriter,
   submitGuestReply,
   toEnglish,
@@ -298,8 +300,105 @@ installWorld({
 const ack = await loadGuestQueue(new Date("2026-10-09T18:50:00Z"));
 const ackText = guestTabText(ack);
 if (ack.waiting.some((row) => row.guest === "Ruzaina")) fail("acknowledgement listed as waiting");
-if (ack.thanks.length !== 1 || ack.thanks[0]?.guest !== "Ruzaina" || ack.thanks[0]?.asked !== "Ok will check") fail("acknowledgement missing from no reply needed");
+if (ack.thanks.some((row) => row.guest === "Ruzaina")) fail("will-check listed as no reply");
+if (!ack.onGuest.some((row) => row.guest === "Ruzaina" && /next message/i.test(row.watch))) fail("will-check not watched");
+if (guestDrafts().some((row) => row.to === "Ruzaina")) fail("will-check created a draft");
 if (!ackText.includes("Ruzaina") || !ackText.includes("No one is waiting")) fail("acknowledgement hidden");
+
+resetGuestMessaging();
+resetResearch();
+installResearch([{
+  title: "Airbnb Resolution Center",
+  url: "https://www.airbnb.ca/resolutions",
+  text: "Payment requests are listed in the Resolution Center when you are signed in.",
+}]);
+const feeNow = new Date("2026-11-07T16:10:00Z");
+installWorld({
+  now: feeNow,
+  properties: [{ id: "prop-rose", name: "Bright and comfortable home for families", address: "floor 2, 41 Roseglor Crescent, Toronto", managed: true }],
+  reservations: [
+    {
+      id: "stay-ruzaina-fee",
+      code: "HMRUZFEE1",
+      propertyId: "prop-rose",
+      status: "accepted",
+      checkIn: "2026-11-11",
+      checkOut: "2026-11-16",
+      guest: "Ruzaina",
+      adults: 6,
+      children: 0,
+      messages: [
+        { id: "book", at: "2026-10-26T20:12:00Z", role: "guest", name: "Ruzaina", body: "Hi! Just booked Nov 11-16. We’re a group of 6 coming in for a family wedding." },
+        { id: "welcome", at: "2026-10-26T20:30:00Z", role: "host", name: "Sam", body: "Welcome, Ruzaina! 41 Roseglor sleeps 6 comfortably across three bedrooms. Check-in is 4 PM and check-out 11 AM." },
+        { id: "drive", at: "2026-10-28T18:40:00Z", role: "host", name: "Sam", body: "It fits two, end to end. Here’s a quick walkthrough of the driveway and the side door you’ll use.", media: [{ kind: "video", url: "https://example.com/driveway.mp4", duration: "0:38", shows: "driveway and side door" }] },
+        { id: "ask-time", at: "2026-11-02T15:15:00Z", role: "guest", name: "Ruzaina", body: "Our flight lands at 6 AM on the 11th. Any chance we could get in at 7:30 AM?" },
+        { id: "offer-125", at: "2026-11-02T21:20:00Z", role: "host", name: "Sam", body: "Good news, we can have the home ready for 7:30 AM on Nov 11. Early check-in that early is $125." },
+        { id: "price", at: "2026-11-02T21:48:00Z", role: "guest", name: "Ruzaina", body: "Is there anything you can do on the price? There are six of us splitting it, but still." },
+        { id: "offer-99", at: "2026-11-02T22:30:00Z", role: "host", name: "Sam", body: "We can do $99 for the 7:30 AM arrival." },
+        { id: "deal", at: "2026-11-02T22:41:00Z", role: "guest", name: "Ruzaina", body: "Deal, thank you so much!" },
+        { id: "sent", at: "2026-11-02T22:52:00Z", role: "host", name: "Sam", body: "I’ve sent a $99 payment request through Airbnb. Once it’s paid, you’re confirmed for 7:30." },
+        { id: "remind", at: "2026-11-04T14:10:00Z", role: "host", name: "Sam", body: "Hi Ruzaina, a reminder that the $99 early check-in request is waiting for you in Airbnb." },
+        { id: "where", at: "2026-11-04T18:26:00Z", role: "guest", name: "Ruzaina", body: "I didn’t get anything. Where would it be?" },
+        { id: "again", at: "2026-11-04T19:05:00Z", role: "host", name: "Sam", body: "It should show in your Airbnb messages and by email. I’ve sent it again just now." },
+        { id: "still", at: "2026-11-07T13:47:00Z", role: "guest", name: "Ruzaina", body: "Still nothing. I checked my email, spam and the app." },
+        { id: "photo", at: "2026-11-07T13:48:00Z", role: "guest", name: "Ruzaina", body: "This is all I see", media: [{ kind: "photo", url: "https://example.com/resolution.png", shows: "the Resolution Center with no request listed" }] },
+        { id: "trouble", at: "2026-11-07T14:30:00Z", role: "host", name: "Sam", body: "Hi, thanks for checking. Could he update his Airbnb app, sign out and back in, then open Trips, tap his reservation and look under Payments? The request should be listed there." },
+        { id: "tonight", at: "2026-11-07T14:58:00Z", role: "guest", name: "Ruzaina", body: "I’m out right now, will check tonight." },
+        { id: "ok", at: "2026-11-07T14:59:00Z", role: "guest", name: "Ruzaina", body: "Ok will check" },
+      ],
+    },
+  ],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const feeQueue = await loadGuestQueue(feeNow);
+const feeRow = feeQueue.onGuest.find((row) => row.guest === "Ruzaina");
+if (!feeRow) fail("fee thread not waiting on guest");
+if (feeQueue.waiting.some((row) => row.guest === "Ruzaina")) fail("fee thread created a waiting item");
+if (feeRow.property !== "41 Roseglor Cres") fail("fee property");
+if (!/\$99/.test(feeRow.status) || !/7:30 AM/.test(feeRow.status) || !/Resolution Center with no request listed/i.test(feeRow.status)) fail(`fee status ${feeRow.status}`);
+if (!/Her next message, or the fee unpaid 48 hours before arrival/.test(feeRow.watch)) fail(`fee watch ${feeRow.watch}`);
+if (guestDrafts().some((row) => row.to === "Ruzaina")) fail("fee queue created a draft");
+const feeView = await openGuestAnswer(feeRow, feeNow);
+if (feeView.lane !== "guest" || feeView.sendable || feeView.mode !== "held") fail("fee view is sendable");
+if (!/\$99/.test(feeView.status) || !/7:30 AM/.test(feeView.status) || !/Resolution Center with no request listed/i.test(feeView.status)) fail(`opened status ${feeView.status}`);
+if (!/Her next message, or the fee unpaid 48 hours before arrival/.test(feeView.watch)) fail(`opened watch ${feeView.watch}`);
+if (!/airbnb\.ca\/resolutions/.test(feeView.draft)) fail(`held draft link ${feeView.draft}`);
+if (/sign out|update his|open Trips|look under Payments/i.test(feeView.draft)) fail(`held draft repeats steps ${feeView.draft}`);
+if (/he\/his|clean must finish/i.test(feeView.draft)) fail("partner note leaked into the draft");
+if (!feeView.partnerNotes.some((note) => /he\/his/.test(note) && /Ruzaina/.test(note))) fail("pronoun note missing");
+if (!feeView.partnerNotes.some((note) => /7:30 AM/.test(note) && /clean/.test(note))) fail("clean note missing");
+if (!/full thread \(\d+ messages, 1 photo, 1 video\)/.test(feeView.sourceLine) || !/Reservation Nov 11-16/.test(feeView.sourceLine) || !/Airbnb Resolution Center/.test(feeView.sourceLine)) fail(`source ${feeView.sourceLine}`);
+if (!feeView.thread.some((message) => message.media.some((item) => item.kind === "photo" && /Resolution Center/i.test(item.shows)))) fail("photo was not read");
+if (guestDrafts().some((row) => row.reservationId === feeRow.id)) fail("opening the held thread created a draft");
+resetResearch();
+
+resetGuestMessaging();
+setGuestPoster(async () => {
+  sent.push("should-not-send");
+});
+setGuestUploader(async () => {
+  throw new Error("The video didn’t upload.");
+});
+let uploadBlocked = false;
+try {
+  await submitGuestReply({
+    reservationId: "stay-ruzaina-fee",
+    propertyId: "prop-rose",
+    property: "41 Roseglor Cres",
+    guest: "Ruzaina",
+    english: "Hi Ruzaina, the link is ready.",
+    language: "",
+    fact: "",
+    attachments: [{ name: "clip.mp4", mime: "video/mp4", data: "AAAA" }],
+  });
+} catch (err) {
+  uploadBlocked = err instanceof Error && /didn’t upload/.test(err.message) && /nothing was sent/i.test(err.message);
+}
+if (!uploadBlocked) fail("upload failure did not stop the send");
+if (sent.includes("should-not-send")) fail("text sent after the upload failed");
 
 resetGuestMessaging();
 installWorld({

@@ -293,6 +293,58 @@ function identityDifference(item: CatalogItem, seen: PageIdentity): string {
   return "";
 }
 
+/**
+ * The purchase button's gate. A mismatch aborts before any order is placed.
+ * A property with no cleaner-app setup is left to the older purchase path.
+ */
+export function refuseCatalogPurchase(input: {
+  propertyId: string;
+  productName: string;
+  quantity: number;
+  priceCents: number;
+  seller: string;
+  shipTo: string;
+}): string | null {
+  const unit = readUnitSetup(input.propertyId);
+  if (!unit) return null;
+  const item = unit.inventory.find((row) => row.title === input.productName.trim());
+  if (!item) return "That item is not the catalog item. Nothing was ordered.";
+  if (!setupComplete(unit)) {
+    const missing = missingSetupParts(unit).map((part) => `${part} is missing.`).join(" ");
+    return `${unit.address || unit.name} is not set up. ${missing} Nothing was ordered.`;
+  }
+  if (!Number.isInteger(input.quantity) || input.quantity < 1) return "The quantity is ambiguous. Nothing was ordered.";
+  const seen = page;
+  if (!seen) return "The product page did not return. Nothing was ordered.";
+  const identity = identityDifference(item, seen);
+  if (identity) return `${identity} Nothing was ordered.`;
+  if (!seen.inStock) return "The exact item is out of stock. Nothing was ordered.";
+  if (seen.seller.trim() !== input.seller.trim()) {
+    return "The seller on the page is not the seller on the approved purchase. Nothing was ordered.";
+  }
+  if (recent.some((row) => row.propertyId === unit.propertyId && row.itemKey === item.key)) {
+    return "A possible duplicate order already exists for this item at this property. Nothing was ordered.";
+  }
+  const read = cart;
+  if (!read) return "The cart did not return. Nothing was ordered.";
+  const approved: Approved = {
+    propertyId: unit.propertyId,
+    property: unit.address || unit.name,
+    itemKey: item.key,
+    quantity: input.quantity,
+    priceCents: input.priceCents,
+    totalCents: input.priceCents * input.quantity,
+    shipTo: input.shipTo.trim(),
+    seller: input.seller.trim(),
+    retailer: seen.retailer.trim(),
+    item,
+  };
+  const cartReason = cartDifference(approved, read);
+  if (cartReason) return `${cartReason} Nothing was ordered.`;
+  if (read.shipTo.trim() !== unit.delivery.trim()) return "The delivery destination in the cart is not the approved address. Nothing was ordered.";
+  return null;
+}
+
 function cartDifference(approved: Approved, read: CartRead): string {
   const line = read.lines[0];
   if (!line || read.lines.length !== 1) return "The cart does not contain the approved item.";
@@ -325,8 +377,7 @@ function itemFromQuestion(text: string, unit: UnitSetup): CatalogItem | null {
   const hits = unit.inventory.filter((row) => {
     if (row.retailerProductId && asked.includes(row.retailerProductId.toLowerCase())) return true;
     if (asked.includes(row.title.toLowerCase())) return true;
-    const first = row.title.toLowerCase().split(/\s+/)[0] ?? "";
-    return first.length > 4 && asked.includes(first);
+    return false;
   });
   return hits.length === 1 ? hits[0] : null;
 }

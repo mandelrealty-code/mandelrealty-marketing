@@ -28,6 +28,8 @@ export type ParityMessage = {
   role: "guest" | "host" | "system";
   name: string;
   body: string;
+  /** What the photo or video shows, when the message carried one. */
+  media?: { kind: "photo" | "video"; url?: string; duration?: string; shows?: string }[];
 };
 
 export type ParityReservation = {
@@ -575,6 +577,12 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
 }
 
 function mcpMessage(row: ParityMessage) {
+  const attachments = (row.media ?? []).map((item) => ({
+    type: item.kind === "video" ? "video" : "image",
+    url: item.url || "",
+    duration: item.duration || "",
+    content: item.shows || "",
+  }));
   return {
     id: row.id,
     body: row.body,
@@ -582,5 +590,6 @@ function mcpMessage(row: ParityMessage) {
     sender_role: row.role,
     sender_type: row.role,
     author: { name: row.name },
+    ...(attachments.length ? { attachments } : {}),
   };
 }

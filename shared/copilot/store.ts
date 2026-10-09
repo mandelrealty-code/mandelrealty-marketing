@@ -5,7 +5,8 @@ import { getSupabaseAdmin } from "../supabase.js";
 import { captureReminder } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityItems, updateParityItem } from "./parity/world.js";
-import { parityCancellationRaised, parityDeleteSkill, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReportIssued, paritySaveSkill, paritySkillList, parityUpdateChecksDraft } from "./parity/storeStub.js";
+import { applyCorrections } from "./corrections.js";
+import { parityCancellationRaised, parityChecksMessages, parityDeleteSkill, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReportIssued, paritySaveSkill, paritySkillList, parityUpdateChecksDraft } from "./parity/storeStub.js";
 import { normalizeSchedule } from "./skillSchedule.js";
 import type { Workflow } from "./workflow.js";
 import type { OpenItem } from "./openItems.js";
@@ -527,7 +528,7 @@ export async function addMessage(input: {
     chat_id: input.chatId,
     created_at: new Date().toISOString(),
     role: input.role,
-    body: input.body,
+    body: input.role === "assistant" ? applyCorrections(input.body) : input.body,
     draft: (storedDraft as CopilotDraft | null) ?? null,
   };
   if (parityEnabled()) {
@@ -558,10 +559,16 @@ export async function updateDraft(
   messageId: string,
   patch: Partial<CopilotDraft> & { bodyText?: string },
 ): Promise<CopilotMessage | null> {
-  const { bodyText, ...draftPatch } = patch;
+  const { bodyText: rawBody, ...draftPatch } = patch;
+  const bodyText = rawBody ? applyCorrections(rawBody) : rawBody;
   if (parityEnabled()) {
     const updated = parityUpdateChecksDraft(messageId, draftPatch, bodyText);
     if (updated) return updated;
+    const row = parityBoard.messages.find((item) => item.id === messageId);
+    if (!row) return null;
+    if (row.draft) row.draft = { ...row.draft, ...draftPatch };
+    if (bodyText) row.body = bodyText;
+    return unpackMessage(row);
   }
   const client = sb();
   if (!useFile && client) {
@@ -1086,6 +1093,12 @@ export async function saveGmailOffer(offer: GmailOffer): Promise<void> {
 }
 
 export async function readMessage(messageId: string): Promise<CopilotMessage | null> {
+  if (parityEnabled()) {
+    const row = parityBoard.messages.find((item) => item.id === messageId);
+    if (row) return unpackMessage(row);
+    const checks = parityChecksMessages().find((item) => item.id === messageId);
+    return checks ? unpackMessage(checks) : null;
+  }
   const client = sb();
   if (!useFile && client) {
     const { data, error } = await client.from("copilot_messages").select("*").eq("id", messageId).maybeSingle();

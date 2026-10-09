@@ -16,20 +16,27 @@ type OpenThread = {
   at: string;
 };
 
-function namedGuest(text: string): string {
-  const ask = text.match(/\bwhat did\s+([A-Za-z][A-Za-z'-]{1,40})\s+(?:ask|say|write|message|text)\b/i);
-  const from = text.match(/\bmessages?\s+from\s+([A-Za-z][A-Za-z'-]{1,40})\b/i);
-  const name = (ask?.[1] || from?.[1] || "").trim();
-  if (!name || NAME_STOP.has(name.toLowerCase())) return "";
+const FULL_NAME = /^([A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+)*)$/;
+
+function keepName(raw: string): string {
+  const name = raw.trim();
+  if (!FULL_NAME.test(name) || NAME_STOP.has(name.toLowerCase())) return "";
   return name;
+}
+
+function namedGuest(text: string): string {
+  const ask = text.match(/\bwhat did\s+(.+?)\s+(?:ask|say|write|message|text)\b/i);
+  const from = text.match(/\bmessages?\s+from\s+(.+?)(?:[?.!]|$)/i);
+  return keepName(ask?.[1] || from?.[1] || "");
 }
 
 /** "Draft a reply to Isabelle ..." names one guest. A bare "draft a reply" does not. */
 export function namedDraftGuest(text: string): string {
-  const match = text.match(/\b(?:draft|write)\s+(?:a\s+|an\s+)?(?:reply|message|note|response)\s+to\s+([A-Za-z][A-Za-z'-]{1,40})\b/i);
-  const name = (match?.[1] ?? "").trim();
-  if (!name || NAME_STOP.has(name.toLowerCase())) return "";
-  return name;
+  const lead = text.match(/\b(?:draft|write)\s+(?:a\s+|an\s+)?(?:reply|message|note|response)\s+to\s+/i);
+  if (!lead || lead.index == null) return "";
+  const rest = text.slice(lead.index + lead[0].length);
+  const name = rest.match(/^([A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+)*)/);
+  return keepName(name?.[1] ?? "");
 }
 
 function sameGuest(guest: string, name: string): boolean {
@@ -164,6 +171,14 @@ function lineFor(row: OpenThread): string {
 export async function answerGuestThreads(question: string, now?: Date): Promise<string | null> {
   if (!asksGuestThreads(question)) return null;
   const clock = now ?? parityNow() ?? new Date();
+  if (/\bwho\b/i.test(question) && /\bwaiting\b/i.test(question) && /\brepl(?:y|ies)\b/i.test(question)) {
+    try {
+      const queue = await loadGuestQueue(clock);
+      return queue.answer || "No guest is waiting on a reply.";
+    } catch {
+      return "Hospitable didn't return the reservations. I didn't guess.";
+    }
+  }
   const who = namedGuest(question);
   let loaded: Awaited<ReturnType<typeof loadRecentStays>>;
   try {
@@ -175,7 +190,7 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
   let disconnected = false;
   const open: OpenThread[] = [];
   const answered: OpenThread[] = [];
-  const stays = who ? loaded.stays.filter((row) => row.stay.guest.toLowerCase() === who.toLowerCase()) : loaded.stays;
+    const stays = who ? loaded.stays.filter((row) => sameGuest(row.stay.guest, who)) : loaded.stays;
   for (const row of stays) {
     let messages: { at: string; role: string; name: string; body: string }[];
     try {
