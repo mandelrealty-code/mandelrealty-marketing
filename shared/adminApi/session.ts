@@ -5,8 +5,10 @@ import {
   cookieShouldBeSecure,
   createAdminSessionToken,
   getAdminPassword,
+  getSessionFromRequest,
   isAdminConfigured,
   passwordMatches,
+  verifyAdminSessionToken,
 } from "../adminAuth.js";
 
 function readBody(req: VercelRequest): Record<string, unknown> {
@@ -50,6 +52,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = readBody(req);
   const op = opFromReq(req, body);
 
+  if (op === "check") {
+    const token = getSessionFromRequest(req.headers.cookie);
+    if (!verifyAdminSessionToken(token)) return res.status(401).json({ ok: false });
+    return res.status(200).json({ ok: true });
+  }
+
   if (op === "logout") {
     res.setHeader(
       "Set-Cookie",
@@ -59,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (op !== "login") {
-    return res.status(400).json({ error: "Use op=login or op=logout" });
+    return res.status(400).json({ error: "Use op=login, op=logout, or op=check" });
   }
 
   if (!isAdminConfigured()) {

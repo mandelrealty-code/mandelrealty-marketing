@@ -585,12 +585,24 @@ export function AdminPage() {
       meta.content = "noindex, nofollow";
       document.head.appendChild(meta);
     }
+    if (route.mode === "copilot") {
+      void fetch("/api/admin/session?op=check", { method: "POST", credentials: "include" })
+        .then((res) => setAuthed(res.ok))
+        .catch(() => setAuthed(false));
+      return;
+    }
     Promise.all([loadLeads(), loadSettings()]).catch(() => setAuthed(false));
+    // route.mode is the URL on this first check. Later mode changes load their own data.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadLeads, loadSettings]);
 
   useEffect(() => {
-    if (authed) loadLeads(searchDebounced).catch(() => undefined);
-  }, [searchDebounced, authed, loadLeads]);
+    if (authed && productMode === "crm") loadLeads(searchDebounced).catch(() => undefined);
+  }, [searchDebounced, authed, loadLeads, productMode]);
+
+  useEffect(() => {
+    if (authed && productMode === "crm") loadSettings().catch(() => undefined);
+  }, [authed, productMode, loadSettings]);
 
   useEffect(() => {
     if (searchDebounced) return;
@@ -607,13 +619,13 @@ export function AdminPage() {
 
   // Live poll contacts + open thread
   useEffect(() => {
-    if (!authed) return;
+    if (!authed || productMode !== "crm") return;
     const id = window.setInterval(() => {
       loadLeads(searchDebounced).catch(() => undefined);
       if (selectedId) loadFollowups(selectedId).catch(() => undefined);
     }, 12_000);
     return () => window.clearInterval(id);
-  }, [authed, searchDebounced, selectedId, loadLeads, loadFollowups]);
+  }, [authed, productMode, searchDebounced, selectedId, loadLeads, loadFollowups]);
 
   const filteredLeads = useMemo(() => {
     const list = leads.filter((l) => {
@@ -1588,6 +1600,20 @@ export function AdminPage() {
     }
   };
 
+  if (authed !== false && productMode === "copilot") {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex min-h-dvh items-center justify-center bg-[#0a0a0a] text-[#9a9590]">
+            Loading Copilot…
+          </div>
+        }
+      >
+        <CopilotApp onModeChange={switchProduct} />
+      </Suspense>
+    );
+  }
+
   if (authed === null) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mrg-bg text-mrg-muted">
@@ -1642,20 +1668,6 @@ export function AdminPage() {
           <p className="text-[12.5px] text-[#5e5a56]">Two-operator access · session held 30 days</p>
         </motion.form>
       </div>
-    );
-  }
-
-  if (productMode === "copilot") {
-    return (
-      <Suspense
-        fallback={
-          <div className="flex min-h-dvh items-center justify-center bg-[#0a0a0a] text-[#9a9590]">
-            Loading Copilot…
-          </div>
-        }
-      >
-        <CopilotApp onModeChange={switchProduct} />
-      </Suspense>
     );
   }
 
