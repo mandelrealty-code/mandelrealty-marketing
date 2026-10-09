@@ -6,7 +6,9 @@
 import { buildBrief } from "./brief.js";
 import { capturedPurchases, resetCaptures } from "./parity/capture.js";
 import { ID, worldAt } from "./parity/catalog.js";
-import { installWorld } from "./parity/world.js";
+import { installWorld, parityCleaner } from "./parity/world.js";
+import handleCopilot from "../adminApi/copilot.js";
+import { createAdminSessionToken } from "../adminAuth.js";
 import { openLegacyPurchase } from "./openPurchase.js";
 import {
   applyCleanerStatus,
@@ -158,8 +160,10 @@ if (placedOrders().length !== ordersBeforeOpen || supplyWrites().length !== writ
 
 const { pinnedCompanyAnswer } = await import("./pinnedAnswer.js");
 const {
+  LEGACY_LOW_STOCK,
   MASTER_SUPPLIES,
   addUnitCleaner,
+  catalogIdentity,
   confirmUnitProfile,
   installSetupListings,
   lowStockLines,
@@ -202,9 +206,39 @@ if (!seeded || !seededLysol || seededLysol.pack !== "pack of 1" || seededLysol.o
 }
 const setupSaid = await pinnedCompanyAnswer("what is set up");
 const setupBody = setupSaid?.body ?? "";
-if (!/Unit profile is missing/.test(setupBody) || !/Cleaner roster is missing/.test(setupBody) || !/Inventory catalog is done/.test(setupBody) || !/Current counts are unset/.test(setupBody) || !/Delivery destination is missing/.test(setupBody)) {
+if (!/profile prefilled, waiting for confirmation/.test(setupBody) || /Unit profile is missing/.test(setupBody) || !/Cleaner roster is missing/.test(setupBody) || !/Inventory catalog is done/.test(setupBody) || !/Current counts are unset/.test(setupBody) || !/Delivery destination is missing/.test(setupBody)) {
   fail(setupBody || "setup status was not reported");
 }
+async function setupChat(text: string, chatId: string): Promise<string> {
+  const previousPassword = process.env.ADMIN_PASSWORD;
+  const previousSecret = process.env.ADMIN_SESSION_SECRET;
+  process.env.ADMIN_PASSWORD = "parity-admin";
+  process.env.ADMIN_SESSION_SECRET = "parity-secret";
+  const token = createAdminSessionToken();
+  let status = 0;
+  let payload: { messages?: { role: string; body: string }[]; error?: string } = {};
+  await handleCopilot(
+    { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text, chatId, kind: "chat" }, query: {} } as never,
+    { status(code: number) { status = code; return this; }, json(body: typeof payload) { payload = body; return this; } } as never,
+  );
+  if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
+  else process.env.ADMIN_PASSWORD = previousPassword;
+  if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
+  else process.env.ADMIN_SESSION_SECRET = previousSecret;
+  if (status !== 200) fail(payload.error || String(status));
+  return [...(payload.messages ?? [])].reverse().find((message) => message.role === "assistant")?.body ?? "";
+}
+const catalogFromStore = (readUnitSetup(ID.shaw)?.inventory ?? []).map((item) => catalogIdentity(item)).join("\n");
+const catalogSaid = await setupChat("What's in the supply catalog for Shaw Street?", "parity-shaw-catalog");
+if (catalogFromStore.split("\n").filter(Boolean).length !== 10 || catalogSaid !== catalogFromStore) fail(catalogSaid || "the catalog was not the store");
+if (!catalogSaid.includes("Lysol Power & Fresh multi-surface cleaner") || !catalogSaid.includes("4.26 L") || !catalogSaid.includes("pack of 1") || !catalogSaid.includes("ASIN B0BY3G17W7") || /Knowledge Hub|does not mention/i.test(catalogSaid)) {
+  fail(catalogSaid);
+}
+const cleaner = parityCleaner();
+if (!cleaner) fail("the cleaner fixture is missing");
+cleaner.supplies = [{ propertyId: ID.shaw, item: "throw pillow", left: 1, low: true, product: "Throw pillow" }];
+const lowSaid = await setupChat("Is anything running low?", "parity-low-stock");
+if (lowSaid !== LEGACY_LOW_STOCK || /\bdown to\b|\bleft\b|\b\d+\b|throw pillow|pillow/i.test(lowSaid)) fail(lowSaid || "low stock stated a level");
 const refusedBuy = await pinnedCompanyAnswer("Buy Lysol for Shaw Street");
 if (!refusedBuy || !/Cleaner roster is missing/.test(refusedBuy.body) || /Purchase item/.test(refusedBuy.body) || catalogOrders().length) {
   fail(refusedBuy?.body || "a unit with no roster offered a purchase");

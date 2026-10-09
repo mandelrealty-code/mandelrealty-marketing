@@ -24,6 +24,8 @@ export function asksPropertyFact(text: string): boolean {
   const asked = text.trim();
   if (!asked) return false;
   if (asksBuildingRegistration(asked)) return false;
+  if (/\bsupply catalog\b/i.test(asked)) return false;
+  if (/\brunning low\b/i.test(asked) || /\blow stock\b/i.test(asked)) return false;
   if (/\b(reservation|check-?ins?|check-?outs?|checking in|guest messages?|how many)\b/i.test(asked)) return false;
   const place = /charlotte|roseglor|scarborough|spacious 3br|blue jays|\bshaw\b|\b606\b|\b318\b/i.test(asked);
   const fact = /\b(where|what|which|how|are the|is the|are there|is there)\b/i.test(asked);
