@@ -19,9 +19,9 @@ import { installWorld } from "./parity/world.js";
 import { GENERAL_ANSWER_SYSTEM } from "./plainAnswer.js";
 import { takeMemoryTurn } from "./memoryFiles.js";
 import { answerPropertyFact } from "./propertyFact.js";
-import { answerMarketingCopy } from "./marketingCopy.js";
+import { pinnedCompanyAnswer } from "./pinnedAnswer.js";
 import { answerInboxToday } from "./mailInbox.js";
-import { answerMailChain, asksMailBreakdown } from "./mailChain.js";
+import { asksMailBreakdown } from "./mailChain.js";
 import { questionRoute, skipsWeb } from "./route.js";
 import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerRecords, asksUnitRoster, missingSourceAnswer } from "./recordsAnswer.js";
@@ -202,12 +202,26 @@ if (!fact) fail("property fact", "no answer");
 shape("property fact", fact, /gift basket/, ["Garbage bags", "kitchen counter", "Roseglor", "Knowledge Hub"]);
 if (/no information|don't have|do not have|nothing on file/i.test(fact)) fail("property fact", fact);
 
-const caption = await answerMarketingCopy("Draft an Instagram caption to market the Shaw Street house for a fall weekend");
-if (!caption) fail("shaw caption", "no draft");
+const shawWorld = worldAt("2026-10-07T11:00:00-04:00");
+const shawCaptionHub = shawWorld.hub?.find((row) => row.propertyId === ID.shaw);
+if (!shawCaptionHub) fail("shaw caption", "Shaw hub missing");
+shawCaptionHub.body = [
+  shawCaptionHub.body,
+  "Return the garage remote to the lock box.",
+  "The keys stay in the lock box.",
+  "Shoes go in the entry closet.",
+  "Free parking is next to the garage remote return and the keys in the lock box.",
+].join("\n");
+installWorld(shawWorld);
+const captionAsk = "Draft an Instagram caption to market the Shaw Street house for a fall weekend";
+const captionPinned = await pinnedCompanyAnswer(captionAsk);
+const caption = captionPinned?.body ?? "";
+if (!captionPinned || captionPinned.step !== "Drafted the copy") fail("shaw caption", caption || "no draft");
 shape("shaw caption", caption, /^Fall weekend at 1065 Shaw Street\.$/, ["Sleeps 4", "Free parking, deck and backyard", "Nothing was posted"]);
-if (/don't have a tool|do not have a tool|hot tub|fireplace|pool|quiet hours|shoes off|garbage bags|netflix/i.test(caption)) {
+if (/don't have a tool|do not have a tool|hot tub|fireplace|pool|quiet hours|shoes|garbage bags|netflix|garage remote|lock box|entry closet|\bkeys?\b/i.test(caption)) {
   fail("shaw caption", caption);
 }
+installWorld(worldAt("2026-10-07T11:00:00-04:00"));
 
 const prompts = [
   promptFor("facts", "", false, false, false),
@@ -622,7 +636,7 @@ await createProposal({
   rooms: [],
   pdf: Buffer.from("%PDF-1.1"),
 });
-if (await answerInboxToday(proposalQ) || await answerMailChain(proposalQ) || await answerOutsideRentals(proposalQ)) {
+if (await answerInboxToday(proposalQ) || (await pinnedCompanyAnswer(proposalQ)) || await answerOutsideRentals(proposalQ)) {
   fail("proposals", "mail or the web answered the proposal question");
 }
 const proposalList = await answerOwnStore(proposalQ);
@@ -750,9 +764,10 @@ installWorld(worldAt("2026-10-07T11:00:00-04:00", false, [
   },
 ]));
 if (!asksMailBreakdown(manikQ) || await answerOutsideRentals(manikQ)) fail("manik chain", "the breakdown was not pinned");
-const manikA = await answerMailChain(manikQ);
-const manikB = await answerMailChain(manikQ);
-if (!manikA || manikA !== manikB) fail("manik chain", manikA ?? "no answer");
+const manikPinnedA = await pinnedCompanyAnswer(manikQ);
+const manikPinnedB = await pinnedCompanyAnswer(manikQ);
+const manikA = manikPinnedA?.body ?? "";
+if (!manikPinnedA || manikPinnedA.step !== "Read the email chain" || manikA !== manikPinnedB?.body) fail("manik chain", manikA || "no answer");
 const manikParagraphs = manikA.split(/\n\n/).filter(Boolean);
 if (manikParagraphs.length < 2 || manikParagraphs.length > 3) fail("manik chain", manikA);
 if (!manikA.includes("Manik") || !manikA.includes("Thursday morning") || !manikA.includes("plumber is booked") || !/outstanding/i.test(manikA)) {

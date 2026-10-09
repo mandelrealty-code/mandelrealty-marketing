@@ -8,11 +8,14 @@ import { matchManagedListings } from "./propertyFact.js";
 
 const FEATURE = /\b(sleeps|parking|deck|backyard|yard|patio|kitchen|bedroom|bath|balcony|view|wifi)\b/i;
 const RULE = /\b(quiet hours|shoes|laundry|garbage|no visitors|check-?out|check-?in|netflix|no pets|no smoking|no events)\b/i;
+const MANUAL = /\b(garage remote|lock\s?box|lockbox|entry closet|house manual|\bkeys?\b|return the|put the)\b/i;
 
 export function asksMarketingDraft(text: string): boolean {
-  if (!/\b(draft|write|compose)\b/i.test(text)) return false;
-  if (/\b(caption|blurb)\b/i.test(text)) return true;
-  return /\b(instagram|facebook|tiktok|social|listing)\b/i.test(text) && /\b(post|copy|caption|blurb|market)\b/i.test(text);
+  const asked = text.trim();
+  if (!asked) return false;
+  if (/\b(caption|blurb)\b/i.test(asked)) return !/\b(publish|upload|schedule)\b/i.test(asked);
+  if (!/\b(draft|write|compose)\b/i.test(asked)) return false;
+  return /\b(instagram|facebook|tiktok|social|listing)\b/i.test(asked) && /\b(post|copy|market)\b/i.test(asked);
 }
 
 /** Posting, sending, or publishing needs a system this chat does not have. */
@@ -34,7 +37,7 @@ function featureSentences(text: string): string[] {
   for (const chunk of text.split(/\n+/)) {
     for (const sentence of chunk.split(/(?<=\.)\s+/)) {
       const line = sentence.trim();
-      if (!line || RULE.test(line) || !FEATURE.test(line)) continue;
+      if (!line || RULE.test(line) || MANUAL.test(line) || !FEATURE.test(line)) continue;
       const exact = line.endsWith(".") ? line : `${line}.`;
       if (!out.includes(exact)) out.push(exact);
     }

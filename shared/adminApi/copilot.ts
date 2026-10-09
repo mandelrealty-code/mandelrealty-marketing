@@ -26,9 +26,9 @@ import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js"
 import { answerBuildingRegistration, answerRegistrationStatus } from "../copilot/buildingRegistration.js";
 import { closeHandledAnswer } from "../copilot/partnerStandard.js";
 import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
-import { answerStay, asksDayCount } from "../copilot/stayAnswer.js";
+import { answerStay } from "../copilot/stayAnswer.js";
+import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
-import { answerMarketingCopy } from "../copilot/marketingCopy.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { answerPdfReport } from "../copilot/revenueReport.js";
@@ -40,7 +40,6 @@ import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMc
 import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { loadGuestQueue, openGuestAnswer, readSavedGuestQueue, submitGuestReply } from "../copilot/guestMessaging.js";
-import { answerMailChain } from "../copilot/mailChain.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
@@ -131,27 +130,6 @@ function mcpSaveError(err: unknown): string {
     return "The MCP token column is not on the database yet. Run supabase/pm_hospitable_mcp_token_v1.sql, then save the token again.";
   }
   return message;
-}
-
-/** Check-in counts and email-chain breakdowns are pinned. The model does not answer them. */
-async function pinnedCompanyAnswer(text: string): Promise<{ body: string; step: string; thought: string } | null> {
-  const chain = await answerMailChain(text);
-  if (chain) {
-    const missed = /didn't find|didn't return|isn't connected/.test(chain);
-    return {
-      body: chain,
-      step: missed ? "The mail read failed" : "Read the email chain",
-      thought: "This came from the mailbox. Nothing was sent.",
-    };
-  }
-  if (!asksDayCount(text)) return null;
-  const stay = await answerStay(text);
-  if (!stay) return null;
-  return {
-    body: stay,
-    step: "Read the reservation",
-    thought: "This came from Hospitable. Nothing was sent.",
-  };
 }
 
 async function hospitableMessage(
@@ -1010,17 +988,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        const chain = await answerMailChain(text);
-        if (chain) {
-          await addMessage({
-            chatId,
-            role: "assistant",
-            body: chain,
-            steps: [{ text: /didn't find|didn't return|isn't connected/.test(chain) ? "The mail read failed" : "Read the email chain" }],
-            thought: "This came from the mailbox. Nothing was sent.",
-          });
-          return done();
-        }
         const inbox = await answerInboxToday(text);
         if (inbox) {
           await addMessage({
@@ -1125,18 +1092,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: weekCleans,
             steps: [{ text: /can't read this week's cleans/.test(weekCleans) ? "The cleans read failed" : "Read this week's turnovers" }],
             thought: /can't read this week's cleans/.test(weekCleans) ? "The cleans count was not guessed." : "Each line is one turnover, a property on one date. Nothing was sent.",
-          });
-          return done();
-        }
-        const copy = await answerMarketingCopy(text);
-        if (copy) {
-          const refused = /^I don't have a tool/.test(copy);
-          await addMessage({
-            chatId,
-            role: "assistant",
-            body: copy,
-            steps: [{ text: refused ? "That needs a system this chat cannot reach" : "Drafted the copy" }],
-            thought: refused ? "Nothing was posted." : "This is a draft in chat, from the listing's facts. Nothing was posted.",
           });
           return done();
         }

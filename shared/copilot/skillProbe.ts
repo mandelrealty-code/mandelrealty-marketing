@@ -3,7 +3,7 @@
  * Uses the parity fixtures. It does not call live accounts.
  */
 
-import { answerMailChain } from "./mailChain.js";
+import { pinnedCompanyAnswer } from "./pinnedAnswer.js";
 import { readMail, readMailThread, searchMail } from "./mailSearch.js";
 import { readStanding, skillMemoryText } from "./memoryFiles.js";
 import { worldAt } from "./parity/catalog.js";
@@ -126,9 +126,10 @@ const chain = await readMailThread({ mailbox: "gmail", id: chainHit.threadId });
 if (chain.length !== 3 || !chain.some((row) => row.body.includes("Thursday morning"))) {
   throw new Error(`the thread read missed a message: ${chain.map((row) => row.body).join(" | ")}`);
 }
-const breakdown = await answerMailChain("break down the email chain with Manik in 2-3 paragraphs");
-const paragraphs = (breakdown ?? "").split(/\n\n/).filter(Boolean);
-if (!breakdown || paragraphs.length < 2 || paragraphs.length > 3) throw new Error(breakdown ?? "no breakdown");
+const breakdownPinned = await pinnedCompanyAnswer("break down the email chain with Manik in 2-3 paragraphs");
+const breakdown = breakdownPinned?.body ?? "";
+const paragraphs = breakdown.split(/\n\n/).filter(Boolean);
+if (!breakdownPinned || breakdownPinned.step !== "Read the email chain" || paragraphs.length < 2 || paragraphs.length > 3) throw new Error(breakdown || "no breakdown");
 if (!breakdown.includes("Manik") || !breakdown.includes("Thursday morning") || !breakdown.includes("plumber is booked")) {
   throw new Error(breakdown);
 }

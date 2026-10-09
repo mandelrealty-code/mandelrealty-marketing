@@ -13,6 +13,9 @@ import { readMail, searchMail } from "./mailSearch.js";
 import { withoutHubSecrets } from "./hubSecrets.js";
 import { keepWay } from "./memoryFiles.js";
 import { ANSWER_STYLE } from "./answerStyle.js";
+import { asksMarketingDraft } from "./marketingCopy.js";
+import { asksMailBreakdown } from "./mailChain.js";
+import { pinnedCompanyAnswer } from "./pinnedAnswer.js";
 import type { WorkModelId } from "./models.js";
 import { addDays, torontoToday } from "./time.js";
 import { normalizeSchedule } from "./skillSchedule.js";
@@ -109,6 +112,11 @@ export async function answerHospitable(input: {
 }): Promise<HospitableTurn | null> {
   const question = input.question.trim();
   if (!question) return null;
+  if (asksMailBreakdown(question) || asksMarketingDraft(question)) {
+    const pinned = await pinnedCompanyAnswer(question);
+    if (!pinned) return null;
+    return { body: pinned.body, steps: [{ text: pinned.step }], thought: pinned.thought, draft: null, choices: null };
+  }
 
   try {
     let mcp = false;
