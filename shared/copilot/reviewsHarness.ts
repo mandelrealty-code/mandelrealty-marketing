@@ -12,7 +12,9 @@ import {
   regenerateFromConnection,
   resetReviewsQueue,
   reviewDraftRejected,
+  reviewNeedsCare,
   reviewSummary,
+  seedDraft,
   setReviewPoster,
   submitReviewReply,
 } from "./reviewsQueue.js";
@@ -185,6 +187,40 @@ if (rewritten.draft.includes(copiedHub)) fail("rejected draft was shown");
 if ((rewritten.draft.match(/you're right that/gi) ?? []).length !== 1) fail("regenerated acknowledgement");
 if ((rewritten.draft.match(/your messages were answered/gi) ?? []).length !== 1) fail("regenerated correction");
 if (/stay record|Knowledge Hub/i.test(rewritten.sourceLine)) fail(rewritten.sourceLine);
+
+const FILLER = /we'?ve read what you wrote|we have read what you wrote|read what you wrote/i;
+const APOLOGY = /\b(sorry|apologize|apology|désolé|desole)\b/i;
+const waiting = [
+  { guest: "Noah", review: "We loved the mattresses. Best sleep of the trip.", detail: /mattress/i },
+  { guest: "Priya", review: "Check-in was easy and the instructions were clear.", detail: /check-?in/i },
+  { guest: "Elena", review: "The place was spotless. The bed was comfortable and check-in was easy.", detail: /clean/i },
+  { guest: "Camille", review: "Nous avons adoré les matelas. L'arrivée a été facile et tout était très propre.", detail: /matelas/i },
+  { guest: "Alex", review: "Great location!", detail: /location/i },
+];
+const bodies = new Map<string, string>();
+for (const row of waiting) {
+  const draft = seedDraft(row.guest, row.review);
+  const sentences = draft.split(/(?<=[.!?])\s+/).filter((line) => line.trim());
+  if (sentences.length < 2 || sentences.length > 4) fail(`waiting length ${row.guest}: ${draft}`);
+  if (APOLOGY.test(draft)) fail(`waiting apology ${row.guest}: ${draft}`);
+  if (FILLER.test(draft)) fail(`waiting filler ${row.guest}: ${draft}`);
+  if (!row.detail.test(draft)) fail(`waiting detail ${row.guest}: ${draft}`);
+  if (reviewNeedsCare(row.review)) fail(`waiting care ${row.guest}`);
+  if (row.guest === "Elena" && /not what you wanted|harder than it should|not as clean/i.test(draft)) fail(`clean misread ${draft}`);
+  if (row.guest === "Camille" && (/\b(thank you|sorry|we've|we are|the mattresses|and)\b/i.test(draft) || !/merci/i.test(draft))) fail(`french ${draft}`);
+  const name = row.guest.toLowerCase();
+  for (const sentence of sentences) {
+    const body = sentence.toLowerCase().replace(new RegExp(`\\b${name}\\b`, "g"), "").replace(/\s+/g, " ").trim();
+    const prior = bodies.get(body);
+    if (prior) fail(`shared sentence ${prior} and ${row.guest}: ${body}`);
+    bodies.set(body, row.guest);
+  }
+}
+const soft = "The bed was too soft.";
+if (!reviewNeedsCare(soft)) fail("soft bed needs care");
+const softDraft = seedDraft("Casey", soft);
+if (!/\bsorry\b/i.test(softDraft) || !/too soft/i.test(softDraft)) fail(`soft apology ${softDraft}`);
+if (/mattress|check-in|not as clean|not what you wanted/i.test(softDraft)) fail(`soft extra ${softDraft}`);
 
 const ranked = rankReviews([
   { id: "b", stars: 5, reviewedAt: "2026-10-08", review: "Great", returned: false },

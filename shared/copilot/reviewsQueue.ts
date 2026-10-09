@@ -65,12 +65,12 @@ export function reviewSummary(waiting: number, care: number, property = ""): str
 }
 
 export function seedDraft(guest: string, review: string): string {
-  const name = firstName(guest);
-  const topics = reviewTopics(review);
-  const middle = topics
-    ? `Sorry ${topics}.`
-    : "We've read what you wrote.";
-  return `${name}, thank you for writing. ${middle} Thank you for staying with us.`;
+  return writeDraft(guest, review);
+}
+
+/** A review needs care when the text complains, or when a dispute is already flagged. */
+export function reviewNeedsCare(review: string, dispute = ""): boolean {
+  return Boolean(dispute.trim()) || specificComplaints(review).length > 0;
 }
 
 export function regenerateDraft(input: {
@@ -201,6 +201,7 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
       const text = review.public_review.trim();
       if (!text) continue;
       const flag = textDispute(text);
+      const needsCare = reviewNeedsCare(text, flag.reason);
       reviews.push({
         id: review.id,
         reservationId: review.reservation_id,
@@ -216,6 +217,7 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
         review: text,
         draft: seedDraft(guest, text),
         dispute: flag.reason,
+        needsCare,
         facts: flag.facts,
         returned: Boolean(until && until <= today),
       });
@@ -468,28 +470,123 @@ function cap(text: string): string {
 }
 
 function reviewOnlyDraft(guest: string, review: string): string {
-  const name = firstName(guest);
-  return `${name}, thank you for writing. ${reviewOnlyMiddle(review)} Thank you for staying with us.`;
+  return writeDraft(guest, review);
 }
 
 function reviewOnlyMiddle(review: string): string {
-  const topics = reviewTopics(review);
-  return topics ? `Sorry ${topics}.` : "We've read what you wrote.";
+  const complaints = specificComplaints(review);
+  if (complaints.length) return `Sorry ${detailPhrase(complaints)}.`;
+  const praises = specificPraises(review);
+  if (praises.length) return `We are happy to hear about ${detailPhrase(praises)}.`;
+  return "Thank you for telling us how the stay went.";
 }
 
 function reviewTopics(review: string): string {
-  if (!hasComplaint(review)) return "";
-  const found: string[] = [];
-  if (/bed|mattress/i.test(review)) found.push("the bed was not what you wanted");
-  if (/shower/i.test(review)) found.push("the shower pressure was weak");
-  if (/dirt|stain|clean/i.test(review)) found.push("the place was not as clean as it should have been");
-  if (/elevator/i.test(review)) found.push("the elevator made the arrival harder");
-  if (/\b(door code|access code|code|check-?in|check in)\b/i.test(review) && /(hard|difficult|couldn'?t|could not|didn'?t|problem|wrong|failed|wasn'?t)/i.test(review)) {
-    found.push("check-in was harder than it should have been");
+  const found = specificComplaints(review);
+  return found.length ? detailPhrase(found) : "";
+}
+
+function writeDraft(guest: string, review: string): string {
+  const name = firstName(guest);
+  const french = isFrenchReview(review);
+  const complaints = specificComplaints(review);
+  const praises = specificPraises(review, french);
+  if (french) return frenchDraft(name, praises, complaints);
+  if (complaints.length) {
+    const point = detailPhrase(complaints);
+    const kind = praises.length ? `${name}, thank you for the kind words about ${detailPhrase(praises)}.` : `${name}, thank you for the honest note.`;
+    return `${kind} Sorry ${point}. We hope to welcome you back.`;
   }
-  if (!found.length) return "";
-  if (found.length === 1) return found[0];
-  return `${found.slice(0, -1).join(", ")} and ${found[found.length - 1]}`;
+  const details = detailPhrase(praises);
+  return `${name}, thank you for telling us about ${details}. We loved reading that you noticed ${details}. You are welcome back whenever you want ${details} again.`;
+}
+
+function frenchDraft(name: string, praises: string[], complaints: string[]): string {
+  if (complaints.length) {
+    const point = detailPhrase(complaints, true);
+    return `${name}, merci pour votre message. Désolé pour ${point}. Au plaisir de vous accueillir de nouveau.`;
+  }
+  const details = detailPhrase(praises, true);
+  return `${name}, un grand merci pour ${details}. Nous sommes heureux que vous ayez apprécié ${details}. Au plaisir de vous recevoir de nouveau pour ${details}.`;
+}
+
+function specificComplaints(review: string): string[] {
+  const found: string[] = [];
+  const add = (label: string) => {
+    if (!found.includes(label) && found.length < 2) found.push(label);
+  };
+  for (const clause of splitClauses(review)) {
+    if (/too soft/i.test(clause) && /bed|mattress|matelas|lit/i.test(clause)) add(isFrenchReview(review) ? "le lit trop mou" : "the bed was too soft");
+    else if (/too hard|trop dur/i.test(clause) && /bed|mattress|matelas|lit/i.test(clause)) add(isFrenchReview(review) ? "le lit trop dur" : "the bed was too hard");
+    if (/shower|douche/i.test(clause) && /weak|low pressure|faible/i.test(clause)) add(isFrenchReview(review) ? "la pression de la douche" : "the shower pressure was weak");
+    if (/\b(dirty|stained|stains?|not clean|wasn'?t clean|wasn'?t as clean|unclean)\b/i.test(clause) || (isFrenchReview(review) && /\bsale\b/i.test(clause))) {
+      add(isFrenchReview(review) ? "la propreté" : "the place was not as clean as it should have been");
+    }
+    if (/check[\s-]*in|arrivée/i.test(clause) && /(hard|difficult|problem|couldn'?t|didn'?t work|difficile)/i.test(clause) && !/easy|simple|smooth|facile/i.test(clause)) {
+      add(isFrenchReview(review) ? "l'arrivée difficile" : "check-in was harder than it should have been");
+    }
+    if (/never answered|didn't answer|didn’t answer|ignor/i.test(clause)) add(isFrenchReview(review) ? "l'absence de réponse" : "not hearing back from us");
+    if (/\b(terrible|awful|worst|disappoint|horrible)\b/i.test(clause)) add(isFrenchReview(review) ? "le séjour" : "the stay fell short");
+  }
+  return found;
+}
+
+function specificPraises(review: string, french = isFrenchReview(review)): string[] {
+  const found: string[] = [];
+  const add = (label: string) => {
+    if (!found.includes(label) && found.length < 2) found.push(label);
+  };
+  for (const clause of splitClauses(review)) {
+    if (clauseComplains(clause)) continue;
+    if (french) {
+      if (/matelas/i.test(clause)) add("les matelas");
+      else if (/\blit\b/i.test(clause)) add("le lit");
+      if (/propre|propreté|impeccable/i.test(clause)) add("la propreté");
+      if (/arrivée/i.test(clause) && /facile|simple/i.test(clause)) add("l'arrivée facile");
+      if (/emplacement|quartier/i.test(clause)) add("l'emplacement");
+      continue;
+    }
+    if (/mattress/i.test(clause)) add("the mattresses");
+    else if (/\bbeds?\b/i.test(clause)) add("the bed");
+    if (/\b(spotless|clean|cleanliness|immaculate)\b/i.test(clause)) add("the cleanliness");
+    if (/check[\s-]*in/i.test(clause) && /easy|simple|smooth|great|perfect|loved|love/i.test(clause)) add("the easy check-in");
+    if (/\blocation\b/i.test(clause)) add("the location");
+    if (/\bresponsive\b/i.test(clause)) add("how responsive we were");
+  }
+  if (!found.length && !splitClauses(review).some((clause) => clauseComplains(clause))) {
+    const short = review.replace(/[.!?…]+/g, " ").replace(/\s+/g, " ").trim();
+    add(short ? short.toLowerCase() : french ? "le séjour" : "the stay");
+  }
+  return found;
+}
+
+function clauseComplains(clause: string): boolean {
+  if (/too soft|too hard|uncomfortable|not comfortable|trop mou|trop dur/i.test(clause) && /bed|mattress|matelas|\blit\b/i.test(clause)) return true;
+  if (/shower|douche/i.test(clause) && /weak|low pressure|faible/i.test(clause)) return true;
+  if (/\b(dirty|stained|stains?|not clean|wasn'?t clean|wasn'?t as clean|unclean|sale)\b/i.test(clause)) return true;
+  if (/check[\s-]*in|arrivée/i.test(clause) && /(hard|difficult|problem|couldn'?t|didn'?t work|difficile)/i.test(clause) && !/easy|simple|smooth|facile/i.test(clause)) return true;
+  if (/never answered|didn't answer|didn’t answer|ignor/i.test(clause)) return true;
+  if (/\b(terrible|awful|worst|disappoint|horrible)\b/i.test(clause)) return true;
+  return false;
+}
+
+function splitClauses(review: string): string[] {
+  return review
+    .split(/[.!?;]+|\s+\b(?:and|but|et|mais)\b\s+/i)
+    .map((part) => part.replace(/\s+/g, " ").trim())
+    .filter((part) => part.length > 1);
+}
+
+function detailPhrase(items: string[], french = false): string {
+  if (!items.length) return french ? "le séjour" : "the stay";
+  if (items.length === 1) return items[0];
+  return `${items[0]} ${french ? "et" : "and"} ${items[1]}`;
+}
+
+function isFrenchReview(text: string): boolean {
+  if (/[àâäéèêëïîôùûüçœ]/i.test(text)) return true;
+  const hits = text.match(/\b(le|la|les|un|une|des|est|très|tres|séjour|sejour|merci|nous|était|etait|adoré|adore|propre|propreté|arrivée|facile|avons|votre|vous|impeccable|confortable|matelas)\b/gi);
+  return (hits?.length ?? 0) >= 2;
 }
 
 function disputeReason(review: string, stay: StayFacts): { reason: string; facts: ReviewFact[] } {

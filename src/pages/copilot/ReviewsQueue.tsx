@@ -98,7 +98,7 @@ export function ReviewsQueue({
   const visible = rows.filter((row) => filter === "all" || row.propertyId === filter);
   const page = visible.slice(0, shown);
   const waiting = waitingCount(filter);
-  const care = visible.filter((row) => stateOf(row).status === "" && stateOf(row).dispute).length;
+  const care = visible.filter((row) => stateOf(row).status === "" && (row.needsCare || stateOf(row).dispute)).length;
   const propertyName = filter === "all" ? "" : properties.find((item) => item.id === filter)?.name || "";
   const rest = Math.max(0, visible.length - page.length);
 

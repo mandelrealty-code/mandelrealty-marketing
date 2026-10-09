@@ -21,6 +21,7 @@ export type ReviewQueueRow = {
   sourceLine?: string;
   previous?: string;
   dispute: string;
+  needsCare?: boolean;
   facts: ReviewFact[];
   returned: boolean;
 };
