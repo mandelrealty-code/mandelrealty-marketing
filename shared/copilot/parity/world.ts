@@ -53,6 +53,24 @@ export type ParityReservation = {
   threadUnreadable?: boolean;
   /** When set, the message read throws this instead of the generic thread failure. */
   threadError?: string;
+  /** 24-hour clock, when a time has been set on the reservation. Absent uses 4:00 PM and 11:00 AM. */
+  checkInTime?: string;
+  checkOutTime?: string;
+  notes?: string;
+};
+
+export type ParityCalendarDay = {
+  propertyId: string;
+  date: string;
+  available: boolean;
+  priceCents: number;
+};
+
+export type ParityPayment = {
+  reservationId: string;
+  amountCents: number;
+  status: "requested" | "paid";
+  label: string;
 };
 
 export type ParityProperty = {
@@ -139,6 +157,13 @@ export type ParityCleanerTurnover = {
   done: boolean;
   issue: string;
   cleanerName?: string;
+  /** Spoken clock on the turnover, such as 4:00 PM. Absent until a time is stored. */
+  arrivalTime?: string;
+  departureTime?: string;
+  /** The guest arrival date this turnover is for, when it differs from the clean date. */
+  arrivalOn?: string;
+  /** A write leaves the clocks unchanged. The read-back still shows the old time. */
+  freezeTimes?: boolean;
 };
 
 export type ParityCleanerSupply = {
@@ -181,6 +206,8 @@ export type ParityWorld = {
   cleaner?: ParityCleaner;
   reviews?: ParityReview[];
   followUps?: ParityFollowUp[];
+  calendar?: ParityCalendarDay[];
+  payments?: ParityPayment[];
 };
 
 let world: ParityWorld | null = null;
@@ -199,6 +226,8 @@ export function installWorld(next: ParityWorld): void {
     hub: (next.hub ?? []).map((row) => ({ ...row })),
     reviews: (next.reviews ?? []).map((row) => ({ ...row, categories: row.categories?.map((item) => ({ ...item })) })),
     followUps: (next.followUps ?? []).map((row) => ({ ...row })),
+    calendar: (next.calendar ?? []).map((row) => ({ ...row })),
+    payments: (next.payments ?? []).map((row) => ({ ...row })),
     cleaner: next.cleaner
       ? {
           error: next.cleaner.error,
@@ -216,6 +245,14 @@ export function installWorld(next: ParityWorld): void {
   resetParityConnectorFailures();
   resetParityReports();
   resetPurchaseFlow();
+  resetUpsellFlow();
+}
+
+let resetUpsellFlow: () => void = () => undefined;
+
+/** Upsell watches live beside the fixture world. The module registers its own reset. */
+export function registerUpsellReset(fn: () => void): void {
+  resetUpsellFlow = fn;
 }
 
 export function clearWorld(): void {
@@ -234,6 +271,66 @@ export function parityCleaner(): ParityCleaner | null {
 }
 
 /** Sets the cleaner on one fixture turnover. Nothing else on the row changes. */
+export function writeParityStayTime(
+  id: string,
+  patch: { checkInTime?: string; checkOutTime?: string; notes?: string },
+): boolean {
+  const stay = live()?.reservations.find((row) => row.id === id);
+  if (!stay) return false;
+  if (patch.checkInTime) stay.checkInTime = patch.checkInTime;
+  if (patch.checkOutTime) stay.checkOutTime = patch.checkOutTime;
+  if (patch.notes) stay.notes = stay.notes ? `${stay.notes}\n${patch.notes}` : patch.notes;
+  return true;
+}
+
+export function requestParityPayment(input: { reservationId: string; amountCents: number; label: string }): void {
+  const current = live();
+  if (!current) return;
+  current.payments ??= [];
+  const existing = current.payments.find((row) => row.reservationId === input.reservationId && row.status === "requested");
+  if (existing) {
+    existing.amountCents = input.amountCents;
+    existing.label = input.label;
+    return;
+  }
+  current.payments.push({
+    reservationId: input.reservationId,
+    amountCents: input.amountCents,
+    status: "requested",
+    label: input.label,
+  });
+}
+
+export function markParityUpsellPaid(reservationId: string): boolean {
+  const row = live()?.payments?.find((item) => item.reservationId === reservationId);
+  if (!row) return false;
+  row.status = "paid";
+  return true;
+}
+
+export function parityPaidUpsells(): ParityPayment[] {
+  return (live()?.payments ?? []).filter((row) => row.status === "paid").map((row) => ({ ...row }));
+}
+
+/** Moves one turnover's clocks. A frozen row stays on the old time and reports that the write did not stick. */
+export function writeParityTurnoverClock(input: {
+  propertyId: string;
+  scheduledOn: string;
+  nextOn: string;
+  arrivalTime: string;
+  departureTime: string;
+  arrivalOn: string;
+}): { found: boolean; stuck: boolean } {
+  const row = live()?.cleaner?.turnovers?.find((item) => item.propertyId === input.propertyId && item.scheduledOn === input.scheduledOn);
+  if (!row) return { found: false, stuck: true };
+  if (row.freezeTimes) return { found: true, stuck: true };
+  row.scheduledOn = input.nextOn;
+  row.arrivalTime = input.arrivalTime;
+  row.departureTime = input.departureTime;
+  row.arrivalOn = input.arrivalOn;
+  return { found: true, stuck: false };
+}
+
 export function assignParityCleaner(propertyId: string, scheduledOn: string, cleanerName: string): boolean {
   const row = live()?.cleaner?.turnovers?.find((item) => item.propertyId === propertyId && item.scheduledOn === scheduledOn);
   if (!row) return false;
@@ -577,9 +674,93 @@ function searchBox(rows: ParityMail[], input: { keywords: string; where: "inbox"
     }));
 }
 
+function padClock(value: string | undefined, fallback: string): string {
+  const match = /^(\d{1,2}):(\d{2})$/.exec((value || "").trim());
+  if (!match) return fallback;
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function torontoOffset(isoDate: string): string {
+  const sample = new Date(`${isoDate}T16:00:00Z`);
+  const name = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Toronto",
+    timeZoneName: "shortOffset",
+  }).formatToParts(sample).find((part) => part.type === "timeZoneName")?.value ?? "";
+  const match = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(name);
+  if (!match) return "-04:00";
+  return `${match[1]}${match[2].padStart(2, "0")}:${match[3] ?? "00"}`;
+}
+
 export function parityMcp(name: string, args: Record<string, unknown>): { handled: boolean; value: unknown } {
   const current = live();
   if (!current) return { handled: false, value: null };
+  if (name === "get-property-calendar") {
+    const id = String(args.uuid ?? args.property_id ?? "");
+    const start = String(args.start_date ?? "0000-01-01");
+    const end = String(args.end_date ?? "9999-12-31");
+    const days = (current.calendar ?? [])
+      .filter((row) => row.propertyId === id && row.date >= start && row.date <= end)
+      .map((row) => ({
+        date: row.date,
+        available: row.available,
+        status: row.available ? "available" : "unavailable",
+        price: { amount: row.priceCents, formatted: "" },
+      }));
+    return { handled: true, value: { data: { days } } };
+  }
+  if (name === "get-purchased-upsells") {
+    const rows = (current.payments ?? [])
+      .filter((row) => row.status === "paid")
+      .map((row) => ({
+        reservation_id: row.reservationId,
+        reservation_uuid: row.reservationId,
+        status: "paid",
+        name: row.label,
+        price: { amount: row.amountCents },
+        total_price: { amount: row.amountCents },
+      }));
+    return { handled: true, value: { data: rows, meta: { last_page: 1, total: rows.length } } };
+  }
+  if (name === "send-airbnb-payment-request") {
+    const reservationId = String(args.uuid ?? "");
+    const amountCents = Number(args.amount);
+    requestParityPayment({
+      reservationId,
+      amountCents: Number.isFinite(amountCents) ? amountCents : 0,
+      label: String(args.reason ?? "upsell"),
+    });
+    captureCommit("hospitable-mcp", name);
+    return { handled: true, value: { data: { id: `pay-${reservationId}`, status: "requested", amount: amountCents } } };
+  }
+  if (name === "send-reservation-message") {
+    const id = String(args.uuid ?? args.reservation_id ?? "");
+    const body = String(args.body ?? "");
+    const stay = current.reservations.find((row) => row.id === id);
+    if (stay && body.trim()) {
+      stay.messages.push({
+        id: `sent-${stay.messages.length + 1}`,
+        at: new Date().toISOString(),
+        role: "host",
+        name: "Copilot",
+        body,
+      });
+    }
+    captureCommit("hospitable-mcp", name);
+    return { handled: true, value: { data: { id: "parity-message", committed: true } } };
+  }
+  if (name === "update-reservation") {
+    const id = String(args.uuid ?? "");
+    const stay = current.reservations.find((row) => row.id === id);
+    if (stay) {
+      if (typeof args.checkin_time === "string") stay.checkInTime = padClock(args.checkin_time, args.checkin_time);
+      if (typeof args.checkout_time === "string") stay.checkOutTime = padClock(args.checkout_time, args.checkout_time);
+      if (typeof args.notes === "string" && args.notes.trim()) {
+        stay.notes = stay.notes ? `${stay.notes}\n${args.notes.trim()}` : args.notes.trim();
+      }
+    }
+    captureCommit("hospitable-mcp", name);
+    return { handled: true, value: { data: stay ? mcpReservation(stay, current) : { id } } };
+  }
   if (/^(send-|publish-|unpublish-|mark-|create-|update-|delete-|respond-|submit-|cancel-|restore-)/.test(name)) {
     captureCommit("hospitable-mcp", name);
     return { handled: true, value: { data: { id: "parity-commit", committed: true } } };
@@ -684,8 +865,10 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     platform: "airbnb",
     arrival_date: row.checkIn,
     departure_date: row.checkOut,
-    check_in: `${row.checkIn}T16:00:00-04:00`,
-    check_out: `${row.checkOut}T11:00:00-04:00`,
+    check_in: `${row.checkIn}T${padClock(row.checkInTime, "16:00")}:00${torontoOffset(row.checkIn)}`,
+    check_out: `${row.checkOut}T${padClock(row.checkOutTime, "11:00")}:00${torontoOffset(row.checkOut)}`,
+    checkin_time: padClock(row.checkInTime, "16:00"),
+    checkout_time: padClock(row.checkOutTime, "11:00"),
     guest: { first_name: row.guest, ...(row.phone ? { phone: row.phone } : {}) },
     guests: { adult_count: row.adults, child_count: row.children, total: row.adults + row.children },
     properties: property ? [mcpProperty(property)] : [],

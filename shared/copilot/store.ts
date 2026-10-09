@@ -168,6 +168,7 @@ export type WaitingDraft = {
   cleanerName: string;
   cleanerUnit: string;
   cleanerOn: string;
+  upsellPhase: "" | "verify" | "decline" | "remind";
 };
 
 function waitingMessage(row: { id?: string; chat_id?: string; created_at?: string; body?: string; draft?: CopilotDraft | null }): CopilotMessage {
@@ -199,6 +200,7 @@ function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; dr
     cleanerName: draft.cleanerAssign?.cleanerName || "",
     cleanerUnit: draft.cleanerAssign?.unit || "",
     cleanerOn: draft.cleanerAssign?.scheduledOn || "",
+    upsellPhase: draft.upsell?.phase ?? "",
   };
 }
 

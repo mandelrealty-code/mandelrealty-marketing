@@ -15,6 +15,7 @@ import { BLUE_JAYS_PROCESS } from "./processFacts.js";
 import { mediaFromMessage, type ThreadMedia } from "./guestMedia.js";
 import { isThanksOnly, needsGuestReply } from "./guestTranslate.js";
 import { readCleanerUnit, type CleanerPicture, type CleanerSupply, type CleanerTurnover } from "./cleanerRead.js";
+import { reviewStayUpsell, settleUpsellWatches } from "./upsell.js";
 import { describePurchase } from "./purchase.js";
 import { ensureUnitSetups, readUnitSetup, setupComplete } from "./unitSetup.js";
 import {
@@ -434,12 +435,26 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
       }
       const memory = businessFacts(await memoryFor(place), hub);
       await oneStay({ stay, place, messages, hub, memory, propertyName: property.name, hubFailed: !hubRead.ok, picture, now });
+      await reviewStayUpsell({
+        reservationId: stay.id,
+        code: stay.code,
+        guest: stay.guest,
+        propertyId: id,
+        propertyName: property.name,
+        address: property.address,
+        checkIn: stay.checkIn,
+        checkOut: stay.checkOut,
+        status: stay.status,
+        messages,
+        now,
+      });
     }
     if (picture.ok) {
       await offerLowStock(id, property.name, property.address, picture.supplies);
       await refreshSupplyDrafts(picture.orders);
     }
   }
+  await settleUpsellWatches(now);
   await revalidateWaitingReplies(now);
 }
 

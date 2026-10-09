@@ -32,6 +32,29 @@ export type CopilotDraft = {
   proposalSend?: { proposalId: string; to: string };
   /** Low-stock purchase. Nothing is ordered until Purchase item. */
   purchase?: PurchaseState;
+  /** Early check-in or late checkout. Nothing is sent until the price is approved. */
+  upsell?: UpsellOffer;
+};
+
+export type UpsellOffer = {
+  phase: "verify" | "decline" | "remind";
+  reservationId: string;
+  propertyId: string;
+  property: string;
+  guest: string;
+  kind: "early" | "late";
+  requestedLabel: string;
+  requestedMinutes: number;
+  offeredLabel: string;
+  offeredMinutes: number;
+  verdict: string;
+  reason: string;
+  priceCents: number;
+  checkIn: string;
+  checkOut: string;
+  message: string;
+  /** The clean moves to the night before this arrival. */
+  nightBefore: boolean;
 };
 
 export type Weekday = "Sunday" | "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday";

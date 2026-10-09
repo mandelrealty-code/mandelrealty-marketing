@@ -442,6 +442,7 @@ const assign = waitingDraftCard({
   cleanerName: "Maria",
   cleanerUnit: "318, 20 Blue Jays Way, Toronto",
   cleanerOn: "2026-10-09",
+  upsellPhase: "",
 });
 if (!assign?.headline || !assign.detail) fail("cleaner card", "missing headline");
 if (assign.headline !== "Assign Maria to the Blue Jays Way clean on Fri Oct 9") fail("cleaner card", assign.headline);
@@ -463,6 +464,7 @@ const vague = waitingDraftCard({
   cleanerName: "",
   cleanerUnit: "",
   cleanerOn: "",
+  upsellPhase: "",
 });
 if (vague) fail("cleaner card", vague.text);
 const started = performance.now();

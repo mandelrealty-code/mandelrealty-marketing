@@ -15,6 +15,12 @@ export type CleanerTurnover = {
   issue: string;
   /** The unit's usual cleaner, when the cleaner app recorded one. Not shown to guests. */
   usual?: string;
+  /** Spoken arrival clock on this turnover, such as 7:30 AM. */
+  arrival?: string;
+  /** Spoken departure clock on this turnover, such as 11:00 AM. */
+  departure?: string;
+  /** Guest arrival date, when the clean itself is the night before. */
+  arrivalOn?: string;
 };
 
 export type CleanerSupply = {
@@ -127,6 +133,9 @@ function parityPicture(input: { propertyId: string; from: string; to: string }):
         assigned: row.assigned,
         done: row.done,
         issue: row.issue,
+        ...(row.arrivalTime ? { arrival: row.arrivalTime } : {}),
+        ...(row.departureTime ? { departure: row.departureTime } : {}),
+        ...(row.arrivalOn ? { arrivalOn: row.arrivalOn } : {}),
         ...(usualName && !row.assigned ? { usual: usualName } : {}),
       };
     });
@@ -160,12 +169,20 @@ function asTurnovers(raw: unknown): CleanerTurnover[] {
     const item = row as Record<string, unknown>;
     const scheduledOn = typeof item.scheduled_date === "string" ? item.scheduled_date.slice(0, 10) : "";
     if (!scheduledOn) return [];
+    const arrival = typeof item.arrival_time === "string" ? item.arrival_time.trim()
+      : typeof item.check_in_time === "string" ? item.check_in_time.trim() : "";
+    const departure = typeof item.departure_time === "string" ? item.departure_time.trim()
+      : typeof item.check_out_time === "string" ? item.check_out_time.trim() : "";
+    const arrivalOn = typeof item.arrival_on === "string" ? item.arrival_on.slice(0, 10) : "";
     return [{
       scheduledOn,
       status: typeof item.status === "string" ? item.status : "",
       assigned: Boolean(item.assigned),
       done: Boolean(item.done),
       issue: typeof item.issue === "string" ? item.issue : "",
+      ...(arrival ? { arrival } : {}),
+      ...(departure ? { departure } : {}),
+      ...(arrivalOn ? { arrivalOn } : {}),
     }];
   });
 }

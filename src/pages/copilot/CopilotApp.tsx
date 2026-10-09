@@ -10,6 +10,7 @@ import "./copilot.css";
 import { MemoryFileDetail, MemoryFileList, MemoryWrote } from "./memoryUi";
 import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
 import { PurchaseCard } from "./PurchaseCard";
+import { UpsellCard } from "./UpsellCard";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
 import { needsLiveBrowser, PAGE_UNREAD } from "../../../shared/copilot/browserTier";
@@ -1424,7 +1425,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setLiveRuns((prev) => prev.filter((id) => id !== current.chatId));
   }
 
-  async function act(message: CopilotMessage, action: "send" | "hold" | "purchase" | "not-now" | "skip" | "alternative", extra?: Record<string, unknown>) {
+  async function act(message: CopilotMessage, action: "send" | "hold" | "purchase" | "not-now" | "skip" | "alternative" | "release", extra?: Record<string, unknown>) {
     setBusy(true);
     try {
       await api("draft", {
@@ -2457,6 +2458,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             busy={busy}
                             onApprove={() => void act(message, "send")}
                             onHold={() => void act(message, "hold")}
+                          />
+                        </div>
+                      ) : message.draft?.upsell ? (
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
+                          <UpsellCard
+                            message={message}
+                            busy={busy}
+                            onApprove={(priceCents) => void act(message, "send", { priceCents })}
+                            onHold={() => void act(message, "hold")}
+                            onRelease={() => void act(message, "release")}
                           />
                         </div>
                       ) : message.draft?.channel === "email" ? (

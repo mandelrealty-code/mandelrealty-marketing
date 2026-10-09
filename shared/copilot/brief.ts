@@ -593,6 +593,20 @@ export function waitingDraftCard(item: WaitingDraft): BriefCard | null {
       rank: { kind: "guest", property: cleanPlace(item.body) || item.to.trim(), deadline: "", when: "Waiting", lead: headline },
     };
   }
+  if (item.upsellPhase) {
+    const headline = item.subject.trim();
+    const detail = item.upsellPhase === "remind"
+      ? "The fee is still unpaid. Approving sends the reminder. Release drops the hold. Nothing has been sent."
+      : "Approving sends the guest message and the Airbnb payment request for this price. Nothing has been sent.";
+    return {
+      ...base,
+      headline,
+      detail,
+      text: `${headline}. ${detail}`,
+      action: item.upsellPhase === "remind" ? "Send reminder" : "Approve",
+      rank: { kind: "guest", property: cleanPlace(item.body) || item.to.trim() || "the portfolio", deadline: "", when: "Waiting", lead: headline },
+    };
+  }
   if (item.channel === "note" && item.subject.trim() && !/^a note$/i.test(item.subject.trim())) {
     const headline = item.subject.trim();
     const detail = "Approving keeps this note. Nothing has been sent.";
@@ -743,6 +757,7 @@ function waitingFromMessage(message: CopilotMessage): WaitingDraft | null {
     cleanerName: draft.cleanerAssign?.cleanerName || "",
     cleanerUnit: draft.cleanerAssign?.unit || "",
     cleanerOn: draft.cleanerAssign?.scheduledOn || "",
+    upsellPhase: draft.upsell?.phase ?? "",
   };
 }
 
