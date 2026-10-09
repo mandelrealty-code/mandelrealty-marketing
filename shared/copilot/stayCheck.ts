@@ -7,8 +7,8 @@ import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js"
 import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
-import { paritySaveChecksMessage } from "./parity/storeStub.js";
-import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, recordCancellation, recordDrafts, recordReport, refreshSupplyDrafts, reportRecorded } from "./store.js";
+import { parityRetireGuestReplies, paritySaveChecksMessage } from "./parity/storeStub.js";
+import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, listWaitingDrafts, recordCancellation, recordDrafts, recordReport, refreshSupplyDrafts, reportRecorded, updateDraft } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft, CopilotMessage } from "./types.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
@@ -524,6 +524,21 @@ async function offerUnassignedCleaner(propertyId: string, place: string, picture
   }
 }
 
+async function retireWaitingReplies(guest: string): Promise<void> {
+  const name = guest.trim().toLowerCase();
+  if (!name) return;
+  if (parityEnabled()) {
+    parityRetireGuestReplies(guest);
+    return;
+  }
+  const waiting = await listWaitingDrafts().catch(() => []);
+  for (const item of waiting) {
+    if (item.channel !== "hospitable" || item.cleanerName) continue;
+    if (item.to.trim().toLowerCase() !== name) continue;
+    await updateDraft(item.messageId, { status: "held" });
+  }
+}
+
 async function oneStay(input: {
   stay: Stay;
   place: string;
@@ -564,7 +579,8 @@ async function oneStay(input: {
   const where = placeLabel(input.place, input.propertyName);
   await offerUnassignedCleaner(stay.propertyId, where, picture);
   const reply = needsGuestReply(ask);
-  const reaction = !reply && isThanksOnly(ask);
+  const reaction = Boolean(ask.trim()) && isThanksOnly(ask);
+  if (reaction) await retireWaitingReplies(stay.guest || "");
   if (reply && /keys/i.test(ask) && /window/i.test(ask) && /shower/i.test(ask)) {
     await say({
       headline: `${stay.guest || "The guest"} is waiting`,

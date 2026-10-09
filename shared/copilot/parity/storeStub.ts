@@ -91,6 +91,18 @@ export function parityChecksMessages(): CopilotMessage[] {
   return checksMessages.map((row) => ({ ...row, draft: row.draft ? { ...row.draft } : null }));
 }
 
+/** A closer ends an earlier guest-reply draft. The stored row is updated, not copied. */
+export function parityRetireGuestReplies(guest: string): void {
+  const name = guest.trim().toLowerCase();
+  if (!name) return;
+  for (const message of checksMessages) {
+    const draft = message.draft;
+    if (!draft || draft.status !== "waiting" || draft.channel !== "hospitable" || draft.cleanerAssign) continue;
+    if ((draft.to || "").trim().toLowerCase() !== name) continue;
+    message.draft = { ...draft, status: "held" };
+  }
+}
+
 export function paritySaveChecksMessage(message: CopilotMessage): CopilotMessage {
   if (checksSaveError) throw new Error(checksSaveError);
   const stored: CopilotMessage = { ...message, draft: message.draft ? { ...message.draft } : null };

@@ -5,7 +5,7 @@
  */
 
 import { latestInboxOffer } from "../../adminApi/gmail.js";
-import { buildBrief } from "../brief.js";
+import { buildBrief, briefFromChecksMessages } from "../brief.js";
 import { answerDayPlan, answerWeekCleans, turnoverLine } from "../dayBoard.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
@@ -32,7 +32,7 @@ import {
 } from "./capture.js";
 import { BUILDING_MEMORY, CODE, ID, OPEN_ITEM, ryanMail, worldAt } from "./catalog.js";
 import { parityEnabled } from "./flag.js";
-import { failChecksDrafts } from "./storeStub.js";
+import { failChecksDrafts, parityChecksMessages, paritySaveChecksMessage } from "./storeStub.js";
 import { parityNow, setParityClock } from "./clock.js";
 import { chooseBriefOpenItem } from "../openItems.js";
 import type { BriefCard, BriefPayload } from "../types.js";
@@ -776,6 +776,74 @@ async function fixtureGuestReplyKind(): Promise<void> {
   expectDraftRules(result.drafts, result.reports);
 }
 
+function waitingReply(id: string, guest: string): void {
+  paritySaveChecksMessage({
+    id,
+    chat_id: "checks",
+    created_at: "2026-10-06T12:00:00.000Z",
+    role: "assistant",
+    body: "Here is the guest reply. Nothing was sent.",
+    draft: {
+      subject: "",
+      body: `Hi ${guest},\n\nThanks for the note.`,
+      to: guest,
+      status: "waiting",
+      channel: "hospitable",
+    },
+  });
+}
+
+async function fixtureCloserPass(): Promise<void> {
+  waitingReply("reply-alyssa", "Alyssa");
+  waitingReply("reply-isabelle", "Isabelle");
+  const world = worldAt("2026-10-07T11:00:00-04:00");
+  world.reservations.push(
+    {
+      id: "00000000-0000-4000-8000-00000000cc01",
+      code: "HMALYSSA1",
+      propertyId: ID.shaw,
+      status: "accepted",
+      checkIn: "2026-10-06",
+      checkOut: "2026-10-10",
+      guest: "Alyssa",
+      adults: 2,
+      children: 0,
+      messages: [
+        { id: "aly-q", at: "2026-10-06T12:00:00-04:00", role: "guest", name: "Alyssa", body: "Where do we put the recycling?" },
+        { id: "aly-h", at: "2026-10-06T12:10:00-04:00", role: "host", name: "Shane", body: "The blue bin is at the side of the house." },
+        { id: "aly-t", at: "2026-10-06T12:12:00-04:00", role: "guest", name: "Alyssa", body: "Perfect thank you so much!" },
+      ],
+    },
+    {
+      id: "00000000-0000-4000-8000-00000000cc02",
+      code: "HMISABEL1",
+      propertyId: ID.charlotte,
+      status: "accepted",
+      checkIn: "2026-10-06",
+      checkOut: "2026-10-10",
+      guest: "Isabelle",
+      adults: 2,
+      children: 0,
+      messages: [
+        { id: "isa-q", at: "2026-10-06T13:00:00-04:00", role: "guest", name: "Isabelle", body: "Could we check in a little early?" },
+        { id: "isa-h", at: "2026-10-06T13:10:00-04:00", role: "host", name: "Shane", body: "Yes, 2 PM is fine." },
+        { id: "isa-t", at: "2026-10-06T13:12:00-04:00", role: "guest", name: "Isabelle", body: "Thank you!" },
+      ],
+    },
+  );
+  const result = await scan(world);
+  expectNothingSent();
+  const reports = result.reports.map((row) => `${row.headline}\n${row.text}`).join("\n");
+  expect(!/Alyssa|Isabelle/.test(reports), "Checks does not keep a closer as waiting", reports.slice(0, 500));
+  expect(!result.drafts.some((row) => row.channel === "hospitable" && /Alyssa|Isabelle/.test(row.to)), "Checks does not draft a reply to a closer", result.drafts.map((row) => row.to).join(", "));
+  const stored = parityChecksMessages().filter((row) => row.draft?.channel === "hospitable" && /Alyssa|Isabelle/.test(row.draft?.to || ""));
+  expect(stored.length === 2 && stored.every((row) => row.draft?.status === "held"), "the earlier waiting replies are closed", stored.map((row) => `${row.draft?.to}:${row.draft?.status}`).join(", ") || "missing");
+  const overview = briefFromChecksMessages(parityChecksMessages(), [], [], world.now);
+  const titles = [...(overview.overview?.today ?? []), ...(overview.overview?.coming ?? [])].map((row) => row.title).join("\n");
+  expect(!/Reply to Alyssa is waiting|Reply to Isabelle is waiting/.test(titles), "Overview does not count a closer as a waiting reply", titles);
+  expectDraftRules(result.drafts, result.reports);
+}
+
 function boardStay(id: string, propertyId: string, status: string, checkIn: string, checkOut: string, guest: string): ParityReservation {
   return { id, code: `HM${id.slice(-6).toUpperCase()}`, propertyId, status, checkIn, checkOut, guest, adults: 1, children: 0, messages: [] };
 }
@@ -917,6 +985,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "20", title: "Named guest draft waits in Guest messaging", run: fixtureNamedGuestDraft },
   { id: "21", title: "Building email is claimed only after Checks read-back", run: fixtureBuildingReadBack },
   { id: "22", title: "Closers do not wait and a bags question drafts only that fact", run: fixtureGuestReplyKind },
+  { id: "25", title: "A closer closes the waiting reply in Checks and Overview", run: fixtureCloserPass },
   { id: "23", title: "Today's plan and the week's cleans share one turnover list", run: fixtureDayBoard },
   { id: "24", title: "A sent building email stays closed and the shutdown stays its own approval", run: fixtureDianeSent },
 ];
