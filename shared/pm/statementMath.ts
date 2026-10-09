@@ -1,3 +1,4 @@
+import { opsActive } from "../copilot/parity/opsState.js";
 import { getSupabaseAdmin } from "../supabase.js";
 import {
   breakdownFromFinancials,
@@ -105,7 +106,7 @@ export type MonthStatement = {
   lines: StatementLine[];
 };
 
-function rateOnDate(terms: PmCommissionTerm[], onDate: string): number | null {
+export function rateOnDate(terms: PmCommissionTerm[], onDate: string): number | null {
   const open = terms.filter((t) => {
     if (t.effective_from > onDate) return false;
     if (t.effective_to && t.effective_to < onDate) return false;
@@ -129,10 +130,76 @@ function shortStayRange(checkIn: string | null, checkOut: string | null): string
   return `${fmt(checkIn)} – ${fmt(checkOut)}`;
 }
 
+export type StayTermSplit = {
+  base: number;
+  nightly: number;
+  mrg: number;
+  hst: number;
+  cleaning: number;
+  net: number;
+  airbnbPayout: number;
+  guestPaid: number;
+  hostFees: number;
+  /** Commission plus cohost HST. Invoice HST is billed separately and is not included. */
+  mrgTake: number;
+  currency: string;
+};
+
+/** One stay split with the same rounding the month statement uses. */
+export function splitStayForTerms(
+  financials: Record<string, unknown>,
+  stay: { host_payout_cents: number; gross_cents: number; currency: string },
+  terms: {
+    commission_base_mode: CommissionBaseMode;
+    rate_bps: number;
+    hst_mode: "cohost" | "invoice";
+    hst_bps: number;
+    cleaning_fee_keeper: "mrg" | "host";
+  },
+): StayTermSplit {
+  const baseMode = normalizeCommissionBaseMode(terms.commission_base_mode);
+  const bd = breakdownFromFinancials(financials, {
+    host_payout_cents: Number(stay.host_payout_cents) || 0,
+    gross_cents: Number(stay.gross_cents) || 0,
+    currency: stay.currency,
+    commission_base_mode: baseMode,
+  });
+  const rate = terms.rate_bps;
+  const hstBps = Number.isFinite(terms.hst_bps) ? terms.hst_bps : 300;
+  const hstMode = terms.hst_mode === "invoice" ? "invoice" : "cohost";
+  const keeper = terms.cleaning_fee_keeper === "host" ? "host" : "mrg";
+  const base = bd.commission_base_cents;
+  const nightly = bd.accommodation_cents || base;
+  const mrg = Math.round((base * rate) / 10000);
+  const hst =
+    hstMode === "invoice"
+      ? Math.round((mrg * hstBps) / 10000)
+      : Math.round((base * hstBps) / 10000);
+  const cleaning = bd.cleaning_fee_cents;
+  const hostCleaning = keeper === "host" ? cleaning : 0;
+  const cohostHst = hstMode === "cohost" ? hst : 0;
+  const net = base - mrg - cohostHst + hostCleaning;
+  const airbnbPayout = bd.host_revenue_cents || Number(stay.host_payout_cents) || 0;
+  return {
+    base,
+    nightly,
+    mrg,
+    hst,
+    cleaning,
+    net,
+    airbnbPayout,
+    guestPaid: bd.guest_total_cents || Number(stay.gross_cents) || base + cleaning,
+    hostFees: bd.host_fees_cents,
+    mrgTake: mrg + cohostHst,
+    currency: bd.currency || stay.currency || "CAD",
+  };
+}
+
 export async function listManualExpenses(
   propertyId: string,
   yearMonth: string,
 ): Promise<ManualExpense[]> {
+  if (opsActive()) return [];
   const { start, end } = monthBounds(yearMonth);
   const { data, error } = await db()
     .from("pm_manual_expenses")
@@ -306,33 +373,34 @@ export async function buildMonthStatement(
       r.financials_json && typeof r.financials_json === "object"
         ? (r.financials_json as Record<string, unknown>)
         : {};
-    const bd = breakdownFromFinancials(fin, {
-      host_payout_cents: Number(r.host_payout_cents) || 0,
-      gross_cents: Number(r.gross_cents) || 0,
-      currency: r.currency,
-      commission_base_mode: baseMode,
-    });
 
     const on = r.check_out || r.check_in || `${yearMonth}-01`;
     const rate = rateOnDate(detail.terms, on) ?? lastRate ?? 0;
     lastRate = rate;
 
-    const base = bd.commission_base_cents;
-    const nightly = bd.accommodation_cents || base;
-    const mrg = Math.round((base * rate) / 10000);
-    // Cohost: HST % of base (added into total take). Invoice: HST % of MRG fee (QB).
-    const hst =
-      hstMode === "invoice"
-        ? Math.round((mrg * hstBps) / 10000)
-        : Math.round((base * hstBps) / 10000);
-    const cleaning = bd.cleaning_fee_cents;
+    const split = splitStayForTerms(
+      fin,
+      {
+        host_payout_cents: Number(r.host_payout_cents) || 0,
+        gross_cents: Number(r.gross_cents) || 0,
+        currency: r.currency,
+      },
+      {
+        commission_base_mode: baseMode,
+        rate_bps: rate,
+        hst_mode: hstMode,
+        hst_bps: hstBps,
+        cleaning_fee_keeper: keeper,
+      },
+    );
+    const base = split.base;
+    const nightly = split.nightly;
+    const mrg = split.mrg;
+    const hst = split.hst;
+    const cleaning = split.cleaning;
     if (cleaning > 0) cleaningTurnovers += 1;
-
-    const hostCleaning = keeper === "host" ? cleaning : 0;
-    // Stay-level net never subtracts invoice HST (billed separately via QB).
-    const cohostHst = hstMode === "cohost" ? hst : 0;
-    const net = base - mrg - cohostHst + hostCleaning;
-    const airbnbPayout = bd.host_revenue_cents || Number(r.host_payout_cents) || 0;
+    const net = split.net;
+    const airbnbPayout = split.airbnbPayout;
 
     baseTotal += base;
     nightlyTotal += nightly;
@@ -340,10 +408,10 @@ export async function buildMonthStatement(
     hstTotal += hst;
     cleaningTotal += cleaning;
     nightsTotal += Number(r.nights) || 0;
-    gross += bd.guest_total_cents || Number(r.gross_cents) || base + cleaning;
+    gross += split.guestPaid;
     airbnbPayoutTotal += airbnbPayout;
     airbnbAccomTotal += nightly;
-    airbnbHostFeesTotal += bd.host_fees_cents;
+    airbnbHostFeesTotal += split.hostFees;
     if (r.synced_at && (!lastSynced || r.synced_at > lastSynced)) {
       lastSynced = r.synced_at;
     }
@@ -357,7 +425,7 @@ export async function buildMonthStatement(
     const meta = [
       `Airbnb ${moneyLabel(airbnbPayout)}`,
       `Accom ${moneyLabel(nightly)}`,
-      `Fee −${moneyLabel(bd.host_fees_cents)}`,
+      `Fee −${moneyLabel(split.hostFees)}`,
       cleaning ? `Clean ${moneyLabel(cleaning)}` : null,
       baseHint,
       hstMode === "invoice"
@@ -377,7 +445,7 @@ export async function buildMonthStatement(
       hospitable_reservation_id: r.hospitable_reservation_id || "",
       status: r.status || "",
       accommodation_cents: nightly,
-      host_fees_cents: bd.host_fees_cents,
+      host_fees_cents: split.hostFees,
       airbnb_payout_cents: airbnbPayout,
       base_cents: base,
       mrg_cents: mrg,

@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "../supabase.js";
-import { parityManagedProperties } from "../copilot/parity/world.js";
+import { parityManagedProperties, parityPropertyDetail } from "../copilot/parity/world.js";
 import { getPmSettings } from "./clientStore.js";
 import { normalizeCommissionBaseMode } from "./financialBreakdown.js";
 import {
@@ -116,6 +116,7 @@ export async function listPmProperties(clientId?: string): Promise<PmPropertyLis
 }
 
 export async function getPmPropertyDetail(id: string): Promise<PmPropertyDetail | null> {
+  if (parityManagedProperties()) return parityPropertyDetail(id);
   const { data, error } = await db()
     .from("pm_properties")
     .select("*, pm_clients(name), pm_commission_terms(*)")

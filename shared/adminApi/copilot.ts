@@ -33,6 +33,7 @@ import { refuseCatalogPurchase } from "../copilot/catalogPurchase.js";
 import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
 import { answerStay, openDaySheet, type StayCard } from "../copilot/stayAnswer.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
+import { answerPayout } from "../copilot/payoutAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
 import { answerGuestStay } from "../copilot/guestStayAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
@@ -903,6 +904,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
         }
         return done();
+      }
+      if (!pictureMode && !skillMode) {
+        const history = await listMessages(chatId);
+        const earlier = history.slice(0, -1);
+        let priorBody = "";
+        for (let i = earlier.length - 1; i >= 0; i -= 1) {
+          if (earlier[i]?.role === "assistant") {
+            priorBody = earlier[i]?.body ?? "";
+            break;
+          }
+        }
+        const payout = await answerPayout(text, priorBody, clock);
+        if (payout) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: payout.body,
+            steps: [{ text: payout.step }],
+            thought: "This came from the property's saved payout terms and the reservation records. Nothing was searched on the web.",
+          });
+          return done();
+        }
       }
       if (!pictureMode) {
         const pinned = await pinnedCompanyAnswer(text);

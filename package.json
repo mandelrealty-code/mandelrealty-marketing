@@ -23,6 +23,7 @@
     "guest-harness": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/guestMessagingHarness.ts",
     "guidelines-harness": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/guidelinesHarness.ts",
     "golden-harness": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/goldenAnswers.ts",
+    "payout-harness": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/payoutHarness.ts",
     "connectors": "tsx shared/copilot/connectorHealthMain.ts"
   },
   "dependencies": {

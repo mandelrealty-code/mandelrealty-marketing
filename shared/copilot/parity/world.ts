@@ -1,4 +1,4 @@
-import type { PmPropertyListItem } from "../../pm/types.js";
+import type { PmCommissionTerm, PmPropertyDetail, PmPropertyListItem } from "../../pm/types.js";
 import { captureCommit, markAccountWide, resetCaptures } from "./capture.js";
 import { resetOps } from "./opsState.js";
 import { resetParityCancellations, resetParityConnectorFailures, resetParityReports } from "./storeStub.js";
@@ -68,6 +68,17 @@ export type ParityProperty = {
   description?: string;
   neighbourhood?: string;
   amenities?: string[];
+  /** Saved OPS billing terms. Absent means no commission term is saved. */
+  billing?: ParityBilling;
+};
+
+export type ParityBilling = {
+  /** Null when the property has no saved commission term. */
+  rateBps: number | null;
+  commissionBaseMode?: "nightly" | "nightly_minus_host_fee";
+  cleaningFeeKeeper?: "mrg" | "host";
+  hstMode?: "cohost" | "invoice";
+  hstBps?: number;
 };
 
 export type ParityMemory = { path: string; body: string };
@@ -295,7 +306,14 @@ export function parityManagedProperties(): PmPropertyListItem[] | null {
   return current.properties.filter((row) => row.managed).map((row) => propertyRow(row));
 }
 
+function savedRate(row: ParityProperty): number | null {
+  const rate = row.billing?.rateBps;
+  return row.billing && rate != null && Number.isFinite(rate) ? rate : null;
+}
+
 function propertyRow(row: ParityProperty): PmPropertyListItem {
+  const billing = row.billing;
+  const hstBps = billing?.hstBps;
   return {
     id: row.id,
     created_at: "2026-01-01T00:00:00.000Z",
@@ -308,13 +326,39 @@ function propertyRow(row: ParityProperty): PmPropertyListItem {
     hub_property_id: "",
     currency: "CAD",
     active: true,
-    cleaning_fee_keeper: "mrg",
-    commission_base_mode: "nightly",
-    hst_mode: "cohost",
-    hst_bps: 300,
+    cleaning_fee_keeper: billing?.cleaningFeeKeeper === "host" ? "host" : "mrg",
+    commission_base_mode: billing?.commissionBaseMode === "nightly_minus_host_fee" ? "nightly_minus_host_fee" : "nightly",
+    hst_mode: billing?.hstMode === "invoice" ? "invoice" : "cohost",
+    hst_bps: hstBps != null && Number.isFinite(hstBps) ? hstBps : 300,
     client_name: "Mandel",
-    current_rate_bps: null,
+    current_rate_bps: savedRate(row),
     cover_image_url: row.photo || null,
+  };
+}
+
+/** OPS property detail, including the saved commission term, while parity is on. */
+export function parityPropertyDetail(id: string): PmPropertyDetail | null {
+  const current = live();
+  if (!current) return null;
+  const row = current.properties.find((item) => item.id === id && item.managed);
+  if (!row) return null;
+  const list = propertyRow(row);
+  const rate = list.current_rate_bps;
+  const term: PmCommissionTerm | null = rate == null
+    ? null
+    : {
+        id: `${row.id}-term`,
+        created_at: "2026-01-01T00:00:00.000Z",
+        property_id: row.id,
+        rate_bps: rate,
+        effective_from: "2020-01-01",
+        effective_to: null,
+        note: "",
+      };
+  return {
+    ...list,
+    current_term: term,
+    terms: term ? [term] : [],
   };
 }
 

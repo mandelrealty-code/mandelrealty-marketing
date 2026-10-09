@@ -67,9 +67,18 @@ export function asksExternal(text: string): boolean {
   return questionRoute(text) === "web";
 }
 
-/** Connector, rental, and unmanaged-listing questions never go to web search. */
+/** A unit split: what MRG makes and what the host makes. Not a retail price. */
+export function asksPayoutSplit(text: string): boolean {
+  const asked = text.trim();
+  return /\bhow much\b/i.test(asked)
+    && /\b(we|mrg)\b/i.test(asked)
+    && /\b(host|owner)\b/i.test(asked)
+    && /\b(make|take|net|earn)\b/i.test(asked);
+}
+
+/** Connector, rental, payout, and unmanaged-listing questions never go to web search. */
 export function skipsWeb(text: string): boolean {
   const asked = text.trim();
   if (!asked) return false;
-  return unmanagedPropertyWork(asked) || RENTAL.test(asked) || asksConnector(asked);
+  return unmanagedPropertyWork(asked) || RENTAL.test(asked) || asksConnector(asked) || asksPayoutSplit(asked);
 }
