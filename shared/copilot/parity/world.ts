@@ -104,6 +104,9 @@ export type ParityCleanerSupply = {
   left: number;
   low: boolean;
   product: string;
+  measure?: "count" | "level";
+  levelLabel?: string;
+  lowAtLabel?: string;
   retailer?: string;
   priceCents?: number | null;
   imageUrl?: string;
@@ -116,6 +119,7 @@ export type ParityCleanerSupply = {
 
 export type ParityCleaner = {
   error?: string;
+  incomplete?: boolean;
   turnovers?: ParityCleanerTurnover[];
   supplies?: ParityCleanerSupply[];
   usual?: { propertyId: string; name: string }[];
@@ -152,6 +156,7 @@ export function installWorld(next: ParityWorld): void {
       ? {
           error: next.cleaner.error,
           turnovers: (next.cleaner.turnovers ?? []).map((row) => ({ ...row })),
+          incomplete: next.cleaner.incomplete,
           supplies: (next.cleaner.supplies ?? []).map((row) => ({ ...row })),
           usual: (next.cleaner.usual ?? []).map((row) => ({ ...row })),
         }

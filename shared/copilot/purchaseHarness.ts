@@ -160,7 +160,6 @@ if (placedOrders().length !== ordersBeforeOpen || supplyWrites().length !== writ
 
 const { pinnedCompanyAnswer } = await import("./pinnedAnswer.js");
 const {
-  LEGACY_LOW_STOCK,
   MASTER_SUPPLIES,
   addUnitCleaner,
   catalogIdentity,
@@ -234,11 +233,29 @@ if (catalogFromStore.split("\n").filter(Boolean).length !== 10 || catalogSaid !=
 if (!catalogSaid.includes("Lysol Power & Fresh multi-surface cleaner") || !catalogSaid.includes("4.26 L") || !catalogSaid.includes("pack of 1") || !catalogSaid.includes("ASIN B0BY3G17W7") || /Knowledge Hub|does not mention/i.test(catalogSaid)) {
   fail(catalogSaid);
 }
+installSetupListings([
+  { id: ID.shaw, name: "Chic 2BR with Yard and Parking", address: "1065 Shaw Street, Toronto", photo: "https://photos.example/shaw.jpg" },
+  { id: ID.charlotte, name: "Modern Loft", address: "606, 8 Charlotte Street, Toronto", photo: "https://photos.example/charlotte.jpg" },
+]);
 const cleaner = parityCleaner();
 if (!cleaner) fail("the cleaner fixture is missing");
-cleaner.supplies = [{ propertyId: ID.shaw, item: "throw pillow", left: 1, low: true, product: "Throw pillow" }];
-const lowSaid = await setupChat("Is anything running low?", "parity-low-stock");
-if (lowSaid !== LEGACY_LOW_STOCK || /\bdown to\b|\bleft\b|\b\d+\b|throw pillow|pillow/i.test(lowSaid)) fail(lowSaid || "low stock stated a level");
+cleaner.supplies = [
+  { propertyId: ID.charlotte, item: "white and blue ceramic mug", left: 1, low: true, product: "", threshold: 1, measure: "count" },
+  { propertyId: ID.charlotte, item: "white faux fur throw pillow", left: 1, low: true, product: "", threshold: 1, measure: "count" },
+  { propertyId: ID.charlotte, item: "Dawn dish soap", left: 0.5, low: true, product: "", threshold: 0.25, measure: "level", levelLabel: "1/2", lowAtLabel: "1/4" },
+  { propertyId: ID.charlotte, item: "crushed red pepper packets", left: 0.5, low: true, product: "", threshold: 0.25, measure: "level", levelLabel: "1/2", lowAtLabel: "1/4" },
+];
+const lowSaid = await setupChat("Is anything running low at our units?", "parity-low-stock");
+if (!lowSaid.includes("8 Charlotte 606") || !lowSaid.includes("white and blue ceramic mug, count 1, low at 1") || !lowSaid.includes("white faux fur throw pillow, count 1, low at 1")) {
+  fail(lowSaid || "the live inventory was not listed");
+}
+if (/dawn dish soap|crushed red pepper|\bonly\b|counts are not set up/i.test(lowSaid)) fail(lowSaid);
+cleaner.incomplete = true;
+const partialSaid = await setupChat("Is anything running low at our units?", "parity-low-stock-partial");
+if (!partialSaid.includes("The inventory read is incomplete for 8 Charlotte 606.") || /white and blue ceramic mug|\bonly\b/i.test(partialSaid)) {
+  fail(partialSaid || "a partial read was treated as a complete list");
+}
+cleaner.incomplete = false;
 const refusedBuy = await pinnedCompanyAnswer("Buy Lysol for Shaw Street");
 if (!refusedBuy || !/Cleaner roster is missing/.test(refusedBuy.body) || /Purchase item/.test(refusedBuy.body) || catalogOrders().length) {
   fail(refusedBuy?.body || "a unit with no roster offered a purchase");

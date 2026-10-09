@@ -5,7 +5,7 @@
  */
 
 import { listPmProperties } from "../pm/propertyStore.js";
-import { readCleanerUnit } from "./cleanerRead.js";
+import { atOrBelowLowAt, readCleanerUnit, supplyLevelLine } from "./cleanerRead.js";
 
 export type CatalogItem = {
   key: string;
@@ -283,8 +283,6 @@ function deliveryLine(unit: UnitSetup): string {
   return `Delivery destination is done. ${unit.delivery.trim()}`;
 }
 
-export const LEGACY_LOW_STOCK = "the cleaner app flagged this before setup; counts are not set up yet";
-
 export function asksUnitSetup(text: string): boolean {
   const asked = text.trim();
   if (/\bwhat(?:'s| is) set up\b/i.test(asked)) return true;
@@ -318,6 +316,12 @@ export async function answerSupplyCatalog(text: string): Promise<string | null> 
   return shown.map((unit) => unit.inventory.map((item) => catalogIdentity(item)).join("\n")).join("\n\n");
 }
 
+function stockPlace(unit: UnitSetup): string {
+  const blob = `${unit.name} ${unit.address}`.toLowerCase();
+  if (/charlotte/.test(blob) && /\b606\b/.test(blob)) return "8 Charlotte 606";
+  return placeOf(unit);
+}
+
 export async function answerRunningLow(text: string): Promise<string | null> {
   if (!asksRunningLow(text)) return null;
   const units = await ensureUnitSetups();
@@ -325,18 +329,19 @@ export async function answerRunningLow(text: string): Promise<string | null> {
   const shown = named.length ? named : units;
   if (!shown.length) return "No units are in the cleaner app. Nothing was guessed.";
   const lines: string[] = [];
-  let legacy = false;
   for (const unit of shown) {
-    if (setupComplete(unit)) {
-      for (const row of lowStockLines([unit])) lines.push(`${row.title} is at ${row.count} at ${placeOf(unit)}.`);
+    const place = stockPlace(unit);
+    const picture = await readCleanerUnit({ propertyId: unit.propertyId, from: "2000-01-01", to: "2100-01-01" });
+    if (!picture.ok || !picture.complete) {
+      lines.push(`The inventory read is incomplete for ${place}.`);
       continue;
     }
-    const picture = await readCleanerUnit({ propertyId: unit.propertyId, from: "2000-01-01", to: "2100-01-01" });
-    if (picture.ok && picture.supplies.some((row) => row.low)) legacy = true;
-  }
-  if (legacy) lines.push(LEGACY_LOW_STOCK);
-  if (!lines.length) {
-    return shown.some((unit) => setupComplete(unit)) ? "Nothing in the catalog is running low." : "Counts are not set up yet.";
+    const lows = picture.supplies.filter((row) => atOrBelowLowAt(row));
+    if (!lows.length) {
+      lines.push(`Nothing is running low at ${place}.`);
+      continue;
+    }
+    lines.push(place, ...lows.map((row) => supplyLevelLine(row)));
   }
   return lines.join("\n");
 }
