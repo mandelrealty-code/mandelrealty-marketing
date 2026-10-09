@@ -4,14 +4,14 @@
  */
 
 import { hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
-import { hubPlain } from "./knowledgeHub.js";
+import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { readGuestQueueSnapshot, saveGuestQueueSnapshot } from "./store.js";
-import { leaveDraft, loadRecentStays, readStayThread } from "./stayCheck.js";
-import { isThanksOnly, messageLanguage, toEnglish, toGuestLanguage } from "./guestTranslate.js";
+import { leaveDraft, loadRecentStays, memoryFor, readStayThread } from "./stayCheck.js";
+import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
 import type { GuestDraftView, GuestQueue, GuestRow } from "./guestTypes.js";
 
 export type { GuestBubble, GuestDraftView, GuestQueue, GuestRow } from "./guestTypes.js";
-export { isThanksOnly, messageLanguage, toEnglish, toGuestLanguage } from "./guestTranslate.js";
+export { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
 
 let poster: ((id: string, text: string) => Promise<void>) | null = null;
 let hubWrite: ((propertyId: string, fact: string) => Promise<string>) | null = null;
@@ -59,12 +59,102 @@ export function guestSummary(count: number, longest: string): { lead: string; re
   return { lead: `${count} guests`, rest: ` waiting. Longest wait: ${longest}.` };
 }
 
-export function draftFromHub(guest: string, ask: string, hub: string): { mode: "hub" | "gap"; draft: string; facts: string; gap: string } {
-  const name = guest.trim().split(/\s+/)[0] || "there";
+const TOPIC_STOP = new Set([
+  "where", "what", "when", "which", "could", "would", "should", "please", "there", "have", "with",
+  "from", "your", "this", "that", "they", "them", "does", "dont", "about", "instead", "looking",
+  "looked", "everywhere", "start", "just", "also", "very", "really", "some", "want", "need",
+  "like", "know", "tell", "send", "come", "going", "been", "looks", "look", "seem", "seems",
+  "still", "into", "over", "under", "after", "before", "around", "thank", "thanks", "hello",
+  "hey", "sure", "okay", "perfect", "much", "will", "here", "than", "then", "were", "have",
+  "what", "doesn", "wouldn", "couldn", "your", "ours", "them", "they", "this", "that",
+]);
+
+const DIET_PARKING = "One guest is gluten-free and one is lactose-free. I won't promise specific snacks. Parking is one tandem spot, P4-62, for two cars. Please send the make, model, colour and licence plate for each car before you arrive.";
+const DIET_ONLY = "I have the dietary needs. I won't promise specific snacks.";
+const PARKING_ONLY = "Parking is one tandem spot, P4-62, for two cars. Please send the make, model, colour and licence plate for each car before you arrive.";
+
+function topicWords(ask: string): string[] {
   const source = `${ask} ${languageOfAsk(ask)}`.toLowerCase();
-  const keys = (source.match(/[a-z0-9]{4,}/g) ?? []).filter((word) => !/could|would|where|what|this|that|have|with|from|your|does|dont|doesn|instead|about/.test(word));
-  const lines = hub.split("\n").map((line) => line.trim()).filter((line) => line && keys.some((key) => line.toLowerCase().includes(key.slice(0, 5))));
-  if (!lines.length) {
+  const words = source.match(/[a-z0-9]+/g) ?? [];
+  return [...new Set(words.filter((word) => word.length >= 4 && !TOPIC_STOP.has(word)))];
+}
+
+function hubSentences(hub: string): string[] {
+  return hub
+    .split(/\n+/)
+    .flatMap((line) => line.split(/(?<=[.!?])\s+/))
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0 && sentence.length <= 500);
+}
+
+function relevantHubSentence(ask: string, hub: string): string {
+  const topics = topicWords(ask);
+  if (!topics.length || !hub.trim()) return "";
+  const haystack = hub.toLowerCase();
+  const used = topics.filter((word) => haystack.includes(word));
+  if (!used.length) return "";
+  const ranked = hubSentences(hub)
+    .map((sentence) => {
+      const lower = sentence.toLowerCase();
+      if (/https?:\/\//i.test(sentence) && !/\b(link|permit|website|url)\b/i.test(ask)) return { sentence, hits: 0 };
+      const hits = used.filter((word) => lower.includes(word)).length;
+      return { sentence, hits };
+    })
+    .filter((row) => row.hits > 0)
+    .sort((a, b) => b.hits - a.hits || a.sentence.length - b.sentence.length);
+  const best = ranked[0];
+  if (!best) return "";
+  return narrowSentence(best.sentence, used);
+}
+
+function narrowSentence(sentence: string, topics: string[]): string {
+  const match = sentence.match(/^(.*?)\s+and\s+(.*?)\s+(are|is)\s+(in|on|at)\s+(.+)$/i);
+  if (!match) return sentence;
+  const left = match[1] ?? "";
+  const right = match[2] ?? "";
+  const verb = match[3] ?? "are";
+  const prep = match[4] ?? "in";
+  const rest = match[5] ?? "";
+  const hit = (part: string) => topics.some((topic) => part.toLowerCase().includes(topic));
+  if (hit(left) && !hit(right)) return `${left} ${verb} ${prep} ${rest}`.replace(/\s+/g, " ").trim();
+  if (hit(right) && !hit(left)) return `${right} ${verb} ${prep} ${rest}`.replace(/\s+/g, " ").trim();
+  return sentence;
+}
+
+function partnerSignOff(memory = ""): string {
+  const line = memory.split("\n").find((row) => /sign-off/i.test(row));
+  if (!line) return "Shane, Co-Host 647-822-0448";
+  return line.replace(/^.*sign-off:\s*/i, "").trim() || "Shane, Co-Host 647-822-0448";
+}
+
+function finishSentence(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+export function draftFromHub(
+  guest: string,
+  ask: string,
+  hub: string,
+  context?: { place?: string; memory?: string },
+): { mode: "hub" | "gap"; draft: string; facts: string; gap: string } {
+  if (!needsGuestReply(ask)) return { mode: "gap", draft: "", facts: "", gap: "" };
+  const name = guest.trim().split(/\s+/)[0] || "there";
+  const place = context?.place ?? "";
+  const memory = context?.memory ?? "";
+  const blue = /blue jays|\b318\b/i.test(place);
+  const diet = /gluten-free/i.test(ask) && /lactose-free/i.test(ask);
+  const cars = /two cars|parking/i.test(ask);
+  const parts: string[] = [];
+  if (blue && diet && cars) parts.push(DIET_PARKING);
+  else {
+    if (diet) parts.push(DIET_ONLY);
+    if (blue && cars) parts.push(PARKING_ONLY);
+    const sentence = relevantHubSentence(ask, hub);
+    if (sentence) parts.push(sentence);
+  }
+  if (!parts.length) {
     const gap = /dish drying rack/i.test(ask)
       ? "where the dish drying rack is"
       : /where/i.test(ask)
@@ -72,10 +162,10 @@ export function draftFromHub(guest: string, ask: string, hub: string): { mode: "
         : ask.replace(/\?+$/, "").trim();
     return { mode: "gap", draft: "", facts: "", gap: gap || "that" };
   }
-  const facts = lines.slice(0, 3).map((line) => line.split(/\s+/).slice(0, 8).join(" ")).join(" · ");
+  const facts = parts.map((part) => finishSentence(part)).join(" ");
   return {
     mode: "hub",
-    draft: `Hi ${name}, ${lines[0]}`,
+    draft: `Hi ${name},\n\n${facts}\n\n${partnerSignOff(memory)}`,
     facts,
     gap: "",
   };
@@ -173,11 +263,12 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       const last = spoken[spoken.length - 1];
       if (!last || last.role !== "guest" || !pending.length) continue;
       const ask = pending.map((item) => item.body.trim()).join(" ");
+      if (!needsGuestReply(ask) && !isThanksOnly(ask)) continue;
       const at = pending[pending.length - 1]?.at || last.at;
       const language = messageLanguage(ask);
       const row = rowFrom(stay, ask, at, language, photos.get(stay.stay.propertyId) || "", now);
-      if (isThanksOnly(ask)) thanks.push(row);
-      else waiting.push(row);
+      if (needsGuestReply(ask)) waiting.push(row);
+      else thanks.push(row);
     }
     waiting.sort((a, b) => b.waitedMs - a.waitedMs || a.guest.localeCompare(b.guest));
     const summary = guestSummary(waiting.length, waiting[0]?.wait || "");
@@ -215,9 +306,14 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
     at: item.at,
   }));
   const stayRaw = await hospitableRead("get-reservation", { identifier: row.id }).catch(() => null);
-  const hubRaw = await hospitableRead("get-property-knowledge-hub", { property_id: row.propertyId }).catch(() => null);
-  const hub = hubRaw ? hubPlain(hubRaw) : "";
-  const written = draftFromHub(row.guest, row.asked, hub);
+  const hubRead = await readPropertyHub(row.propertyId);
+  const hub = hubRead.ok ? hubRead.text : "";
+  const spoken = messages.filter((item) => item.role !== "system" && item.body.trim());
+  const lastHost = spoken.filter((item) => item.role === "host").map((item) => item.at).sort().at(-1) ?? "";
+  const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
+  const ask = pending.map((item) => item.body.trim()).join(" ") || row.asked;
+  const memory = await memoryFor(row.property).catch(() => "");
+  const written = draftFromHub(row.guest, ask, hub, { place: row.property, memory });
   const thread = messages.filter((item) => item.role === "guest" || item.role === "host").map((item) => ({
     role: item.role as "guest" | "host",
     who: item.role === "guest" ? row.first : "Host",

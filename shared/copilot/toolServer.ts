@@ -87,7 +87,7 @@ async function noteTool(ctx: Ctx, name: string, patch: Partial<NonNullable<Copil
 const TOOLS: Record<string, Tool> = {
   guest_inbox: {
     description:
-      "Reads Hospitable guest messages for every stay checked in now or arriving in the next 14 days. Returns who is waiting on a reply (guest wrote last), threads where the last sender is unclear, and guests whose messages may contain the checklist details, with the matching line. Read only.",
+      "Reads Hospitable guest messages for every stay checked in now or arriving in the next 14 days. Returns who is waiting on a reply (the guest asked, requested, or reported a problem, and the host has not answered), threads where the last sender is unclear, and guests whose messages may contain the checklist details, with the matching line. Thanks and acknowledgements are not waiting. Read only.",
     inputSchema: {
       type: "object",
       properties: {

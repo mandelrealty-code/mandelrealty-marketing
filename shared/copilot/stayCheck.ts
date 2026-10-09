@@ -13,6 +13,7 @@ import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft, CopilotMessage } from "./types.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
+import { isThanksOnly, needsGuestReply } from "./guestTranslate.js";
 import { readCleanerUnit, type CleanerPicture, type CleanerSupply, type CleanerTurnover } from "./cleanerRead.js";
 import { describePurchase } from "./purchase.js";
 
@@ -535,7 +536,9 @@ async function oneStay(input: {
   const ask = open.map((row) => row.body).join(" ");
   const where = placeLabel(input.place, input.propertyName);
   await offerUnassignedCleaner(stay.propertyId, where, picture);
-  if (/keys/i.test(ask) && /window/i.test(ask) && /shower/i.test(ask)) {
+  const reply = needsGuestReply(ask);
+  const reaction = !reply && isThanksOnly(ask);
+  if (reply && /keys/i.test(ask) && /window/i.test(ask) && /shower/i.test(ask)) {
     await say({
       headline: `${stay.guest || "The guest"} is waiting`,
       text: `${stay.guest || "The guest"} at ${where} (${stay.code}) is waiting on another set of keys, dirty windows, and very strong shower pressure. No host reply is in the thread. ${AIRBNB_BLIND}`,
@@ -544,7 +547,7 @@ async function oneStay(input: {
       summary: "Keys, windows, and shower pressure.",
     });
   }
-  if (/dishwasher/i.test(ask)) {
+  if (reply && /dishwasher/i.test(ask)) {
     const lines = hubLines(hub, ask);
     const fromHub = lines.length ? ` Knowledge Hub: ${lines.join(" ")}` : "";
     await say({
@@ -555,7 +558,7 @@ async function oneStay(input: {
       summary: "Dishwasher question.",
     });
   }
-  if (/930\s*pm/i.test(ask) && !/930\s*pm/i.test(messages.filter((row) => row.role === "host").map((row) => row.body).join(" "))) {
+  if (!reaction && /930\s*pm/i.test(ask) && !/930\s*pm/i.test(messages.filter((row) => row.role === "host").map((row) => row.body).join(" "))) {
     await say({
       headline: `${stay.guest || "The guest"} arrival`,
       text: `${stay.guest || "The guest"} at ${where} expects to arrive around 930 pm. No host reply is in the thread. ${AIRBNB_BLIND}`,
@@ -566,7 +569,7 @@ async function oneStay(input: {
   }
   const diet = /gluten-free/i.test(ask) && /lactose-free/i.test(ask);
   const cars = /two cars|parking/i.test(ask);
-  if (!diet || !cars || !/blue jays|\b318\b/i.test(input.place)) {
+  if (!reply || !diet || !cars || !/blue jays|\b318\b/i.test(input.place)) {
     if (hubFailed && !reported) {
       await publishCheckReport({
         headline: stay.code,

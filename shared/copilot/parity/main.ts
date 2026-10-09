@@ -12,8 +12,8 @@ import { answerBuildingRegistration } from "../buildingRegistration.js";
 import { listStoredWaitingDrafts } from "../checksClaim.js";
 import { answerStay } from "../stayAnswer.js";
 import { answerPropertyFact } from "../propertyFact.js";
-import { answerGuestThreads, answerNamedGuestDraft } from "../guestInboxAnswer.js";
-import { guestDrafts } from "../guestMessaging.js";
+import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../guestInboxAnswer.js";
+import { guestDrafts, loadGuestQueue, openGuestAnswer, resetGuestMessaging } from "../guestMessaging.js";
 import {
   accountWideRan,
   capturedBrowserCalls,
@@ -685,6 +685,95 @@ async function fixtureBuildingReadBack(): Promise<void> {
   expectNothingSent();
 }
 
+async function fixtureGuestReplyKind(): Promise<void> {
+  resetGuestMessaging();
+  const world = worldAt("2026-10-07T11:00:00-04:00", true);
+  const rose = world.hub?.find((row) => row.propertyId === ID.rose);
+  expect(Boolean(rose), "Roseglor has a Hub", "the Roseglor Hub was missing");
+  if (rose) {
+    rose.body = [
+      rose.body,
+      "Amenities: pool, gym, wifi, coffee maker, workstation.",
+      "Notice: the building elevator is out on Tuesdays.",
+      "Mississauga parking permit: https://www.mississauga.ca/services/parking-permits",
+    ].join("\n");
+  }
+  const thankYou: ParityReservation = {
+    id: "00000000-0000-4000-8000-00000000bb01",
+    code: "HMTHANKS1",
+    propertyId: ID.shaw,
+    status: "accepted",
+    checkIn: "2026-10-06",
+    checkOut: "2026-10-10",
+    guest: "Alyssa",
+    adults: 2,
+    children: 0,
+    messages: [
+      { id: "aly-q", at: "2026-10-06T12:00:00-04:00", role: "guest", name: "Alyssa", body: "Where do we put the recycling?" },
+      { id: "aly-h", at: "2026-10-06T12:10:00-04:00", role: "host", name: "Shane", body: "The blue bin is at the side of the house." },
+      { id: "aly-t", at: "2026-10-06T12:12:00-04:00", role: "guest", name: "Alyssa", body: "Perfect thank you so much!" },
+    ],
+  };
+  const closer: ParityReservation = {
+    id: "00000000-0000-4000-8000-00000000bb02",
+    code: "HMCLOSER1",
+    propertyId: ID.charlotte,
+    status: "accepted",
+    checkIn: "2026-10-06",
+    checkOut: "2026-10-10",
+    guest: "Casey",
+    adults: 1,
+    children: 0,
+    messages: [
+      { id: "casey-h", at: "2026-10-06T13:00:00-04:00", role: "host", name: "Shane", body: "The code is in the book." },
+      { id: "casey-t", at: "2026-10-06T13:05:00-04:00", role: "guest", name: "Casey", body: "Okay perfect :)" },
+    ],
+  };
+  const bags: ParityReservation = {
+    id: "00000000-0000-4000-8000-00000000bb03",
+    code: "HMBAGS001",
+    propertyId: ID.rose,
+    status: "accepted",
+    checkIn: "2026-10-06",
+    checkOut: "2026-10-10",
+    guest: "Nora",
+    adults: 2,
+    children: 0,
+    messages: [{ id: "nora-1", at: "2026-10-06T15:00:00-04:00", role: "guest", name: "Nora", body: "Where are the garbage bags?" }],
+  };
+  world.reservations.push(thankYou, closer, bags);
+  installWorld(world);
+  const queue = await loadGuestQueue(world.now);
+  expect(!queue.waiting.some((row) => row.guest === "Alyssa" || row.guest === "Casey"), "a closing thank-you is not a waiting guest", queue.waiting.map((row) => row.guest).join(", "));
+  expect(queue.waiting.some((row) => row.guest === "Nora"), "the garbage-bags question is waiting", queue.waiting.map((row) => row.guest).join(", ") || "nobody");
+  expect(!guestDrafts().some((row) => row.to === "Alyssa" || row.to === "Casey"), "a closing thank-you has no draft", guestDrafts().map((row) => row.to).join(", "));
+  const nora = queue.waiting.find((row) => row.guest === "Nora");
+  expect(Boolean(nora), "Nora is on the waiting list", "Nora was missing");
+  if (!nora) return;
+  const shown = (await answerWaitingDrafts("show me the drafts", world.now)) ?? "";
+  const view = await openGuestAnswer(nora, world.now);
+  expect(view.draft.length > 0 && view.draft.length < 400, "the garbage-bags draft is short", view.draft);
+  expect(/garbage bags are in the gift basket on the kitchen counter/i.test(view.draft), "the draft answers where the bags are", view.draft);
+  expect(/Shane, Co-Host 647-822-0448/.test(view.draft) && view.draft.startsWith("Hi Nora,"), "the draft is signed the way partners sign", view.draft);
+  expect(!/laundry detergent|dishwasher|Mississauga|amenities|elevator|coffee maker|parking permit/i.test(view.draft), "the draft leaves out the rest of the Hub", view.draft);
+  expect(shown.includes(view.draft), "chat shows the same draft the tab shows", shown || "no answer");
+  expect(!/Perfect thank you so much|Okay perfect/i.test(shown), "chat does not draft a closer", shown);
+  expect(guestDrafts().find((row) => row.reservationId === nora.id)?.body === view.draft, "the stored draft is the tab draft", guestDrafts().find((row) => row.reservationId === nora.id)?.body ?? "");
+  const gaspard = guestDrafts().find((row) => row.to === "Gaspard");
+  expect(Boolean(gaspard) && /close the door fully, press and hold start/i.test(gaspard?.body ?? ""), "Gaspard's draft still answers the dishwasher", gaspard?.body ?? "no draft");
+  expect(!/Mississauga|laundry detergent|amenities/i.test(gaspard?.body ?? ""), "Gaspard's draft does not paste the rest of the Hub", gaspard?.body ?? "");
+  const chat = (await answerGuestThreads("who is waiting on a reply?", world.now)) ?? "";
+  expect(!/Alyssa|Casey|Perfect thank you|Okay perfect/i.test(chat), "chat does not report a closer as waiting", chat);
+  expect(/Nora/.test(chat) && /garbage bags/i.test(chat), "chat reports the garbage-bags question", chat);
+  const result = await scan(world);
+  expectNothingSent();
+  const reports = result.reports.map((row) => `${row.headline}\n${row.text}`).join("\n");
+  expect(!/Alyssa|Casey/.test(reports), "Checks does not report a closer as waiting", reports);
+  expect(!result.drafts.some((row) => /Alyssa|Casey|Perfect thank you|Okay perfect|Mississauga parking/i.test(`${row.subject}\n${row.body}`)), "Checks does not draft a closer or paste the Hub", result.drafts.map((row) => row.body).join("\n").slice(0, 400));
+  expect(!/Alyssa|Casey/.test(result.inbox), "the inbox does not list a closer as waiting", result.inbox.slice(0, 500));
+  expectDraftRules(result.drafts, result.reports);
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -707,6 +796,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "19", title: "Building registration follows the last sent email", run: fixtureBuildingRegistration },
   { id: "20", title: "Named guest draft waits in Guest messaging", run: fixtureNamedGuestDraft },
   { id: "21", title: "Building email is claimed only after Checks read-back", run: fixtureBuildingReadBack },
+  { id: "22", title: "Closers do not wait and a bags question drafts only that fact", run: fixtureGuestReplyKind },
 ];
 
 function guard(): void {

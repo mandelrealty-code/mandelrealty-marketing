@@ -5,11 +5,14 @@
  */
 
 import { resetHospitableConnection, saveHospitableToken, setHospitableProbe } from "./hospitableConnection.js";
+import { answerWaitingDrafts } from "./guestInboxAnswer.js";
 import {
   draftFromHub,
   isThanksOnly,
   loadGuestQueue,
   messageLanguage,
+  needsGuestReply,
+  openGuestAnswer,
   readSavedGuestQueue,
   replyFromAnswer,
   resetGuestMessaging,
@@ -18,6 +21,7 @@ import {
   submitGuestReply,
   toEnglish,
   toGuestLanguage,
+  guestDrafts,
 } from "./guestMessaging.js";
 import { installWorld } from "./parity/world.js";
 
@@ -146,5 +150,78 @@ if (JSON.stringify(queue).includes(GOOD) || JSON.stringify(posted).includes(GOOD
 if (!isThanksOnly("Thanks so much!")) fail("thanks detector");
 const bare = draftFromHub("Tom Becker", "Thanks so much!", HUB);
 if (!isThanksOnly("Thanks so much!") || bare.mode === "hub") fail("thanks draft");
+for (const line of ["Perfect thank you so much!", "Okay perfect :)", "Perfect", "Sure I will"]) {
+  if (!isThanksOnly(line) || needsGuestReply(line)) fail(`reaction ${line}`);
+}
+if (!needsGuestReply("Where are the garbage bags?")) fail("bags question");
+const noisy = [
+  "Garbage bags and laundry detergent are in the gift basket on the kitchen counter.",
+  "Amenities: pool, gym, wifi, coffee maker.",
+  "Notice: the building elevator is out on Tuesdays.",
+  "Mississauga parking permit: https://www.mississauga.ca/services/parking-permits",
+  "Dishwasher: close the door fully, press and hold start for a few seconds.",
+].join("\n");
+const bags = draftFromHub("Nora", "Where are the garbage bags?", noisy);
+if (bags.mode !== "hub" || !/garbage bags are in the gift basket on the kitchen counter/i.test(bags.draft)) fail("bags answer");
+if (/laundry detergent|dishwasher|Mississauga|amenities|elevator|coffee maker/i.test(bags.draft)) fail("bags extra");
+if (!/Shane, Co-Host 647-822-0448/.test(bags.draft) || !bags.draft.startsWith("Hi Nora,")) fail("bags sign-off");
+
+resetGuestMessaging();
+setGuestPoster(async () => undefined);
+installWorld({
+  now: new Date("2026-10-08T16:06:00Z"),
+  properties: [
+    { id: "prop-rose", name: "Spacious 3BR", address: "41 Roseglor Crescent, Toronto", managed: true },
+    { id: "prop-shaw", name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true },
+  ],
+  reservations: [
+    {
+      id: "stay-thanks",
+      code: "HMTHANKS1",
+      propertyId: "prop-shaw",
+      status: "accepted",
+      checkIn: "2026-10-08",
+      checkOut: "2026-10-11",
+      guest: "Alyssa",
+      adults: 2,
+      children: 0,
+      messages: [
+        { id: "aly-1", at: "2026-10-08T14:00:00Z", role: "guest", name: "Alyssa", body: "Where do we put the recycling?" },
+        { id: "aly-2", at: "2026-10-08T14:10:00Z", role: "host", name: "Shane", body: "The blue bin is at the side of the house." },
+        { id: "aly-3", at: "2026-10-08T14:12:00Z", role: "guest", name: "Alyssa", body: "Perfect thank you so much!" },
+      ],
+    },
+    {
+      id: "stay-bags",
+      code: "HMBAGS001",
+      propertyId: "prop-rose",
+      status: "accepted",
+      checkIn: "2026-10-08",
+      checkOut: "2026-10-11",
+      guest: "Nora",
+      adults: 2,
+      children: 0,
+      messages: [{ id: "nora-1", at: "2026-10-08T15:00:00Z", role: "guest", name: "Nora", body: "Where are the garbage bags?" }],
+    },
+  ],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+  hub: [{ propertyId: "prop-rose", body: noisy }],
+});
+const again = await loadGuestQueue(new Date("2026-10-08T16:06:00Z"));
+if (again.waiting.some((row) => row.guest === "Alyssa")) fail("thanks thread waiting");
+if (again.waiting.length !== 1 || again.waiting[0]?.guest !== "Nora") fail("bags guest waiting");
+if (guestDrafts().some((row) => row.to === "Alyssa")) fail("thanks thread draft");
+const nora = again.waiting[0];
+if (!nora) fail("nora row");
+const view = await openGuestAnswer(nora, new Date("2026-10-08T16:06:00Z"));
+if (view.draft !== bags.draft) fail("tab draft");
+if (/laundry detergent|dishwasher|Mississauga|amenities|elevator/i.test(view.draft)) fail("tab draft extra");
+const shown = await answerWaitingDrafts("show me the drafts", new Date("2026-10-08T16:06:00Z"));
+if (!shown || !shown.includes(view.draft)) fail("chat draft");
+if (/Perfect thank you so much/i.test(shown)) fail("chat showed the thanks");
+if (guestDrafts().find((row) => row.reservationId === nora.id)?.body !== view.draft) fail("stored draft");
 
 console.log("Guest messaging harness passed.");

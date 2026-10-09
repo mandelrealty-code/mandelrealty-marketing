@@ -25,7 +25,7 @@ import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
 import { answerBuildingRegistration } from "../copilot/buildingRegistration.js";
 import { answerStay, asksDayCount } from "../copilot/stayAnswer.js";
-import { answerGuestThreads, answerNamedGuestDraft } from "../copilot/guestInboxAnswer.js";
+import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { answerOwnStore } from "../copilot/storeQuestions.js";
@@ -1021,6 +1021,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: outside.body,
             steps: [{ text: outside.kind === "refused" ? "Left that listing alone" : /that read failed/i.test(outside.body) ? "That read failed" : "Opened the page" }],
             thought: outside.kind === "refused" ? "That listing is not one we manage. Nothing was drafted." : "This came from the page. Nothing was sent.",
+          });
+          return done();
+        }
+        const shownDrafts = await answerWaitingDrafts(text);
+        if (shownDrafts) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: shownDrafts,
+            steps: [{ text: "Read the guest drafts" }],
+            thought: "This is the draft in Guest messaging. Nothing was sent.",
           });
           return done();
         }

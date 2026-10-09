@@ -5,7 +5,7 @@
 
 import { readPropertyHub } from "./knowledgeHub.js";
 import { parityNow } from "./parity/clock.js";
-import { guestDrafts, isThanksOnly, rememberGuestDraft } from "./guestMessaging.js";
+import { draftFromHub, guestDrafts, loadGuestQueue, needsGuestReply, openGuestAnswer, rememberGuestDraft } from "./guestMessaging.js";
 import { loadRecentStays, memoryFor, readStayThread, type RecentStay } from "./stayCheck.js";
 
 const NAME_STOP = new Set(["the", "guest", "guests", "someone", "anyone", "they", "she", "he", "we", "i", "you", "hospitable", "our", "my"]);
@@ -120,59 +120,39 @@ function oneLine(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-const HUB_STOP = new Set([
-  "how", "do", "does", "did", "the", "a", "an", "it", "is", "to", "for", "and", "or", "we", "you", "my", "our",
-  "are", "there", "can", "could", "what", "where", "when", "please", "thanks", "thank", "with", "this", "that",
-  "have", "has", "was", "were", "just", "about", "from", "your", "very", "looks", "look",
-]);
-
-function hubLines(hub: string, ask: string): string[] {
-  const keys = (ask.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((word) => word.length > 3 && !HUB_STOP.has(word));
-  if (!keys.length) return [];
-  return hub
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => {
-      if (!line || /\bcleaners?\b/i.test(line)) return false;
-      const lower = line.toLowerCase();
-      return keys.some((key) => lower.includes(key));
-    });
+export function asksToSeeDrafts(text: string): boolean {
+  const asked = text.trim();
+  if (!asked) return false;
+  if (/\b(building|contract|gmail|outlook)\b/i.test(asked) && !/\bguest\b/i.test(asked)) return false;
+  if (/\b(?:draft|write)\s+(?:a\s+|an\s+)?(?:reply|message|note|response)\b/i.test(asked)) return false;
+  return (/\b(show|see)\b/i.test(asked) && /\bdrafts?\b/i.test(asked)) || /\bwhat(?:'s| is| are) the drafts?\b/i.test(asked);
 }
 
-function signOff(memory: string): string {
-  const line = memory.split("\n").find((row) => /sign-off/i.test(row));
-  if (!line) return "";
-  return line.replace(/^.*sign-off:\s*/i, "").trim();
-}
-
-function draftBody(input: { guest: string; place: string; ask: string; hub: string; hubFailed: boolean; memory: string }): string {
-  const name = input.guest || "there";
-  const parts = [`Hi ${name},`];
-  const blue = /blue jays|\b318\b/i.test(input.place);
-  const diet = /gluten-free/i.test(input.ask) && /lactose-free/i.test(input.ask);
-  const cars = /two cars|parking/i.test(input.ask);
-  if (blue && diet && cars) {
-    parts.push(
-      "One guest is gluten-free and one is lactose-free. I won't promise specific snacks. Parking is one tandem spot, P4-62, for two cars. Please send the make, model, colour and licence plate for each car before you arrive.",
-    );
-  } else {
-    if (diet) parts.push("I have the dietary needs. I won't promise specific snacks.");
-    if (blue && cars) {
-      parts.push("Parking is one tandem spot, P4-62, for two cars. Please send the make, model, colour and licence plate for each car before you arrive.");
-    }
-    const lines = hubLines(input.hub, input.ask);
-    if (lines.length) parts.push(lines.join(" "));
-    else if (!diet && !(blue && cars)) {
-      parts.push(
-        input.hubFailed
-          ? "The Knowledge Hub didn't return, so this reply doesn't answer from it."
-          : `I have your note: "${oneLine(input.ask)}"`,
-      );
-    }
+/** The full text of each waiting guest draft, the same text Guest messaging shows. */
+export async function answerWaitingDrafts(question: string, now?: Date): Promise<string | null> {
+  if (!asksToSeeDrafts(question)) return null;
+  const clock = now ?? parityNow() ?? new Date();
+  let queue: Awaited<ReturnType<typeof loadGuestQueue>>;
+  try {
+    queue = await loadGuestQueue(clock);
+  } catch {
+    return "Hospitable didn't return the reservations. I didn't guess.";
   }
-  const close = signOff(input.memory);
-  if (close) parts.push(close);
-  return parts.join("\n\n");
+  if (!queue.connected) return queue.line || "Hospitable is not connected, so I can't see guest messages.";
+  if (!queue.waiting.length) return "No guest is waiting on a reply, so there is no draft.";
+  const blocks: string[] = [];
+  for (const row of queue.waiting) {
+    const saved = guestDrafts().find((item) => item.reservationId === row.id);
+    let body = saved?.body ?? "";
+    if (!body) {
+      const view = await openGuestAnswer(row, clock).catch(() => null);
+      body = view?.mode === "hub" ? view.draft : "";
+    }
+    if (!body) continue;
+    blocks.push(`${row.guest} at ${row.property}\n${body}`);
+  }
+  if (!blocks.length) return "No guest is waiting on a reply, so there is no draft.";
+  return blocks.join("\n\n");
 }
 
 function lineFor(row: OpenThread): string {
@@ -211,7 +191,8 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
     const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
     const last = spoken[spoken.length - 1];
     if (last?.role === "guest" && pending.length) {
-      if (isThanksOnly(pending.map((item) => item.body).join(" "))) continue;
+      const pendingText = pending.map((item) => item.body).join(" ");
+      if (!needsGuestReply(pendingText)) continue;
       open.push({
         row,
         ask: pending.map((item) => item.body.trim()).join(" "),
@@ -233,18 +214,12 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
       drafted.push(guest);
       continue;
     }
-    const place = `${item.row.propertyName} ${item.row.address}`;
+    const place = `${item.row.label} ${item.row.propertyName} ${item.row.address}`;
     const hubRead = await readPropertyHub(item.row.stay.propertyId);
     const memory = await memoryFor(place).catch(() => "");
-    const body = draftBody({
-      guest,
-      place,
-      ask: item.ask,
-      hub: hubRead.ok ? hubRead.text : "",
-      hubFailed: !hubRead.ok,
-      memory,
-    });
-    rememberGuestDraft({ to: guest, body, reservationId: item.row.stay.id });
+    const written = draftFromHub(guest, item.ask, hubRead.ok ? hubRead.text : "", { place, memory });
+    if (written.mode !== "hub" || !written.draft) continue;
+    rememberGuestDraft({ to: guest, body: written.draft, reservationId: item.row.stay.id });
     drafted.push(guest);
   }
   const failedLine = [...failed].map((label) => `${label} failed read.`).join("\n");

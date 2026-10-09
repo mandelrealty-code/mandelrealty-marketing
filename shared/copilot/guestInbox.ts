@@ -6,6 +6,7 @@ import {
 } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { addDays, torontoToday } from "./time.js";
+import { needsGuestReply } from "./guestTranslate.js";
 import type { GuestInboxResult, InboxGuest } from "./types.js";
 
 /** Reads Hospitable guest threads. Plain code, no Cursor. It never writes to Hospitable. */
@@ -186,7 +187,7 @@ export async function readGuestInbox(checklist: string[], now = new Date()): Pro
       snippet: clip((lastGuest ?? last).body, 140),
       found: [],
     };
-    if (last.sender_role === "guest") waiting.push(row);
+    if (last.sender_role === "guest" && needsGuestReply((lastGuest ?? last).body)) waiting.push(row);
     else if (last.sender_role === "unknown") unclear.push(row);
 
     const guestText = thread.filter((m) => m.sender_role === "guest").map((m) => m.body).join("\n");
