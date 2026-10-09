@@ -5,7 +5,7 @@
  * The draft waits in Checks until Submit.
  */
 
-import { findPlanArrival } from "./dayBoard.js";
+import { findPlanArrival, loadDayBoard, type StayMove } from "./dayBoard.js";
 import { readMailThread, searchMail, type MailLetter } from "./mailSearch.js";
 import { parityNow } from "./parity/clock.js";
 import { confirmedChecksDraft } from "./checksClaim.js";
@@ -46,15 +46,67 @@ export function missingGuestLine(name: string): string {
  * A status question checks the plan's arrivals, then Sent.
  * An already-sent registration is reported with its date. No new draft is written.
  */
+function sameGuest(guest: string, name: string): boolean {
+  const needle = name.trim().toLowerCase();
+  const full = guest.trim().toLowerCase();
+  if (!needle || !full) return false;
+  return full === needle || full.split(/\s+/).includes(needle);
+}
+
+/** The plan's arrivals when the wider name search does not already have this guest. */
+async function arrivalFor(name: string, now: Date): Promise<StayMove | "unread" | null> {
+  const named = await findPlanArrival(name, now);
+  if (named && named !== "unread") return named;
+  const board = await loadDayBoard(now);
+  if (board.ok) {
+    const onPlan = board.board.arrivals.find((row) => sameGuest(row.guest, name));
+    if (onPlan) return onPlan;
+  }
+  if (named === "unread" || !board.ok) return "unread";
+  return null;
+}
+
+/** Sent in both mailboxes: the guest's name, then the registration subject. */
+async function sentRegistrationLetters(guest: string): Promise<{ letters: MailLetter[]; note: string }> {
+  const queries = [guest.trim(), "AirBNB Rental for Unit 318"].filter((keywords) => keywords.length >= 2);
+  const seen = new Set<string>();
+  const letters: MailLetter[] = [];
+  const notes: string[] = [];
+  for (const mailbox of ["gmail", "outlook"] as const) {
+    for (const keywords of queries) {
+      const found = await searchMail({ keywords, mailbox, where: "sent", includeAirbnb: false });
+      notes.push(...found.notes);
+      for (const hit of [...found.hits].sort((a, b) => b.date.localeCompare(a.date))) {
+        const key = `${hit.mailbox}:${hit.id}`;
+        if (seen.has(key)) continue;
+        try {
+          const thread = await readMailThread({ mailbox: hit.mailbox, id: hit.threadId || hit.id });
+          const letter = thread.find((row) => row.id === hit.id) ?? thread.at(-1);
+          if (!letter) continue;
+          seen.add(key);
+          letters.push(letter);
+        } catch {
+          // A message that will not open is skipped. The other mailbox can still hold the registration.
+        }
+      }
+    }
+  }
+  if (!letters.length) {
+    const note = notes.find((line) => /isn't connected|didn't return/i.test(line));
+    return { letters: [], note: note ?? "I didn't find a sent building email for that property. I didn't draft one." };
+  }
+  return { letters, note: "" };
+}
+
 export async function answerRegistrationStatus(text: string, now?: Date): Promise<string | null> {
   if (!asksRegistrationStatus(text)) return null;
   const name = guestInQuestion(text);
   if (!name) return "Which guest should I check? I didn't draft an email.";
   const clock = now ?? parityNow() ?? new Date();
-  const arrival = await findPlanArrival(name, clock);
+  const arrival = await arrivalFor(name, clock);
   if (arrival === "unread") return "I can't read today's plan, so I didn't say the guest is missing. I didn't draft an email.";
   if (!arrival) return missingGuestLine(name);
-  const sent = await sentLetters(`${arrival.guest} ${arrival.property}`);
+  const sent = await sentRegistrationLetters(arrival.guest);
   if (!sent.letters.length) {
     if (/isn't connected|didn't return/i.test(sent.note)) return `${sent.note} I didn't draft an email.`;
     return `I didn't find a sent building registration for ${arrival.guest} at ${arrival.property}. Nothing was drafted.`;

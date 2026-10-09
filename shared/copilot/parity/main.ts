@@ -1000,7 +1000,7 @@ async function fixtureDianeSent(): Promise<void> {
   expectDraftRules(result.drafts, result.reports);
 }
 
-const DIANE_STATUS = "Has the building been emailed about Diane's cars for her stay starting today?";
+const DIANE_STATUS = "Has the building been emailed about Diane's cars for her stay that started today?";
 
 function dianeSentMail(): ParityMail {
   const recipients = "supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com";
@@ -1008,18 +1008,18 @@ function dianeSentMail(): ParityMail {
     id: "diane-sent",
     mailbox: "gmail",
     folder: "sent",
-    from: "Shane",
-    email: "shane@mandelrealtygroup.com",
+    from: "Mandel Realty",
+    email: "mandelrealtyteam@gmail.com",
     to: recipients,
     date: "2026-10-08T11:24:00-04:00",
-    subject: "AirBNB Rental for Unit 318 from Friday, October 9, 2026 - Monday, October 12, 2026",
-    snippet: "20 Blue Jays Way Unit 318",
+    subject: "AirBNB Rental for Unit 318 from October 9, 2026 - October 12, 2026",
+    snippet: "AirBNB Rental for Unit 318",
     body: [
       "Hello,",
       "",
-      "Please register these vehicles for Unit 318 at 20 Blue Jays Way.",
-      "Guest: Diane",
-      "Check-in is Friday, October 9, 2026 and check-out is Monday, October 12, 2026.",
+      "Please register these vehicles for Unit 318.",
+      "Guest: Diane Castagnier",
+      "Check-in is October 9, 2026 and check-out is October 12, 2026.",
       "Vehicle count: 2",
       "Make: Toyota",
       "Model: Corolla",
@@ -1055,7 +1055,10 @@ async function fixtureDianeLookup(): Promise<void> {
 
 async function fixtureDianeAlreadySent(): Promise<void> {
   const now = new Date("2026-10-09T10:00:00-04:00");
-  installWorld(worldAt("2026-10-09T10:00:00-04:00", false, [dianeSentMail()]));
+  const world = worldAt("2026-10-09T10:00:00-04:00", false, [dianeSentMail()]);
+  const diane = world.reservations.find((row) => row.code === CODE.diane);
+  if (diane) diane.guest = "Diane Castagnier";
+  installWorld(world);
   const asked = (await answerRegistrationStatus(DIANE_STATUS, now)) ?? "";
   expect(/already sent/.test(asked) && /October 8, 2026/.test(asked), "Sent mail is reported with its date", asked || "no answer");
   expect(!asked.includes(missingGuestLine("Diane")) && !/Checks|Submit|I didn't draft/.test(asked), "a sent registration is not offered as a new draft", asked);

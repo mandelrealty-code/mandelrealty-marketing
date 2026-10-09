@@ -30,12 +30,18 @@ export function platesFrom(text: string): string[] {
   return found;
 }
 
+/** Weekday form and the date as it appears in a sent registration subject. */
+function stayDateIn(hay: string, checkIn: string): boolean {
+  const day = longDate(checkIn);
+  const plain = day.replace(/^[A-Za-z]+,\s*/, "");
+  return hay.includes(day) || hay.includes(plain);
+}
+
 /** A building email is resolved only when Sent has this stay's date and both plates. */
 export function registrationAlreadySent(letters: MailLetter[], checkIn: string, threadPlates: string[]): MailLetter | null {
-  const day = longDate(checkIn);
   for (const letter of letters) {
     const hay = `${letter.subject}\n${letter.body}`;
-    if (!hay.includes(day)) continue;
+    if (!stayDateIn(hay, checkIn)) continue;
     if (!/unit\s*318|blue jays/i.test(hay)) continue;
     const plates = platesFrom(hay);
     if (plates.length < 2) continue;
