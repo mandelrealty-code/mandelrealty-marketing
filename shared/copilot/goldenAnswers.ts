@@ -20,6 +20,9 @@ import { GENERAL_ANSWER_SYSTEM } from "./plainAnswer.js";
 import { takeMemoryTurn } from "./memoryFiles.js";
 import { answerPropertyFact } from "./propertyFact.js";
 import { pinnedCompanyAnswer } from "./pinnedAnswer.js";
+import { answerMailChain } from "./mailChain.js";
+import handleCopilot from "../adminApi/copilot.js";
+import { createAdminSessionToken } from "../adminAuth.js";
 import { INTERNAL_TERMS, hasInternalContent } from "./marketingCopy.js";
 import { answerInboxToday } from "./mailInbox.js";
 import { asksMailBreakdown } from "./mailChain.js";
@@ -778,10 +781,24 @@ installWorld(worldAt("2026-10-07T11:00:00-04:00", false, [
   },
 ]));
 if (!asksMailBreakdown(manikQ) || await answerOutsideRentals(manikQ)) fail("manik chain", "the breakdown was not pinned");
-const manikPinnedA = await pinnedCompanyAnswer(manikQ);
-const manikPinnedB = await pinnedCompanyAnswer(manikQ);
-const manikA = manikPinnedA?.body ?? "";
-if (!manikPinnedA || manikPinnedA.step !== "Read the email chain" || manikA !== manikPinnedB?.body) fail("manik chain", manikA || "no answer");
+const previousPassword = process.env.ADMIN_PASSWORD;
+const previousSecret = process.env.ADMIN_SESSION_SECRET;
+process.env.ADMIN_PASSWORD = "parity-admin";
+process.env.ADMIN_SESSION_SECRET = "parity-secret";
+const token = createAdminSessionToken();
+let manikStatus = 0;
+let manikPayload: { messages?: { role: string; body: string }[]; error?: string } = {};
+await handleCopilot(
+  { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text: manikQ, chatId: "parity-manik", kind: "chat" }, query: {} } as never,
+  { status(code: number) { manikStatus = code; return this; }, json(body: typeof manikPayload) { manikPayload = body; return this; } } as never,
+);
+if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
+else process.env.ADMIN_PASSWORD = previousPassword;
+if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
+else process.env.ADMIN_SESSION_SECRET = previousSecret;
+const manikA = [...(manikPayload.messages ?? [])].reverse().find((message) => message.role === "assistant")?.body ?? "";
+const shared = (await answerMailChain(manikQ)) ?? "";
+if (manikStatus !== 200 || !manikA || manikA !== shared) fail("manik chain", manikA || manikPayload.error || "no answer");
 const manikParagraphs = manikA.split(/\n\n/).filter(Boolean);
 if (manikParagraphs.length < 2 || manikParagraphs.length > 3) fail("manik chain", manikA);
 if (!manikA.includes("Manik") || !manikA.includes("Thursday morning") || !manikA.includes("plumber is booked") || !/outstanding/i.test(manikA)) {

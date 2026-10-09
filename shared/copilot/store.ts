@@ -31,6 +31,7 @@ type FileShape = {
 
 const FILE = path.join(process.cwd(), "data", "copilot-store.json");
 let useFile = false;
+const parityBoard: { chats: CopilotChat[]; messages: CopilotMessage[] } = { chats: [], messages: [] };
 
 function empty(): FileShape {
   return { chats: [], messages: [], reminders: [], memory: [], skills: [], dismissals: [], textNumbers: [], textLog: [], runs: [], openItems: [], cancellations: [], draftKeys: [] };
@@ -137,6 +138,7 @@ const WORKFLOW_SQL =
   "Copilot skills are missing the workflow column. Run supabase/copilot_v6.sql in the Supabase SQL editor, then try again.";
 
 export async function listChats(): Promise<CopilotChat[]> {
+  if (parityEnabled()) return [...parityBoard.chats].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
   const client = sb();
   if (!useFile && client) {
     const { data, error } = await client
@@ -430,6 +432,14 @@ async function ensureLegacyPurchases(messages: CopilotMessage[], lookup = true):
 export async function listMessages(chatId: string, options: { lookup?: boolean } = {}): Promise<CopilotMessage[]> {
   const client = sb();
   const finish = (rows: CopilotMessage[]) => (options.lookup === false ? rows : ensureLegacyPurchases(rows));
+  if (parityEnabled()) {
+    return finish(
+      parityBoard.messages
+        .filter((message) => message.chat_id === chatId)
+        .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
+        .map(unpackMessage),
+    );
+  }
   if (!useFile && client) {
     const { data, error } = await client
       .from("copilot_messages")
@@ -455,6 +465,10 @@ export async function createChat(title: string, kind: CopilotChat["kind"] = "cha
     title: title.slice(0, 80),
     kind,
   };
+  if (parityEnabled()) {
+    parityBoard.chats.unshift(chat);
+    return chat;
+  }
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_chats").insert(chat);
@@ -516,6 +530,12 @@ export async function addMessage(input: {
     body: input.body,
     draft: (storedDraft as CopilotDraft | null) ?? null,
   };
+  if (parityEnabled()) {
+    parityBoard.messages.push(message);
+    const chat = parityBoard.chats.find((row) => row.id === input.chatId);
+    if (chat) chat.updated_at = message.created_at;
+    return unpackMessage(message);
+  }
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_messages").insert(message);

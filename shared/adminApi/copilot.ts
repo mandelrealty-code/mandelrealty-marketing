@@ -21,6 +21,7 @@ import { needsLiveBrowser } from "../copilot/browserTier.js";
 import { answerOutsideRentals } from "../copilot/topicScope.js";
 import { skipsWeb } from "../copilot/route.js";
 import { answerInboxToday } from "../copilot/mailInbox.js";
+import { answerMailChain, asksMailBreakdown } from "../copilot/mailChain.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
@@ -762,6 +763,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const chats = await listChats();
         return res.status(200).json({ chatId, messages, chats, pending });
       };
+      if (asksMailBreakdown(text)) {
+        const narrative = await answerMailChain(text);
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: narrative ?? "I didn't find that email chain. I didn't guess.",
+          steps: [{ text: /didn't find|isn't connected|didn't return/i.test(narrative ?? "") ? "The mail read failed" : "Read the email chain" }],
+          thought: "This came from the mailbox. Nothing was sent.",
+        });
+        return done();
+      }
       const choice = openItemChoice(text);
       if (choice && !pictureMode && !skillMode) {
         const open = (await listOpenItems()).filter((item) => item.status === "open");
