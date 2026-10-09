@@ -29,7 +29,7 @@ import { asksMailBreakdown } from "./mailChain.js";
 import { questionRoute, skipsWeb } from "./route.js";
 import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerRecords, asksUnitRoster, missingSourceAnswer } from "./recordsAnswer.js";
-import { answerOwnStore } from "./storeQuestions.js";
+import { answerOwnStore, CLIENT_STORE_EMPTY } from "./storeQuestions.js";
 import { createProposal } from "../pm/proposalStore.js";
 import { listPmClients } from "../pm/clientStore.js";
 import { upsertSop } from "../pm/sopStore.js";
@@ -626,16 +626,46 @@ if (!emptyChecks.overview?.empty || emptyChecks.overview.count !== 0 || !emptyCh
 }
 
 const clientQ = "List our clients";
-installOpsClients([
+const fixtureClients = [
   { name: "Elizabeth Hart", email: "elizabeth@mandelrealtygroup.com" },
   { name: "Mara Singh", email: "mara@mandelrealtygroup.com" },
   { name: "Noah Patel", email: "noah@mandelrealtygroup.com" },
-]);
+];
+const fixtureList = fixtureClients.map((row) => row.name).join("\n");
+installOpsClients(fixtureClients);
 if (await answerRecords(clientQ) || await answerStay(clientQ)) fail("clients list", "another source answered the client list");
-const clientList = await answerOwnStore(clientQ);
-if (!clientList) fail("clients list", "no answer");
-shape("clients list", clientList.body, /^3 clients\./, ["Elizabeth Hart", "Mara Singh", "Noah Patel"]);
-if (/hospitable|unit #606|charlotte|roseglor|shaw street|we manage/i.test(clientList.body)) fail("clients list", clientList.body);
+
+async function clientChat(chatId: string): Promise<string> {
+  const previousPassword = process.env.ADMIN_PASSWORD;
+  const previousSecret = process.env.ADMIN_SESSION_SECRET;
+  process.env.ADMIN_PASSWORD = "parity-admin";
+  process.env.ADMIN_SESSION_SECRET = "parity-secret";
+  const token = createAdminSessionToken();
+  let status = 0;
+  let payload: { messages?: { role: string; body: string }[]; error?: string } = {};
+  await handleCopilot(
+    { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text: clientQ, chatId, kind: "chat" }, query: {} } as never,
+    { status(code: number) { status = code; return this; }, json(body: typeof payload) { payload = body; return this; } } as never,
+  );
+  if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
+  else process.env.ADMIN_PASSWORD = previousPassword;
+  if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
+  else process.env.ADMIN_SESSION_SECRET = previousSecret;
+  if (status !== 200) fail("clients list", payload.error || String(status));
+  return [...(payload.messages ?? [])].reverse().find((message) => message.role === "assistant")?.body ?? "";
+}
+
+const storedList = (await answerOwnStore(clientQ))?.body ?? "";
+const firstList = await clientChat("parity-clients-1");
+const secondList = await clientChat("parity-clients-2");
+if (storedList !== fixtureList || firstList !== fixtureList || secondList !== fixtureList) {
+  fail("clients list", `${storedList}\n---\n${firstList}\n---\n${secondList}`);
+}
+if (/hospitable|unit #606|charlotte|roseglor|shaw street|we manage/i.test(firstList)) fail("clients list", firstList);
+installOpsClients([]);
+const emptyList = await clientChat("parity-clients-empty");
+if (emptyList !== CLIENT_STORE_EMPTY) fail("clients list", emptyList);
+installOpsClients(fixtureClients);
 
 const proposalQ = "What proposals do we have saved?";
 const elizabeth = (await listPmClients()).find((row) => row.name === "Elizabeth Hart");

@@ -18,6 +18,8 @@ export type StoreAnswer = { body: string; step: string; thought: string };
 const OPS = "This came from OPS. Nothing was sent.";
 const CLEANER_APP = "This came from the cleaner app. Nothing was sent.";
 
+export const CLIENT_STORE_EMPTY = "the client store is not connected / has no clients saved";
+
 export function asksClientList(text: string): boolean {
   return /\b(list|show|name|who are)\b/i.test(text) && /\bclients?\b/i.test(text) && !/\bhow many\b/i.test(text);
 }
@@ -87,12 +89,14 @@ function dateFromQuestion(text: string, now: Date): string {
 async function clientList(text: string): Promise<StoreAnswer | null> {
   if (!asksClientList(text)) return null;
   try {
-    const names = (await listPmClients()).map((row) => row.name.trim()).filter(Boolean);
-    if (!names.length) return { body: "OPS has no clients.", step: "Read the client list", thought: OPS };
-    const noun = names.length === 1 ? "client" : "clients";
-    return { body: `${names.length} ${noun}.\n${names.join("\n")}`, step: "Read the client list", thought: OPS };
+    const names = (await listPmClients())
+      .map((row) => row.name.trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "en"));
+    if (!names.length) return { body: CLIENT_STORE_EMPTY, step: "Read the client list", thought: OPS };
+    return { body: names.join("\n"), step: "Read the client list", thought: OPS };
   } catch {
-    return { body: "I don't have that in OPS.", step: "The client list failed", thought: "OPS didn't return the clients. Nothing was sent." };
+    return { body: CLIENT_STORE_EMPTY, step: "The client list failed", thought: "OPS didn't return the clients. Nothing was sent." };
   }
 }
 

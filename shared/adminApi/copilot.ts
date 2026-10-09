@@ -34,7 +34,7 @@ import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { answerPdfReport } from "../copilot/revenueReport.js";
-import { answerOwnStore } from "../copilot/storeQuestions.js";
+import { answerOwnStore, asksClientList, CLIENT_STORE_EMPTY } from "../copilot/storeQuestions.js";
 import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, editProposal, prepareProposalSend, proposalFromWords } from "../copilot/proposal.js";
 import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
@@ -771,6 +771,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           body: narrative ?? "I didn't find that email chain. I didn't guess.",
           steps: [{ text: /didn't find|isn't connected|didn't return/i.test(narrative ?? "") ? "The mail read failed" : "Read the email chain" }],
           thought: "This came from the mailbox. Nothing was sent.",
+        });
+        return done();
+      }
+      if (asksClientList(text)) {
+        const stored = await answerOwnStore(text);
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: stored?.body ?? CLIENT_STORE_EMPTY,
+          steps: [{ text: stored?.step ?? "The client list failed" }],
+          thought: stored?.thought ?? "OPS didn't return the clients. Nothing was sent.",
         });
         return done();
       }
