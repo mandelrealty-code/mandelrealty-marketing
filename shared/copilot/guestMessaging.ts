@@ -3,7 +3,7 @@
  * A thanks-only note never waits and never gets a draft.
  */
 
-import { hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
+import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { readGuestQueueSnapshot, saveGuestQueueSnapshot } from "./store.js";
 import { leaveDraft, loadRecentStays, memoryFor, readStayThread } from "./stayCheck.js";
@@ -57,6 +57,25 @@ export function guestSummary(count: number, longest: string): { lead: string; re
   if (count === 0) return { lead: "No one", rest: " is waiting. Every guest has a reply." };
   if (count === 1) return { lead: "1 guest", rest: ` waiting. Longest wait: ${longest}.` };
   return { lead: `${count} guests`, rest: ` waiting. Longest wait: ${longest}.` };
+}
+
+/** What the Guest Messaging tab shows. Not connected only when the shared Hospitable check failed. */
+export function guestTabText(queue: GuestQueue | null): string {
+  if (!queue) return "Loading guests.";
+  if (queue.connected === false) return queue.line || HOSPITABLE_NOT_CONNECTED;
+  return [`${queue.summaryLead}${queue.summaryRest}`, ...queue.waiting.map((row) => row.guest), ...queue.thanks.map((row) => row.guest), ...queue.failed].filter(Boolean).join("\n");
+}
+
+function disconnectedQueue(): GuestQueue {
+  return {
+    connected: false,
+    line: HOSPITABLE_NOT_CONNECTED,
+    summaryLead: "No one",
+    summaryRest: " is waiting. Every guest has a reply.",
+    waiting: [],
+    thanks: [],
+    failed: [],
+  };
 }
 
 const TOPIC_STOP = new Set([
@@ -235,6 +254,7 @@ export async function loadGuestQueue(now = new Date()): Promise<GuestQueue> {
 }
 
 async function scanGuestQueue(now: Date): Promise<GuestQueue> {
+  if (!(await copilotHospitableToken())) return disconnectedQueue();
   try {
     const loaded = await loadRecentStays(now);
     const photos = await propertyPhotos();
@@ -245,8 +265,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       let messages: { at: string; role: string; body: string }[];
       try {
         messages = await readStayThread(stay.stay.id, now);
-      } catch (err) {
-        if (err instanceof Error && /not connected/i.test(err.message)) throw err;
+      } catch {
         failed.push(`Couldn't read messages for ${stay.label}, so anyone waiting there isn't listed. Nothing was sent.`);
         continue;
       }
@@ -267,16 +286,10 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     const summary = guestSummary(waiting.length, waiting[0]?.wait || "");
     return { connected: true, line: "", summaryLead: summary.lead, summaryRest: summary.rest, waiting, thanks, failed };
   } catch (err) {
-    const message = err instanceof Error ? err.message : HOSPITABLE_NOT_CONNECTED;
-    return {
-      connected: false,
-      line: /not connected/i.test(message) ? HOSPITABLE_NOT_CONNECTED : message,
-      summaryLead: "No one",
-      summaryRest: " is waiting. Every guest has a reply.",
-      waiting: [],
-      thanks: [],
-      failed: [],
-    };
+    if (!(await copilotHospitableToken())) return disconnectedQueue();
+    const message = err instanceof Error ? err.message : "Hospitable didn't return the guest list.";
+    const summary = guestSummary(0, "");
+    return { connected: true, line: "", summaryLead: summary.lead, summaryRest: summary.rest, waiting: [], thanks: [], failed: [message] };
   }
 }
 

@@ -45,6 +45,8 @@ export type ParityReservation = {
   messages: ParityMessage[];
   /** The public message read throws, the way a live thread read can fail. */
   threadUnreadable?: boolean;
+  /** When set, the message read throws this instead of the generic thread failure. */
+  threadError?: string;
 };
 
 export type ParityProperty = {
@@ -476,7 +478,7 @@ export function parityHttp(method: string, path: string, query: Record<string, u
   const messagePath = path.match(/^\/reservations\/([^/]+)\/messages$/);
   if (messagePath) {
     const stay = current.reservations.find((row) => row.id === decodeURIComponent(messagePath[1]));
-    if (stay?.threadUnreadable) throw new Error("The message thread could not be read.");
+    if (stay?.threadUnreadable || stay?.threadError) throw new Error(stay.threadError || "The message thread could not be read.");
     return { handled: true, value: { data: (stay?.messages ?? []).map(mcpMessage) } };
   }
   const onePath = path.match(/^\/reservations\/([^/]+)$/);

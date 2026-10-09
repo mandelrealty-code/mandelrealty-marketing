@@ -24,8 +24,8 @@ export function GuestMessaging({
   if (!queue) {
     return <div className="cp-gm"><h1>Guest messaging</h1><p className="cp-gm-quiet">Loading guests.</p></div>;
   }
-  if (!queue.connected) {
-    return <div className="cp-gm"><h1>Guest messaging</h1><p className="cp-gm-summary">Hospitable is not connected.</p></div>;
+  if (queue.connected === false) {
+    return <div className="cp-gm"><h1>Guest messaging</h1><p className="cp-gm-summary">{queue.line || "Hospitable is not connected."}</p></div>;
   }
   if (answer) {
     const showing = draft === null ? answer.draft : draft;

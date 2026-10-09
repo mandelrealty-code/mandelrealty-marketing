@@ -3,8 +3,7 @@ import { listPmProperties } from "../pm/propertyStore.js";
 import { readMail, searchMail } from "./mailSearch.js";
 import { readPropertyHub } from "./knowledgeHub.js";
 import { memoryBodies } from "./memoryFiles.js";
-import { listReservationMessages } from "../pm/hospitableClient.js";
-import { copilotHospitableToken, copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
+import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
 import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -96,17 +95,22 @@ function toStay(row: Record<string, unknown>, propertyId: string): Stay {
 }
 
 export async function readStayThread(reservationId: string, now: Date): Promise<Msg[]> {
-  const pat = await copilotHospitableToken();
-  if (!pat) throw new Error("Hospitable is not connected, so the message thread could not be read.");
-  const messages = await listReservationMessages(pat, reservationId);
-  return messages
-    .map((message) => ({
-      at: message.created_at || "",
-      role: message.sender_role,
-      name: message.author_name,
-      body: message.body,
-    }))
+  const raw = await hospitableRead("get-reservation-messages", { uuid: reservationId });
+  return rowsOf(raw)
+    .map((row) => {
+      const author = isRow(row.author) ? row.author : {};
+      const sender = isRow(row.sender) ? row.sender : {};
+      const roleRaw = `${text(row.sender_role)} ${text(row.sender_type)} ${text(sender.type)}`.toLowerCase();
+      const role = roleRaw.includes("guest") ? "guest" : roleRaw.includes("host") ? "host" : roleRaw.includes("system") ? "system" : "unknown";
+      return {
+        at: text(row.created_at) || text(row.sent_at) || text(row.timestamp),
+        role,
+        name: text(author.name) || text(sender.name),
+        body: text(row.body) || text(row.message) || text(row.content) || text(row.text),
+      };
+    })
     .filter((row) => {
+      if (!row.body) return false;
       const at = new Date(row.at);
       return !row.at || Number.isNaN(at.getTime()) || at <= now;
     });

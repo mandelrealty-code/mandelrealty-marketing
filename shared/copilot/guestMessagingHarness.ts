@@ -22,6 +22,7 @@ import {
   toEnglish,
   toGuestLanguage,
   guestDrafts,
+  guestTabText,
 } from "./guestMessaging.js";
 import { installWorld } from "./parity/world.js";
 
@@ -109,6 +110,9 @@ installWorld({
 });
 const queue = await loadGuestQueue(new Date("2026-10-08T16:06:00Z"));
 if (!queue.connected) fail("queue");
+const tabText = guestTabText(queue);
+if (tabText.includes("Hospitable is not connected.")) fail("healthy tab said not connected");
+if (!tabText.includes("Isabelle") || !tabText.includes("Alyssa")) fail("tab list");
 const names = queue.waiting.map((row) => row.guest).sort().join(",");
 if (queue.waiting.length !== 2 || names !== "Alyssa,Isabelle") fail("two waiting guests");
 if (queue.waiting.some((row) => !/Charlotte/.test(row.property))) fail("charlotte label");
@@ -223,5 +227,45 @@ const shown = await answerWaitingDrafts("show me the drafts", new Date("2026-10-
 if (!shown || !shown.includes(view.draft)) fail("chat draft");
 if (/Perfect thank you so much/i.test(shown)) fail("chat showed the thanks");
 if (guestDrafts().find((row) => row.reservationId === nora.id)?.body !== view.draft) fail("stored draft");
+
+resetGuestMessaging();
+installWorld({
+  now: new Date("2026-10-08T16:06:00Z"),
+  properties: [
+    { id: "prop-charlotte", name: "Unit #606", address: "606, 8 Charlotte Street, Toronto", managed: true },
+    { id: "prop-shaw", name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true },
+  ],
+  reservations: [
+    stay("stay-isabelle", "HMISA1", "prop-charlotte", "Isabelle", FRENCH, "2026-10-08T15:24:00Z"),
+    {
+      ...stay("stay-blocked", "HMBLOCK1", "prop-shaw", "Owen", "The heat is not working.", "2026-10-08T15:30:00Z"),
+      threadError: "Hospitable is not connected.",
+    },
+  ],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const partial = await loadGuestQueue(new Date("2026-10-08T16:06:00Z"));
+const partialText = guestTabText(partial);
+if (!partial.connected || partialText.includes("Hospitable is not connected.")) fail("one failed thread disconnected the tab");
+if (!partialText.includes("Isabelle") || partial.waiting.some((row) => row.guest === "Owen")) fail("readable guest stayed listed");
+if (!partial.failed.some((line) => /Shaw/.test(line))) fail("failed thread named");
+
+resetGuestMessaging();
+installWorld({
+  now: new Date("2026-10-08T16:06:00Z"),
+  properties: [{ id: "prop-shaw", name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true }],
+  reservations: [],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const empty = await loadGuestQueue(new Date("2026-10-08T16:06:00Z"));
+const emptyText = guestTabText(empty);
+if (!empty.connected || empty.waiting.length !== 0) fail("empty queue");
+if (!emptyText.includes("No one is waiting") || emptyText.includes("Hospitable is not connected.")) fail("honest empty state");
 
 console.log("Guest messaging harness passed.");
