@@ -10,8 +10,9 @@ import { hubPlain } from "./knowledgeHub.js";
 import { addDays, torontoToday } from "./time.js";
 import type { PostedReviewLine, ReviewFact, ReviewQueuePayload, ReviewQueueRow } from "./reviewTypes.js";
 
-export const SOURCE_FULL = "Regenerated from the full conversation and the stay record.";
-export const SOURCE_ALONE = "Regenerated from the review alone. No conversation found for this stay.";
+export const SOURCE_FULL = "Based on the full conversation and the stay record.";
+export const SOURCE_ALONE = "Based on the review alone. No conversation found for this stay.";
+export const SOURCE_REVIEW = "Based on the review.";
 export const SOURCE_UNCHANGED = "Couldn't read Hospitable. Your draft is unchanged.";
 
 export type StayMessage = { role: "guest" | "host" | "system"; body: string };
@@ -102,6 +103,30 @@ export function reviewDraftRejected(draft: string, guest: string, stay: StayFact
   if (!stay) return false;
   const sources = [...stay.messages.map((row) => row.body), stay.reservation, stay.hub];
   return sources.some((text) => text.trim() && copiedWindow(draft, text));
+}
+
+/** A regenerated reply that is one sentence, or that names nothing the guest wrote, is not shown. */
+export function regeneratedDraftFails(draft: string, review: string): boolean {
+  const sentences = draft.split(/(?<=[.!?])\s+/).map((line) => line.trim()).filter(Boolean);
+  if (sentences.length < 2) return true;
+  return !namesReview(draft, review);
+}
+
+const TOPIC_STOP = new Set(["the", "and", "was", "were", "for", "you", "your", "with", "that", "this", "from", "have", "been", "very", "our", "how", "easy", "simple", "place", "not", "too", "should", "les", "des", "une", "pour", "right", "felt", "amazing", "great", "good", "best", "loved", "love", "awesome", "nice", "really", "just", "when", "they", "them"]);
+
+function namesReview(draft: string, review: string): boolean {
+  const blob = words(draft);
+  const keys = new Set<string>();
+  for (const topic of [...specificPraises(review), ...specificComplaints(review), review]) {
+    for (const word of words(topic)) {
+      if (word.length > 3 && !TOPIC_STOP.has(word)) keys.add(word);
+    }
+  }
+  for (const key of keys) {
+    if (blob.includes(key) || blob.includes(`${key}s`) || blob.includes(key.replace(/s$/, ""))) return true;
+    if (key.length > 4 && blob.some((word) => word.startsWith(key))) return true;
+  }
+  return false;
 }
 
 export async function regenerateFromConnection(input: {
@@ -297,24 +322,18 @@ const SCAFFOLDS = [
 ];
 
 function guardedReply(guest: string, review: string, stay: StayFacts, stars?: number): { draft: string; marks: FactMarks } {
-  const first = composeReply(guest, review, stay, stars, false);
-  if (!reviewDraftRejected(first.draft, guest, stay)) return first;
-  const again = composeReply(guest, review, stay, stars, true);
-  if (!reviewDraftRejected(again.draft, guest, stay)) return again;
-  const name = firstName(guest);
-  const last = positiveReview(review, stars)
-    ? `${name}, thank you for staying with us. We'd love to welcome you back.`
-    : `${name}, thank you for staying with us.`;
-  if (!reviewDraftRejected(last, guest, stay)) return { draft: last, marks: { conversation: [], stay: [] } };
-  return { draft: "Thank you for staying with us.", marks: { conversation: [], stay: [] } };
+  const attempts = [composeReply(guest, review, stay, stars, false), composeReply(guest, review, stay, stars, true)];
+  for (const attempt of attempts) {
+    if (reviewDraftRejected(attempt.draft, guest, stay) || regeneratedDraftFails(attempt.draft, review)) continue;
+    return attempt;
+  }
+  return { draft: writeDraft(guest, review), marks: { conversation: [], stay: [] } };
 }
 
 function composeReply(guest: string, review: string, stay: StayFacts, stars: number | undefined, plain: boolean): { draft: string; marks: FactMarks } {
   if (positiveReview(review, stars)) {
     return {
-      draft: plain
-        ? `${firstName(guest)}, thank you for the kind words. We're glad the stay went well. We'd love to welcome you back.`
-        : thankYou(guest, review),
+      draft: plain ? plainThanks(firstName(guest), review) : writeDraft(guest, review),
       marks: { conversation: [], stay: [] },
     };
   }
@@ -330,30 +349,10 @@ function positiveReview(review: string, stars?: number): boolean {
   return stars == null || stars >= 5;
 }
 
-function thankYou(guest: string, review: string): string {
-  const name = firstName(guest);
-  return `${name}, thank you for the kind words. ${glad(praised(review))} We'd love to welcome you back.`;
-}
-
-function praised(review: string): string[] {
-  const found: string[] = [];
-  const add = (label: string) => {
-    if (!found.includes(label) && found.length < 3) found.push(label);
-  };
-  if (/\blocation\b/i.test(review)) add("the location worked for you");
-  if (/\bresponsive\b/i.test(review)) add("we were responsive");
-  if (/\bcheck[\s-]*in\b/i.test(review) && /\bcheck[\s-]*out\b/i.test(review)) add("check-in and check-out were simple and easy");
-  else if (/\bcheck[\s-]*in\b/i.test(review) && /\b(easy|simple|smooth)\b/i.test(review)) add("check-in was simple and easy");
-  if (/\b(spotless|very clean|so clean|cleanliness)\b/i.test(review)) add("the place was clean");
-  if (/\bcomfort/i.test(review)) add("the place was comfortable");
-  if (!found.length) add("the stay went well");
-  return found;
-}
-
-function glad(items: string[]): string {
-  if (items.length === 1) return `We're glad ${items[0]}.`;
-  const head = items.slice(0, -1).map((item, index) => (index === 0 ? item : `that ${item}`));
-  return `We're glad ${head.join(", ")}, and that ${items[items.length - 1]}.`;
+function plainThanks(name: string, review: string): string {
+  const items = specificPraises(review).slice(0, 2);
+  const about = detailPhrase(items);
+  return `${name}, we were glad to hear about ${about}. You are welcome back.`;
 }
 
 function claimReply(guest: string, review: string, stay: StayFacts, plain = false): { draft: string; marks: FactMarks } {
@@ -396,35 +395,29 @@ function claimReply(guest: string, review: string, stay: StayFacts, plain = fals
 
 function sourceLineFor(stay: StayFacts, draft: string, marks: FactMarks): string {
   const blob = draft.toLowerCase();
-  const conversation = marks.conversation.some((fact) => blob.includes(fact.toLowerCase()));
-  const record = marks.stay.some((fact) => blob.includes(fact.toLowerCase()));
+  const conversation = marks.conversation.some((fact) => fact && blob.includes(fact.toLowerCase()));
+  const record = marks.stay.some((fact) => fact && blob.includes(fact.toLowerCase()));
   const guestMessages = stay.messages.filter((row) => row.role === "guest" && row.body.trim());
   const conversationFailed = stay.failed.some((line) => /conversation/i.test(line));
-  const thin = conversationFailed || guestMessages.length < 2;
-  if (!conversation && !record) {
-    if (conversationFailed) return "Regenerated from the review alone. The conversation read failed.";
-    if (thin) return SOURCE_ALONE;
-    return "Regenerated from the review.";
-  }
-  if (thin || stay.failed.length) return readSourceLine(stay);
-  if (conversation && record) return SOURCE_FULL;
-  if (conversation) return "Regenerated from the full conversation.";
-  return "Regenerated from the stay record.";
-}
-
-function readSourceLine(stay: StayFacts): string {
-  const guestMessages = stay.messages.filter((row) => row.role === "guest" && row.body.trim());
-  const conversationFailed = stay.failed.some((line) => /conversation/i.test(line));
-  const thin = conversationFailed || guestMessages.length < 2;
-  const extras = stay.failed.filter((line) => !(thin && conversationFailed && /conversation/i.test(line)));
-  const base = thin
-    ? conversationFailed
-      ? "Regenerated from the review alone. The conversation read failed."
-      : SOURCE_ALONE
-    : SOURCE_FULL;
-  return extras.length && !(thin && conversationFailed && extras.every((line) => /conversation/i.test(line)))
-    ? `${base.replace(/\.$/, "")}. ${extras.filter((line) => !(conversationFailed && /conversation/i.test(line))).join(" ")}`
-    : base;
+  const base = conversation && record
+    ? SOURCE_FULL
+    : conversation
+      ? "Based on the full conversation."
+      : record
+        ? "Based on the stay record."
+        : conversationFailed
+          ? "Based on the review alone. The conversation read failed."
+          : guestMessages.length
+            ? SOURCE_REVIEW
+            : SOURCE_ALONE;
+  const notes = stay.failed.filter((line) => {
+    const bare = line.replace(/\.$/, "").toLowerCase();
+    if (base.toLowerCase().includes(bare)) return false;
+    if (conversation && /conversation/i.test(line)) return false;
+    if (record && /knowledge hub|reservation/i.test(line)) return false;
+    return true;
+  });
+  return notes.length ? `${base.replace(/\.$/, "")}. ${notes.join(" ")}` : base;
 }
 
 function repeatedScaffold(draft: string): boolean {
@@ -497,8 +490,26 @@ function writeDraft(guest: string, review: string): string {
     const kind = praises.length ? `${name}, thank you for the kind words about ${detailPhrase(praises)}.` : `${name}, thank you for the honest note.`;
     return `${kind} Sorry ${point}. We hope to welcome you back.`;
   }
-  const details = detailPhrase(praises);
-  return `${name}, thank you for telling us about ${details}. We loved reading that you noticed ${details}. You are welcome back whenever you want ${details} again.`;
+  return kindThanks(name, praises);
+}
+
+function kindThanks(name: string, praises: string[]): string {
+  const about = detailPhrase(praises.slice(0, 2));
+  return `${name}, thank you for the kind words about ${about}. ${welcomeBack(praises)}`;
+}
+
+function welcomeBack(praises: string[]): string {
+  const tag = praises.join(" ").toLowerCase();
+  if (/location/.test(tag) && /host/.test(tag)) return "You are welcome back whenever you travel again.";
+  if (/mattress/.test(tag)) return "You are welcome back when you want another good night.";
+  if (/check-in/.test(tag)) return "You are welcome back, and we will keep the arrival simple.";
+  if (/clean/.test(tag) && /bed/.test(tag)) return "You are welcome back for another restful visit.";
+  if (/clean/.test(tag)) return "You are welcome back to a place we take care of.";
+  if (/location/.test(tag)) return "You are welcome back the next time you visit.";
+  if (/host/.test(tag)) return "You are welcome back, and we will be glad to see you.";
+  if (/\bbed\b/.test(tag)) return "You are welcome back for another comfortable night.";
+  if (/responsive/.test(tag)) return "You are welcome back whenever you need a place in the city.";
+  return "You are welcome back anytime.";
 }
 
 function frenchDraft(name: string, praises: string[], complaints: string[]): string {
@@ -507,7 +518,7 @@ function frenchDraft(name: string, praises: string[], complaints: string[]): str
     return `${name}, merci pour votre message. Désolé pour ${point}. Au plaisir de vous accueillir de nouveau.`;
   }
   const details = detailPhrase(praises, true);
-  return `${name}, un grand merci pour ${details}. Nous sommes heureux que vous ayez apprécié ${details}. Au plaisir de vous recevoir de nouveau pour ${details}.`;
+  return `${name}, un grand merci pour ${details}. Au plaisir de vous accueillir de nouveau.`;
 }
 
 function specificComplaints(review: string): string[] {
@@ -551,6 +562,7 @@ function specificPraises(review: string, french = isFrenchReview(review)): strin
     if (/\b(spotless|clean|cleanliness|immaculate)\b/i.test(clause)) add("the cleanliness");
     if (/check[\s-]*in/i.test(clause) && /easy|simple|smooth|great|perfect|loved|love/i.test(clause)) add("the easy check-in");
     if (/\blocation\b/i.test(clause)) add("the location");
+    if (/\bhosts?\b/i.test(clause)) add("the hosts");
     if (/\bresponsive\b/i.test(clause)) add("how responsive we were");
   }
   if (!found.length && !splitClauses(review).some((clause) => clauseComplains(clause))) {

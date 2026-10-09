@@ -7,8 +7,10 @@ import { resetHospitableConnection, saveHospitableToken, setHospitableProbe } fr
 import {
   SOURCE_ALONE,
   SOURCE_FULL,
+  SOURCE_REVIEW,
   rankReviews,
   regenerateDraft,
+  regeneratedDraftFails,
   regenerateFromConnection,
   resetReviewsQueue,
   reviewDraftRejected,
@@ -117,7 +119,8 @@ const named = regenerateDraft({
     failed: ["The Knowledge Hub read failed."],
   },
 });
-if (!/Knowledge Hub read failed/.test(named.sourceLine) || !named.sourceLine.startsWith(SOURCE_FULL.replace(/\.$/, ""))) fail("failed read name");
+if (!/Knowledge Hub read failed/.test(named.sourceLine) || !named.sourceLine.startsWith("Based on the full conversation")) fail(`failed read name ${named.sourceLine}`);
+if (/stay record/i.test(named.sourceLine)) fail(named.sourceLine);
 
 const cormacStay = {
   messages: [
@@ -140,11 +143,15 @@ const cormac = regenerateDraft({
 });
 const cormacSentences = cormac.draft.split(/(?<=[.!?])\s+/).filter((line) => line.trim());
 if (cormacSentences.length < 2 || cormacSentences.length > 4) fail(`thank-you length ${cormac.draft}`);
-if (!/location/i.test(cormac.draft) || !/responsive/i.test(cormac.draft)) fail("praised points");
-if (!/check-?in/i.test(cormac.draft) || !/check-?out/i.test(cormac.draft)) fail("check-in praise");
+const cormacThemes = ["location", "host", "responsive", "check-in", "check-out"].filter((theme) => new RegExp(theme, "i").test(cormac.draft));
+if (cormacThemes.length < 1 || cormacThemes.length > 2) fail(`praised points ${cormac.draft}`);
+for (const theme of ["location", "hosts", "responsive", "check-in", "check-out"]) {
+  if ((cormac.draft.match(new RegExp(theme, "gi")) ?? []).length > 1) fail(`stuffed ${theme} ${cormac.draft}`);
+}
+if (!/welcome back/i.test(cormac.draft) || !/\bCormac\b/.test(cormac.draft)) fail(cormac.draft);
 if (/door code|lockbox|wifi password|charlotte606|4581|check-?in instructions|check-?out reminder|hope you're enjoying|leave the keys|you're right about this part|during your stay/i.test(cormac.draft)) fail(`stay template ${cormac.draft}`);
 if (/you're right/i.test(cormac.draft)) fail("acknowledgement on a compliment");
-if (cormac.sourceLine !== "Regenerated from the review.") fail(cormac.sourceLine);
+if (cormac.sourceLine !== SOURCE_REVIEW) fail(cormac.sourceLine);
 if (reviewDraftRejected(cormac.draft, "Cormac", cormacStay)) fail("thank-you rejected");
 const stitched = "Cormac, thank you for writing. You're right about this part: Check-in instructions: the door code is 4581. You're right about this part: Check-out reminder: please check out by 11 AM and leave the keys on the counter. Hi Cormac, hope you're enjoying your stay.";
 if (!reviewDraftRejected(stitched, "Cormac", cormacStay)) fail("sanity gate");
@@ -216,6 +223,50 @@ for (const row of waiting) {
     bodies.set(body, row.guest);
   }
 }
+const samuelReview = "Amazing location & amazing hosts felt right at home";
+const samuelStay = {
+  messages: [
+    { role: "guest" as const, body: "Hi, we arrived." },
+    { role: "host" as const, body: "Welcome, the lockbox is by the door." },
+    { role: "guest" as const, body: "All set, thank you." },
+  ],
+  reservation: "Status accepted, check-in 2026-09-12",
+  hub: "Coffee is in the cupboard.",
+  failed: [] as string[],
+};
+function naturalSamuel(draft: string, label: string): void {
+  const sentences = draft.split(/(?<=[.!?])\s+/).filter((line) => line.trim());
+  if (sentences.length < 2 || sentences.length > 4) fail(`${label} length ${draft}`);
+  if (!/\bSamuel\b/.test(draft) || !/welcome back/i.test(draft)) fail(`${label} shape ${draft}`);
+  const location = draft.match(/\blocation\b/gi)?.length ?? 0;
+  const hosts = draft.match(/\bhosts?\b/gi)?.length ?? 0;
+  if (location + hosts < 1 || location > 1 || hosts > 1) fail(`${label} praise ${draft}`);
+  if (/noticed the location|want the location again|telling us about the location/i.test(draft)) fail(`${label} stuffed ${draft}`);
+  if (regeneratedDraftFails(draft, samuelReview)) fail(`${label} gate ${draft}`);
+}
+naturalSamuel(seedDraft("Samuel", samuelReview), "standing");
+const samuel = regenerateDraft({
+  guest: "Samuel",
+  review: samuelReview,
+  current: seedDraft("Samuel", samuelReview),
+  stars: 5,
+  stay: samuelStay,
+});
+naturalSamuel(samuel.draft, "regenerate");
+if (samuel.sourceLine !== SOURCE_REVIEW) fail(samuel.sourceLine);
+if (/conversation|stay record|Knowledge Hub|reservation/i.test(samuel.sourceLine)) fail(samuel.sourceLine);
+const samuelHub = regenerateDraft({
+  guest: "Samuel",
+  review: samuelReview,
+  current: samuel.draft,
+  stars: 5,
+  stay: { ...samuelStay, hub: "", failed: ["The Knowledge Hub read failed."] },
+});
+if (samuelHub.sourceLine !== "Based on the review. The Knowledge Hub read failed.") fail(samuelHub.sourceLine);
+if (!regeneratedDraftFails("Thank you for staying with us.", samuelReview)) fail("one sentence kept");
+if (!regeneratedDraftFails("Thank you for staying with us. You are welcome back.", samuelReview)) fail("nameless reply kept");
+naturalSamuel(samuelHub.draft, "failed read");
+
 const soft = "The bed was too soft.";
 if (!reviewNeedsCare(soft)) fail("soft bed needs care");
 const softDraft = seedDraft("Casey", soft);
