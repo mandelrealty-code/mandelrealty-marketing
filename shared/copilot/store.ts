@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "../supabase.js";
 import { captureReminder } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityItems, updateParityItem } from "./parity/world.js";
-import { parityCancellationRaised, parityDeleteSkill, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReportIssued, paritySaveSkill, paritySkillList } from "./parity/storeStub.js";
+import { parityCancellationRaised, parityDeleteSkill, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReportIssued, paritySaveSkill, paritySkillList, parityUpdateChecksDraft } from "./parity/storeStub.js";
 import { normalizeSchedule } from "./skillSchedule.js";
 import type { Workflow } from "./workflow.js";
 import type { OpenItem } from "./openItems.js";
@@ -539,6 +539,10 @@ export async function updateDraft(
   patch: Partial<CopilotDraft> & { bodyText?: string },
 ): Promise<CopilotMessage | null> {
   const { bodyText, ...draftPatch } = patch;
+  if (parityEnabled()) {
+    const updated = parityUpdateChecksDraft(messageId, draftPatch, bodyText);
+    if (updated) return updated;
+  }
   const client = sb();
   if (!useFile && client) {
     const { data, error } = await client

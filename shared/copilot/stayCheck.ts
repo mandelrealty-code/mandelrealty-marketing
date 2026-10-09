@@ -7,8 +7,8 @@ import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js"
 import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
-import { parityRetireGuestReplies, paritySaveChecksMessage } from "./parity/storeStub.js";
-import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, listWaitingDrafts, recordCancellation, recordDrafts, recordReport, refreshSupplyDrafts, reportRecorded, updateDraft } from "./store.js";
+import { parityChecksMessages, parityRetireGuestReplies, paritySaveChecksMessage } from "./parity/storeStub.js";
+import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, listChecksMessages, listWaitingDrafts, recordCancellation, recordDrafts, recordReport, refreshSupplyDrafts, reportRecorded, updateDraft } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft, CopilotMessage } from "./types.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
@@ -386,6 +386,7 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
       await refreshSupplyDrafts(picture.orders);
     }
   }
+  await revalidateWaitingReplies(now);
 }
 
 async function preApproval(): Promise<void> {
@@ -525,6 +526,56 @@ async function offerUnassignedCleaner(propertyId: string, place: string, picture
       needs_you: true,
       cleanerAssign: offered.draft.cleanerAssign,
     });
+  }
+}
+
+/** The Checks chat. Overview reads these rows, and a pass closes a waiting reply here. */
+export async function checksOverviewMessages(): Promise<CopilotMessage[]> {
+  if (parityEnabled()) return parityChecksMessages();
+  return listChecksMessages();
+}
+
+/** Same rule as Guest messaging: a thread needs a reply only when the guest's latest ask does. */
+export function threadNeedsGuestReply(messages: { role: string; at: string; body: string }[]): boolean {
+  const spoken = messages.filter((row) => (row.role === "guest" || row.role === "host") && row.body.trim());
+  const lastHost = spoken.filter((row) => row.role === "host").map((row) => row.at).sort().at(-1) ?? "";
+  const pending = spoken.filter((row) => row.role === "guest" && row.at > lastHost);
+  if (!pending.length) return false;
+  return needsGuestReply(pending.map((row) => row.body.trim()).join(" "));
+}
+
+function sameGuest(stayGuest: string, draftTo: string): boolean {
+  const left = stayGuest.trim().toLowerCase();
+  const right = draftTo.trim().toLowerCase();
+  if (!left || !right) return false;
+  return left === right || left.startsWith(`${right} `) || right.startsWith(`${left} `);
+}
+
+/** Closes waiting guest replies whose current thread does not need a reply. The write is the Checks message. */
+export async function revalidateWaitingReplies(now = new Date()): Promise<void> {
+  const waiting = (await checksOverviewMessages()).filter((message) => {
+    const draft = message.draft;
+    return Boolean(draft && draft.status === "waiting" && draft.channel === "hospitable" && !draft.cleanerAssign && draft.to.trim());
+  });
+  if (!waiting.length) return;
+  const loaded = await loadRecentStays(now).catch(() => null);
+  if (!loaded) return;
+  for (const message of waiting) {
+    const name = message.draft?.to.trim() || "";
+    const stays = loaded.stays.filter((row) => sameGuest(row.stay.guest, name));
+    if (!stays.length) continue;
+    let needs = false;
+    let saw = false;
+    for (const stay of stays) {
+      try {
+        const thread = await readStayThread(stay.stay.id, now);
+        saw = true;
+        if (threadNeedsGuestReply(thread)) needs = true;
+      } catch {
+        needs = true;
+      }
+    }
+    if (saw && !needs) await updateDraft(message.id, { status: "held" });
   }
 }
 

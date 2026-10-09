@@ -9,7 +9,7 @@ import { inputFromCard, noteSignal, rankOverview } from "./overviewRank.js";
 import { listConnectorFailures, type ConnectorFailure } from "./connectorFailures.js";
 import { dismissCard, listChecksMessages, listDismissed, listDueReminders, listRuns, listSkills, listStoredOpenItems, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, readRankSignals, saveBriefSnapshot, saveGmailOffer, writeRankSignals, type WaitingDraft } from "./store.js";
 import { runsOnItsOwn } from "./skillRunner.js";
-import { runUnattendedChecks } from "./stayCheck.js";
+import { runUnattendedChecks, checksOverviewMessages, revalidateWaitingReplies } from "./stayCheck.js";
 import { parityEnabled } from "./parity/flag.js";
 import { purchaseCardText, recordedSupplies } from "./purchase.js";
 
@@ -28,23 +28,34 @@ export function quietBrief(now = new Date()): BriefPayload {
   return { hello: greet.hello, line: greet.line, quiet: true, focus: [], eating: [], overview: rankOverview([], {}, now) };
 }
 
-/** The Checks chat's stored items, ranked. This does not scan mail, stays, or the cleaner app. */
+/** The Checks chat's stored items, revalidated, then ranked. Cleaner rows come from the stay list. */
 export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
-  const saved = await readBriefSnapshot();
-  if (parityEnabled()) return saved ?? quietBrief(now);
+  const saved = await readBriefSnapshot().catch(() => null);
   try {
-    const [messages, open, failed, signals, skipped] = await Promise.all([
-      listChecksMessages(),
+    await revalidateWaitingReplies(now);
+    const [messages, open, failed, signals, skippedIds] = await Promise.all([
+      checksOverviewMessages(),
       listStoredOpenItems(),
       listConnectorFailures(),
       readRankSignals(),
       listDismissed(),
     ]);
-    return briefFromChecksMessages(messages, open.filter((item) => item.status === "open"), failed, now, {
+    const skipped = new Set(skippedIds);
+    const stored = briefFromChecksMessages(messages, open.filter((item) => item.status === "open"), failed, now, {
       saved,
       signals,
-      skipped,
+      skipped: skippedIds,
     });
+    const focus = stored.focus.filter((card) => !card.id.startsWith("turnover:"));
+    const eating = stored.eating.filter((card) => !card.id.startsWith("turnover:"));
+    const rows = await weekTurnovers(now);
+    if (rows) {
+      for (const row of rows) {
+        const card = boardTurnoverCard(row);
+        if (!skipped.has(card.id) && !focus.some((item) => item.id === card.id)) focus.push(card);
+      }
+    }
+    return finishBrief(stored, focus, eating, signals, now, stored.overview?.done ?? []);
   } catch {
     return saved ?? quietBrief(now);
   }

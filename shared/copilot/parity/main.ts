@@ -5,7 +5,7 @@
  */
 
 import { latestInboxOffer } from "../../adminApi/gmail.js";
-import { buildBrief, briefFromChecksMessages } from "../brief.js";
+import { buildBrief, readSavedBrief } from "../brief.js";
 import { answerDayPlan, answerWeekCleans, findPlanArrival, loadDayBoard, planText, cleansText, turnoverLine } from "../dayBoard.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
@@ -837,7 +837,7 @@ async function fixtureCloserPass(): Promise<void> {
   expect(!result.drafts.some((row) => row.channel === "hospitable" && /Alyssa|Isabelle/.test(row.to)), "Checks does not draft a reply to a closer", result.drafts.map((row) => row.to).join(", "));
   const stored = parityChecksMessages().filter((row) => row.draft?.channel === "hospitable" && /Alyssa|Isabelle/.test(row.draft?.to || ""));
   expect(stored.length === 2 && stored.every((row) => row.draft?.status === "held"), "the earlier waiting replies are closed", stored.map((row) => `${row.draft?.to}:${row.draft?.status}`).join(", ") || "missing");
-  const overview = briefFromChecksMessages(parityChecksMessages(), [], [], world.now);
+  const overview = await readSavedBrief(world.now);
   const titles = [...(overview.overview?.today ?? []), ...(overview.overview?.coming ?? [])].map((row) => row.title).join("\n");
   expect(!/Reply to Alyssa is waiting|Reply to Isabelle is waiting/.test(titles), "Overview does not count a closer as a waiting reply", titles);
   expectDraftRules(result.drafts, result.reports);
@@ -880,7 +880,7 @@ async function fixtureDayBoard(): Promise<void> {
   expect(!loaded.board.weekCleans.some((row) => row.date < "2026-10-09"), "this week's list has no past date", loaded.board.weekCleans.map((row) => row.date).join(", "));
   expect(loaded.board.overdue.every((row) => row.date === "2026-10-08"), "the past turnovers are overdue on their date", loaded.board.overdue.map((row) => row.date).join(", "));
   expect(!/Yingjia|Lee|October 7/.test(cleans), "an assigned clean and a cancelled checkout stay out of the unassigned list", cleans);
-  const brief = await buildBrief(now);
+  const brief = await readSavedBrief(now);
   const overview = [...(brief.overview?.today ?? []), ...(brief.overview?.coming ?? [])].filter((row) => row.id.startsWith("turnover:"));
   const overviewLines = overview.map((row) => `${row.title} ${row.why}`);
   const listed = [...loaded.board.weekCleans, ...loaded.board.overdue];
@@ -911,7 +911,7 @@ async function fixtureOneList(): Promise<void> {
   expect(loaded.board.overdue.length === 1 && loaded.board.overdue[0]?.date === "2026-10-05" && /Roseglor/.test(loaded.board.overdue[0].property), "October 5 stays overdue and out of this week's count", loaded.board.overdue.map((row) => `${row.property} ${row.date}`).join(", "));
   expect(/^No\. 1 unassigned turnover this week\./.test(cleans) && /Sunday, October 11, 2026/.test(cleans) && /1 overdue turnover\./.test(cleans) && /Monday, October 5, 2026 is overdue\./.test(cleans), "the cleans answer separates the overdue date from this week", cleans);
   expect(!/^No\. 2 unassigned/.test(cleans), "the past turnover is not blended into this week's count", cleans);
-  const brief = await buildBrief(now);
+  const brief = await readSavedBrief(now);
   const overview = [...(brief.overview?.today ?? []), ...(brief.overview?.coming ?? [])].filter((row) => row.id.startsWith("turnover:"));
   const listed = [...loaded.board.weekCleans, ...loaded.board.overdue];
   const overviewLines = overview.map((row) => `${row.title} ${row.why}`);

@@ -1,4 +1,4 @@
-import type { CopilotMessage, CopilotSkill } from "../types.js";
+import type { CopilotDraft, CopilotMessage, CopilotSkill } from "../types.js";
 
 /**
  * Parity stand-in for copilot_check_state.
@@ -89,6 +89,19 @@ export function failChecksDrafts(message: string | null): void {
 
 export function parityChecksMessages(): CopilotMessage[] {
   return checksMessages.map((row) => ({ ...row, draft: row.draft ? { ...row.draft } : null }));
+}
+
+/** Closes one stored Checks draft in place. Overview reads this same array. */
+export function parityUpdateChecksDraft(
+  messageId: string,
+  patch: Partial<CopilotDraft>,
+  bodyText?: string,
+): CopilotMessage | null {
+  const message = checksMessages.find((row) => row.id === messageId);
+  if (!message?.draft) return null;
+  message.draft = { ...message.draft, ...patch };
+  if (bodyText) message.body = bodyText;
+  return { ...message, draft: { ...message.draft } };
 }
 
 /** A closer ends an earlier guest-reply draft. The stored row is updated, not copied. */
