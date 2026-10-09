@@ -6,6 +6,7 @@
 
 import { latestInboxOffer } from "../../adminApi/gmail.js";
 import { buildBrief } from "../brief.js";
+import { answerDayPlan, answerWeekCleans, turnoverLine } from "../dayBoard.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
 import { answerBuildingRegistration } from "../buildingRegistration.js";
@@ -774,6 +775,46 @@ async function fixtureGuestReplyKind(): Promise<void> {
   expectDraftRules(result.drafts, result.reports);
 }
 
+function boardStay(id: string, propertyId: string, status: string, checkIn: string, checkOut: string, guest: string): ParityReservation {
+  return { id, code: `HM${id.slice(-6).toUpperCase()}`, propertyId, status, checkIn, checkOut, guest, adults: 1, children: 0, messages: [] };
+}
+
+async function fixtureDayBoard(): Promise<void> {
+  const now = new Date("2026-10-09T15:00:00-04:00");
+  const world = worldAt("2026-10-09T15:00:00-04:00");
+  world.reservations = [
+    boardStay("00000000-0000-4000-8000-00000000c901", ID.blue, "cancelled", "2026-10-06", "2026-10-09", "Yingjia"),
+    boardStay("00000000-0000-4000-8000-00000000c902", ID.charlotte, "accepted", "2026-10-09", "2026-10-12", "Ulrike"),
+    boardStay("00000000-0000-4000-8000-00000000c903", ID.shaw, "accepted", "2026-10-06", "2026-10-08", "Pat"),
+    boardStay("00000000-0000-4000-8000-00000000c904", ID.shaw, "accepted", "2026-10-08", "2026-10-10", "Quinn"),
+    boardStay("00000000-0000-4000-8000-00000000c905", ID.rose, "accepted", "2026-10-06", "2026-10-08", "Rita"),
+    boardStay("00000000-0000-4000-8000-00000000c906", ID.rose, "accepted", "2026-10-09", "2026-10-11", "Sue"),
+    boardStay("00000000-0000-4000-8000-00000000c907", ID.shaw, "accepted", "2026-10-05", "2026-10-07", "Lee"),
+  ];
+  world.cleaner = {
+    turnovers: [{ propertyId: ID.shaw, scheduledOn: "2026-10-07", status: "scheduled", assigned: true, done: false, issue: "" }],
+  };
+  installWorld(world);
+  setParityClock(now);
+  const plan = (await answerDayPlan("What's the plan for today?", now)) ?? "";
+  expect(/Ulrike checks in at 8 Charlotte 606/.test(plan), "the plan names the real check-in", plan || "no plan");
+  expect(!/Yingjia|cancel|checked out/i.test(plan), "a cancelled reservation is not an arrival, a departure, or a plan item", plan);
+  const cleans = (await answerWeekCleans("Are all of this week's cleans assigned?", now)) ?? "";
+  const lines = cleans.split("\n").slice(1).filter((line) => line.trim());
+  const count = Number(/^No\. (\d+) unassigned/.exec(cleans)?.[1]);
+  expect(count === lines.length && lines.length === 4, "the cleans count equals its own item list", cleans || "no cleans answer");
+  expect(!/Yingjia|Lee|2026-10-07|October 7/.test(cleans), "an assigned clean and a cancelled checkout stay out of the unassigned list", cleans);
+  const brief = await buildBrief(now);
+  const overview = [...(brief.overview?.today ?? []), ...(brief.overview?.coming ?? [])].filter((row) => row.id.startsWith("turnover:"));
+  const overviewLines = overview.map((row) => `${row.title} ${row.why}`);
+  expect(overview.length === lines.length, "Overview lists the same turnovers the cleans answer counted", `${overview.length} cards\n${overviewLines.join("\n")}`);
+  for (const line of lines) {
+    expect(overviewLines.some((text) => text.includes(line)), "Overview uses the same property and date line", `${line}\n${overviewLines.join("\n")}`);
+  }
+  expect(!/Yingjia|cancel/i.test(overviewLines.join("\n")), "Overview does not list the cancelled reservation", overviewLines.join("\n"));
+  expect(lines.every((line) => turnoverLine({ property: line.split(" on ")[0] ?? "", propertyId: "", date: "", when: line.split(" on ").slice(1).join(" on "), guest: "", assigned: false }) === line), "each cleans line is one property on one date", lines.join("\n"));
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -797,6 +838,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "20", title: "Named guest draft waits in Guest messaging", run: fixtureNamedGuestDraft },
   { id: "21", title: "Building email is claimed only after Checks read-back", run: fixtureBuildingReadBack },
   { id: "22", title: "Closers do not wait and a bags question drafts only that fact", run: fixtureGuestReplyKind },
+  { id: "23", title: "Today's plan and the week's cleans share one turnover list", run: fixtureDayBoard },
 ];
 
 function guard(): void {

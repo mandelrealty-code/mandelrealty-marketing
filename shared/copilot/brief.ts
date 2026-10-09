@@ -4,6 +4,7 @@ import type { BriefCard, BriefPayload, CopilotMessage } from "./types.js";
 import { latestInboxOffer } from "../adminApi/gmail.js";
 import { latestOutlookOffer } from "../adminApi/outlook.js";
 import { chooseBriefOpenItem, listOpenItems, openItemChoice, verifiedLabel, type OpenItem } from "./openItems.js";
+import { turnoverLine, weekTurnovers, type TurnoverRow } from "./dayBoard.js";
 import { inputFromCard, noteSignal, rankOverview } from "./overviewRank.js";
 import { listConnectorFailures, type ConnectorFailure } from "./connectorFailures.js";
 import { dismissCard, listChecksMessages, listDismissed, listDueReminders, listRuns, listSkills, listStoredOpenItems, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, readRankSignals, saveBriefSnapshot, saveGmailOffer, writeRankSignals, type WaitingDraft } from "./store.js";
@@ -368,9 +369,22 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
     }, skipped);
   }
 
+  const openTurnovers = await weekTurnovers(now);
+  if (openTurnovers) {
+    const kept = focus.filter((card) => !card.id.startsWith("turnover:"));
+    focus.length = 0;
+    focus.push(...kept);
+    for (const row of openTurnovers) {
+      const card = boardTurnoverCard(row);
+      if (!skipped.has(card.id) && !focus.some((item) => item.id === card.id)) focus.push(card);
+    }
+  }
   const failed = [...focus, ...eating].filter((card) => card.id.startsWith("failed-read:"));
   const rest = [...focus, ...eating].filter((card) => !card.id.startsWith("failed-read:"));
-  const all = [...rest.slice(0, MAX_CARDS), ...failed.filter((card) => !rest.slice(0, MAX_CARDS).includes(card))];
+  const turnovers = rest.filter((card) => card.id.startsWith("turnover:"));
+  const others = rest.filter((card) => !card.id.startsWith("turnover:"));
+  const capped = others.slice(0, MAX_CARDS);
+  const all = [...capped, ...turnovers, ...failed.filter((card) => !capped.includes(card) && !turnovers.includes(card))];
   const keptFocus = all.filter((card) => card.group === "focus");
   const keptEating = all.filter((card) => card.group === "eating");
   const signals = await readRankSignals().catch(() => ({}));
@@ -715,6 +729,21 @@ function waitingFromMessage(message: CopilotMessage): WaitingDraft | null {
 function checkText(message: CopilotMessage): string {
   const rows = message.report?.sections.flatMap((section) => section.rows.map((row) => `${row.who} ${row.meta}`)) ?? [];
   return [message.report?.title, message.report?.summary, message.body, ...rows].filter(Boolean).join(" ");
+}
+
+function boardTurnoverCard(row: TurnoverRow): BriefCard {
+  const line = turnoverLine(row);
+  const headline = `No cleaner on the ${row.property} turnover on ${row.when}`;
+  return {
+    id: `turnover:${row.propertyId}:${row.date}`,
+    group: "focus",
+    headline,
+    detail: `${line}. The turnover has no cleaner. Nothing has been assigned yet.`,
+    text: `${headline}. ${line}.`,
+    action: "Review",
+    source: "Checks",
+    rank: { kind: "cleaner", property: row.property, deadline: `${row.date}T15:00:00Z`, when: row.when, lead: headline },
+  };
 }
 
 function turnoverCard(message: CopilotMessage, now: Date): BriefCard | null {

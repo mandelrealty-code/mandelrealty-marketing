@@ -24,6 +24,7 @@ import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
 import { answerBuildingRegistration } from "../copilot/buildingRegistration.js";
+import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
 import { answerStay, asksDayCount } from "../copilot/stayAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
@@ -1083,6 +1084,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             thought: /is in Checks/.test(building)
               ? "The draft is in Checks. Nothing was sent. Submit is what sends it."
               : "The building email was not saved.",
+          });
+          return done();
+        }
+        const dayPlan = await answerDayPlan(text);
+        if (dayPlan) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: dayPlan,
+            steps: [{ text: /can't read today's plan/.test(dayPlan) ? "The reservation read failed" : "Read today's stays" }],
+            thought: /can't read today's plan/.test(dayPlan) ? "Today's plan was not guessed." : "This is today's arrivals and departures. A cancelled reservation is not included. Nothing was sent.",
+          });
+          return done();
+        }
+        const weekCleans = await answerWeekCleans(text);
+        if (weekCleans) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: weekCleans,
+            steps: [{ text: /can't read this week's cleans/.test(weekCleans) ? "The cleans read failed" : "Read this week's turnovers" }],
+            thought: /can't read this week's cleans/.test(weekCleans) ? "The cleans count was not guessed." : "Each line is one turnover, a property on one date. Nothing was sent.",
           });
           return done();
         }
