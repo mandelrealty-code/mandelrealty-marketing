@@ -3,6 +3,8 @@
  * Web lookup is only for a venue, a product, or other public information.
  */
 
+import { asksPropertyReport } from "./reportParse.js";
+
 const UNMANAGED = /\b(1103|1104|2104)\b|\bmarkham\b|partner loft|king st w/i;
 const PROPERTY_WORK = /\b(draft|write|send|message|reply|text|email|report|check[\s-]?ins?|check[\s-]?outs?|reservations?|bookings?|guests?|stays?)\b/i;
 const RENTAL = /\b(guests?|reservations?|bookings?|check[\s-]?ins?|check[\s-]?outs?|hospitable|airbnb|payouts?|owner statements?|turnovers?|charlotte|roseglor|scarborough|spacious|blue jays|\b606\b|\b318\b|shaw)\b/i;
@@ -76,9 +78,9 @@ export function asksPayoutSplit(text: string): boolean {
     && /\b(make|take|net|earn)\b/i.test(asked);
 }
 
-/** Connector, rental, payout, and unmanaged-listing questions never go to web search. */
+/** Connector, rental, payout, report, and unmanaged-listing questions never go to web search. */
 export function skipsWeb(text: string): boolean {
   const asked = text.trim();
   if (!asked) return false;
-  return unmanagedPropertyWork(asked) || RENTAL.test(asked) || asksConnector(asked) || asksPayoutSplit(asked);
+  return unmanagedPropertyWork(asked) || RENTAL.test(asked) || asksConnector(asked) || asksPayoutSplit(asked) || asksPropertyReport(asked);
 }

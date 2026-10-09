@@ -70,6 +70,32 @@ export type ParityProperty = {
   amenities?: string[];
   /** Saved OPS billing terms. Absent means no commission term is saved. */
   billing?: ParityBilling;
+  /** Owner the client report is prepared for. */
+  owner?: string;
+  /** Permit on file. Absent means the compliance row is omitted. */
+  permit?: { number: string; renews: string };
+  /** Insurance on file. Absent means that compliance row is omitted. */
+  insurance?: { policy: string; renews: string };
+};
+
+export type ParityReview = {
+  id: string;
+  propertyId: string;
+  reservationId: string;
+  guest: string;
+  platform: string;
+  reviewedAt: string;
+  rating: number;
+  publicReview: string;
+  categories?: { label: string; rating: number }[];
+};
+
+/** A status is printed only when a follow-up record matches the quote. */
+export type ParityFollowUp = {
+  propertyId: string;
+  match: string;
+  status: "Resolved" | "In progress" | "Flagged";
+  resolution: string;
 };
 
 export type ParityBilling = {
@@ -153,6 +179,8 @@ export type ParityWorld = {
   items: ParityItem[];
   hub?: ParityHub[];
   cleaner?: ParityCleaner;
+  reviews?: ParityReview[];
+  followUps?: ParityFollowUp[];
 };
 
 let world: ParityWorld | null = null;
@@ -169,6 +197,8 @@ export function installWorld(next: ParityWorld): void {
     claims: (next.claims ?? []).map((row) => ({ ...row })),
     items: next.items.map((row) => ({ ...row })),
     hub: (next.hub ?? []).map((row) => ({ ...row })),
+    reviews: (next.reviews ?? []).map((row) => ({ ...row, categories: row.categories?.map((item) => ({ ...item })) })),
+    followUps: (next.followUps ?? []).map((row) => ({ ...row })),
     cleaner: next.cleaner
       ? {
           error: next.cleaner.error,
@@ -359,6 +389,44 @@ export function parityPropertyDetail(id: string): PmPropertyDetail | null {
     ...list,
     current_term: term,
     terms: term ? [term] : [],
+  };
+}
+
+/** Reviews, guest messages, and the owner name for one property while parity is on. */
+export function parityReportMaterial(propertyId: string): {
+  owner: string;
+  publicName: string;
+  neighbourhood: string;
+  permit: { number: string; renews: string } | null;
+  insurance: { policy: string; renews: string } | null;
+  guests: { reservationId: string; guest: string }[];
+  messages: { reservationId: string; guest: string; at: string; role: string; body: string }[];
+  reviews: ParityReview[];
+  followUps: ParityFollowUp[];
+} | null {
+  const current = live();
+  if (!current) return null;
+  const row = current.properties.find((item) => item.id === propertyId);
+  if (!row) return null;
+  const stays = current.reservations.filter((item) => item.propertyId === propertyId);
+  return {
+    owner: row.owner?.trim() || "",
+    publicName: (row.publicName || "").trim(),
+    neighbourhood: (row.neighbourhood || "").trim(),
+    permit: row.permit ?? null,
+    insurance: row.insurance ?? null,
+    guests: stays.map((stay) => ({ reservationId: stay.id, guest: stay.guest })),
+    messages: stays.flatMap((stay) =>
+      stay.messages.map((message) => ({
+        reservationId: stay.id,
+        guest: message.role === "guest" ? message.name || stay.guest : message.name,
+        at: message.at,
+        role: message.role,
+        body: message.body,
+      })),
+    ),
+    reviews: (current.reviews ?? []).filter((item) => item.propertyId === propertyId).map((item) => ({ ...item })),
+    followUps: (current.followUps ?? []).filter((item) => item.propertyId === propertyId).map((item) => ({ ...item })),
   };
 }
 

@@ -34,6 +34,7 @@ import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
 import { answerStay, openDaySheet, type StayCard } from "../copilot/stayAnswer.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerPayout } from "../copilot/payoutAnswer.js";
+import { answerPropertyReport } from "../copilot/reportAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
 import { answerGuestStay } from "../copilot/guestStayAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
@@ -923,6 +924,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: payout.body,
             steps: [{ text: payout.step }],
             thought: "This came from the property's saved payout terms and the reservation records. Nothing was searched on the web.",
+          });
+          return done();
+        }
+        const propertyReport = await answerPropertyReport(text, priorBody, clock);
+        if (propertyReport) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: propertyReport.body,
+            file: propertyReport.file,
+            steps: [{ text: propertyReport.file ? "Made the PDF" : "Did not make a PDF" }],
+            thought: propertyReport.thought,
           });
           return done();
         }
