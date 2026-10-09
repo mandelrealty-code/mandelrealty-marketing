@@ -8,7 +8,7 @@ import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityChecksMessages, parityRetireGuestReplies, paritySaveChecksMessage } from "./parity/storeStub.js";
-import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, listChecksMessages, listWaitingDrafts, recordCancellation, recordDrafts, recordReport, refreshSupplyDrafts, reportRecorded, updateDraft } from "./store.js";
+import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, listChecksMessages, listWaitingDrafts, readStayThreadCache, recordCancellation, recordDrafts, recordReport, refreshSupplyDrafts, reportRecorded, saveStayThreadCache, updateDraft } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft, CopilotMessage } from "./types.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
@@ -95,9 +95,58 @@ function toStay(row: Record<string, unknown>, propertyId: string): Stay {
   };
 }
 
+const THREAD_FRESH_MS = 70_000;
+const threadMemory = new Map<string, { at: number; messages: Msg[] }>();
+let threadCacheLoaded: Promise<void> | null = null;
+
+function freshThread(id: string, nowMs: number): Msg[] | null {
+  const hit = threadMemory.get(id);
+  if (!hit || nowMs - hit.at > THREAD_FRESH_MS) return null;
+  return hit.messages;
+}
+
+async function loadThreadCache(): Promise<void> {
+  if (parityEnabled()) return;
+  if (!threadCacheLoaded) {
+    threadCacheLoaded = readStayThreadCache()
+      .then((saved) => {
+        const nowMs = Date.now();
+        for (const [id, row] of Object.entries(saved)) {
+          const at = Date.parse(row.at);
+          if (!Number.isFinite(at) || nowMs - at > THREAD_FRESH_MS) continue;
+          threadMemory.set(id, { at, messages: row.messages });
+        }
+      })
+      .catch(() => undefined);
+  }
+  await threadCacheLoaded;
+}
+
+function rememberThread(id: string, messages: Msg[]): void {
+  if (parityEnabled()) return;
+  threadMemory.set(id, { at: Date.now(), messages });
+  const saved: Record<string, { at: string; messages: Msg[] }> = {};
+  const nowMs = Date.now();
+  for (const [key, row] of threadMemory) {
+    if (nowMs - row.at > THREAD_FRESH_MS) continue;
+    saved[key] = { at: new Date(row.at).toISOString(), messages: row.messages };
+  }
+  void saveStayThreadCache(saved).catch(() => undefined);
+}
+
 export async function readStayThread(reservationId: string, now: Date): Promise<Msg[]> {
+  if (!parityEnabled()) {
+    await loadThreadCache();
+    const cached = freshThread(reservationId, Date.now());
+    if (cached) {
+      return cached.filter((row) => {
+        const at = new Date(row.at);
+        return !row.at || Number.isNaN(at.getTime()) || at <= now;
+      });
+    }
+  }
   const raw = await hospitableRead("get-reservation-messages", { uuid: reservationId });
-  return rowsOf(raw)
+  const messages = rowsOf(raw)
     .map((row) => {
       const author = isRow(row.author) ? row.author : {};
       const sender = isRow(row.sender) ? row.sender : {};
@@ -106,7 +155,7 @@ export async function readStayThread(reservationId: string, now: Date): Promise<
       return {
         at: text(row.created_at) || text(row.sent_at) || text(row.timestamp),
         role,
-        name: text(author.name) || text(sender.name),
+        name: text(author.name) || text(sender.name) || text(sender.full_name) || text(sender.first_name),
         body: text(row.body) || text(row.message) || text(row.content) || text(row.text),
       };
     })
@@ -115,6 +164,8 @@ export async function readStayThread(reservationId: string, now: Date): Promise<
       const at = new Date(row.at);
       return !row.at || Number.isNaN(at.getTime()) || at <= now;
     });
+  rememberThread(reservationId, messages);
+  return messages;
 }
 
 async function checksChat(): Promise<string> {

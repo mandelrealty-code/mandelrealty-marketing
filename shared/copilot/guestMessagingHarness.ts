@@ -251,7 +251,55 @@ const partial = await loadGuestQueue(new Date("2026-10-08T16:06:00Z"));
 const partialText = guestTabText(partial);
 if (!partial.connected || partialText.includes("Hospitable is not connected.")) fail("one failed thread disconnected the tab");
 if (!partialText.includes("Isabelle") || partial.waiting.some((row) => row.guest === "Owen")) fail("readable guest stayed listed");
-if (!partial.failed.some((line) => /Shaw/.test(line))) fail("failed thread named");
+if (!partialText.startsWith("The message read is incomplete for 1065 Shaw Street.")) fail("incomplete headline");
+if (partialText.includes("No one is waiting") || partialText.includes("Every guest has a reply.")) fail("all-clear while Shaw failed");
+if (partial.failed.filter((line) => /Shaw/.test(line)).length !== 1) fail("Shaw failure repeated");
+
+resetGuestMessaging();
+installWorld({
+  now: new Date("2026-10-08T16:06:00Z"),
+  properties: [{ id: "prop-jays", name: "20 Blue Jays Way Unit 318", address: "318, 20 Blue Jays Way, Toronto", managed: true }],
+  reservations: ["Diane", "Noah", "Mara", "Owen", "Priya"].map((guest, index) => ({
+    ...stay(`stay-jays-${index}`, `HMJAY${index}`, "prop-jays", guest, "Is the wifi down?", "2026-10-08T15:00:00Z"),
+    threadError: "Too Many Attempts.",
+  })),
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const blocked = await loadGuestQueue(new Date("2026-10-08T16:06:00Z"));
+const blockedText = guestTabText(blocked);
+if (!blockedText.startsWith("The message read is incomplete for 20 Blue Jays Way Unit 318.")) fail("blocked headline");
+if (blocked.failed.length !== 1 || blocked.failed[0] !== "Couldn't read messages for 20 Blue Jays Way Unit 318, so anyone waiting there isn't listed. Nothing was sent.") fail("one failure line");
+if (blockedText.includes("No one is waiting") || blockedText.includes("Every guest has a reply.")) fail("all-clear while the read failed");
+if (blocked.waiting.length) fail("unread guests listed as waiting");
+
+resetGuestMessaging();
+installWorld({
+  now: new Date("2026-10-09T18:50:00Z"),
+  properties: [{ id: "prop-rose", name: "Bright and comfortable home for families", address: "floor 2, 41 Roseglor Crescent, Toronto", managed: true }],
+  reservations: [
+    {
+      ...stay("stay-ruzaina", "HMRUZ1", "prop-rose", "Ruzaina", "Ok will check", "2026-10-09T18:40:00Z"),
+      checkIn: "2026-10-09",
+      checkOut: "2026-10-12",
+      messages: [
+        { id: "pay", at: "2026-10-09T18:20:00Z", role: "host" as const, name: "Shane", body: "Please send the remaining payment when you can." },
+        { id: "ack", at: "2026-10-09T18:40:00Z", role: "guest" as const, name: "Ruzaina", body: "Ok will check" },
+      ],
+    },
+  ],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const ack = await loadGuestQueue(new Date("2026-10-09T18:50:00Z"));
+const ackText = guestTabText(ack);
+if (ack.waiting.some((row) => row.guest === "Ruzaina")) fail("acknowledgement listed as waiting");
+if (ack.thanks.length !== 1 || ack.thanks[0]?.guest !== "Ruzaina" || ack.thanks[0]?.asked !== "Ok will check") fail("acknowledgement missing from no reply needed");
+if (!ackText.includes("Ruzaina") || !ackText.includes("No one is waiting")) fail("acknowledgement hidden");
 
 resetGuestMessaging();
 installWorld({

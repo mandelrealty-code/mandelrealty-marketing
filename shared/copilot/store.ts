@@ -1133,6 +1133,29 @@ export async function saveGuestQueueSnapshot(queue: unknown): Promise<void> {
   await writePrefixed(GUEST_QUEUE_PREFIX, JSON.stringify(queue));
 }
 
+const THREAD_CACHE_PREFIX = "thread-cache|";
+
+export type CachedStayThread = {
+  at: string;
+  messages: { at: string; role: string; name: string; body: string }[];
+};
+
+/** Last successful message read per reservation, so a second pass does not spend the Hospitable allowance. */
+export async function readStayThreadCache(): Promise<Record<string, CachedStayThread>> {
+  const raw = await readPrefixed(THREAD_CACHE_PREFIX);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, CachedStayThread>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function saveStayThreadCache(cache: Record<string, CachedStayThread>): Promise<void> {
+  await writePrefixed(THREAD_CACHE_PREFIX, JSON.stringify(cache));
+}
+
 const RANK_PREFIX = "rank-signal|";
 
 export async function readRankSignals(): Promise<RankSignals> {

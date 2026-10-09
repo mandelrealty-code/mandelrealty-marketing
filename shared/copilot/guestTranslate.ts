@@ -13,6 +13,7 @@ const REACTION_PHRASES = [
   "ok perfect",
   "sure i will",
   "i will",
+  "will check",
   "will do",
   "got it",
   "sounds good",

@@ -53,7 +53,8 @@ export function waitLabel(ms: number): string {
   return left ? `${day} ${left} h` : day;
 }
 
-export function guestSummary(count: number, longest: string): { lead: string; rest: string } {
+export function guestSummary(count: number, longest: string, unread: string[] = []): { lead: string; rest: string } {
+  if (unread.length) return { lead: "The message read is incomplete", rest: ` for ${unread.join(", ")}.` };
   if (count === 0) return { lead: "No one", rest: " is waiting. Every guest has a reply." };
   if (count === 1) return { lead: "1 guest", rest: ` waiting. Longest wait: ${longest}.` };
   return { lead: `${count} guests`, rest: ` waiting. Longest wait: ${longest}.` };
@@ -260,12 +261,17 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     const photos = await propertyPhotos();
     const waiting: GuestRow[] = [];
     const thanks: GuestRow[] = [];
+    const unread = [...loaded.failed];
     const failed = loaded.failed.map((label) => `Couldn't read reservations for ${label}, so anyone waiting there isn't listed. Nothing was sent.`);
+    const messageFailed = new Set<string>();
     for (const stay of loaded.stays) {
       let messages: { at: string; role: string; body: string }[];
       try {
         messages = await readStayThread(stay.stay.id, now);
       } catch {
+        if (messageFailed.has(stay.label)) continue;
+        messageFailed.add(stay.label);
+        if (!unread.includes(stay.label)) unread.push(stay.label);
         failed.push(`Couldn't read messages for ${stay.label}, so anyone waiting there isn't listed. Nothing was sent.`);
         continue;
       }
@@ -283,13 +289,20 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       else thanks.push(row);
     }
     waiting.sort((a, b) => b.waitedMs - a.waitedMs || a.guest.localeCompare(b.guest));
-    const summary = guestSummary(waiting.length, waiting[0]?.wait || "");
+    const summary = guestSummary(waiting.length, waiting[0]?.wait || "", unread);
     return { connected: true, line: "", summaryLead: summary.lead, summaryRest: summary.rest, waiting, thanks, failed };
   } catch (err) {
     if (!(await copilotHospitableToken())) return disconnectedQueue();
     const message = err instanceof Error ? err.message : "Hospitable didn't return the guest list.";
-    const summary = guestSummary(0, "");
-    return { connected: true, line: "", summaryLead: summary.lead, summaryRest: summary.rest, waiting: [], thanks: [], failed: [message] };
+    return {
+      connected: true,
+      line: "",
+      summaryLead: "The message read is incomplete",
+      summaryRest: ".",
+      waiting: [],
+      thanks: [],
+      failed: [message],
+    };
   }
 }
 
