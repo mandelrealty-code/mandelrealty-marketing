@@ -733,7 +733,9 @@ function checkText(message: CopilotMessage): string {
 
 function boardTurnoverCard(row: TurnoverRow): BriefCard {
   const line = turnoverLine(row);
-  const headline = `No cleaner on the ${row.property} turnover on ${row.when}`;
+  const headline = row.overdue
+    ? `Overdue: no cleaner on the ${row.property} turnover on ${row.when}`
+    : `No cleaner on the ${row.property} turnover on ${row.when}`;
   return {
     id: `turnover:${row.propertyId}:${row.date}`,
     group: "focus",

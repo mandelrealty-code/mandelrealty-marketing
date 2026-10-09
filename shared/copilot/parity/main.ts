@@ -6,7 +6,7 @@
 
 import { latestInboxOffer } from "../../adminApi/gmail.js";
 import { buildBrief, briefFromChecksMessages } from "../brief.js";
-import { answerDayPlan, answerWeekCleans, findPlanArrival, turnoverLine } from "../dayBoard.js";
+import { answerDayPlan, answerWeekCleans, findPlanArrival, loadDayBoard, planText, cleansText, turnoverLine } from "../dayBoard.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
 import { answerBuildingRegistration, answerRegistrationStatus, missingGuestLine } from "../buildingRegistration.js";
@@ -865,23 +865,62 @@ async function fixtureDayBoard(): Promise<void> {
   };
   installWorld(world);
   setParityClock(now);
+  const loaded = await loadDayBoard(now);
+  expect(loaded.ok, "the shared list loaded", loaded.ok ? "" : loaded.error);
+  if (!loaded.ok) return;
   const plan = (await answerDayPlan("What's the plan for today?", now)) ?? "";
-  expect(/Ulrike checks in at 8 Charlotte 606/.test(plan), "the plan names the real check-in", plan || "no plan");
-  expect(!/Yingjia|cancel|checked out/i.test(plan), "a cancelled reservation is not an arrival, a departure, or a plan item", plan);
   const cleans = (await answerWeekCleans("Are all of this week's cleans assigned?", now)) ?? "";
-  const lines = cleans.split("\n").slice(1).filter((line) => line.trim());
-  const count = Number(/^No\. (\d+) unassigned/.exec(cleans)?.[1]);
-  expect(count === lines.length && lines.length === 4, "the cleans count equals its own item list", cleans || "no cleans answer");
-  expect(!/Yingjia|Lee|2026-10-07|October 7/.test(cleans), "an assigned clean and a cancelled checkout stay out of the unassigned list", cleans);
+  expect(plan === planText(loaded.board), "the plan is that list", plan || "no plan");
+  expect(cleans === cleansText(loaded.board), "the cleans answer is that list", cleans || "no cleans answer");
+  expect(/Ulrike checks in at 8 Charlotte 606 at 4:00 PM/.test(plan), "the plan names the check-in time", plan);
+  expect(/No unassigned cleans today/.test(plan), "the plan names today's cleans from that list", plan);
+  expect(!/Yingjia|cancel|checked out/i.test(plan), "a cancelled reservation is not an arrival, a departure, or a plan item", plan);
+  const weekCount = loaded.board.weekCleans.length;
+  const overdueCount = loaded.board.overdue.length;
+  expect(weekCount === 2 && overdueCount === 2, "past unassigned cleans stay out of this week's count", `week ${weekCount}, overdue ${overdueCount}`);
+  expect(!loaded.board.weekCleans.some((row) => row.date < "2026-10-09"), "this week's list has no past date", loaded.board.weekCleans.map((row) => row.date).join(", "));
+  expect(loaded.board.overdue.every((row) => row.date === "2026-10-08"), "the past turnovers are overdue on their date", loaded.board.overdue.map((row) => row.date).join(", "));
+  expect(!/Yingjia|Lee|October 7/.test(cleans), "an assigned clean and a cancelled checkout stay out of the unassigned list", cleans);
   const brief = await buildBrief(now);
   const overview = [...(brief.overview?.today ?? []), ...(brief.overview?.coming ?? [])].filter((row) => row.id.startsWith("turnover:"));
   const overviewLines = overview.map((row) => `${row.title} ${row.why}`);
-  expect(overview.length === lines.length, "Overview lists the same turnovers the cleans answer counted", `${overview.length} cards\n${overviewLines.join("\n")}`);
-  for (const line of lines) {
+  const listed = [...loaded.board.weekCleans, ...loaded.board.overdue];
+  expect(overview.length === listed.length, "Overview counts the same turnovers", `${overview.length} cards\n${overviewLines.join("\n")}`);
+  for (const row of listed) {
+    const line = turnoverLine(row);
     expect(overviewLines.some((text) => text.includes(line)), "Overview uses the same property and date line", `${line}\n${overviewLines.join("\n")}`);
   }
   expect(!/Yingjia|cancel/i.test(overviewLines.join("\n")), "Overview does not list the cancelled reservation", overviewLines.join("\n"));
-  expect(lines.every((line) => turnoverLine({ property: line.split(" on ")[0] ?? "", propertyId: "", date: "", when: line.split(" on ").slice(1).join(" on "), guest: "", assigned: false }) === line), "each cleans line is one property on one date", lines.join("\n"));
+}
+
+async function fixtureOneList(): Promise<void> {
+  const now = new Date("2026-10-09T10:00:00-04:00");
+  const world = worldAt("2026-10-09T10:00:00-04:00");
+  world.reservations.push(boardStay("00000000-0000-4000-8000-00000000c911", ID.rose, "accepted", "2026-10-08", "2026-10-11", "Sam"));
+  installWorld(world);
+  setParityClock(now);
+  const loaded = await loadDayBoard(now);
+  expect(loaded.ok, "the shared list loaded", loaded.ok ? "" : loaded.error);
+  if (!loaded.ok) return;
+  const plan = (await answerDayPlan("What's the plan for today?", now)) ?? "";
+  const cleans = (await answerWeekCleans("Are all of this week's cleans assigned?", now)) ?? "";
+  expect(plan === planText(loaded.board), "the plan is that list", plan || "no plan");
+  expect(cleans === cleansText(loaded.board), "the cleans answer is that list", cleans || "no cleans answer");
+  expect(/Diane checks in at 20 Blue Jays Way at 4:00 PM/.test(plan), "the plan includes Diane's check-in time", plan);
+  expect(loaded.board.todayCleans.length === 0 && /No unassigned cleans today/.test(plan), "today's cleans on the plan match the list", plan);
+  expect(loaded.board.weekCleans.length === 1 && loaded.board.weekCleans[0]?.date === "2026-10-11" && /Roseglor/.test(loaded.board.weekCleans[0].property), "this week is the Roseglor turnover on October 11", loaded.board.weekCleans.map((row) => `${row.property} ${row.date}`).join(", "));
+  expect(loaded.board.overdue.length === 1 && loaded.board.overdue[0]?.date === "2026-10-05" && /Roseglor/.test(loaded.board.overdue[0].property), "October 5 stays overdue and out of this week's count", loaded.board.overdue.map((row) => `${row.property} ${row.date}`).join(", "));
+  expect(/^No\. 1 unassigned turnover this week\./.test(cleans) && /Sunday, October 11, 2026/.test(cleans) && /1 overdue turnover\./.test(cleans) && /Monday, October 5, 2026 is overdue\./.test(cleans), "the cleans answer separates the overdue date from this week", cleans);
+  expect(!/^No\. 2 unassigned/.test(cleans), "the past turnover is not blended into this week's count", cleans);
+  const brief = await buildBrief(now);
+  const overview = [...(brief.overview?.today ?? []), ...(brief.overview?.coming ?? [])].filter((row) => row.id.startsWith("turnover:"));
+  const listed = [...loaded.board.weekCleans, ...loaded.board.overdue];
+  const overviewLines = overview.map((row) => `${row.title} ${row.why}`);
+  expect(overview.length === listed.length && listed.length === 2, "Overview counts the same two turnovers", `${overview.length} cards\n${overviewLines.join("\n")}`);
+  for (const row of listed) {
+    expect(overviewLines.some((text) => text.includes(turnoverLine(row))), "Overview uses the same line", `${turnoverLine(row)}\n${overviewLines.join("\n")}`);
+  }
+  expect(overviewLines.some((text) => /October 5/.test(text) && /Overdue|overdue/.test(text)), "Overview shows the past turnover as overdue", overviewLines.join("\n"));
 }
 
 async function fixtureDianeSent(): Promise<void> {
@@ -1052,6 +1091,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "22", title: "Closers do not wait and a bags question drafts only that fact", run: fixtureGuestReplyKind },
   { id: "25", title: "A closer closes the waiting reply in Checks and Overview", run: fixtureCloserPass },
   { id: "23", title: "Today's plan and the week's cleans share one turnover list", run: fixtureDayBoard },
+  { id: "28", title: "Diane's plan, the cleans answer, and Overview share one list", run: fixtureOneList },
   { id: "24", title: "A sent building email stays closed and the shutdown stays its own approval", run: fixtureDianeSent },
   { id: "26", title: "Diane is found on the same arrivals the plan uses", run: fixtureDianeLookup },
   { id: "27", title: "A sent building registration is reported instead of drafted", run: fixtureDianeAlreadySent },

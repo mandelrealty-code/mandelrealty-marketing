@@ -22,7 +22,7 @@ const WEEK_INDEX: Record<string, number> = {
   Saturday: 6,
 };
 
-export type StayMove = { guest: string; property: string; propertyId: string; date: string };
+export type StayMove = { guest: string; property: string; propertyId: string; date: string; time: string };
 
 export type TurnoverRow = {
   propertyId: string;
@@ -31,6 +31,17 @@ export type TurnoverRow = {
   when: string;
   guest: string;
   assigned: boolean;
+  /** Still unassigned, and the date is already past. Not part of this week's count. */
+  overdue: boolean;
+};
+
+export type DayBoard = {
+  today: string;
+  arrivals: StayMove[];
+  departures: StayMove[];
+  todayCleans: TurnoverRow[];
+  weekCleans: TurnoverRow[];
+  overdue: TurnoverRow[];
 };
 
 export type PeriodBoard = {
@@ -45,6 +56,7 @@ type RawStay = {
   id: string;
   status: string;
   checkIn: string;
+  checkInAt: string;
   checkOut: string;
   guest: string;
   propertyId: string;
@@ -99,10 +111,23 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function clockTime(value: string): string {
+  if (!/T\d{2}:\d{2}/.test(value)) return "";
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h12",
+    timeZone: "America/Toronto",
+  }).format(at).replace(/[\u202f\u00a0]/g, " ");
+}
+
 function toStay(row: Record<string, unknown>, propertyId: string): RawStay | null {
   const guest = row.guest && typeof row.guest === "object" ? (row.guest as Record<string, unknown>) : {};
   const id = text(row.id);
-  const checkIn = (text(row.arrival_date) || text(row.check_in)).slice(0, 10);
+  const checkInAt = text(row.check_in) || text(row.arrival_date);
+  const checkIn = (text(row.arrival_date) || checkInAt).slice(0, 10);
   const checkOut = (text(row.departure_date) || text(row.check_out)).slice(0, 10);
   if (!id || !checkIn || !checkOut) return null;
   const first = text(guest.first_name).trim();
@@ -110,6 +135,7 @@ function toStay(row: Record<string, unknown>, propertyId: string): RawStay | nul
     id,
     status: text(row.status).toLowerCase(),
     checkIn,
+    checkInAt,
     checkOut,
     guest: first || "A guest",
     propertyId: text(row.property_id) || propertyId,
@@ -161,10 +187,10 @@ export async function loadPeriod(from: string, to: string, assignments = false):
     for (const stay of stays) {
       if (DEAD.test(stay.status)) continue;
       if (stay.checkIn >= from && stay.checkIn <= to) {
-        arrivals.push({ guest: stay.guest, property: propertyName, propertyId, date: stay.checkIn });
+        arrivals.push({ guest: stay.guest, property: propertyName, propertyId, date: stay.checkIn, time: clockTime(stay.checkInAt) });
       }
       if (stay.checkOut >= from && stay.checkOut <= to) {
-        departures.push({ guest: stay.guest, property: propertyName, propertyId, date: stay.checkOut });
+        departures.push({ guest: stay.guest, property: propertyName, propertyId, date: stay.checkOut, time: "" });
         const key = `${propertyId}:${stay.checkOut}`;
         const row = checkoutGuests.get(key) ?? { propertyId, property: propertyName, date: stay.checkOut, guests: [] };
         if (!row.guests.includes(stay.guest)) row.guests.push(stay.guest);
@@ -187,6 +213,7 @@ export async function loadPeriod(from: string, to: string, assignments = false):
       when: longDate(row.date),
       guest: row.guests.join(" and "),
       assigned,
+      overdue: false,
     });
   }
   const byName = (a: StayMove, b: StayMove) => a.date.localeCompare(b.date) || a.property.localeCompare(b.property) || a.guest.localeCompare(b.guest);
@@ -234,36 +261,82 @@ export function asksWeekCleans(text: string): boolean {
 }
 
 export function turnoverLine(row: TurnoverRow): string {
-  return `${row.property} on ${row.when}`;
+  const line = `${row.property} on ${row.when}`;
+  return row.overdue ? `${line} is overdue.` : line;
+}
+
+/** Arrivals today, this week's open cleans, and overdue cleans. One read for the plan, the cleans answer, and Overview. */
+export async function loadDayBoard(now = new Date()): Promise<{ ok: true; board: DayBoard } | { ok: false; error: string }> {
+  const today = torontoToday(now);
+  const week = weekContaining(now);
+  const loaded = await loadPeriod(addDays(today, -14), week.end, true);
+  if (!loaded.ok) return loaded;
+  const arrivals = loaded.board.arrivals.filter((row) => row.date === today);
+  const departures = loaded.board.departures.filter((row) => row.date === today);
+  const open = loaded.board.turnovers.filter((row) => !row.assigned);
+  const overdue = open.filter((row) => row.date < today).map((row) => ({ ...row, overdue: true }));
+  const weekCleans = open.filter((row) => row.date >= today && row.date <= week.end).map((row) => ({ ...row, overdue: false }));
+  return {
+    ok: true,
+    board: {
+      today,
+      arrivals,
+      departures,
+      todayCleans: weekCleans.filter((row) => row.date === today),
+      weekCleans,
+      overdue,
+    },
+  };
+}
+
+function arrivalLine(row: StayMove): string {
+  const time = row.time ? ` at ${row.time}` : "";
+  return `${row.guest} checks in at ${row.property}${time}.`;
+}
+
+export function planText(board: DayBoard): string {
+  const moves = [
+    ...board.arrivals.map(arrivalLine),
+    ...board.departures.map((row) => `${row.guest} checks out at ${row.property}.`),
+  ];
+  const count = board.todayCleans.length;
+  const cleanHead = count === 0
+    ? "No unassigned cleans today."
+    : `${count} unassigned ${count === 1 ? "clean" : "cleans"} today.`;
+  const head = moves.length ? `${longDate(board.today)}.` : `Nothing arrives or leaves today, ${longDate(board.today)}.`;
+  return [head, ...moves, cleanHead, ...board.todayCleans.map(turnoverLine)].join("\n");
+}
+
+export function cleansText(board: DayBoard): string {
+  const lines: string[] = [];
+  if (!board.weekCleans.length) lines.push("Yes. Every clean this week has a cleaner assigned.");
+  else {
+    const noun = board.weekCleans.length === 1 ? "turnover" : "turnovers";
+    lines.push(`No. ${board.weekCleans.length} unassigned ${noun} this week.`, ...board.weekCleans.map(turnoverLine));
+  }
+  if (board.overdue.length) {
+    const noun = board.overdue.length === 1 ? "turnover" : "turnovers";
+    lines.push(`${board.overdue.length} overdue ${noun}.`, ...board.overdue.map(turnoverLine));
+  }
+  return lines.join("\n");
 }
 
 export async function answerDayPlan(question: string, now = new Date()): Promise<string | null> {
   if (!asksDayPlan(question)) return null;
-  const today = torontoToday(now);
-  const loaded = await loadPeriod(today, today, false);
+  const loaded = await loadDayBoard(now);
   if (!loaded.ok) return `I can't read today's plan. ${loaded.error}`;
-  const lines = [
-    ...loaded.board.arrivals.map((row) => `${row.guest} checks in at ${row.property}.`),
-    ...loaded.board.departures.map((row) => `${row.guest} checks out at ${row.property}.`),
-  ];
-  if (!lines.length) return `Nothing arrives or leaves today, ${longDate(today)}.`;
-  return [`${longDate(today)}.`, ...lines].join("\n");
+  return planText(loaded.board);
 }
 
 export async function answerWeekCleans(question: string, now = new Date()): Promise<string | null> {
   if (!asksWeekCleans(question)) return null;
-  const week = weekContaining(now);
-  const loaded = await loadPeriod(week.start, week.end, true);
+  const loaded = await loadDayBoard(now);
   if (!loaded.ok) return `I can't read this week's cleans. ${loaded.error}`;
-  const open = loaded.board.turnovers.filter((row) => !row.assigned);
-  if (!open.length) return "Yes. Every clean this week has a cleaner assigned.";
-  const noun = open.length === 1 ? "turnover" : "turnovers";
-  return [`No. ${open.length} unassigned ${noun}.`, ...open.map(turnoverLine)].join("\n");
+  return cleansText(loaded.board);
 }
 
 export async function weekTurnovers(now = new Date()): Promise<TurnoverRow[] | null> {
-  const week = weekContaining(now);
-  const loaded = await loadPeriod(week.start, week.end, true);
+  const loaded = await loadDayBoard(now);
   if (!loaded.ok) return null;
-  return loaded.board.turnovers.filter((row) => !row.assigned);
+  return [...loaded.board.weekCleans, ...loaded.board.overdue];
 }
