@@ -51,4 +51,39 @@ if (wall.log.includes("submit") || wall.log.includes("fill") || wall.log.include
 if (!/haven't typed anything/.test(wall.narration.map((line) => line.text).join(" "))) fail(wall.narration.map((line) => line.text).join("\n"));
 if (wall.pageUrl !== "https://example.com/login") fail(wall.pageUrl);
 
+const {
+  browserSessionsOpened,
+  expireIdleSessions,
+  needsLiveBrowser,
+  resetBrowserTier,
+  runFetchLookup,
+  runInteractive,
+  watchSession,
+} = await import("./browserTier.js");
+
+resetBrowserTier();
+if (needsLiveBrowser("What is the price of Lysol at Shaw Street")) fail("a price lookup was treated as a live session");
+if (!needsLiveBrowser("Click through the signed-in form")) fail("a form was treated as a fetch");
+const lookedUp = await runFetchLookup("What is the price of Lysol at Shaw Street", async () => "$18.99 from the product page");
+if (lookedUp !== "$18.99 from the product page" || browserSessionsOpened() !== 0) fail("a price lookup created a browser session");
+
+const liveThread: ChatPost[] = [];
+const live = await runInteractive({
+  chatId: "chat-live",
+  goal: "Click through the signed-in form",
+  post: (entry) => { liveThread.push(entry); },
+});
+if (browserSessionsOpened() !== 1 || live.status !== "finished" || liveThread.length !== 1 || liveThread[0]?.chatId !== "chat-live") {
+  fail("the interactive task did not return one session to the starting chat");
+}
+if (!liveThread[0].body.includes("https://example.com/interactive")) fail(liveThread[0].body);
+
+const watched = watchSession({ chatId: "chat-watch", goal: "Watch", now: new Date("2026-10-08T13:00:00Z") });
+if (browserSessionsOpened() !== 2 || !watched.liveUrl) fail("Watch did not start one live session");
+const idlePosts: ChatPost[] = [];
+const expired = await expireIdleSessions(new Date("2026-10-08T13:10:00Z"), (entry) => { idlePosts.push(entry); });
+if (expired.length !== 1 || expired[0]?.status !== "finished" || idlePosts[0]?.chatId !== "chat-watch") {
+  fail("an idle session did not end after 10 minutes");
+}
+
 console.log("Browser harness passed.");

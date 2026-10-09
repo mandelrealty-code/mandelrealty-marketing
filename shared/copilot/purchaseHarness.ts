@@ -156,4 +156,151 @@ if (placedOrders().length !== ordersBeforeOpen || supplyWrites().length !== writ
   fail("opening an older note or pressing Not now wrote an order");
 }
 
+const { pinnedCompanyAnswer } = await import("./pinnedAnswer.js");
+const {
+  MASTER_SUPPLIES,
+  addUnitCleaner,
+  confirmUnitProfile,
+  installSetupListings,
+  lowStockLines,
+  lysolIdentity,
+  readUnitSetup,
+  resetUnitSetups,
+  setUnitCount,
+  setUnitDelivery,
+} = await import("./unitSetup.js");
+const {
+  catalogOrders,
+  installCatalogCart,
+  installCatalogPage,
+  installOrderReceipt,
+  installRecentOrders,
+  placeCatalogOrder,
+  quoteCatalogItem,
+  resetCatalogPurchase,
+} = await import("./catalogPurchase.js");
+const { browserSessionsOpened, resetBrowserTier } = await import("./browserTier.js");
+
+resetUnitSetups();
+resetCatalogPurchase();
+resetBrowserTier();
+installSetupListings([{
+  id: ID.shaw,
+  name: "Chic 2BR with Yard and Parking",
+  address: "1065 Shaw Street, Toronto",
+  photo: "https://photos.example/shaw.jpg",
+}]);
+const lysol = lysolIdentity();
+if (lysol.pack !== "pack of 1" || lysol.retailerProductId !== "B0BY3G17W7" || lysol.title !== "Lysol Power & Fresh multi-surface cleaner" || lysol.size !== "4.26 L") {
+  fail("the catalog Lysol is not the single bottle");
+}
+if (/2-pack|pack of 2/i.test(JSON.stringify(MASTER_SUPPLIES))) fail("the master list includes a Lysol 2-pack");
+const seeded = readUnitSetup(ID.shaw);
+const seededLysol = seeded?.inventory.find((row) => row.key === "lysol");
+if (!seeded || !seededLysol || seededLysol.pack !== "pack of 1" || seededLysol.onHand !== null || seeded.roster.length) {
+  fail("the seeded unit invented a count or a cleaner");
+}
+const setupSaid = await pinnedCompanyAnswer("what is set up");
+const setupBody = setupSaid?.body ?? "";
+if (!/Unit profile is missing/.test(setupBody) || !/Cleaner roster is missing/.test(setupBody) || !/Inventory catalog is done/.test(setupBody) || !/Current counts are unset/.test(setupBody) || !/Delivery destination is missing/.test(setupBody)) {
+  fail(setupBody || "setup status was not reported");
+}
+const refusedBuy = await pinnedCompanyAnswer("Buy Lysol for Shaw Street");
+if (!refusedBuy || !/Cleaner roster is missing/.test(refusedBuy.body) || /Purchase item/.test(refusedBuy.body) || catalogOrders().length) {
+  fail(refusedBuy?.body || "a unit with no roster offered a purchase");
+}
+if (lowStockLines([seeded]).length) fail("low stock ran for a unit that is not set up");
+
+if (!confirmUnitProfile(ID.shaw).ok) fail("the filled-in profile did not confirm");
+if (!addUnitCleaner(ID.shaw, { name: "Maria", contact: "416-555-0199", usual: true }).ok) fail("the roster did not save");
+if (!setUnitDelivery(ID.shaw, "1065 Shaw Street, Toronto").ok) fail("the delivery address did not save");
+setUnitCount(ID.shaw, "lysol", 0);
+const ready = readUnitSetup(ID.shaw);
+if (!ready || lowStockLines([ready]).length !== 1) fail("a set-up unit did not report low stock");
+
+function lysolPage(pack = "pack of 1", title = lysol.title, inStock = true): void {
+  installCatalogPage({
+    retailerProductId: pack === "pack of 1" && title === lysol.title ? lysol.retailerProductId : "B0OTHER",
+    title,
+    size: lysol.size,
+    packCount: lysol.packCount,
+    pack,
+    priceCents: 1000,
+    inStock,
+    seller: "Amazon",
+    retailer: "Amazon",
+    url: "https://www.amazon.ca/dp/B0BY3G17W7",
+  });
+}
+function matchingCart(priceCents = 1000): void {
+  installCatalogCart({
+    shipTo: "1065 Shaw Street, Toronto",
+    totalCents: priceCents * 2,
+    lines: [{
+      retailerProductId: lysol.retailerProductId,
+      title: lysol.title,
+      size: lysol.size,
+      packCount: lysol.packCount,
+      pack: lysol.pack,
+      quantity: 2,
+      priceCents,
+      seller: "Amazon",
+    }],
+  });
+}
+async function trap(name: string, reason: string): Promise<void> {
+  const before = catalogOrders().length;
+  const result = await placeCatalogOrder({
+    propertyId: ID.shaw,
+    itemKey: "lysol",
+    quantity: 2,
+    priceCents: 1000,
+    seller: "Amazon",
+    chatId: "chat-buy",
+  });
+  if (result.ordered || catalogOrders().length !== before || !("reason" in result) || !result.reason.includes(reason)) {
+    fail(`${name}: ${"reason" in result ? result.reason : "ordered"}`);
+  }
+}
+
+const sessionsBeforeQuote = browserSessionsOpened();
+lysolPage();
+const quote = await quoteCatalogItem({ propertyId: ID.shaw, itemKey: "lysol" });
+if (quote.kind !== "exact" || quote.priceCents !== 1000 || quote.retailer !== "Amazon" || !quote.url.includes("B0BY3G17W7")) {
+  fail("the lookup did not show the exact Lysol identity");
+}
+if (browserSessionsOpened() !== sessionsBeforeQuote) fail("a price lookup created a browser session");
+
+lysolPage("pack of 2");
+await trap("pack size", "pack size");
+lysolPage("pack of 1", "Lysol Power & Fresh 2-pack");
+await trap("similar product", "alternative");
+lysolPage();
+matchingCart(1200);
+await trap("price change", "price changed");
+lysolPage();
+matchingCart();
+installRecentOrders([{ propertyId: ID.shaw, itemKey: "lysol" }]);
+await trap("duplicate", "duplicate");
+installRecentOrders([]);
+lysolPage("pack of 1", lysol.title, false);
+matchingCart();
+await trap("out of stock", "out of stock");
+if (catalogOrders().length) fail("a trap placed an order");
+
+lysolPage();
+matchingCart();
+installOrderReceipt({ confirmation: "112-8841201-0000009", tracking: "https://retailer.example/track/112-8841201-0000009" });
+const boughtCatalog = await placeCatalogOrder({
+  propertyId: ID.shaw,
+  itemKey: "lysol",
+  quantity: 2,
+  priceCents: 1000,
+  seller: "Amazon",
+  chatId: "chat-buy",
+});
+if (!boughtCatalog.ordered || catalogOrders().length !== 1 || boughtCatalog.order.confirmation !== catalogOrders()[0]?.confirmation) {
+  fail("a matching cart did not record the order after read-back");
+}
+
 console.log("Purchase harness passed.");

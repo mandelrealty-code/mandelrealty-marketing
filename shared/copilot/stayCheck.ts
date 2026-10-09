@@ -15,6 +15,7 @@ import { BLUE_JAYS_PROCESS } from "./processFacts.js";
 import { isThanksOnly, needsGuestReply } from "./guestTranslate.js";
 import { readCleanerUnit, type CleanerPicture, type CleanerSupply, type CleanerTurnover } from "./cleanerRead.js";
 import { describePurchase } from "./purchase.js";
+import { ensureUnitSetups, readUnitSetup, setupComplete } from "./unitSetup.js";
 import {
   correctRelativeWording,
   itemHandled,
@@ -461,6 +462,9 @@ function describeTurnover(row: CleanerTurnover, now: Date): { line: string; need
 }
 
 async function offerLowStock(propertyId: string, name: string, address: string, supplies: CleanerSupply[]): Promise<void> {
+  await ensureUnitSetups();
+  const unit = readUnitSetup(propertyId);
+  if (!unit || !setupComplete(unit)) return;
   const where = placeLabel(`${name} ${address}`, name);
   for (const item of supplies) {
     if (!item.low || !item.item) continue;

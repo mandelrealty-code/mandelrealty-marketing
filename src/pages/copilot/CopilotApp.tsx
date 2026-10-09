@@ -12,6 +12,7 @@ import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraf
 import { PurchaseCard } from "./PurchaseCard";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
+import { needsLiveBrowser } from "../../../shared/copilot/browserTier";
 import { inputFromCard, rankOverview, type OverviewRow } from "../../../shared/copilot/overviewRank";
 import { skipsWeb } from "../../../shared/copilot/route";
 import type { AccountSpend } from "../../../shared/copilot/models";
@@ -818,6 +819,24 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     browserRef.current = next;
     setBrowserSession(next);
   }
+  async function watchLive() {
+    setScreen("browser");
+    setSheet(false);
+    const current = browserRef.current;
+    if (current?.liveUrl) return;
+    const id = current?.chatId || chatId;
+    if (!id) return;
+    try {
+      const data = await api<{ session?: BrowserSession; error?: string }>("watch-browser", {
+        chatId: id,
+        goal: current?.goal || "Watch",
+      });
+      if (data.session) putBrowser(data.session);
+      else if (data.error) setError(data.error);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The browser did not open.");
+    }
+  }
   const [skillMode, setSkillMode] = useState(false);
   const [viaPlus, setViaPlus] = useState<Record<string, boolean>>({});
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -1234,7 +1253,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         pdfUrl: pdf.url,
         pdfName: pdf.name,
       });
-    } else if (searching) {
+    } else if (searching && needsLiveBrowser(typed)) {
       if (chatId) closedBrowsers.current.delete(chatId);
       putBrowser(beginSession({ chatId: chatId || "", goal: typed, liveUrl: "" }));
     } else if (!makingPicture) {
@@ -2284,6 +2303,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   <BrowserSurface
                     session={browserSession}
                     recent={recentBrowsers}
+                    onWatch={() => { void watchLive(); }}
                     onPause={() => { if (browserSession) putBrowser(pauseSession(browserSession)); }}
                     onResume={() => { if (browserSession) putBrowser(resumeSession(browserSession)); }}
                     onTakeOver={() => { if (browserSession) putBrowser(takeOver(browserSession)); }}
@@ -2492,7 +2512,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     {browserSession && browserSession.chatId === chatId && browserSession.status !== "finished" ? (
                       <SessionLine
                         session={browserSession}
-                        onWatch={() => { setScreen("browser"); setSheet(false); }}
+                        onWatch={() => { void watchLive(); }}
                         onPause={() => putBrowser(browserSession.status === "paused" ? resumeSession(browserSession) : pauseSession(browserSession))}
                       />
                     ) : null}

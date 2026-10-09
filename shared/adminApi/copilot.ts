@@ -17,6 +17,7 @@ import { cancelBrowser, collectBrowser, browserIsLive, publicError, releaseBrows
 import { nameChat } from "../copilot/chatTitle.js";
 import { pictureFor, wantsWeb, workModel } from "../copilot/models.js";
 import { answerWebLookup, asksWebLookup } from "../copilot/webLookup.js";
+import { needsLiveBrowser } from "../copilot/browserTier.js";
 import { answerOutsideRentals } from "../copilot/topicScope.js";
 import { skipsWeb } from "../copilot/route.js";
 import { answerInboxToday } from "../copilot/mailInbox.js";
@@ -602,6 +603,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         thought: "Nothing was sent.",
       });
       return res.status(200).json({ chat, messages: await listMessages(chat.id), pending: false, chats: await listChats() });
+    }
+
+    if (op === "watch-browser") {
+      const chatId = String(body.chatId ?? "");
+      const goal = String(body.goal ?? "Watch").trim() || "Watch";
+      if (!chatId) return res.status(400).json({ error: "Missing chat." });
+      try {
+        const opened = await startBrowser(chatId, goal);
+        const session = beginSession({
+          chatId,
+          goal,
+          askedBy: "Watch",
+          liveUrl: opened.view?.liveUrl || "",
+        });
+        return res.status(200).json({
+          chatId,
+          session,
+          view: opened.view,
+          messages: await listMessages(chatId),
+          pending: opened.pending,
+        });
+      } catch (err) {
+        return res.status(200).json({ chatId, error: publicError(err) });
+      }
     }
 
     if (op === "end-browser") {
@@ -1210,6 +1235,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           body: "I could not read that.",
           steps: [{ text: "Stayed in the app" }],
           thought: "Nothing was sent.",
+        });
+        return done();
+      }
+      if (webSearch && !needsLiveBrowser(text)) {
+        const said = await answerWebLookup(text);
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: said,
+          steps: [{ text: /that read failed/i.test(said) ? "That read failed" : "Opened the page" }],
+          thought: "This came from the page. No browser session was started.",
         });
         return done();
       }

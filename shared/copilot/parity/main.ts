@@ -372,12 +372,11 @@ async function fixtureLowStock(): Promise<void> {
   expectNothingSent();
   const offer = capturedDrafts().find((row) => row.channel === "note");
   const said = [...capturedReports().map((row) => row.text), offer?.body ?? ""].join("\n");
-  expect(/8 Charlotte 606/.test(said) && /paper towels/.test(said) && /\b1 left\b/.test(said), "the report names the unit, the item, and how much is left", said.slice(0, 400));
-  expect(Boolean(offer) && /Approve the purchase of Bounty paper towels/.test(offer?.body ?? ""), "the purchase is offered as a draft", offer?.body ?? "no note draft");
+  expect(!offer && !/Approve the purchase/.test(said), "a unit that is not set up offers no purchase", said.slice(0, 400));
   expect(capturedPurchases() === 0, "nothing was purchased", "a purchase was made");
   resetCaptures();
   await runCopilotPass(world.now);
-  expect(capturedDrafts().length === 0 && capturedPurchases() === 0, "the offer is not duplicated and still nothing is purchased", `drafts ${capturedDrafts().length}`);
+  expect(capturedDrafts().length === 0 && capturedPurchases() === 0, "a second pass still offers no purchase", `drafts ${capturedDrafts().length}`);
 }
 
 async function fixtureCleanerFailed(): Promise<void> {
@@ -1079,7 +1078,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "10", title: "Hub onboarding without memory seeding", run: fixtureOnboarding },
   { id: "11", title: "Afternoon pass catches a late-morning message once", run: fixtureAfternoon },
   { id: "12", title: "Unit 318 turnover state", run: fixtureTurnover },
-  { id: "13", title: "Low stock offer with no purchase", run: fixtureLowStock },
+  { id: "13", title: "An unset unit offers no purchase", run: fixtureLowStock },
   { id: "14", title: "Failed cleaner read", run: fixtureCleanerFailed },
   { id: "15", title: "Today's check-ins across managed properties", run: fixtureTodayCheckins },
   { id: "16", title: "Unreadable thread names the stay", run: fixtureThreadUnread },

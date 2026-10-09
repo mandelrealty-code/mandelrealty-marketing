@@ -1,4 +1,5 @@
 import Browserbase from "@browserbasehq/sdk";
+import { idleTooLong } from "./browserTier.js";
 import { captureBrowser } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { chromium, type Page } from "playwright-core";
@@ -312,6 +313,7 @@ async function openSession(chatId: string, goal: string, reuseContext: boolean):
     thought: usedProxy ? "The residential proxy is on for this site." : "The browser is open.",
     acts: 0,
     fails: 0,
+    touchedAt: new Date().toISOString(),
   };
   if (target.proxy && !usedProxy) row.steps.push({ text: "Opened without the residential proxy" });
   await saveBrowser(chatId, row);
@@ -469,6 +471,21 @@ async function oneStep(chatId: string, row: StoredBrowser): Promise<BrowserState
 export async function collectBrowser(chatId: string, hold: boolean): Promise<BrowserState | null> {
   const row = await readBrowser(chatId);
   if (!row || row.status === "done") return null;
+  if (idleTooLong(row.touchedAt)) {
+    row.status = "done";
+    row.thought = "The browser sat idle for 10 minutes, so the session ended.";
+    await saveBrowser(chatId, row);
+    await release(row).catch(() => undefined);
+    await addMessage({
+      chatId,
+      role: "assistant",
+      body: "The browser sat idle for 10 minutes, so the session ended. Nothing was sent.",
+      steps: row.steps,
+      thought: row.thought,
+    });
+    return stateOf(row, false);
+  }
+  row.touchedAt = new Date().toISOString();
   if (row.status !== "running" || hold) return stateOf(row, row.status === "running");
   return gate(chatId, () => oneStep(chatId, row));
 }

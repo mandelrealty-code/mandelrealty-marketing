@@ -52,6 +52,7 @@ export default function BrowserSurface({
   onOpen,
   onRunAgain,
   onTell,
+  onWatch,
 }: {
   session: BrowserSession | null;
   recent: BrowserSession[];
@@ -66,6 +67,7 @@ export default function BrowserSurface({
   onOpen: (session: BrowserSession) => void;
   onRunAgain: () => void;
   onTell: (text: string) => void;
+  onWatch: () => void;
 }) {
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [pagesOpen, setPagesOpen] = useState(false);
@@ -93,12 +95,13 @@ export default function BrowserSurface({
       <div className="cp-br cp-br-idle">
         <div className="cp-br-read">
           <h1>Browser</h1>
-          <p className="cp-br-lead">Where you watch Copilot use the web. Sessions start when you ask for a lookup in Chat.</p>
+          <p className="cp-br-lead">Where you watch Copilot use the web. A price or a page is answered in chat. Watch starts a live session.</p>
           <div className="cp-br-empty">
             <div>
               <p>No session is running.</p>
-              <span>When Copilot opens a page for you, it shows here live, and you can pause it or take over.</span>
+              <span>When a page needs a click, a sign-in, or a form, or when you press Watch, it shows here live.</span>
             </div>
+            <button type="button" className="cp-br-btn" onClick={onWatch}>Watch</button>
             <button type="button" className="cp-br-btn" onClick={onAsk}>Ask in Chat</button>
           </div>
           <RecentList recent={recent} onOpen={onOpen} />

@@ -985,6 +985,7 @@ export type StoredBrowser = {
   thought: string;
   acts: number;
   fails: number;
+  touchedAt?: string;
 };
 
 export async function readGmailLogin(): Promise<{ refreshToken: string; email: string } | null> {

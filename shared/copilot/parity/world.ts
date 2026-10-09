@@ -56,6 +56,8 @@ export type ParityProperty = {
   publicName?: string;
   address: string;
   managed: boolean;
+  /** Listing photo from Hospitable, when one is connected. */
+  photo?: string;
 };
 
 export type ParityMemory = { path: string; body: string };
@@ -276,6 +278,7 @@ function propertyRow(row: ParityProperty): PmPropertyListItem {
     hst_bps: 300,
     client_name: "Mandel",
     current_rate_bps: null,
+    cover_image_url: row.photo || null,
   };
 }
 

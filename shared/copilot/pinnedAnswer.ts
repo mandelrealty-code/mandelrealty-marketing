@@ -5,6 +5,8 @@
 
 import { answerMarketingCopy } from "./marketingCopy.js";
 import { answerMailChain } from "./mailChain.js";
+import { answerCatalogPurchase } from "./catalogPurchase.js";
+import { answerUnitSetup } from "./unitSetup.js";
 import { answerStay, asksDayCount } from "./stayAnswer.js";
 
 export async function pinnedCompanyAnswer(text: string): Promise<{ body: string; step: string; thought: string } | null> {
@@ -24,6 +26,22 @@ export async function pinnedCompanyAnswer(text: string): Promise<{ body: string;
       body: copy,
       step: refused ? "That needs a system this chat cannot reach" : "Drafted the copy",
       thought: refused ? "Nothing was posted." : "This is a draft in chat, from the listing's facts. Nothing was posted.",
+    };
+  }
+  const setup = await answerUnitSetup(text);
+  if (setup) {
+    return {
+      body: setup,
+      step: "Read the unit setup",
+      thought: "This came from the cleaner app setup. Nothing was guessed.",
+    };
+  }
+  const buy = await answerCatalogPurchase(text);
+  if (buy) {
+    return {
+      body: buy.body,
+      step: buy.step,
+      thought: "Nothing was ordered.",
     };
   }
   if (!asksDayCount(text)) return null;
