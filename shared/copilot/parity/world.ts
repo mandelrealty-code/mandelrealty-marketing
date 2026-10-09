@@ -58,6 +58,10 @@ export type ParityProperty = {
   managed: boolean;
   /** Listing photo from Hospitable, when one is connected. */
   photo?: string;
+  /** Guest-facing listing copy. House-manual text does not belong here. */
+  description?: string;
+  neighbourhood?: string;
+  amenities?: string[];
 };
 
 export type ParityMemory = { path: string; body: string };
@@ -251,6 +255,27 @@ export function closeParityItem(id: string): void {
   const current = live();
   const row = current?.items.find((item) => item.id === id);
   if (row) row.status = "closed";
+}
+
+/** Title, public description, neighbourhood, and guest-facing amenities for one listing. */
+export function parityListingMaterial(id: string): {
+  title: string;
+  description: string;
+  neighbourhood: string;
+  address: string;
+  amenities: string[];
+} | null {
+  const current = live();
+  if (!current) return null;
+  const row = current.properties.find((item) => item.id === id);
+  if (!row) return null;
+  return {
+    title: (row.publicName || row.name).trim(),
+    description: (row.description ?? "").trim(),
+    neighbourhood: (row.neighbourhood ?? "").trim(),
+    address: row.address.trim(),
+    amenities: (row.amenities ?? []).map((item) => item.trim()).filter(Boolean),
+  };
 }
 
 export function parityManagedProperties(): PmPropertyListItem[] | null {

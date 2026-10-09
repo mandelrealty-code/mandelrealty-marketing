@@ -65,7 +65,15 @@ const PROPERTIES: ParityProperty[] = [
     managed: true,
   },
   { id: ID.blue, name: "1,100SqFt 2B+Den, TIFF", address: "318, 20 Blue Jays Way, Toronto", managed: true },
-  { id: ID.shaw, name: "Chic 2BR with Yard and Parking", address: "1065 Shaw Street, Toronto", managed: true },
+  {
+    id: ID.shaw,
+    name: "Chic 2BR with Yard and Parking",
+    address: "1065 Shaw Street, Toronto",
+    managed: true,
+    neighbourhood: "Shaw Street, Toronto",
+    description: "A chic two-bedroom house with a yard and parking, easy for a weekend in the neighbourhood.",
+    amenities: ["Free parking", "Deck", "Backyard"],
+  },
   { id: ID.outCharlotte, name: "8 Charlotte 1104, King St W Condo with Projector and Balcony", address: "1104, 8 Charlotte St, Toronto", managed: false },
   { id: ID.partner, name: "Partner Loft we do not manage", address: "99 Partner Street, Toronto", managed: false },
 ];

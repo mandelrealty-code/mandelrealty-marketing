@@ -20,6 +20,7 @@ import { GENERAL_ANSWER_SYSTEM } from "./plainAnswer.js";
 import { takeMemoryTurn } from "./memoryFiles.js";
 import { answerPropertyFact } from "./propertyFact.js";
 import { pinnedCompanyAnswer } from "./pinnedAnswer.js";
+import { INTERNAL_TERMS, hasInternalContent } from "./marketingCopy.js";
 import { answerInboxToday } from "./mailInbox.js";
 import { asksMailBreakdown } from "./mailChain.js";
 import { questionRoute, skipsWeb } from "./route.js";
@@ -210,17 +211,30 @@ shawCaptionHub.body = [
   "Return the garage remote to the lock box.",
   "The keys stay in the lock box.",
   "Shoes go in the entry closet.",
-  "Free parking is next to the garage remote return and the keys in the lock box.",
+  "Spare linens are stored in the hall closet.",
+  "Cleaning supplies stay in storage.",
+  "Check-out instructions are in the house manual.",
 ].join("\n");
+const shawListing = shawWorld.properties.find((row) => row.id === ID.shaw);
+if (!shawListing) fail("shaw caption", "Shaw listing missing");
+shawListing.description = `${shawListing.description ?? ""} Spare linens are stored in the hall closet.`;
+shawListing.amenities = [...(shawListing.amenities ?? []), "Lock box for the garage remote", "Cleaning supplies in the closet"];
 installWorld(shawWorld);
 const captionAsk = "Draft an Instagram caption to market the Shaw Street house for a fall weekend";
 const captionPinned = await pinnedCompanyAnswer(captionAsk);
 const caption = captionPinned?.body ?? "";
 if (!captionPinned || captionPinned.step !== "Drafted the copy") fail("shaw caption", caption || "no draft");
-shape("shaw caption", caption, /^Fall weekend at 1065 Shaw Street\.$/, ["Sleeps 4", "Free parking, deck and backyard", "Nothing was posted"]);
-if (/don't have a tool|do not have a tool|hot tub|fireplace|pool|quiet hours|shoes|garbage bags|netflix|garage remote|lock box|entry closet|\bkeys?\b/i.test(caption)) {
-  fail("shaw caption", caption);
+shape("shaw caption", caption, /^A fall weekend on Shaw Street\.$/, ["Nothing was posted", "free parking", "Shaw Street"]);
+if (hasInternalContent(caption)) fail("shaw caption", caption);
+for (const term of INTERNAL_TERMS) {
+  if (new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(caption)) fail("shaw caption", caption);
 }
+const captionLines = caption.split("\n").map((line) => line.trim()).filter(Boolean);
+if (captionLines.some((line) => /^[-•*]/.test(line))) fail("shaw caption", caption);
+const captionParagraph = captionLines.find((line) => line !== "A fall weekend on Shaw Street." && !line.startsWith("#") && line !== "Nothing was posted.");
+const captionSentences = (captionParagraph ?? "").split(/(?<=[.!?])\s+/).filter(Boolean);
+if (captionSentences.length < 2 || captionSentences.length > 4) fail("shaw caption", caption);
+if (/quiet hours|netflix|garbage bags|hall closet|house manual|check-out instructions/i.test(caption)) fail("shaw caption", caption);
 installWorld(worldAt("2026-10-07T11:00:00-04:00"));
 
 const prompts = [
