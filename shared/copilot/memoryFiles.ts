@@ -367,6 +367,11 @@ export async function ensureUnitFiles(): Promise<void> {
 export async function listMemoryFiles(): Promise<MemoryFileView[]> {
   await seedIfEmpty();
   await ensureUnitFiles();
+  return listStoredMemoryFiles();
+}
+
+/** Saved memory files only. Boot paints these without seeding or rewriting a unit file. */
+export async function listStoredMemoryFiles(): Promise<MemoryFileView[]> {
   const today = torontoToday();
   const { files } = await loadAll();
   return files

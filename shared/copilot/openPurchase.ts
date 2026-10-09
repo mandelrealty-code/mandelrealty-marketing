@@ -85,6 +85,7 @@ export async function openLegacyPurchase(
 ): Promise<PurchaseDetail | null> {
   const offer = legacyLowStockOffer(message.draft, message.body);
   if (!offer || !message.draft) return null;
+  if (options.lookup === false) return null;
   try {
     const properties = await listPmProperties().catch(() => []);
     const want = offer.property.trim().toLowerCase();
@@ -108,7 +109,7 @@ export async function openLegacyPurchase(
     const priced = typeof supply.priceCents === "number" && Number.isFinite(supply.priceCents);
     const retailer = supply.retailer?.trim() ?? "";
     const needsListing = !named || !priced || !retailer;
-    const found = needsListing && options.lookup !== false && !parityEnabled()
+    const found = needsListing && !parityEnabled()
       ? await Promise.race([
           listedProduct(supply.item || offer.item || offer.product).catch(() => null),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),

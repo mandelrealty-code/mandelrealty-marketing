@@ -43,7 +43,7 @@ import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSel
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { loadGuestQueue, openGuestAnswer, readSavedGuestQueue, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
-import { deleteMemoryFile, listMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
+import { deleteMemoryFile, listMemoryFiles, listStoredMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
 import { draftForCard, skillTurn } from "../copilot/reply.js";
 import { skillFromWords, skillFromWorkflow } from "../copilot/skillShape.js";
@@ -181,10 +181,12 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
       skill.lastRun?.status === "ok" &&
       skill.lastRun.result?.tools.some((tool) => HOSPITABLE_TOOLS.includes(tool)),
   );
-  const hospitable = await hospitableCard().catch(() => null);
-  const gmail = await gmailConnected().catch(() => false);
+  const [hospitable, gmail, outlook] = await Promise.all([
+    hospitableCard().catch(() => null),
+    gmailConnected().catch(() => false),
+    outlookConnected().catch(() => false),
+  ]);
   const gmailReady = gmailKeysReady();
-  const outlook = await outlookConnected().catch(() => false);
   const outlookReady = outlookKeysReady();
   const airroi = Boolean(process.env.AIRROI_API_KEY?.trim());
   const cursor = Boolean(process.env.CURSOR_API_KEY?.trim());
@@ -347,7 +349,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         listMemory().catch(() => []),
         listTextLog().catch(() => []),
         listTextNumbers().catch(() => []),
-        listMemoryFiles().catch(() => []),
+        listStoredMemoryFiles().catch(() => []),
         connectors(skills).catch(() => [] as ConnectorRow[]),
         readSavedGuestQueue().catch(() => null),
         hospitableCard().catch(() => null),
