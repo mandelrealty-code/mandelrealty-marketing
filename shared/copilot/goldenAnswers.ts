@@ -19,6 +19,7 @@ import { installWorld } from "./parity/world.js";
 import { GENERAL_ANSWER_SYSTEM } from "./plainAnswer.js";
 import { takeMemoryTurn } from "./memoryFiles.js";
 import { answerPropertyFact } from "./propertyFact.js";
+import { answerMarketingCopy } from "./marketingCopy.js";
 import { answerInboxToday } from "./mailInbox.js";
 import { answerMailChain, asksMailBreakdown } from "./mailChain.js";
 import { questionRoute, skipsWeb } from "./route.js";
@@ -200,6 +201,13 @@ const fact = await answerPropertyFact("Where are the garbage bags at the Scarbor
 if (!fact) fail("property fact", "no answer");
 shape("property fact", fact, /gift basket/, ["Garbage bags", "kitchen counter", "Roseglor", "Knowledge Hub"]);
 if (/no information|don't have|do not have|nothing on file/i.test(fact)) fail("property fact", fact);
+
+const caption = await answerMarketingCopy("Draft an Instagram caption to market the Shaw Street house for a fall weekend");
+if (!caption) fail("shaw caption", "no draft");
+shape("shaw caption", caption, /^Fall weekend at 1065 Shaw Street\.$/, ["Sleeps 4", "Free parking, deck and backyard", "Nothing was posted"]);
+if (/don't have a tool|do not have a tool|hot tub|fireplace|pool|quiet hours|shoes off|garbage bags|netflix/i.test(caption)) {
+  fail("shaw caption", caption);
+}
 
 const prompts = [
   promptFor("facts", "", false, false, false),

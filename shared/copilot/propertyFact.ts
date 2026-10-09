@@ -65,6 +65,15 @@ async function managedListings(): Promise<Listing[]> {
 }
 
 function pickListing(question: string, listings: Listing[]): Listing | null {
+  const hits = matchingListings(question, listings);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+export async function matchManagedListings(question: string): Promise<Listing[]> {
+  return matchingListings(question, await managedListings());
+}
+
+function matchingListings(question: string, listings: Listing[]): Listing[] {
   const text = question.toLowerCase();
   const hits = listings.filter((row) => {
     if (/scarborough|roseglor|spacious 3br/.test(text) && /roseglor|spacious 3br/.test(row.blob)) return true;
@@ -73,7 +82,7 @@ function pickListing(question: string, listings: Listing[]): Listing | null {
     if (/\bshaw\b/.test(text) && /\bshaw\b/.test(row.blob)) return true;
     return false;
   });
-  return hits.length === 1 ? hits[0] : null;
+  return hits;
 }
 
 function labelFor(name: string, address: string): string {

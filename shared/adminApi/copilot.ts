@@ -27,6 +27,7 @@ import { answerBuildingRegistration } from "../copilot/buildingRegistration.js";
 import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
 import { answerStay, asksDayCount } from "../copilot/stayAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
+import { answerMarketingCopy } from "../copilot/marketingCopy.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { answerPdfReport } from "../copilot/revenueReport.js";
@@ -1106,6 +1107,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: weekCleans,
             steps: [{ text: /can't read this week's cleans/.test(weekCleans) ? "The cleans read failed" : "Read this week's turnovers" }],
             thought: /can't read this week's cleans/.test(weekCleans) ? "The cleans count was not guessed." : "Each line is one turnover, a property on one date. Nothing was sent.",
+          });
+          return done();
+        }
+        const copy = await answerMarketingCopy(text);
+        if (copy) {
+          const refused = /^I don't have a tool/.test(copy);
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: copy,
+            steps: [{ text: refused ? "That needs a system this chat cannot reach" : "Drafted the copy" }],
+            thought: refused ? "Nothing was posted." : "This is a draft in chat, from the listing's facts. Nothing was posted.",
           });
           return done();
         }
