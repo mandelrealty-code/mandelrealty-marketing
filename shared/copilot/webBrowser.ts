@@ -1,5 +1,5 @@
 import Browserbase from "@browserbasehq/sdk";
-import { idleTooLong } from "./browserTier.js";
+import { idleTooLong, noteLiveSession, PAGE_UNREAD, unreadTooLong } from "./browserTier.js";
 import { captureBrowser } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { chromium, type Page } from "playwright-core";
@@ -314,6 +314,8 @@ async function openSession(chatId: string, goal: string, reuseContext: boolean):
     acts: 0,
     fails: 0,
     touchedAt: new Date().toISOString(),
+    openedAt: new Date().toISOString(),
+    pagesRead: 0,
   };
   if (target.proxy && !usedProxy) row.steps.push({ text: "Opened without the residential proxy" });
   await saveBrowser(chatId, row);
@@ -321,6 +323,7 @@ async function openSession(chatId: string, goal: string, reuseContext: boolean):
 }
 
 export async function startBrowser(chatId: string, goal: string): Promise<BrowserState> {
+  noteLiveSession();
   return gate(chatId, () => openSession(chatId, goal, true));
 }
 
@@ -447,6 +450,7 @@ async function oneStep(chatId: string, row: StoredBrowser): Promise<BrowserState
   if (act?.kind === "signin") return handoff(chatId, row, row.site);
   if (act?.kind === "done") return finish(chatId, row, act.answer || "");
   if (label.startsWith("Opened ")) {
+    row.pagesRead = (row.pagesRead ?? 0) + 1;
     row.fails = 0;
     row.steps = [...row.steps, { text: label }];
     row.thought = "The page is open. You can watch the next click.";
@@ -471,6 +475,20 @@ async function oneStep(chatId: string, row: StoredBrowser): Promise<BrowserState
 export async function collectBrowser(chatId: string, hold: boolean): Promise<BrowserState | null> {
   const row = await readBrowser(chatId);
   if (!row || row.status === "done") return null;
+  if (unreadTooLong({ startedAt: row.openedAt || row.touchedAt || "", pagesRead: row.pagesRead ?? 0, status: row.status })) {
+    row.status = "done";
+    row.thought = PAGE_UNREAD;
+    await saveBrowser(chatId, row);
+    await release(row).catch(() => undefined);
+    await addMessage({
+      chatId,
+      role: "assistant",
+      body: PAGE_UNREAD,
+      steps: row.steps,
+      thought: PAGE_UNREAD,
+    });
+    return stateOf(row, false);
+  }
   if (idleTooLong(row.touchedAt)) {
     row.status = "done";
     row.thought = "The browser sat idle for 10 minutes, so the session ended.";

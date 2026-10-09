@@ -17,7 +17,7 @@ import { cancelBrowser, collectBrowser, browserIsLive, publicError, releaseBrows
 import { nameChat } from "../copilot/chatTitle.js";
 import { pictureFor, wantsWeb, workModel } from "../copilot/models.js";
 import { answerWebLookup, asksWebLookup } from "../copilot/webLookup.js";
-import { needsLiveBrowser } from "../copilot/browserTier.js";
+import { asksFetchLookup, needsLiveBrowser, PAGE_UNREAD, runFetchLookup } from "../copilot/browserTier.js";
 import { answerOutsideRentals } from "../copilot/topicScope.js";
 import { skipsWeb } from "../copilot/route.js";
 import { answerInboxToday } from "../copilot/mailInbox.js";
@@ -634,6 +634,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const chatId = String(body.chatId ?? "");
       if (!chatId) return res.status(400).json({ error: "Missing chat." });
       const pages = sessionPages(body.pages);
+      if (!pages.length) {
+        const existing = await listMessages(chatId);
+        const already = [...existing].reverse().find((message) => message.role === "assistant");
+        if (already?.body !== PAGE_UNREAD) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: PAGE_UNREAD,
+            thought: PAGE_UNREAD,
+          });
+        }
+        await releaseBrowser(chatId).catch(() => undefined);
+        return res.status(200).json({
+          chatId,
+          messages: await listMessages(chatId),
+          chats: await listChats(),
+        });
+      }
       let session = beginSession({ chatId, goal: String(body.goal ?? ""), askedBy: "Chat" });
       for (const page of pages) session = readPage(session, page);
       const ended = await publishFindings(session, async (entry) => {
@@ -833,14 +851,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return done();
         }
       }
-      if (!pictureMode && !skillMode && !skipsWeb(text) && asksWebLookup(text)) {
-        const said = await answerWebLookup(text);
+      if (!pictureMode && !skillMode && (asksFetchLookup(text) || (!skipsWeb(text) && asksWebLookup(text)))) {
+        const said = asksFetchLookup(text) ? await runFetchLookup(text, () => answerWebLookup(text)) : await answerWebLookup(text);
         await addMessage({
           chatId,
           role: "assistant",
           body: said,
           steps: [{ text: /that read failed/i.test(said) ? "That read failed" : "Opened the page" }],
-          thought: "This came from the page. Nothing was purchased.",
+          thought: asksFetchLookup(text) ? "This came from the page. No browser session was started." : "This came from the page. Nothing was purchased.",
         });
         return done();
       }

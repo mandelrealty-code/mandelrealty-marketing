@@ -12,7 +12,7 @@ import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraf
 import { PurchaseCard } from "./PurchaseCard";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
-import { needsLiveBrowser } from "../../../shared/copilot/browserTier";
+import { needsLiveBrowser, PAGE_UNREAD } from "../../../shared/copilot/browserTier";
 import { inputFromCard, rankOverview, type OverviewRow } from "../../../shared/copilot/overviewRank";
 import { skipsWeb } from "../../../shared/copilot/route";
 import type { AccountSpend } from "../../../shared/copilot/models";
@@ -819,6 +819,24 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     browserRef.current = next;
     setBrowserSession(next);
   }
+  useEffect(() => {
+    const current = browserSession;
+    if (!current || current.status !== "working" || current.pages.length > 0) return;
+    const started = new Date(current.startedAt).getTime();
+    if (!Number.isFinite(started)) return;
+    const wait = Math.max(0, 30_000 - (Date.now() - started));
+    const timer = window.setTimeout(() => {
+      const live = browserRef.current;
+      if (!live || live.id !== current.id || live.status !== "working" || live.pages.length > 0 || !live.chatId) return;
+      putBrowser({ ...live, status: "finished", endedAt: new Date().toISOString(), submitted: false });
+      void api<{ messages: CopilotMessage[] }>("end-browser", { chatId: live.chatId, goal: live.goal, pages: [] })
+        .then((data) => {
+          if (live.chatId === chatIdRef.current && data.messages) setMessages(data.messages);
+        })
+        .catch(() => undefined);
+    }, wait);
+    return () => window.clearTimeout(timer);
+  }, [browserSession]);
   async function watchLive() {
     setScreen("browser");
     setSheet(false);
@@ -1028,6 +1046,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
               const saved = withDesk(deskMemory.current[id] ?? null, next.view, opened?.url);
               if (saved) deskMemory.current[id] = saved;
               if (id === chatIdRef.current && screenRef.current === "chat" && saved && !closedBrowsers.current.has(id)) setStage(saved);
+            }
+            const unread = [...next.messages].reverse().find((message) => message.role === "assistant" && message.body === PAGE_UNREAD);
+            if (unread) {
+              const open = browserRef.current;
+              if (open && open.chatId === id && open.status !== "finished") {
+                putBrowser({ ...open, status: "finished", endedAt: new Date().toISOString(), submitted: false });
+              }
             }
             if (id === chatIdRef.current && screenRef.current === "chat") {
               if (next.steps?.length) setLiveSteps(next.steps);
@@ -1295,7 +1320,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       activeId = data.chatId;
       setChatId(data.chatId);
       if (data.memoryFiles) setBoot((prev) => (prev ? { ...prev, memoryFiles: data.memoryFiles } : prev));
-      if (searching) {
+      if (searching && needsLiveBrowser(typed)) {
         closedBrowsers.current.delete(data.chatId);
         const opened = beginSession({
           chatId: data.chatId,
@@ -1303,6 +1328,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           liveUrl: data.view?.liveUrl || "",
         });
         putBrowser(data.view?.url ? readPage(opened, { title: pageTitle(data.view.url), url: data.view.url, note: "Opened" }) : { ...opened, pageUrl: data.view?.url || "" });
+      } else if (searching) {
+        const open = browserRef.current;
+        if (open && open.pages.length === 0) putBrowser(null);
       }
       if (data.steps?.length) setLiveSteps(data.steps);
       if (data.thought) setLiveThought(data.thought);

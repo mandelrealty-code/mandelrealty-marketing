@@ -13,6 +13,8 @@ import {
 } from "./browserSession.js";
 
 export const BROWSER_IDLE_MS = 10 * 60 * 1000;
+export const BROWSER_UNREAD_MS = 30 * 1000;
+export const PAGE_UNREAD = "the page could not be read";
 
 type Tracked = { session: BrowserSession; touchedAt: number };
 
@@ -28,10 +30,36 @@ export function browserSessionsOpened(): number {
   return opened;
 }
 
+/** A price, hours, or product lookup is search and fetch. It never opens a session. */
+export function asksFetchLookup(text: string): boolean {
+  const asked = text.trim();
+  if (!asked) return false;
+  if (/\b(click(?:ing)?(?: through)?|sign(?:ed)?[\s-]?in|log(?:ged)?[\s-]?in|fill(?:ing)? (?:out |in )?(?:a |the )?form)\b/i.test(asked)) return false;
+  const price = /\bhow much\b/i.test(asked) || /\bprice\b/i.test(asked) || /\bcosts?\b/i.test(asked);
+  if (price && /\b(revenue|payout|clients?|invoice)\b/i.test(asked)) return false;
+  const hours = /\b(opening hours|business hours|what are the hours|hours of)\b/i.test(asked);
+  const product = /\b(amazon|walmart|ikea|canadian tire|home depot)\b/i.test(asked) && /\b(bottle|product|pack)\b/i.test(asked);
+  return price || hours || product;
+}
+
 /** Ordinary lookups stay on fetch. Watch and a page that must be clicked open a session. */
 export function needsLiveBrowser(text: string, watch = false): boolean {
   if (watch) return true;
+  if (asksFetchLookup(text)) return false;
   return /\b(click(?:ing)?(?: through)?|sign(?:ed)?[\s-]?in|log(?:ged)?[\s-]?in|fill(?:ing)? (?:out |in )?(?:a |the )?form|javascript)\b/i.test(text);
+}
+
+export function noteLiveSession(): void {
+  opened += 1;
+}
+
+/** A live session with no page read ends after 30 seconds. A session that has read stays for the 10-minute idle backstop. */
+export function unreadTooLong(input: { startedAt: string; pagesRead: number; status?: string }, now = new Date()): boolean {
+  if (input.status === "finished" || input.status === "paused" || input.status === "driving" || input.status === "stuck" || input.status === "done" || input.status === "signin") return false;
+  if (input.pagesRead > 0) return false;
+  const at = new Date(input.startedAt).getTime();
+  if (!Number.isFinite(at)) return false;
+  return now.getTime() - at >= BROWSER_UNREAD_MS;
 }
 
 export function idleTooLong(touchedAt: string | undefined, now = new Date()): boolean {
@@ -83,6 +111,26 @@ export function watchSession(input: { chatId: string; goal: string; liveUrl?: st
     now,
     liveUrl: input.liveUrl ?? "https://browserbase.example/live/watch",
   }), now);
+}
+
+export async function expireUnreadSessions(
+  now: Date,
+  post: (entry: ChatPost) => Promise<void> | void,
+): Promise<BrowserSession[]> {
+  const ended: BrowserSession[] = [];
+  for (const [id, row] of tracked) {
+    if (!unreadTooLong({ startedAt: row.session.startedAt, pagesRead: row.session.pages.length, status: row.session.status }, now)) continue;
+    const session: BrowserSession = {
+      ...row.session,
+      status: "finished",
+      endedAt: now.toISOString(),
+      submitted: false,
+    };
+    await post({ chatId: session.chatId, role: "assistant", body: PAGE_UNREAD });
+    tracked.delete(id);
+    ended.push(session);
+  }
+  return ended;
 }
 
 export async function expireIdleSessions(

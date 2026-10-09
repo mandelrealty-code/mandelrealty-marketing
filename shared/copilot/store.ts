@@ -1010,6 +1010,8 @@ export type StoredBrowser = {
   acts: number;
   fails: number;
   touchedAt?: string;
+  openedAt?: string;
+  pagesRead?: number;
 };
 
 export async function readGmailLogin(): Promise<{ refreshToken: string; email: string } | null> {
