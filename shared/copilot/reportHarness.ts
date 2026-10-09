@@ -4,8 +4,12 @@
  * terms must match the hand totals. The portfolio must match the four
  * single-property reports. A client PDF names only that property. An empty
  * period is one honest page. A forced mismatch produces no PDF.
+ * A missing data directory is created on save. A failed write is said in plain words.
  */
 
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
 import { linesInPdf } from "./contractPdf.js";
@@ -15,7 +19,7 @@ import { installOpsReservations } from "./parity/opsState.js";
 import { installWorld, type ParityReservation } from "./parity/world.js";
 import { asksPropertyReport } from "./reportParse.js";
 import { setReportReconcileFault } from "./reportFigures.js";
-import { resetReportStore } from "./reportStore.js";
+import { failNextReportWrite, rememberReport, reportDirectory, resetReportStore, useReportDirectory } from "./reportStore.js";
 import { skipsWeb } from "./route.js";
 import { researchWebCalls, resetResearch } from "./skillResearch.js";
 import type { PmReservationRow } from "../pm/reservationStore.js";
@@ -289,11 +293,18 @@ process.env.ADMIN_PASSWORD = "parity-admin";
 process.env.ADMIN_SESSION_SECRET = "parity-secret";
 const token = createAdminSessionToken();
 
-type ChatResult = { body: string; file: { filename: string; data: string } | null };
+type ChatPayload = {
+  messages?: { role: string; body: string; file?: { filename: string; data: string } | null; thought?: string | null; steps?: { text: string }[] | null }[];
+  error?: string;
+};
 
-async function chat(chatId: string, text: string): Promise<ChatResult> {
+type ChatResult = { status: number; payload: ChatPayload; body: string; file: { filename: string; data: string } | null };
+
+const RAW_ERROR = /ENOENT|EROFS|EACCES|EPERM|ENOTDIR|ENOSPC|mkdir|\/var\/task|no such file or directory|syscall/i;
+
+async function postChat(chatId: string, text: string): Promise<ChatResult> {
   let status = 0;
-  let payload: { messages?: { role: string; body: string; file?: { filename: string; data: string } | null }[]; error?: string } = {};
+  let payload: ChatPayload = {};
   await handleCopilot(
     {
       method: "POST",
@@ -303,12 +314,17 @@ async function chat(chatId: string, text: string): Promise<ChatResult> {
     } as never,
     {
       status(code: number) { status = code; return this; },
-      json(body: typeof payload) { payload = body; return this; },
+      json(body: ChatPayload) { payload = body; return this; },
     } as never,
   );
-  if (status !== 200) fail(payload.error || String(status));
   const message = [...(payload.messages ?? [])].reverse().find((row) => row.role === "assistant");
-  return { body: message?.body ?? "", file: message?.file ?? null };
+  return { status, payload, body: message?.body ?? "", file: message?.file ?? null };
+}
+
+async function chat(chatId: string, text: string): Promise<ChatResult> {
+  const result = await postChat(chatId, text);
+  if (result.status !== 200) fail(result.payload.error || String(result.status));
+  return result;
 }
 
 function pdfText(file: { data: string } | null): string {
@@ -387,6 +403,68 @@ const again = await chat("report-rose", "download that report again");
 if (!again.file || again.file.data !== rose.file?.data) fail(again.body);
 
 if (researchWebCalls() !== 0) fail(`web calls ${researchWebCalls()}`);
+
+const rosePast = "Generate a report for Roseglor for the past 3 months";
+const allRevenue = "generate a revenue report for all properties for the past 3 months";
+const scratch = mkdtempSync(path.join(tmpdir(), "mrg-report-"));
+const missingData = path.join(scratch, "task", "data");
+const previousVercel = process.env.VERCEL;
+try {
+  if (existsSync(missingData) || existsSync(path.dirname(missingData))) fail("data directory already existed");
+  useReportDirectory(missingData);
+  resetReportStore();
+  const freshRose = await chat("report-fresh-rose", rosePast);
+  const freshAll = await chat("report-fresh-all", allRevenue);
+  if (!freshRose.file || !/The PDF is ready to download/.test(freshRose.body)) fail(freshRose.body || "no Roseglor pdf");
+  if (!freshAll.file || !/The PDF is ready to download/.test(freshAll.body)) fail(freshAll.body || "no portfolio pdf");
+  if (!existsSync(missingData) || !existsSync(path.join(missingData, "copilot-reports.json"))) fail("report file was not created");
+  const stored = readFileSync(path.join(missingData, "copilot-reports.json"), "utf8");
+  if (!stored.includes(freshRose.file.filename) || !stored.includes(freshAll.file.filename)) fail("saved reports missing the PDFs");
+
+  useReportDirectory(null);
+  resetReportStore();
+  failNextReportWrite();
+  const failed = await postChat("report-write-fail", allRevenue);
+  const shown = JSON.stringify(failed.payload);
+  if (failed.status !== 200 || failed.payload.error) fail(failed.payload.error || `status ${failed.status}`);
+  if (failed.file) fail("write failure still produced a PDF");
+  if (!/^The report could not be generated because the report file could not be saved\./.test(failed.body)) fail(failed.body);
+  if (RAW_ERROR.test(shown)) fail(shown);
+  const kept = failed.payload.messages ?? [];
+  if (!kept.some((row) => row.role === "user" && row.body === allRevenue)) fail("the request was dropped");
+  if (!kept.some((row) => row.role === "assistant" && row.body === failed.body)) fail("the failure was not answered in the chat");
+  const continued = await chat("report-write-fail", rosePast);
+  if (continued.status !== 200 || !continued.file) fail(continued.body || "the conversation did not continue");
+  if (RAW_ERROR.test(continued.body) || RAW_ERROR.test(JSON.stringify(continued.payload))) fail(continued.body);
+
+  delete process.env.VERCEL;
+  process.env.VERCEL = "1";
+  useReportDirectory(null);
+  const productionDir = reportDirectory();
+  if (!productionDir.startsWith(tmpdir()) || !productionDir.endsWith(`${path.sep}data`)) fail(productionDir);
+  if (productionDir.includes(`${path.sep}var${path.sep}task`)) fail(productionDir);
+  rmSync(productionDir, { recursive: true, force: true });
+  if (existsSync(productionDir)) fail("production data directory still existed");
+  resetReportStore();
+  rememberReport({
+    id: "MRG-2026-NOV-PT-900",
+    filename: "MRG-2026-NOV-PT-900.pdf",
+    mime: "application/pdf",
+    data: "YQ==",
+    request: rosePast,
+    audience: "internal",
+    totalsLine: "No completed stays in this period.",
+    createdAt: "2026-12-02T20:00:00.000Z",
+  });
+  if (!existsSync(path.join(productionDir, "copilot-reports.json"))) fail("production report was not written");
+} finally {
+  if (previousVercel === undefined) delete process.env.VERCEL;
+  else process.env.VERCEL = previousVercel;
+  useReportDirectory(null);
+  resetReportStore();
+  rmSync(scratch, { recursive: true, force: true });
+  rmSync(path.join(tmpdir(), "mrg-copilot"), { recursive: true, force: true });
+}
 
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
 else process.env.ADMIN_PASSWORD = previousPassword;

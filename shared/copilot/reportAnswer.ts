@@ -40,6 +40,26 @@ const HELD = "The figures did not reconcile, so no PDF was made. Nothing was sen
 
 export async function answerPropertyReport(text: string, prior = "", now = new Date()): Promise<ReportAnswer | null> {
   if (!asksPropertyReport(text)) return null;
+  try {
+    return await composePropertyReport(text, prior, now);
+  } catch (err) {
+    const because = isFileError(err) ? "the report file could not be saved" : "it could not be finished";
+    return {
+      body: `The report could not be generated because ${because}.`,
+      file: null,
+      thought: "Nothing was sent.",
+    };
+  }
+}
+
+function isFileError(err: unknown): boolean {
+  const code = err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "";
+  const message = err instanceof Error ? err.message : "";
+  return /^(ENOENT|EACCES|EPERM|EROFS|ENOTDIR|ENOSPC|EISDIR)$/.test(code)
+    || /ENOENT|EROFS|EACCES|EPERM|mkdir|no such file|read-only file system/i.test(message);
+}
+
+async function composePropertyReport(text: string, prior = "", now = new Date()): Promise<ReportAnswer | null> {
   if (unmanagedPropertyWork(text)) {
     return { body: UNMANAGED_REFUSAL, file: null, thought: "That listing is not one we manage. Nothing was drafted." };
   }

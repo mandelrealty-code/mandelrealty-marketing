@@ -1,8 +1,11 @@
 /**
  * A generated report stays available so the same file can be downloaded again.
+ * Vercel keeps the app at /var/task, so a report is written under the temp directory.
+ * Elsewhere it is written under data/, which is created on save when it is missing.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { parityEnabled } from "./parity/flag.js";
 
@@ -17,15 +20,40 @@ export type StoredReport = {
   createdAt: string;
 };
 
-const FILE = path.join(process.cwd(), "data", "copilot-reports.json");
+const FILE_NAME = "copilot-reports.json";
 let memory: StoredReport[] = [];
 let seq = 0;
 let loaded = false;
+let dirOverride: string | null = null;
+let chosenDir: string | null = null;
+let writeFault = false;
+
+/** The folder a report file is written into. Created on save when it is missing. */
+export function reportDirectory(): string {
+  if (dirOverride) return dirOverride;
+  if (chosenDir) return chosenDir;
+  if (readOnlyRuntime()) return path.join(tmpdir(), "mrg-copilot", "data");
+  return path.join(process.cwd(), "data");
+}
+
+/** Point the next save at a directory. Pass null to use the runtime default. */
+export function useReportDirectory(dir: string | null): void {
+  dirOverride = dir;
+  chosenDir = null;
+  loaded = false;
+}
+
+/** The next save throws the production read-only directory error. */
+export function failNextReportWrite(): void {
+  writeFault = true;
+}
 
 export function resetReportStore(): void {
   memory = [];
   seq = 0;
   loaded = true;
+  chosenDir = null;
+  writeFault = false;
 }
 
 export function nextReportSeq(): number {
@@ -36,8 +64,14 @@ export function nextReportSeq(): number {
 
 export function rememberReport(report: StoredReport): StoredReport {
   load();
+  const previous = memory;
   memory = [report, ...memory.filter((row) => row.id !== report.id)].slice(0, 200);
-  save();
+  try {
+    save();
+  } catch (err) {
+    memory = previous;
+    throw err;
+  }
   return report;
 }
 
@@ -49,12 +83,28 @@ export function findStoredReport(text: string, prior = ""): StoredReport | null 
   return null;
 }
 
+function readOnlyRuntime(): boolean {
+  if (process.env.VERCEL) return true;
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT) return true;
+  const root = process.cwd();
+  return root === "/var/task" || root.startsWith("/var/task/");
+}
+
+function storeFile(dir: string): string {
+  return path.join(dir, FILE_NAME);
+}
+
+function writeStore(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(storeFile(dir), JSON.stringify({ seq, reports: memory }));
+}
+
 function load(): void {
   if (loaded) return;
   loaded = true;
-  if (parityEnabled()) return;
+  if (parityEnabled() && !dirOverride) return;
   try {
-    const parsed = JSON.parse(readFileSync(FILE, "utf8")) as { seq?: number; reports?: StoredReport[] };
+    const parsed = JSON.parse(readFileSync(storeFile(reportDirectory()), "utf8")) as { seq?: number; reports?: StoredReport[] };
     seq = Number(parsed.seq) || 0;
     memory = Array.isArray(parsed.reports) ? parsed.reports : [];
   } catch {
@@ -64,7 +114,20 @@ function load(): void {
 }
 
 function save(): void {
-  if (parityEnabled()) return;
-  mkdirSync(path.dirname(FILE), { recursive: true });
-  writeFileSync(FILE, JSON.stringify({ seq, reports: memory }));
+  if (writeFault) {
+    writeFault = false;
+    const error = new Error("ENOENT: no such file or directory, mkdir '/var/task/data'");
+    (error as NodeJS.ErrnoException).code = "ENOENT";
+    throw error;
+  }
+  if (parityEnabled() && !dirOverride) return;
+  const preferred = reportDirectory();
+  try {
+    writeStore(preferred);
+  } catch (err) {
+    const fallback = path.join(tmpdir(), "mrg-copilot", "data");
+    if (dirOverride || path.resolve(preferred) === path.resolve(fallback)) throw err;
+    writeStore(fallback);
+    chosenDir = fallback;
+  }
 }
