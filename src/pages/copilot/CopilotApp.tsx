@@ -5,7 +5,7 @@ import type { ReviewQueuePayload, ReviewQueueRow } from "../../../shared/copilot
 import type { GuestDraftView, GuestQueue } from "../../../shared/copilot/guestTypes";
 import { ConnectorStatusPage, ConnectorsList, HospitablePage } from "./HospitableConnection";
 import { ReviewsQueue } from "./ReviewsQueue";
-import { GuestMessaging } from "./GuestMessaging";
+import { GuestMessaging, StayCards } from "./GuestMessaging";
 import "./copilot.css";
 import { MemoryFileDetail, MemoryFileList, MemoryWrote } from "./memoryUi";
 import { EmailDraftCard, HospitableDraftCard, ReportCard, SkillDetail, SkillDraftCard, SkillsList } from "./skillsUi";
@@ -2504,7 +2504,18 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             thought={shownTrail(message).thought}
                             steps={shownTrail(message).steps}
                           />
-                          <ChatText text={message.body} muted={message.draft?.status !== "waiting" && !!message.draft} />
+                          {message.stayRows?.length ? (
+                            <>
+                              <ChatText text={message.body.split("\n").filter((line) => !line.includes(" · ")).join("\n")} muted={message.draft?.status !== "waiting" && !!message.draft} />
+                              <StayCards stays={message.stayRows} onOpen={(row) => {
+                                setScreen("guests");
+                                setGuestAnswer(null);
+                                void api<GuestDraftView>("guests-open", { ...row }).then(setGuestAnswer).catch(() => setGuestAnswer(null));
+                              }} />
+                            </>
+                          ) : (
+                            <ChatText text={message.body} muted={message.draft?.status !== "waiting" && !!message.draft} />
+                          )}
                           {message.file ? (
                             <div className="cp-pdfcard">
                               <strong>{message.file.filename}</strong>

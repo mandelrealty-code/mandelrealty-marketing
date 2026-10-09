@@ -7,7 +7,10 @@
 import { asksBuildingRegistration } from "./buildingRegistration.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
+import { isManagedUnit } from "./managedUnits.js";
 import { addDays, torontoToday } from "./time.js";
+import type { StayCard } from "./types.js";
+export type { StayCard };
 
 const CODE = /\b(HM[A-Z0-9]{8,12})\b/i;
 const STAY = /\b(reservations?|check[\s-]?ins?|check[\s-]?outs?|checking[\s-]?in|checking[\s-]?out|next guest|guest messages?|booking history)\b/i;
@@ -16,7 +19,22 @@ const MONTHS = ["january", "february", "march", "april", "may", "june", "july", 
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 type Listing = { id: string; name: string; address: string; label: string; publicName: string };
-type Stay = { id: string; code: string; propertyId: string; status: string; checkIn: string; checkOut: string; guest: string };
+type Stay = {
+  id: string;
+  code: string;
+  propertyId: string;
+  status: string;
+  checkIn: string;
+  checkOut: string;
+  checkInAt: string;
+  checkOutAt: string;
+  guest: string;
+  adults: number | null;
+  children: number | null;
+  infants: number | null;
+  pets: number | null;
+  airbnbThread: string;
+};
 
 const STOP = new Set(["what", "was", "the", "last", "guest", "message", "messages", "on", "reservation", "stay", "for", "at", "and", "from", "who", "sent", "about"]);
 
@@ -52,7 +70,9 @@ export function askedDay(question: string, today = torontoToday()): string | nul
   return null;
 }
 
-export async function answerStay(question: string, prior = ""): Promise<string | null> {
+export async function answerStay(question: string, prior = "", carried: StayCard[] = []): Promise<string | null> {
+  const sheet = await openDaySheet(question, prior, carried);
+  if (sheet) return sheet.body;
   const asked = question.trim();
   if (!asked || asksBuildingRegistration(asked)) return null;
   const code = asked.match(CODE)?.[1]?.toUpperCase() ?? "";
@@ -74,10 +94,6 @@ export async function answerStay(question: string, prior = ""): Promise<string |
     if (code && /\bmessage\b/i.test(asked)) return await messageFor(code);
     if (code && !/\bhow many\b/i.test(asked)) return await messageFor(code, false);
     const managed = await managedListings();
-    if (day && CHECK.test(asked)) {
-      const checkins = !/\bcheck[\s-]?outs?\b/i.test(asked);
-      return await dayCount(managed, day, checkins);
-    }
     if (/\bpropert(?:y|ies)\b/i.test(asked) && !/\b(check|reservation|stay|guest)\b/i.test(asked)) {
       return propertyRoster(managed);
     }
@@ -146,35 +162,193 @@ function propertyRoster(listings: Listing[]): string {
   return `${listings.length} managed ${noun}.\n${listings.map((row) => row.label).join("\n")}`;
 }
 
-async function dayCount(listings: Listing[], day: string, checkins: boolean): Promise<string> {
-  if (!listings.length) return "This read is incomplete. The managed properties failed read.";
-  const noun = checkins ? "check-in" : "check-out";
-  const lines: string[] = [];
+function isDaySheet(body: string): boolean {
+  return /accepted check-in|accepted check-out|No check-ins at|No check-outs/.test(body);
+}
+
+/** A follow-up about names or links stays on the answer it follows. A new day count does not. */
+export function asksSameStays(question: string, prior: string): boolean {
+  if (!isDaySheet(prior) || asksDayCount(question) || /\bHM[A-Z0-9]{8,}\b/i.test(question)) return false;
+  return /\b(names?|links?|airbnb|who are|who is|which guest|their reservation|the reservation|thread)\b/i.test(question);
+}
+
+/** The day sheet, or the same sheet again when the question follows it. */
+export async function openDaySheet(question: string, prior = "", carried: StayCard[] = []): Promise<{ body: string; stays: StayCard[] } | null> {
+  const asked = question.trim();
+  if (asksSameStays(asked, prior)) return { body: prior, stays: carried };
+  if (!asksDayCount(asked)) return null;
+  const day = askedDay(asked);
+  if (!day) return null;
+  const wantsIn = /\b(check[\s-]?ins?|checking[\s-]?in)\b/i.test(asked);
+  const wantsOut = /\b(check[\s-]?outs?|checking[\s-]?out)\b/i.test(asked) || (wantsIn && /\band out\b/i.test(asked));
+  const sides: ("check-in" | "check-out")[] = [
+    ...(wantsIn || !wantsOut ? ["check-in" as const] : []),
+    ...(wantsOut ? ["check-out" as const] : []),
+  ];
+  const listings = (await managedListings()).filter((row) => isManagedUnit(row.label, row.address, row.name));
+  if (!listings.length) return { body: "This read is incomplete. The managed properties failed read.", stays: [] };
+  const blocks: string[] = [];
+  const stays: StayCard[] = [];
   const missed: string[] = [];
-  let total = 0;
+  for (const side of sides) {
+    const built = await oneSide(listings, day, side, torontoToday());
+    blocks.push(built.body);
+    stays.push(...built.stays);
+    missed.push(...built.missed);
+  }
+  const body = blocks.filter(Boolean).join("\n");
+  if (!missed.length) return { body, stays };
+  return { body: `${body}\nThis read is incomplete. ${[...new Set(missed)].join(", ")} failed read.`.trim(), stays };
+}
+
+async function oneSide(
+  listings: Listing[],
+  day: string,
+  kind: "check-in" | "check-out",
+  today: string,
+): Promise<{ body: string; stays: StayCard[]; missed: string[] }> {
+  const noun = kind === "check-in" ? "check-in" : "check-out";
+  const cards: StayCard[] = [];
+  const empty: string[] = [];
+  const missed: string[] = [];
   for (const listing of listings) {
     if (!listing.id) {
       missed.push(listing.label);
       continue;
     }
     try {
-      const stays = await loadStays([listing.id], addDays(day, -1), addDays(day, 1), checkins ? "checkin" : "checkout");
-      const accepted = stays.filter((stay) => {
+      const loaded = await loadStays([listing.id], addDays(day, -1), addDays(day, 1), kind === "check-in" ? "checkin" : "checkout", true);
+      const accepted = loaded.filter((stay) => {
         if (stay.propertyId && listing.id && stay.propertyId !== listing.id) return false;
-        return stay.status === "accepted" && (checkins ? stay.checkIn === day : stay.checkOut === day);
+        if (!isManagedUnit(listing.label, listing.address, listing.name)) return false;
+        return stay.status === "accepted" && (kind === "check-in" ? stay.checkIn === day : stay.checkOut === day);
       });
-      total += accepted.length;
-      lines.push(`${listing.label}: ${accepted.length} accepted ${noun}${accepted.length === 1 ? "" : "s"}`);
+      if (!accepted.length) {
+        empty.push(listing.label);
+        continue;
+      }
+      for (const stay of accepted) {
+        if (!stay.airbnbThread) stay.airbnbThread = await threadOnStay(stay.id);
+        cards.push(cardFor(stay, listing, kind));
+      }
     } catch {
       missed.push(listing.label);
     }
   }
-  const head = `${total} accepted ${noun}${total === 1 ? "" : "s"} on ${day}.`;
-  if (missed.length || lines.length < listings.length) {
-    const names = missed.join(", ");
-    return `${head}\n${lines.join("\n")}\nThis read is incomplete. ${names} failed read.`.trim();
+  const when = day === today ? "today" : `on ${day}`;
+  const lines = cards.map(stayLine);
+  if (!cards.length) {
+    const where = empty.length ? ` at ${englishList(empty)}` : "";
+    return { body: `No ${noun}s${where} ${when}.`, stays: [], missed };
   }
-  return `${head}\n${lines.join("\n")}`.trim();
+  const head = `${cards.length} accepted ${noun}${cards.length === 1 ? "" : "s"} on ${day}.`;
+  const quiet = empty.length ? `No ${noun}s at ${englishList(empty)} ${when}.` : "";
+  return { body: [head, ...lines, quiet].filter(Boolean).join("\n"), stays: cards, missed };
+}
+
+function cardFor(stay: Stay, listing: Listing, kind: "check-in" | "check-out"): StayCard {
+  const guest = stay.guest || "The guest name wasn't on the reservation";
+  const clock = clockOf(kind === "check-in" ? stay.checkInAt : stay.checkOutAt);
+  const when = clock ? `${kind === "check-in" ? "Arrives" : "Departs"} ${clock}` : `${kind === "check-in" ? "Arrives" : "Departs"} ${kind === "check-in" ? stay.checkIn : stay.checkOut}`;
+  const thread = stay.airbnbThread;
+  const label = thread ? `airbnb.ca/hosting/messages/${thread}` : "";
+  return {
+    id: stay.id,
+    guest,
+    first: guest.split(/\s+/)[0] || guest,
+    initials: initialsOf(guest),
+    property: listing.label,
+    propertyId: listing.id,
+    kind,
+    when,
+    party: partyOf(stay),
+    dates: shortDate(kind === "check-in" ? stay.checkIn : stay.checkOut),
+    checkIn: stay.checkIn,
+    checkOut: stay.checkOut,
+    airbnbUrl: thread ? `https://www.airbnb.ca/hosting/messages/${thread}` : "",
+    airbnbLabel: label,
+    airbnbNote: thread ? "" : "No Airbnb thread on this stay.",
+  };
+}
+
+function stayLine(card: StayCard): string {
+  const move = card.when.replace(/^Arrives/, "arrives").replace(/^Departs/, "departs");
+  const link = card.airbnbLabel || card.airbnbNote;
+  return `${card.guest} · ${card.property} · ${move} · ${card.party} · ${link}`;
+}
+
+function partyOf(stay: Stay): string {
+  const parts: string[] = [];
+  if (stay.adults != null) parts.push(`${stay.adults} ${stay.adults === 1 ? "adult" : "adults"}`);
+  if (stay.children != null && stay.children > 0) parts.push(`${stay.children} ${stay.children === 1 ? "child" : "children"}`);
+  if (stay.infants != null && stay.infants > 0) parts.push(`${stay.infants} ${stay.infants === 1 ? "infant" : "infants"}`);
+  if (stay.pets != null && stay.pets > 0) parts.push(`${stay.pets} ${stay.pets === 1 ? "pet" : "pets"}`);
+  return parts.length ? parts.join(", ") : "The party wasn't on the reservation";
+}
+
+function englishList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} or ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, or ${items[items.length - 1]}`;
+}
+
+function initialsOf(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
+  return (parts[0]?.slice(0, 1) || "?").toUpperCase();
+}
+
+function shortDate(iso: string): string {
+  const parsed = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(parsed);
+}
+
+function clockOf(value: string): string {
+  if (!/T\d{2}:\d{2}/.test(value)) return "";
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h12",
+    timeZone: "America/Toronto",
+  }).format(at).replace(/[\u202f\u00a0]/g, " ");
+}
+
+async function threadOnStay(id: string): Promise<string> {
+  try {
+    const messages = await callTool("get-reservation-messages", { uuid: id });
+    return threadFromMessages(messages);
+  } catch {
+    return "";
+  }
+}
+
+function threadFromMessages(raw: unknown): string {
+  for (const row of rowsOf(raw)) {
+    const found = airbnbThread(row);
+    if (found) return found;
+  }
+  return "";
+}
+
+function airbnbThread(row: Record<string, unknown>): string {
+  const conversation = isRow(row.conversation) ? row.conversation : {};
+  const values = [
+    row.platform_thread_id,
+    row.thread_id,
+    row.external_thread_id,
+    conversation.platform_id,
+    conversation.external_id,
+    conversation.thread_id,
+    row.platform_id,
+  ];
+  for (const value of values) {
+    const id = text(value);
+    if (/^\d{5,}$/.test(id)) return id;
+  }
+  return "";
 }
 
 export function pickListings(text: string, listings: Listing[]): Listing[] {
@@ -455,16 +629,33 @@ function labelFor(name: string, address: string): string {
 
 function toStay(row: Record<string, unknown>): Stay {
   const guest = row.guest && typeof row.guest === "object" ? (row.guest as Record<string, unknown>) : {};
+  const guests = row.guests && typeof row.guests === "object" && !Array.isArray(row.guests) ? (row.guests as Record<string, unknown>) : {};
   const first = text(guest.first_name);
+  const platform = text(row.platform_id);
   return {
     id: text(row.id),
-    code: text(row.code) || text(row.platform_id),
+    code: text(row.code) || (/^HM/i.test(platform) ? platform : ""),
     propertyId: text(row.property_id) || text(row.propertyId) || listingFrom(row)?.id || "",
-    status: text(row.status).toLowerCase() || "unknown",
+    status: statusOf(row),
     checkIn: day(text(row.arrival_date) || text(row.check_in)),
     checkOut: day(text(row.departure_date) || text(row.check_out)),
+    checkInAt: text(row.check_in),
+    checkOutAt: text(row.check_out),
     guest: first,
+    adults: countOf(guests.adult_count ?? guests.adults ?? row.adults),
+    children: countOf(guests.child_count ?? guests.children ?? row.children),
+    infants: countOf(guests.infant_count ?? guests.infants ?? row.infants),
+    pets: countOf(guests.pet_count ?? guests.pets ?? row.pets),
+    airbnbThread: airbnbThread(row),
   };
+}
+
+function statusOf(row: Record<string, unknown>): string {
+  const direct = text(row.status).toLowerCase();
+  if (direct && direct !== "unknown") return direct;
+  const bag = isRow(row.reservation_status) ? row.reservation_status : {};
+  const current = isRow(bag.current) ? bag.current : {};
+  return text(current.category).toLowerCase() || direct || "unknown";
 }
 
 function listingFrom(row: Record<string, unknown>): Listing | null {

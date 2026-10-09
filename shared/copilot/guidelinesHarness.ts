@@ -255,6 +255,58 @@ const remembered = assistantBody(await call("POST", {
 if (/Free parking on premises/.test(remembered)) fail(remembered);
 if (!/Free driveway parking/.test(remembered)) fail(remembered || "the correction was not applied");
 
+const stayWorld = worldAt("2026-10-09T15:00:00Z");
+const dianeStay = stayWorld.reservations.find((row) => row.guest === "Diane");
+if (dianeStay) dianeStay.airbnbThread = "481920318";
+stayWorld.reservations.push(
+  {
+    id: "00000000-0000-4000-8000-000000000b09",
+    code: "HMROSE0909",
+    propertyId: ID.rose,
+    status: "accepted",
+    checkIn: "2026-10-09",
+    checkOut: "2026-10-12",
+    guest: "Priya",
+    adults: 2,
+    children: 0,
+    messages: [],
+    airbnbThread: "481920041",
+  },
+  {
+    id: "00000000-0000-4000-8000-000000001109",
+    code: "HM1104TODAY",
+    propertyId: ID.outCharlotte,
+    status: "accepted",
+    checkIn: "2026-10-09",
+    checkOut: "2026-10-12",
+    guest: "Wes",
+    adults: 1,
+    children: 0,
+    messages: [],
+    airbnbThread: "481921104",
+  },
+);
+installWorld(stayWorld);
+setParityClock(stayWorld.now);
+const stayChat = await createChat("Stays");
+const firstStayPayload = await call("POST", { op: "send", text: "Who's checking in and out today?", chatId: stayChat.id, kind: "chat" });
+const secondStayPayload = await call("POST", { op: "send", text: "what are the guest names, can you give me the link to their reservation so i can see it on airbnb", chatId: stayChat.id, kind: "chat" });
+const firstMessages = firstStayPayload.messages;
+const secondMessages = secondStayPayload.messages;
+const firstStay = Array.isArray(firstMessages) ? [...firstMessages].reverse().find((row) => row && typeof row === "object" && (row as { role?: string }).role === "assistant") as { body?: string; stayRows?: { id?: string }[] } | undefined : undefined;
+const secondStay = Array.isArray(secondMessages) ? [...secondMessages].reverse().find((row) => row && typeof row === "object" && (row as { role?: string }).role === "assistant") as { body?: string; stayRows?: { id?: string }[] } | undefined : undefined;
+const firstBody = firstStay?.body ?? "";
+const secondBody = secondStay?.body ?? "";
+const firstIds = (firstStay?.stayRows ?? []).map((row) => row.id).join(",");
+const secondIds = (secondStay?.stayRows ?? []).map((row) => row.id).join(",");
+if (!firstIds || firstIds !== secondIds) fail(`${firstIds} vs ${secondIds}\n${firstBody}\n${secondBody}`);
+if (!firstBody.includes("Diane") || !firstBody.includes("Priya") || !secondBody.includes("Diane") || !secondBody.includes("Priya")) fail(`${firstBody}\n${secondBody}`);
+if (!firstBody.includes("airbnb.ca/hosting/messages/481920318") || !firstBody.includes("airbnb.ca/hosting/messages/481920041")) fail(firstBody);
+if (!secondBody.includes("airbnb.ca/hosting/messages/481920318") || !secondBody.includes("airbnb.ca/hosting/messages/481920041")) fail(secondBody);
+if (/1104|Wes|cannot generate|not seeing check-ins|I'm not seeing/i.test(firstBody) || /1104|Wes|cannot generate|not seeing check-ins|I'm not seeing/i.test(secondBody)) fail(`${firstBody}\n${secondBody}`);
+if (!/No check-ins at .*(Shaw Street|1065 Shaw Street).*(Charlotte 606)/.test(firstBody) && !/No check-ins at .*(Charlotte 606).*(Shaw Street|1065 Shaw Street)/.test(firstBody)) fail(firstBody);
+if (/0 accepted/.test(firstBody)) fail(firstBody);
+
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
 else process.env.ADMIN_PASSWORD = previousPassword;
 if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;

@@ -44,7 +44,7 @@ export async function pinnedCompanyAnswer(text: string): Promise<{ body: string;
       thought: "Nothing was ordered.",
     };
   }
-  if (!asksDayCount(text)) return null;
+  if (asksDayCount(text)) return null;
   const stay = await answerStay(text);
   if (!stay) return null;
   return {

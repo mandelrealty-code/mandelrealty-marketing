@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { GuestBubble, GuestDraftView, GuestFile, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
+import type { StayCard } from "../../../shared/copilot/types";
 
 type SubmitResult = { savedLine: string; failedLine: string; sentText: string };
 
@@ -322,9 +323,22 @@ function Fold({ title, count, hint, open, onToggle, children }: { title: string;
   );
 }
 
-function NeedRow({ row, onOpen }: { row: GuestRow; onOpen: () => void }) {
-  return (
+function NeedRow({ row, onOpen, link }: { row: GuestRow; onOpen: () => void; link?: { href: string; label: string } | { note: string } }) {
+  const linked = Boolean(link);
+  return linked ? (
+    <div className="cp-gm-row" onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter") onOpen(); }} role="link" tabIndex={0}>
+      {needFace(row, link)}
+    </div>
+  ) : (
     <button type="button" className="cp-gm-row" onClick={onOpen}>
+      {needFace(row, link)}
+    </button>
+  );
+}
+
+function needFace(row: GuestRow, link?: { href: string; label: string } | { note: string }) {
+  return (
+    <>
       {row.guestPhoto ? <img src={row.guestPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="face" aria-label={`${row.guest} profile photo`}>{row.initials}</span>}
       <span>
         <strong>{row.guest}</strong>
@@ -334,12 +348,69 @@ function NeedRow({ row, onOpen }: { row: GuestRow; onOpen: () => void }) {
         <q><b>{row.statusLead || row.asked}</b>{row.statusRest ? ` · ${row.statusRest}` : ""}</q>
       </span>
       <span className="wait">
-        <b>{row.wait}</b>
-        <small>waiting</small>
-        {row.mediaLabel ? <small className="media">{row.mediaLabel}</small> : null}
+        {link && "href" in link ? (
+          <span className="cp-answer"><a href={link.href} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>{link.label}</a></span>
+        ) : link && "note" in link ? (
+          <small>{link.note}</small>
+        ) : (
+          <>
+            <b>{row.wait}</b>
+            <small>waiting</small>
+            {row.mediaLabel ? <small className="media">{row.mediaLabel}</small> : null}
+          </>
+        )}
       </span>
-    </button>
+    </>
   );
+}
+
+export function StayCards({ stays, onOpen }: { stays: StayCard[]; onOpen: (row: GuestRow) => void }) {
+  return (
+    <div className="cp-gm" style={{ margin: 0, maxWidth: "none", padding: 0 }}>
+      {stays.map((stay) => {
+        const row = guestRowFromStay(stay);
+        return (
+          <NeedRow
+            key={`${stay.kind}-${stay.id}`}
+            row={row}
+            onOpen={() => onOpen(row)}
+            link={stay.airbnbUrl ? { href: stay.airbnbUrl, label: stay.airbnbLabel } : { note: stay.airbnbNote }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function guestRowFromStay(stay: StayCard): GuestRow {
+  return {
+    id: stay.id,
+    guest: stay.guest,
+    first: stay.first,
+    initials: stay.initials,
+    guestPhoto: "",
+    property: stay.property,
+    propertyId: stay.propertyId,
+    propertyPhoto: "",
+    asked: stay.when,
+    askedEn: stay.when,
+    language: "",
+    wait: "",
+    waitedMs: 0,
+    thanks: false,
+    lane: "none",
+    status: stay.party,
+    statusLead: stay.party,
+    statusRest: "",
+    watch: "",
+    when: stay.when,
+    urgent: false,
+    dates: stay.dates,
+    checkIn: stay.checkIn,
+    checkOut: stay.checkOut,
+    mediaLabel: "",
+    lastNote: "",
+  };
 }
 
 function Thread({

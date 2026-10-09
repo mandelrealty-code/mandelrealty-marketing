@@ -126,7 +126,7 @@ installOpsReservations([
 
 const checkins = await answerStay("How many check-ins are today?");
 if (!checkins) fail("check-ins", "no answer");
-shape("check-ins", checkins, /^0 accepted check-ins on 2026-10-07\./, [
+shape("check-ins", checkins, /^No check-ins at /, [
   "8 Charlotte 606",
   "Roseglor",
   "20 Blue Jays Way",
@@ -297,7 +297,7 @@ installResearch([{
 
 const checkinsToday = await answerStay("How many check ins are today?");
 if (!checkinsToday) fail("check-ins spaced", "no answer");
-shape("check-ins spaced", checkinsToday, /^0 accepted check-ins on 2026-10-07\./, [
+shape("check-ins spaced", checkinsToday, /^No check-ins at /, [
   "8 Charlotte 606",
   "Roseglor",
   "20 Blue Jays Way",
@@ -741,10 +741,10 @@ const tomorrowQ = "How many check ins are tomorrow?";
 if (!asksDayCount(tomorrowQ) || await answerOutsideRentals(tomorrowQ)) fail("tomorrow check-ins", "the day count was not pinned");
 const tomorrowSplit = [
   "3 accepted check-ins on 2026-10-08.",
-  "8 Charlotte 606: 1 accepted check-in",
-  "Roseglor: 1 accepted check-in",
-  "20 Blue Jays Way: 0 accepted check-ins",
-  "1065 Shaw Street: 1 accepted check-in",
+  "Ava · 8 Charlotte 606 · arrives 4:00 PM · 2 adults · No Airbnb thread on this stay.",
+  "Ben · Roseglor · arrives 4:00 PM · 2 adults · No Airbnb thread on this stay.",
+  "Cara · 1065 Shaw Street · arrives 4:00 PM · 1 adult · No Airbnb thread on this stay.",
+  "No check-ins at 20 Blue Jays Way on 2026-10-08.",
 ].join("\n");
 const tomorrowA = await answerStay(tomorrowQ);
 const tomorrowB = await answerStay(tomorrowQ);
@@ -755,10 +755,8 @@ const fridayQ = "How many check ins are on Friday, October 9?";
 if (!asksDayCount(fridayQ)) fail("friday check-ins", "a named day was not a day count");
 const fridaySplit = [
   "1 accepted check-in on 2026-10-09.",
-  "8 Charlotte 606: 0 accepted check-ins",
-  "Roseglor: 0 accepted check-ins",
-  "20 Blue Jays Way: 1 accepted check-in",
-  "1065 Shaw Street: 0 accepted check-ins",
+  "Diane · 20 Blue Jays Way · arrives 4:00 PM · 4 adults, 4 children · No Airbnb thread on this stay.",
+  "No check-ins at 8 Charlotte 606, Roseglor, or 1065 Shaw Street on 2026-10-09.",
 ].join("\n");
 const fridayA = await answerStay(fridayQ);
 const fridayB = await answerStay("How many check ins are on Friday?");

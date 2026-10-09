@@ -31,7 +31,7 @@ import { parityNow } from "../copilot/parity/clock.js";
 import { applyCorrections, takeCorrection } from "../copilot/corrections.js";
 import { refuseCatalogPurchase } from "../copilot/catalogPurchase.js";
 import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
-import { answerStay } from "../copilot/stayAnswer.js";
+import { answerStay, openDaySheet, type StayCard } from "../copilot/stayAnswer.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
 import { answerGuestStay } from "../copilot/guestStayAnswer.js";
@@ -1017,9 +1017,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!webSearch && !skillMode) {
         const history = await listMessages(chatId);
         let prior = "";
+        let carried: StayCard[] = [];
         for (let i = history.length - 1; i >= 0; i -= 1) {
           if (history[i]?.role === "assistant") {
             prior = history[i]?.body ?? "";
+            carried = history[i]?.stayRows ?? [];
             break;
           }
         }
@@ -1249,7 +1251,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        const stay = await answerStay(text, prior);
+        const sheet = await openDaySheet(text, prior, carried);
+        if (sheet) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: sheet.body,
+            stayRows: sheet.stays,
+            steps: [{ text: sheet.body === prior && carried.length ? "Used the same stays" : "Read the reservations" }],
+            thought: "These are the accepted stays on the managed properties. Nothing was sent.",
+          });
+          return done();
+        }
+        const stay = await answerStay(text, prior, carried);
         if (stay) {
           await addMessage({
             chatId,

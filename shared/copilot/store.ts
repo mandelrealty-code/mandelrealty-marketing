@@ -393,7 +393,7 @@ function asReportFile(value: unknown): { filename: string; mime: string; data: s
 }
 
 function unpackMessage(row: CopilotMessage): CopilotMessage {
-  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean; memory_file?: { path: string; preview: string }; file?: { filename?: string; data?: string } }) | null;
+  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean; memory_file?: { path: string; preview: string }; file?: { filename?: string; data?: string }; stay_rows?: CopilotMessage["stayRows"] }) | null;
   const choices = Array.isArray(raw?.choices) ? raw.choices : row.choices ?? null;
   const steps = Array.isArray(raw?.steps) ? raw.steps : row.steps ?? null;
   const thought = typeof raw?.thought === "string" ? raw.thought : row.thought ?? null;
@@ -403,9 +403,10 @@ function unpackMessage(row: CopilotMessage): CopilotMessage {
   const picture = raw?.picture === true || row.picture === true;
   const memoryFile = asMemoryFile(raw?.memory_file) ?? row.memoryFile ?? null;
   const file = asReportFile(raw?.file) ?? row.file ?? null;
-  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture, memoryFile, file };
-  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, memory_file: _memoryFile, file: _file, ...draft } = raw;
-  return { ...row, draft, choices, steps, thought, images, report, run_id, picture, memoryFile, file };
+  const stayRows = Array.isArray(raw?.stay_rows) ? raw.stay_rows : row.stayRows ?? null;
+  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows };
+  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, memory_file: _memoryFile, file: _file, stay_rows: _stays, ...draft } = raw;
+  return { ...row, draft, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows };
 }
 
 export async function ensureLegacyPurchase(message: CopilotMessage): Promise<CopilotMessage> {
@@ -510,6 +511,7 @@ export async function addMessage(input: {
   picture?: boolean;
   memoryFile?: { path: string; title: string; preview: string } | null;
   file?: { filename: string; mime: string; data: string } | null;
+  stayRows?: CopilotMessage["stayRows"];
 }): Promise<CopilotMessage> {
   const extra = {
     ...(input.choices?.length ? { choices: input.choices } : {}),
@@ -521,6 +523,7 @@ export async function addMessage(input: {
     ...(input.picture ? { picture: true } : {}),
     ...(input.memoryFile ? { memory_file: input.memoryFile } : {}),
     ...(input.file ? { file: input.file } : {}),
+    ...(input.stayRows?.length ? { stay_rows: input.stayRows } : {}),
   };
   const storedDraft = Object.keys(extra).length ? { ...(input.draft ?? {}), ...extra } : input.draft ?? null;
   const message: CopilotMessage = {

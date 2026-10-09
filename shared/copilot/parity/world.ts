@@ -47,6 +47,8 @@ export type ParityReservation = {
   messages: ParityMessage[];
   /** Hospitable financials, when the reservation record includes them. */
   financials?: Record<string, unknown>;
+  /** Airbnb's thread id for this conversation, when Hospitable has one. */
+  airbnbThread?: string;
   /** The public message read throws, the way a live thread read can fail. */
   threadUnreadable?: boolean;
   /** When set, the message read throws this instead of the generic thread failure. */
@@ -576,6 +578,7 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     guests: { adult_count: row.adults, child_count: row.children, total: row.adults + row.children },
     properties: property ? [mcpProperty(property)] : [],
     ...(row.financials ? { financials: row.financials } : {}),
+    ...(row.airbnbThread ? { conversation: { platform_id: row.airbnbThread } } : {}),
   };
 }
 

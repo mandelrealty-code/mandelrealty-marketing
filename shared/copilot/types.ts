@@ -88,6 +88,26 @@ export type CopilotMessage = {
   memoryFile?: { path: string; title: string; preview: string } | null;
   /** A PDF or other file the partner can download from this message. */
   file?: { filename: string; mime: string; data: string } | null;
+  /** Named stays from a check-in or check-out answer. A follow-up reuses this list. */
+  stayRows?: StayCard[] | null;
+};
+
+export type StayCard = {
+  id: string;
+  guest: string;
+  first: string;
+  initials: string;
+  property: string;
+  propertyId: string;
+  kind: "check-in" | "check-out";
+  when: string;
+  party: string;
+  dates: string;
+  checkIn: string;
+  checkOut: string;
+  airbnbUrl: string;
+  airbnbLabel: string;
+  airbnbNote: string;
 };
 
 export type CopilotReportRow = { who: string; meta: string; details?: string[]; quote?: string };
