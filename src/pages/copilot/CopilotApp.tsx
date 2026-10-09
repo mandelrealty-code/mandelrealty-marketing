@@ -980,16 +980,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
 
   useEffect(() => {
     load()
-      .then(() => {
+      .then((data) => {
+        const savedGuests = data.guestQueue;
+        if (isGuestQueue(savedGuests)) {
+          setGuestQueue((current) => (isGuestQueue(current) ? current : savedGuests));
+        }
         void api<{ brief: BriefPayload }>("refresh-brief")
-          .then((data) => setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev)))
-          .catch(() => undefined);
-        void api<GuestQueue>("guests-refresh", {})
-          .then((queue) => {
-            if (!isGuestQueue(queue)) return;
-            setGuestQueue((current) => (isGuestQueue(current) ? current : queue));
-            setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
-          })
+          .then((next) => setBoot((prev) => (prev ? { ...prev, brief: next.brief } : prev)))
           .catch(() => undefined);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load Copilot."));
@@ -1749,6 +1746,20 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     void openCard(card.text, label);
   }
 
+  function showGuests() {
+    setScreen("guests");
+    setGuestAnswer(null);
+    setSheet(false);
+    setGuestQueue((current) => (isGuestQueue(current) ? current : (isGuestQueue(boot?.guestQueue) ? boot.guestQueue : null)));
+    void api<GuestQueue>("guests-refresh", {})
+      .then((queue) => {
+        if (!isGuestQueue(queue)) return;
+        setGuestQueue(queue);
+        setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+      })
+      .catch(() => undefined);
+  }
+
   function sideList() {
     return (
     <>
@@ -1762,7 +1773,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         Overview
         {boot?.brief.overview?.count ? <span className="cp-ov-count">{boot.brief.overview.count}</span> : null}
       </button>
-      <button type="button" className={`cp-row${screen === "guests" ? " on" : ""}`} onClick={() => { setScreen("guests"); setGuestAnswer(null); setSheet(false); setGuestQueue((current) => isGuestQueue(current) ? current : (isGuestQueue(boot?.guestQueue) ? boot.guestQueue : null)); void api<GuestQueue>("guests-refresh", {}).then((queue) => { if (!isGuestQueue(queue)) return; setGuestQueue(queue); setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev)); }).catch(() => undefined); }}>
+      <button type="button" className={`cp-row${screen === "guests" ? " on" : ""}`} onClick={showGuests}>
         <span>Guest messaging</span>
         {guestQueue?.connected && guestQueue.waiting.length ? <span className="cp-ov-count">{guestQueue.waiting.length}</span> : null}
       </button>

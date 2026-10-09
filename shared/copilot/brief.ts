@@ -28,6 +28,11 @@ export function quietBrief(now = new Date()): BriefPayload {
   return { hello: greet.hello, line: greet.line, quiet: true, focus: [], eating: [], overview: rankOverview([], {}, now) };
 }
 
+/** The last brief written to the store. Page load paints this before any live connector read. */
+export async function readStoredBrief(now = new Date()): Promise<BriefPayload> {
+  return (await readBriefSnapshot().catch(() => null)) ?? quietBrief(now);
+}
+
 /** The Checks chat's stored items, revalidated, then ranked. Cleaner rows come from the stay list. */
 export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
   const saved = await readBriefSnapshot().catch(() => null);
@@ -61,8 +66,9 @@ export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
   }
 }
 
-/** Rebuilds the brief off the page-load path and stores it for the next open. */
+/** Live overview read. The page calls this after the saved brief is already on screen. */
 export async function refreshSavedBrief(now = new Date()): Promise<BriefPayload> {
+  if (!parityEnabled()) await revalidateWaitingReplies(now).catch(() => undefined);
   const brief = await buildBrief(now);
   await saveBriefSnapshot(brief);
   return brief;

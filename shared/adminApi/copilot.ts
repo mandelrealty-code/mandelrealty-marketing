@@ -8,7 +8,7 @@ import { passwordMatches } from "../adminAuth.js";
 import { updatePmSettings } from "../pm/clientStore.js";
 import { gmailConnected, gmailKeysReady } from "./gmail.js";
 import { outlookConnected, outlookKeysReady } from "./outlook.js";
-import { applyOpenItemOnBrief, dismissSavedCard, noteRankPass, quietBrief, readSavedBrief, refreshSavedBrief } from "../copilot/brief.js";
+import { applyOpenItemOnBrief, dismissSavedCard, noteRankPass, quietBrief, readStoredBrief, refreshSavedBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
 import { answerSignIn, cancelCursorRun, collectCursorRun } from "../copilot/cursorThink.js";
@@ -293,7 +293,7 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
 
 async function factsFor(): Promise<string> {
   const [brief, rows, skills, memory, memoryFiles] = await Promise.all([
-    readSavedBrief().catch(() => null),
+    readStoredBrief().catch(() => null),
     connectors(),
     skillRows().catch(() => [] as SkillRow[]),
     listMemory().catch(() => []),
@@ -341,8 +341,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ]);
       const runningChatIds = [...new Set([...cursorRuns.map((row) => row.chatId), ...browserRuns.map((row) => row.chatId)])];
       const skills = await skillRows().catch(() => [] as Awaited<ReturnType<typeof skillRows>>);
-      const [brief, chats, memory, textLog, textNumbers, memoryFiles, connectorRows, guestQueue] = await Promise.all([
-        readSavedBrief().catch(() => quietBrief()),
+      const [brief, chats, memory, textLog, textNumbers, memoryFiles, connectorRows, guestQueue, hospitable] = await Promise.all([
+        readStoredBrief().catch(() => quietBrief()),
         listChats().catch(() => []),
         listMemory().catch(() => []),
         listTextLog().catch(() => []),
@@ -350,6 +350,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         listMemoryFiles().catch(() => []),
         connectors(skills).catch(() => [] as ConnectorRow[]),
         readSavedGuestQueue().catch(() => null),
+        hospitableCard().catch(() => null),
       ]);
       return res.status(200).json({
         brief,
@@ -362,7 +363,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         memory,
         memoryFiles,
         connectors: connectorRows,
-        hospitable: await hospitableCard().catch(() => null),
+        hospitable,
         runningChatIds,
         billing: process.env.CURSOR_API_KEY
           ? "Cursor Auto is connected. The team spend total appears when the admin key is set."
@@ -378,7 +379,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const chatId = String(body.chatId ?? "").trim();
       if (!chatId) return res.status(400).json({ error: "Missing chat." });
       await markChatSeen(chatId);
-      return res.status(200).json({ chats: await listChats(), brief: await readSavedBrief() });
+      return res.status(200).json({ chats: await listChats(), brief: await readStoredBrief() });
     }
 
     if (op === "run-skill") {
