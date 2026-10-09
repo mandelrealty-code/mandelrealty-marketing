@@ -164,7 +164,7 @@ const noisy = [
 const bags = draftFromHub("Nora", "Where are the garbage bags?", noisy);
 if (bags.mode !== "hub" || !/garbage bags are in the gift basket on the kitchen counter/i.test(bags.draft)) fail("bags answer");
 if (/laundry detergent|dishwasher|Mississauga|amenities|elevator|coffee maker/i.test(bags.draft)) fail("bags extra");
-if (!/Shane, Co-Host 647-822-0448/.test(bags.draft) || !bags.draft.startsWith("Hi Nora,")) fail("bags sign-off");
+if (!bags.draft.startsWith("Hi Nora,") || /Shane|Co-Host|647-822-0448/.test(bags.draft)) fail("bags sign-off");
 
 resetGuestMessaging();
 setGuestPoster(async () => undefined);

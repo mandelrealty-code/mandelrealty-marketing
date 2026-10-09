@@ -10,6 +10,7 @@ import { answerDayPlan, answerWeekCleans, turnoverLine } from "../dayBoard.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
 import { answerBuildingRegistration } from "../buildingRegistration.js";
+import { closeHandledAnswer, correctRelativeWording, presentApprovals } from "../partnerStandard.js";
 import { listStoredWaitingDrafts } from "../checksClaim.js";
 import { answerStay } from "../stayAnswer.js";
 import { answerPropertyFact } from "../propertyFact.js";
@@ -755,7 +756,7 @@ async function fixtureGuestReplyKind(): Promise<void> {
   const view = await openGuestAnswer(nora, world.now);
   expect(view.draft.length > 0 && view.draft.length < 400, "the garbage-bags draft is short", view.draft);
   expect(/garbage bags are in the gift basket on the kitchen counter/i.test(view.draft), "the draft answers where the bags are", view.draft);
-  expect(/Shane, Co-Host 647-822-0448/.test(view.draft) && view.draft.startsWith("Hi Nora,"), "the draft is signed the way partners sign", view.draft);
+  expect(view.draft.startsWith("Hi Nora,") && !/Shane|Co-Host|647-822-0448/.test(view.draft), "the draft has no name or phone sign-off", view.draft);
   expect(!/laundry detergent|dishwasher|Mississauga|amenities|elevator|coffee maker|parking permit/i.test(view.draft), "the draft leaves out the rest of the Hub", view.draft);
   expect(shown.includes(view.draft), "chat shows the same draft the tab shows", shown || "no answer");
   expect(!/Perfect thank you so much|Okay perfect/i.test(shown), "chat does not draft a closer", shown);
@@ -815,6 +816,84 @@ async function fixtureDayBoard(): Promise<void> {
   expect(lines.every((line) => turnoverLine({ property: line.split(" on ")[0] ?? "", propertyId: "", date: "", when: line.split(" on ").slice(1).join(" on "), guest: "", assigned: false }) === line), "each cleans line is one property on one date", lines.join("\n"));
 }
 
+async function fixtureDianeSent(): Promise<void> {
+  const recipients = "supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com";
+  const sent: ParityMail = {
+    id: "diane-sent",
+    mailbox: "gmail",
+    folder: "sent",
+    from: "Shane",
+    email: "shane@mandelrealtygroup.com",
+    to: recipients,
+    date: "2026-10-08T11:24:00-04:00",
+    subject: "AirBNB Rental for Unit 318 from Friday, October 9, 2026 - Monday, October 12, 2026",
+    snippet: "20 Blue Jays Way Unit 318",
+    body: [
+      "Hello,",
+      "",
+      "Please register these vehicles for Unit 318 at 20 Blue Jays Way.",
+      "Guest: Diane",
+      "Check-in is Friday, October 9, 2026 and check-out is Monday, October 12, 2026.",
+      "Vehicle count: 2",
+      "Make: Toyota",
+      "Model: Corolla",
+      "Plate: BKRP441",
+      "Colour: White",
+      "",
+      "Make: Honda",
+      "Model: Civic",
+      "Plate: CKLM220",
+      "Colour: Grey",
+    ].join("\n"),
+    airbnb: false,
+  };
+  const shutdown: ParityMail = {
+    id: "diane-shutdown",
+    mailbox: "gmail",
+    folder: "inbox",
+    from: "Building",
+    email: "supervisorelement@gmail.com",
+    to: "shane@mandelrealtygroup.com",
+    date: "2026-10-08T16:00:00-04:00",
+    subject: "Water shutdown at 20 Blue Jays Way Unit 318",
+    snippet: "shutdown",
+    body: "Water shutdown on Friday, October 9, 2026 from 4:00 PM to 6:00 PM at 20 Blue Jays Way Unit 318.",
+    airbnb: false,
+  };
+  const result = await scan(worldAt("2026-10-09T10:00:00-04:00", false, [sent, shutdown]));
+  expectNothingSent();
+  expect(correctRelativeWording("The building shuts the water off tomorrow.", "2026-10-09", "2026-10-09") === "The building shuts the water off today.", "relative dates are corrected before approval", "tomorrow was left in place on the send day");
+  const shown = presentApprovals([
+    { body: "Hi Diane,\n\nThe building shuts the water off today from 4:00 PM to 6:00 PM. That overlaps the first hour after your 4:00 PM check-in." },
+    { body: "Assign Lee to the Shaw Street turnover on Thursday, October 8." },
+  ]);
+  expect(shown.length === 2 && !shown[0].body.includes("Assign Lee") && !shown[1].body.includes("Diane"), "separate approvals are not bundled", `got ${shown.length}`);
+  expect(!result.drafts.some((row) => row.channel === "email" || /\[weekday\]|Two cars are coming/.test(row.body)), "a sent building email is closed instead of drafted again", result.drafts.map((row) => row.subject || row.body.slice(0, 80)).join(" | ") || "no drafts");
+  const proof = result.reports.find((row) => /already sent/.test(row.headline));
+  const proofText = proof?.text ?? "";
+  expect(Boolean(proof) && proof?.needs_you === false, "the resolved email is reported as closed", proofText.slice(0, 180) || "no proof");
+  expect(/October 8, 2026/.test(proofText) && /11:24/.test(proofText) && /Shane/.test(proofText) && /Gmail/.test(proofText), "the proof gives the date, time, and sender", proofText.slice(0, 240));
+  for (const email of recipients.split(", ")) expect(proofText.includes(email), "the proof names each recipient", email);
+  expect(proofText.includes("BKRP441") && proofText.includes("CKLM220"), "the proof names both plates", proofText);
+  const guest = result.drafts.filter((row) => row.channel === "hospitable" && /water/i.test(row.body));
+  expect(guest.length === 1, "the shutdown is the one remaining approval", `found ${guest.length}`);
+  const exact = "Hi Diane,\n\nThe building shuts the water off today from 4:00 PM to 6:00 PM. That overlaps the first hour after your 4:00 PM check-in.";
+  expect(guest[0]?.body === exact, "the approval is the exact corrected draft", guest[0]?.body ?? "");
+  expect(!/tomorrow/.test(guest[0]?.body ?? "") && (guest[0]?.warnings ?? []).some((warning) => /relative date/.test(warning)), "tomorrow was corrected before approval", (guest[0]?.warnings ?? []).join(" | ") || "no warning");
+  expect(guest[0]?.hospitable?.args.body === exact && !/Plate|register these vehicles/.test(String(guest[0]?.hospitable?.args.body ?? "")), "the approval sends only that guest message", String(guest[0]?.hospitable?.args.body ?? ""));
+  const open = result.reports.find((row) => /shutdown notice/.test(row.headline));
+  const openText = open?.text ?? "";
+  expect(/first hour/.test(openText) && /4:00 PM/.test(openText) && openText.includes(exact), "the open item says why it matters and shows the exact draft", openText.slice(0, 280));
+  expect(/Airbnb app/.test(openText) && /already handled/.test(openText), "the blind spot and the already-handled choice are stated", openText.slice(0, 280));
+  const again = await rescan();
+  expect(!again.drafts.some((row) => row.channel === "email" || /Two cars are coming/.test(row.body)), "the resolved email stays closed on the next pass", again.drafts.map((row) => row.body.slice(0, 60)).join(" | "));
+  const closed = await closeHandledAnswer("This was already handled.");
+  expect(closed === "Closed as already handled. I will not bring it up again.", "already handled is confirmed only after it is stored", closed ?? "no answer");
+  const later = await rescan();
+  expect(!later.drafts.some((row) => /water|shutdown/i.test(row.body)) && !later.reports.some((row) => /shutdown notice/.test(row.headline)), "an item marked already handled does not come back", later.drafts.map((row) => row.body.slice(0, 60)).join(" | "));
+  expectDraftRules(result.drafts, result.reports);
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -839,6 +918,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "21", title: "Building email is claimed only after Checks read-back", run: fixtureBuildingReadBack },
   { id: "22", title: "Closers do not wait and a bags question drafts only that fact", run: fixtureGuestReplyKind },
   { id: "23", title: "Today's plan and the week's cleans share one turnover list", run: fixtureDayBoard },
+  { id: "24", title: "A sent building email stays closed and the shutdown stays its own approval", run: fixtureDianeSent },
 ];
 
 function guard(): void {

@@ -9,6 +9,7 @@ import { readMailThread, searchMail, type MailLetter } from "./mailSearch.js";
 import { parityNow } from "./parity/clock.js";
 import { confirmedChecksDraft } from "./checksClaim.js";
 import { leaveDraft, loadRecentStays, readStayThread, type RecentStay } from "./stayCheck.js";
+import { platesFrom, sentProof } from "./partnerStandard.js";
 import { torontoToday } from "./time.js";
 
 const DATE = /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}, \d{4}/g;
@@ -231,7 +232,11 @@ export async function answerBuildingRegistration(text: string): Promise<string |
     .filter((row) => !alreadySent(row.stay, sent.letters))
     .sort((a, b) => a.stay.checkIn.localeCompare(b.stay.checkIn) || a.stay.id.localeCompare(b.stay.id));
   const next = upcoming[0];
-  if (!next) return "I didn't find an upcoming guest there whose registration hasn't been sent. I didn't draft one.";
+  if (!next) {
+    const closed = sent.letters.find((letter) => platesFrom(`${letter.subject}\n${letter.body}`).length >= 2);
+    if (closed) return sentProof(closed, platesFrom(`${closed.subject}\n${closed.body}`));
+    return "I didn't find an upcoming guest there whose registration hasn't been sent. I didn't draft one.";
+  }
   let messages: Awaited<ReturnType<typeof readStayThread>> = [];
   try {
     messages = await readStayThread(next.stay.id, clock);

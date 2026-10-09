@@ -8,6 +8,8 @@ export type DraftCapture = {
   body: string;
   warnings: string[];
   needs_you: boolean;
+  /** The day the words refer to. Relative dates are corrected against the send day before approval. */
+  eventOn?: string;
   cleanerAssign?: { propertyId: string; scheduledOn: string; cleanerName: string; unit: string };
   purchase?: PurchaseDetail;
   /** What Submit on this card will send. Absent until the card exists. */

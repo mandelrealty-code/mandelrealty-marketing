@@ -24,6 +24,7 @@ import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
 import { answerBuildingRegistration } from "../copilot/buildingRegistration.js";
+import { closeHandledAnswer } from "../copilot/partnerStandard.js";
 import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
 import { answerStay, asksDayCount } from "../copilot/stayAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
@@ -1072,6 +1073,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             thought: /is in Checks/.test(guestThreads)
               ? "Drafts are in Checks. Nothing is sent until Submit."
               : "Nothing new was left in Checks.",
+          });
+          return done();
+        }
+        const handled = await closeHandledAnswer(text);
+        if (handled) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: handled,
+            steps: [{ text: /could not close/.test(handled) ? "The item is still open" : "Closed the item" }],
+            thought: /could not close/.test(handled) ? "The close was not read back." : "The item was read back as closed. It will not be raised again.",
           });
           return done();
         }

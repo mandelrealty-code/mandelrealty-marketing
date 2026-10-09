@@ -16,6 +16,17 @@ import { BLUE_JAYS_PROCESS } from "./processFacts.js";
 import { isThanksOnly, needsGuestReply } from "./guestTranslate.js";
 import { readCleanerUnit, type CleanerPicture, type CleanerSupply, type CleanerTurnover } from "./cleanerRead.js";
 import { describePurchase } from "./purchase.js";
+import {
+  correctRelativeWording,
+  itemHandled,
+  longDate as partnerLongDate,
+  noteStillOpen,
+  platesFrom,
+  registrationAlreadySent,
+  sentProof,
+  shutdownOverlapsArrival,
+} from "./partnerStandard.js";
+import type { MailLetter } from "./mailSearch.js";
 
 const AIRBNB_BLIND = "I cannot see replies sent inside the Airbnb app.";
 const CONTACTS = [
@@ -132,25 +143,37 @@ export async function publishCheckReport(row: ReportCapture): Promise<void> {
   }
 }
 
+function datedDraft(row: DraftCapture): DraftCapture {
+  if (!row.eventOn) return row;
+  const body = correctRelativeWording(row.body, row.eventOn, torontoToday());
+  if (body === row.body) return row;
+  return {
+    ...row,
+    body,
+    warnings: [...row.warnings, "I corrected a relative date so it matches the day this would be sent."],
+  };
+}
+
 export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise<CopilotMessage | null> {
+  const prepared = datedDraft(row);
   const hospitable =
-    row.hospitable ??
-    (row.channel === "hospitable" && reservationId && !row.cleanerAssign
-      ? { tool: "send-reservation-message", args: { reservation_id: reservationId, body: row.body } }
+    prepared.hospitable ??
+    (prepared.channel === "hospitable" && reservationId && !prepared.cleanerAssign
+      ? { tool: "send-reservation-message", args: { reservation_id: reservationId, body: prepared.body } }
       : undefined);
-  captureDraft(hospitable ? { ...row, hospitable } : row);
-  const warnings = row.warnings.length ? `\n\nCheck before approving:\n${row.warnings.map((warning) => `• ${warning}`).join("\n")}` : "";
+  captureDraft(hospitable ? { ...prepared, hospitable } : prepared);
+  const warnings = prepared.warnings.length ? `\n\nCheck before approving:\n${prepared.warnings.map((warning) => `• ${warning}`).join("\n")}` : "";
   const draft: CopilotDraft = {
-    subject: row.subject,
-    body: row.body,
-    to: row.to,
+    subject: prepared.subject,
+    body: prepared.body,
+    to: prepared.to,
     status: "waiting",
-    channel: row.channel === "hospitable" ? "hospitable" : row.channel === "note" ? "note" : "email",
-    ...(row.cleanerAssign ? { cleanerAssign: row.cleanerAssign } : {}),
-    ...(row.purchase ? { purchase: row.purchase } : {}),
+    channel: prepared.channel === "hospitable" ? "hospitable" : prepared.channel === "note" ? "note" : "email",
+    ...(prepared.cleanerAssign ? { cleanerAssign: prepared.cleanerAssign } : {}),
+    ...(prepared.purchase ? { purchase: prepared.purchase } : {}),
     ...(hospitable ? { hospitable } : {}),
   };
-  const body = `${row.cleanerAssign ? row.body : row.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : row.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : "Here is the building email. Nothing was sent."}${warnings}`;
+  const body = `${prepared.cleanerAssign ? prepared.body : prepared.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : prepared.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : "Here is the building email. Nothing was sent."}${warnings}`;
   if (parityEnabled()) {
     try {
       return paritySaveChecksMessage({
@@ -583,7 +606,18 @@ async function oneStay(input: {
     await ensureTurnover();
     return;
   }
-  if (await draftsRecorded(stay.code)) {
+  const sentLetter = await sentBuildingLetter(stay.checkIn, messages);
+  if (sentLetter) {
+    if (!(await draftsRecorded(stay.code))) await recordDrafts(stay.code);
+    const plates = platesFrom(`${sentLetter.subject}\n${sentLetter.body}`);
+    await publishCheckReport({
+      headline: "Building registration is already sent",
+      text: sentProof(sentLetter, plates),
+      needs_you: false,
+      title: stay.code,
+      summary: "The building email is already sent.",
+    });
+  } else if (await draftsRecorded(stay.code)) {
     if (hubFailed && !reported) {
       await publishCheckReport({
         headline: stay.code,
@@ -595,19 +629,78 @@ async function oneStay(input: {
       reported = true;
     }
     await ensureTurnover();
+  } else {
+    const facts = memory || BLUE_JAYS_PROCESS;
+    const mail = await buildingMail(stay, facts);
+    await recordDrafts(stay.code);
+    await leaveDraft(mail);
+    const unseen = mailNote(await searchMail({ keywords: "Blue Jays 318", includeAirbnb: false }).catch(() => ({ hits: [], notes: ["Gmail and Outlook didn't return that search."] })));
+    await say({
+      headline: stay.code,
+      text: `${stay.code}. ${stay.guest || "The guest"} is waiting on diet flags and parking for two cars. No host reply is in the Hospitable thread. ${unseen} ${AIRBNB_BLIND}`,
+      needs_you: true,
+      title: stay.code,
+      summary: stay.code,
+    });
+  }
+  await raiseShutdown(stay, messages);
+}
+
+async function sentBuildingLetter(checkIn: string, messages: Msg[]): Promise<MailLetter | null> {
+  const found = await searchMail({ keywords: "Blue Jays 318", where: "sent", includeAirbnb: false }).catch(() => ({ hits: [], notes: [] as string[] }));
+  const letters: MailLetter[] = [];
+  for (const hit of found.hits) {
+    try {
+      letters.push(await readMail({ mailbox: hit.mailbox, id: hit.id }));
+    } catch {
+      // A message that will not open is not proof the email was sent.
+    }
+  }
+  const threadPlates = platesFrom(messages.filter((row) => row.role === "guest").map((row) => row.body).join("\n"));
+  return registrationAlreadySent(letters, checkIn, threadPlates);
+}
+
+async function raiseShutdown(stay: Stay, messages: Msg[]): Promise<void> {
+  const key = `shutdown:${stay.code}`;
+  if (await itemHandled(key)) return;
+  const found = await searchMail({ keywords: "shutdown", where: "both", includeAirbnb: false }).catch(() => ({ hits: [], notes: [] as string[] }));
+  let notice: MailLetter | null = null;
+  for (const hit of found.hits) {
+    try {
+      const letter = await readMail({ mailbox: hit.mailbox, id: hit.id });
+      if (shutdownOverlapsArrival(`${letter.subject}\n${letter.body}`, stay.checkIn)) {
+        notice = letter;
+        break;
+      }
+    } catch {
+      // A notice that will not open is not treated as sent or as open.
+    }
+  }
+  if (!notice) return;
+  const told = messages.some((row) => row.role !== "system" && /shutdown/i.test(row.body));
+  if (told) {
+    await recordDrafts(`handled:${key}`);
     return;
   }
-  const facts = memory || BLUE_JAYS_PROCESS;
-  const mail = await buildingMail(stay, facts);
-  await recordDrafts(stay.code);
-  await leaveDraft(mail);
-  const unseen = mailNote(await searchMail({ keywords: "Blue Jays 318", includeAirbnb: false }).catch(() => ({ hits: [], notes: ["Gmail and Outlook didn't return that search."] })));
-  await say({
-    headline: stay.code,
-    text: `${stay.code}. ${stay.guest || "The guest"} is waiting on diet flags and parking for two cars. No host reply is in the Hospitable thread. ${unseen} ${AIRBNB_BLIND}`,
+  const guest = stay.guest || "there";
+  const raw = `Hi ${guest},\n\nThe building shuts the water off tomorrow from 4:00 PM to 6:00 PM. That overlaps the first hour after your 4:00 PM check-in.`;
+  const exact = correctRelativeWording(raw, stay.checkIn.slice(0, 10), torontoToday());
+  noteStillOpen(key);
+  await leaveDraft({
+    channel: "hospitable",
+    to: guest,
+    subject: "",
+    body: raw,
+    warnings: [],
+    needs_you: true,
+    eventOn: stay.checkIn.slice(0, 10),
+  }, stay.id);
+  await publishCheckReport({
+    headline: `${guest} still needs the shutdown notice`,
+    text: `The ${partnerLongDate(stay.checkIn)} shutdown overlaps the first hour after ${guest}'s 4:00 PM check-in. No shutdown notice to ${guest} is in the messages I can see.\n\n${exact}\n\n${AIRBNB_BLIND} You can mark this already handled.`,
     needs_you: true,
     title: stay.code,
-    summary: stay.code,
+    summary: "Shutdown notice is still open.",
   });
 }
 

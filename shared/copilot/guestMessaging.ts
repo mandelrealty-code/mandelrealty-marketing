@@ -121,12 +121,6 @@ function narrowSentence(sentence: string, topics: string[]): string {
   return sentence;
 }
 
-function partnerSignOff(memory = ""): string {
-  const line = memory.split("\n").find((row) => /sign-off/i.test(row));
-  if (!line) return "Shane, Co-Host 647-822-0448";
-  return line.replace(/^.*sign-off:\s*/i, "").trim() || "Shane, Co-Host 647-822-0448";
-}
-
 function finishSentence(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
@@ -142,7 +136,6 @@ export function draftFromHub(
   if (!needsGuestReply(ask)) return { mode: "gap", draft: "", facts: "", gap: "" };
   const name = guest.trim().split(/\s+/)[0] || "there";
   const place = context?.place ?? "";
-  const memory = context?.memory ?? "";
   const blue = /blue jays|\b318\b/i.test(place);
   const diet = /gluten-free/i.test(ask) && /lactose-free/i.test(ask);
   const cars = /two cars|parking/i.test(ask);
@@ -165,7 +158,7 @@ export function draftFromHub(
   const facts = parts.map((part) => finishSentence(part)).join(" ");
   return {
     mode: "hub",
-    draft: `Hi ${name},\n\n${facts}\n\n${partnerSignOff(memory)}`,
+    draft: `Hi ${name},\n\n${facts}`,
     facts,
     gap: "",
   };
