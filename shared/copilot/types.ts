@@ -86,6 +86,8 @@ export type CopilotMessage = {
   run_id?: string | null;
   /** A memory file written in this turn. */
   memoryFile?: { path: string; title: string; preview: string } | null;
+  /** A PDF or other file the partner can download from this message. */
+  file?: { filename: string; mime: string; data: string } | null;
 };
 
 export type CopilotReportRow = { who: string; meta: string; details?: string[]; quote?: string };

@@ -28,6 +28,7 @@ import { answerStay, asksDayCount } from "../copilot/stayAnswer.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
+import { answerPdfReport } from "../copilot/revenueReport.js";
 import { answerOwnStore } from "../copilot/storeQuestions.js";
 import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, editProposal, prepareProposalSend, proposalFromWords } from "../copilot/proposal.js";
 import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
@@ -903,6 +904,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: stored.body,
             steps: [{ text: stored.step }],
             thought: stored.thought,
+          });
+          return done();
+        }
+        const pdfReport = await answerPdfReport(text);
+        if (pdfReport) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: pdfReport.body,
+            file: pdfReport.file,
+            steps: [{ text: pdfReport.file ? "Made the PDF" : "Did not make a PDF" }],
+            thought: pdfReport.file ? "The PDF uses the same OPS figures as this answer. Nothing was sent." : "That report was not made. Nothing was substituted.",
           });
           return done();
         }

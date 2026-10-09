@@ -27,7 +27,7 @@ import { parityEnabled } from "./parity/flag.js";
 
 const MISSING = "I don't have that in OPS.";
 
-function money(cents: number): string {
+export function hostMoney(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(cents);
   const dollars = Math.floor(abs / 100);
@@ -75,43 +75,22 @@ export async function answerOps(question: string, now = new Date(), prior = ""):
     }
     const targets = named.length > 0 ? named : properties;
     const single = targets.length === 1 ? targets[0] : null;
-    const covered: string[] = [];
-    let total = 0;
-    let currency = "CAD";
-    for (const property of targets) {
-      let stays;
-      try {
-        stays = await listReservationsForPropertyMonth(property.id, month);
-      } catch {
-        if (single) return `The OPS revenue read for ${spokenProperty(property)} failed.`;
-        throw new Error("pm_reservations read failed");
-      }
-      let propertyTotal = 0;
-      let any = false;
-      for (const stay of stays) {
-        if (isExcludedReservationStatus(stay.status)) continue;
-        const breakdown = breakdownFromFinancials(stay.financials_json, {
-          host_payout_cents: stay.host_payout_cents,
-          gross_cents: stay.gross_cents,
-          currency: stay.currency,
-          commission_base_mode: property.commission_base_mode,
-        });
-        if (!breakdown.host_revenue_cents && !stay.host_payout_cents) continue;
-        propertyTotal += breakdown.host_revenue_cents;
-        currency = breakdown.currency || stay.currency || currency;
-        any = true;
-      }
-      if (any) {
-        covered.push(property.name);
-        total += propertyTotal;
-      }
+    const loaded = await loadHostRevenue(targets, month);
+    if (!loaded.ok) {
+      if (single) return `The OPS revenue read for ${loaded.property} failed.`;
+      return MISSING;
     }
+    const covered = loaded.rows.filter((row) => row.counted);
     if (single) {
       const place = spokenProperty(single);
-      return `${label} host revenue for ${place} was ${money(total)} ${currency}. The figure is host revenue.`;
+      const total = covered.reduce((sum, row) => sum + row.cents, 0);
+      const currency = covered.at(-1)?.currency || "CAD";
+      return `${label} host revenue for ${place} was ${hostMoney(total)} ${currency}. The figure is host revenue.`;
     }
     if (!covered.length) return MISSING;
-    return `${label} host revenue was ${money(total)} ${currency}. This covers ${covered.join(" and ")}. The figure is host revenue.`;
+    const total = covered.reduce((sum, row) => sum + row.cents, 0);
+    const currency = covered.at(-1)?.currency || "CAD";
+    return `${label} host revenue was ${hostMoney(total)} ${currency}. This covers ${covered.map((row) => row.name).join(" and ")}. The figure is host revenue.`;
   } catch {
     return MISSING;
   }
@@ -134,6 +113,48 @@ function spokenProperty(property: { name: string; address: string }): string {
   if (/charlotte/i.test(blob) && /\b606\b/.test(blob)) return "8 Charlotte 606";
   if (/\bshaw\b/i.test(blob)) return "1065 Shaw Street";
   return property.name;
+}
+
+export type HostRevenueRow = {
+  spoken: string;
+  name: string;
+  cents: number;
+  currency: string;
+  counted: boolean;
+};
+
+/** Host revenue for each property, including a zero when OPS has no figure. One failed read stops the list. */
+export async function loadHostRevenue(
+  properties: { id: string; name: string; address: string; commission_base_mode: "nightly" | "nightly_minus_host_fee" }[],
+  month: string,
+): Promise<{ ok: true; rows: HostRevenueRow[] } | { ok: false; property: string }> {
+  const rows: HostRevenueRow[] = [];
+  for (const property of properties) {
+    let stays;
+    try {
+      stays = await listReservationsForPropertyMonth(property.id, month);
+    } catch {
+      return { ok: false, property: spokenProperty(property) };
+    }
+    let cents = 0;
+    let currency = "CAD";
+    let counted = false;
+    for (const stay of stays) {
+      if (isExcludedReservationStatus(stay.status)) continue;
+      const breakdown = breakdownFromFinancials(stay.financials_json, {
+        host_payout_cents: stay.host_payout_cents,
+        gross_cents: stay.gross_cents,
+        currency: stay.currency,
+        commission_base_mode: property.commission_base_mode,
+      });
+      if (!breakdown.host_revenue_cents && !stay.host_payout_cents) continue;
+      cents += breakdown.host_revenue_cents;
+      currency = breakdown.currency || stay.currency || currency;
+      counted = true;
+    }
+    rows.push({ spoken: spokenProperty(property), name: property.name, cents, currency, counted });
+  }
+  return { ok: true, rows };
 }
 
 function fieldName(field: SignField): string {

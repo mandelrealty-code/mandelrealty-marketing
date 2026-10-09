@@ -11,6 +11,8 @@ import { instructions } from "./hospitableAgent.js";
 import { briefFromChecksMessages, readSavedBrief, waitingDraftCard } from "./brief.js";
 import { isDemoted, noteSignal, rankOverview, signalKey, type OverviewInput, type RankSignals } from "./overviewRank.js";
 import { answerOps } from "./ops.js";
+import { linesInPdf } from "./contractPdf.js";
+import { answerPdfReport } from "./revenueReport.js";
 import { ID, worldAt } from "./parity/catalog.js";
 import { failNextOpsPropertyRead, installOpsClients, installOpsReservations } from "./parity/opsState.js";
 import { installWorld } from "./parity/world.js";
@@ -163,6 +165,22 @@ if (blueOnly.includes("$3,500.00") || blueOnly.includes("$2,500.00") || /started
   fail("blue jays revenue", blueOnly);
 }
 if (blueOnly === septemberTotal) fail("blue jays revenue", "same figure as the total");
+const pdfReport = await answerPdfReport("Make me a PDF report of September revenue by property", septemberWhen);
+if (!pdfReport?.file) fail("september pdf", pdfReport?.body || "no pdf");
+if (!pdfReport.body.includes("$3,500.00 CAD") || !/by property/i.test(pdfReport.body)) fail("september pdf", pdfReport.body);
+const pdfText = linesInPdf(Buffer.from(pdfReport.file.data, "base64")).join("\n");
+const propertyFigures = ["8 Charlotte 606: $0.00 CAD", "41 Roseglor Cres: $0.00 CAD", "20 Blue Jays Way: $1,000.00 CAD", "1065 Shaw Street: $2,500.00 CAD"];
+for (const figure of propertyFigures) {
+  if (!pdfReport.body.includes(figure) || !pdfText.includes(figure)) fail("september pdf", `missing ${figure}\n${pdfText}`);
+}
+const summed = propertyFigures.reduce((sum, figure) => sum + Number(figure.replace(/.*\$/, "").replace(/ CAD/, "").replace(/,/g, "")) * 100, 0);
+if (summed !== 350000) fail("september pdf", `figures summed to ${summed}`);
+if (!pdfText.includes("Total: $3,500.00 CAD") || !pdfText.includes("Generated October 7, 2026")) fail("september pdf", pdfText);
+if (!pdfReport.body.includes("Total: $3,500.00 CAD") || !pdfReport.body.includes("Generated October 7, 2026")) fail("september pdf", pdfReport.body);
+const quarterly = await answerPdfReport("Make me a PDF of the quarterly report", septemberWhen);
+if (!quarterly || quarterly.file || /\$3,500|\$1,000|\$2,500/.test(quarterly.body) || !/can't make a quarterly report as a PDF/.test(quarterly.body)) {
+  fail("quarterly pdf", quarterly?.body || "no refusal");
+}
 failNextOpsPropertyRead(ID.blue);
 try {
   const failedRead = await answerOps("And for Blue Jays Way only?", septemberWhen, septemberTotal);

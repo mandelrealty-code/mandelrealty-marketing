@@ -5162,6 +5162,29 @@ html.cp-app[data-cp-theme="dark"] #root {
   margin-top: 8px;
 }
 
+.cp-pdfcard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.cp-pdfcard strong {
+  font-size: 13px;
+}
+
+.cp-pdfcard a {
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
 .cp-purchase {
   display: flex;
   flex-direction: column;

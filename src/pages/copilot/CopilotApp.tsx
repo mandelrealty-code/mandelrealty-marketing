@@ -2422,6 +2422,12 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             steps={shownTrail(message).steps}
                           />
                           <ChatText text={message.body} muted={message.draft?.status !== "waiting" && !!message.draft} />
+                          {message.file ? (
+                            <div className="cp-pdfcard">
+                              <strong>{message.file.filename}</strong>
+                              <a href={`data:${message.file.mime};base64,${message.file.data}`} download={message.file.filename}>Download</a>
+                            </div>
+                          ) : null}
                           {message.memoryFile ? (
                             <MemoryWrote
                               title={message.memoryFile.title || "Memory"}
