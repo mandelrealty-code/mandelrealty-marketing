@@ -2311,6 +2311,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         current,
                         reservationId: row.reservationId,
                         propertyId: row.propertyId,
+                        stars: row.stars,
                       });
                       return {
                         draft: result.draft,
@@ -2333,6 +2334,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         current: row.draft,
                         reservationId: row.reservationId,
                         propertyId: row.propertyId,
+                        stars: row.stars,
                       });
                       return { dispute: result.dispute, facts: result.facts, error: result.unchanged ? result.sourceLine : "" };
                     }}

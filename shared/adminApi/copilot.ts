@@ -443,12 +443,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (op === "reviews-regenerate") {
+      const stars = Number(body.stars);
       const result = await regenerateFromConnection({
         guest: String(body.guest ?? ""),
         review: String(body.review ?? ""),
         current: String(body.current ?? ""),
         reservationId: String(body.reservationId ?? ""),
         propertyId: String(body.propertyId ?? ""),
+        stars: Number.isFinite(stars) && stars >= 1 && stars <= 5 ? stars : undefined,
       });
       return res.status(200).json(result);
     }

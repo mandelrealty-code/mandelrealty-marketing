@@ -1,5 +1,6 @@
 /**
- * Reviews queue. Submit is the only write. Regenerate reads the stay and replaces the draft.
+ * Reviews queue. Submit is the only write. Regenerate reads the stay for facts
+ * and writes a fresh reply to the review. Message text is never copied into the draft.
  */
 
 import { listHospitableReviews, respondToHospitableReview } from "../pm/hospitableClient.js";
@@ -77,33 +78,30 @@ export function regenerateDraft(input: {
   review: string;
   current: string;
   stay: StayFacts | null;
+  stars?: number;
 }): RegeneratedReview {
   const previous = input.current;
   if (!input.stay) {
     return { draft: input.current, previous, sourceLine: SOURCE_UNCHANGED, unchanged: true, dispute: "", facts: [] };
   }
-  const guestMessages = input.stay.messages.filter((row) => row.role === "guest" && row.body.trim());
-  const conversationFailed = input.stay.failed.some((line) => /conversation/i.test(line));
-  const thin = conversationFailed || guestMessages.length < 2;
-  const extras = input.stay.failed.filter((line) => !(thin && conversationFailed && /conversation/i.test(line)));
-  const base = thin
-    ? conversationFailed
-      ? "Regenerated from the review alone. The conversation read failed."
-      : SOURCE_ALONE
-    : SOURCE_FULL;
-  const sourceLine = extras.length && !(thin && conversationFailed && extras.every((line) => /conversation/i.test(line)))
-    ? `${base.replace(/\.$/, "")}. ${extras.filter((line) => !(conversationFailed && /conversation/i.test(line))).join(" ")}`
-    : base;
-  const written = thin ? reviewOnlyDraft(input.guest, input.review) : threadDraft(input.guest, input.review, input.stay);
+  const composed = guardedReply(input.guest, input.review, input.stay, input.stars);
   const dispute = disputeReason(input.review, input.stay);
   return {
-    draft: written,
+    draft: composed.draft,
     previous,
-    sourceLine,
+    sourceLine: sourceLineFor(input.stay, composed.draft, composed.marks),
     unchanged: false,
     dispute: dispute.reason,
     facts: dispute.facts,
   };
+}
+
+export function reviewDraftRejected(draft: string, guest: string, stay: StayFacts | null): boolean {
+  if (repeatedScaffold(draft) || greetingCount(draft, guest) > 1) return true;
+  if (STITCH.test(draft) || STAY_TEMPLATE.test(draft)) return true;
+  if (!stay) return false;
+  const sources = [...stay.messages.map((row) => row.body), stay.reservation, stay.hub];
+  return sources.some((text) => text.trim() && copiedWindow(draft, text));
 }
 
 export async function regenerateFromConnection(input: {
@@ -112,6 +110,7 @@ export async function regenerateFromConnection(input: {
   current: string;
   reservationId: string;
   propertyId: string;
+  stars?: number;
 }): Promise<RegeneratedReview> {
   const token = await copilotHospitableToken();
   if (!token) {
@@ -282,28 +281,190 @@ function reservationNote(raw: unknown): string {
   return parts.join(", ");
 }
 
-function threadDraft(guest: string, review: string, stay: StayFacts): string {
+type FactMarks = { conversation: string[]; stay: string[] };
+
+const STITCH = /you're right about this part/i;
+const STAY_TEMPLATE = /\b(door codes?|access codes?|lockbox|wi-?fi passwords?|check-?in instructions|check-?out reminders?|please check out by|leave the keys|hope you'?re enjoying|keypad|code is)\b/i;
+const SCAFFOLDS = [
+  "you're right about this part",
+  "you're right that",
+  "thank you for writing",
+  "thank you for the kind words",
+  "thank you for staying with us",
+  "we've read what you wrote",
+];
+
+function guardedReply(guest: string, review: string, stay: StayFacts, stars?: number): { draft: string; marks: FactMarks } {
+  const first = composeReply(guest, review, stay, stars, false);
+  if (!reviewDraftRejected(first.draft, guest, stay)) return first;
+  const again = composeReply(guest, review, stay, stars, true);
+  if (!reviewDraftRejected(again.draft, guest, stay)) return again;
   const name = firstName(guest);
-  const host = stay.messages.filter((row) => row.role === "host").map((row) => row.body.trim()).filter(Boolean);
-  const bits: string[] = [`${name}, thank you for writing.`];
-  const acknowledged = new Set<string>();
-  for (const body of host) {
-    for (const sentence of body.split(/(?<=[.!?])\s+/)) {
-      const line = sentence.trim();
-      if (!line || !overlaps(review, line) || acknowledged.has(line)) continue;
-      acknowledged.add(line);
-      bits.push(`You're right about this part: ${line}`);
-      break;
-    }
+  const last = positiveReview(review, stars)
+    ? `${name}, thank you for staying with us. We'd love to welcome you back.`
+    : `${name}, thank you for staying with us.`;
+  if (!reviewDraftRejected(last, guest, stay)) return { draft: last, marks: { conversation: [], stay: [] } };
+  return { draft: "Thank you for staying with us.", marks: { conversation: [], stay: [] } };
+}
+
+function composeReply(guest: string, review: string, stay: StayFacts, stars: number | undefined, plain: boolean): { draft: string; marks: FactMarks } {
+  if (positiveReview(review, stars)) {
+    return {
+      draft: plain
+        ? `${firstName(guest)}, thank you for the kind words. We're glad the stay went well. We'd love to welcome you back.`
+        : thankYou(guest, review),
+      marks: { conversation: [], stay: [] },
+    };
   }
-  if (/never answered|did not answer|didn't answer|didn’t answer|no one answered|ignored our messages|never replied/i.test(review) && host.length) {
-    bits.push(`Your messages were answered. We wrote back: ${clip(host[host.length - 1], 140)}`);
-  } else if (stay.reservation && /charg|\$\d|checkout fee/i.test(review) && /no (later|extra) charge|nothing was added|security hold/i.test(`${stay.reservation} ${host.join(" ")}`)) {
-    bits.push(`Nothing extra was charged at checkout. ${clip(stay.reservation, 120)}`);
+  const guestMessages = stay.messages.filter((row) => row.role === "guest" && row.body.trim());
+  const conversationFailed = stay.failed.some((line) => /conversation/i.test(line));
+  const thin = conversationFailed || guestMessages.length < 2;
+  if (thin) return { draft: reviewOnlyDraft(guest, review), marks: { conversation: [], stay: [] } };
+  return claimReply(guest, review, stay, plain);
+}
+
+function positiveReview(review: string, stars?: number): boolean {
+  if (hasComplaint(review)) return false;
+  return stars == null || stars >= 5;
+}
+
+function thankYou(guest: string, review: string): string {
+  const name = firstName(guest);
+  return `${name}, thank you for the kind words. ${glad(praised(review))} We'd love to welcome you back.`;
+}
+
+function praised(review: string): string[] {
+  const found: string[] = [];
+  const add = (label: string) => {
+    if (!found.includes(label) && found.length < 3) found.push(label);
+  };
+  if (/\blocation\b/i.test(review)) add("the location worked for you");
+  if (/\bresponsive\b/i.test(review)) add("we were responsive");
+  if (/\bcheck[\s-]*in\b/i.test(review) && /\bcheck[\s-]*out\b/i.test(review)) add("check-in and check-out were simple and easy");
+  else if (/\bcheck[\s-]*in\b/i.test(review) && /\b(easy|simple|smooth)\b/i.test(review)) add("check-in was simple and easy");
+  if (/\b(spotless|very clean|so clean|cleanliness)\b/i.test(review)) add("the place was clean");
+  if (/\bcomfort/i.test(review)) add("the place was comfortable");
+  if (!found.length) add("the stay went well");
+  return found;
+}
+
+function glad(items: string[]): string {
+  if (items.length === 1) return `We're glad ${items[0]}.`;
+  const head = items.slice(0, -1).map((item, index) => (index === 0 ? item : `that ${item}`));
+  return `We're glad ${head.join(", ")}, and that ${items[items.length - 1]}.`;
+}
+
+function claimReply(guest: string, review: string, stay: StayFacts, plain = false): { draft: string; marks: FactMarks } {
+  const name = firstName(guest);
+  const host = stay.messages.filter((row) => row.role === "host").map((row) => row.body.trim()).filter((body) => body && !isStayTemplate(body));
+  const marks: FactMarks = { conversation: [], stay: [] };
+  const trueBits: string[] = [];
+  const falseBits: string[] = [];
+  const unanswered = /never answered|did not answer|didn't answer|didn’t answer|no one answered|ignored our messages|never replied/i.test(review);
+  if (unanswered && host.length) {
+    falseBits.push("your messages were answered");
+    marks.conversation.push("messages were answered");
+  }
+  if (/sofa|stain/i.test(review) && host.some((body) => /stain|sofa/i.test(body))) {
+    const when = host.some((body) => /stain|sofa/i.test(body) && /this evening/i.test(body)) ? " this evening" : "";
+    trueBits.push(`the sofa was stained, and the sofa stain was cleaned${when}`);
+    marks.conversation.push("sofa stain");
+    if (when) marks.conversation.push("this evening");
+  }
+  if (/charg|\$\d|checkout fee/i.test(review) && /no (later|extra) charge|nothing was added|security hold/i.test(`${stay.reservation} ${host.join(" ")}`)) {
+    falseBits.push("nothing extra was charged at checkout");
+    marks.conversation.push("nothing extra was charged");
+    if (stay.reservation) marks.stay.push("nothing extra was charged");
+  }
+  if (!trueBits.length) {
+    const topics = reviewTopics(review);
+    if (topics) trueBits.push(topics);
+  }
+  const bits = [`${name}, thank you for writing.`];
+  if (trueBits.length) bits.push(`You're right that ${joinList(trueBits)}.`);
+  if (falseBits.length) bits.push(`${cap(joinList(falseBits))}.`);
+  if (!plain && /sofa/i.test(review) && /sofa/i.test(stay.hub) && /closet/i.test(stay.hub)) {
+    bits.push("A spare cover for the sofa is kept in the closet in the hall.");
+    marks.stay.push("spare cover");
   }
   if (bits.length === 1) bits.push(reviewOnlyMiddle(review));
   bits.push("Thank you for staying with us.");
-  return bits.join(" ");
+  return { draft: bits.join(" "), marks };
+}
+
+function sourceLineFor(stay: StayFacts, draft: string, marks: FactMarks): string {
+  const blob = draft.toLowerCase();
+  const conversation = marks.conversation.some((fact) => blob.includes(fact.toLowerCase()));
+  const record = marks.stay.some((fact) => blob.includes(fact.toLowerCase()));
+  const guestMessages = stay.messages.filter((row) => row.role === "guest" && row.body.trim());
+  const conversationFailed = stay.failed.some((line) => /conversation/i.test(line));
+  const thin = conversationFailed || guestMessages.length < 2;
+  if (!conversation && !record) {
+    if (conversationFailed) return "Regenerated from the review alone. The conversation read failed.";
+    if (thin) return SOURCE_ALONE;
+    return "Regenerated from the review.";
+  }
+  if (thin || stay.failed.length) return readSourceLine(stay);
+  if (conversation && record) return SOURCE_FULL;
+  if (conversation) return "Regenerated from the full conversation.";
+  return "Regenerated from the stay record.";
+}
+
+function readSourceLine(stay: StayFacts): string {
+  const guestMessages = stay.messages.filter((row) => row.role === "guest" && row.body.trim());
+  const conversationFailed = stay.failed.some((line) => /conversation/i.test(line));
+  const thin = conversationFailed || guestMessages.length < 2;
+  const extras = stay.failed.filter((line) => !(thin && conversationFailed && /conversation/i.test(line)));
+  const base = thin
+    ? conversationFailed
+      ? "Regenerated from the review alone. The conversation read failed."
+      : SOURCE_ALONE
+    : SOURCE_FULL;
+  return extras.length && !(thin && conversationFailed && extras.every((line) => /conversation/i.test(line)))
+    ? `${base.replace(/\.$/, "")}. ${extras.filter((line) => !(conversationFailed && /conversation/i.test(line))).join(" ")}`
+    : base;
+}
+
+function repeatedScaffold(draft: string): boolean {
+  const lower = draft.toLowerCase();
+  if (SCAFFOLDS.some((phrase) => lower.split(phrase).length - 1 > 1)) return true;
+  const sentences = draft.split(/(?<=[.!?])\s+/).map((line) => line.trim().toLowerCase()).filter(Boolean);
+  return new Set(sentences).size !== sentences.length;
+}
+
+function greetingCount(draft: string, guest: string): number {
+  const name = firstName(guest).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return draft.split(/(?<=[.!?])\s+/).filter((line) => new RegExp(`^(?:hi |hello |dear )?${name}\\b`, "i").test(line.trim())).length;
+}
+
+function copiedWindow(draft: string, source: string): boolean {
+  const hay = ` ${words(draft).join(" ")} `;
+  const seq = words(source);
+  for (let i = 0; i <= seq.length - 5; i += 1) {
+    if (hay.includes(` ${seq.slice(i, i + 5).join(" ")} `)) return true;
+  }
+  return false;
+}
+
+function words(text: string): string[] {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter((word) => word.length > 1);
+}
+
+function isStayTemplate(text: string): boolean {
+  return STAY_TEMPLATE.test(text);
+}
+
+function hasComplaint(review: string): boolean {
+  return /never answered|did not answer|didn't answer|didn’t answer|no one answered|ignored|stained|stain|dirty|dirt|weak|too soft|too hard|broken|smell|noisy|problem|issue|disappoint|terrible|awful|worst|refund|\bcharg|wasn'?t|weren'?t|not clean|didn'?t|did not|harder|difficult/i.test(review);
+}
+
+function joinList(items: string[]): string {
+  if (items.length === 1) return items[0];
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function cap(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function reviewOnlyDraft(guest: string, review: string): string {
@@ -317,12 +478,15 @@ function reviewOnlyMiddle(review: string): string {
 }
 
 function reviewTopics(review: string): string {
+  if (!hasComplaint(review)) return "";
   const found: string[] = [];
   if (/bed|mattress/i.test(review)) found.push("the bed was not what you wanted");
   if (/shower/i.test(review)) found.push("the shower pressure was weak");
   if (/dirt|stain|clean/i.test(review)) found.push("the place was not as clean as it should have been");
   if (/elevator/i.test(review)) found.push("the elevator made the arrival harder");
-  if (/code|check-?in/i.test(review)) found.push("check-in was harder than it should have been");
+  if (/\b(door code|access code|code|check-?in|check in)\b/i.test(review) && /(hard|difficult|couldn'?t|could not|didn'?t|problem|wrong|failed|wasn'?t)/i.test(review)) {
+    found.push("check-in was harder than it should have been");
+  }
   if (!found.length) return "";
   if (found.length === 1) return found[0];
   return `${found.slice(0, -1).join(", ")} and ${found[found.length - 1]}`;
@@ -331,13 +495,14 @@ function reviewTopics(review: string): string {
 function disputeReason(review: string, stay: StayFacts): { reason: string; facts: ReviewFact[] } {
   const text = textDispute(review);
   const host = stay.messages.filter((row) => row.role === "host").map((row) => row.body.trim()).filter(Boolean);
+  const spoken = host.filter((body) => !isStayTemplate(body));
   const facts = [...text.facts];
   let reason = text.reason;
   if (/never answered|didn't answer|didn’t answer|ignored our messages/i.test(review) && host.length) {
     reason = "The review says the host never answered. The conversation shows a reply.";
     facts.unshift({
       claim: "The host never answered",
-      record: `Host reply: ${clip(host[host.length - 1], 160)}`,
+      record: `Host reply: ${clip(spoken[spoken.length - 1] ?? host[host.length - 1], 160)}`,
       source: "Hospitable thread",
     });
   }
@@ -357,12 +522,6 @@ function textDispute(review: string): { reason: string; facts: ReviewFact[] } {
     };
   }
   return { reason: "", facts: [] };
-}
-
-function overlaps(review: string, sentence: string): boolean {
-  const words = (sentence.toLowerCase().match(/[a-z]{4,}/g) ?? []).filter((word) => !/this|that|with|from|have|been|were|your|about|right/.test(word));
-  const blob = review.toLowerCase();
-  return words.some((word) => blob.includes(word.slice(0, 4)));
 }
 
 function firstName(guest: string): string {

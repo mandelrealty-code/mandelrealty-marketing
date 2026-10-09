@@ -11,6 +11,7 @@ import {
   regenerateDraft,
   regenerateFromConnection,
   resetReviewsQueue,
+  reviewDraftRejected,
   reviewSummary,
   setReviewPoster,
   submitReviewReply,
@@ -36,9 +37,12 @@ setHospitableProbe(async (token, name) => {
   if (name === "get-reservation-messages") {
     return {
       data: [
+        { sender_role: "host", body: "Check-in instructions: the door code is 4581. The lockbox is by the front door." },
         { sender_role: "guest", body: "There's a stain on the sofa." },
         { sender_role: "host", body: "We cleaned the sofa stain this evening." },
+        { sender_role: "host", body: "Hope you're enjoying your stay. Let us know if you need anything." },
         { sender_role: "guest", body: "Thanks for getting back so quickly." },
+        { sender_role: "host", body: "Check-out reminder: please check out by 11 AM and leave the keys on the counter." },
       ],
     };
   }
@@ -59,8 +63,11 @@ const contradicted = await regenerateFromConnection({
 if (contradicted.unchanged) fail("thread draft was not written");
 if (contradicted.sourceLine !== SOURCE_FULL) fail("full conversation line");
 if (!/sofa stain/i.test(contradicted.draft) || !/this evening/i.test(contradicted.draft)) fail("thread facts");
-if (!/answered/i.test(contradicted.draft)) fail("correction");
-if (/never answered|actually|you're wrong|you are wrong/i.test(contradicted.draft)) fail("defensive");
+if ((contradicted.draft.match(/you're right that/gi) ?? []).length !== 1) fail("acknowledgement once");
+if ((contradicted.draft.match(/your messages were answered/gi) ?? []).length !== 1) fail("correction once");
+if (/never answered|actually|you're wrong|you are wrong|you're right about this part/i.test(contradicted.draft)) fail("defensive");
+if (/door code|lockbox|4581|check-?out reminder|hope you're enjoying|leave the keys|check-in instructions/i.test(contradicted.draft)) fail("stay template in the reply");
+if (contradicted.draft.includes("We cleaned the sofa stain this evening.")) fail("copied the thread");
 if (!reads.includes("get-reservation-messages") || !reads.includes("get-reservation") || !reads.includes("get-property-knowledge-hub")) fail("stay was not re-read");
 if (posts.length) fail("regenerate posted");
 if (JSON.stringify(contradicted).includes(GOOD)) fail("token rendered");
@@ -109,6 +116,75 @@ const named = regenerateDraft({
   },
 });
 if (!/Knowledge Hub read failed/.test(named.sourceLine) || !named.sourceLine.startsWith(SOURCE_FULL.replace(/\.$/, ""))) fail("failed read name");
+
+const cormacStay = {
+  messages: [
+    { role: "host" as const, body: "Check-in instructions: the door code is 4581. The lockbox is by the front door. WiFi password is charlotte606." },
+    { role: "guest" as const, body: "Got in fine, thanks." },
+    { role: "host" as const, body: "Hope you're enjoying your stay. The coffee is in the cupboard if you need anything during your stay." },
+    { role: "guest" as const, body: "All good here." },
+    { role: "host" as const, body: "Check-out reminder: please check out by 11 AM and leave the keys on the counter." },
+  ],
+  reservation: "Status accepted, check-in 2026-10-03",
+  hub: "Door code 4581. Check-out is 11 AM. Lockbox by the front door.",
+  failed: [],
+};
+const cormac = regenerateDraft({
+  guest: "Cormac",
+  review: "Great location... Host was very responsive and check in / check out was simple and easy",
+  current: "Cormac, thank you for writing. We've read what you wrote. Thank you for staying with us.",
+  stars: 5,
+  stay: cormacStay,
+});
+const cormacSentences = cormac.draft.split(/(?<=[.!?])\s+/).filter((line) => line.trim());
+if (cormacSentences.length < 2 || cormacSentences.length > 4) fail(`thank-you length ${cormac.draft}`);
+if (!/location/i.test(cormac.draft) || !/responsive/i.test(cormac.draft)) fail("praised points");
+if (!/check-?in/i.test(cormac.draft) || !/check-?out/i.test(cormac.draft)) fail("check-in praise");
+if (/door code|lockbox|wifi password|charlotte606|4581|check-?in instructions|check-?out reminder|hope you're enjoying|leave the keys|you're right about this part|during your stay/i.test(cormac.draft)) fail(`stay template ${cormac.draft}`);
+if (/you're right/i.test(cormac.draft)) fail("acknowledgement on a compliment");
+if (cormac.sourceLine !== "Regenerated from the review.") fail(cormac.sourceLine);
+if (reviewDraftRejected(cormac.draft, "Cormac", cormacStay)) fail("thank-you rejected");
+const stitched = "Cormac, thank you for writing. You're right about this part: Check-in instructions: the door code is 4581. You're right about this part: Check-out reminder: please check out by 11 AM and leave the keys on the counter. Hi Cormac, hope you're enjoying your stay.";
+if (!reviewDraftRejected(stitched, "Cormac", cormacStay)) fail("sanity gate");
+
+const falseStay = {
+  messages: [
+    { role: "host" as const, body: "Check-in instructions: the door code is 4581. The lockbox is by the front door." },
+    { role: "guest" as const, body: "There's a stain on the sofa." },
+    { role: "host" as const, body: "We cleaned the sofa stain this evening." },
+    { role: "host" as const, body: "Hope you're enjoying your stay. Let us know if you need anything." },
+    { role: "guest" as const, body: "Thanks for getting back so quickly." },
+    { role: "host" as const, body: "Check-out reminder: please check out by 11 AM and leave the keys on the counter." },
+  ],
+  reservation: "Status accepted, check-in 2026-10-03",
+  hub: "Sofa cover is spare, in the hall closet.",
+  failed: [] as string[],
+};
+const falseClaim = regenerateDraft({
+  guest: "Jordan Lee",
+  review: "The host never answered our messages, and the sofa was stained when we arrived.",
+  current: "Jordan, thank you for writing. We've read what you wrote. Thank you for staying with us.",
+  stars: 2,
+  stay: falseStay,
+});
+if ((falseClaim.draft.match(/you're right that/gi) ?? []).length !== 1) fail("false-claim acknowledgement");
+if ((falseClaim.draft.match(/your messages were answered/gi) ?? []).length !== 1) fail("false-claim correction");
+if (/door code|lockbox|4581|check-?in instructions|check-?out reminder|hope you're enjoying|leave the keys|you're right about this part/i.test(falseClaim.draft)) fail("false-claim template");
+if (falseClaim.draft.includes("We cleaned the sofa stain this evening.")) fail("false-claim copied the thread");
+if (reviewDraftRejected(falseClaim.draft, "Jordan Lee", falseStay)) fail(`false-claim rejected ${falseClaim.draft}`);
+
+const copiedHub = "A spare cover for the sofa is kept in the closet in the hall.";
+const rewritten = regenerateDraft({
+  guest: "Jordan Lee",
+  review: "The host never answered our messages, and the sofa was stained when we arrived.",
+  current: "Jordan, thank you for writing. We've read what you wrote. Thank you for staying with us.",
+  stars: 2,
+  stay: { ...falseStay, hub: copiedHub },
+});
+if (rewritten.draft.includes(copiedHub)) fail("rejected draft was shown");
+if ((rewritten.draft.match(/you're right that/gi) ?? []).length !== 1) fail("regenerated acknowledgement");
+if ((rewritten.draft.match(/your messages were answered/gi) ?? []).length !== 1) fail("regenerated correction");
+if (/stay record|Knowledge Hub/i.test(rewritten.sourceLine)) fail(rewritten.sourceLine);
 
 const ranked = rankReviews([
   { id: "b", stars: 5, reviewedAt: "2026-10-08", review: "Great", returned: false },
