@@ -26,8 +26,10 @@ import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
 import { answerBuildingRegistration, answerRegistrationStatus } from "../copilot/buildingRegistration.js";
-import { closeHandledAnswer } from "../copilot/partnerStandard.js";
+import { closeHandledAnswer, proveOutgoingMail } from "../copilot/partnerStandard.js";
 import { parityNow } from "../copilot/parity/clock.js";
+import { applyCorrections, takeCorrection } from "../copilot/corrections.js";
+import { refuseCatalogPurchase } from "../copilot/catalogPurchase.js";
 import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
 import { answerStay } from "../copilot/stayAnswer.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
@@ -73,6 +75,7 @@ import {
   removeTextNumber,
   renameChat,
   saveSkill,
+  saveStoredOpenItem,
   updateDraft,
 } from "../copilot/store.js";
 import type { ConnectorRow, SkillRow } from "../copilot/types.js";
@@ -826,6 +829,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ chatId, messages, chats, pending });
       };
       const clock = parityNow() ?? new Date();
+      const corrected = takeCorrection(text);
+      if (corrected && !pictureMode && !skillMode) {
+        const items = await listOpenItems();
+        for (const item of items) {
+          if (item.status !== "open") continue;
+          const next = applyCorrections(item.text);
+          if (next !== item.text) await saveStoredOpenItem({ ...item, text: next });
+        }
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: corrected,
+          steps: [{ text: "Corrected the stored record" }],
+          thought: "The correction is stored. Later answers use it.",
+        });
+        return done();
+      }
       if (asksMailBreakdown(text)) {
         const narrative = await answerMailChain(text);
         await addMessage({
@@ -1398,7 +1418,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(200).json({ message });
         }
         const quantity = Number(body.quantity ?? detail.quantity);
-        const result = await commitPurchase(detail, Number.isInteger(quantity) ? quantity : detail.quantity);
+        const boughtQty = Number.isInteger(quantity) ? quantity : detail.quantity;
+        const blocked = refuseCatalogPurchase({
+          propertyId: detail.propertyId,
+          productName: detail.productName,
+          quantity: boughtQty,
+          priceCents: detail.priceCents ?? -1,
+          seller: detail.retailer,
+          shipTo: detail.shipTo,
+        });
+        if (blocked) {
+          const message = await updateDraft(messageId, {
+            status: "waiting",
+            purchase: { kind: "failed", reason: blocked, detail },
+            bodyText: blocked,
+          });
+          return res.status(200).json({ message });
+        }
+        const result = await commitPurchase(detail, boughtQty);
         if (result.kind === "ordered") {
           const message = await updateDraft(messageId, {
             status: "sent",
@@ -1549,10 +1586,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               rfcId: draft.replyMessageId,
               mailbox: draft.mailbox,
             });
+            const proof = await proveOutgoingMail({
+              subject: draft.subject,
+              body: edited || draft.body,
+              to: draft.to,
+            });
             const message = await updateDraft(messageId, {
-              status: "sent",
+              status: proof.sent ? "sent" : "waiting",
               body: edited || undefined,
-              bodyText: "Sent.",
+              bodyText: proof.text,
             });
             return res.status(200).json({ message });
           } catch (err) {
