@@ -26,10 +26,22 @@ export type ReportCapture = {
 
 export type CommitAttempt = { connector: string; detail: string };
 
+export type MailQueryCapture = { mailbox: "gmail" | "outlook"; query: string };
+
+export type MailMatchCapture = {
+  keywords: string;
+  id: string;
+  subject: string;
+  date: string;
+  mailbox: string;
+};
+
 const drafts: DraftCapture[] = [];
 const reports: ReportCapture[] = [];
 const commits: CommitAttempt[] = [];
 const reminders: { text: string; dueOn: string }[] = [];
+const mailQueries: MailQueryCapture[] = [];
+const mailMatches: MailMatchCapture[] = [];
 let cleanerCalls = 0;
 let browserCalls = 0;
 let purchases = 0;
@@ -40,6 +52,8 @@ export function resetCaptures(): void {
   reports.length = 0;
   commits.length = 0;
   reminders.length = 0;
+  mailQueries.length = 0;
+  mailMatches.length = 0;
   cleanerCalls = 0;
   browserCalls = 0;
   purchases = 0;
@@ -116,6 +130,24 @@ export function capturedBrowserCalls(): number {
 
 export function capturedPurchases(): number {
   return purchases;
+}
+
+export function captureMailQuery(mailbox: "gmail" | "outlook", query: string): void {
+  if (!parityEnabled()) return;
+  mailQueries.push({ mailbox, query });
+}
+
+export function capturedMailQueries(): MailQueryCapture[] {
+  return mailQueries.map((row) => ({ ...row }));
+}
+
+export function captureMailMatch(row: MailMatchCapture): void {
+  if (!parityEnabled()) return;
+  mailMatches.push({ ...row });
+}
+
+export function capturedMailMatches(): MailMatchCapture[] {
+  return mailMatches.map((row) => ({ ...row }));
 }
 
 export function accountWideRan(): boolean {

@@ -3,6 +3,12 @@ import type { StrComplianceSnapshot } from "./strCompliance.js";
 
 export type PmClientStatus = "active" | "paused";
 
+/** client = a partner-marked client. contact and owner stay in the store and are not clients. */
+export type PmClientKind = "client" | "contact" | "owner";
+
+/** live clients are the current list. onboarding clients are a separate group. */
+export type PmClientStage = "live" | "onboarding";
+
 export type PmClient = {
   id: string;
   created_at: string;
@@ -11,6 +17,8 @@ export type PmClient = {
   email: string;
   phone: string;
   status: PmClientStatus;
+  kind: PmClientKind;
+  stage: PmClientStage;
   lead_id: string | null;
 };
 

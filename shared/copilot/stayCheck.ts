@@ -256,11 +256,11 @@ export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise
   }
 }
 
-function relevant(stay: Stay, today: string): boolean {
+function relevant(stay: Stay, today: string, openThreads = false): boolean {
   if (!stay.id || !stay.code) return false;
   if (/cancel/.test(stay.status)) return stay.checkOut >= addDays(today, -21);
   if (stay.checkIn <= today && stay.checkOut > today) return true;
-  if (stay.checkIn >= today && stay.checkIn <= addDays(today, 21)) return true;
+  if (stay.checkIn >= today && (openThreads || stay.checkIn <= addDays(today, 21))) return true;
   if (stay.checkOut <= today && stay.checkOut >= addDays(today, -7)) return true;
   return false;
 }
@@ -272,8 +272,12 @@ export type RecentStay = {
   label: string;
 };
 
-/** Managed stays the checks would read, plus any property whose reservation list failed. */
-export async function loadRecentStays(now: Date): Promise<{ stays: RecentStay[]; failed: string[] }> {
+/**
+ * Managed stays the checks would read, plus any property whose reservation list failed.
+ * Guest messaging passes open threads so a future arrival is kept no matter how far out it is.
+ * The checks keep the 21-day arrival window.
+ */
+export async function loadRecentStays(now: Date, openThreads = false): Promise<{ stays: RecentStay[]; failed: string[] }> {
   const today = torontoToday(now);
   const properties = [];
   for (const row of await listPmProperties().catch(() => [])) {
@@ -292,7 +296,7 @@ export async function loadRecentStays(now: Date): Promise<{ stays: RecentStay[];
       const raw = await callTool("get-reservations", {
         properties: [id],
         start_date: addDays(today, -30),
-        end_date: addDays(today, 60),
+        end_date: addDays(today, openThreads ? 730 : 60),
         date_query: "checkout",
         per_page: 100,
         page: 1,
@@ -300,7 +304,7 @@ export async function loadRecentStays(now: Date): Promise<{ stays: RecentStay[];
       });
       const rows = rowsOf(raw)
         .map((row) => toStay(row, id))
-        .filter((stay) => stay.id && relevant(stay, today) && !/cancel/.test(stay.status));
+        .filter((stay) => stay.id && relevant(stay, today, openThreads) && !/cancel/.test(stay.status));
       for (const stay of rows) {
         stays.push({ stay, propertyName: property.name, address: property.address, label });
       }

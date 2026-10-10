@@ -9,7 +9,7 @@ import type { PmReservationRow } from "../../pm/reservationStore.js";
 import type { SopItem, SopStep, SopTargetRole } from "../../pm/sopTypes.js";
 import type { SignField } from "../../pm/signFields.js";
 import type { ProposalDraft, ProposalRecord, ProposalRoom } from "../../pm/proposalStore.js";
-import type { PmClient, PmClientListItem } from "../../pm/types.js";
+import type { PmClient, PmClientKind, PmClientListItem, PmClientStage } from "../../pm/types.js";
 import { parityEnabled } from "./flag.js";
 
 export type OpsContractFile = {
@@ -36,7 +36,7 @@ export function opsActive(): boolean {
   return parityEnabled();
 }
 
-export function installOpsClients(rows: Array<Pick<PmClient, "name" | "email"> & { id?: string }>): PmClient[] {
+export function installOpsClients(rows: Array<Pick<PmClient, "name" | "email"> & { id?: string; kind?: PmClientKind; stage?: PmClientStage }>): PmClient[] {
   clients = rows.map((row) => ({
     id: row.id || randomUUID(),
     created_at: "2026-01-01T00:00:00.000Z",
@@ -45,6 +45,8 @@ export function installOpsClients(rows: Array<Pick<PmClient, "name" | "email"> &
     email: row.email,
     phone: "",
     status: "active",
+    kind: row.kind ?? "client",
+    stage: row.stage ?? "live",
     lead_id: null,
   }));
   return clients.map((row) => ({ ...row }));
@@ -64,7 +66,7 @@ export function opsClient(id: string): PmClient | null {
   return clients.find((row) => row.id === id) ?? null;
 }
 
-export function opsCreateClient(input: { name: string; email?: string }): PmClient {
+export function opsCreateClient(input: { name: string; email?: string; kind?: PmClientKind; stage?: PmClientStage }): PmClient {
   const name = input.name.trim();
   const existing = clients.find((row) => row.name.toLowerCase() === name.toLowerCase());
   if (existing) return { ...existing };
@@ -76,6 +78,8 @@ export function opsCreateClient(input: { name: string; email?: string }): PmClie
     email: (input.email ?? "").trim(),
     phone: "",
     status: "active",
+    kind: input.kind ?? "client",
+    stage: input.stage ?? "live",
     lead_id: null,
   };
   clients.push(row);

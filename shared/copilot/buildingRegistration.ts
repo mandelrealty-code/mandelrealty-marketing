@@ -10,7 +10,8 @@ import { readMailThread, searchMail, type MailLetter } from "./mailSearch.js";
 import { parityNow } from "./parity/clock.js";
 import { confirmedChecksDraft } from "./checksClaim.js";
 import { leaveDraft, loadRecentStays, readStayThread, type RecentStay } from "./stayCheck.js";
-import { namesMatch, platesFrom, registrationAlreadySent, sentProof } from "./partnerStandard.js";
+import { captureMailMatch } from "./parity/capture.js";
+import { namesMatch, platesFrom, sentProof } from "./partnerStandard.js";
 import { torontoToday } from "./time.js";
 
 const DATE = /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}, \d{4}/g;
@@ -64,36 +65,64 @@ async function arrivalFor(name: string, now: Date): Promise<StayMove | "unread" 
   return null;
 }
 
-/** Sent in both mailboxes: the guest's name, then the registration subject. */
-async function sentRegistrationLetters(guest: string): Promise<{ letters: MailLetter[]; note: string }> {
-  const queries = [guest.trim(), "AirBNB Rental for Unit 318"].filter((keywords) => keywords.length >= 2);
+function plainDate(iso: string): string {
+  return longDate(iso).replace(/^[A-Za-z]+,\s*/, "");
+}
+
+/** The sent subject names the unit and both stay dates, and does not name the guest. */
+function registrationSubject(checkIn: string, checkOut: string): string {
+  return `AirBNB Rental for Unit 318 from ${plainDate(checkIn)} - ${plainDate(checkOut)}`;
+}
+
+function subjectForStay(subject: string, checkIn: string, checkOut: string): boolean {
+  if (!checkIn || !checkOut || !/unit\s*318/i.test(subject)) return false;
+  const arrival = [longDate(checkIn), plainDate(checkIn)];
+  const departure = [longDate(checkOut), plainDate(checkOut)];
+  return arrival.some((form) => subject.includes(form)) && departure.some((form) => subject.includes(form));
+}
+
+/** Sent in both mailboxes. The subject pattern is first. The guest's name is only the second pass. */
+async function lettersInSent(keywords: string): Promise<{ letters: MailLetter[]; note: string }> {
   const seen = new Set<string>();
   const letters: MailLetter[] = [];
   const notes: string[] = [];
   for (const mailbox of ["gmail", "outlook"] as const) {
-    for (const keywords of queries) {
-      const found = await searchMail({ keywords, mailbox, where: "sent", includeAirbnb: false });
-      notes.push(...found.notes);
-      for (const hit of [...found.hits].sort((a, b) => b.date.localeCompare(a.date))) {
-        const key = `${hit.mailbox}:${hit.id}`;
-        if (seen.has(key)) continue;
-        try {
-          const thread = await readMailThread({ mailbox: hit.mailbox, id: hit.threadId || hit.id });
-          const letter = thread.find((row) => row.id === hit.id) ?? thread.at(-1);
-          if (!letter) continue;
-          seen.add(key);
-          letters.push(letter);
-        } catch {
-          // A message that will not open is skipped. The other mailbox can still hold the registration.
-        }
+    const found = await searchMail({ keywords, mailbox, where: "sent", includeAirbnb: false });
+    notes.push(...found.notes);
+    for (const hit of [...found.hits].sort((a, b) => b.date.localeCompare(a.date))) {
+      const key = `${hit.mailbox}:${hit.id}`;
+      if (seen.has(key)) continue;
+      try {
+        const thread = await readMailThread({ mailbox: hit.mailbox, id: hit.threadId || hit.id });
+        const letter = thread.find((row) => row.id === hit.id) ?? thread.at(-1);
+        if (!letter) continue;
+        seen.add(key);
+        letters.push(letter);
+      } catch {
+        // A message that will not open is skipped. The other mailbox can still hold the registration.
       }
     }
   }
   if (!letters.length) {
     const note = notes.find((line) => /isn't connected|didn't return/i.test(line));
-    return { letters: [], note: note ?? "I didn't find a sent building email for that property. I didn't draft one." };
+    return { letters: [], note: note ?? "" };
   }
   return { letters, note: "" };
+}
+
+async function sentRegistrationLetters(guest: string, property: string, checkIn: string, checkOut: string): Promise<{ letters: MailLetter[]; note: string; keywords: string }> {
+  const subject = /blue jays|\b318\b/i.test(property) && checkOut ? registrationSubject(checkIn, checkOut) : "";
+  const passes = [subject, guest.trim()].filter((keywords, index, all) => keywords.length >= 2 && all.indexOf(keywords) === index);
+  let note = "";
+  for (const keywords of passes) {
+    const found = await lettersInSent(keywords);
+    note = found.note;
+    const matched = found.letters
+      .filter((letter) => subjectForStay(letter.subject, checkIn, checkOut))
+      .sort((a, b) => b.date.localeCompare(a.date));
+    if (matched.length) return { letters: matched, note: "", keywords };
+  }
+  return { letters: [], note, keywords: subject || guest.trim() };
 }
 
 export async function answerRegistrationStatus(text: string, now?: Date): Promise<string | null> {
@@ -104,13 +133,13 @@ export async function answerRegistrationStatus(text: string, now?: Date): Promis
   const arrival = await arrivalFor(name, clock);
   if (arrival === "unread") return "I can't read today's plan, so I didn't say the guest is missing. I didn't draft an email.";
   if (!arrival) return missingGuestLine(name);
-  const sent = await sentRegistrationLetters(arrival.guest);
-  if (!sent.letters.length) {
+  const sent = await sentRegistrationLetters(arrival.guest, arrival.property, arrival.date, arrival.checkOut ?? "");
+  const closed = sent.letters[0];
+  if (!closed) {
     if (/isn't connected|didn't return/i.test(sent.note)) return `${sent.note} I didn't draft an email.`;
     return `I didn't find a sent building registration for ${arrival.guest} at ${arrival.property}. Nothing was drafted.`;
   }
-  const closed = registrationAlreadySent(sent.letters, arrival.date, []);
-  if (!closed) return `I didn't find a sent building registration for ${arrival.guest}'s stay starting ${arrival.date}. Nothing was drafted.`;
+  captureMailMatch({ keywords: sent.keywords, id: closed.id, subject: closed.subject, date: closed.date, mailbox: closed.mailbox });
   return sentProof(closed, platesFrom(`${closed.subject}\n${closed.body}`));
 }
 

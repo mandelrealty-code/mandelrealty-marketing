@@ -8,7 +8,7 @@ import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
 import { asksFetchLookup } from "./browserTier.js";
 import { hostMoney } from "./ops.js";
-import { worldAt } from "./parity/catalog.js";
+import { ID, worldAt } from "./parity/catalog.js";
 import { installOpsReservations } from "./parity/opsState.js";
 import { installWorld, type ParityReservation } from "./parity/world.js";
 import { asksPayoutSplit, skipsWeb } from "./route.js";
@@ -181,9 +181,11 @@ process.env.ADMIN_PASSWORD = "parity-admin";
 process.env.ADMIN_SESSION_SECRET = "parity-secret";
 const token = createAdminSessionToken();
 
-async function chat(chatId: string, text: string): Promise<string> {
+type ChatMessage = { role: string; body: string; property?: { label: string; opsId: string; hospitableId: string; cleanerId: string; month?: string } | null };
+
+async function chatTurn(chatId: string, text: string): Promise<ChatMessage> {
   let status = 0;
-  let payload: { messages?: { role: string; body: string }[]; error?: string } = {};
+  let payload: { messages?: ChatMessage[]; error?: string } = {};
   await handleCopilot(
     {
       method: "POST",
@@ -197,7 +199,11 @@ async function chat(chatId: string, text: string): Promise<string> {
     } as never,
   );
   if (status !== 200) fail(payload.error || String(status));
-  return [...(payload.messages ?? [])].reverse().find((message) => message.role === "assistant")?.body ?? "";
+  return [...(payload.messages ?? [])].reverse().find((message) => message.role === "assistant") ?? { role: "assistant", body: "" };
+}
+
+async function chat(chatId: string, text: string): Promise<string> {
+  return (await chatTurn(chatId, text)).body;
 }
 
 if (!asksPayoutSplit(SPLIT) || !skipsWeb(SPLIT) || asksFetchLookup(SPLIT)) fail("the split was still a web lookup");
@@ -229,6 +235,86 @@ if (/Casey|Dee|HMNOVCAS01|HMNOVDEE01/.test(names)) fail(names);
 
 if (!/not set/i.test(unset) || !/Shaw/.test(unset) || /\$/.test(unset)) fail(unset);
 if (researchWebCalls() !== 0) fail(`web calls after unset: ${researchWebCalls()}`);
+
+const roseWorld = worldAt("2026-10-09T12:00:00-04:00");
+const rose = roseWorld.properties.find((row) => row.id === ID.rose);
+if (!rose) fail("Roseglor is missing from the fixture");
+rose.billing = {
+  rateBps: 2000,
+  commissionBaseMode: "nightly_minus_host_fee",
+  cleaningFeeKeeper: "mrg",
+  hstMode: "cohost",
+  hstBps: 300,
+};
+const ruzaina = {
+  id: "res-ruzaina",
+  code: "HMNOVRUZ01",
+  status: "accepted",
+  guest: "Ruzaina Sathar",
+  checkIn: "2026-11-11",
+  checkOut: "2026-11-16",
+  nights: 5,
+  room: 100000,
+  fee: 3000,
+  cleaning: 8000,
+  guestPaid: 120000,
+};
+const bethanie = {
+  id: "res-bethanie",
+  code: "HMNOVBET01",
+  status: "accepted",
+  guest: "Bethanie Fils",
+  checkIn: "2026-11-20",
+  checkOut: "2026-11-24",
+  nights: 4,
+  room: 50000,
+  fee: 1500,
+  cleaning: 6000,
+  guestPaid: 65000,
+};
+for (const row of [ruzaina, bethanie]) {
+  roseWorld.reservations.push({
+    id: row.id,
+    code: row.code,
+    propertyId: ID.rose,
+    status: "accepted",
+    checkIn: row.checkIn,
+    checkOut: row.checkOut,
+    guest: row.guest,
+    adults: 2,
+    children: 0,
+    messages: [],
+  });
+}
+installWorld(roseWorld);
+installOpsReservations([ruzaina, bethanie].map((row) => ({
+  ...opsStay(row),
+  property_id: ID.rose,
+})));
+const roseStatement = await buildMonthStatement(ID.rose, "2026-11");
+if (roseStatement.reservation_count !== 2) fail(`Roseglor statement counted ${roseStatement.reservation_count}`);
+resetResearch();
+const COUNT = "for 41 roseglor, how many reservations does it have in november?";
+const NAMES_FOLLOW = "what are the guest names for that reservation?";
+const MONEY = "How much will we make, and how much will the host make in November?";
+const counted = await chatTurn("parity-rose", COUNT);
+const namedGuests = await chatTurn("parity-rose", NAMES_FOLLOW);
+const splitFollow = await chatTurn("parity-rose", MONEY);
+const roseProperty = counted.property;
+if (!roseProperty || roseProperty.opsId !== ID.rose || roseProperty.hospitableId !== ID.rose || roseProperty.cleanerId !== ID.rose || roseProperty.month !== "2026-11") {
+  fail(`property ${JSON.stringify(roseProperty)}`);
+}
+if (namedGuests.property?.opsId !== ID.rose || splitFollow.property?.opsId !== ID.rose) fail("the follow-ups left the resolved property");
+if (!/2 accepted stays/.test(counted.body)) fail(counted.body);
+if (!namedGuests.body.includes("Ruzaina Sathar") || !namedGuests.body.includes("Bethanie Fils")) fail(namedGuests.body);
+if (/couldn't match|didn't find that property/i.test(namedGuests.body)) fail(namedGuests.body);
+const roseMrg = hostMoney(roseStatement.mrg_take_cents);
+const roseHost = hostMoney(roseStatement.net_to_host_cents);
+if (!splitFollow.body.includes(roseMrg) || !splitFollow.body.includes(roseHost) || !/MRG/.test(splitFollow.body) || !/host/.test(splitFollow.body)) {
+  fail(`${roseMrg} / ${roseHost}\n${splitFollow.body}`);
+}
+if (/didn't find that property in OPS/i.test(splitFollow.body)) fail(splitFollow.body);
+if (researchWebCalls() !== 0) fail(`web calls on the Roseglor sequence: ${researchWebCalls()}`);
 
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
 else process.env.ADMIN_PASSWORD = previousPassword;

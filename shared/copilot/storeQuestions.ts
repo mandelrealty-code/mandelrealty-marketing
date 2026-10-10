@@ -86,15 +86,29 @@ function dateFromQuestion(text: string, now: Date): string {
   return `${year}-${String(month + 1).padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+function clientNames(rows: Awaited<ReturnType<typeof listPmClients>>, stage: "live" | "onboarding"): string[] {
+  return rows
+    .filter((row) => row.kind === "client" && (stage === "onboarding" ? row.stage === "onboarding" : row.stage !== "onboarding"))
+    .map((row) => row.name.trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "en"));
+}
+
+/** Live clients, then an Onboarding group. Contacts and owners are left out. */
+export function formatClientRoster(rows: Awaited<ReturnType<typeof listPmClients>>): string {
+  const live = clientNames(rows, "live");
+  const onboarding = clientNames(rows, "onboarding");
+  const count = live.length + onboarding.length;
+  if (!count) return CLIENT_STORE_EMPTY;
+  const lines = [`${count} client${count === 1 ? "" : "s"}.`, ...live];
+  if (onboarding.length) lines.push("", "Onboarding", ...onboarding);
+  return lines.join("\n");
+}
+
 async function clientList(text: string): Promise<StoreAnswer | null> {
   if (!asksClientList(text)) return null;
   try {
-    const names = (await listPmClients())
-      .map((row) => row.name.trim())
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b, "en"));
-    if (!names.length) return { body: CLIENT_STORE_EMPTY, step: "Read the client list", thought: OPS };
-    return { body: names.join("\n"), step: "Read the client list", thought: OPS };
+    return { body: formatClientRoster(await listPmClients()), step: "Read the client list", thought: OPS };
   } catch {
     return { body: CLIENT_STORE_EMPTY, step: "The client list failed", thought: "OPS didn't return the clients. Nothing was sent." };
   }

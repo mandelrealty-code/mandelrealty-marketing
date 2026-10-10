@@ -113,6 +113,16 @@ export type CopilotMessage = {
   file?: { filename: string; mime: string; data: string } | null;
   /** Named stays from a check-in or check-out answer. A follow-up reuses this list. */
   stayRows?: StayCard[] | null;
+  /** The property resolved on this turn. A follow-up reads this same record. */
+  property?: PropertyIdentity | null;
+};
+
+export type PropertyIdentity = {
+  label: string;
+  opsId: string;
+  hospitableId: string;
+  cleanerId: string;
+  month?: string;
 };
 
 export type StayCard = {

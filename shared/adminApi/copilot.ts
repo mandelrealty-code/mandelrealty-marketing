@@ -31,7 +31,8 @@ import { parityNow } from "../copilot/parity/clock.js";
 import { applyCorrections, takeCorrection } from "../copilot/corrections.js";
 import { refuseCatalogPurchase } from "../copilot/catalogPurchase.js";
 import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
-import { answerStay, openDaySheet, type StayCard } from "../copilot/stayAnswer.js";
+import { answerStayDetail, openDaySheet, type StayCard } from "../copilot/stayAnswer.js";
+import type { PropertyIdentity } from "../copilot/propertyIdentity.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerPayout } from "../copilot/payoutAnswer.js";
 import { answerPropertyReport } from "../copilot/reportAnswer.js";
@@ -636,6 +637,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           chatId: chat.id,
           role: "assistant",
           body: pinned.body,
+          property: pinned.property,
           steps: [{ text: pinned.step }],
           thought: pinned.thought,
         });
@@ -911,18 +913,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const history = await listMessages(chatId);
         const earlier = history.slice(0, -1);
         let priorBody = "";
+        let carriedProperty: PropertyIdentity | null = null;
         for (let i = earlier.length - 1; i >= 0; i -= 1) {
           if (earlier[i]?.role === "assistant") {
             priorBody = earlier[i]?.body ?? "";
+            carriedProperty = earlier[i]?.property ?? null;
             break;
           }
         }
-        const payout = await answerPayout(text, priorBody, clock);
+        const payout = await answerPayout(text, priorBody, clock, carriedProperty);
         if (payout) {
           await addMessage({
             chatId,
             role: "assistant",
             body: payout.body,
+            property: payout.property ?? carriedProperty,
             steps: [{ text: payout.step }],
             thought: "This came from the property's saved payout terms and the reservation records. Nothing was searched on the web.",
           });
@@ -942,12 +947,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
       if (!pictureMode) {
-        const pinned = await pinnedCompanyAnswer(text);
+        const pinnedHistory = await listMessages(chatId);
+        let pinnedPrior = "";
+        let pinnedCarried: StayCard[] = [];
+        let pinnedProperty: PropertyIdentity | null = null;
+        for (let i = pinnedHistory.length - 1; i >= 0; i -= 1) {
+          if (pinnedHistory[i]?.role === "assistant") {
+            pinnedPrior = pinnedHistory[i]?.body ?? "";
+            pinnedCarried = pinnedHistory[i]?.stayRows ?? [];
+            pinnedProperty = pinnedHistory[i]?.property ?? null;
+            break;
+          }
+        }
+        const pinned = await pinnedCompanyAnswer(text, { prior: pinnedPrior, carried: pinnedCarried, property: pinnedProperty });
         if (pinned) {
           await addMessage({
             chatId,
             role: "assistant",
             body: pinned.body,
+            property: pinned.property ?? pinnedProperty,
             steps: [{ text: pinned.step }],
             thought: pinned.thought,
           });
@@ -1055,10 +1073,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const history = await listMessages(chatId);
         let prior = "";
         let carried: StayCard[] = [];
+        let carriedProperty: PropertyIdentity | null = null;
         for (let i = history.length - 1; i >= 0; i -= 1) {
           if (history[i]?.role === "assistant") {
             prior = history[i]?.body ?? "";
             carried = history[i]?.stayRows ?? [];
+            carriedProperty = history[i]?.property ?? null;
             break;
           }
         }
@@ -1300,12 +1320,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           return done();
         }
-        const stay = await answerStay(text, prior, carried);
+        const stay = await answerStayDetail(text, prior, carried, carriedProperty);
         if (stay) {
           await addMessage({
             chatId,
             role: "assistant",
-            body: stay,
+            body: stay.body,
+            property: stay.property,
             steps: [{ text: "Read the reservation" }],
             thought: "This came from Hospitable. Nothing was sent.",
           });

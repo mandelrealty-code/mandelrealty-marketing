@@ -1,7 +1,19 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { opsActive, opsClient, opsClients, opsCreateClient } from "../copilot/parity/opsState.js";
 import { parityMcpToken, parityPat } from "../copilot/parity/world.js";
-import type { PmClient, PmClientListItem, PmClientStatus, PmSettings } from "./types.js";
+import type { PmClient, PmClientKind, PmClientListItem, PmClientStage, PmClientStatus, PmSettings } from "./types.js";
+
+export function readClientKind(value: unknown): PmClientKind {
+  return value === "client" || value === "contact" || value === "owner" ? value : "owner";
+}
+
+export function readClientStage(value: unknown): PmClientStage {
+  return value === "onboarding" ? "onboarding" : "live";
+}
+
+function marked(row: PmClient): PmClient {
+  return { ...row, kind: readClientKind(row.kind), stage: readClientStage(row.stage) };
+}
 
 function db() {
   const sb = getSupabaseAdmin();
@@ -20,8 +32,9 @@ export async function listPmClients(): Promise<PmClientListItem[]> {
   return (data ?? []).map((row) => {
     const r = row as PmClient & { pm_properties: { id: string }[] | null };
     const { pm_properties, ...client } = r;
+    const markedClient = marked(client as PmClient);
     return {
-      ...(client as PmClient),
+      ...markedClient,
       property_count: pm_properties?.length ?? 0,
     };
   });
@@ -37,7 +50,7 @@ export async function getPmClient(id: string): Promise<PmClient | null> {
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
-  return (data as PmClient | null) ?? null;
+  return data ? marked(data as PmClient) : null;
 }
 
 export async function createPmClient(input: {
@@ -45,10 +58,12 @@ export async function createPmClient(input: {
   email?: string;
   phone?: string;
   status?: PmClientStatus;
+  kind?: PmClientKind;
+  stage?: PmClientStage;
 }): Promise<PmClient> {
   const name = input.name.trim();
   if (!name) throw new Error("Name is required.");
-  if (opsActive()) return opsCreateClient({ name, email: input.email });
+  if (opsActive()) return opsCreateClient({ name, email: input.email, kind: input.kind, stage: input.stage });
   const status = input.status === "paused" ? "paused" : "active";
   const { data, error } = await db()
     .from("pm_clients")
@@ -57,11 +72,13 @@ export async function createPmClient(input: {
       email: (input.email ?? "").trim(),
       phone: (input.phone ?? "").trim(),
       status,
+      kind: readClientKind(input.kind ?? "client"),
+      stage: readClientStage(input.stage ?? "live"),
     })
     .select("*")
     .single();
   if (error) throw error;
-  return data as PmClient;
+  return marked(data as PmClient);
 }
 
 export async function updatePmClient(
@@ -71,6 +88,8 @@ export async function updatePmClient(
     email?: string;
     phone?: string;
     status?: PmClientStatus;
+    kind?: PmClientKind;
+    stage?: PmClientStage;
   },
 ): Promise<PmClient> {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -87,6 +106,8 @@ export async function updatePmClient(
     }
     updates.status = patch.status;
   }
+  if (patch.kind != null) updates.kind = readClientKind(patch.kind);
+  if (patch.stage != null) updates.stage = readClientStage(patch.stage);
   const { data, error } = await db()
     .from("pm_clients")
     .update(updates)
@@ -94,7 +115,7 @@ export async function updatePmClient(
     .select("*")
     .single();
   if (error) throw error;
-  return data as PmClient;
+  return marked(data as PmClient);
 }
 
 export async function deletePmClient(id: string): Promise<void> {

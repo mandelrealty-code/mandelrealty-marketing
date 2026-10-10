@@ -11,6 +11,7 @@ import { rateOnDate, splitStayForTerms, type StayTermSplit } from "../pm/stateme
 import type { PmPropertyDetail, PmPropertyListItem } from "../pm/types.js";
 import { hospitableRead } from "./hospitableConnection.js";
 import { hostMoney } from "./ops.js";
+import { identityOf, textNamesProperty, type PropertyIdentity } from "./propertyIdentity.js";
 import { asksPayoutSplit } from "./route.js";
 
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
@@ -22,12 +23,14 @@ export async function answerPayout(
   question: string,
   prior = "",
   now = new Date(),
-): Promise<{ body: string; step: string } | null> {
+  carried: PropertyIdentity | null = null,
+): Promise<{ body: string; step: string; property: PropertyIdentity | null } | null> {
   if (asksGuestNames(question) && isPayoutAnswer(prior)) {
-    return { body: await namesFor(prior), step: "Read the reservation records" };
+    return { body: await namesFor(prior), step: "Read the reservation records", property: carried };
   }
   if (!asksPayoutSplit(question)) return null;
-  return { body: await splitFor(question, now), step: "Read the payout terms" };
+  const split = await splitFor(question, now, carried);
+  return { body: split.body, step: "Read the payout terms", property: split.property };
 }
 
 function asksGuestNames(question: string): boolean {
@@ -55,19 +58,21 @@ async function namesFor(prior: string): Promise<string> {
   return `Guest names for those stays:\n${lines.join("\n")}`;
 }
 
-async function splitFor(question: string, now: Date): Promise<string> {
+async function splitFor(question: string, now: Date, carried: PropertyIdentity | null): Promise<{ body: string; property: PropertyIdentity | null }> {
   const properties = await listPmProperties();
   const named = properties.filter((property) => mentions(question, property));
-  if (named.length === 0) return "I didn't find that property in OPS.";
+  const carriedRow = carried ? properties.find((property) => property.id === carried.opsId) ?? null : null;
   if (named.length > 1) {
-    return `Which property should I use? I found ${named.map((property) => property.name).join(" and ")}.`;
+    return { body: `Which property should I use? I found ${named.map((property) => property.name).join(" and ")}.`, property: null };
   }
-  const property = named[0]!;
-  const month = monthOf(question, now);
-  if (!month) return "Which month should I use?";
+  const property = named[0] ?? carriedRow;
+  if (!property) return { body: "I didn't find that property in OPS.", property: null };
+  const month = monthOf(question, now) ?? carried?.month ?? null;
+  const identity = identityOf(property, month ?? undefined);
+  if (!month) return { body: "Which month should I use?", property: identity };
   const detail = await getPmPropertyDetail(property.id);
   if (!detail || (detail.current_term == null && detail.terms.length === 0)) {
-    return `Payout terms are not set for ${placeOf(property)}.`;
+    return { body: `Payout terms are not set for ${placeOf(property)}.`, property: identity };
   }
   const reservations = await listReservationsForPropertyMonth(property.id, month);
   const includeExcluded = /\b(cancell?ed|declin\w*)\b/i.test(question);
@@ -77,7 +82,7 @@ async function splitFor(question: string, now: Date): Promise<string> {
   const label = monthLabel(month);
   const place = placeOf(property);
   if (!stays.length) {
-    return `${termsLine(detail)} No accepted stays at ${place} have a night in ${label}.`;
+    return { body: `${termsLine(detail)} No accepted stays at ${place} have a night in ${label}.`, property: identity };
   }
   let lastRate = detail.current_term?.rate_bps ?? null;
   let guestPaid = 0;
@@ -118,7 +123,7 @@ async function splitFor(question: string, now: Date): Promise<string> {
     ? `${label} booked business for ${place} is ${hostMoney(mrgTake)} MRG and ${hostMoney(hostNet)} to the host. This is booked business, not money received.`
     : `${label} for ${place} is ${hostMoney(mrgTake)} MRG and ${hostMoney(hostNet)} to the host.`;
   const totals = `${label} totals: guest paid ${hostMoney(guestPaid)}, host revenue ${hostMoney(hostRevenue)}, MRG take ${hostMoney(mrgTake)}, host net ${hostMoney(hostNet)}.`;
-  return [lead, termsLine(detail), ...lines, totals].join("\n");
+  return { body: [lead, termsLine(detail), ...lines, totals].join("\n"), property: identity };
 }
 
 function stayLine(guest: string, checkIn: string | null, checkOut: string | null, code: string, split: StayTermSplit): string {
@@ -148,15 +153,12 @@ function placeOf(property: Property): string {
 }
 
 function mentions(question: string, property: Property): boolean {
+  if (textNamesProperty(question, property.name, property.address)) return true;
   const asked = question.toLowerCase();
   const name = property.name.trim().toLowerCase();
   const address = property.address.toLowerCase();
   const blob = `${name} ${address}`;
   if (name.length >= 4 && asked.includes(name)) return true;
-  if (/blue jays|\b318\b/.test(asked) && /blue jays|\b318\b/.test(blob)) return true;
-  if (/\bshaw\b/.test(asked) && /\bshaw\b/.test(blob)) return true;
-  if (/roseglor|scarborough/.test(asked) && /roseglor|scarborough/.test(blob)) return true;
-  if ((/\bcharlotte\b/.test(asked) || /\b606\b/.test(asked)) && /charlotte/.test(blob) && /\b606\b/.test(blob)) return true;
   const tokens = blob.split(/[^a-z0-9]+/).filter((word) => word.length >= 5 && !STOP.has(word));
   return tokens.some((word) => new RegExp(`\\b${word}\\b`).test(asked));
 }

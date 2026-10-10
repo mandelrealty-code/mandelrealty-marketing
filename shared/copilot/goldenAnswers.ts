@@ -25,7 +25,7 @@ import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
 import { INTERNAL_TERMS, hasInternalContent } from "./marketingCopy.js";
 import { answerInboxToday } from "./mailInbox.js";
-import { asksMailBreakdown } from "./mailChain.js";
+import { asksMailBreakdown, pastedThread } from "./mailChain.js";
 import { questionRoute, skipsWeb } from "./route.js";
 import { installResearch, researchWebCalls, resetResearch } from "./skillResearch.js";
 import { answerRecords, asksUnitRoster, missingSourceAnswer } from "./recordsAnswer.js";
@@ -220,23 +220,50 @@ shawCaptionHub.body = [
 ].join("\n");
 const shawListing = shawWorld.properties.find((row) => row.id === ID.shaw);
 if (!shawListing) fail("shaw caption", "Shaw listing missing");
+const SHAW_TITLE = "Chic 2BR w/ Yard + Parking | Shaw St / sleeps six guests / comfortable stay in Toronto";
+shawListing.publicName = SHAW_TITLE;
 shawListing.description = `${shawListing.description ?? ""} Spare linens are stored in the hall closet.`;
 shawListing.amenities = [...(shawListing.amenities ?? []), "Lock box for the garage remote", "Cleaning supplies in the closet"];
 installWorld(shawWorld);
 const captionAsk = "Draft an Instagram caption to market the Shaw Street house for a fall weekend";
-const captionPinned = await pinnedCompanyAnswer(captionAsk);
-const caption = captionPinned?.body ?? "";
-if (!captionPinned || captionPinned.step !== "Drafted the copy") fail("shaw caption", caption || "no draft");
-shape("shaw caption", caption, /^A fall weekend on Shaw Street\.$/, ["Nothing was posted", "free parking", "Shaw Street"]);
+const captionPassword = process.env.ADMIN_PASSWORD;
+const captionSecret = process.env.ADMIN_SESSION_SECRET;
+process.env.ADMIN_PASSWORD = "parity-admin";
+process.env.ADMIN_SESSION_SECRET = "parity-secret";
+const captionToken = createAdminSessionToken();
+let captionStatus = 0;
+let captionPayload: { messages?: { role: string; body: string; steps?: { text: string }[] }[]; error?: string } = {};
+await handleCopilot(
+  { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(captionToken)}` }, body: { op: "send", text: captionAsk, chatId: "parity-shaw-caption", kind: "chat" }, query: {} } as never,
+  { status(code: number) { captionStatus = code; return this; }, json(body: typeof captionPayload) { captionPayload = body; return this; } } as never,
+);
+if (captionPassword === undefined) delete process.env.ADMIN_PASSWORD;
+else process.env.ADMIN_PASSWORD = captionPassword;
+if (captionSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
+else process.env.ADMIN_SESSION_SECRET = captionSecret;
+const captionMessage = [...(captionPayload.messages ?? [])].reverse().find((message) => message.role === "assistant");
+const caption = captionMessage?.body ?? "";
+if (captionStatus !== 200 || captionMessage?.steps?.[0]?.text !== "Drafted the copy") fail("shaw caption", caption || captionPayload.error || "no draft");
+shape("shaw caption", caption, /^A fall weekend on Shaw Street\b/, ["Nothing was posted", "free parking", "Shaw Street"]);
 if (hasInternalContent(caption)) fail("shaw caption", caption);
 for (const term of INTERNAL_TERMS) {
   if (new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(caption)) fail("shaw caption", caption);
 }
 const captionLines = caption.split("\n").map((line) => line.trim()).filter(Boolean);
 if (captionLines.some((line) => /^[-•*]/.test(line))) fail("shaw caption", caption);
-const captionParagraph = captionLines.find((line) => line !== "A fall weekend on Shaw Street." && !line.startsWith("#") && line !== "Nothing was posted.");
-const captionSentences = (captionParagraph ?? "").split(/(?<=[.!?])\s+/).filter(Boolean);
-if (captionSentences.length < 2 || captionSentences.length > 4) fail("shaw caption", caption);
+const captionTags = captionLines.filter((line) => line.startsWith("#"));
+if (captionTags.length !== 1) fail("shaw caption", caption);
+const captionProse = captionLines.filter((line) => !line.startsWith("#") && line !== "Nothing was posted.").join(" ");
+const captionSentences = captionProse.split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean);
+if (captionSentences.length < 2 || captionSentences.length > 3 || captionSentences.some((sentence) => sentence.split(/\s+/).length < 5 || !/[.!?]$/.test(sentence) || /[|/]/.test(sentence))) {
+  fail("shaw caption", caption);
+}
+const captionNorm = caption.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+if (captionNorm.includes(SHAW_TITLE.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim())) fail("shaw caption", caption);
+for (const part of SHAW_TITLE.split(/\s*[|/]\s*/)) {
+  const normalized = part.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (normalized.split(" ").length >= 3 && captionNorm.includes(normalized)) fail("shaw caption", caption);
+}
 if (/quiet hours|netflix|garbage bags|hall closet|house manual|check-out instructions/i.test(caption)) fail("shaw caption", caption);
 installWorld(worldAt("2026-10-07T11:00:00-04:00"));
 
@@ -633,11 +660,11 @@ const fixtureClients = [
   { name: "Mara Singh", email: "mara@mandelrealtygroup.com" },
   { name: "Noah Patel", email: "noah@mandelrealtygroup.com" },
 ];
-const fixtureList = fixtureClients.map((row) => row.name).join("\n");
+const fixtureList = `3 clients.\n${fixtureClients.map((row) => row.name).join("\n")}`;
 installOpsClients(fixtureClients);
 if (await answerRecords(clientQ) || await answerStay(clientQ)) fail("clients list", "another source answered the client list");
 
-async function clientChat(chatId: string): Promise<string> {
+async function clientChat(chatId: string, text = clientQ): Promise<string> {
   const previousPassword = process.env.ADMIN_PASSWORD;
   const previousSecret = process.env.ADMIN_SESSION_SECRET;
   process.env.ADMIN_PASSWORD = "parity-admin";
@@ -646,7 +673,7 @@ async function clientChat(chatId: string): Promise<string> {
   let status = 0;
   let payload: { messages?: { role: string; body: string }[]; error?: string } = {};
   await handleCopilot(
-    { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text: clientQ, chatId, kind: "chat" }, query: {} } as never,
+    { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text, chatId, kind: "chat" }, query: {} } as never,
     { status(code: number) { status = code; return this; }, json(body: typeof payload) { payload = body; return this; } } as never,
   );
   if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
@@ -667,6 +694,29 @@ if (/hospitable|unit #606|charlotte|roseglor|shaw street|we manage/i.test(firstL
 installOpsClients([]);
 const emptyList = await clientChat("parity-clients-empty");
 if (emptyList !== CLIENT_STORE_EMPTY) fail("clients list", emptyList);
+
+const whoQ = "Who are our clients?";
+const markedClients = ["Khamraj Shewnarain", "Nance Ta", "Precilla Daniel", "Roya Ardakani"];
+const markedRoster = [
+  ...markedClients.map((name) => ({ name, email: `${name.split(" ")[0]?.toLowerCase()}@example.com`, kind: "client" as const, stage: "live" as const })),
+  { name: "Luba", email: "luba@example.com", kind: "contact" as const, stage: "live" as const },
+  { name: "Abid", email: "abid@example.com", kind: "contact" as const, stage: "live" as const },
+  { name: "Ana", email: "ana@example.com", kind: "contact" as const, stage: "live" as const },
+  { name: "Elizabeth Ong", email: "elizabeth.ong@example.com", kind: "contact" as const, stage: "live" as const },
+  { name: "Side owner", email: "owner@example.com", kind: "owner" as const, stage: "onboarding" as const },
+];
+installOpsClients(markedRoster);
+const whoList = `4 clients.\n${markedClients.join("\n")}`;
+const whoAnswer = await clientChat("parity-clients-who", whoQ);
+if (whoAnswer !== whoList) fail("clients who", whoAnswer);
+for (const excluded of ["Luba", "Abid", "Ana", "Elizabeth Ong", "Side owner"]) {
+  if (whoAnswer.includes(excluded)) fail("clients who", whoAnswer);
+}
+installOpsClients(markedRoster.map((row) => row.name === "Precilla Daniel" ? { ...row, stage: "onboarding" as const } : row));
+const onboardingAnswer = await clientChat("parity-clients-onboarding", whoQ);
+const onboardingList = `4 clients.\nKhamraj Shewnarain\nNance Ta\nRoya Ardakani\n\nOnboarding\nPrecilla Daniel`;
+if (onboardingAnswer !== onboardingList) fail("clients onboarding", onboardingAnswer);
+if (/\bLuba\b|\bAbid\b|\bAna\b|Elizabeth Ong|Side owner/.test(onboardingAnswer)) fail("clients onboarding", onboardingAnswer);
 installOpsClients(fixtureClients);
 
 const proposalQ = "What proposals do we have saved?";
@@ -822,10 +872,6 @@ await handleCopilot(
   { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text: manikQ, chatId: "parity-manik", kind: "chat" }, query: {} } as never,
   { status(code: number) { manikStatus = code; return this; }, json(body: typeof manikPayload) { manikPayload = body; return this; } } as never,
 );
-if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
-else process.env.ADMIN_PASSWORD = previousPassword;
-if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
-else process.env.ADMIN_SESSION_SECRET = previousSecret;
 const manikA = [...(manikPayload.messages ?? [])].reverse().find((message) => message.role === "assistant")?.body ?? "";
 const shared = (await answerMailChain(manikQ)) ?? "";
 if (manikStatus !== 200 || !manikA || manikA !== shared) fail("manik chain", manikA || manikPayload.error || "no answer");
@@ -834,13 +880,39 @@ if (manikParagraphs.length < 2 || manikParagraphs.length > 3) fail("manik chain"
 if (!manikA.includes("Manik") || !manikA.includes("Thursday morning") || !manikA.includes("plumber is booked") || !/outstanding/i.test(manikA)) {
   fail("manik chain", manikA);
 }
-for (const body of [
+const MANIK_BODIES = [
   "The dishwasher at 8 Charlotte 606 is leaking. Can you send a plumber?",
   "I can send a plumber Thursday morning.",
   "Thursday works. Please confirm once the plumber is booked.",
-]) {
+];
+for (const body of MANIK_BODIES) {
   if (manikA.includes(body)) fail("manik chain", `pasted a message body\n${manikA}`);
 }
+if (pastedThread(manikA, MANIK_BODIES)) fail("manik chain", `still pasted the thread\n${manikA}`);
+
+const giveQ = "Give me a breakdown of the email chain with Manik";
+let giveStatus = 0;
+let givePayload: { messages?: { role: string; body: string }[]; error?: string } = {};
+await handleCopilot(
+  { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text: giveQ, chatId: "parity-manik-give", kind: "chat" }, query: {} } as never,
+  { status(code: number) { giveStatus = code; return this; }, json(body: typeof givePayload) { givePayload = body; return this; } } as never,
+);
+const giveA = [...(givePayload.messages ?? [])].reverse().find((message) => message.role === "assistant")?.body ?? "";
+const giveParagraphs = giveA.split(/\n\n/).filter(Boolean);
+const giveQuotes = [...giveA.matchAll(/["“]([^"”]+)["”]/g)].map((match) => match[1] ?? "");
+if (giveStatus !== 200 || giveParagraphs.length < 2 || giveParagraphs.length > 3) fail("manik give", giveA || givePayload.error || "no answer");
+if (!giveA.includes("Manik") || !giveA.includes("Thursday morning") || !giveA.includes("plumber is booked") || !/outstanding/i.test(giveA)) {
+  fail("manik give", giveA);
+}
+if (giveQuotes.length > 1 || giveQuotes.some((quote) => quote.split(/\s+/).length > 8 || quote.length > 80)) fail("manik give", giveA);
+if (pastedThread(giveA, MANIK_BODIES)) fail("manik give", `still pasted the thread\n${giveA}`);
+for (const body of MANIK_BODIES) {
+  if (giveA.includes(body)) fail("manik give", `pasted a message body\n${giveA}`);
+}
+if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
+else process.env.ADMIN_PASSWORD = previousPassword;
+if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
+else process.env.ADMIN_SESSION_SECRET = previousSecret;
 
 
 function moneyFigures(value: unknown): string[] {

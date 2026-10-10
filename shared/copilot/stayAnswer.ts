@@ -8,6 +8,7 @@ import { asksBuildingRegistration } from "./buildingRegistration.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
 import { isManagedUnit } from "./managedUnits.js";
+import { resolveProperty, type PropertyIdentity } from "./propertyIdentity.js";
 import { addDays, torontoToday } from "./time.js";
 import type { StayCard } from "./types.js";
 export type { StayCard };
@@ -70,19 +71,30 @@ export function askedDay(question: string, today = torontoToday()): string | nul
   return null;
 }
 
-export async function answerStay(question: string, prior = "", carried: StayCard[] = []): Promise<string | null> {
+export async function answerStay(question: string, prior = "", carried: StayCard[] = [], property: PropertyIdentity | null = null): Promise<string | null> {
+  const turn = await answerStayDetail(question, prior, carried, property);
+  return turn?.body ?? null;
+}
+
+/** The reservation answer, plus the property record a follow-up must keep using. */
+export async function answerStayDetail(
+  question: string,
+  prior = "",
+  carried: StayCard[] = [],
+  property: PropertyIdentity | null = null,
+): Promise<{ body: string; property: PropertyIdentity | null } | null> {
   const sheet = await openDaySheet(question, prior, carried);
-  if (sheet) return sheet.body;
+  if (sheet) return { body: sheet.body, property };
   const asked = question.trim();
   if (!asked || asksBuildingRegistration(asked)) return null;
   const code = asked.match(CODE)?.[1]?.toUpperCase() ?? "";
   if (/\bmessage\b/i.test(asked)) {
     try {
-      if (code) return await messageFor(code);
+      if (code) return held(await messageFor(code), property);
       const pinned = await findPinnedStay(asked);
-      if (pinned) return await messageFor(pinned);
+      if (pinned) return held(await messageFor(pinned), property);
     } catch {
-      return "Hospitable didn't return that reservation. I didn't guess.";
+      return held("Hospitable didn't return that reservation. I didn't guess.", property);
     }
   }
   const day = askedDay(asked);
@@ -91,33 +103,81 @@ export async function answerStay(question: string, prior = "", carried: StayCard
   const aboutThis = /\b(this|that) (unit|reservation|stay|property)\b/i.test(asked);
   if (!code && !aboutThis && !hasPlace(asked) && !inventory) return null;
   try {
-    if (code && /\bmessage\b/i.test(asked)) return await messageFor(code);
-    if (code && !/\bhow many\b/i.test(asked)) return await messageFor(code, false);
+    if (code && /\bmessage\b/i.test(asked)) return held(await messageFor(code), property);
+    if (code && !/\bhow many\b/i.test(asked)) return held(await messageFor(code, false), property);
     const managed = await managedListings();
     if (/\bpropert(?:y|ies)\b/i.test(asked) && !/\b(check|reservation|stay|guest)\b/i.test(asked)) {
-      return propertyRoster(managed);
+      return held(propertyRoster(managed), property);
     }
-    const named = Boolean(code || aboutThis || hasPlace(asked));
-    const picked = named ? pickListings(aboutThis ? `${asked}\n${prior}` : asked, managed) : managed;
+    const names = asksGuestNames(asked);
+    const follow = aboutThis || (names && !hasPlace(asked));
+    const fromQuestion = hasPlace(asked) ? await resolveProperty(asked) : null;
+    const identity = fromQuestion ?? (follow ? property ?? await resolveProperty(`${asked}\n${prior}`) : null);
+    const named = Boolean(code || aboutThis || hasPlace(asked) || (names && identity));
+    const picked = identity
+      ? managed.filter((row) => row.id === identity.hospitableId)
+      : named ? pickListings(aboutThis ? `${asked}\n${prior}` : asked, managed) : managed;
     if (named && !picked.length) {
-      return "I couldn't match that to a managed property. I didn't guess a count.";
+      return held("I couldn't match that to a managed property. I didn't guess a count.", null);
     }
     const listings = picked.length ? picked : managed;
-    if (/\b(next guest|who is (the )?next|next check-?in)\b/i.test(asked)) return await nextGuest(listings);
-    if (/\blast check-?in\b/i.test(asked)) return await lastCheckIn(listings);
-    const month = monthWindow(asked, torontoToday());
+    const kept = identity ? { ...identity } : null;
+    if (/\b(next guest|who is (the )?next|next check-?in)\b/i.test(asked)) return held(await nextGuest(listings), kept);
+    if (/\blast check-?in\b/i.test(asked)) return held(await lastCheckIn(listings), kept);
+    const today = torontoToday();
+    const month = monthFor(asked, prior, kept, today);
+    if (kept) kept.month = month.start.slice(0, 7);
+    if (names && kept) return held(await guestNames(kept, month), kept);
     const checkins = /\bcheck[\s-]?ins?\b|\bchecking in\b/i.test(asked);
-    return await monthCount(listings, month, checkins);
+    return held(await monthCount(listings, month, checkins), kept);
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
     if (inventory && /isn't connected|not connected|MCP token/i.test(message)) {
-      return "This read is incomplete. The managed properties failed read.";
+      return held("This read is incomplete. The managed properties failed read.", property);
     }
     if (/isn't connected|not connected|MCP token/i.test(message)) {
-      return "Hospitable is not connected, so I can't see that reservation. I didn't guess.";
+      return held("Hospitable is not connected, so I can't see that reservation. I didn't guess.", property);
     }
-    return "Hospitable didn't return that reservation. I didn't guess.";
+    return held("Hospitable didn't return that reservation. I didn't guess.", property);
   }
+}
+
+function held(body: string, property: PropertyIdentity | null): { body: string; property: PropertyIdentity | null } {
+  return { body, property };
+}
+
+function asksGuestNames(text: string): boolean {
+  return /\bguest names?\b/i.test(text) || /\bnames? of (?:the |those )?guests?\b/i.test(text);
+}
+
+function namedMonth(text: string): boolean {
+  return new RegExp(`\\b(${MONTHS.join("|")})\\b`, "i").test(text);
+}
+
+function monthFor(question: string, prior: string, carried: PropertyIdentity | null, today: string): { start: string; end: string; label: string } {
+  if (namedMonth(question)) return monthWindow(question, today);
+  if (carried?.month && /^\d{4}-\d{2}$/.test(carried.month)) return windowOf(carried.month);
+  if (namedMonth(prior)) return monthWindow(prior, today);
+  return monthWindow(question, today);
+}
+
+function windowOf(month: string): { start: string; end: string; label: string } {
+  const [year, monthNum] = month.split("-").map(Number);
+  const start = `${month}-01`;
+  const end = new Date(Date.UTC(year, monthNum, 0)).toISOString().slice(0, 10);
+  const name = MONTHS[monthNum - 1] ?? month;
+  const label = `${name.slice(0, 1).toUpperCase()}${name.slice(1)} ${year}`;
+  return { start, end, label };
+}
+
+async function guestNames(identity: PropertyIdentity, month: { start: string; end: string; label: string }): Promise<string> {
+  const stays = await loadStays([identity.hospitableId], addDays(month.start, -120), month.end, "checkin", true);
+  const accepted = stays
+    .filter((stay) => stay.status === "accepted" && stay.checkIn.length === 10 && stay.checkIn <= month.end && stay.checkOut > month.start)
+    .sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.guest.localeCompare(b.guest));
+  if (!accepted.length) return `No accepted stays at ${identity.label} have a night in ${month.label}.`;
+  const names = accepted.map((stay) => stay.guest || "The guest name wasn't on the reservation");
+  return `Guest names for ${identity.label} in ${month.label}: ${names.join(" and ")}.`;
 }
 
 /** Spoken name, Hospitable title, and id. The model uses this when a question is not a plain count. */
@@ -631,6 +691,7 @@ function toStay(row: Record<string, unknown>): Stay {
   const guest = row.guest && typeof row.guest === "object" ? (row.guest as Record<string, unknown>) : {};
   const guests = row.guests && typeof row.guests === "object" && !Array.isArray(row.guests) ? (row.guests as Record<string, unknown>) : {};
   const first = text(guest.first_name);
+  const last = text(guest.last_name);
   const platform = text(row.platform_id);
   return {
     id: text(row.id),
@@ -641,7 +702,7 @@ function toStay(row: Record<string, unknown>): Stay {
     checkOut: day(text(row.departure_date) || text(row.check_out)),
     checkInAt: text(row.check_in),
     checkOutAt: text(row.check_out),
-    guest: first,
+    guest: [first, last].filter(Boolean).join(" "),
     adults: countOf(guests.adult_count ?? guests.adults ?? row.adults),
     children: countOf(guests.child_count ?? guests.children ?? row.children),
     infants: countOf(guests.infant_count ?? guests.infants ?? row.infants),

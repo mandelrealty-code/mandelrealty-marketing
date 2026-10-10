@@ -250,6 +250,12 @@ if (!lowSaid.includes("8 Charlotte 606") || !lowSaid.includes("white and blue ce
   fail(lowSaid || "the live inventory was not listed");
 }
 if (/dawn dish soap|crushed red pepper|\bonly\b|counts are not set up/i.test(lowSaid)) fail(lowSaid);
+const lowNow = await setupChat("What's low in stock right now?", "parity-low-now");
+const lowLines = lowNow.split("\n").filter((line) => /, (?:count|level) /.test(line));
+if (lowLines.length !== 2 || !lowLines.some((line) => line.includes("white and blue ceramic mug, count 1, low at 1")) || !lowLines.some((line) => line.includes("white faux fur throw pillow, count 1, low at 1"))) {
+  fail(lowNow || "the live inventory was not listed");
+}
+if (/dawn dish soap|crushed red pepper|don't have a tool|inventory levels/i.test(lowNow)) fail(lowNow);
 cleaner.incomplete = true;
 const partialSaid = await setupChat("Is anything running low at our units?", "parity-low-stock-partial");
 if (!partialSaid.includes("The inventory read is incomplete for 8 Charlotte 606.") || /white and blue ceramic mug|\bonly\b/i.test(partialSaid)) {
@@ -353,5 +359,21 @@ const boughtCatalog = await placeCatalogOrder({
 if (!boughtCatalog.ordered || catalogOrders().length !== 1 || boughtCatalog.order.confirmation !== catalogOrders()[0]?.confirmation) {
   fail("a matching cart did not record the order after read-back");
 }
+
+installWorld(worldAt("2026-10-09T12:00:00-04:00"));
+resetUnitSetups();
+const setupStatus = await setupChat("What's the setup status for our units?", "parity-setup-status");
+const setupBlocks = setupStatus.split(/\n\n/).map((block) => block.trim()).filter(Boolean);
+const setupPlaces = ["8 Charlotte 606", "41 Roseglor Cres", "20 Blue Jays Way", "1065 Shaw Street"];
+if (setupBlocks.length !== 4) fail(setupStatus);
+for (const place of setupPlaces) {
+  const block = setupBlocks.find((row) => row.startsWith(place));
+  if (!block) fail(setupStatus);
+  if (!/^Profile: (prefilled, waiting for confirmation|waiting for confirmation|confirmed)$/m.test(block)) fail(block);
+  if (!/^Cleaner roster: .+$/m.test(block) || !/Cleaner roster: not entered yet/.test(block)) fail(block);
+  if (!/^Catalog: \d+ items, counts are (?:not )?set$/m.test(block)) fail(block);
+  if (!/^Delivery destination: (?:set|missing)$/m.test(block)) fail(block);
+}
+if (/1104|Partner Loft|King St W|Markham|not ones we manage|Hospitable lists/i.test(setupStatus)) fail(setupStatus);
 
 console.log("Purchase harness passed.");

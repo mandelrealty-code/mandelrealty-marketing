@@ -6,6 +6,7 @@
 
 import { listPmProperties } from "../pm/propertyStore.js";
 import { atOrBelowLowAt, readCleanerUnit, supplyLevelLine } from "./cleanerRead.js";
+import { isManagedUnit } from "./managedUnits.js";
 
 export type CatalogItem = {
   key: string;
@@ -283,8 +284,13 @@ function deliveryLine(unit: UnitSetup): string {
   return `Delivery destination is done. ${unit.delivery.trim()}`;
 }
 
+export function asksSetupStatus(text: string): boolean {
+  return /\bsetup status\b/i.test(text.trim());
+}
+
 export function asksUnitSetup(text: string): boolean {
   const asked = text.trim();
+  if (asksSetupStatus(asked)) return true;
   if (/\bwhat(?:'s| is) set up\b/i.test(asked)) return true;
   return /\bopen\b/i.test(asked) && /\b(unit|setup)\b/i.test(asked);
 }
@@ -294,7 +300,9 @@ export function asksSupplyCatalog(text: string): boolean {
 }
 
 export function asksRunningLow(text: string): boolean {
-  return /\brunning low\b/i.test(text) || /\blow stock\b/i.test(text);
+  const asked = text.trim();
+  if (/\brunning low\b/i.test(asked) || /\blow stock\b/i.test(asked)) return true;
+  return /\blow\b/i.test(asked) && /\bstock\b/i.test(asked);
 }
 
 /** The catalog store's identity for one seeded item. Nothing is added that the store does not hold. */
@@ -362,10 +370,41 @@ export async function answerUnitSetup(text: string): Promise<string | null> {
   const low = await answerRunningLow(text);
   if (low) return low;
   if (!asksUnitSetup(text)) return null;
-  const units = await ensureUnitSetups();
+  const units = (await ensureUnitSetups()).filter((unit) => isManagedUnit(unit.name, unit.address));
   if (!units.length) return "No units are in the cleaner app. Nothing was guessed.";
   const named = units.filter((unit) => mentionsUnit(unit, text));
-  const shown = named.length ? named : /\bwhat(?:'s| is) set up\b/i.test(text) ? units : [];
+  const all = /\bwhat(?:'s| is) set up\b/i.test(text) || (asksSetupStatus(text) && !named.length);
+  const shown = named.length ? named : all ? units : [];
   if (!shown.length) return "That unit is not in the cleaner app. Nothing was guessed.";
-  return shown.map((unit) => setupReport(unit)).join("\n\n");
+  const report = asksSetupStatus(text) ? statusReport : setupReport;
+  return shown.map((unit) => report(unit)).join("\n\n");
+}
+
+function spokenUnit(unit: UnitSetup): string {
+  const blob = `${unit.name} ${unit.address}`;
+  if (/blue jays/i.test(blob)) return "20 Blue Jays Way";
+  if (/roseglor|scarborough/i.test(blob)) return "41 Roseglor Cres";
+  if (/charlotte/i.test(blob) && /\b606\b/.test(blob)) return "8 Charlotte 606";
+  if (/\bshaw\b/i.test(blob)) return "1065 Shaw Street";
+  return placeOf(unit);
+}
+
+function statusReport(unit: UnitSetup): string {
+  const profile = profileDone(unit)
+    ? "confirmed"
+    : unit.name.trim() && unit.address.trim()
+      ? "prefilled, waiting for confirmation"
+      : "waiting for confirmation";
+  const names = unit.roster.map((row) => row.name.trim()).filter(Boolean);
+  const roster = names.length ? names.join(", ") : "not entered yet";
+  const count = unit.inventory.length;
+  const counts = count > 0 && unit.inventory.every((row) => row.onHand != null) ? "set" : "not set";
+  const delivery = unit.delivery.trim() ? "set" : "missing";
+  return [
+    spokenUnit(unit),
+    `Profile: ${profile}`,
+    `Cleaner roster: ${roster}`,
+    `Catalog: ${count} ${count === 1 ? "item" : "items"}, counts are ${counts}`,
+    `Delivery destination: ${delivery}`,
+  ].join("\n");
 }

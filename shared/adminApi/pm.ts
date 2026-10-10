@@ -606,6 +606,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             email: str(body.email),
             phone: str(body.phone),
             status: body.status === "paused" ? "paused" : "active",
+            kind: body.kind === "contact" || body.kind === "owner" || body.kind === "client" ? body.kind : "client",
+            stage: body.stage === "onboarding" ? "onboarding" : "live",
           });
           return res.status(200).json({ client });
         }
@@ -620,6 +622,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               body.status === "paused" || body.status === "active"
                 ? body.status
                 : undefined,
+            kind: body.kind === "client" || body.kind === "contact" || body.kind === "owner" ? body.kind : undefined,
+            stage: body.stage === "live" || body.stage === "onboarding" ? body.stage : undefined,
           });
           return res.status(200).json({ client });
         }

@@ -9,6 +9,7 @@ import { listPmProperties } from "../pm/propertyStore.js";
 import { getSupabaseAdmin } from "../supabase.js";
 import { findPinnedStay } from "./stayAnswer.js";
 import { unitsAnswer } from "./memoryFiles.js";
+import { asksUnitSetup } from "./unitSetup.js";
 import { addDays, torontoToday } from "./time.js";
 
 const COUNT =
@@ -22,6 +23,7 @@ const CHANNELS = /\b(booking\.com|vrbo)\b/i;
 
 /** The question is asking for the managed-unit roster, not a fact about those units. */
 export function asksUnitRoster(text: string): boolean {
+  if (asksUnitSetup(text)) return false;
   return COUNT.test(text) || NAMED.test(text) || MANAGE.test(text);
 }
 
@@ -58,7 +60,7 @@ export function asksRecords(input: string, prior = ""): boolean {
 /** A spoken answer, or null when this is not one of the record questions. */
 export async function answerRecords(input: string, prior = ""): Promise<string | null> {
   const text = input.replace(/\n?Attached:.*$/is, "").trim();
-  if (!text) return null;
+  if (!text || asksUnitSetup(text)) return null;
   const gap = missingSourceAnswer(text);
   if (gap) return gap;
   try {

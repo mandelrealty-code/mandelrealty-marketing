@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
 import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
 import { readGmailLogin, saveGmailLogin } from "../copilot/store.js";
-import { captureCommit } from "../copilot/parity/capture.js";
+import { captureCommit, captureMailQuery } from "../copilot/parity/capture.js";
 import { parityEnabled } from "../copilot/parity/flag.js";
 import { parityGmailOffer, parityReadMailThread, paritySearchGmail } from "../copilot/parity/world.js";
 
@@ -261,11 +261,12 @@ export async function searchGmail(input: {
   /** Gmail after: date, YYYY/MM/DD. Empty lists without a date. */
   after?: string;
 }): Promise<GmailHit[]> {
-  const parity = paritySearchGmail(input);
-  if (parity) return parity;
-  const token = await accessToken();
   const keywords = mailKeywords(input.keywords);
   const folders: MailFolder[] = input.where === "both" ? ["sent", "inbox"] : [input.where];
+  for (const folder of folders) captureMailQuery("gmail", gmailQuery(folder, keywords, input.includeAirbnb, input.after ?? ""));
+  const parity = paritySearchGmail({ ...input, keywords });
+  if (parity) return parity;
+  const token = await accessToken();
   const hits: GmailHit[] = [];
   for (const folder of folders) {
     const q = gmailQuery(folder, keywords, input.includeAirbnb, input.after ?? "");

@@ -338,7 +338,7 @@ export async function loadGuestQueue(now = parityNow() ?? new Date()): Promise<G
 async function scanGuestQueue(now: Date): Promise<GuestQueue> {
   if (!(await copilotHospitableToken())) return disconnectedQueue();
   try {
-    const loaded = await loadRecentStays(now);
+    const loaded = await loadRecentStays(now, true);
     const photos = await propertyPhotos();
     const today = torontoToday(now);
     const waiting: GuestRow[] = [];

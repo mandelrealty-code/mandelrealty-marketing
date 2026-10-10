@@ -4,6 +4,8 @@
  * A red fixture is an honest gap. This step does not require a green board.
  */
 
+import handleCopilot from "../../adminApi/copilot.js";
+import { createAdminSessionToken } from "../../adminAuth.js";
 import { latestInboxOffer } from "../../adminApi/gmail.js";
 import { buildBrief, readSavedBrief } from "../brief.js";
 import { answerDayPlan, answerWeekCleans, findPlanArrival, loadDayBoard, planText, cleansText, turnoverLine } from "../dayBoard.js";
@@ -24,6 +26,8 @@ import {
   capturedCommits,
   capturedDrafts,
   capturedReminders,
+  capturedMailMatches,
+  capturedMailQueries,
   capturedReports,
   clearAccountWide,
   resetCaptures,
@@ -1018,7 +1022,6 @@ function dianeSentMail(): ParityMail {
       "Hello,",
       "",
       "Please register these vehicles for Unit 318.",
-      "Guest: Diane Castagnier",
       "Check-in is October 9, 2026 and check-out is October 12, 2026.",
       "Vehicle count: 2",
       "Make: Toyota",
@@ -1053,19 +1056,57 @@ async function fixtureDianeLookup(): Promise<void> {
   expectNothingSent();
 }
 
+const DIANE_SUBJECT = "AirBNB Rental for Unit 318 from October 9, 2026 - October 12, 2026";
+const DIANE_GMAIL_QUERY = `in:sent ${DIANE_SUBJECT}`;
+
+function assistantBody(payload: Record<string, unknown>): string {
+  const messages = payload.messages;
+  if (!Array.isArray(messages)) return "";
+  const assistant = [...messages].reverse().find((row) => row && typeof row === "object" && (row as { role?: string }).role === "assistant") as { body?: string } | undefined;
+  return assistant?.body ?? "";
+}
+
+async function chatAnswer(text: string): Promise<string> {
+  process.env.ADMIN_PASSWORD ||= "parity-admin";
+  process.env.ADMIN_SESSION_SECRET ||= "parity-secret";
+  const token = createAdminSessionToken();
+  let status = 0;
+  let payload: Record<string, unknown> = {};
+  await handleCopilot(
+    { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text, chatId: "", kind: "chat" }, query: {} } as never,
+    { status(code: number) { status = code; return this; }, json(next: Record<string, unknown>) { payload = next; return this; } } as never,
+  );
+  if (status !== 200) throw new Gap("the production chat handler answers", String(payload.error || status));
+  return assistantBody(payload);
+}
+
 async function fixtureDianeAlreadySent(): Promise<void> {
   const now = new Date("2026-10-09T10:00:00-04:00");
-  const world = worldAt("2026-10-09T10:00:00-04:00", false, [dianeSentMail()]);
+  const sent = dianeSentMail();
+  expect(!/diane/i.test(`${sent.subject}\n${sent.body}\n${sent.snippet}`), "the sent email is identified by unit and dates, not the guest's name", `${sent.subject}\n${sent.body}`);
+  const world = worldAt("2026-10-09T10:00:00-04:00", false, [sent]);
   const diane = world.reservations.find((row) => row.code === CODE.diane);
   if (diane) diane.guest = "Diane Castagnier";
   installWorld(world);
-  const asked = (await answerRegistrationStatus("Has the building been emailed about Diane Castagnier's cars for her stay that started today?", now)) ?? "";
+  setParityClock(now);
+  resetCaptures();
+  const question = "Has the building been emailed about Diane Castagnier's cars for her stay that started today?";
+  const asked = await chatAnswer(question);
+  const gmailQuery = capturedMailQueries().find((row) => row.mailbox === "gmail" && row.query === DIANE_GMAIL_QUERY)?.query ?? "";
+  const outlookQuery = capturedMailQueries().find((row) => row.mailbox === "outlook" && row.query === `sentitems $search:"${DIANE_SUBJECT}"`)?.query ?? "";
+  const match = capturedMailMatches()[0];
+  expect(gmailQuery === DIANE_GMAIL_QUERY, "Gmail Sent was searched by unit and stay dates", gmailQuery || "no gmail query");
+  expect(outlookQuery === `sentitems $search:"${DIANE_SUBJECT}"`, "Outlook Sent was searched with the same subject", outlookQuery || "no outlook query");
+  expect(!capturedMailQueries().some((row) => /diane|castagnier/i.test(row.query)), "the guest's name was not the search", capturedMailQueries().map((row) => row.query).join(" | "));
+  expect(match?.id === "diane-sent" && match.subject === DIANE_SUBJECT && match.date === "2026-10-08T11:24:00-04:00" && match.mailbox === "gmail" && match.keywords === DIANE_SUBJECT, "the match is the nameless Unit 318 registration", match ? `${match.mailbox} ${match.id} ${match.date} ${match.subject}` : "no match");
   expect(/already sent/.test(asked) && /October 8, 2026/.test(asked), "Sent mail is reported with its date", asked || "no answer");
-  expect(!asked.includes(missingGuestLine("Diane")) && !/Checks|Submit|I didn't draft/.test(asked), "a sent registration is not offered as a new draft", asked);
+  expect(!asked.includes(missingGuestLine("Diane")) && !/Checks|Submit|I didn't draft|didn't find a sent/.test(asked), "a sent registration is not offered as a new draft", asked);
   const partial = (await answerRegistrationStatus(DIANE_STATUS, now)) ?? "";
   expect(partial === missingGuestLine("Diane"), "a first name is not the full guest name", partial || "no answer");
+  resetCaptures();
   const draftAsk = (await answerRegistrationStatus("Is there a draft for the building registration about Diane Castagnier's cars?", now)) ?? "";
   expect(/already sent/.test(draftAsk) && /October 8, 2026/.test(draftAsk), "a draft question reports the sent email instead", draftAsk || "no answer");
+  expect(capturedMailQueries().some((row) => row.query === DIANE_GMAIL_QUERY), "the draft question uses the same Sent query", capturedMailQueries().map((row) => row.query).join(" | "));
   expect(capturedDrafts().length === 0, "neither question writes a draft", `drafts ${capturedDrafts().length}`);
   expectNothingSent();
 }

@@ -180,6 +180,8 @@ export function readThread(turns: ThreadTurn[], guest: string): ThreadRead {
     ].filter(Boolean).join(" ");
   } else if (lane === "reply") {
     status = clip(ask);
+  } else if (lane === "guest") {
+    status = "Waiting on guest";
   }
   const lastGuest = [...spoken].reverse().find((turn) => turn.role === "guest");
   const lastMedia = lastGuest?.media.find((item) => item.kind === "photo" || item.kind === "video");

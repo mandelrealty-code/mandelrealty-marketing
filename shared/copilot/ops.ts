@@ -24,6 +24,7 @@ import { readCleanerUnit } from "./cleanerRead.js";
 import { opsClientByName } from "./parity/opsState.js";
 import { assignParityCleaner, parityUsualCleaner } from "./parity/world.js";
 import { parityEnabled } from "./parity/flag.js";
+import { spokenLabel, textNamesProperty } from "./propertyIdentity.js";
 
 const MISSING = "I don't have that in OPS.";
 
@@ -54,7 +55,7 @@ export function asksOps(text: string, prior = ""): boolean {
 export async function answerOps(question: string, now = new Date(), prior = ""): Promise<string | null> {
   if (/how many clients/i.test(question)) {
     try {
-      const clients = await listPmClients();
+      const clients = (await listPmClients()).filter((row) => row.kind === "client");
       const count = clients.length;
       return `We currently have ${count} client${count === 1 ? "" : "s"}.`;
     } catch {
@@ -97,22 +98,11 @@ export async function answerOps(question: string, now = new Date(), prior = ""):
 }
 
 function mentionsProperty(question: string, property: { name: string; address: string }): boolean {
-  const asked = question.toLowerCase();
-  const blob = `${property.name} ${property.address}`.toLowerCase();
-  if (/blue jays|\b318\b/.test(asked) && /blue jays|\b318\b/.test(blob)) return true;
-  if (/\bshaw\b/.test(asked) && /\bshaw\b/.test(blob)) return true;
-  if (/roseglor|scarborough/.test(asked) && /roseglor|scarborough/.test(blob)) return true;
-  if ((/\bcharlotte\b/.test(asked) || /\b606\b/.test(asked)) && /charlotte/.test(blob) && /\b606\b/.test(blob)) return true;
-  return false;
+  return textNamesProperty(question, property.name, property.address);
 }
 
 function spokenProperty(property: { name: string; address: string }): string {
-  const blob = `${property.name} ${property.address}`;
-  if (/blue jays/i.test(blob)) return "20 Blue Jays Way";
-  if (/roseglor|scarborough/i.test(blob)) return "41 Roseglor Cres";
-  if (/charlotte/i.test(blob) && /\b606\b/.test(blob)) return "8 Charlotte 606";
-  if (/\bshaw\b/i.test(blob)) return "1065 Shaw Street";
-  return property.name;
+  return spokenLabel(property.name, property.address);
 }
 
 export type HostRevenueRow = {

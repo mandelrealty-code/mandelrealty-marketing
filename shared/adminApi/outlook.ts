@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
 import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
 import { readOutlookLogin, saveOutlookLogin } from "../copilot/store.js";
-import { captureCommit } from "../copilot/parity/capture.js";
+import { captureCommit, captureMailQuery } from "../copilot/parity/capture.js";
 import { parityEnabled } from "../copilot/parity/flag.js";
 import { parityOutlookOffer, parityReadMailThread, paritySearchOutlook } from "../copilot/parity/world.js";
 
@@ -243,11 +243,15 @@ export async function searchOutlook(input: {
   where: MailFolder | "both";
   includeAirbnb: boolean;
 }): Promise<OutlookHit[]> {
-  const parity = paritySearchOutlook(input);
-  if (parity) return parity;
-  const token = await accessToken();
   const keywords = mailKeywords(input.keywords);
   const folders: MailFolder[] = input.where === "both" ? ["sent", "inbox"] : [input.where];
+  for (const folder of folders) {
+    const name = folder === "sent" ? "sentitems" : "inbox";
+    captureMailQuery("outlook", keywords ? `${name} $search:"${keywords}"` : name);
+  }
+  const parity = paritySearchOutlook({ ...input, keywords });
+  if (parity) return parity;
+  const token = await accessToken();
   const hits: OutlookHit[] = [];
   for (const folder of folders) {
     const name = folder === "sent" ? "sentitems" : "inbox";

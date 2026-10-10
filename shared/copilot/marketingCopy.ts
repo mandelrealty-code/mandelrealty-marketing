@@ -1,8 +1,8 @@
 /**
  * Marketing copy is writing. It uses the listing's public title, description,
  * neighbourhood, and guest-facing amenities. It is not posted.
- * A caption that still contains house-manual terms is rewritten from that public
- * material and the internal draft is not shown.
+ * A caption that repeats the listing title, is mostly fragments, or still contains
+ * house-manual terms is rewritten from that public material and the draft is not shown.
  * "I don't have a tool" is only for an action that needs a system this chat cannot reach.
  */
 
@@ -94,10 +94,6 @@ async function publicListing(id: string, label: string): Promise<PublicListing> 
   return { title, description: "", neighbourhood: neighbourhoodOf(address, label), amenities: [] };
 }
 
-function sentencesOf(text: string): string[] {
-  return text.split(/(?<=[.!?])\s+/).map((line) => line.trim()).filter(Boolean);
-}
-
 function ensurePeriod(line: string): string {
   const clean = line.replace(/\s+/g, " ").trim();
   return /[.!?]$/.test(clean) ? clean : `${clean}.`;
@@ -112,11 +108,16 @@ function listPhrase(items: string[]): string {
   return `${words.slice(0, -1).join(", ")}, and ${words[words.length - 1]}`;
 }
 
-function openingLine(asked: string, neighbourhood: string, title: string): string {
-  const place = neighbourhood.split(",")[0]?.trim() || title;
-  if (/\bfall weekend\b/i.test(asked)) return `A fall weekend on ${place}.`;
-  if (/\bweekend\b/i.test(asked)) return `A weekend on ${place}.`;
-  return `${title}.`;
+function placeName(neighbourhood: string): string {
+  return neighbourhood.split(",")[0]?.trim() || "the neighbourhood";
+}
+
+function openingLine(asked: string, neighbourhood: string): string {
+  const place = placeName(neighbourhood);
+  const city = /toronto/i.test(neighbourhood) ? " in Toronto" : "";
+  if (/\bfall weekend\b/i.test(asked)) return `A fall weekend on ${place} makes an easy getaway${city}.`;
+  if (/\bweekend\b/i.test(asked)) return `A weekend on ${place} makes an easy getaway${city}.`;
+  return `A stay on ${place} is ready for guests${city}.`;
 }
 
 function hashtagLine(asked: string, neighbourhood: string): string {
@@ -128,41 +129,104 @@ function hashtagLine(asked: string, neighbourhood: string): string {
   return tags.join(" ");
 }
 
-function proseSentences(sentences: string[], amenities: string[], title: string, neighbourhood: string): string[] {
-  const body: string[] = [];
-  for (const sentence of sentences) {
-    if (body.length >= 2) break;
-    body.push(ensurePeriod(sentence));
-  }
-  if (amenities.length && body.length < 4) body.push(`Guests have ${listPhrase(amenities.slice(0, 4))}.`);
-  if (body.length < 2) body.push(`The house is ${title} in ${neighbourhood}.`);
-  if (body.length < 2) body.push(`It is a comfortable stay in ${neighbourhood}.`);
-  return body.slice(0, 4);
+function spokenAmenity(item: string): string {
+  const clean = item.replace(/[.!?]+$/, "").trim();
+  const lower = clean.charAt(0).toLowerCase() + clean.slice(1);
+  if (/^(a|an|the|free|private)\b/i.test(lower)) return lower;
+  return `a ${lower}`;
 }
 
-function formatCaption(asked: string, listing: PublicListing, sentences: string[], amenities: string[]): string {
-  const opening = openingLine(asked, listing.neighbourhood, listing.title);
-  const paragraph = proseSentences(sentences, amenities, listing.title, listing.neighbourhood).join(" ");
+function houseSentence(listing: PublicListing): string {
+  const blob = `${listing.title} ${listing.description}`.toLowerCase();
+  const beds = /two-bedroom|\b2\s*-?\s*br\b|\b2br\b/.test(blob) ? "two-bedroom" : "";
+  const features = [/\byard\b/.test(blob) ? "a yard" : "", /\bparking\b/.test(blob) ? "parking" : ""].filter(Boolean);
+  const feature = features.length === 2 ? "a yard and parking" : features[0] ?? "";
+  const guests = /\bsix guests\b|\bsleeps six\b/.test(blob) ? ", with room for six guests" : "";
+  if (beds && feature) return `The house is a ${beds} with ${feature}${guests}.`;
+  if (feature) return `The house has ${feature}${guests}.`;
+  return `The house is ready for guests on ${placeName(listing.neighbourhood)}.`;
+}
+
+function amenitySentence(amenities: string[]): string {
+  if (!amenities.length) return "";
+  return `Guests have ${listPhrase(amenities.slice(0, 4).map(spokenAmenity))}.`;
+}
+
+function normalizeCopy(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function repeatsTitle(caption: string, title: string): boolean {
+  const hay = normalizeCopy(caption);
+  const full = normalizeCopy(title);
+  if (full.length >= 12 && hay.includes(full)) return true;
+  return title.split(/\s*[|/]\s*/).some((part) => {
+    const normalized = normalizeCopy(part);
+    return (normalized.split(" ").length >= 3 || normalized.length >= 16) && normalized.length >= 10 && hay.includes(normalized);
+  });
+}
+
+function isFullSentence(sentence: string): boolean {
+  const clean = sentence.trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  return words.length >= 5 && /[.!?]$/.test(clean) && !/[|/]/.test(clean);
+}
+
+function captionLines(caption: string): string[] {
+  return caption.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#") && !/^nothing was posted\.?$/i.test(line) && !/^i don't have a tool/i.test(line));
+}
+
+function finishedSentences(caption: string): string[] {
+  return captionLines(caption).join(" ").split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean);
+}
+
+function mostlyFragments(caption: string): boolean {
+  const lines = captionLines(caption);
+  if (!lines.length) return true;
+  const fragments = lines.filter((line) => !isFullSentence(line) && finishedSentences(line).every((sentence) => !isFullSentence(sentence)));
+  return fragments.length > lines.length / 2;
+}
+
+function captionFails(caption: string, title: string): boolean {
+  const sentences = finishedSentences(caption);
+  const tags = caption.split("\n").map((line) => line.trim()).filter((line) => line.startsWith("#"));
+  return hasInternalContent(captionProse(caption))
+    || repeatsTitle(caption, title)
+    || sentences.length < 2
+    || sentences.length > 3
+    || sentences.some((sentence) => !isFullSentence(sentence))
+    || mostlyFragments(caption)
+    || tags.length !== 1;
+}
+
+function formatCaption(asked: string, listing: PublicListing, sentences: string[]): string {
   const tags = hashtagLine(asked, listing.neighbourhood);
   const posted = asksUnreachableAction(asked) ? `I don't have a tool to post to ${channel(asked)}. Nothing was posted.` : "Nothing was posted.";
-  return [opening, "", paragraph, ...(tags ? ["", tags] : []), "", posted].join("\n");
+  return [sentences.join(" "), ...(tags ? ["", tags] : []), "", posted].join("\n");
 }
 
 function captionProse(caption: string): string {
   return caption.split("\n").filter((line) => line.trim() && !/^nothing was posted\.$/i.test(line.trim()) && !/^i don't have a tool/i.test(line.trim())).join("\n");
 }
 
-/** Finished prose from public listing material. An internal draft is replaced, not shown. */
+function pastedTitle(listing: PublicListing): string {
+  const chunks = `${listing.title} ${listing.description}`.split(/\s*[|/]\s*/).map((part) => ensurePeriod(part)).filter((part) => part.length > 1);
+  return chunks.join("\n");
+}
+
+/** Finished prose from public listing material. A title paste or a fragment draft is replaced, not shown. */
 function captionFromListing(asked: string, listing: PublicListing): string {
-  const rawSentences = sentencesOf(listing.description);
-  const rawAmenities = listing.amenities.map((item) => item.trim()).filter(Boolean);
-  const first = formatCaption(asked, listing, rawSentences, rawAmenities);
-  if (!hasInternalContent(captionProse(first))) return first;
-  const cleanSentences = rawSentences.filter((sentence) => !hasInternalContent(sentence));
-  const cleanAmenities = rawAmenities.filter((item) => !hasInternalContent(item));
-  const regenerated = formatCaption(asked, listing, cleanSentences, cleanAmenities);
-  if (!hasInternalContent(captionProse(regenerated))) return regenerated;
-  return formatCaption(asked, { ...listing, description: "", amenities: [] }, [], []);
+  const amenities = listing.amenities.map((item) => item.trim()).filter((item) => item && !hasInternalContent(item));
+  const pasted = formatCaption(asked, listing, [pastedTitle(listing)]);
+  const written = [
+    openingLine(asked, listing.neighbourhood),
+    houseSentence(listing),
+    amenitySentence(amenities),
+  ].filter(Boolean).slice(0, 3);
+  const regenerated = formatCaption(asked, listing, written);
+  if (captionFails(pasted, listing.title) && !captionFails(regenerated, listing.title)) return regenerated;
+  if (!captionFails(regenerated, listing.title)) return regenerated;
+  return formatCaption(asked, listing, [openingLine(asked, listing.neighbourhood), houseSentence({ ...listing, title: "", description: "" })]);
 }
 
 export async function answerMarketingCopy(question: string): Promise<string | null> {

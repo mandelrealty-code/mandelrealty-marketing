@@ -306,6 +306,35 @@ if (guestDrafts().some((row) => row.to === "Ruzaina")) fail("will-check created 
 if (!ackText.includes("Ruzaina") || !ackText.includes("No one is waiting")) fail("acknowledgement hidden");
 
 resetGuestMessaging();
+installWorld({
+  now: new Date("2026-10-09T18:50:00-04:00"),
+  properties: [{ id: "prop-rose", name: "Bright and comfortable home for families", address: "floor 2, 41 Roseglor Crescent, Toronto", managed: true }],
+  reservations: [
+    {
+      ...stay("stay-ruzaina-far", "HMRUZFAR1", "prop-rose", "Ruzaina Sathar", "Ok will check", "2026-10-09T18:40:00-04:00"),
+      checkIn: "2026-11-11",
+      checkOut: "2026-11-16",
+      messages: [
+        { id: "ask", at: "2026-10-09T16:00:00-04:00", role: "host" as const, name: "Shane", body: "Can you confirm the arrival time for November 11?" },
+        { id: "ack", at: "2026-10-09T18:40:00-04:00", role: "guest" as const, name: "Ruzaina Sathar", body: "Ok will check" },
+      ],
+    },
+  ],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const far = await loadGuestQueue(new Date("2026-10-09T18:50:00-04:00"));
+const farRow = far.onGuest.find((row) => row.guest === "Ruzaina Sathar");
+if (!farRow) fail("33-day acknowledgement missing from Waiting on guest");
+if (far.waiting.some((row) => row.guest === "Ruzaina Sathar") || far.thanks.some((row) => row.guest === "Ruzaina Sathar")) fail("33-day acknowledgement left Waiting on guest");
+if (farRow.status !== "Waiting on guest") fail(`far status ${farRow.status}`);
+if (!/next message/i.test(farRow.watch)) fail(`far watch ${farRow.watch}`);
+const farSearch = `${farRow.guest} ${farRow.property} ${farRow.status} ${farRow.watch} ${farRow.asked}`.toLowerCase();
+if (!farSearch.includes("ruzaina") || !farSearch.includes("roseglor") || !farSearch.includes("ok will check")) fail("search missed the far thread");
+
+resetGuestMessaging();
 resetResearch();
 installResearch([{
   title: "Airbnb Resolution Center",

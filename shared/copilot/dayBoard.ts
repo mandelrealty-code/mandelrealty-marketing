@@ -22,7 +22,7 @@ const WEEK_INDEX: Record<string, number> = {
   Saturday: 6,
 };
 
-export type StayMove = { guest: string; property: string; propertyId: string; date: string; time: string };
+export type StayMove = { guest: string; property: string; propertyId: string; date: string; time: string; checkOut?: string };
 
 export type TurnoverRow = {
   propertyId: string;
@@ -187,7 +187,7 @@ export async function loadPeriod(from: string, to: string, assignments = false):
     for (const stay of stays) {
       if (DEAD.test(stay.status)) continue;
       if (stay.checkIn >= from && stay.checkIn <= to) {
-        arrivals.push({ guest: stay.guest, property: propertyName, propertyId, date: stay.checkIn, time: clockTime(stay.checkInAt) });
+        arrivals.push({ guest: stay.guest, property: propertyName, propertyId, date: stay.checkIn, time: clockTime(stay.checkInAt), checkOut: stay.checkOut });
       }
       if (stay.checkOut >= from && stay.checkOut <= to) {
         departures.push({ guest: stay.guest, property: propertyName, propertyId, date: stay.checkOut, time: "" });

@@ -7,9 +7,13 @@ import { answerMarketingCopy } from "./marketingCopy.js";
 import { answerMailChain } from "./mailChain.js";
 import { answerCatalogPurchase } from "./catalogPurchase.js";
 import { answerUnitSetup } from "./unitSetup.js";
-import { answerStay, asksDayCount } from "./stayAnswer.js";
+import { answerStayDetail, asksDayCount, type StayCard } from "./stayAnswer.js";
+import type { PropertyIdentity } from "./types.js";
 
-export async function pinnedCompanyAnswer(text: string): Promise<{ body: string; step: string; thought: string } | null> {
+export async function pinnedCompanyAnswer(
+  text: string,
+  context: { prior?: string; carried?: StayCard[]; property?: PropertyIdentity | null } = {},
+): Promise<{ body: string; step: string; thought: string; property?: PropertyIdentity | null } | null> {
   const chain = await answerMailChain(text);
   if (chain) {
     const missed = /didn't find|didn't return|isn't connected/.test(chain);
@@ -45,11 +49,12 @@ export async function pinnedCompanyAnswer(text: string): Promise<{ body: string;
     };
   }
   if (asksDayCount(text)) return null;
-  const stay = await answerStay(text);
+  const stay = await answerStayDetail(text, context.prior ?? "", context.carried ?? [], context.property ?? null);
   if (!stay) return null;
   return {
-    body: stay,
+    body: stay.body,
     step: "Read the reservation",
     thought: "This came from Hospitable. Nothing was sent.",
+    property: stay.property,
   };
 }
