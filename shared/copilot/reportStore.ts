@@ -4,9 +4,9 @@
  * Elsewhere it is written under data/, which is created on save when it is missing.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { ensureDir, runtimeDataDir, tempDataDir } from "./dataDir.js";
 import { parityEnabled } from "./parity/flag.js";
 
 export type StoredReport = {
@@ -32,8 +32,7 @@ let writeFault = false;
 export function reportDirectory(): string {
   if (dirOverride) return dirOverride;
   if (chosenDir) return chosenDir;
-  if (readOnlyRuntime()) return path.join(tmpdir(), "mrg-copilot", "data");
-  return path.join(process.cwd(), "data");
+  return runtimeDataDir();
 }
 
 /** Point the next save at a directory. Pass null to use the runtime default. */
@@ -83,19 +82,12 @@ export function findStoredReport(text: string, prior = ""): StoredReport | null 
   return null;
 }
 
-function readOnlyRuntime(): boolean {
-  if (process.env.VERCEL) return true;
-  if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT) return true;
-  const root = process.cwd();
-  return root === "/var/task" || root.startsWith("/var/task/");
-}
-
 function storeFile(dir: string): string {
   return path.join(dir, FILE_NAME);
 }
 
 function writeStore(dir: string): void {
-  mkdirSync(dir, { recursive: true });
+  ensureDir(dir);
   writeFileSync(storeFile(dir), JSON.stringify({ seq, reports: memory }));
 }
 
@@ -125,7 +117,7 @@ function save(): void {
   try {
     writeStore(preferred);
   } catch (err) {
-    const fallback = path.join(tmpdir(), "mrg-copilot", "data");
+    const fallback = tempDataDir();
     if (dirOverride || path.resolve(preferred) === path.resolve(fallback)) throw err;
     writeStore(fallback);
     chosenDir = fallback;

@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { ensureDir, runtimeDataDir, tempDataDir } from "./dataDir.js";
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../supabase.js";
 import { captureReminder } from "./parity/capture.js";
@@ -30,17 +31,26 @@ type FileShape = {
   draftKeys: string[];
 };
 
-const FILE = path.join(process.cwd(), "data", "copilot-store.json");
+const STORE_NAME = "copilot-store.json";
 let useFile = false;
+let storeDir: string | null = null;
 const parityBoard: { chats: CopilotChat[]; messages: CopilotMessage[] } = { chats: [], messages: [] };
 
 function empty(): FileShape {
   return { chats: [], messages: [], reminders: [], memory: [], skills: [], dismissals: [], textNumbers: [], textLog: [], runs: [], openItems: [], cancellations: [], draftKeys: [] };
 }
 
+function chatStoreDir(): string {
+  return storeDir ?? runtimeDataDir();
+}
+
+function chatStoreFile(): string {
+  return path.join(chatStoreDir(), STORE_NAME);
+}
+
 function readFileStore(): FileShape {
   try {
-    const data = JSON.parse(readFileSync(FILE, "utf8")) as FileShape;
+    const data = JSON.parse(readFileSync(chatStoreFile(), "utf8")) as FileShape;
     data.chats ??= [];
     data.messages ??= [];
     data.reminders ??= [];
@@ -61,8 +71,18 @@ function readFileStore(): FileShape {
 }
 
 function writeFileStore(data: FileShape) {
-  mkdirSync(path.dirname(FILE), { recursive: true });
-  writeFileSync(FILE, JSON.stringify(data, null, 2));
+  const dir = chatStoreDir();
+  const body = JSON.stringify(data, null, 2);
+  try {
+    ensureDir(dir);
+    writeFileSync(path.join(dir, STORE_NAME), body);
+  } catch (err) {
+    const fallback = tempDataDir();
+    if (path.resolve(dir) === path.resolve(fallback)) throw err;
+    ensureDir(fallback);
+    writeFileSync(path.join(fallback, STORE_NAME), body);
+    storeDir = fallback;
+  }
 }
 
 function missingTable(error: { message?: string } | null): boolean {

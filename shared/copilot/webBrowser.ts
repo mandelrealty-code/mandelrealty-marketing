@@ -59,6 +59,9 @@ function bb(): Browserbase {
 
 function publicError(err: unknown): string {
   const raw = err instanceof Error ? err.message : "";
+  if (/ENOENT|EROFS|EACCES|EPERM|ENOTDIR|ENOSPC|mkdir|\/var\/task|no such file|read-only file system|syscall/i.test(raw)) {
+    return "The browser didn’t open. Nothing was sent.";
+  }
   if (/401|403|invalid api key|unauthorized/i.test(raw)) {
     return "Browserbase rejected the key on the server, so the browser didn’t open. Nothing was sent.";
   }

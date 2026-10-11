@@ -36,6 +36,8 @@ import type { PropertyIdentity } from "../copilot/propertyIdentity.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerPayout } from "../copilot/payoutAnswer.js";
 import { answerPropertyReport } from "../copilot/reportAnswer.js";
+import { isFilesystemError, REPORT_FILE_FAILURE } from "../copilot/fileError.js";
+import { asksPropertyReport } from "../copilot/reportParse.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
 import { answerGuestStay } from "../copilot/guestStayAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
@@ -336,6 +338,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const token = getSessionFromRequest(req.headers.cookie);
   if (!verifyAdminSessionToken(token)) return unauthorized(res);
 
+  let sendChatId = "";
+  let sendText = "";
   try {
     if (req.method === "GET") {
       const op = String(req.query.op ?? "boot");
@@ -778,11 +782,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const text = String(body.text ?? "").trim() || (images.length ? "Look at the attached photo." : "");
       const kind = body.kind === "code" ? "code" : "chat";
       if (!text) return res.status(400).json({ error: "Write a message first." });
+      sendText = text;
       let chatId = String(body.chatId ?? "");
       if (!chatId) {
         const chat = await createChat(await nameChat(text), kind);
         chatId = chat.id;
       }
+      sendChatId = chatId;
       if (chatId && /^(please\s+)?(stop|stop running|stop the browser|stop it|cancel)(\s+running)?[.!]*$/i.test(text) && (await browserIsLive(chatId))) {
         await addMessage({ chatId, role: "user", body: text });
         await cancelBrowser(chatId);
@@ -1035,10 +1041,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(200).json({ chatId, messages, chats, pending: false, memoryFiles });
           }
         } catch (err) {
+          const raw = err instanceof Error ? err.message : "The file was not written.";
           await addMessage({
             chatId,
             role: "assistant",
-            body: err instanceof Error ? err.message : "The file was not written.",
+            body: isFilesystemError(err) ? (asksPropertyReport(text) ? REPORT_FILE_FAILURE : "That could not be saved.") : raw,
+            thought: "Nothing was sent.",
           });
           return done();
         }
@@ -1838,7 +1846,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(400).json({ error: "Unknown op." });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Copilot failed.";
+    if (isFilesystemError(err) && sendText) {
+      const answer = asksPropertyReport(sendText) ? REPORT_FILE_FAILURE : "That could not be saved.";
+      const chatId = sendChatId;
+      const now = new Date().toISOString();
+      if (chatId) {
+        try {
+          await addMessage({ chatId, role: "assistant", body: answer, thought: "Nothing was sent." });
+        } catch {
+          /* The transcript file is not writable. The answer still stays in this response. */
+        }
+      }
+      const saved = chatId ? await listMessages(chatId).catch(() => []) : [];
+      const messages = [...saved];
+      if (!messages.some((row) => row.role === "user" && row.body === sendText)) {
+        messages.push({ id: "kept-request", chat_id: chatId, created_at: now, role: "user", body: sendText, draft: null });
+      }
+      if (!messages.some((row) => row.role === "assistant" && row.body === answer)) {
+        messages.push({ id: "kept-answer", chat_id: chatId, created_at: now, role: "assistant", body: answer, draft: null, thought: "Nothing was sent." });
+      }
+      return res.status(200).json({
+        chatId,
+        messages,
+        chats: await listChats().catch(() => []),
+        pending: false,
+      });
+    }
+    const message = isFilesystemError(err) ? "That could not be saved." : err instanceof Error ? err.message : "Copilot failed.";
     return res.status(500).json({ error: message });
   }
 }

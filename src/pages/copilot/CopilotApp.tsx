@@ -16,6 +16,8 @@ import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
 import { needsLiveBrowser, PAGE_UNREAD } from "../../../shared/copilot/browserTier";
 import { inputFromCard, rankOverview, type OverviewRow } from "../../../shared/copilot/overviewRank";
 import { skipsWeb } from "../../../shared/copilot/route";
+import { asksPropertyReport } from "../../../shared/copilot/reportParse";
+import { withoutFilesystemDetail } from "../../../shared/copilot/fileError";
 import type { AccountSpend } from "../../../shared/copilot/models";
 import { BLANK, type NodeResult, type Workflow } from "../../../shared/copilot/workflow";
 import { workflowFromSkill } from "../../../shared/copilot/skillShape";
@@ -162,7 +164,16 @@ async function api<T>(op: string, body?: Record<string, unknown>, signal?: Abort
     body: body ? JSON.stringify({ op, ...body }) : undefined,
     signal,
   });
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string; messages?: { role?: string; body?: string; thought?: string | null; steps?: { text?: string }[] | null }[] };
+  const report = Boolean(body && typeof body.text === "string" && asksPropertyReport(body.text));
+  if (typeof data.error === "string") data.error = withoutFilesystemDetail(data.error, report);
+  for (const message of data.messages ?? []) {
+    if (typeof message.body === "string") message.body = withoutFilesystemDetail(message.body, report || message.role === "assistant");
+    if (typeof message.thought === "string") message.thought = withoutFilesystemDetail(message.thought, report);
+    for (const step of message.steps ?? []) {
+      if (typeof step.text === "string") step.text = withoutFilesystemDetail(step.text, report);
+    }
+  }
   if (!res.ok) throw new Error(data.error || "Copilot request failed.");
   return data;
 }
@@ -226,7 +237,7 @@ function OverviewHome({
     : [{ what: "Last pass", result: "Nothing was waiting.", src: "Saved brief" }];
   return (
     <div className="cp-ov">
-      {error ? <p className="cp-err">{error}</p> : null}
+      {error ? <p className="cp-err">{withoutFilesystemDetail(error, true)}</p> : null}
       <header className="cp-ov-head">
         <div className="cp-ov-date">
           <h1>{overview.dateLabel}</h1>
@@ -645,7 +656,11 @@ function shownTrail(message: CopilotMessage): { thought?: string; steps: { text:
     ? { thought: message.thought || undefined, steps: message.steps ?? [] }
     : workFor(message);
   const count = trail.steps.length + (trail.thought ? 1 : 0);
-  return { ...trail, summary: count === 1 ? "1 step" : `${count} steps` };
+  return {
+    thought: trail.thought ? withoutFilesystemDetail(trail.thought, true) : undefined,
+    steps: trail.steps.map((step) => ({ ...step, text: withoutFilesystemDetail(step.text, true) })),
+    summary: count === 1 ? "1 step" : `${count} steps`,
+  };
 }
 
 function ThinkChevron({ open }: { open: boolean }) {
@@ -1365,7 +1380,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           if (makingPicture) setPictureMode(true);
         }
       } else {
-        setError(e instanceof Error ? e.message : "Could not send.");
+        setError(withoutFilesystemDetail(e instanceof Error ? e.message : "Could not send.", asksPropertyReport(typed)));
         if (!delivered && !preset) {
           setText(typed);
           setFiles(kept);
@@ -2378,7 +2393,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                 ) : null}
                 {screen === "brief" && !boot ? (
                   <div className="cp-home">
-                    <p className={error ? "cp-err" : "cp-note"}>{error || "Loading the overview."}</p>
+                    <p className={error ? "cp-err" : "cp-note"}>{error ? withoutFilesystemDetail(error, true) : "Loading the overview."}</p>
                   </div>
                 ) : null}
                 {screen === "brief" && boot ? (
@@ -2408,7 +2423,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                 ) : null}
                 {screen === "chat" ? (
                   <div className="cp-thread">
-                    {error ? <p className="cp-err">{error}</p> : null}
+                    {error ? <p className="cp-err">{withoutFilesystemDetail(error, true)}</p> : null}
                     {messages.map((message) =>
                       message.role === "user" ? (
                         <div key={message.id} id={`msg-${message.id}`} className="cp-userwrap">
@@ -2418,7 +2433,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             {message.images?.map((image, index) => (
                               <img key={index} src={`data:${image.mimeType};base64,${image.data}`} alt="" />
                             ))}
-                            {message.body ? <span>{message.body}</span> : null}
+                            {message.body ? <span>{withoutFilesystemDetail(message.body, true)}</span> : null}
                           </div>
                         </div>
                       ) : message.draft?.channel === "skill" ? (
@@ -2497,13 +2512,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             {message.images.map((image, index) => (
                               <img key={index} src={`data:${image.mimeType};base64,${image.data}`} alt="" />
                             ))}
-                            {message.body ? <figcaption>{message.body}</figcaption> : null}
+                            {message.body ? <figcaption>{withoutFilesystemDetail(message.body, true)}</figcaption> : null}
                           </figure>
                         </div>
                       ) : message.run_id ? (
                         <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
                           <span className="cp-sk-stamp">{runWhen(message.created_at, true)}</span>
-                          <p className="cp-sk-pre">{message.body}</p>
+                          <p className="cp-sk-pre">{withoutFilesystemDetail(message.body, true)}</p>
                         </div>
                       ) : (
                         <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
@@ -2517,7 +2532,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           />
                           {message.stayRows?.length ? (
                             <>
-                              <ChatText text={message.body.split("\n").filter((line) => !line.includes(" · ")).join("\n")} muted={message.draft?.status !== "waiting" && !!message.draft} />
+                              <ChatText text={withoutFilesystemDetail(message.body, true).split("\n").filter((line) => !line.includes(" · ")).join("\n")} muted={message.draft?.status !== "waiting" && !!message.draft} />
                               <StayCards stays={message.stayRows} onOpen={(row) => {
                                 setScreen("guests");
                                 setGuestAnswer(null);
@@ -2525,7 +2540,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                               }} />
                             </>
                           ) : (
-                            <ChatText text={message.body} muted={message.draft?.status !== "waiting" && !!message.draft} />
+                            <ChatText text={withoutFilesystemDetail(message.body, true)} muted={message.draft?.status !== "waiting" && !!message.draft} />
                           )}
                           {message.file ? (
                             <div className="cp-pdfcard">

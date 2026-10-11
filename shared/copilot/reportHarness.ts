@@ -20,6 +20,7 @@ import { installWorld, type ParityReservation } from "./parity/world.js";
 import { asksPropertyReport } from "./reportParse.js";
 import { setReportReconcileFault } from "./reportFigures.js";
 import { failNextReportWrite, rememberReport, reportDirectory, resetReportStore, useReportDirectory } from "./reportStore.js";
+import { createChat } from "./store.js";
 import { skipsWeb } from "./route.js";
 import { researchWebCalls, resetResearch } from "./skillResearch.js";
 import type { PmReservationRow } from "../pm/reservationStore.js";
@@ -457,6 +458,8 @@ try {
     createdAt: "2026-12-02T20:00:00.000Z",
   });
   if (!existsSync(path.join(productionDir, "copilot-reports.json"))) fail("production report was not written");
+  const keptChat = await createChat("Production report");
+  if (!keptChat.id || !existsSync(path.join(productionDir, "copilot-store.json"))) fail("the chat file was not created beside the report");
 } finally {
   if (previousVercel === undefined) delete process.env.VERCEL;
   else process.env.VERCEL = previousVercel;
