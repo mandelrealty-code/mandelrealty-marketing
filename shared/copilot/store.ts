@@ -1209,6 +1209,33 @@ export async function saveHandledFollowUps(ids: string[]): Promise<void> {
   await writePrefixed(FOLLOW_UP_HANDLED_PREFIX, JSON.stringify([...new Set(ids)]));
 }
 
+const INQUIRY_VERIFY_PREFIX = "guest-inquiry-verifying|";
+
+export type InquiryVerify = { id: string; action: "approve" | "decline"; at: string };
+
+/** A partner opened an inquiry in Airbnb. The follow-up stays up until the reservation reads back. */
+export async function readInquiryVerifying(): Promise<InquiryVerify[]> {
+  const raw = await readPrefixed(INQUIRY_VERIFY_PREFIX);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((row) => {
+      if (!row || typeof row !== "object") return [];
+      const id = String((row as { id?: unknown }).id ?? "");
+      const action = (row as { action?: unknown }).action === "decline" ? "decline" : "approve";
+      const at = String((row as { at?: unknown }).at ?? "");
+      return id ? [{ id, action, at }] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function saveInquiryVerifying(rows: InquiryVerify[]): Promise<void> {
+  await writePrefixed(INQUIRY_VERIFY_PREFIX, JSON.stringify(rows));
+}
+
 const THREAD_CACHE_PREFIX = "thread-cache|";
 
 export type CachedStayThread = {

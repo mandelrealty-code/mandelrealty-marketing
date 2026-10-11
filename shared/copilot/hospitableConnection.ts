@@ -371,6 +371,19 @@ async function readLive(token: string, name: string, args: Record<string, unknow
     const id = String(args.property_id ?? args.uuid ?? args.id ?? "");
     return hospitableFetch(token, `/properties/${encodeURIComponent(id)}/knowledge-hub`);
   }
+  if (name === "get-inquiries") {
+    return hospitableFetch(token, "/inquiries", {
+      properties: Array.isArray(args.properties) ? args.properties.map(String) : [],
+      per_page: "100",
+      page: String(args.page ?? 1),
+      include: String(args.include ?? ""),
+    });
+  }
+  if (name === "get-inquiry") {
+    return hospitableFetch(token, `/inquiries/${encodeURIComponent(String(args.uuid ?? ""))}`, {
+      include: String(args.include ?? "guest,messages"),
+    });
+  }
   if (name === "get-reservations") {
     return hospitableFetch(token, "/reservations", {
       properties: Array.isArray(args.properties) ? args.properties.map(String) : [],

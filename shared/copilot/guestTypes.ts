@@ -148,6 +148,19 @@ export type GuestFollowUp = {
   expiresAt: string;
   draft: string;
   notes: string[];
+  /** Present on an inquiry built from a booking request. */
+  newToAirbnb?: boolean;
+  joined?: string;
+  nights?: string;
+  guestCount?: string;
+  price?: string;
+  rulesConfirmed?: boolean;
+  rulesQuote?: string;
+  rulesWhen?: string;
+  airbnbUrl?: string;
+  phase?: "" | "verifying-approve" | "verifying-decline";
+  suggested?: "approve" | "rules";
+  declineDraft?: string;
 };
 
 export type GuestFollowUpClose = {

@@ -15,6 +15,7 @@ export function GuestMessaging({
   onUnstand,
   onRefresh,
   onHandleFollowUp,
+  onInquiry,
 }: {
   queue: GuestQueue | null;
   answer: GuestDraftView | null;
@@ -26,6 +27,7 @@ export function GuestMessaging({
   onUnstand?: (situation: string) => Promise<void>;
   onRefresh?: () => void;
   onHandleFollowUp?: (id: string) => Promise<void>;
+  onInquiry?: (id: string, action: "approve" | "decline") => Promise<string>;
 }) {
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState("all");
@@ -139,17 +141,23 @@ export function GuestMessaging({
   }
 
   if (followUp) {
+    const live = (queue.followUps ?? []).find((row) => row.id === followUp.id) ?? followUp;
     const threadClose = (queue.closedFollowUps ?? []).find((row) => row.id === followUp.id)?.closeText ?? "";
     const stillOpen = (queue.followUps ?? []).some((row) => row.id === followUp.id);
     return (
       <FollowUpScreen
-        item={followUp}
-        answer={answer && answer.id === followUp.reservationId ? answer : null}
+        item={live}
+        answer={answer && answer.id === live.reservationId ? answer : null}
         threadClose={threadClose}
         stillOpen={stillOpen}
         onBack={() => { setFollowUp(null); onBack(); }}
         onSubmit={onSubmit}
         onHandle={async () => { await onHandleFollowUp?.(followUp.id); }}
+        onInquiry={async (action) => {
+          const url = await onInquiry?.(live.id, action) ?? live.airbnbUrl ?? "";
+          if (url) window.open(url, "_blank", "noopener");
+          return url;
+        }}
       />
     );
   }
@@ -409,6 +417,7 @@ function FollowUpScreen({
   onBack,
   onSubmit,
   onHandle,
+  onInquiry,
 }: {
   item: GuestFollowUp;
   answer: GuestDraftView | null;
@@ -417,15 +426,30 @@ function FollowUpScreen({
   onBack: () => void;
   onSubmit: (draft: string, fact: string, attachments: GuestFile[]) => Promise<SubmitResult>;
   onHandle: () => Promise<void>;
+  onInquiry?: (action: "approve" | "decline") => Promise<string>;
 }) {
   const [drafting, setDrafting] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [declineText, setDeclineText] = useState(item.declineDraft || "");
   const [text, setText] = useState(item.draft);
+  const [tick, setTick] = useState(() => Date.now());
   const [files, setFiles] = useState<GuestFile[]>([]);
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
   const [sent, setSent] = useState("");
   const [handled, setHandled] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const verifying = item.phase === "verifying-approve" || item.phase === "verifying-decline";
+  useEffect(() => {
+    setDeclining(false);
+    setDeclineText(item.declineDraft || "");
+    setText(item.draft);
+  }, [item.id, item.suggested, item.declineDraft, item.draft]);
+  useEffect(() => {
+    if (item.kind !== "inquiry" || !item.expiresAt) return;
+    const timer = setInterval(() => setTick(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [item.kind, item.expiresAt]);
   const days = answer ? groupDays(answer.thread) : [];
   const closed = handled || Boolean(threadClose) || !stillOpen;
   return (
@@ -497,9 +521,40 @@ function FollowUpScreen({
           ) : null}
           {item.kind === "inquiry" ? (
             <div className="cp-gm-fucard">
-              <p className="story">{item.line}</p>
-              {item.dueText ? <p>{item.dueText}</p> : null}
-              {item.notes.map((note) => <p key={note}>{note}</p>)}
+              <div className="cp-gm-who">
+                {item.guestPhoto ? <img src={item.guestPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="face" aria-label={`${item.guest} profile photo`}>{item.initials}</span>}
+                <div>
+                  <strong>{item.guest}</strong>
+                  {item.newToAirbnb ? <span className="cp-gm-new">New to Airbnb</span> : null}
+                  {item.joined ? <em>{item.joined}</em> : null}
+                </div>
+              </div>
+              <div className="cp-gm-meta">
+                <span>Dates</span><p>{item.dates}</p>
+                <span>Nights</span><p>{item.nights}</p>
+                <span>Guests</span><p>{item.guestCount}</p>
+                <span>Price</span><p>{item.price}</p>
+              </div>
+              <div>
+                <span className="k">House rules</span>
+                {item.rulesConfirmed && item.rulesQuote ? (
+                  <>
+                    <p>House rules confirmed by guest, {item.rulesWhen}</p>
+                    <blockquote><p>“{item.rulesQuote}”</p></blockquote>
+                  </>
+                ) : item.newToAirbnb ? <p className="needs">Not yet confirmed</p> : <p>Not required for this guest.</p>}
+              </div>
+              {item.notes.length ? (
+                <div>
+                  <span className="k">Worth knowing</span>
+                  {item.notes.map((note) => <p key={note}>{note}</p>)}
+                </div>
+              ) : null}
+              <div>
+                <span className="k">Respond by</span>
+                <p>{item.dueText}{inquiryTag(item, tick).text.startsWith("INQUIRY · ") ? ` · ${inquiryTag(item, tick).text.slice("INQUIRY · ".length)} left` : ""}</p>
+                <p className="cp-gm-quiet">If it passes, Airbnb expires the request and this follow-up closes.</p>
+              </div>
             </div>
           ) : null}
           {handled || threadClose ? (
@@ -507,7 +562,75 @@ function FollowUpScreen({
               <span>{handled ? "Handled · follow-up closed" : "Closed by the thread"}</span>
               <p>{handled ? "Marked handled. It won’t come back." : threadClose}</p>
             </div>
-          ) : item.kind === "inquiry" ? null : drafting && item.kind === "owe" ? (
+          ) : item.kind === "inquiry" ? (
+            verifying ? (
+              <div className="cp-gm-fu-done" aria-live="polite">
+                <span>Verifying</span>
+                <p>{item.phase === "verifying-decline" ? "Opened in Airbnb. Copilot closes this when the reservation reads back declined." : "Opened in Airbnb. Copilot closes this when the reservation reads back accepted."}</p>
+              </div>
+            ) : declining ? (
+              <div className="cp-gm-fudraft">
+                <div className="cp-gm-draft">
+                  <span>Decline message to {item.first} · edit before you open Airbnb</span>
+                  <textarea rows={5} value={declineText} onChange={(event) => setDeclineText(event.target.value)} />
+                  <button type="button" className="plus" aria-label="Add files, photos or context" title="Add files, photos or context" onClick={() => input.current?.click()}>+</button>
+                  <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { void readFiles(event.target.files).then((next) => setFiles((current) => [...current, ...next])); event.target.value = ""; }} />
+                </div>
+                <div className="cp-gm-actions">
+                  <span className="hint">Opens the request in Airbnb. This draft is not sent.</span>
+                  <button type="button" onClick={() => setDeclining(false)}>Cancel</button>
+                  <button type="button" className="submit" disabled={busy} onClick={() => {
+                    setBusy(true);
+                    setFail("");
+                    void onInquiry?.("decline").catch((err: unknown) => {
+                      setFail(err instanceof Error ? err.message : "The request was not opened.");
+                    }).finally(() => setBusy(false));
+                  }}>{busy ? "Opening…" : "Open in Airbnb"}</button>
+                </div>
+                {fail ? <p className="fail">{fail}</p> : null}
+              </div>
+            ) : item.suggested === "rules" ? (
+              <div className="cp-gm-fudraft">
+                <div className="cp-gm-draft">
+                  <span>House rules to {item.first} · acceptance stays closed until they confirm</span>
+                  <textarea rows={4} value={text} onChange={(event) => setText(event.target.value)} />
+                  <button type="button" className="plus" aria-label="Add files, photos or context" title="Add files, photos or context" onClick={() => input.current?.click()}>+</button>
+                  <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { void readFiles(event.target.files).then((next) => setFiles((current) => [...current, ...next])); event.target.value = ""; }} />
+                </div>
+                <div className="cp-gm-actions">
+                  <span className="hint">Sends the rules ask. It does not accept the request.</span>
+                  <button type="button" onClick={() => setDeclining(true)}>Decline</button>
+                  <button type="button" className="submit" disabled={busy || !text.trim()} onClick={() => {
+                    setBusy(true);
+                    setFail("");
+                    void onSubmit(text, "", files).then((result) => {
+                      if (result.failedLine) setFail(result.failedLine);
+                      else setSent(result.sentText || `Sent to ${item.first}.`);
+                    }).catch((err: unknown) => {
+                      setFail(err instanceof Error ? err.message : "Nothing was sent.");
+                    }).finally(() => setBusy(false));
+                  }}>{busy ? "Sending…" : "Send the house rules"}</button>
+                </div>
+                {fail ? <p className="fail">{fail}</p> : null}
+                {sent ? <p className="sent">{sent}</p> : null}
+              </div>
+            ) : (
+              <div className="cp-gm-fuacts">
+                <div>
+                  <button type="button" onClick={() => setDeclining(true)}>Decline</button>
+                  <button type="button" className="submit" disabled={busy} onClick={() => {
+                    setBusy(true);
+                    setFail("");
+                    void onInquiry?.("approve").catch((err: unknown) => {
+                      setFail(err instanceof Error ? err.message : "The request was not opened.");
+                    }).finally(() => setBusy(false));
+                  }}>{busy ? "Opening…" : "Approve booking"}</button>
+                </div>
+                <span>Opens this request in Airbnb. Nothing is accepted until the reservation reads back accepted.</span>
+                {fail ? <p className="fail">{fail}</p> : null}
+              </div>
+            )
+          ) : drafting && item.kind === "owe" ? (
             <div className="cp-gm-fudraft">
               <div className="cp-gm-draft">
                 <span>Draft to {item.first} · edit anything before you submit</span>

@@ -57,6 +57,12 @@ export type ParityReservation = {
   checkInTime?: string;
   checkOutTime?: string;
   notes?: string;
+  /** When a request to book entered pending. */
+  bookedAt?: string;
+  guestPhoto?: string;
+  /** Review count from the guest record. Absent when the record doesn't say. */
+  reviews?: number;
+  guestSince?: string;
 };
 
 export type ParityCalendarDay = {
@@ -208,6 +214,25 @@ export type ParityWorld = {
   followUps?: ParityFollowUp[];
   calendar?: ParityCalendarDay[];
   payments?: ParityPayment[];
+  inquiries?: ParityInquiry[];
+};
+
+export type ParityInquiry = {
+  id: string;
+  propertyId: string;
+  status: string;
+  guest: string;
+  checkIn: string;
+  checkOut: string;
+  adults: number;
+  children: number;
+  messages: ParityMessage[];
+  financials?: Record<string, unknown>;
+  airbnbThread?: string;
+  bookedAt?: string;
+  guestPhoto?: string;
+  reviews?: number;
+  guestSince?: string;
 };
 
 let world: ParityWorld | null = null;
@@ -228,6 +253,7 @@ export function installWorld(next: ParityWorld): void {
     followUps: (next.followUps ?? []).map((row) => ({ ...row })),
     calendar: (next.calendar ?? []).map((row) => ({ ...row })),
     payments: (next.payments ?? []).map((row) => ({ ...row })),
+    inquiries: (next.inquiries ?? []).map((row) => ({ ...row, messages: row.messages.map((message) => ({ ...message })) })),
     cleaner: next.cleaner
       ? {
           error: next.cleaner.error,
@@ -778,6 +804,16 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
     const stay = current.reservations.find((row) => row.id === id);
     return { handled: true, value: { data: (stay?.messages ?? []).map(mcpMessage) } };
   }
+  if (name === "get-inquiry") {
+    const id = String(args.uuid ?? "");
+    const row = (current.inquiries ?? []).find((item) => item.id === id);
+    return { handled: true, value: row ? { data: mcpInquiry(row) } : { data: null } };
+  }
+  if (name === "get-inquiries") {
+    const ids = Array.isArray(args.properties) ? args.properties.map(String) : [];
+    const rows = (current.inquiries ?? []).filter((row) => !ids.length || ids.includes(row.propertyId));
+    return { handled: true, value: { data: rows.map(mcpInquiry), meta: { last_page: 1 } } };
+  }
   if (name === "get-reservations") {
     const ids = Array.isArray(args.properties) ? args.properties.map(String) : [];
     if (!args.reservation_code && ids.length !== 1) markAccountWide();
@@ -819,6 +855,16 @@ export function parityHttp(method: string, path: string, query: Record<string, u
     const stay = current.reservations.find((row) => row.id === key || row.code.toUpperCase() === key.toUpperCase());
     return { handled: true, value: stay ? { data: mcpReservation(stay, current) } : { data: null } };
   }
+  const inquiryPath = path.match(/^\/inquiries\/([^/]+)$/);
+  if (inquiryPath) {
+    const row = (current.inquiries ?? []).find((item) => item.id === decodeURIComponent(inquiryPath[1]));
+    return { handled: true, value: row ? { data: mcpInquiry(row) } : { data: null } };
+  }
+  if (path === "/inquiries") {
+    const ids = Array.isArray(query.properties) ? query.properties.map(String) : [];
+    const rows = (current.inquiries ?? []).filter((row) => !ids.length || ids.includes(row.propertyId));
+    return { handled: true, value: { data: rows.map(mcpInquiry), meta: { last_page: 1 } } };
+  }
   if (path === "/reservations") {
     const ids = Array.isArray(query.properties) ? query.properties.map(String) : [];
     if (ids.length !== 1) markAccountWide();
@@ -854,6 +900,28 @@ function mcpProperty(row: ParityProperty) {
   };
 }
 
+function mcpInquiry(row: ParityInquiry) {
+  return {
+    id: row.id,
+    status: row.status,
+    property_id: row.propertyId,
+    arrival_date: row.checkIn,
+    departure_date: row.checkOut,
+    booked_at: row.bookedAt || "",
+    code: "",
+    guest: {
+      first_name: row.guest,
+      ...(row.guestPhoto ? { picture: row.guestPhoto } : {}),
+      ...(row.reviews == null ? {} : { reviews_count: row.reviews }),
+      ...(row.guestSince ? { created_at: row.guestSince } : {}),
+    },
+    guests: { adult_count: row.adults, child_count: row.children, total: row.adults + row.children },
+    ...(row.financials ? { financials: row.financials } : {}),
+    ...(row.airbnbThread ? { conversation: { platform_id: row.airbnbThread } } : {}),
+    messages: row.messages.map(mcpMessage),
+  };
+}
+
 function mcpReservation(row: ParityReservation, current: ParityWorld) {
   const property = current.properties.find((item) => item.id === row.propertyId);
   return {
@@ -869,7 +937,14 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     check_out: `${row.checkOut}T${padClock(row.checkOutTime, "11:00")}:00${torontoOffset(row.checkOut)}`,
     checkin_time: padClock(row.checkInTime, "16:00"),
     checkout_time: padClock(row.checkOutTime, "11:00"),
-    guest: { first_name: row.guest, ...(row.phone ? { phone: row.phone } : {}) },
+    booked_at: row.bookedAt || "",
+    guest: {
+      first_name: row.guest,
+      ...(row.phone ? { phone: row.phone } : {}),
+      ...(row.guestPhoto ? { picture: row.guestPhoto } : {}),
+      ...(row.reviews == null ? {} : { reviews_count: row.reviews }),
+      ...(row.guestSince ? { created_at: row.guestSince } : {}),
+    },
     guests: { adult_count: row.adults, child_count: row.children, total: row.adults + row.children },
     properties: property ? [mcpProperty(property)] : [],
     ...(row.financials ? { financials: row.financials } : {}),

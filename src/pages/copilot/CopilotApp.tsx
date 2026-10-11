@@ -2315,6 +2315,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       setGuestQueue(queue);
                       setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
                     }}
+                    onInquiry={async (id, action) => {
+                      const result = await api<{ queue: GuestQueue; airbnbUrl: string }>("guests-inquiry", { id, action });
+                      if (isGuestQueue(result.queue)) {
+                        setGuestQueue(result.queue);
+                        setBoot((prev) => (prev ? { ...prev, guestQueue: result.queue } : prev));
+                      }
+                      return result.airbnbUrl || "";
+                    }}
                     onStand={async (situation, wording) => {
                       await api("guests-stand", { situation, wording });
                     }}

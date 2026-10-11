@@ -8,7 +8,8 @@ import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from
 import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIntelligence.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { detectFollowUps, orderFollowUps, type FollowUpStay } from "./guestFollowUps.js";
-import { readGuestQueueSnapshot, readHandledFollowUps, saveGuestQueueSnapshot, saveHandledFollowUps } from "./store.js";
+import { bookingRequestFollowUp, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
+import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, type InquiryVerify } from "./store.js";
 import { leaveDraft, loadRecentStays, memoryFor, readStayThread } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
@@ -26,6 +27,7 @@ const drafts = new Map<string, { to: string; body: string; reservationId: string
 const standing = new Map<string, string>();
 const heldIds = new Set<string>();
 const handledFollowUps = new Set<string>();
+const verifyingInquiries = new Map<string, InquiryVerify>();
 let stagedInquiries: GuestFollowUp[] = [];
 let rememberedQueue: GuestQueue | null = null;
 
@@ -37,6 +39,7 @@ export function resetGuestMessaging(): void {
   standing.clear();
   heldIds.clear();
   handledFollowUps.clear();
+  verifyingInquiries.clear();
   stagedInquiries = [];
   rememberedQueue = null;
 }
@@ -49,6 +52,26 @@ export function stageInquiryFollowUps(rows: GuestFollowUp[]): void {
 export async function clearHandledFollowUps(): Promise<void> {
   handledFollowUps.clear();
   await saveHandledFollowUps([]).catch(() => undefined);
+}
+
+export async function clearInquiryVerifying(): Promise<void> {
+  verifyingInquiries.clear();
+  await saveInquiryVerifying([]).catch(() => undefined);
+}
+
+/**
+ * The partner pressed Approve or Decline. No Hospitable write exists for either,
+ * so this only remembers the press and returns the Airbnb request to open.
+ */
+export async function beginInquiryVerify(id: string, action: "approve" | "decline", now = parityNow() ?? new Date()): Promise<{ queue: GuestQueue; airbnbUrl: string }> {
+  const trimmed = id.trim();
+  if (trimmed) {
+    verifyingInquiries.set(trimmed, { id: trimmed, action, at: now.toISOString() });
+    await saveInquiryVerifying([...verifyingInquiries.values()]).catch(() => undefined);
+  }
+  const queue = await loadGuestQueue(now);
+  const card = queue.followUps.find((row) => row.id === trimmed);
+  return { queue, airbnbUrl: card?.airbnbUrl || "" };
 }
 
 /** Closes a follow-up for good. A later read of the same thread will not bring it back. */
@@ -405,6 +428,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     const scanned = new Set<string>();
     const unreadThreads = new Set<string>();
     const handled = await handledNow();
+    await rememberVerifying();
     const unread = [...loaded.failed];
     const failed = loaded.failed.map((label) => `Couldn't read reservations for ${label}, so anyone waiting there isn't listed. Nothing was sent.`);
     const messageFailed = new Set<string>();
@@ -435,6 +459,15 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
         if (!handled.has(row.id)) followUps.push(row);
       }
       for (const row of detected.settled) settled.set(row.id, row.closeText);
+      if (isOpenRequest(stay.stay.status)) {
+        const recordRaw = await hospitableRead("get-reservation", { identifier: stay.stay.id, include: "guest,financials" }).catch(() => null);
+        const record = recordFromRow(oneRecord(recordRaw) ?? {}, stay.label, stay.stay.propertyId);
+        if (record?.pendingAt) {
+          const inquiryTurns: InquiryTurn[] = messages.map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body }));
+          const card = bookingRequestFollowUp(record, inquiryTurns, now, phaseFor(record.id));
+          if (card && !handled.has(card.id)) followUps.push(card);
+        }
+      }
       const turns = messages
         .filter((item) => item.role !== "system")
         .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body, media: item.media ?? [] }));
@@ -471,6 +504,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       } else if (isThanksOnly(ask)) thanks.push(row);
     }
     waiting.sort((a, b) => arrivalRank(a, today) - arrivalRank(b, today) || b.waitedMs - a.waitedMs || a.guest.localeCompare(b.guest));
+    await collectInquiries(seenProperties, followUps, settled, scanned, handled, now);
     const previous = rememberedQueue?.followUps ?? [];
     for (const row of previous) {
       if (unreadThreads.has(row.reservationId) && !handled.has(row.id) && !followUps.some((item) => item.id === row.id)) followUps.push(row);
@@ -478,6 +512,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     for (const row of stagedInquiries) {
       if (!handled.has(row.id) && !followUps.some((item) => item.id === row.id)) followUps.push(row);
     }
+    await reconcileInquiryCloses(previous, followUps, settled, scanned, now);
     const ordered = orderFollowUps(followUps, now);
     const openIds = new Set(ordered.map((row) => row.id));
     const closedFollowUps = previous
@@ -517,6 +552,102 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       properties: [],
       answer: "",
     };
+  }
+}
+
+function phaseFor(reservationId: string): InquiryPhase {
+  const row = verifyingInquiries.get(`inquiry:${reservationId}`);
+  if (!row) return "";
+  return row.action === "decline" ? "verifying-decline" : "verifying-approve";
+}
+
+async function rememberVerifying(): Promise<void> {
+  const saved = await readInquiryVerifying().catch(() => []);
+  for (const row of saved) verifyingInquiries.set(row.id, row);
+}
+
+function forgetVerify(id: string): void {
+  if (!verifyingInquiries.delete(id)) return;
+  void saveInquiryVerifying([...verifyingInquiries.values()]).catch(() => undefined);
+}
+
+function oneRecord(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const data = (raw as { data?: unknown }).data;
+  if (data && typeof data === "object" && !Array.isArray(data)) return data as Record<string, unknown>;
+  return null;
+}
+
+function rowsOf(raw: unknown): Record<string, unknown>[] {
+  if (!raw || typeof raw !== "object") return [];
+  const data = (raw as { data?: unknown }).data;
+  return Array.isArray(data) ? data.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object" && !Array.isArray(row)) : [];
+}
+
+function turnsFrom(row: Record<string, unknown>): InquiryTurn[] {
+  const messages = Array.isArray(row.messages) ? row.messages : [];
+  return messages.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const message = item as Record<string, unknown>;
+    const author = message.author && typeof message.author === "object" ? message.author as Record<string, unknown> : {};
+    return [{
+      at: String(message.created_at ?? message.at ?? ""),
+      role: String(message.sender_role ?? message.role ?? "guest"),
+      name: String(author.name ?? message.name ?? ""),
+      body: String(message.body ?? ""),
+    }];
+  });
+}
+
+async function collectInquiries(
+  properties: Map<string, { id: string; label: string; failed: boolean }>,
+  followUps: GuestFollowUp[],
+  settled: Map<string, string>,
+  scanned: Set<string>,
+  handled: Set<string>,
+  now: Date,
+): Promise<void> {
+  for (const property of properties.values()) {
+    if (property.failed) continue;
+    let raw: unknown;
+    try {
+      raw = await hospitableRead("get-inquiries", { properties: [property.id], include: "guest,messages" });
+    } catch {
+      continue;
+    }
+    for (const row of rowsOf(raw)) {
+      const record = recordFromRow(row, property.label, property.id);
+      if (!record?.pendingAt) continue;
+      scanned.add(record.id);
+      const turns = turnsFrom(row);
+      if (isOpenRequest(record.status)) {
+        const card = bookingRequestFollowUp(record, turns, now, phaseFor(record.id));
+        if (card && !handled.has(card.id) && !followUps.some((item) => item.id === card.id)) followUps.push(card);
+      }
+    }
+  }
+}
+
+async function reconcileInquiryCloses(
+  previous: GuestFollowUp[],
+  followUps: GuestFollowUp[],
+  settled: Map<string, string>,
+  scanned: Set<string>,
+  now: Date,
+): Promise<void> {
+  for (const prev of previous) {
+    if (prev.kind !== "inquiry" || followUps.some((row) => row.id === prev.id) || settled.has(prev.id)) continue;
+    if (!scanned.has(prev.reservationId)) continue;
+    const raw = await hospitableRead("get-reservation", { identifier: prev.reservationId, include: "guest,financials" }).catch(() => null);
+    const inquiryRaw = recordFromRow(oneRecord(raw) ?? {}, prev.property, prev.propertyId)
+      ? null
+      : await hospitableRead("get-inquiry", { identifier: prev.reservationId, include: "guest,messages" }).catch(() => null);
+    const record = recordFromRow(oneRecord(raw) ?? {}, prev.property, prev.propertyId)
+      ?? recordFromRow(oneRecord(inquiryRaw) ?? {}, prev.property, prev.propertyId);
+    if (!record) continue;
+    forgetVerify(prev.id);
+    const status = isOpenRequest(record.status) ? "expired" : record.status;
+    settled.set(prev.id, inquiryCloseText(status, prev.expiresAt, now));
   }
 }
 

@@ -7746,6 +7746,47 @@ html.cp-app[data-cp-theme="dark"] #root {
   color: var(--accent-ink);
 }
 
+.cp-gm-who {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cp-gm-who img,
+.cp-gm-who .face {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+}
+
+.cp-gm-who div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-gm-who strong { font-size: 17px; line-height: 24px; }
+
+.cp-gm-who em {
+  flex-basis: 100%;
+  font-style: normal;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cp-gm-new {
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid var(--accent-fill);
+}
+
+.cp-gm-fucard .needs { font-weight: 600; color: var(--needs); }
+
 .cp-gm-tag.due {
   border-color: var(--accent-fill);
   background: var(--accent-fill);

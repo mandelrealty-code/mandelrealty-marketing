@@ -8,8 +8,12 @@ import { resetHospitableConnection, saveHospitableToken, setHospitableProbe } fr
 import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerWaitingDrafts } from "./guestInboxAnswer.js";
 import { detectFollowUps, orderFollowUps } from "./guestFollowUps.js";
+import { bookingRequestFollowUp, responseDeadline, type InquiryRecord, type InquiryTurn } from "./guestInquiries.js";
+import { capturedCommits } from "./parity/capture.js";
 import {
+  beginInquiryVerify,
   clearHandledFollowUps,
+  clearInquiryVerifying,
   draftFromHub,
   isThanksOnly,
   loadGuestQueue,
@@ -607,5 +611,184 @@ if (closedBag.followUps.some((row) => row.id === dueWindows.id)) fail("handled w
 if (!closedBag.closedFollowUps.some((row) => /Priya/.test(row.guest) && /picked up/i.test(row.closeText))) fail(`thread close ${closedBag.closedFollowUps.map((row) => row.closeText).join(" | ")}`);
 const quiet = await loadGuestQueue(new Date("2026-10-10T21:30:00-04:00"));
 if (quiet.closedFollowUps.length) fail("closed line repeated on the next load");
+
+const anlelNow = new Date("2026-10-10T21:12:00-04:00");
+const anlelPending = "2026-10-11T00:15:00.000Z";
+const ANLEL_RULES = "I've read the house rules and I agree to them, no parties and quiet after 10.";
+const anlelTurns: InquiryTurn[] = [
+  { at: anlelPending, role: "host", name: "Airbnb", body: "Booking request from Anlel: Fri Nov 20 → Mon Nov 23, 3 nights, 2 guests, CA$1,222.13. Respond by Sunday, October 11 at 8:15 PM." },
+  { at: "2026-10-11T00:16:00.000Z", role: "host", name: "Sam", body: "House rules: no parties, and quiet after 10." },
+  { at: "2026-10-11T00:20:00.000Z", role: "guest", name: "Anlel", body: ANLEL_RULES },
+];
+const anlelRecord: InquiryRecord = {
+  id: "stay-anlel",
+  code: "HMANLEL1",
+  status: "request",
+  guest: "Anlel",
+  guestPhoto: "https://example.test/anlel.jpg",
+  reviews: 0,
+  guestSince: "2026-10-02T16:00:00.000Z",
+  property: "20 Blue Jays Way",
+  propertyId: "prop-jays",
+  checkIn: "2026-11-20",
+  checkOut: "2026-11-23",
+  adults: 2,
+  children: 0,
+  total: "CA$1,222.13",
+  pendingAt: anlelPending,
+  airbnbThread: "481920155",
+};
+const anlelCard = bookingRequestFollowUp(anlelRecord, anlelTurns, anlelNow);
+if (!anlelCard || anlelCard.kind !== "inquiry") fail("anlel card");
+if (anlelCard.expiresAt !== "2026-10-12T00:15:00.000Z") fail(`anlel deadline ${anlelCard.expiresAt}`);
+if (anlelCard.price !== "CA$1,222.13" || anlelCard.nights !== "3" || anlelCard.guestCount !== "2") fail(`anlel facts ${anlelCard.price} ${anlelCard.nights} ${anlelCard.guestCount}`);
+if (!anlelCard.newToAirbnb || anlelCard.guestPhoto !== "https://example.test/anlel.jpg") fail("anlel record signals");
+if (anlelCard.rulesQuote !== ANLEL_RULES || !/8:20 PM/.test(anlelCard.rulesWhen || "")) fail(`anlel rules ${anlelCard.rulesQuote} ${anlelCard.rulesWhen}`);
+if (anlelCard.suggested !== "approve" || anlelCard.phase) fail("anlel suggested approve before a press");
+if (!anlelCard.notes.some((note) => /24 hours to respond/.test(note)) || anlelCard.notes.some((note) => /4 hours left/.test(note))) fail(`anlel escalation ${anlelCard.notes.join(" | ")}`);
+if (!anlelCard.airbnbUrl?.endsWith("/481920155")) fail(`anlel link ${anlelCard.airbnbUrl}`);
+const unconfirmed = bookingRequestFollowUp(anlelRecord, anlelTurns.slice(0, 2), anlelNow);
+if (!unconfirmed || unconfirmed.suggested !== "rules" || unconfirmed.rulesConfirmed) fail("unconfirmed rules still offered acceptance");
+if (!/house rules/i.test(unconfirmed.draft)) fail("rules draft missing");
+const earlier = responseDeadline(anlelPending, [{ at: anlelPending, role: "host", name: "Airbnb", body: "Respond by Sunday, October 11 at 6:00 PM." }]);
+if (earlier?.toISOString() !== "2026-10-11T22:00:00.000Z") fail(`earlier thread deadline ${earlier?.toISOString()}`);
+const later = responseDeadline(anlelPending, [{ at: anlelPending, role: "host", name: "Airbnb", body: "Respond by Monday, October 12 at 9:00 PM." }]);
+if (later?.toISOString() !== "2026-10-12T00:15:00.000Z") fail(`later thread deadline ${later?.toISOString()}`);
+const soon = bookingRequestFollowUp(anlelRecord, anlelTurns, new Date("2026-10-11T16:20:00-04:00"));
+if (!soon?.notes.some((note) => /4 hours left/.test(note))) fail(`four hour escalation ${soon?.notes.join(" | ")}`);
+
+resetGuestMessaging();
+await clearHandledFollowUps();
+await clearInquiryVerifying();
+const anlelMessages = anlelTurns.map((row, index) => ({ id: `an-${index}`, at: row.at, role: row.role as "guest" | "host", name: row.name, body: row.body }));
+installWorld({
+  now: anlelNow,
+  properties: [{ id: "prop-jays", name: "20 Blue Jays Way", address: "20 Blue Jays Way, Toronto", managed: true }],
+  reservations: [{
+    id: "stay-anlel",
+    code: "HMANLEL1",
+    propertyId: "prop-jays",
+    status: "request",
+    checkIn: "2026-11-20",
+    checkOut: "2026-11-23",
+    guest: "Anlel",
+    adults: 2,
+    children: 0,
+    messages: anlelMessages,
+    financials: { currency: "CAD", guest: { total_price: { formatted: "CA$1,222.13" } } },
+    airbnbThread: "481920155",
+    bookedAt: anlelPending,
+    guestPhoto: "https://example.test/anlel.jpg",
+    reviews: 0,
+    guestSince: "2026-10-02T16:00:00.000Z",
+  }],
+  inquiries: [{
+    id: "inq-jules",
+    propertyId: "prop-jays",
+    status: "open",
+    guest: "Jules",
+    checkIn: "2026-12-01",
+    checkOut: "2026-12-04",
+    adults: 1,
+    children: 0,
+    messages: [],
+    financials: { guest: { total_price: { formatted: "CA$640.00" } } },
+    airbnbThread: "481920166",
+    bookedAt: "2026-10-11T01:00:00.000Z",
+    reviews: 14,
+    guestSince: "2019-04-01T12:00:00.000Z",
+  }],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const beforeCommits = capturedCommits().length;
+const requestQueue = await loadGuestQueue(anlelNow);
+const queuedAnlel = requestQueue.followUps.find((row) => row.guest === "Anlel");
+if (!queuedAnlel || queuedAnlel.expiresAt !== anlelCard.expiresAt || queuedAnlel.rulesQuote !== ANLEL_RULES || queuedAnlel.price !== "CA$1,222.13") fail(`queue anlel ${queuedAnlel?.expiresAt} ${queuedAnlel?.price} ${queuedAnlel?.rulesQuote}`);
+if (!requestQueue.followUps.some((row) => row.guest === "Jules" && row.kind === "inquiry")) fail("open inquiry missing");
+if (capturedCommits().length !== beforeCommits) fail("inquiry load wrote to Hospitable");
+const verified = await beginInquiryVerify(queuedAnlel.id, "approve", anlelNow);
+if (verified.airbnbUrl !== queuedAnlel.airbnbUrl || capturedCommits().length !== beforeCommits) fail("approve pressed a Hospitable write");
+if (verified.queue.followUps.find((row) => row.id === queuedAnlel.id)?.phase !== "verifying-approve") fail("approve did not start verifying");
+installWorld({
+  now: new Date("2026-10-10T21:20:00-04:00"),
+  properties: [{ id: "prop-jays", name: "20 Blue Jays Way", address: "20 Blue Jays Way, Toronto", managed: true }],
+  reservations: [{
+    id: "stay-anlel",
+    code: "HMANLEL1",
+    propertyId: "prop-jays",
+    status: "accepted",
+    checkIn: "2026-11-20",
+    checkOut: "2026-11-23",
+    guest: "Anlel",
+    adults: 2,
+    children: 0,
+    messages: anlelMessages,
+    financials: { currency: "CAD", guest: { total_price: { formatted: "CA$1,222.13" } } },
+    airbnbThread: "481920155",
+    bookedAt: anlelPending,
+    reviews: 0,
+    guestSince: "2026-10-02T16:00:00.000Z",
+  }],
+  inquiries: [],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const readBack = await loadGuestQueue(new Date("2026-10-10T21:20:00-04:00"));
+if (readBack.followUps.some((row) => row.guest === "Anlel")) fail("accepted request stayed open");
+if (!readBack.closedFollowUps.some((row) => row.guest === "Anlel" && /Confirmed at 9:20 PM/.test(row.closeText) && /accepted/.test(row.closeText))) fail(`read-back ${readBack.closedFollowUps.map((row) => row.closeText).join(" | ")}`);
+if (capturedCommits().length !== beforeCommits) fail("read-back wrote to Hospitable");
+const quietRequest = await loadGuestQueue(new Date("2026-10-10T21:20:00-04:00"));
+if (quietRequest.closedFollowUps.some((row) => row.guest === "Anlel")) fail("acceptance close repeated");
+
+function anlelWorld(status: string, now: Date) {
+  installWorld({
+    now,
+    properties: [{ id: "prop-jays", name: "20 Blue Jays Way", address: "20 Blue Jays Way, Toronto", managed: true }],
+    reservations: [{
+      id: "stay-anlel",
+      code: "HMANLEL1",
+      propertyId: "prop-jays",
+      status,
+      checkIn: "2026-11-20",
+      checkOut: "2026-11-23",
+      guest: "Anlel",
+      adults: 2,
+      children: 0,
+      messages: anlelMessages,
+      financials: { currency: "CAD", guest: { total_price: { formatted: "CA$1,222.13" } } },
+      airbnbThread: "481920155",
+      bookedAt: anlelPending,
+      guestPhoto: "https://example.test/anlel.jpg",
+      reviews: 0,
+      guestSince: "2026-10-02T16:00:00.000Z",
+    }],
+    inquiries: [],
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+  });
+}
+await clearInquiryVerifying();
+anlelWorld("request", anlelNow);
+const declineOpen = await loadGuestQueue(anlelNow);
+if (!declineOpen.followUps.some((row) => row.guest === "Anlel")) fail("anlel missing before decline");
+anlelWorld("declined", anlelNow);
+const declined = await loadGuestQueue(anlelNow);
+if (declined.followUps.some((row) => row.guest === "Anlel")) fail("declined request stayed open");
+if (!declined.closedFollowUps.some((row) => row.guest === "Anlel" && /declined/.test(row.closeText))) fail(`decline close ${declined.closedFollowUps.map((row) => row.closeText).join(" | ")}`);
+anlelWorld("request", anlelNow);
+if (!(await loadGuestQueue(anlelNow)).followUps.some((row) => row.guest === "Anlel")) fail("anlel missing before expiry");
+const afterDeadline = new Date("2026-10-12T01:00:00-04:00");
+anlelWorld("request", afterDeadline);
+const expired = await loadGuestQueue(afterDeadline);
+if (expired.followUps.some((row) => row.guest === "Anlel")) fail("expired request stayed open");
+if (!expired.closedFollowUps.some((row) => row.guest === "Anlel" && /expired/i.test(row.closeText))) fail(`expiry close ${expired.closedFollowUps.map((row) => row.closeText).join(" | ")}`);
+if (capturedCommits().length !== beforeCommits) fail("revalidation wrote to Hospitable");
 
 console.log("Guest messaging harness passed.");
