@@ -504,7 +504,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       } else if (isThanksOnly(ask)) thanks.push(row);
     }
     waiting.sort((a, b) => arrivalRank(a, today) - arrivalRank(b, today) || b.waitedMs - a.waitedMs || a.guest.localeCompare(b.guest));
-    await collectInquiries(seenProperties, followUps, settled, scanned, handled, now);
+    await collectInquiries(seenProperties, followUps, scanned, handled, now);
     const previous = rememberedQueue?.followUps ?? [];
     for (const row of previous) {
       if (unreadThreads.has(row.reservationId) && !handled.has(row.id) && !followUps.some((item) => item.id === row.id)) followUps.push(row);
@@ -602,7 +602,6 @@ function turnsFrom(row: Record<string, unknown>): InquiryTurn[] {
 async function collectInquiries(
   properties: Map<string, { id: string; label: string; failed: boolean }>,
   followUps: GuestFollowUp[],
-  settled: Map<string, string>,
   scanned: Set<string>,
   handled: Set<string>,
   now: Date,
