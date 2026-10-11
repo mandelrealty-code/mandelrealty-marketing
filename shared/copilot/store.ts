@@ -1191,6 +1191,24 @@ export async function saveGuestQueueSnapshot(queue: unknown): Promise<void> {
   await writePrefixed(GUEST_QUEUE_PREFIX, JSON.stringify(queue));
 }
 
+const FOLLOW_UP_HANDLED_PREFIX = "guest-follow-up-handled|";
+
+/** Follow-ups a partner marked handled. They stay closed across queue loads. */
+export async function readHandledFollowUps(): Promise<string[]> {
+  const raw = await readPrefixed(FOLLOW_UP_HANDLED_PREFIX);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string" && id.length > 0) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveHandledFollowUps(ids: string[]): Promise<void> {
+  await writePrefixed(FOLLOW_UP_HANDLED_PREFIX, JSON.stringify([...new Set(ids)]));
+}
+
 const THREAD_CACHE_PREFIX = "thread-cache|";
 
 export type CachedStayThread = {

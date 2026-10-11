@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { GuestBubble, GuestDraftView, GuestFile, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
+import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestFollowUpClose, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
 import type { StayCard } from "../../../shared/copilot/types";
 
 type SubmitResult = { savedLine: string; failedLine: string; sentText: string };
@@ -14,6 +14,7 @@ export function GuestMessaging({
   onStand,
   onUnstand,
   onRefresh,
+  onHandleFollowUp,
 }: {
   queue: GuestQueue | null;
   answer: GuestDraftView | null;
@@ -24,6 +25,7 @@ export function GuestMessaging({
   onStand?: (situation: string, wording: string) => Promise<void>;
   onUnstand?: (situation: string) => Promise<void>;
   onRefresh?: () => void;
+  onHandleFollowUp?: (id: string) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState("all");
@@ -34,6 +36,14 @@ export function GuestMessaging({
   const [sentN, setSentN] = useState(0);
   const [heldN, setHeldN] = useState(0);
   const [localHeld, setLocalHeld] = useState<string[]>([]);
+  const [followUp, setFollowUp] = useState<GuestFollowUp | null>(null);
+  const closeKey = (queue?.closedFollowUps ?? []).map((row) => row.id).join("|");
+  const [dismissedCloseKey, setDismissedCloseKey] = useState("");
+  useEffect(() => {
+    if (!closeKey || closeKey === dismissedCloseKey) return;
+    const timer = setTimeout(() => setDismissedCloseKey(closeKey), 4000);
+    return () => clearTimeout(timer);
+  }, [closeKey, dismissedCloseKey]);
 
   if (!queue) {
     return <div className="cp-gm"><h1>Guest messaging</h1><p className="cp-gm-quiet">Loading guests.</p></div>;
@@ -85,9 +95,11 @@ export function GuestMessaging({
           onToggleWait={() => setWaitOpen((open) => !open)}
           onToggleDone={() => setDoneOpen((open) => !open)}
           onToggleHeld={() => setHeldOpen((open) => !open)}
-          onOpen={(row) => { setReviewAt(null); onOpen(row); }}
+          onOpen={(row) => { setFollowUp(null); setReviewAt(null); onOpen(row); }}
+          onOpenFollowUp={(item) => { setFollowUp(item); onOpen(rowFromFollowUp(item)); }}
           onReview={() => undefined}
           onRefresh={onRefresh}
+          flashRows={closeKey && closeKey !== dismissedCloseKey ? (queue.closedFollowUps ?? []) : []}
         />
       );
     }
@@ -122,6 +134,22 @@ export function GuestMessaging({
         }}
         onStand={onStand}
         onUnstand={onUnstand}
+      />
+    );
+  }
+
+  if (followUp) {
+    const threadClose = (queue.closedFollowUps ?? []).find((row) => row.id === followUp.id)?.closeText ?? "";
+    const stillOpen = (queue.followUps ?? []).some((row) => row.id === followUp.id);
+    return (
+      <FollowUpScreen
+        item={followUp}
+        answer={answer && answer.id === followUp.reservationId ? answer : null}
+        threadClose={threadClose}
+        stillOpen={stillOpen}
+        onBack={() => { setFollowUp(null); onBack(); }}
+        onSubmit={onSubmit}
+        onHandle={async () => { await onHandleFollowUp?.(followUp.id); }}
       />
     );
   }
@@ -164,7 +192,8 @@ export function GuestMessaging({
       onToggleWait={() => setWaitOpen((open) => !open)}
       onToggleDone={() => setDoneOpen((open) => !open)}
       onToggleHeld={() => setHeldOpen((open) => !open)}
-      onOpen={onOpen}
+      onOpen={(row) => { setFollowUp(null); onOpen(row); }}
+      onOpenFollowUp={(item) => { setFollowUp(item); onOpen(rowFromFollowUp(item)); }}
       onReview={() => {
         const first = needs[0];
         if (!first) return;
@@ -174,6 +203,7 @@ export function GuestMessaging({
         onOpen(first);
       }}
       onRefresh={onRefresh}
+      flashRows={closeKey && closeKey !== dismissedCloseKey ? (queue.closedFollowUps ?? []) : []}
     />
   );
 }
@@ -200,8 +230,10 @@ function Queue({
   onToggleDone,
   onToggleHeld,
   onOpen,
+  onOpenFollowUp,
   onReview,
   onRefresh,
+  flashRows,
 }: {
   incomplete: boolean;
   queue: GuestQueue;
@@ -224,9 +256,26 @@ function Queue({
   onToggleDone: () => void;
   onToggleHeld: () => void;
   onOpen: (row: GuestRow) => void;
+  onOpenFollowUp: (item: GuestFollowUp) => void;
   onReview: () => void;
   onRefresh?: () => void;
+  flashRows: GuestFollowUpClose[];
 }) {
+  const [now, setNow] = useState(() => Date.now());
+  const followUps = queue.followUps ?? [];
+  const liveInquiry = followUps.some((row) => row.kind === "inquiry" && row.expiresAt && new Date(row.expiresAt).getTime() > now);
+  useEffect(() => {
+    if (!liveInquiry) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [liveInquiry]);
+  const q = query.trim().toLowerCase();
+  const followRows = followUps.filter((row) => {
+    if (chip !== "all" && row.propertyId !== chip && row.property !== chip) return false;
+    if (!q) return true;
+    return `${row.guest} ${row.property} ${row.line} ${row.promised} ${row.agreed} ${row.what} ${row.topic}`.toLowerCase().includes(q);
+  });
+  const followLabel = followUps.length === 1 ? "1 follow-up" : `${followUps.length} follow-ups`;
   const failedNames = (queue.properties ?? []).filter((item) => item.failed).map((item) => item.label);
   const empty = incomplete
     ? `No one waiting at the ${readable || "read"} properties Copilot could read.${failedNames.length ? ` ${failedNames.join(", ")} is still unread.` : ""}`
@@ -236,10 +285,15 @@ function Queue({
   return (
     <div className="cp-gm">
       <div className="cp-gm-top">
-        <h1>Guest messaging</h1>
+        <div className="cp-gm-title">
+          <h1>Guest messaging</h1>
+          <span className="cp-gm-live" aria-live="polite"><i />Live<em>{incomplete ? "· message read incomplete" : "· up to date"}</em></span>
+        </div>
         <input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Search guests, properties, what was agreed" aria-label="Search guests, properties, what was agreed" />
       </div>
       <p className="cp-gm-summary">
+        <span>{followLabel}</span>
+        {" · "}
         <strong>{queue.waiting.length} need a reply</strong>
         {` · ${(queue.onGuest ?? []).length} waiting on guest · ${queue.thanks.length} no reply needed`}
       </p>
@@ -263,6 +317,18 @@ function Queue({
           {onRefresh ? <button type="button" onClick={onRefresh}>Try again</button> : null}
         </div>
       ))}
+      <div className="cp-gm-group cp-gm-follow">
+        <div className="cp-gm-glabel">
+          <span>Follow-ups</span>
+          {followRows.length ? <b>{followRows.length}</b> : null}
+          {followRows.length ? <em>Open loops Copilot found in threads · soonest deadline first</em> : null}
+        </div>
+        {flashRows.map((row) => (
+          <p key={row.id} className="cp-gm-fu-closed" aria-live="polite"><b>Closed by the thread</b> · {row.closeText}</p>
+        ))}
+        {followRows.map((row) => <FollowUpRow key={row.id} row={row} now={now} onOpen={() => onOpenFollowUp(row)} />)}
+        {followRows.length === 0 && flashRows.length === 0 ? <p className="cp-gm-none">No follow-ups</p> : null}
+      </div>
       <div className="cp-gm-group">
         <div className="cp-gm-glabel">
           <span>Needs a reply</span>
@@ -299,6 +365,218 @@ function Queue({
       </Fold>
     </div>
   );
+}
+
+function FollowUpRow({ row, now, onOpen }: { row: GuestFollowUp; now: number; onOpen: () => void }) {
+  const inquiry = inquiryTag(row, now);
+  const due = row.dueNow || inquiry.due;
+  return (
+    <button type="button" className={due ? "cp-gm-fu due" : "cp-gm-fu"} onClick={onOpen}>
+      {row.guestPhoto ? <img src={row.guestPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="face" aria-label={`${row.guest} profile photo`}>{row.initials}</span>}
+      <span>
+        <span className="who">
+          {due ? <span className="cp-gm-tag due">DUE NOW</span> : null}
+          <span className={inquiry.hot ? "cp-gm-tag hot" : "cp-gm-tag"}>{inquiry.text}</span>
+          <strong>{row.guest}</strong>
+          <em>{row.propertyPhoto ? <img src={row.propertyPhoto} alt="" referrerPolicy="no-referrer" /> : <i className="thumb" aria-label={`${row.property} photo`} />}{row.property}</em>
+        </span>
+        <span className="line">{row.line}</span>
+      </span>
+      <span className={due || inquiry.hot ? "when hot" : "when"}>
+        <b>{row.when}</b>
+        <small>{row.whenSub}</small>
+      </span>
+    </button>
+  );
+}
+
+function inquiryTag(row: GuestFollowUp, now: number): { text: string; hot: boolean; due: boolean } {
+  if (row.kind !== "inquiry") return { text: row.tag, hot: false, due: false };
+  if (!row.expiresAt) return { text: row.tag || "INQUIRY", hot: false, due: row.dueNow };
+  const left = new Date(row.expiresAt).getTime() - now;
+  if (left <= 0) return { text: "INQUIRY", hot: false, due: true };
+  if (left >= 48 * 3600 * 1000) return { text: "INQUIRY", hot: false, due: false };
+  const total = Math.floor(left / 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return { text: `INQUIRY · ${pad(Math.floor(total / 3600))}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`, hot: true, due: false };
+}
+
+function FollowUpScreen({
+  item,
+  answer,
+  threadClose,
+  stillOpen,
+  onBack,
+  onSubmit,
+  onHandle,
+}: {
+  item: GuestFollowUp;
+  answer: GuestDraftView | null;
+  threadClose: string;
+  stillOpen: boolean;
+  onBack: () => void;
+  onSubmit: (draft: string, fact: string, attachments: GuestFile[]) => Promise<SubmitResult>;
+  onHandle: () => Promise<void>;
+}) {
+  const [drafting, setDrafting] = useState(false);
+  const [text, setText] = useState(item.draft);
+  const [files, setFiles] = useState<GuestFile[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [fail, setFail] = useState("");
+  const [sent, setSent] = useState("");
+  const [handled, setHandled] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const days = answer ? groupDays(answer.thread) : [];
+  const closed = handled || Boolean(threadClose) || !stillOpen;
+  return (
+    <div className="cp-gm cp-gm-fill">
+      <div className="cp-gm-split fu">
+        <div className="cp-gm-conv">
+          <header>
+            <button type="button" className="cp-gm-back" onClick={onBack}>← Queue</button>
+            <span className="face" aria-label={`${item.guest} profile photo`}>{item.initials}</span>
+            <div>
+              <strong>{item.guest}</strong>
+              <span>{item.stay || answer?.stay}</span>
+            </div>
+            {item.propertyPhoto ? <img className="prop" src={item.propertyPhoto} alt="" referrerPolicy="no-referrer" /> : <i className="tile" aria-label={`${item.property} photo`} />}
+            <em>{item.property}</em>
+            <span className="cp-gm-live"><i />Live</span>
+          </header>
+          <div className="cp-gm-thread">
+            {answer ? days.map((block) => (
+              <div key={block.day}>
+                <div className="day"><span /><em>{block.day}</em><span /></div>
+                {block.messages.map((message, index) => (
+                  <Bubble key={`${message.at}-${index}`} message={message} onPhoto={() => undefined} source={message.at === item.sourceAt} />
+                ))}
+              </div>
+            )) : <p className="cp-gm-quiet">Loading the thread.</p>}
+          </div>
+        </div>
+        <aside className="cp-gm-read">
+          <div className="cp-gm-readtop">
+            <span>Copilot · follow-up <span className="cp-gm-tag">{item.tag}</span>{item.dueNow && !closed ? <span className="cp-gm-tag due">DUE NOW</span> : null}</span>
+            <span className="cp-gm-when">{closed ? "" : item.kind === "incident" ? `Sent ${item.when}` : item.dueNow ? "Today" : item.due ? `Due ${item.dueSub}` : item.when}</span>
+          </div>
+          <p className="cp-gm-source">{item.sourceLine}</p>
+          {item.kind === "owe" ? (
+            <div className="cp-gm-fucard">
+              <div>
+                <span className="k">What we promised</span>
+                <blockquote><p>“{item.promised}”</p><small>{item.promisedWhen}</small></blockquote>
+              </div>
+              {item.agreed ? (
+                <div>
+                  <span className="k">{item.agreedAs === "asked" ? `What ${item.first} asked` : `What ${item.first} agreed to`}</span>
+                  <blockquote><p>“{item.agreed}”</p><small>{item.agreedWhen}</small></blockquote>
+                </div>
+              ) : null}
+              <div className="cp-gm-meta">
+                <span>Due</span>
+                <p>{item.dueText || "No date given"}</p>
+                <span>Stay</span>
+                <p>{item.stay}</p>
+              </div>
+              {sent && !handled ? <p>Sent to {item.first}. It’s in the thread. This stays open until the thread shows it done, or you mark it handled.</p> : null}
+            </div>
+          ) : null}
+          {item.kind === "incident" ? (
+            <div className="cp-gm-fucard">
+              <div>
+                <span className="k">What happened</span>
+                <p className="story">{item.what}</p>
+              </div>
+              <div className="cp-gm-meta">
+                <span>Sent</span>
+                <p>{item.sentWhen}{item.since ? ` · ${item.since}` : ""}</p>
+                <span>Resolved when</span>
+                <p>{item.resolvesWhen}</p>
+              </div>
+            </div>
+          ) : null}
+          {item.kind === "inquiry" ? (
+            <div className="cp-gm-fucard">
+              <p className="story">{item.line}</p>
+              {item.dueText ? <p>{item.dueText}</p> : null}
+              {item.notes.map((note) => <p key={note}>{note}</p>)}
+            </div>
+          ) : null}
+          {handled || threadClose ? (
+            <div className="cp-gm-fu-done" aria-live="polite">
+              <span>{handled ? "Handled · follow-up closed" : "Closed by the thread"}</span>
+              <p>{handled ? "Marked handled. It won’t come back." : threadClose}</p>
+            </div>
+          ) : item.kind === "inquiry" ? null : drafting && item.kind === "owe" ? (
+            <div className="cp-gm-fudraft">
+              <div className="cp-gm-draft">
+                <span>Draft to {item.first} · edit anything before you submit</span>
+                <textarea rows={4} value={text} onChange={(event) => setText(event.target.value)} />
+                <button type="button" className="plus" aria-label="Add files, photos or context" title="Add files, photos or context" onClick={() => input.current?.click()}>+</button>
+                <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { void readFiles(event.target.files).then((next) => setFiles((current) => [...current, ...next])); event.target.value = ""; }} />
+              </div>
+              {files.length ? <p className="cp-gm-quiet">{files.map((file) => file.name).join(", ")}</p> : null}
+              {fail ? <p className="fail">{fail}</p> : null}
+              <div className="cp-gm-actions">
+                <span className="hint">Sends to {item.first}</span>
+                <button type="button" onClick={() => setDrafting(false)}>Cancel</button>
+                <button type="button" className="submit" disabled={busy || !text.trim()} onClick={() => {
+                  setBusy(true);
+                  setFail("");
+                  void onSubmit(text, "", files).then((result) => {
+                    if (result.failedLine) setFail(result.failedLine);
+                    else { setSent(result.sentText || `Sent to ${item.first}.`); setDrafting(false); }
+                  }).catch((err: unknown) => {
+                    setFail(err instanceof Error ? err.message : "Nothing was sent.");
+                  }).finally(() => setBusy(false));
+                }}>{busy ? "Sending…" : "Submit"}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="cp-gm-fuacts">
+              <div>
+                {item.kind === "incident" ? null : <span />}
+                <button type="button" onClick={() => { setHandled(true); void onHandle().catch(() => setHandled(false)); }}>Mark handled</button>
+                {item.kind === "owe" ? <button type="button" className="submit" onClick={() => setDrafting(true)}>Draft a message to the guest</button> : null}
+              </div>
+              {item.kind === "owe" ? <span>Mark handled closes this for good. It won’t resurface.</span> : null}
+            </div>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function rowFromFollowUp(item: GuestFollowUp): GuestRow {
+  return {
+    id: item.reservationId,
+    guest: item.guest,
+    first: item.first,
+    initials: item.initials,
+    guestPhoto: item.guestPhoto,
+    property: item.property,
+    propertyId: item.propertyId,
+    propertyPhoto: item.propertyPhoto,
+    asked: item.line,
+    askedEn: "",
+    language: "",
+    wait: item.when,
+    waitedMs: 0,
+    thanks: false,
+    lane: "guest",
+    status: item.line,
+    statusLead: item.line,
+    statusRest: "",
+    watch: "",
+    when: item.when,
+    urgent: item.dueNow,
+    dates: item.dates,
+    checkIn: item.checkIn,
+    checkOut: item.checkOut,
+    mediaLabel: "",
+    lastNote: "",
+  };
 }
 
 function Chip({ label, count, on, onPick }: { label: string; count: string; on: boolean; onPick: () => void }) {
@@ -689,7 +967,7 @@ function Review({
   );
 }
 
-function Bubble({ message, onPhoto }: { message: GuestBubble; onPhoto: () => void }) {
+function Bubble({ message, onPhoto, source = false }: { message: GuestBubble; onPhoto: () => void; source?: boolean }) {
   const guest = message.role === "guest";
   return (
     <div className={guest ? "guest" : "host"}>
@@ -705,6 +983,7 @@ function Bubble({ message, onPhoto }: { message: GuestBubble; onPhoto: () => voi
           </button>
         ))}
         {message.flag ? <span className="flag">{message.flag}</span> : null}
+        {source ? <span className="cp-gm-found"><i />Follow-up found here</span> : null}
       </div>
     </div>
   );

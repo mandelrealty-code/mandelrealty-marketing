@@ -7,10 +7,13 @@
 import { resetHospitableConnection, saveHospitableToken, setHospitableProbe } from "./hospitableConnection.js";
 import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerWaitingDrafts } from "./guestInboxAnswer.js";
+import { detectFollowUps, orderFollowUps } from "./guestFollowUps.js";
 import {
+  clearHandledFollowUps,
   draftFromHub,
   isThanksOnly,
   loadGuestQueue,
+  markFollowUpHandled,
   messageLanguage,
   needsGuestReply,
   openGuestAnswer,
@@ -26,6 +29,7 @@ import {
   guestDrafts,
   guestTabText,
 } from "./guestMessaging.js";
+import type { GuestFollowUp } from "./guestTypes.js";
 import { installWorld } from "./parity/world.js";
 
 const GOOD = "copilot-guest-token-not-a-secret-7Kq2";
@@ -443,5 +447,165 @@ const empty = await loadGuestQueue(new Date("2026-10-08T16:06:00Z"));
 const emptyText = guestTabText(empty);
 if (!empty.connected || empty.waiting.length !== 0) fail("empty queue");
 if (!emptyText.includes("No one is waiting") || emptyText.includes("Hospitable is not connected.")) fail("honest empty state");
+
+const WINDOWS = "Sorry about that, Eloise. We'll have the windows cleaned for you. Our cleaner can come any day from Oct 14. Would that work?";
+const AGREED = "Yes, any day on or after the 14th is fine. Mornings are best.";
+const eloiseTurns = [
+  { at: "2026-10-04T18:00:00Z", role: "guest", name: "Eloise", body: "Could we get an extra key? My partner arrives a day later." },
+  { at: "2026-10-04T18:20:00Z", role: "host", name: "Sam", body: "We can leave an extra key with you tomorrow." },
+  { at: "2026-10-04T18:40:00Z", role: "guest", name: "Eloise", body: "No thanks, we don't need one after all. We'll come in together." },
+  { at: "2026-10-05T15:00:00Z", role: "guest", name: "Eloise", body: "How does the shower work? I only get a trickle." },
+  { at: "2026-10-05T15:30:00Z", role: "host", name: "Sam", body: "The shower is a rainfall head. Pull the diverter lever all the way up and let it run for a minute. That brings the full pressure." },
+  { at: "2026-10-05T15:45:00Z", role: "guest", name: "Eloise", body: "Got it, thank you. It's working now." },
+  { at: "2026-10-06T22:40:00Z", role: "guest", name: "Eloise", body: "Loving the loft! Only thing, the windows are pretty grimy, hard to see the view." },
+  { at: "2026-10-07T17:01:00Z", role: "host", name: "Sam", body: WINDOWS },
+  { at: "2026-10-07T17:20:00Z", role: "guest", name: "Eloise", body: AGREED },
+  { at: "2026-10-07T17:24:00Z", role: "host", name: "Sam", body: "Perfect, I'll confirm the day closer to then." },
+];
+const readEloise = detectFollowUps({
+  reservationId: "stay-eloise",
+  guest: "Eloise",
+  property: "8 Charlotte St Unit 606",
+  propertyId: "prop-fu",
+  checkIn: "2026-10-03",
+  checkOut: "2026-10-24",
+  turns: eloiseTurns,
+}, new Date("2026-10-10T21:12:00-04:00"));
+if (readEloise.open.length !== 1) fail(`eloise open loops ${readEloise.open.map((row) => row.topic).join(", ") || "none"}`);
+const windows = readEloise.open[0];
+if (!windows || windows.kind !== "owe" || windows.due !== "2026-10-14") fail(`eloise due ${windows?.due} ${windows?.kind}`);
+if (windows.promised !== WINDOWS || windows.agreed !== AGREED) fail("eloise quotes");
+if (windows.dueNow) fail("oct 10 is not due now");
+if (/key|shower/i.test(`${windows.topic} ${windows.line}`)) fail("key or shower stayed open");
+if (!/Window cleaning promised, Eloise agreed to on or after Oct 14/.test(windows.line)) fail(`eloise line ${windows.line}`);
+if (!/Wed 1:01 PM/.test(windows.sourceLine)) fail(`eloise source ${windows.sourceLine}`);
+
+const suitcase = [
+  { at: "2026-10-10T15:52:00Z", role: "guest", name: "Priya Raman", body: "I think I left my black suitcase in the bedroom closet! I'm still in the city until tonight." },
+  { at: "2026-10-10T16:20:00Z", role: "host", name: "Jordan", body: "Found it. I'll leave it with building security at the front desk, under your name." },
+  { at: "2026-10-10T17:40:00Z", role: "host", name: "Jordan", body: "Your suitcase is at the front desk with building security, under Priya Raman. Bring ID; they're there 24/7." },
+];
+const readBag = detectFollowUps({
+  reservationId: "stay-priya",
+  guest: "Priya Raman",
+  property: "20 Blue Jays Way Unit 318",
+  propertyId: "prop-fu",
+  checkIn: "2026-10-07",
+  checkOut: "2026-10-10",
+  turns: suitcase,
+}, new Date("2026-10-10T21:12:00-04:00"));
+if (readBag.open.length !== 1 || readBag.open[0]?.kind !== "incident") fail(`suitcase loops ${readBag.open.map((row) => `${row.kind}:${row.topic}`).join(", ") || "none"}`);
+if (!/Suitcase at front desk · building security · sent 1:40 PM, no confirmation yet/.test(readBag.open[0]?.line || "")) fail(`suitcase line ${readBag.open[0]?.line}`);
+const readPicked = detectFollowUps({
+  reservationId: "stay-priya",
+  guest: "Priya Raman",
+  property: "20 Blue Jays Way Unit 318",
+  propertyId: "prop-fu",
+  checkIn: "2026-10-07",
+  checkOut: "2026-10-10",
+  turns: [...suitcase, { at: "2026-10-10T21:20:00-04:00", role: "guest", name: "Priya Raman", body: "Got it! Picked it up just now, thank you so much." }],
+}, new Date("2026-10-10T21:30:00-04:00"));
+if (readPicked.open.length !== 0) fail("confirmed suitcase stayed open");
+if (!/picked up/i.test(readPicked.settled.map((row) => row.closeText).join(" "))) fail(`suitcase close ${readPicked.settled.map((row) => row.closeText).join(" | ")}`);
+
+const readDone = detectFollowUps({
+  reservationId: "stay-maya",
+  guest: "Maya Chen",
+  property: "8 Charlotte St Unit 606",
+  propertyId: "prop-fu",
+  checkIn: "2026-10-08",
+  checkOut: "2026-10-12",
+  turns: [
+    { at: "2026-10-09T15:00:00Z", role: "guest", name: "Maya Chen", body: "Could we get a couple of extra towels?" },
+    { at: "2026-10-09T15:10:00Z", role: "host", name: "Sam", body: "We'll have extra towels brought up this afternoon." },
+    { at: "2026-10-09T15:12:00Z", role: "guest", name: "Maya Chen", body: "Yes, that would be great." },
+    { at: "2026-10-09T20:00:00Z", role: "host", name: "Sam", body: "The towels are on the bed. All set." },
+  ],
+}, new Date("2026-10-10T21:12:00-04:00"));
+if (readDone.open.length !== 0) fail("fulfilled promise stayed open");
+
+const fuNow = new Date("2026-10-10T21:12:00-04:00");
+resetGuestMessaging();
+await clearHandledFollowUps();
+installWorld({
+  now: fuNow,
+  properties: [{ id: "prop-fu", name: "8 Charlotte St Unit 606", address: "606, 8 Charlotte Street, Toronto", managed: true }],
+  reservations: [
+    { id: "stay-eloise", code: "HMELO1", propertyId: "prop-fu", status: "accepted", checkIn: "2026-10-03", checkOut: "2026-10-24", guest: "Eloise", adults: 1, children: 0, messages: eloiseTurns.map((row, index) => ({ id: `el-${index}`, ...row, role: row.role as "guest" | "host" })) },
+    { id: "stay-priya", code: "HMPRI1", propertyId: "prop-fu", status: "accepted", checkIn: "2026-10-07", checkOut: "2026-10-10", guest: "Priya Raman", adults: 1, children: 0, messages: suitcase.map((row, index) => ({ id: `pr-${index}`, ...row, role: row.role as "guest" | "host" })) },
+    { id: "stay-maya", code: "HMMAY1", propertyId: "prop-fu", status: "accepted", checkIn: "2026-10-08", checkOut: "2026-10-12", guest: "Maya Chen", adults: 1, children: 0, messages: [
+      { id: "my-1", at: "2026-10-09T15:00:00Z", role: "guest" as const, name: "Maya Chen", body: "Could we get a couple of extra towels?" },
+      { id: "my-2", at: "2026-10-09T15:10:00Z", role: "host" as const, name: "Sam", body: "We'll have extra towels brought up this afternoon." },
+      { id: "my-3", at: "2026-10-09T15:12:00Z", role: "guest" as const, name: "Maya Chen", body: "Yes, that would be great." },
+      { id: "my-4", at: "2026-10-09T20:00:00Z", role: "host" as const, name: "Sam", body: "The towels are on the bed. All set." },
+    ] },
+    { id: "stay-imani", code: "HMIMA1", propertyId: "prop-fu", status: "accepted", checkIn: "2026-10-20", checkOut: "2026-10-23", guest: "Imani", adults: 2, children: 1, messages: [
+      { id: "im-1", at: "2026-10-08T18:00:00Z", role: "guest" as const, name: "Imani", body: "Do you have a crib we could use?" },
+      { id: "im-2", at: "2026-10-08T18:20:00Z", role: "host" as const, name: "Sam", body: "We'll have a crib set up for you." },
+    ] },
+    { id: "stay-luis", code: "HMLUI1", propertyId: "prop-fu", status: "accepted", checkIn: "2026-10-05", checkOut: "2026-10-08", guest: "Luis", adults: 2, children: 0, messages: [
+      { id: "lu-1", at: "2026-10-07T14:00:00Z", role: "guest" as const, name: "Luis", body: "Could you send the pancake recipe?" },
+      { id: "lu-2", at: "2026-10-07T14:15:00Z", role: "host" as const, name: "Sam", body: "We'll send the recipe." },
+    ] },
+  ],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const fuQueue = await loadGuestQueue(fuNow);
+if (fuQueue.followUps.filter((row) => row.guest === "Eloise").length !== 1) fail("queue eloise count");
+if (!fuQueue.onGuest.some((row) => row.guest === "Eloise") || fuQueue.waiting.some((row) => row.guest === "Eloise")) fail("eloise follow-up changed who owes the reply");
+if (fuQueue.followUps.some((row) => row.guest === "Maya Chen")) fail("queue kept a fulfilled promise");
+const queuedBag = fuQueue.followUps.find((row) => row.guest === "Priya Raman");
+if (!queuedBag || queuedBag.kind !== "incident") fail("queue suitcase");
+const crib = fuQueue.followUps.find((row) => row.guest === "Imani");
+if (!crib || crib.due !== "2026-10-20" || crib.dueFrom !== "stay") fail(`crib date ${crib?.due} ${crib?.dueFrom}`);
+const recipe = fuQueue.followUps.find((row) => row.guest === "Luis");
+if (!recipe || recipe.due || recipe.when !== "No date given") fail(`recipe dropped ${recipe?.when}`);
+if (fuQueue.followUps.map((row) => row.guest).join(",") !== "Eloise,Imani,Luis,Priya Raman") fail(`order ${fuQueue.followUps.map((row) => row.guest).join(",")}`);
+if (fuQueue.closedFollowUps.length) fail("first load flashed a close");
+
+const oct14 = new Date("2026-10-14T16:00:00-04:00");
+const dueQueue = await loadGuestQueue(oct14);
+const dueWindows = dueQueue.followUps.find((row) => row.guest === "Eloise");
+if (!dueWindows?.dueNow || dueQueue.followUps[0]?.id !== dueWindows.id) fail("due now did not move first");
+const inquiry = {
+  ...dueWindows,
+  id: "inquiry:anlel",
+  kind: "inquiry" as const,
+  guest: "Anlel",
+  tag: "INQUIRY",
+  due: "",
+  dueNow: false,
+  expiresAt: "2026-10-16T20:00:00-04:00",
+  sourceAt: "2026-10-10T20:12:00-04:00",
+  line: "Booking request expires in 23 hrs",
+} satisfies GuestFollowUp;
+const ranked = orderFollowUps([inquiry, queuedBag, dueWindows], oct14);
+if (ranked.map((row) => row.kind).join(",") !== "owe,inquiry,incident") fail(`inquiry order ${ranked.map((row) => row.kind).join(",")}`);
+if (!ranked[0]?.dueNow) fail("dated promise was not due now");
+
+await markFollowUpHandled(dueWindows.id, oct14);
+const handledQueue = await loadGuestQueue(oct14);
+if (handledQueue.followUps.some((row) => row.id === dueWindows.id)) fail("mark handled came back");
+installWorld({
+  now: new Date("2026-10-10T21:30:00-04:00"),
+  properties: [{ id: "prop-fu", name: "8 Charlotte St Unit 606", address: "606, 8 Charlotte Street, Toronto", managed: true }],
+  reservations: [
+    { id: "stay-eloise", code: "HMELO1", propertyId: "prop-fu", status: "accepted", checkIn: "2026-10-03", checkOut: "2026-10-24", guest: "Eloise", adults: 1, children: 0, messages: eloiseTurns.map((row, index) => ({ id: `el-${index}`, ...row, role: row.role as "guest" | "host" })) },
+    { id: "stay-priya", code: "HMPRI1", propertyId: "prop-fu", status: "accepted", checkIn: "2026-10-07", checkOut: "2026-10-10", guest: "Priya Raman", adults: 1, children: 0, messages: [...suitcase.map((row, index) => ({ id: `pr-${index}`, ...row, role: row.role as "guest" | "host" })), { id: "pr-got", at: "2026-10-10T21:20:00-04:00", role: "guest" as const, name: "Priya Raman", body: "Got it! Picked it up just now, thank you so much." }] },
+  ],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const closedBag = await loadGuestQueue(new Date("2026-10-10T21:30:00-04:00"));
+if (closedBag.followUps.some((row) => row.guest === "Priya Raman")) fail("queue kept a confirmed suitcase");
+if (closedBag.followUps.some((row) => row.id === dueWindows.id)) fail("handled windows resurfaced");
+if (!closedBag.closedFollowUps.some((row) => /Priya/.test(row.guest) && /picked up/i.test(row.closeText))) fail(`thread close ${closedBag.closedFollowUps.map((row) => row.closeText).join(" | ")}`);
+const quiet = await loadGuestQueue(new Date("2026-10-10T21:30:00-04:00"));
+if (quiet.closedFollowUps.length) fail("closed line repeated on the next load");
 
 console.log("Guest messaging harness passed.");

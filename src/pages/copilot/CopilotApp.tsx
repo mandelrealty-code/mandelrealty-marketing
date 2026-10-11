@@ -2309,6 +2309,12 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     onHold={async (id) => {
                       await api("guests-hold", { id });
                     }}
+                    onHandleFollowUp={async (id) => {
+                      const queue = await api<GuestQueue>("guests-handle", { id });
+                      if (!isGuestQueue(queue)) return;
+                      setGuestQueue(queue);
+                      setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+                    }}
                     onStand={async (situation, wording) => {
                       await api("guests-stand", { situation, wording });
                     }}

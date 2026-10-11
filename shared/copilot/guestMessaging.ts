@@ -7,15 +7,16 @@ import { randomUUID } from "node:crypto";
 import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
 import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIntelligence.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
-import { readGuestQueueSnapshot, saveGuestQueueSnapshot } from "./store.js";
+import { detectFollowUps, orderFollowUps, type FollowUpStay } from "./guestFollowUps.js";
+import { readGuestQueueSnapshot, readHandledFollowUps, saveGuestQueueSnapshot, saveHandledFollowUps } from "./store.js";
 import { leaveDraft, loadRecentStays, memoryFor, readStayThread } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
 import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
 import { getSupabaseAdmin } from "../supabase.js";
-import type { GuestDraftView, GuestFile, GuestQueue, GuestRow } from "./guestTypes.js";
+import type { GuestDraftView, GuestFile, GuestFollowUp, GuestQueue, GuestRow } from "./guestTypes.js";
 
-export type { GuestBubble, GuestDraftView, GuestQueue, GuestRow } from "./guestTypes.js";
+export type { GuestBubble, GuestDraftView, GuestFollowUp, GuestQueue, GuestRow } from "./guestTypes.js";
 export { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
 
 let poster: ((id: string, text: string) => Promise<void>) | null = null;
@@ -24,6 +25,8 @@ let hubWrite: ((propertyId: string, fact: string) => Promise<string>) | null = n
 const drafts = new Map<string, { to: string; body: string; reservationId: string; language: string }>();
 const standing = new Map<string, string>();
 const heldIds = new Set<string>();
+const handledFollowUps = new Set<string>();
+let stagedInquiries: GuestFollowUp[] = [];
 let rememberedQueue: GuestQueue | null = null;
 
 export function resetGuestMessaging(): void {
@@ -33,7 +36,27 @@ export function resetGuestMessaging(): void {
   drafts.clear();
   standing.clear();
   heldIds.clear();
+  handledFollowUps.clear();
+  stagedInquiries = [];
   rememberedQueue = null;
+}
+
+/** Inquiry rows are created by the booking-request pass. This pass only places them in the group. */
+export function stageInquiryFollowUps(rows: GuestFollowUp[]): void {
+  stagedInquiries = rows.map((row) => ({ ...row, kind: "inquiry" as const }));
+}
+
+export async function clearHandledFollowUps(): Promise<void> {
+  handledFollowUps.clear();
+  await saveHandledFollowUps([]).catch(() => undefined);
+}
+
+/** Closes a follow-up for good. A later read of the same thread will not bring it back. */
+export async function markFollowUpHandled(id: string, now = parityNow() ?? new Date()): Promise<GuestQueue> {
+  const trimmed = id.trim();
+  if (trimmed) handledFollowUps.add(trimmed);
+  await saveHandledFollowUps([...handledFollowUps]).catch(() => undefined);
+  return loadGuestQueue(now);
 }
 
 export function setGuestPoster(next: ((id: string, text: string) => Promise<void>) | null): void {
@@ -128,6 +151,8 @@ function disconnectedQueue(): GuestQueue {
     onGuest: [],
     held: [],
     thanks: [],
+    followUps: [],
+    closedFollowUps: [],
     failed: [],
     properties: [],
     answer: "",
@@ -318,6 +343,8 @@ export async function readSavedGuestQueue(): Promise<GuestQueue | null> {
   if (!saved || !Array.isArray(saved.waiting) || !Array.isArray(saved.thanks)) return null;
   saved.onGuest = Array.isArray(saved.onGuest) ? saved.onGuest : [];
   saved.held = Array.isArray(saved.held) ? saved.held : [];
+  saved.followUps = Array.isArray(saved.followUps) ? saved.followUps : [];
+  saved.closedFollowUps = Array.isArray(saved.closedFollowUps) ? saved.closedFollowUps : [];
   saved.properties = Array.isArray(saved.properties) ? saved.properties : [];
   saved.answer = waitingSurfaceText(saved);
   rememberedQueue = saved;
@@ -335,6 +362,34 @@ export async function loadGuestQueue(now = parityNow() ?? new Date()): Promise<G
   return queue;
 }
 
+async function handledNow(): Promise<Set<string>> {
+  try {
+    for (const id of await readHandledFollowUps()) handledFollowUps.add(id);
+  } catch {
+    /* The ids marked in this process still close. */
+  }
+  return handledFollowUps;
+}
+
+function followStay(
+  stay: { stay: { id: string; guest: string; propertyId: string; checkIn: string; checkOut: string }; label: string },
+  messages: { at: string; role: string; name: string; body: string }[],
+  propertyPhoto: string,
+): FollowUpStay {
+  return {
+    reservationId: stay.stay.id,
+    guest: stay.stay.guest || "Guest",
+    property: stay.label,
+    propertyId: stay.stay.propertyId,
+    propertyPhoto,
+    checkIn: stay.stay.checkIn,
+    checkOut: stay.stay.checkOut,
+    turns: messages
+      .filter((item) => item.role === "guest" || item.role === "host")
+      .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body })),
+  };
+}
+
 async function scanGuestQueue(now: Date): Promise<GuestQueue> {
   if (!(await copilotHospitableToken())) return disconnectedQueue();
   try {
@@ -345,6 +400,11 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     const onGuest: GuestRow[] = [];
     const held: GuestRow[] = [];
     const thanks: GuestRow[] = [];
+    const followUps: GuestFollowUp[] = [];
+    const settled = new Map<string, string>();
+    const scanned = new Set<string>();
+    const unreadThreads = new Set<string>();
+    const handled = await handledNow();
     const unread = [...loaded.failed];
     const failed = loaded.failed.map((label) => `Couldn't read reservations for ${label}, so anyone waiting there isn't listed. Nothing was sent.`);
     const messageFailed = new Set<string>();
@@ -360,6 +420,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       try {
         messages = await readStayThread(stay.stay.id, now);
       } catch {
+        unreadThreads.add(stay.stay.id);
         if (messageFailed.has(stay.label)) continue;
         messageFailed.add(stay.label);
         if (!unread.includes(stay.label)) unread.push(stay.label);
@@ -368,6 +429,12 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
         if (chip) chip.failed = true;
         continue;
       }
+      scanned.add(stay.stay.id);
+      const detected = detectFollowUps(followStay(stay, messages, photos.get(stay.stay.propertyId) || ""), now);
+      for (const row of detected.open) {
+        if (!handled.has(row.id)) followUps.push(row);
+      }
+      for (const row of detected.settled) settled.set(row.id, row.closeText);
       const turns = messages
         .filter((item) => item.role !== "system")
         .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body, media: item.media ?? [] }));
@@ -404,6 +471,18 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       } else if (isThanksOnly(ask)) thanks.push(row);
     }
     waiting.sort((a, b) => arrivalRank(a, today) - arrivalRank(b, today) || b.waitedMs - a.waitedMs || a.guest.localeCompare(b.guest));
+    const previous = rememberedQueue?.followUps ?? [];
+    for (const row of previous) {
+      if (unreadThreads.has(row.reservationId) && !handled.has(row.id) && !followUps.some((item) => item.id === row.id)) followUps.push(row);
+    }
+    for (const row of stagedInquiries) {
+      if (!handled.has(row.id) && !followUps.some((item) => item.id === row.id)) followUps.push(row);
+    }
+    const ordered = orderFollowUps(followUps, now);
+    const openIds = new Set(ordered.map((row) => row.id));
+    const closedFollowUps = previous
+      .filter((row) => scanned.has(row.reservationId) && !openIds.has(row.id) && !handled.has(row.id))
+      .map((row) => ({ id: row.id, guest: row.guest, closeText: settled.get(row.id) || "the thread shows it resolved" }));
     const summary = guestSummary(waiting.length, waiting[0]?.wait || "", unread);
     return {
       connected: true,
@@ -414,6 +493,8 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       onGuest,
       held,
       thanks,
+      followUps: ordered,
+      closedFollowUps,
       failed,
       properties: [...seenProperties.values()],
       answer: "",
@@ -430,6 +511,8 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       onGuest: [],
       held: [],
       thanks: [],
+      followUps: [],
+      closedFollowUps: [],
       failed: [message],
       properties: [],
       answer: "",

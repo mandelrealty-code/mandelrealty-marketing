@@ -51,7 +51,7 @@ import { approveUpsell, releaseUpsell } from "../copilot/upsell.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
-import { forgetStandingAnswer, holdGuestThread, loadGuestQueue, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
+import { forgetStandingAnswer, holdGuestThread, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, listStoredMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
@@ -477,6 +477,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (op === "guests-hold") {
       holdGuestThread(String(body.id ?? ""));
       return res.status(200).json({ held: true });
+    }
+
+    if (op === "guests-handle") {
+      const id = String(body.id ?? "").trim();
+      if (!id) return res.status(400).json({ error: "Missing follow-up." });
+      return res.status(200).json(await markFollowUpHandled(id));
     }
 
     if (op === "guests-stand") {

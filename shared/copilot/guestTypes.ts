@@ -96,6 +96,66 @@ export type GuestDraftView = {
   failedLine: string;
 };
 
+/** An open loop inside a thread. Separate from who owes the next reply. */
+export type GuestFollowUpKind = "owe" | "incident" | "inquiry";
+
+export type GuestFollowUp = {
+  id: string;
+  kind: GuestFollowUpKind;
+  reservationId: string;
+  guest: string;
+  first: string;
+  initials: string;
+  guestPhoto: string;
+  property: string;
+  propertyId: string;
+  propertyPhoto: string;
+  dates: string;
+  stay: string;
+  checkIn: string;
+  checkOut: string;
+  line: string;
+  tag: string;
+  sourceLine: string;
+  sourceAt: string;
+  due: string;
+  dueLabel: string;
+  dueSub: string;
+  dueText: string;
+  dueNow: boolean;
+  /** Right-hand label on the queue row. */
+  when: string;
+  whenSub: string;
+  /** thread = a date written in the messages. stay = the next stay date. empty = no date given. */
+  dueFrom: "thread" | "stay" | "";
+  onOrAfter: boolean;
+  topic: string;
+  promised: string;
+  promisedBy: string;
+  promisedAt: string;
+  promisedWhen: string;
+  agreed: string;
+  agreedBy: string;
+  agreedAt: string;
+  agreedWhen: string;
+  /** agreed = the guest accepted. asked = they are waiting and have not answered yet. */
+  agreedAs: "agreed" | "asked" | "";
+  what: string;
+  sentBy: string;
+  sentWhen: string;
+  since: string;
+  resolvesWhen: string;
+  expiresAt: string;
+  draft: string;
+  notes: string[];
+};
+
+export type GuestFollowUpClose = {
+  id: string;
+  guest: string;
+  closeText: string;
+};
+
 export type GuestQueue = {
   connected: boolean;
   line: string;
@@ -107,6 +167,8 @@ export type GuestQueue = {
   thanks: GuestRow[];
   failed: string[];
   properties: GuestPropertyChip[];
+  followUps: GuestFollowUp[];
+  closedFollowUps: GuestFollowUpClose[];
   /** The same sentence Chat uses for who is waiting. */
   answer: string;
 };
