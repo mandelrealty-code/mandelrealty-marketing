@@ -2331,7 +2331,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     }}
                     onSubmit={async (draft, fact, attachments) => {
                       const row = guestAnswer;
-                      const result = await api<{ savedLine: string; failedLine: string; sentText: string }>("guests-submit", {
+                      const result = await api<{ sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string }>("guests-submit", {
                         id: row?.id,
                         propertyId: row?.propertyId,
                         property: row?.property,

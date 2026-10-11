@@ -46,7 +46,7 @@ import { answerPdfReport } from "../copilot/revenueReport.js";
 import { answerOwnStore, asksClientList, CLIENT_STORE_EMPTY } from "../copilot/storeQuestions.js";
 import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, editProposal, prepareProposalSend, proposalFromWords } from "../copilot/proposal.js";
 import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
-import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable } from "../copilot/hospitableAgent.js";
+import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable, sendReservationMessage } from "../copilot/hospitableAgent.js";
 import { approveUpsell, releaseUpsell } from "../copilot/upsell.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken } from "../copilot/hospitableConnection.js";
@@ -469,7 +469,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         const message = err instanceof Error ? err.message : "Couldn't reach Hospitable. Nothing was sent.";
         if (/not connected/i.test(message)) return res.status(400).json({ error: "Hospitable is not connected. Nothing was sent." });
-        if (/nothing was sent/i.test(message)) return res.status(400).json({ error: message });
+        if (/not sent|nothing was sent/i.test(message)) return res.status(400).json({ error: message });
         return res.status(400).json({ error: "Couldn't reach Hospitable. Nothing was sent." });
       }
     }
@@ -1695,6 +1695,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (draft?.channel === "hospitable" && draft.hospitable?.tool) {
           try {
             const args = applyHospitableEdit(draft.hospitable.args, draft.body, edited || draft.body);
+            if (draft.hospitable.tool === "send-reservation-message") {
+              const reservationId = String(args.uuid ?? args.reservation_id ?? "");
+              const body = String(args.body ?? args.message ?? "");
+              const images = Array.isArray(args.images) ? args.images.filter((item): item is string => typeof item === "string") : [];
+              const proof = await sendReservationMessage({ reservationId, body, images });
+              const message = await updateDraft(messageId, {
+                status: proof.sent ? "sent" : "waiting",
+                body: edited || undefined,
+                hospitable: { tool: draft.hospitable.tool, args },
+                bodyText: proof.sent ? "Done. It is in Hospitable." : proof.reason,
+              });
+              return res.status(200).json({ message });
+            }
             await commitHospitable(draft.hospitable.tool, args);
             const message = await updateDraft(messageId, {
               status: "sent",

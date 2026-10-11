@@ -57,6 +57,84 @@ export async function commitHospitable(name: string, args: Record<string, unknow
   throw new Error("That change needs the MCP token. Nothing was changed.");
 }
 
+export type GuestMessageSend = { sent: true } | { sent: false; reason: string };
+
+/**
+ * The only guest-message send. It commits through MCP, then reads the thread.
+ * Success means the body is on the thread. A send that cannot be read back is not sent.
+ */
+export async function sendReservationMessage(input: {
+  reservationId: string;
+  body: string;
+  images?: string[];
+}): Promise<GuestMessageSend> {
+  const reservationId = input.reservationId.trim();
+  const body = input.body.trim();
+  if (!reservationId) return { sent: false, reason: "That reply has no reservation. Nothing was sent." };
+  if (!body) return { sent: false, reason: "The draft is empty. Nothing was sent." };
+  const readArgs = { uuid: reservationId, reservation_id: reservationId };
+  let before = 0;
+  try {
+    before = countMessageBody(await callHospitableMcp("get-reservation-messages", readArgs), body);
+  } catch {
+    before = 0;
+  }
+  try {
+    await commitHospitable("send-reservation-message", {
+      uuid: reservationId,
+      reservation_id: reservationId,
+      body,
+      ...(input.images?.length ? { images: input.images } : {}),
+    });
+  } catch (err) {
+    const message = err instanceof Error && err.message ? err.message : "Couldn't reach Hospitable.";
+    const reason = /nothing was sent|nothing was changed/i.test(message)
+      ? message.replace(/Nothing was changed/gi, "Nothing was sent")
+      : `${message.replace(/\.$/, "")}. Nothing was sent.`;
+    return { sent: false, reason };
+  }
+  try {
+    const after = countMessageBody(await callHospitableMcp("get-reservation-messages", readArgs), body);
+    if (after > before) return { sent: true };
+    return { sent: false, reason: "The reply is not on the thread. It is not sent." };
+  } catch (err) {
+    const message = err instanceof Error && err.message ? err.message : "The thread could not be read.";
+    return { sent: false, reason: `${message.replace(/\.$/, "")}. The reply was not read back, so it is not sent.` };
+  }
+}
+
+function countMessageBody(raw: unknown, body: string): number {
+  const needle = body.trim();
+  if (!needle) return 0;
+  return messageBodies(raw).filter((item) => item.includes(needle)).length;
+}
+
+function messageBodies(raw: unknown): string[] {
+  const out: string[] = [];
+  for (const item of messageRows(raw)) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const text = String(row.body ?? row.message ?? row.text ?? "").trim();
+    if (text) out.push(text);
+  }
+  return out;
+}
+
+function messageRows(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== "object") return [];
+  const row = raw as Record<string, unknown>;
+  if (Array.isArray(row.data)) return row.data;
+  if (Array.isArray(row.messages)) return row.messages;
+  const data = row.data;
+  if (data && typeof data === "object") {
+    const inner = data as Record<string, unknown>;
+    if (Array.isArray(inner.data)) return inner.data;
+    if (Array.isArray(inner.messages)) return inner.messages;
+  }
+  return [];
+}
+
 export function applyHospitableEdit(args: Record<string, unknown>, original: string, edited: string): Record<string, unknown> {
   if (!edited || edited === original) return args;
   const next = { ...args };

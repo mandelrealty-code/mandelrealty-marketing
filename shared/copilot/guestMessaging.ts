@@ -5,6 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
+import { sendReservationMessage } from "./hospitableAgent.js";
 import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIntelligence.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { detectFollowUps, orderFollowUps, type FollowUpStay } from "./guestFollowUps.js";
@@ -20,7 +21,6 @@ import type { GuestDraftView, GuestFile, GuestFollowUp, GuestQueue, GuestRow } f
 export type { GuestBubble, GuestDraftView, GuestFollowUp, GuestQueue, GuestRow } from "./guestTypes.js";
 export { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
 
-let poster: ((id: string, text: string) => Promise<void>) | null = null;
 let uploader: ((file: GuestFile) => Promise<string>) | null = null;
 let hubWrite: ((propertyId: string, fact: string) => Promise<string>) | null = null;
 const drafts = new Map<string, { to: string; body: string; reservationId: string; language: string }>();
@@ -32,7 +32,6 @@ let stagedInquiries: GuestFollowUp[] = [];
 let rememberedQueue: GuestQueue | null = null;
 
 export function resetGuestMessaging(): void {
-  poster = null;
   uploader = null;
   hubWrite = null;
   drafts.clear();
@@ -80,10 +79,6 @@ export async function markFollowUpHandled(id: string, now = parityNow() ?? new D
   if (trimmed) handledFollowUps.add(trimmed);
   await saveHandledFollowUps([...handledFollowUps]).catch(() => undefined);
   return loadGuestQueue(now);
-}
-
-export function setGuestPoster(next: ((id: string, text: string) => Promise<void>) | null): void {
-  poster = next;
 }
 
 export function setGuestUploader(next: ((file: GuestFile) => Promise<string>) | null): void {
@@ -296,6 +291,14 @@ export function replyFromAnswer(guest: string, answer: string): string {
   return `Hi ${name}, ${answer.trim()}`;
 }
 
+export type GuestSubmitResult = {
+  sent: boolean;
+  reason: string;
+  savedLine: string;
+  failedLine: string;
+  sentText: string;
+};
+
 export async function submitGuestReply(input: {
   reservationId: string;
   propertyId: string;
@@ -305,7 +308,7 @@ export async function submitGuestReply(input: {
   language: string;
   fact: string;
   attachments?: GuestFile[];
-}): Promise<{ sent: true; savedLine: string; failedLine: string; sentText: string }> {
+}): Promise<GuestSubmitResult> {
   const sentText = toGuestLanguage(input.english, input.language);
   const files = input.attachments ?? [];
   if (!sentText.trim() && !files.length) throw new Error("The draft is empty. Nothing was sent.");
@@ -321,18 +324,15 @@ export async function submitGuestReply(input: {
     }
   }
   if (!sentText.trim()) throw new Error("The draft is empty. Nothing was sent.");
-  if (poster) await poster(input.reservationId, sentText);
-  else {
-    await hospitableRead("send-reservation-message", {
-      uuid: input.reservationId,
-      reservation_id: input.reservationId,
-      body: sentText,
-      ...(images.length ? { images } : {}),
-    });
-  }
-  if (!input.fact.trim()) return { sent: true, savedLine: "", failedLine: "", sentText };
+  const posted = await sendReservationMessage({
+    reservationId: input.reservationId,
+    body: sentText,
+    images,
+  });
+  if (!posted.sent) return { sent: false, reason: posted.reason, savedLine: "", failedLine: "", sentText };
+  if (!input.fact.trim()) return { sent: true, reason: "", savedLine: "", failedLine: "", sentText };
   const saved = await writeAndConfirm(input.propertyId, input.fact.trim());
-  if (saved) return { sent: true, savedLine: `Saved to the ${input.property} Knowledge Hub`, failedLine: "", sentText };
+  if (saved) return { sent: true, reason: "", savedLine: `Saved to the ${input.property} Knowledge Hub`, failedLine: "", sentText };
   await leaveDraft({
     channel: "note",
     to: "",
@@ -341,7 +341,7 @@ export async function submitGuestReply(input: {
     warnings: [],
     needs_you: true,
   });
-  return { sent: true, savedLine: "", failedLine: "Couldn't save this to the Hub. The reply is still ready.", sentText };
+  return { sent: true, reason: "", savedLine: "", failedLine: "Couldn't save this to the Hub. The reply is still ready.", sentText };
 }
 
 async function writeAndConfirm(propertyId: string, fact: string): Promise<boolean> {

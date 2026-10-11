@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { commitHospitable } from "./hospitableAgent.js";
+import { commitHospitable, sendReservationMessage } from "./hospitableAgent.js";
 import { callHospitableMcp } from "./hospitableMcp.js";
 import { readCleanerUnit } from "./cleanerRead.js";
 import { captureDraft, captureReport } from "./parity/capture.js";
@@ -659,7 +659,8 @@ async function noteReservation(reservationId: string, line: string): Promise<voi
 export async function approveUpsell(offer: UpsellOffer, priceCents: number, now = new Date()): Promise<string> {
   const cents = Number.isFinite(priceCents) && priceCents > 0 ? Math.round(priceCents) : offer.priceCents;
   if (offer.phase === "remind") {
-    await commitHospitable("send-reservation-message", { uuid: offer.reservationId, body: offer.message });
+    const posted = await sendReservationMessage({ reservationId: offer.reservationId, body: offer.message });
+    if (!posted.sent) return posted.reason;
     const line = `${stamp(now)}. Sent ${offer.guest} the unpaid ${dollars(offer.priceCents)} reminder.`;
     await noteReservation(offer.reservationId, line);
     await saveCheck({ body: line, headline: `${offer.guest} reminder sent`, needsYou: false });
@@ -673,7 +674,8 @@ export async function approveUpsell(offer: UpsellOffer, priceCents: number, now 
     currency: "CAD",
     reason,
   });
-  await commitHospitable("send-reservation-message", { uuid: offer.reservationId, body: message });
+  const posted = await sendReservationMessage({ reservationId: offer.reservationId, body: message });
+  if (!posted.sent) return posted.reason;
   const line = `${stamp(now)}. Sent ${offer.guest} the ${offer.kind === "early" ? "early check-in" : "late checkout"} message and a ${dollars(cents)} Airbnb payment request. Waiting on payment.`;
   await noteReservation(offer.reservationId, line);
   const picture = await readCleanerUnit({
@@ -839,7 +841,17 @@ async function settleOne(watch: Watch, now: Date): Promise<void> {
     return;
   }
   const confirmation = `Hi ${watch.guest}, you're confirmed for ${watch.label}.`;
-  await commitHospitable("send-reservation-message", { uuid: watch.reservationId, body: confirmation });
+  const posted = await sendReservationMessage({ reservationId: watch.reservationId, body: confirmation });
+  if (!posted.sent) {
+    watch.phase = "sync-failed";
+    savePersisted();
+    await flag(
+      `upsell-message:${watch.reservationId}`,
+      `${watch.guest} confirmation`,
+      posted.reason,
+    );
+    return;
+  }
   const line = `${stamp(now)}. ${watch.guest} paid ${dollars(watch.amountCents)}. ${watch.property} now shows ${watch.label} in Hospitable and on the cleaner app turnover.`;
   await noteReservation(watch.reservationId, line);
   await saveCheck({ body: line, headline: `${watch.guest} ${watch.label} confirmed`, needsYou: false });

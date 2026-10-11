@@ -2,7 +2,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestFollowUpClose, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
 import type { StayCard } from "../../../shared/copilot/types";
 
-type SubmitResult = { savedLine: string; failedLine: string; sentText: string };
+type SubmitResult = { sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string };
+
+function submitProblem(result: SubmitResult): string {
+  if (!result.sent) return result.reason || "It is not sent.";
+  return result.failedLine || "";
+}
 
 export function GuestMessaging({
   queue,
@@ -116,6 +121,7 @@ export function GuestMessaging({
         onBack={() => { setReviewAt(null); onBack(); }}
         onSubmit={async (text, files) => {
           const result = await onSubmit(text, "", files);
+          if (!result.sent) throw new Error(result.reason || "It is not sent.");
           setSentN((n) => n + 1);
           const next = reviewAt + 1;
           setReviewAt(next);
@@ -604,7 +610,8 @@ function FollowUpScreen({
                     setBusy(true);
                     setFail("");
                     void onSubmit(text, "", files).then((result) => {
-                      if (result.failedLine) setFail(result.failedLine);
+                      const problem = submitProblem(result);
+                      if (problem) setFail(problem);
                       else setSent(result.sentText || `Sent to ${item.first}.`);
                     }).catch((err: unknown) => {
                       setFail(err instanceof Error ? err.message : "Nothing was sent.");
@@ -647,7 +654,8 @@ function FollowUpScreen({
                   setBusy(true);
                   setFail("");
                   void onSubmit(text, "", files).then((result) => {
-                    if (result.failedLine) setFail(result.failedLine);
+                    const problem = submitProblem(result);
+                    if (problem) setFail(problem);
                     else { setSent(result.sentText || `Sent to ${item.first}.`); setDrafting(false); }
                   }).catch((err: unknown) => {
                     setFail(err instanceof Error ? err.message : "Nothing was sent.");
@@ -948,7 +956,8 @@ function Thread({
                         setBusy(true);
                         setFail("");
                         void onSubmit(text, answer.mode === "gap" ? text : "", files).then((result) => {
-                          if (result.failedLine) setFail(result.failedLine);
+                          const problem = submitProblem(result);
+                          if (problem) setFail(problem);
                           else setSent(result.sentText || `Sent to ${answer.first}.`);
                         }).catch((err: unknown) => {
                           setFail(err instanceof Error ? err.message : "Nothing was sent.");

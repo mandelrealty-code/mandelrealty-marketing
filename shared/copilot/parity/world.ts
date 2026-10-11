@@ -53,6 +53,8 @@ export type ParityReservation = {
   threadUnreadable?: boolean;
   /** When set, the message read throws this instead of the generic thread failure. */
   threadError?: string;
+  /** The send is acknowledged and the body never lands on the thread. */
+  dropOutbound?: boolean;
   /** 24-hour clock, when a time has been set on the reservation. Absent uses 4:00 PM and 11:00 AM. */
   checkInTime?: string;
   checkOutTime?: string;
@@ -762,7 +764,7 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
     const id = String(args.uuid ?? args.reservation_id ?? "");
     const body = String(args.body ?? "");
     const stay = current.reservations.find((row) => row.id === id);
-    if (stay && body.trim()) {
+    if (stay && body.trim() && !stay.dropOutbound) {
       stay.messages.push({
         id: `sent-${stay.messages.length + 1}`,
         at: new Date().toISOString(),

@@ -4,7 +4,8 @@
  * Thanks does not wait and does not draft.
  */
 
-import { resetHospitableConnection, saveHospitableToken, setHospitableProbe } from "./hospitableConnection.js";
+import { hospitableRead, resetHospitableConnection, saveHospitableToken, setHospitableProbe } from "./hospitableConnection.js";
+import { callHospitableMcp } from "./hospitableMcp.js";
 import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerWaitingDrafts } from "./guestInboxAnswer.js";
 import { detectFollowUps, orderFollowUps } from "./guestFollowUps.js";
@@ -24,7 +25,6 @@ import {
   readSavedGuestQueue,
   replyFromAnswer,
   resetGuestMessaging,
-  setGuestPoster,
   setGuestUploader,
   setHubWriter,
   submitGuestReply,
@@ -61,11 +61,7 @@ function stay(id: string, code: string, propertyId: string, guest: string, body:
 
 resetHospitableConnection();
 resetGuestMessaging();
-const sent: string[] = [];
 const hub = new Map<string, string>();
-setGuestPoster(async (_id, text) => {
-  sent.push(text);
-});
 setHubWriter(async (propertyId, fact) => {
   const next = `${hub.get(propertyId) || ""}\n${fact}`.trim();
   hub.set(propertyId, next);
@@ -147,6 +143,15 @@ if (toEnglish(FRENCH) === FRENCH) fail("translation unchanged");
 const rack = draftFromHub("Daniel Okafor", "Hey, where’s the dish drying rack? We’ve looked everywhere.", "The Wi-Fi password is on the fridge.");
 if (rack.mode !== "gap" || rack.draft || !/dish drying rack/i.test(rack.gap)) fail("no answer");
 const answer = replyFromAnswer("Daniel Okafor", "Folded flat in the cabinet left of the sink, behind the cutting boards.");
+installWorld({
+  now: new Date("2026-10-08T16:06:00Z"),
+  properties: [{ id: "prop-blue", name: "Blue Jays Way", address: "20 Blue Jays Way, Toronto", managed: true }],
+  reservations: [stay("stay-daniel", "HMDAN1", "prop-blue", "Daniel Okafor", "Hey, where’s the dish drying rack?", "2026-10-08T15:00:00Z")],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
 const posted = await submitGuestReply({
   reservationId: "stay-daniel",
   propertyId: "prop-blue",
@@ -156,7 +161,42 @@ const posted = await submitGuestReply({
   language: "",
   fact: "The dish drying rack is folded flat in the cabinet left of the sink.",
 });
-if (sent.length !== 1 || sent[0] !== answer) fail("submit sent the draft");
+if (!posted.sent) fail(`submit reported not sent: ${posted.reason}`);
+const thread = await callHospitableMcp("get-reservation-messages", { uuid: "stay-daniel" });
+if (!JSON.stringify(thread).includes(answer)) fail("submit did not land on the thread");
+if (!capturedCommits().some((row) => row.detail === "send-reservation-message")) fail("submit did not use the commit path");
+let readBlocked = false;
+try {
+  await hospitableRead("send-reservation-message", { uuid: "stay-daniel", body: "This read must not send." });
+} catch (err) {
+  readBlocked = err instanceof Error && /nothing was sent/i.test(err.message);
+}
+if (!readBlocked) fail("the read path still accepts a send");
+const afterRead = await callHospitableMcp("get-reservation-messages", { uuid: "stay-daniel" });
+if (JSON.stringify(afterRead).includes("This read must not send.")) fail("the read path landed on the thread");
+installWorld({
+  now: new Date("2026-10-08T16:06:00Z"),
+  properties: [{ id: "prop-blue", name: "Blue Jays Way", address: "20 Blue Jays Way, Toronto", managed: true }],
+  reservations: [{ ...stay("stay-dropped", "HMDROP1", "prop-blue", "Daniel Okafor", "Still looking.", "2026-10-08T15:10:00Z"), dropOutbound: true }],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const missed = await submitGuestReply({
+  reservationId: "stay-dropped",
+  propertyId: "prop-blue",
+  property: "Blue Jays Way",
+  guest: "Daniel Okafor",
+  english: "This reply must not count as sent.",
+  language: "",
+  fact: "This fact must not be saved.",
+});
+if (missed.sent) fail("forced failure reported sent");
+if (!/not sent/i.test(missed.reason)) fail(`forced failure reason: ${missed.reason}`);
+const dropped = await callHospitableMcp("get-reservation-messages", { uuid: "stay-dropped" });
+if (JSON.stringify(dropped).includes("This reply must not count as sent.")) fail("forced failure landed on the thread");
+if (hub.get("prop-blue")?.includes("This fact must not be saved")) fail("hub saved after a failed send");
 if (posted.savedLine !== "Saved to the Blue Jays Way Knowledge Hub") fail("hub write-back");
 if (!hub.get("prop-blue")?.includes("dish drying rack")) fail("read back");
 if (JSON.stringify(queue).includes(GOOD) || JSON.stringify(posted).includes(GOOD)) fail("token rendered");
@@ -181,7 +221,6 @@ if (/laundry detergent|dishwasher|Mississauga|amenities|elevator|coffee maker/i.
 if (!bags.draft.startsWith("Hi Nora,") || /Shane|Co-Host|647-822-0448/.test(bags.draft)) fail("bags sign-off");
 
 resetGuestMessaging();
-setGuestPoster(async () => undefined);
 installWorld({
   now: new Date("2026-10-08T16:06:00Z"),
   properties: [
@@ -413,12 +452,10 @@ if (guestDrafts().some((row) => row.reservationId === feeRow.id)) fail("opening 
 resetResearch();
 
 resetGuestMessaging();
-setGuestPoster(async () => {
-  sent.push("should-not-send");
-});
 setGuestUploader(async () => {
   throw new Error("The video didn’t upload.");
 });
+const commitsBeforeUpload = capturedCommits().length;
 let uploadBlocked = false;
 try {
   await submitGuestReply({
@@ -435,7 +472,7 @@ try {
   uploadBlocked = err instanceof Error && /didn’t upload/.test(err.message) && /nothing was sent/i.test(err.message);
 }
 if (!uploadBlocked) fail("upload failure did not stop the send");
-if (sent.includes("should-not-send")) fail("text sent after the upload failed");
+if (capturedCommits().length !== commitsBeforeUpload) fail("text sent after the upload failed");
 
 resetGuestMessaging();
 installWorld({

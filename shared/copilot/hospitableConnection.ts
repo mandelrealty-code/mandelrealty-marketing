@@ -126,6 +126,9 @@ export async function copilotHospitableToken(): Promise<string> {
 
 /** One Hospitable read through the Copilot token. No OPS key and no MCP stand-in. */
 export async function hospitableRead(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
+  if (name === "send-reservation-message" || name === "send-inquiry-message") {
+    throw new Error("Guest messages are not sent from a read. Nothing was sent.");
+  }
   const token = await copilotHospitableToken();
   if (!token) throw new Error(HOSPITABLE_NOT_CONNECTED);
   try {
