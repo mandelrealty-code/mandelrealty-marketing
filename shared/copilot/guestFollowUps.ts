@@ -81,14 +81,22 @@ const DECLINE = /\b(no thanks|no thank you|don't need|do not need|don't want|do 
 const ACCEPT = /\b(yes|yeah|yep|sure|okay|ok|perfect|deal|sounds good|that works|that would|that'd|is fine|great|absolutely|go ahead|on or after)\b/i;
 const PICKED_UP = /\b(picked (?:it |them |that |the \w+ )?up|have the suitcase|got the suitcase|collected it|i have it)\b/i;
 
+function plain(text: string): string {
+  return text.replace(/[\u2018\u2019\u2032]/g, "'");
+}
+
 function accepts(body: string): boolean {
-  if (DECLINE.test(body)) return false;
-  if (/\b(will check|i'll check|i will check|check tonight|check later)\b/i.test(body)) return false;
-  return ACCEPT.test(body);
+  const text = plain(body);
+  if (DECLINE.test(text)) return false;
+  if (/\b(will check|i'll check|i will check|check tonight|check later)\b/i.test(text)) return false;
+  return ACCEPT.test(text);
 }
 
 export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFollowUp[]; settled: GuestFollowUpClose[] } {
-  const turns = stay.turns.filter((turn) => (turn.role === "guest" || turn.role === "host") && turn.body.trim());
+  const turns = stay.turns
+    .filter((turn) => (turn.role === "guest" || turn.role === "host") && turn.body.trim())
+    .slice()
+    .sort((a, b) => a.at.localeCompare(b.at));
   const owes: Owe[] = [];
   const incidents: Incident[] = [];
   const settled: GuestFollowUpClose[] = [];
@@ -118,18 +126,39 @@ export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFol
         settleIncident(incident, `${first} confirmed at ${clock(turn.at)} ${picked}`);
       }
       const owe = latestOwe(owes, turn.body);
-      if (owe && DECLINE.test(turn.body)) {
-        settleOwe(owe, `${first} declined the ${owe.topic.label.toLowerCase()}`);
-      } else if (owe && guestConfirmsOwe(turn.body, owe.topic)) {
+      if (owe && guestConfirmsOwe(turn.body, owe.topic)) {
         settleOwe(owe, `${first} confirmed at ${clock(turn.at)} it is done`);
-      } else if (owe && accepts(turn.body) && !owe.accepted) {
-        owe.accepted = true;
-        owe.agreed = turn.body.trim();
-        owe.agreedAt = turn.at;
-        owe.agreedBy = nameOf(turn.name, first);
-        const dated = dueIn(`${owe.body}\n${turn.body}`, owe.at);
-        if (dated.due) owe.due = dated.due;
-        if (dated.onOrAfter) owe.onOrAfter = true;
+        continue;
+      }
+      for (const sentence of sentences(turn.body)) {
+        if (!DECLINE.test(plain(sentence))) continue;
+        const named = topicsIn(sentence);
+        const targets = named.length
+          ? owes.filter((item) => named.some((topic) => sameTopic(item.topic, topic)))
+          : [latestOwe(owes, sentence)].filter((item): item is Owe => Boolean(item));
+        for (const item of targets) settleOwe(item, `${first} declined the ${item.topic.label.toLowerCase()}`);
+      }
+      const agreeing = sentences(turn.body).filter((sentence) => accepts(sentence));
+      if (agreeing.length) {
+        const mixed = sentences(turn.body).some((sentence) => DECLINE.test(plain(sentence)));
+        const agreedText = mixed ? agreeing.join(" ") : turn.body.trim();
+        const named = topicsIn(agreeing.join(" "));
+        const targets = named.length
+          ? owes.filter((item) => named.some((topic) => sameTopic(item.topic, topic)))
+          : [latestOwe(owes, agreeing.join(" "))].filter((item): item is Owe => Boolean(item));
+        for (const item of targets) {
+          if (!item.accepted) {
+            item.accepted = true;
+            item.agreed = agreedText;
+            item.agreedAt = turn.at;
+            item.agreedBy = nameOf(turn.name, first);
+          } else if (mixed && /on or after/i.test(agreedText)) {
+            item.agreed = agreedText;
+          }
+          const dated = dueIn(`${item.body}\n${agreedText}`, item.at || turn.at);
+          if (dated.due) item.due = dated.due;
+          if (dated.onOrAfter) item.onOrAfter = true;
+        }
       }
       continue;
     }
@@ -162,36 +191,42 @@ export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFol
       if (owe && delivers(turn.body, owe.topic)) settleOwe(owe, `${nameOf(turn.name, "The host")} delivered the ${owe.topic.label.toLowerCase()}`);
     }
 
-    if (!promiseMessage(turn.body)) continue;
-    if (isAnaphoric(turn.body)) continue;
-    const found = topicsFor(turn.body, priorGuest(turns, index));
-    const topic = combine(found) ?? topicFrom(turn.body, "Promise");
-    const dated = dueIn(turn.body, turn.at);
-    const existing = owes.find((item) => sameTopic(item.topic, topic));
-    if (existing) {
-      existing.at = turn.at;
-      existing.by = nameOf(turn.name, "Host");
-      existing.body = turn.body.trim();
-      if (dated.due) existing.due = dated.due;
-      if (dated.onOrAfter) existing.onOrAfter = true;
-      continue;
+    if (isAnaphoric(plain(turn.body)) && topicsIn(turn.body).length === 0) continue;
+    const promising = sentences(turn.body).filter((sentence) => concretePromise(sentence));
+    if (!promising.length) continue;
+    const seen = new Set<string>();
+    for (const sentence of promising) {
+      const topic = promiseTopic(sentence, turn.body, priorGuest(turns, index));
+      if (!topic || seen.has(topic.id)) continue;
+      seen.add(topic.id);
+      const quote = promiseQuote(topic, turn.body);
+      const dated = dueIn(`${quote}\n${turn.body}`, turn.at);
+      const existing = owes.find((item) => item.topic.id === topic.id);
+      if (existing) {
+        existing.at = turn.at;
+        existing.by = nameOf(turn.name, "Host");
+        existing.body = quote;
+        if (dated.due) existing.due = dated.due;
+        if (dated.onOrAfter) existing.onOrAfter = true;
+        continue;
+      }
+      const asked = priorGuest(turns, index);
+      owes.push({
+        id: `owe:${stay.reservationId}:${topic.id}`,
+        topic,
+        at: turn.at,
+        by: nameOf(turn.name, "Host"),
+        body: quote,
+        asked: topic.test(asked) ? asked.trim() : "",
+        askedAt: topic.test(asked) ? guestAt(turns, index) : "",
+        agreed: "",
+        agreedAt: "",
+        agreedBy: "",
+        accepted: false,
+        due: dated.due,
+        onOrAfter: dated.onOrAfter,
+      });
     }
-    const asked = priorGuest(turns, index);
-    owes.push({
-      id: `owe:${stay.reservationId}:${topic.id}`,
-      topic,
-      at: turn.at,
-      by: nameOf(turn.name, "Host"),
-      body: turn.body.trim(),
-      asked: topic.test(asked) ? asked.trim() : "",
-      askedAt: topic.test(asked) ? guestAt(turns, index) : "",
-      agreed: "",
-      agreedAt: "",
-      agreedBy: "",
-      accepted: false,
-      due: dated.due,
-      onOrAfter: dated.onOrAfter,
-    });
   }
 
   const today = torontoToday(now);
@@ -409,21 +444,63 @@ function delivers(body: string, topic: Topic): boolean {
 }
 
 function isIncidentNotice(body: string): boolean {
-  if (FUTURE.test(body)) return false;
-  const place = /\b(front desk|building security|concierge)\b/i.test(body);
-  const item = /\b(suitcase|luggage|package|pick(?:\s+it)?\s+up|under (?:your|her|his) name)\b/i.test(body);
+  const text = plain(body);
+  if (FUTURE.test(text)) return false;
+  const place = /\b(front desk|building security|concierge)\b/i.test(text);
+  const item = /\b(suitcase|luggage|package|pick(?:\s+it)?\s+up|under (?:your|her|his) name)\b/i.test(text);
   return place && item;
 }
 
-function promiseMessage(body: string): boolean {
-  return sentences(body).some(isPromiseSentence);
+function isPromiseSentence(sentence: string): boolean {
+  const text = plain(sentence);
+  if (/\b(i've|i have|we've|we have)\b/i.test(text) && !FUTURE.test(text)) return false;
+  if (/^\s*(please|could you|can you|would you)\b/i.test(text)) return false;
+  if (FUTURE.test(text) && ACTION.test(text)) return true;
+  return CAN.test(text) && CAN_ACTION.test(text) && !/\?\s*$/.test(text);
 }
 
-function isPromiseSentence(sentence: string): boolean {
-  if (/\b(i've|i have|we've|we have)\b/i.test(sentence) && !FUTURE.test(sentence)) return false;
-  if (/^\s*(please|could you|can you|would you)\b/i.test(sentence)) return false;
-  if (FUTURE.test(sentence) && ACTION.test(sentence)) return true;
-  return CAN.test(sentence) && CAN_ACTION.test(sentence) && !/\?\s*$/.test(sentence);
+function concretePromise(sentence: string): boolean {
+  if (!isPromiseSentence(sentence)) return false;
+  const text = plain(sentence);
+  const soft = /\b(let you know|do our best|see what i can|get back to you|follow up|update you|i'll confirm|i will confirm|we'll confirm|we will confirm)\b/i.test(text);
+  if (soft && !topicsIn(sentence).length) return false;
+  return true;
+}
+
+function promiseTopic(sentence: string, body: string, prior: string): Topic | null {
+  const named = topicsIn(sentence);
+  if (named.length === 1) return named[0] ?? null;
+  if (named.length > 1) return combine(named);
+  const around = /\b(it|them|that|one)\b/i.test(sentence) ? precedingTopics(sentence, body) : [];
+  if (around.length === 1) return around[0] ?? null;
+  const inBody = topicsIn(body);
+  if (inBody.length === 1) return inBody[0] ?? null;
+  const guest = topicsIn(prior);
+  if (/\b(it|them|that|one)\b/i.test(sentence) && guest.length === 1) return guest[0] ?? null;
+  return null;
+}
+
+function precedingTopics(sentence: string, body: string): Topic[] {
+  const parts = sentences(body);
+  const index = parts.findIndex((part) => part === sentence);
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const found = topicsIn(parts[cursor] ?? "");
+    if (found.length) return found;
+  }
+  return [];
+}
+
+function promiseQuote(topic: Topic, body: string): string {
+  const parts = sentences(body);
+  const foreign = parts.some((sentence) => topicsIn(sentence).some((item) => !sameTopic(item, topic)));
+  if (!foreign) return body.trim();
+  const picked = parts.filter((sentence) => {
+    const named = topicsIn(sentence);
+    if (named.some((item) => sameTopic(item, topic))) return true;
+    if (named.length) return false;
+    return /\bon or after\b/i.test(sentence);
+  });
+  return picked.join(" ").trim() || body.trim();
 }
 
 function isAnaphoric(body: string): boolean {

@@ -270,6 +270,8 @@ export type RecentStay = {
   propertyName: string;
   address: string;
   label: string;
+  /** The reservations-list row, kept so a pending request is not dropped when the thread read fails. */
+  reservation?: Record<string, unknown>;
 };
 
 /**
@@ -302,11 +304,10 @@ export async function loadRecentStays(now: Date, openThreads = false): Promise<{
         page: 1,
         include: "guest",
       });
-      const rows = rowsOf(raw)
-        .map((row) => toStay(row, id))
-        .filter((stay) => stay.id && relevant(stay, today, openThreads) && !/cancel/.test(stay.status));
-      for (const stay of rows) {
-        stays.push({ stay, propertyName: property.name, address: property.address, label });
+      for (const row of rowsOf(raw)) {
+        const stay = toStay(row, id);
+        if (!stay.id || !relevant(stay, today, openThreads) || /cancel/.test(stay.status)) continue;
+        stays.push({ stay, propertyName: property.name, address: property.address, label, reservation: row });
       }
     } catch {
       failed.push(label);

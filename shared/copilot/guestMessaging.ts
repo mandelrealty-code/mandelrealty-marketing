@@ -440,34 +440,35 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       if (![...seenProperties.values()].some((row) => row.label === label)) seenProperties.set(label, { id: label, label, failed: true });
     }
     for (const stay of loaded.stays) {
-      let messages: { at: string; role: string; name: string; body: string; media?: ThreadTurn["media"] }[];
+      let messages: { at: string; role: string; name: string; body: string; media?: ThreadTurn["media"] }[] = [];
+      let threadRead = false;
       try {
         messages = await readStayThread(stay.stay.id, now);
+        threadRead = true;
       } catch {
         unreadThreads.add(stay.stay.id);
-        if (messageFailed.has(stay.label)) continue;
-        messageFailed.add(stay.label);
-        if (!unread.includes(stay.label)) unread.push(stay.label);
-        failed.push(`Couldn't read messages for ${stay.label}, so anyone waiting there isn't listed. Nothing was sent.`);
-        const chip = seenProperties.get(stay.stay.propertyId);
-        if (chip) chip.failed = true;
-        continue;
+        if (!messageFailed.has(stay.label)) {
+          messageFailed.add(stay.label);
+          if (!unread.includes(stay.label)) unread.push(stay.label);
+          failed.push(`Couldn't read messages for ${stay.label}, so anyone waiting there isn't listed. Nothing was sent.`);
+          const chip = seenProperties.get(stay.stay.propertyId);
+          if (chip) chip.failed = true;
+        }
       }
+      const record = recordFromRow(stay.reservation ?? {}, stay.label, stay.stay.propertyId);
+      if (record && isOpenRequest(record.status) && record.pendingAt) {
+        scanned.add(record.id);
+        const inquiryTurns: InquiryTurn[] = messages.map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body }));
+        const card = bookingRequestFollowUp(record, inquiryTurns, now, phaseFor(record.id));
+        if (card && !handled.has(card.id) && !followUps.some((item) => item.id === card.id)) followUps.push(card);
+      }
+      if (!threadRead) continue;
       scanned.add(stay.stay.id);
       const detected = detectFollowUps(followStay(stay, messages, photos.get(stay.stay.propertyId) || ""), now);
       for (const row of detected.open) {
         if (!handled.has(row.id)) followUps.push(row);
       }
       for (const row of detected.settled) settled.set(row.id, row.closeText);
-      if (isOpenRequest(stay.stay.status)) {
-        const recordRaw = await hospitableRead("get-reservation", { identifier: stay.stay.id, include: "guest,financials" }).catch(() => null);
-        const record = recordFromRow(oneRecord(recordRaw) ?? {}, stay.label, stay.stay.propertyId);
-        if (record?.pendingAt) {
-          const inquiryTurns: InquiryTurn[] = messages.map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body }));
-          const card = bookingRequestFollowUp(record, inquiryTurns, now, phaseFor(record.id));
-          if (card && !handled.has(card.id)) followUps.push(card);
-        }
-      }
       const turns = messages
         .filter((item) => item.role !== "system")
         .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body, media: item.media ?? [] }));

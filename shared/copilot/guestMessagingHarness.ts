@@ -828,4 +828,111 @@ if (expired.followUps.some((row) => row.guest === "Anlel")) fail("expired reques
 if (!expired.closedFollowUps.some((row) => row.guest === "Anlel" && /expired/i.test(row.closeText))) fail(`expiry close ${expired.closedFollowUps.map((row) => row.closeText).join(" | ")}`);
 if (capturedCommits().length !== beforeCommits) fail("revalidation wrote to Hospitable");
 
+const liveNow = new Date("2026-10-11T23:00:00.000Z");
+const LIVE_PROMISE = "Hey I spoke to the owner. There’s a fee from the building to get an additional fob and key made it’s $100. If you’d like to pay for this. We can get it done for you. \n\nAs per windows. Yes we can send someone to clean the windows. Please let me know some preferred times you will be home over the next week and I’ll try to schedule within those times. \n\nOtherwise if it’s on or after October 14th, I can or someone from my team can take care of it or accompany someone to take care of it. \n\nPlease let me know how you would like to proceed.";
+const LIVE_AGREED = "Thank you for the follow-up. No need for the extra key - we’d prefer not to pay. Thank you for inquiring though. \n\nIf you or one of your team could provide access to clean the windows, that would be great. Please just let us know when you think that would be.   On or after 14th is fine";
+const LIVE_SUITCASE = "Hey just reaching out as a heads up. Security has informed us one of our guests have left a suitcase at the front desk. This is not allowed. If this is yours or someone in your group. Please pick it up immediately. \n\nIf it is not yours please disregard this message. \n\nThanks";
+resetGuestMessaging();
+await clearHandledFollowUps();
+installWorld({
+  now: liveNow,
+  properties: [{ id: "prop-live-jays", name: "20 Blue Jays Way", address: "318, 20 Blue Jays Way, Toronto", managed: true }],
+  reservations: [{
+    id: "stay-anlel-live",
+    code: "HM5AN2HEB9",
+    propertyId: "prop-live-jays",
+    status: "pending payment",
+    checkIn: "2026-11-20",
+    checkOut: "2026-11-23",
+    guest: "Anlel",
+    adults: 4,
+    children: 0,
+    messages: [],
+    bookingDate: "2026-10-11T02:48:56Z",
+    statusHistory: [
+      { status: "checkpoint", category: "Checkpoint", changed_at: "2026-10-10T22:10:49+00:00" },
+      { status: "pending", category: "Pending", changed_at: "2026-10-11T00:15:54+00:00" },
+      { status: "pending_payment", category: "Pending payment", changed_at: "2026-10-11T15:09:49+00:00" },
+    ],
+  }],
+  inquiries: [],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const liveAnlel = await loadGuestQueue(liveNow);
+if (liveAnlel.followUps.length !== 1 || liveAnlel.followUps[0]?.guest !== "Anlel" || liveAnlel.followUps[0]?.kind !== "inquiry") fail(`live anlel ${liveAnlel.followUps.map((row) => `${row.guest}:${row.kind}`).join(",") || "none"}`);
+if (liveAnlel.followUps[0]?.expiresAt !== "2026-10-12T00:15:54.000Z" || !/8:15/.test(liveAnlel.followUps[0]?.dueText || "")) fail(`live anlel countdown ${liveAnlel.followUps[0]?.expiresAt} ${liveAnlel.followUps[0]?.dueText}`);
+const liveAnlelAgain = await loadGuestQueue(liveNow);
+if (liveAnlelAgain.followUps.length !== 1 || liveAnlelAgain.followUps[0]?.expiresAt !== "2026-10-12T00:15:54.000Z") fail("anlel countdown dropped on revalidation");
+
+resetGuestMessaging();
+await clearHandledFollowUps();
+installWorld({
+  now: liveNow,
+  properties: [{ id: "prop-live-charlotte", name: "Unit #606", address: "606, 8 Charlotte Street, Toronto", managed: true }],
+  reservations: [{
+    id: "stay-eloise-live",
+    code: "HMJSMMMFSF",
+    propertyId: "prop-live-charlotte",
+    status: "accepted",
+    checkIn: "2026-09-29",
+    checkOut: "2026-11-07",
+    guest: "Eloise",
+    adults: 1,
+    children: 0,
+    messages: [
+      { id: "el-live-3", at: "2026-10-10T15:25:34Z", role: "host", name: "Unknown", body: "Okay I’ll see what I can do for windows." },
+      { id: "el-live-2", at: "2026-10-10T15:24:43Z", role: "guest", name: "Eloise", body: LIVE_AGREED },
+      { id: "el-live-1", at: "2026-10-07T17:01:04Z", role: "host", name: "Unknown", body: LIVE_PROMISE },
+      { id: "el-live-0", at: "2026-10-02T12:30:39Z", role: "guest", name: "Eloise", body: "The windows are quite dirty, might it be possible for these to be cleaned?" },
+    ],
+  }],
+  inquiries: [],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const liveEloise = await loadGuestQueue(liveNow);
+if (liveEloise.followUps.length !== 1 || liveEloise.followUps[0]?.kind !== "owe") fail(`live eloise ${liveEloise.followUps.map((row) => `${row.kind}:${row.topic}`).join(",") || "none"}`);
+const liveWindows = liveEloise.followUps[0];
+if (!/clean the windows/i.test(liveWindows?.promised || "") || !/on or after October 14/i.test(liveWindows?.promised || "")) fail(`live eloise promise ${liveWindows?.promised}`);
+if (!/On or after 14th is fine/.test(liveWindows?.agreed || "")) fail(`live eloise agreed ${liveWindows?.agreed}`);
+if (liveWindows?.due !== "2026-10-14" || !liveWindows.onOrAfter) fail(`live eloise due ${liveWindows?.due} ${liveWindows?.onOrAfter}`);
+const liveEloiseAgain = await loadGuestQueue(liveNow);
+if (liveEloiseAgain.followUps.length !== 1 || !/On or after 14th is fine/.test(liveEloiseAgain.followUps[0]?.agreed || "")) fail("eloise quotes dropped on revalidation");
+
+resetGuestMessaging();
+await clearHandledFollowUps();
+installWorld({
+  now: liveNow,
+  properties: [{ id: "prop-live-charlotte", name: "Unit #606", address: "606, 8 Charlotte Street, Toronto", managed: true }],
+  reservations: [{
+    id: "stay-suitcase-live",
+    code: "HMJSMMMFSF",
+    propertyId: "prop-live-charlotte",
+    status: "accepted",
+    checkIn: "2026-09-29",
+    checkOut: "2026-11-07",
+    guest: "Eloise",
+    adults: 1,
+    children: 0,
+    messages: [
+      { id: "bag-live", at: "2026-10-01T17:40:49Z", role: "host", name: "Unknown", body: LIVE_SUITCASE },
+    ],
+  }],
+  inquiries: [],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const liveBag = await loadGuestQueue(liveNow);
+if (liveBag.followUps.length !== 1 || liveBag.followUps[0]?.kind !== "incident") fail(`live suitcase ${liveBag.followUps.map((row) => `${row.kind}:${row.line}`).join(",") || "none"}`);
+if (!/no confirmation yet/i.test(liveBag.followUps[0]?.line || "")) fail(`live suitcase line ${liveBag.followUps[0]?.line}`);
+const liveBagAgain = await loadGuestQueue(liveNow);
+if (liveBagAgain.followUps.length !== 1 || liveBagAgain.followUps[0]?.kind !== "incident") fail("suitcase dropped on revalidation");
+
 console.log("Guest messaging harness passed.");

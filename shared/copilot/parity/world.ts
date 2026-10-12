@@ -61,6 +61,10 @@ export type ParityReservation = {
   notes?: string;
   /** When a request to book entered pending. */
   bookedAt?: string;
+  /** Hospitable `booking_date`, which is not the 24-hour response window. */
+  bookingDate?: string;
+  /** Status changes from the reservations read. The earliest pending/request instant starts the countdown. */
+  statusHistory?: { status: string; category?: string; changed_at: string }[];
   guestPhoto?: string;
   /** Review count from the guest record. Absent when the record doesn't say. */
   reviews?: number;
@@ -940,6 +944,24 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     checkin_time: padClock(row.checkInTime, "16:00"),
     checkout_time: padClock(row.checkOutTime, "11:00"),
     booked_at: row.bookedAt || "",
+    booking_date: row.bookingDate || "",
+    ...(row.statusHistory?.length
+      ? {
+          status_history: row.statusHistory.map((item) => ({
+            status: item.status,
+            category: item.category || item.status,
+            changed_at: item.changed_at,
+          })),
+          reservation_status: {
+            current: { category: "request", sub_category: "request to book" },
+            history: row.statusHistory.map((item) => ({
+              category: item.category || item.status,
+              sub_category: item.status,
+              changed_at: item.changed_at,
+            })),
+          },
+        }
+      : {}),
     guest: {
       first_name: row.guest,
       ...(row.phone ? { phone: row.phone } : {}),

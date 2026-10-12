@@ -39,14 +39,15 @@ export function isOpenRequest(status: string): boolean {
 }
 
 export function requestKind(status: string): "open" | "accepted" | "declined" | "withdrawn" | "expired" | "cancelled" | "other" {
-  const value = status.trim().toLowerCase();
+  const value = status.trim().toLowerCase().replace(/[_-]+/g, " ");
   if (!value) return "other";
   if (/withdraw/.test(value)) return "withdrawn";
   if (/expir/.test(value)) return "expired";
-  if (/not_accepted|declin|denied/.test(value)) return "declined";
+  if (/not accepted|declin|denied/.test(value)) return "declined";
   if (/cancel/.test(value)) return "cancelled";
-  if (value === "accepted" || /accepted/.test(value)) return "accepted";
+  if (value === "accepted" || /\baccepted\b/.test(value)) return "accepted";
   if (value === "request" || value === "pending" || value === "inquiry" || value === "open") return "open";
+  if (/\bpending\b/.test(value) || /\brequest\b/.test(value) || /awaiting payment/.test(value)) return "open";
   return "other";
 }
 
@@ -168,7 +169,7 @@ export function recordFromRow(row: Record<string, unknown>, property: string, pr
   return {
     id,
     code: text(row.code) || text(row.platform_id),
-    status: text(row.status).toLowerCase(),
+    status: reservationStatus(row),
     guest: name,
     guestPhoto: photoOf(guest) || photoOf(row),
     reviews,
@@ -180,7 +181,7 @@ export function recordFromRow(row: Record<string, unknown>, property: string, pr
     adults: countOf(guests.adult_count ?? guests.adults ?? row.adults),
     children: countOf(guests.child_count ?? guests.children ?? row.children),
     total: requestTotal(isRow(row.financials) ? row.financials : {}),
-    pendingAt: text(row.booked_at) || text(row.created_at) || text(row.pending_at),
+    pendingAt: pendingInstant(row) || text(row.booked_at) || text(row.created_at) || text(row.pending_at) || text(row.booking_date),
     airbnbThread: threadId(row),
   };
 }
@@ -278,6 +279,35 @@ function requestSourceAt(turns: InquiryTurn[], pendingAt: string): string {
   return notice?.at || pendingAt;
 }
 
+function reservationStatus(row: Record<string, unknown>): string {
+  const status = text(row.status).toLowerCase();
+  if (requestKind(status) !== "other") return status;
+  const reservation = isRow(row.reservation_status) ? row.reservation_status : {};
+  const current = isRow(reservation.current) ? reservation.current : {};
+  const category = text(current.category).toLowerCase();
+  return category || status;
+}
+
+/** The instant the request became pending. Later payment states are the same request, not a new 24-hour window. */
+function pendingInstant(row: Record<string, unknown>): string {
+  const reservation = isRow(row.reservation_status) ? row.reservation_status : {};
+  const history = [
+    ...(Array.isArray(row.status_history) ? row.status_history : []),
+    ...(Array.isArray(reservation.history) ? reservation.history : []),
+  ];
+  const times: string[] = [];
+  for (const item of history) {
+    if (!isRow(item)) continue;
+    const label = `${text(item.status)} ${text(item.category)} ${text(item.sub_category)}`.toLowerCase();
+    if (!/pending|request/.test(label)) continue;
+    if (/checkpoint|not accepted|declin|denied|expir|cancel|withdraw/.test(label)) continue;
+    const at = text(item.changed_at);
+    if (at) times.push(at);
+  }
+  times.sort((a, b) => Date.parse(a) - Date.parse(b));
+  return times[0] || "";
+}
+
 function requestTotal(financials: Record<string, unknown>): string {
   const guest = isRow(financials.guest) ? financials.guest : {};
   const raw = guest.total_price ?? guest.total ?? financials.guest_total ?? financials.total;
@@ -307,7 +337,7 @@ function threadId(row: Record<string, unknown>): string {
 
 function photoOf(row: Record<string, unknown>): string {
   const picture = isRow(row.picture) ? row.picture : {};
-  for (const value of [row.picture, row.picture_url, row.photo, row.thumbnail, picture.url, picture.original]) {
+  for (const value of [row.picture, row.picture_url, row.photo, row.thumbnail, row.profile_picture, picture.url, picture.original]) {
     if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
   }
   return "";
