@@ -8,7 +8,22 @@ import { listPmProperties } from "../pm/propertyStore.js";
 import { copilotHospitableToken, copilotKeepsProperty, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
 import { hubPlain } from "./knowledgeHub.js";
 import { addDays, torontoToday } from "./time.js";
-import type { PostedReviewLine, ReviewFact, ReviewQueuePayload, ReviewQueueRow } from "./reviewTypes.js";
+import type { PostedReviewLine, ReviewFact, ReviewQueuePayload, ReviewQueueProperty, ReviewQueueRow } from "./reviewTypes.js";
+
+/** The first day still inside the rolling 12 months: the same date a year ago, Toronto time. */
+export function reviewWindowStart(now = new Date()): string {
+  const [year, month, day] = torontoToday(now).split("-").map(Number) as [number, number, number];
+  const last = new Date(Date.UTC(year - 1, month, 0)).getUTCDate();
+  return `${year - 1}-${String(month).padStart(2, "0")}-${String(Math.min(day, last)).padStart(2, "0")}`;
+}
+
+/** True when the review was left within the last 12 months. A review with no date is not shown. */
+export function inReviewWindow(reviewedAt: string, now = new Date()): boolean {
+  if (!reviewedAt) return false;
+  const at = new Date(reviewedAt);
+  if (Number.isNaN(at.getTime())) return false;
+  return torontoToday(at) >= reviewWindowStart(now);
+}
 
 export const SOURCE_FULL = "Based on the full conversation and the stay record.";
 export const SOURCE_ALONE = "Based on the review alone. No conversation found for this stay.";
@@ -201,6 +216,7 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
     if (await copilotKeepsProperty({ id: row.hospitable_property_id || row.id, name: row.name, address: row.address })) properties.push(row);
   }
   const reviews: ReviewQueueRow[] = [];
+  const listed: ReviewQueueProperty[] = [];
   for (const property of properties) {
     const propertyId = (property.hospitable_property_id || "").trim();
     if (!propertyId) continue;
@@ -211,9 +227,22 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
       if (err instanceof Error && err.message === HOSPITABLE_NOT_CONNECTED) {
         return { connected: false, line: "Hospitable is not connected.", reviews: [], postedToday: [...posted.values()] };
       }
+      listed.push({ id: propertyId, name: property.name, synced: true });
       continue;
     }
+    // No unanswered review at any age: ask whether Hospitable holds any review for it at all.
+    let synced = rows.length > 0;
+    if (!synced) {
+      try {
+        synced = (await listHospitableReviews({ pat: token, propertyId, maxPages: 1 })).length > 0;
+      } catch {
+        synced = true;
+      }
+    }
+    listed.push({ id: propertyId, name: property.name, synced });
     for (const review of rows) {
+      // Only the last 12 months. Older reviews stay in Hospitable, unanswered and untouched.
+      if (!inReviewWindow(review.reviewed_at || "", now)) continue;
       if (review.public_response.trim()) continue;
       if (review.platform && !/airbnb/i.test(review.platform)) continue;
       if (posted.has(review.id)) continue;
@@ -253,6 +282,7 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
     line: "",
     reviews: rankReviews(reviews),
     postedToday: [...posted.values()],
+    properties: listed,
   };
 }
 

@@ -120,6 +120,8 @@ export type ParityReview = {
   rating: number;
   publicReview: string;
   categories?: { label: string; rating: number }[];
+  /** The host's public reply. Absent means unanswered. */
+  response?: string;
 };
 
 /** A status is printed only when a follow-up record matches the quote. */
@@ -874,6 +876,25 @@ export function parityHttp(method: string, path: string, query: Record<string, u
     if (ids.length !== 1) markAccountWide();
     const rows = current.reservations.filter((row) => !ids.length || ids.includes(row.propertyId));
     return { handled: true, value: { data: rows.map((row) => mcpReservation(row, current)), meta: { last_page: 1 } } };
+  }
+  const reviewPath = path.match(/^\/properties\/([^/]+)\/reviews$/);
+  if (reviewPath) {
+    const id = decodeURIComponent(reviewPath[1] ?? "");
+    const answered = String(query.responded ?? "");
+    const rows = (current.reviews ?? [])
+      .filter((row) => row.propertyId === id)
+      .filter((row) => answered === "false" ? !row.response : answered === "true" ? Boolean(row.response) : true)
+      .map((row) => ({
+        id: row.id,
+        platform: row.platform,
+        rating: row.rating,
+        reviewed_at: row.reviewedAt,
+        reservation: row.reservationId,
+        property_id: row.propertyId,
+        guest: { first_name: row.guest },
+        public: { review: row.publicReview, response: row.response ?? "" },
+      }));
+    return { handled: true, value: { data: rows, meta: { last_page: 1 } } };
   }
   const hubPath = path.match(/^\/properties\/([^/]+)\/knowledge-hub$/);
   if (hubPath) {

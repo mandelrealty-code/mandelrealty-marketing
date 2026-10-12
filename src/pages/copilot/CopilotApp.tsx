@@ -2407,6 +2407,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                 {screen === "reviews" ? (
                   <ReviewsQueue
                     rows={reviewQueue?.reviews ?? []}
+                    propertyList={reviewQueue?.properties ?? []}
                     postedToday={reviewQueue?.postedToday ?? []}
                     loading={!reviewQueue}
                     disconnected={reviewQueue && !reviewQueue.connected ? reviewQueue.line : ""}

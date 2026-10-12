@@ -19,7 +19,11 @@ import {
   seedDraft,
   setReviewPoster,
   submitReviewReply,
+  loadReviewQueue,
+  reviewWindowStart,
 } from "./reviewsQueue.js";
+import { installWorld, type ParityReview } from "./parity/world.js";
+import { NO_REVIEWS_SYNCED } from "./reviewTypes.js";
 
 const GOOD = "copilot-review-token-not-a-secret-7Kq2";
 
@@ -283,5 +287,53 @@ if (reviewSummary(0, 0, "Charlotte 606") !== "No reviews waiting at Charlotte 60
 
 await submitReviewReply("stay-jordan", contradicted.draft, "Jordan Lee", "Charlotte 606", 1);
 if (posts.length !== 1) fail("submit");
+
+// The queue shows the last 12 months only. Older reviews stay in Hospitable, untouched.
+const windowNow = new Date("2026-10-12T15:00:00-04:00");
+if (reviewWindowStart(windowNow) !== "2025-10-12") fail(`window start ${reviewWindowStart(windowNow)}`);
+const BLUE = { id: "prop-blue-window", name: "20 Blue Jays Way", address: "20 Blue Jays Way, Toronto", managed: true };
+const SHAW = { id: "prop-shaw-window", name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true };
+const ROSE = { id: "prop-rose-window", name: "41 Roseglor Cres", address: "41 Roseglor Crescent, Toronto", managed: true };
+const aged = (id: string, reviewedAt: string, guest: string, extra: Partial<ParityReview> = {}): ParityReview => ({
+  id,
+  propertyId: BLUE.id,
+  reservationId: `${id}-stay`,
+  guest,
+  platform: "airbnb",
+  reviewedAt,
+  rating: 5,
+  publicReview: `${guest} loved the view and the quiet building.`,
+  ...extra,
+});
+installWorld({
+  now: windowNow,
+  properties: [BLUE, SHAW, ROSE],
+  reservations: [],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+  reviews: [
+    aged("rev-13m", "2025-09-12T18:00:00Z", "Thirteen"),
+    aged("rev-11m", "2025-11-12T18:00:00Z", "Eleven"),
+    aged("rev-2y", "2024-10-12T18:00:00Z", "Twoyears"),
+    aged("rev-rose-answered", "2026-09-01T18:00:00Z", "Answered", { propertyId: ROSE.id, response: "Thank you, Answered!" }),
+  ],
+});
+const windowed = await loadReviewQueue(windowNow);
+if (!windowed.connected) fail(`window queue ${windowed.line}`);
+const shownIds = windowed.reviews.map((row) => row.id);
+if (shownIds.length !== 1 || shownIds[0] !== "rev-11m") fail(`window shows ${shownIds.join(", ") || "nothing"}`);
+const waitingNow = windowed.reviews.length;
+if (waitingNow !== 1) fail(`waiting count ${waitingNow}`);
+const filterRows = windowed.properties ?? [];
+const shaw = filterRows.find((row) => row.id === SHAW.id);
+if (!shaw) fail("a property with no reviews vanished from the Reviews filter");
+if (shaw.synced !== false) fail("a property with no reviews was not marked as not synced");
+const rose = filterRows.find((row) => row.id === ROSE.id);
+if (!rose || rose.synced !== true) fail("a property whose only review is answered was called not synced");
+const blue = filterRows.find((row) => row.id === BLUE.id);
+if (!blue || blue.synced !== true) fail("Blue Jays Way lost its synced state");
+if (NO_REVIEWS_SYNCED !== "No reviews synced for this property yet") fail(`empty-state line ${NO_REVIEWS_SYNCED}`);
 
 console.log("Reviews harness passed.");

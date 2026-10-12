@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ReviewFact, ReviewQueueRow } from "../../../shared/copilot/reviewTypes";
+import { NO_REVIEWS_SYNCED, type ReviewFact, type ReviewQueueProperty, type ReviewQueueRow } from "../../../shared/copilot/reviewTypes";
 
 type Local = {
   draft: string;
@@ -30,6 +30,7 @@ function summary(waiting: number, care: number, property: string) {
 
 export function ReviewsQueue({
   rows,
+  propertyList = [],
   postedToday = [],
   disconnected = "",
   loading = false,
@@ -40,6 +41,7 @@ export function ReviewsQueue({
   onUndo,
 }: {
   rows: ReviewQueueRow[];
+  propertyList?: ReviewQueueProperty[];
   postedToday?: { text: string; at: string }[];
   disconnected?: string;
   loading?: boolean;
@@ -78,11 +80,13 @@ export function ReviewsQueue({
     });
   }, [rows]);
 
+  // Every managed property stays in the filter, including one with no reviews synced yet.
   const properties = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const row of rows) names.set(row.propertyId, row.property);
-    return [...names.entries()].map(([id, name]) => ({ id, name }));
-  }, [rows]);
+    const names = new Map<string, { name: string; synced: boolean }>();
+    for (const item of propertyList) names.set(item.id, { name: item.name, synced: item.synced });
+    for (const row of rows) if (!names.has(row.propertyId)) names.set(row.propertyId, { name: row.property, synced: true });
+    return [...names.entries()].map(([id, item]) => ({ id, ...item }));
+  }, [rows, propertyList]);
 
   function stateOf(row: ReviewQueueRow): Local {
     return local[row.id] ?? {
@@ -337,8 +341,14 @@ export function ReviewsQueue({
       ) : (
         <>
           <div className="cp-rv-empty">
-            <p>All caught up. Every Airbnb review has a reply.</p>
-            <p>New reviews without a reply land here with a draft ready, usually within an hour of posting.</p>
+            {filter !== "all" && properties.find((item) => item.id === filter)?.synced === false ? (
+              <p>{NO_REVIEWS_SYNCED}.</p>
+            ) : (
+              <>
+                <p>All caught up. Every Airbnb review has a reply.</p>
+                <p>New reviews without a reply land here with a draft ready, usually within an hour of posting.</p>
+              </>
+            )}
           </div>
           {postedToday.length ? <h2>Posted today</h2> : null}
           {postedToday.map((line) => (
