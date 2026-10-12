@@ -1171,9 +1171,9 @@ if (onlyThanks.length !== 1 || onlyThanks[0]?.guest !== "Tom Becker") fail("the 
   const reservations = [
     conv("stay-michael", "Michael & Adele", "2026-10-06", "2026-10-12", "accepted", [
       at("2026-10-06T20:00:00Z", "host", "Sam", "Welcome to 1065 Shaw Street! Let us know if you need anything.", "m1"),
-      at("2026-10-12T13:20:20Z", "guest", "Michael", "We've checked out and left the keys on the counter. Thanks for everything!", "m2"),
+      at("2026-10-12T13:20:20Z", "guest", "Michael", "Thanks! We're fine", "m2"),
     ], { lastMessageAt: "2026-10-12T13:20:20Z" }),
-    conv("stay-eloise-inbox", "Eloise", "2026-10-03", "2026-10-24", "accepted", eloiseTurns.map((turn, index) => at(turn.at, turn.role as "guest" | "host", turn.name, turn.body, `e${index}`))),
+    conv("stay-eloise-inbox", "Eloise", "2026-10-03", "2026-10-10", "accepted", eloiseTurns.map((turn, index) => at(turn.at, turn.role as "guest" | "host", turn.name, turn.body, `e${index}`))),
     conv("stay-august", "August", "2026-08-01", "2026-08-05", "accepted", [
       at("2026-08-06T14:00:00Z", "host", "Sam", "Thanks for staying with us!", "a1"),
     ]),
@@ -1203,7 +1203,7 @@ if (onlyThanks.length !== 1 || onlyThanks[0]?.guest !== "Tom Becker") fail("the 
   if (listed.length !== airbnb.length) fail(`queue lists ${listed.length} conversations, the inbox has ${airbnb.length}`);
   if (listed.join(",") !== airbnb.join(",")) fail(`queue order differs from the inbox at ${listed.findIndex((id, index) => id !== airbnb[index])}`);
   const michael = guestQueueRows(inbox).find((row) => row.id === "stay-michael");
-  if (!michael?.preview?.includes("checked out and left the keys")) fail(`Michael's latest message ${michael?.preview}`);
+  if (michael?.preview !== "Thanks! We're fine") fail(`Michael's latest message ${michael?.preview}`);
   if (!(inbox.followUps ?? []).some((row) => row.reservationId === "stay-eloise-inbox" && /Window cleaning/i.test(row.line))) fail("Eloise's window cleaning is missing from Follow-ups");
 
   installWorld({
@@ -1218,6 +1218,21 @@ if (onlyThanks.length !== 1 || onlyThanks[0]?.guest !== "Tom Becker") fail("the 
   resetGuestMessaging();
   const down = await loadGuestQueue(new Date("2026-10-12T14:00:00Z"));
   if (!down.failed.some((line) => /Couldn't read the conversations for 1065 Shaw Street/.test(line))) fail(`a failed read did not say so: ${down.failed.join(" | ") || "no failure line"}`);
+}
+
+// A promise dated after checkout stays open until its date, then closes.
+for (const [when, open] of [["2026-10-12T12:00:00-04:00", true], ["2026-10-14T12:00:00-04:00", true], ["2026-10-15T12:00:00-04:00", false]] as const) {
+  const read = detectFollowUps({
+    reservationId: "stay-eloise-ended",
+    guest: "Eloise",
+    property: "8 Charlotte 606",
+    propertyId: "prop-fu",
+    checkIn: "2026-10-03",
+    checkOut: "2026-10-10",
+    turns: eloiseTurns,
+  }, new Date(when));
+  const windowsOpen = read.open.some((row) => /Window cleaning/i.test(row.line));
+  if (windowsOpen !== open) fail(`Eloise's window cleaning on ${when.slice(0, 10)} after a stay that ended Oct 10: ${windowsOpen ? "open" : "closed"}`);
 }
 
 console.log("Guest messaging harness passed.");

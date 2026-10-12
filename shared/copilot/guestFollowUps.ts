@@ -244,6 +244,8 @@ export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFol
     for (const item of [...owes]) {
       if (!(item.accepted || item.asked)) continue;
       if (continuesPastCheckout(turns, stay.checkOut, item.topic)) continue;
+      // A promise dated for later (windows on or after Oct 14) stays open until that date, even after checkout.
+      if (item.due && item.due >= today) continue;
       settleOwe(item, ended);
     }
   }

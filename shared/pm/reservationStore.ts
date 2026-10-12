@@ -362,6 +362,13 @@ export async function listReservationsOverlappingRange(
   endDate: string,
 ): Promise<PmReservationRow[]> {
   if (!propertyIds.length) return [];
+  const parity = propertyIds.map((id) => opsReservationsForProperty(id));
+  if (parity.every((rows) => rows != null)) {
+    return parity
+      .flatMap((rows) => rows ?? [])
+      .filter((row) => Boolean(row.check_in && row.check_out) && (row.check_in as string) <= endDate && (row.check_out as string) >= startDate)
+      .sort((a, b) => (a.check_in || "").localeCompare(b.check_in || ""));
+  }
   const { data, error } = await db()
     .from("pm_reservations")
     .select(

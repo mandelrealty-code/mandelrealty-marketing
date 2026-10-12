@@ -25,7 +25,7 @@ import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
 import { INTERNAL_TERMS, hasInternalContent } from "./marketingCopy.js";
 import { answerInboxToday } from "./mailInbox.js";
-import { asksMailBreakdown, ownWords, pastedThread } from "./mailChain.js";
+import { asksMailBreakdown, ownWords, pastedThread, setChainModel } from "./mailChain.js";
 import { addMessage, createChat, listMessages } from "./store.js";
 import { questionRoute, skipsWeb } from "./route.js";
 import { installResearch, researchWebCalls, resetResearch } from "./skillResearch.js";
@@ -948,6 +948,58 @@ await addMessage({ chatId: layerChat.id, role: "user", body: "Recap the email th
 await addMessage({ chatId: layerChat.id, role: "assistant", body: [QUOTED_2, QUOTED_3].join("\n\n") });
 const stored = [...(await listMessages(layerChat.id))].reverse().find((message) => message.role === "assistant")?.body ?? "";
 if (pastedThread(stored, QUOTED_SOURCES) || stored.includes("I can send a plumber Thursday morning.")) fail("manik layer", `a pasted reply was stored\n${stored}`);
+
+// A real negotiation: the breakdown states what was said, with the numbers, not who wrote when.
+const DEAL_1 = "Hi Manik, here's our proposal for 1065 Shaw. We'd use last September as the benchmark, when the place made $17,319. Commission would be 25% on monthly revenue up to that benchmark, 30% on revenue above it, and 35% on anything over $25,000. The cleaning fee and the municipal occupancy tax come off before commission is calculated. Professional photography would run about $400 to $500.\n\nThanks,\nShane";
+const DEAL_2 = "Thanks Shane. I'm comfortable moving forward on the rates. One thing: I'd like to keep managing my Booking.com reservations myself, and you can bill the commission on those after the payout lands. I'll cover the photography, so go ahead and book it in the $400-$500 range. Can you send the agreement this week?\n\nOn Mon, Sep 28, 2026 Shane wrote:\n> Hi Manik, here's our proposal for 1065 Shaw.";
+const DEAL_3 = "Sounds good. I'll update the agreement with the Booking.com change and send it over by Friday.";
+installWorld(worldAt("2026-10-07T11:00:00-04:00", false, [
+  { id: "deal-1", threadId: "manik-deal", mailbox: "gmail", folder: "sent", from: "Shane", email: "shane@mandelrealtygroup.com", to: "manik@example.com", date: "2026-09-28T10:00:00-04:00", subject: "Management proposal for 1065 Shaw", snippet: "Our proposal.", body: DEAL_1, airbnb: false },
+  { id: "deal-2", threadId: "manik-deal", mailbox: "gmail", folder: "inbox", from: "Manik", email: "manik@example.com", to: "shane@mandelrealtygroup.com", date: "2026-09-30T09:00:00-04:00", subject: "Re: Management proposal for 1065 Shaw", snippet: "Comfortable with the rates.", body: DEAL_2, airbnb: false },
+  { id: "deal-3", threadId: "manik-deal", mailbox: "gmail", folder: "sent", from: "Shane", email: "shane@mandelrealtygroup.com", to: "manik@example.com", date: "2026-10-01T11:00:00-04:00", subject: "Re: Management proposal for 1065 Shaw", snippet: "Agreement by Friday.", body: DEAL_3, airbnb: false },
+]));
+const DEAL_SOURCES = [DEAL_1, DEAL_2, DEAL_3, ownWords(DEAL_1), ownWords(DEAL_2), ownWords(DEAL_3)];
+async function dealAnswer(chatId: string): Promise<string> {
+  let payload: { messages?: { role: string; body: string }[]; error?: string } = {};
+  await handleCopilot(
+    { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text: "Break down the email chain with Manik", chatId, kind: "chat" }, query: {} } as never,
+    { status() { return this; }, json(body: typeof payload) { payload = body; return this; } } as never,
+  );
+  return [...(payload.messages ?? [])].reverse().find((message) => message.role === "assistant")?.body ?? "";
+}
+setChainModel(null);
+const deal = await dealAnswer("parity-manik-deal");
+for (const [what, test] of [
+  ["agreeing to the rates", /comfortable[^.;]*rates|agreed[^.;]*rates/i],
+  ["the 25% tier", /25%/],
+  ["the 30% tier", /30%/],
+  ["the 35% tier", /35%/],
+  ["the $17,319 benchmark", /\$17,319/],
+  ["last September as the benchmark", /September/],
+  ["the cleaning fee exclusion", /cleaning fee/i],
+  ["the occupancy tax exclusion", /occupancy tax/i],
+  ["Booking.com managed by the owner", /Booking\.com[^.;]*themselves|themselves[^.;]*Booking\.com/i],
+  ["commission billed after payout", /commission[^.;]*after payout/i],
+  ["photography at $400-$500", /\$400[^.;]*\$?500/],
+  ["Manik covering photography", /cover photography/i],
+  ["what is still open", /still open/i],
+] as const) {
+  if (!test.test(deal)) fail("manik deal", `the breakdown is missing ${what}\n${deal}`);
+}
+if (pastedThread(deal, DEAL_SOURCES)) fail("manik deal", `pasted the thread\n${deal}`);
+if (/started the thread about|replies followed between/i.test(deal) && !/25%/.test(deal)) fail("manik deal", `metadata only\n${deal}`);
+
+// The model writes it when it can, and only a clean, faithful draft is kept.
+const GOOD_MODEL = "Manik is ready to proceed with the proposed commission. He keeps his Booking.com guests and is billed the commission once each payout arrives, and he will pay for the photographer at $400-$500.\n\nShane proposed 25%, 30%, and 35% tiers measured against last September's $17,319, with the cleaning fee and occupancy tax taken out first.\n\nStill open: Shane is revising the agreement and sending it by Friday.";
+setChainModel(async () => GOOD_MODEL);
+if ((await dealAnswer("parity-manik-model")) !== GOOD_MODEL) fail("manik model", "a clean model breakdown was not used");
+setChainModel(async () => `Manik wrote: ${DEAL_2}\n\nShane wrote: ${DEAL_1}`);
+const pastedModel = await dealAnswer("parity-manik-model-pasted");
+if (pastedThread(pastedModel, DEAL_SOURCES) || !/25%/.test(pastedModel)) fail("manik model", `a pasted model draft was used\n${pastedModel}`);
+setChainModel(async () => GOOD_MODEL.replace("$17,319", "$18,000"));
+const inventedModel = await dealAnswer("parity-manik-model-invented");
+if (/\$18,000/.test(inventedModel)) fail("manik model", `a model draft with an invented number was used\n${inventedModel}`);
+setChainModel(undefined);
 
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
 else process.env.ADMIN_PASSWORD = previousPassword;

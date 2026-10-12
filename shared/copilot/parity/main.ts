@@ -7,7 +7,8 @@
 import handleCopilot from "../../adminApi/copilot.js";
 import { createAdminSessionToken } from "../../adminAuth.js";
 import { latestInboxOffer } from "../../adminApi/gmail.js";
-import { buildBrief, readSavedBrief } from "../brief.js";
+import { buildBrief, quietBrief, readSavedBrief, readStoredBrief } from "../brief.js";
+import { saveBriefSnapshot } from "../store.js";
 import { answerDayPlan, answerWeekCleans, findPlanArrival, loadDayBoard, planText, cleansText, turnoverLine } from "../dayBoard.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
@@ -984,6 +985,42 @@ async function fixtureOverviewTurnovers(): Promise<void> {
   expectNothingSent();
 }
 
+async function fixtureStaleOverview(): Promise<void> {
+  const sunday = new Date("2026-10-11T20:43:00-04:00");
+  const monday = new Date("2026-10-12T09:00:00-04:00");
+  const world = worldAt("2026-10-12T09:00:00-04:00");
+  world.reservations = [];
+  world.cleaner = { turnovers: [] };
+  installWorld(world);
+  setParityClock(monday);
+  resetCaptures();
+  const sundayBrief = { ...quietBrief(sunday), builtAt: sunday.toISOString() };
+  if (!sundayBrief.overview?.summary.startsWith("Nothing needs you today") || sundayBrief.overview.checkedAt !== "Checked 8:43 PM") throw new Gap("Sunday's saved brief is the quiet 8:43 PM one", `${sundayBrief.overview?.summary} ${sundayBrief.overview?.checkedAt}`);
+  paritySaveChecksMessage({
+    id: "00000000-0000-4000-8000-0000000d1a01",
+    chat_id: "checks",
+    created_at: "2026-10-12T06:00:00-04:00",
+    role: "assistant",
+    body: "HMESPTA3TJ at 20 Blue Jays Way Unit 318. no cleaner assigned, turnover today.",
+    draft: null,
+    report: { title: "HMESPTA3TJ", summary: "no cleaner assigned, turnover today.", sections: [] },
+  });
+  for (const [label, snapshot] of [
+    ["saved Sunday", sundayBrief],
+    ["saved Sunday before build times were stored", { ...sundayBrief, builtAt: undefined }],
+  ] as const) {
+    await saveBriefSnapshot(snapshot);
+    const painted = await readStoredBrief(monday);
+    const overview = painted.overview;
+    const rows = [...(overview?.today ?? []), ...(overview?.coming ?? [])];
+    expect(overview?.dateLabel === "Monday, October 12", `${label}: Overview on Monday is Monday's`, `${overview?.dateLabel} · ${overview?.checkedAt}`);
+    expect(!/Checked 8:43 PM/.test(overview?.checkedAt ?? ""), `${label}: Sunday's check time is not shown as today's`, overview?.checkedAt ?? "");
+    expect(!overview?.summary.startsWith("Nothing needs you today"), `${label}: Monday does not say nothing needs you while Diane's turnover has no cleaner`, overview?.summary ?? "");
+    expect(rows.some((row) => row.id.startsWith("turnover:") && /Blue Jays/.test(`${row.title} ${row.why}`)), `${label}: Diane's unassigned checkout turnover is an item today`, rows.map((row) => row.title).join("\n") || "no rows");
+  }
+  expectNothingSent();
+}
+
 async function fixtureLongStayAvailability(): Promise<void> {
   const now = new Date("2026-10-11T15:00:00-04:00");
   const world = worldAt("2026-10-11T15:00:00-04:00");
@@ -1303,6 +1340,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "29", title: "A turnover at an unselected property stays out until that property is selected", run: fixtureUnselectedTurnover },
   { id: "32", title: "Diane's sent proof quotes the matched message, and a message for another unit, building, or dates is not proof", run: fixtureDianeProof },
   { id: "33", title: "Overview shows unassigned turnovers from Checks within 48 hours and never says nothing needs you while they exist", run: fixtureOverviewTurnovers },
+  { id: "34", title: "Monday's Overview is Monday's: Sunday's saved brief is not shown as today, and Checks turnovers are items", run: fixtureStaleOverview },
   { id: "30", title: "A 39-night stay blocks every all-empty night before it leaves, and no past date is offered", run: fixtureLongStayAvailability },
   { id: "31", title: "A stay that arrived before the asked window still blocks its nights inside it", run: fixtureStayBeforeWindow },
 ];

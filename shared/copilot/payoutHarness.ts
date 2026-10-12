@@ -329,6 +329,47 @@ for (const [index, question] of [
 }
 if (researchWebCalls() !== 0) fail(`web calls on the combined Roseglor question: ${researchWebCalls()}`);
 
+// Hospitable has Ruzaina, OPS hasn't synced her yet. Every answer still uses the same two stays and figures.
+{
+  const liveWorld = worldAt("2026-10-09T12:00:00-04:00");
+  const liveRose = liveWorld.properties.find((row) => row.id === ID.rose);
+  if (!liveRose) fail("Roseglor is missing from the fixture");
+  liveRose.billing = { rateBps: 2000, commissionBaseMode: "nightly_minus_host_fee", cleaningFeeKeeper: "mrg", hstMode: "cohost", hstBps: 300 };
+  const ruz = { id: "res-ruz-live", code: "HMNOVRUZ02", status: "accepted", guest: "Ruzaina Sathar", checkIn: "2026-11-11", checkOut: "2026-11-16", nights: 5, room: 85000, fee: 4613, cleaning: 8000, guestPaid: 101000 };
+  const bet = { id: "res-bet-live", code: "HMNOVBET02", status: "accepted", guest: "Bethanie Fils", checkIn: "2026-11-20", checkOut: "2026-11-24", nights: 4, room: 58000, fee: 2405, cleaning: 6000, guestPaid: 70000 };
+  for (const row of [ruz, bet]) {
+    liveWorld.reservations.push({
+      id: row.id, code: row.code, propertyId: ID.rose, status: "accepted", checkIn: row.checkIn, checkOut: row.checkOut, guest: row.guest, adults: 2, children: 0, messages: [],
+      financials: financials(row.room, row.fee, row.cleaning, row.guestPaid),
+    });
+  }
+  installWorld(liveWorld);
+  installOpsReservations([{ ...opsStay(bet), property_id: ID.rose }]);
+  const countOnly = await chatTurn("parity-rose-live-count", "for 41 roseglor, how many reservations does it have in november?");
+  const moneyOnly = await chatTurn("parity-rose-live-money", "How much will we make, and how much will the host make in November at 41 Roseglor?");
+  const combined = await chatTurn("parity-rose-live-combined", "How many reservations does 41 Roseglor have in November, who are the guests, and what does the host make?");
+  if (!/2 accepted stays/.test(countOnly.body)) fail(`count-only\n${countOnly.body}`);
+  if (!/41 Roseglor[^\n]* has 2 accepted stays with a night in November 2026: Ruzaina Sathar and Bethanie Fils\./.test(combined.body)) fail(`combined count and names\n${combined.body}`);
+  for (const [label, body] of [["money-only", moneyOnly.body], ["combined", combined.body]] as const) {
+    for (const figure of ["$883.87", "$615.95", "$1,499.82"]) {
+      if (!body.includes(`host revenue ${figure}`)) fail(`${label} is missing host revenue ${figure}\n${body}`);
+    }
+    if (!body.includes("Ruzaina Sathar") || !body.includes("Bethanie Fils")) fail(`${label} dropped a stay\n${body}`);
+    const cents = (value: string) => Math.round(Number(value.replace(/[$,]/g, "")) * 100);
+    const sums = [...body.matchAll(/host revenue (\$[\d,]+\.\d{2}) = host net (\$[\d,]+\.\d{2}) \+ MRG take (\$[\d,]+\.\d{2})(?: \+ cleaning fees? MRG keeps (\$[\d,]+\.\d{2}))?/g)];
+    if (sums.length !== 3) fail(`${label} should show the add-back for 2 stays and the total\n${body}`);
+    for (const sum of sums) {
+      if (cents(sum[1] ?? "") !== cents(sum[2] ?? "") + cents(sum[3] ?? "") + cents(sum[4] ?? "$0.00")) fail(`${label} split does not add back: ${sum[0]}`);
+    }
+  }
+  // Terms that don't add back to host revenue never print a host net.
+  liveRose.billing = { ...liveRose.billing, commissionBaseMode: "nightly" };
+  installWorld(liveWorld);
+  installOpsReservations([{ ...opsStay(bet), property_id: ID.rose }]);
+  const gap = await chatTurn("parity-rose-live-gap", "How much will we make, and how much will the host make in November at 41 Roseglor?");
+  if (/host net \$/.test(gap.body) || !/Host net isn't shown/.test(gap.body)) fail(`a split that doesn't add back printed host net\n${gap.body}`);
+}
+
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
 else process.env.ADMIN_PASSWORD = previousPassword;
 if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;

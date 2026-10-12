@@ -205,6 +205,8 @@ export type BriefPayload = {
   focus: BriefCard[];
   eating: BriefCard[];
   overview?: OverviewModel;
+  /** When this brief was built. A brief from an earlier Toronto day is never shown as today's. */
+  builtAt?: string;
 };
 
 export type ConnectorRow = {

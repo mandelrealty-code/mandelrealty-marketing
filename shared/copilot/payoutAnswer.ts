@@ -6,10 +6,13 @@
 
 import { isExcludedReservationStatus } from "../pm/financialBreakdown.js";
 import { getPmPropertyDetail, listPmProperties } from "../pm/propertyStore.js";
-import { listReservationsForPropertyMonth } from "../pm/reservationStore.js";
+import { listReservationsOverlappingRange, monthBounds, type PmReservationRow } from "../pm/reservationStore.js";
+import { listHospitableReservations } from "../pm/hospitableClient.js";
+import { acceptedStaysWithNight, type MonthStay } from "./stayAnswer.js";
+import { addDays } from "./time.js";
 import { rateOnDate, splitStayForTerms, type StayTermSplit } from "../pm/statementMath.js";
 import type { PmPropertyDetail, PmPropertyListItem } from "../pm/types.js";
-import { hospitableRead, limitToSavedSelection } from "./hospitableConnection.js";
+import { copilotHospitableToken, hospitableRead, limitToSavedSelection } from "./hospitableConnection.js";
 import { hostMoney } from "./ops.js";
 import { identityOf, textNamesProperty, type PropertyIdentity } from "./propertyIdentity.js";
 import { asksPayoutSplit } from "./route.js";
@@ -95,64 +98,109 @@ async function splitFor(question: string, now: Date, carried: PropertyIdentity |
   if (!detail || (detail.current_term == null && detail.terms.length === 0)) {
     return { body: `Payout terms are not set for ${placeOf(property)}.`, property: identity };
   }
-  const reservations = await listReservationsForPropertyMonth(property.id, month);
-  const includeExcluded = /\b(cancell?ed|declin\w*)\b/i.test(question);
-  const stays = reservations
-    .filter((stay) => includeExcluded || !isExcludedReservationStatus(stay.status || ""))
-    .sort((a, b) => (a.check_in || "").localeCompare(b.check_in || ""));
+  const { start, end } = monthBounds(month);
   const label = monthLabel(month);
   const place = placeOf(property);
-  if (!stays.length) {
-    return { body: `${termsLine(detail)} No accepted stays at ${place} have a night in ${label}.`, property: identity };
+  const hospitableId = (property.hospitable_property_id || property.id).trim();
+  // The same stays the count answer uses: accepted, with a night in the month, read live from Hospitable.
+  let stays: MonthStay[] = [];
+  let note = "";
+  const stored = await listReservationsOverlappingRange([property.id], start, end).catch(() => [] as PmReservationRow[]);
+  try {
+    stays = await acceptedStaysWithNight(hospitableId, start, end);
+  } catch {
+    note = "Hospitable didn't answer, so these stays come from the OPS copy, which can miss a recent booking.";
+    stays = stored
+      .filter((row) => !isExcludedReservationStatus(row.status || "") && Boolean(row.check_in && row.check_out) && (row.check_in as string) <= end && (row.check_out as string) > start)
+      .map((row) => ({ id: row.hospitable_reservation_id || row.id, code: row.platform_id || "", guest: "", checkIn: row.check_in || "", checkOut: row.check_out || "" }));
   }
+  if (!stays.length) {
+    return { body: [`${termsLine(detail)} No accepted stays at ${place} have a night in ${label}.`, note].filter(Boolean).join(" "), property: identity };
+  }
+  const live = await liveMoney(hospitableId, start, end);
   let lastRate = detail.current_term?.rate_bps ?? null;
   let guestPaid = 0;
   let hostRevenue = 0;
   let mrgTake = 0;
   let hostNet = 0;
+  let mrgKept = 0;
+  let allAddUp = true;
   const lines: string[] = [];
   const guests: string[] = [];
   for (const stay of stays) {
-    const on = stay.check_out || stay.check_in || `${month}-01`;
+    const on = stay.checkOut || stay.checkIn || `${month}-01`;
     const rate = rateOnDate(detail.terms, on) ?? lastRate ?? 0;
     lastRate = rate;
-    const split = splitStayForTerms(
-      stay.financials_json && typeof stay.financials_json === "object" ? stay.financials_json : {},
-      {
-        host_payout_cents: Number(stay.host_payout_cents) || 0,
-        gross_cents: Number(stay.gross_cents) || 0,
-        currency: stay.currency,
-      },
-      {
-        commission_base_mode: detail.commission_base_mode,
-        rate_bps: rate,
-        hst_mode: detail.hst_mode,
-        hst_bps: detail.hst_bps,
-        cleaning_fee_keeper: detail.cleaning_fee_keeper,
-      },
-    );
+    const opsRow = stored.find((row) => row.hospitable_reservation_id === stay.id || (stay.code && row.platform_id === stay.code));
+    const money = live.get(stay.id) ?? (opsRow
+      ? {
+          financials: opsRow.financials_json && typeof opsRow.financials_json === "object" ? opsRow.financials_json : {},
+          host_payout_cents: Number(opsRow.host_payout_cents) || 0,
+          gross_cents: Number(opsRow.gross_cents) || 0,
+          currency: opsRow.currency || "CAD",
+        }
+      : null);
+    const code = stay.code || opsRow?.platform_id || "";
+    const record = !stay.guest && code ? await reservationRecord(code) : null;
+    const guest = stay.guest || (record ? guestName(record) : "");
+    guests.push(guest);
+    if (!money) {
+      allAddUp = false;
+      lines.push(`${guest || "The guest name wasn't on the reservation"}, ${stayDates(stay.checkIn, stay.checkOut)}${code ? `, stay ${code}` : ""}: the money isn't on the reservation record, so it is not in the totals.`);
+      continue;
+    }
+    const split = splitStayForTerms(money.financials, money, {
+      commission_base_mode: detail.commission_base_mode,
+      rate_bps: rate,
+      hst_mode: detail.hst_mode,
+      hst_bps: detail.hst_bps,
+      cleaning_fee_keeper: detail.cleaning_fee_keeper,
+    });
+    const kept = detail.cleaning_fee_keeper === "host" ? 0 : split.cleaning;
+    const addsUp = Math.abs(split.net + split.mrgTake + kept - split.airbnbPayout) <= 1;
+    if (!addsUp) allAddUp = false;
     guestPaid += split.guestPaid;
     hostRevenue += split.airbnbPayout;
     mrgTake += split.mrgTake;
     hostNet += split.net;
-    const code = (stay.platform_id || stay.hospitable_reservation_id || "").trim();
-    const record = code ? await reservationRecord(code) : null;
-    const guest = record ? guestName(record) : "";
-    guests.push(guest);
-    lines.push(stayLine(guest, stay.check_in, stay.check_out, code, split));
+    mrgKept += kept;
+    lines.push(stayLine(guest, stay.checkIn, stay.checkOut, code, split, kept, addsUp));
   }
   const future = month > yearMonthNow(now);
-  const lead = future
-    ? `${label} booked business for ${place} is ${hostMoney(mrgTake)} MRG and ${hostMoney(hostNet)} to the host. This is booked business, not money received.`
-    : `${label} for ${place} is ${hostMoney(mrgTake)} MRG and ${hostMoney(hostNet)} to the host.`;
-  const totals = `${label} totals: guest paid ${hostMoney(guestPaid)}, host revenue ${hostMoney(hostRevenue)}, MRG take ${hostMoney(mrgTake)}, host net ${hostMoney(hostNet)}.`;
+  const lead = allAddUp
+    ? future
+      ? `${label} booked business for ${place} is ${hostMoney(mrgTake)} MRG and ${hostMoney(hostNet)} to the host. This is booked business, not money received.`
+      : `${label} for ${place} is ${hostMoney(mrgTake)} MRG and ${hostMoney(hostNet)} to the host.`
+    : `${label} for ${place}: host revenue ${hostMoney(hostRevenue)}, MRG take ${hostMoney(mrgTake)}. Host net isn't shown because the split doesn't add back to host revenue on every stay.${future ? " This is booked business, not money received." : ""}`;
+  const keptText = mrgKept ? `, MRG keeps ${hostMoney(mrgKept)} in cleaning fees` : "";
+  const totals = allAddUp
+    ? `${label} totals: guest paid ${hostMoney(guestPaid)}, host revenue ${hostMoney(hostRevenue)} = host net ${hostMoney(hostNet)} + MRG take ${hostMoney(mrgTake)}${mrgKept ? ` + cleaning fees MRG keeps ${hostMoney(mrgKept)}` : ""}.`
+    : `${label} totals: guest paid ${hostMoney(guestPaid)}, host revenue ${hostMoney(hostRevenue)}, MRG take ${hostMoney(mrgTake)}${keptText}.`;
   const opening: string[] = [];
   if (asksCount(question) || asksGuestNames(question) || /\bwho (?:are|were|is) (?:the )?guests?\b|\bwho(?:'s| is) staying\b/i.test(question)) {
     const names = guests.filter(Boolean);
     const count = `${place} has ${stays.length} accepted ${stays.length === 1 ? "stay" : "stays"} with a night in ${label}`;
     opening.push(names.length === stays.length ? `${count}: ${joinNames(names)}.` : `${count}. ${names.length ? `Named on the reservations: ${joinNames(names)}.` : "The guest names weren't on the reservations."}`);
   }
-  return { body: [...opening, lead, termsLine(detail), ...lines, totals].join("\n"), property: identity };
+  return { body: [...opening, lead, termsLine(detail), ...lines, totals, note].filter(Boolean).join("\n"), property: identity };
+}
+
+/** Each stay's money as Hospitable reports it now: financials, host payout, and guest total. */
+async function liveMoney(propertyId: string, start: string, end: string): Promise<Map<string, { financials: Record<string, unknown>; host_payout_cents: number; gross_cents: number; currency: string }>> {
+  const found = new Map<string, { financials: Record<string, unknown>; host_payout_cents: number; gross_cents: number; currency: string }>();
+  const pat = await copilotHospitableToken().catch(() => "");
+  if (!pat) return found;
+  try {
+    const rows = await listHospitableReservations({ pat, propertyIds: [propertyId], startDate: addDays(start, -365), endDate: end, dateQuery: "checkin" });
+    for (const row of rows) {
+      const financials = row.financials && typeof row.financials === "object" ? row.financials as Record<string, unknown> : {};
+      if (!Object.keys(financials).length && !row.host_payout_cents) continue;
+      found.set(row.id, { financials, host_payout_cents: row.host_payout_cents, gross_cents: row.gross_cents, currency: row.currency || "CAD" });
+    }
+  } catch {
+    /* The OPS record is used for a stay Hospitable did not price. */
+  }
+  return found;
 }
 
 function joinNames(names: string[]): string {
@@ -160,10 +208,16 @@ function joinNames(names: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-function stayLine(guest: string, checkIn: string | null, checkOut: string | null, code: string, split: StayTermSplit): string {
+/** Host net is printed only when host net + MRG take + what MRG keeps adds back to host revenue. */
+function stayLine(guest: string, checkIn: string | null, checkOut: string | null, code: string, split: StayTermSplit, kept = 0, addsUp = true): string {
   const who = guest || "The guest name wasn't on the reservation";
   const marker = code ? `, stay ${code}` : "";
-  return `${who}, ${stayDates(checkIn, checkOut)}${marker}: guest paid ${hostMoney(split.guestPaid)}, host revenue ${hostMoney(split.airbnbPayout)}, MRG take ${hostMoney(split.mrgTake)}, host net ${hostMoney(split.net)}.`;
+  const keptText = kept ? `, cleaning fee MRG keeps ${hostMoney(kept)}` : "";
+  if (!addsUp) {
+    const gap = split.airbnbPayout - split.mrgTake - kept;
+    return `${who}, ${stayDates(checkIn, checkOut)}${marker}: guest paid ${hostMoney(split.guestPaid)}, host revenue ${hostMoney(split.airbnbPayout)}, MRG take ${hostMoney(split.mrgTake)}${keptText}. Host net isn't shown: the split leaves ${hostMoney(gap)} that the saved terms don't account for.`;
+  }
+  return `${who}, ${stayDates(checkIn, checkOut)}${marker}: guest paid ${hostMoney(split.guestPaid)}, host revenue ${hostMoney(split.airbnbPayout)} = host net ${hostMoney(split.net)} + MRG take ${hostMoney(split.mrgTake)}${kept ? ` + cleaning fee MRG keeps ${hostMoney(kept)}` : ""}.`;
 }
 
 function termsLine(detail: PmPropertyDetail): string {

@@ -31,19 +31,56 @@ export function quietBrief(now = new Date()): BriefPayload {
   return { hello: greet.hello, line: greet.line, quiet: true, focus: [], eating: [], overview: rankOverview([], {}, now) };
 }
 
-/** The last brief written to the store. Page load paints this before any live connector read. */
+function dayLabel(at: Date): string {
+  return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "America/Toronto" }).format(at);
+}
+
+/** A saved brief built before today, Toronto time. Older snapshots carry only their date label. */
+function fromEarlierDay(saved: BriefPayload, now: Date): boolean {
+  if (saved.builtAt) return torontoToday(new Date(saved.builtAt)) !== torontoToday(now);
+  return Boolean(saved.overview?.dateLabel) && saved.overview?.dateLabel !== dayLabel(now);
+}
+
+/** An earlier day's brief, said to be that day's. Its "nothing needs you" is not today's. */
+function labelledAsEarlier(saved: BriefPayload): BriefPayload {
+  const overview = saved.overview;
+  if (!overview) return saved;
+  const when = saved.builtAt ? `${dayLabel(new Date(saved.builtAt))}, ${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }).format(new Date(saved.builtAt))}` : overview.dateLabel;
+  return {
+    ...saved,
+    overview: {
+      ...overview,
+      checkedAt: `Saved ${when}. Today's check hasn't finished.`,
+      summary: `This is the brief saved ${when}, not today's. Today's check hasn't finished.`,
+    },
+  };
+}
+
+/**
+ * The brief page load paints before any live connector read.
+ * Today's saved brief is shown as it is. A brief from an earlier day is not shown as today's:
+ * today is built from the stored Checks rows instead, including unassigned turnovers within 48 hours.
+ */
 export async function readStoredBrief(now = new Date()): Promise<BriefPayload> {
   if (!copilotScopeActive()) return withCopilotScope(() => readStoredBrief(now));
-  const saved = (await readBriefSnapshot().catch(() => null)) ?? quietBrief(now);
-  return dropUnselectedTurnovers(saved);
+  const saved = await readBriefSnapshot().catch(() => null);
+  if (saved && !fromEarlierDay(saved, now)) return dropUnselectedTurnovers(saved);
+  try {
+    const today = await readSavedBrief(now, { light: true, rethrow: true });
+    const overview = today.overview ? { ...today.overview, checkedAt: "From Checks. Today's live check is running." } : today.overview;
+    return dropUnselectedTurnovers({ ...today, overview });
+  } catch {
+    return dropUnselectedTurnovers(saved ? labelledAsEarlier(saved) : quietBrief(now));
+  }
 }
 
 /** The Checks chat's stored items, revalidated, then ranked. Cleaner rows come from the stay list. */
-export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
-  if (!copilotScopeActive()) return withCopilotScope(() => readSavedBrief(now));
+export async function readSavedBrief(now = new Date(), options: { light?: boolean; rethrow?: boolean } = {}): Promise<BriefPayload> {
+  if (!copilotScopeActive()) return withCopilotScope(() => readSavedBrief(now, options));
   const saved = await readBriefSnapshot().catch(() => null);
   try {
-    await revalidateWaitingReplies(now);
+    // Light: stored rows only, for page paint. The board read and reply revalidation wait for the refresh.
+    if (!options.light) await revalidateWaitingReplies(now);
     const [messages, open, failed, signals, skippedIds] = await Promise.all([
       checksOverviewMessages(),
       listStoredOpenItems(),
@@ -58,12 +95,13 @@ export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
       skipped: skippedIds,
     });
     const checks = storedCheckCards(messages, [], [], now);
-    const rows = await weekTurnovers(now).catch(() => null);
+    const rows = options.light ? null : await weekTurnovers(now).catch(() => null);
     const focus = mergeTurnoverCards(stored.focus, checks, rows, skipped, now);
     const eating = stored.eating.filter((card) => !card.id.startsWith("turnover:"));
     return finishBrief(stored, focus, eating, signals, now, stored.overview?.done ?? []);
-  } catch {
-    return saved ?? quietBrief(now);
+  } catch (err) {
+    if (options.rethrow) throw err;
+    return saved ? (fromEarlierDay(saved, now) ? labelledAsEarlier(saved) : saved) : quietBrief(now);
   }
 }
 
@@ -71,7 +109,16 @@ export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
 export async function refreshSavedBrief(now = parityNow() ?? new Date()): Promise<BriefPayload> {
   await closeResolvedSentDrafts().catch(() => undefined);
   await revalidateWaitingReplies(now).catch(() => undefined);
-  const brief = await buildBrief(now);
+  // The live build reads every connector. If it fails or runs long, today's Checks rows answer instead.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const brief = await Promise.race([
+    buildBrief(now),
+    new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("The live overview took too long.")), 40_000);
+    }),
+  ])
+    .catch(() => readSavedBrief(now))
+    .finally(() => clearTimeout(timer));
   await saveBriefSnapshot(brief);
   return brief;
 }
@@ -439,6 +486,7 @@ function finishBrief(
     focus,
     eating,
     overview,
+    builtAt: now.toISOString(),
   };
 }
 

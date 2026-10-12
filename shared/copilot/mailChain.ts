@@ -91,7 +91,7 @@ function outstanding(last: MailLetter): string {
 }
 
 /** Two or three paragraphs: who said what, in order, then what is still open. Message bodies stay out. */
-export function breakdownFrom(letters: MailLetter[]): string {
+export function breakdownFrom(letters: MailLetter[], who = ""): string {
   const ordered = [...letters].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const first = ordered[0];
   if (!first) return "I didn't find that email chain. I didn't guess.";
@@ -111,9 +111,110 @@ export function breakdownFrom(letters: MailLetter[]): string {
       : chainNarrative(ordered, (letter) => speak(letter, quiet));
   }
   const shaped = withoutBodies(narrative, ordered);
-  if (!pastedThread(shaped, sources) && !pastedThread(shaped, ordered.map((letter) => letter.body || ""))) return shaped;
-  // Still too close to the thread: say what happened from names, dates, and the subject only.
-  return factsOnly(ordered);
+  const raw = ordered.map((letter) => letter.body || "");
+  const points = pointsBreakdown(ordered, who);
+  // The clause narrative works for short notes. A long business thread is told from its points.
+  if (!pastedThread(shaped, sources) && !pastedThread(shaped, raw) && carries(shaped, points)) return shaped;
+  if (!pastedThread(points, sources) && !pastedThread(points, raw)) return points;
+  return thinned(points, [...sources, ...raw]);
+}
+
+const NUMBER = /\$\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:-|–|to)\s?\$?\d[\d,]*(?:\.\d+)?)?|\b\d+(?:\.\d+)?\s?(?:%|percent\b)|\b\d{1,3}(?:,\d{3})+\b/gi;
+const AGREE = /\b(comfortable|agree|agreed|happy (?:to|with)|fine with|works for (?:me|us)|sounds good|on board|move forward|moving forward|go ahead|approve|accept)\b/i;
+const ASK = /\?|^\s*(?:can|could|would|will) you\b|\bplease\b|\blet me know\b|\bneed you to\b/i;
+const COMMIT = /\b(?:i|we)(?:'ll| will| can| would)\b|\bi'?ll\b|\bwe'?ll\b/i;
+const DOMAIN = /\b(commission|fee|fees|tax|taxes|booking\.com|airbnb|vrbo|photo\w*|clean\w*|payout|invoice|contract|agreement|rate|rates|tier\w*|benchmark|owner|percent|revenue|deposit|insurance|furnish\w*|listing)\b/i;
+const STOP = new Set(("a an the to of but so that this these those it its is are was were be been being i i'm im i'd i'll we we'd we'll we're you you'd you'll your yours our ours my me us just really also actually basically honestly would will can could should please thanks thank here's here there's there then which what one thing like let know am do does did have has had get got go going want wanted think sure okay ok hi hello hey regards cheers best ahead").split(" "));
+const KEY = /\d|commission|fee|tax|occupancy|cleaning|booking\.com|airbnb|vrbo|photo|benchmark|revenue|rate|tier|payout|agreement|owner|percent/i;
+
+function numbersIn(text: string): string[] {
+  return [...new Set([...text.matchAll(NUMBER)].map((match) => match[0].replace(/\s+/g, " ").trim()))];
+}
+
+/** The content of a sentence without its filler words. Numbers and names stay exact. */
+function gist(sentence: string): string {
+  const words = sentence.replace(/[“”"]/g, "").replace(/[.!?]+$/g, "").split(/\s+/).filter(Boolean);
+  const kept = words
+    .filter((word) => {
+      const bare = word.toLowerCase().replace(/[^a-z'.]/g, "");
+      return /\d/.test(word) || !STOP.has(bare);
+    })
+    .map((word) => word.replace(/^myself\b/i, "themselves").replace(/^ourselves\b/i, "themselves"));
+  return kept.join(" ").replace(/,\s*$/, "").replace(/\s+,/g, ",").trim();
+}
+
+type Point = { kind: "agree" | "ask" | "commit" | "state"; text: string; numbers: string[] };
+
+function pointsOf(letter: MailLetter): Point[] {
+  const points: Point[] = [];
+  for (const sentence of plain(letter).split(/(?<=[.!?])\s+/).map((row) => row.trim()).filter(Boolean)) {
+    const numbers = numbersIn(sentence);
+    const kind: Point["kind"] = AGREE.test(sentence) ? "agree" : ASK.test(sentence) ? "ask" : COMMIT.test(sentence) ? "commit" : "state";
+    if (kind === "state" && !numbers.length && !DOMAIN.test(sentence)) continue;
+    const text = gist(sentence);
+    if (text.split(/\s+/).length < 2) continue;
+    if (!numbers.length && !DOMAIN.test(sentence) && text.split(/\s+/).length <= 3) continue;
+    points.push({ kind, text, numbers });
+  }
+  return points;
+}
+
+function said(point: Point): string {
+  if (point.kind === "agree") return `agreed: ${point.text}`;
+  if (point.kind === "ask") return `asked: ${point.text}`;
+  if (point.kind === "commit") return `committed: ${point.text}`;
+  return point.text;
+}
+
+/**
+ * What each side actually said, from the messages' content: agreements, asks, commitments,
+ * and the numbers on the table, then what is still open. Never metadata alone, never pasted.
+ */
+export function pointsBreakdown(letters: MailLetter[], who = ""): string {
+  const ordered = [...letters].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const first = ordered[0];
+  const last = ordered[ordered.length - 1];
+  if (!first || !last) return "I didn't find that email chain. I didn't guess.";
+  const needle = who.trim().toLowerCase();
+  const isThem = (letter: MailLetter) => needle ? `${letter.from} ${letter.email ?? ""}`.toLowerCase().includes(needle) : letter.from === first.from;
+  const them = ordered.filter(isThem);
+  const us = ordered.filter((letter) => !isThem(letter));
+  const name = them[0]?.from || who || first.from;
+  const side = (rows: MailLetter[], label: string) => {
+    const points = rows.flatMap(pointsOf);
+    if (!points.length) return "";
+    const numbers = [...new Set(points.flatMap((point) => point.numbers))];
+    const body = points.map(said).join("; ");
+    return `${label} ${body}.${numbers.length ? ` Numbers on the table: ${numbers.join(", ")}.` : ""}`;
+  };
+  const theirs = side(them, `${name}:`);
+  const ours = side(us, `${us[0]?.from || "Our side"}:`);
+  const lastPoints = pointsOf(last);
+  const open = lastPoints.filter((point) => point.kind === "ask" || point.kind === "commit");
+  const still = open.length
+    ? `Still open: ${open.map((point) => `${last.from} ${point.kind === "ask" ? "asked" : "committed"}: ${point.text}`).join("; ")}.`
+    : `Nothing further is waiting in ${last.from}'s last message (${dayOf(last.date)}).`;
+  return [theirs || `${name} wrote on ${dayOf(first.date)} about ${topicOf(ordered)}.`, ours, still].filter(Boolean).slice(0, 3).join("\n\n");
+}
+
+/** The clause narrative keeps every number the points found, or it is not used. */
+function carries(narrative: string, points: string): boolean {
+  return numbersIn(points).every((number) => narrative.includes(number));
+}
+
+/** Last resort: drop a word from any copied six-word span until nothing is pasted. Numbers stay. */
+function thinned(text: string, sources: string[]): string {
+  let out = text;
+  for (let pass = 0; pass < 40 && pastedThread(out, sources); pass += 1) {
+    const span = longFragments(out, sources)[0];
+    if (!span) break;
+    const words = span.split(" ");
+    const plainWord = words.findIndex((word, index) => index > 0 && !KEY.test(word));
+    const drop = plainWord > 0 ? plainWord : words.findIndex((word, index) => index > 0 && !/\d/.test(word));
+    const cut = [...words.slice(0, Math.max(1, drop)), ...words.slice(Math.max(1, drop) + 1)].join(" ");
+    out = out.replace(new RegExp(span.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), cut);
+  }
+  return out;
 }
 
 function topicOf(letters: MailLetter[]): string {
@@ -310,5 +411,63 @@ export async function answerMailChain(text: string): Promise<string | null> {
   }
   const letters = await openChain(found.hits, keywords);
   if (!letters.length) return "I didn't find that email chain. I didn't guess.";
-  return breakdownFrom(letters);
+  return (await modelBreakdown(letters, keywords).catch(() => null)) ?? breakdownFrom(letters, keywords);
+}
+
+type ChainModel = (prompt: string) => Promise<string>;
+let chainModel: ChainModel | null | undefined;
+
+/** Tests set the composer. Undefined uses Claude when the key is set. */
+export function setChainModel(next: ChainModel | null | undefined): void {
+  chainModel = next;
+}
+
+async function claudeCompose(prompt: string): Promise<string> {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) return "";
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 25_000);
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, temperature: 0, messages: [{ role: "user", content: prompt }] }),
+    });
+    if (!res.ok) return "";
+    const data = (await res.json().catch(() => ({}))) as { content?: { type: string; text?: string }[] };
+    return (data.content ?? []).filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n").trim();
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * A model writes the breakdown from the messages' own words. It is used only when it is two or
+ * three paragraphs, pastes nothing, names a person in the thread, and every number in it is in the thread.
+ */
+export async function modelBreakdown(letters: MailLetter[], who = ""): Promise<string | null> {
+  const call = chainModel === undefined ? (process.env.ANTHROPIC_API_KEY?.trim() ? claudeCompose : null) : chainModel;
+  if (!call) return null;
+  const ordered = [...letters].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const thread = ordered.map((letter) => `From ${letter.from} on ${dayOf(letter.date)}:\n${plain(letter)}`).join("\n\n");
+  const prompt = [
+    `Break down this email thread${who ? ` with ${who}` : ""} for a busy property manager in two or three short paragraphs.`,
+    "Say what each person actually asked for, agreed to, or committed to, with every number on the table (rates, percentages, dollar amounts, dates), and end with what is still open.",
+    "Write it in your own words. Do not quote or copy sentences from the emails. Do not add any number, name, or fact that is not in the emails.",
+    "Plain text, no headings, no bullets.",
+    "",
+    thread,
+  ].join("\n");
+  const text = (await call(prompt)).trim();
+  if (!text) return null;
+  const paragraphs = text.split(/\n\s*\n/).map((row) => row.trim()).filter(Boolean);
+  const sources = [...ordered.flatMap((letter) => [plain(letter), letter.snippet]), ...ordered.map((letter) => letter.body || "")];
+  const known = numbersIn(sources.join("\n")).map((number) => number.replace(/[\s$,]/g, ""));
+  const invented = numbersIn(text).some((number) => !known.some((row) => row.includes(number.replace(/[\s$,]/g, "")) || number.replace(/[\s$,]/g, "").includes(row)));
+  const named = ordered.some((letter) => letter.from && text.includes(letter.from));
+  if (paragraphs.length < 2 || paragraphs.length > 3 || pastedThread(text, sources) || invented || !named) return null;
+  return paragraphs.join("\n\n");
 }

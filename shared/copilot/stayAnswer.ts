@@ -463,13 +463,27 @@ function monthWindow(question: string, today: string): { start: string; end: str
   return { start, end, label: `${name} ${year}` };
 }
 
+export type MonthStay = { id: string; code: string; guest: string; checkIn: string; checkOut: string };
+
+/**
+ * Accepted stays with a night in [start, end], read live from Hospitable.
+ * The count answer, the payout answer, and the combined answer all use this one set.
+ */
+export async function acceptedStaysWithNight(propertyId: string, start: string, end: string): Promise<MonthStay[]> {
+  const stays = await loadStays([propertyId], addDays(start, -365), end, "checkin", true);
+  return stays
+    .filter((stay) => stay.status === "accepted" && stay.checkIn.length === 10 && stay.checkIn <= end && stay.checkOut > start)
+    .sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.id.localeCompare(b.id))
+    .map((stay) => ({ id: stay.id, code: stay.code, guest: stay.guest, checkIn: stay.checkIn, checkOut: stay.checkOut }));
+}
+
 async function monthCount(listings: Listing[], month: { start: string; end: string; label: string }, checkins: boolean): Promise<string> {
   const lines: string[] = [];
   for (const listing of listings) {
-    const stays = await loadStays([listing.id], addDays(month.start, -120), month.end, "checkin");
+    const stays = await loadStays([listing.id], addDays(month.start, -365), month.end, "checkin");
     const accepted = stays.filter((stay) => stay.status === "accepted" && stay.checkIn.length === 10);
     const checkingIn = accepted.filter((stay) => stay.checkIn >= month.start && stay.checkIn <= month.end);
-    const nights = accepted.filter((stay) => stay.checkIn <= month.end && stay.checkOut > month.start);
+    const nights = await acceptedStaysWithNight(listing.id, month.start, month.end);
     const counted = checkins ? checkingIn : nights;
     const other = stays.filter((stay) => stay.status !== "accepted" && stay.checkIn >= month.start && stay.checkIn <= month.end).length;
     const noun = checkins
