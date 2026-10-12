@@ -13,7 +13,7 @@ import type { PropertyIdentity } from "./types.js";
 export async function pinnedCompanyAnswer(
   text: string,
   context: { prior?: string; carried?: StayCard[]; property?: PropertyIdentity | null } = {},
-): Promise<{ body: string; step: string; thought: string; property?: PropertyIdentity | null } | null> {
+): Promise<{ body: string; step: string; thought: string; property?: PropertyIdentity | null; stays?: StayCard[] } | null> {
   const chain = await answerMailChain(text);
   if (chain) {
     const missed = /didn't find|didn't return|isn't connected/.test(chain);
@@ -53,8 +53,9 @@ export async function pinnedCompanyAnswer(
   if (!stay) return null;
   return {
     body: stay.body,
-    step: "Read the reservation",
+    step: stay.stays?.length ? "Used the same stays" : "Read the reservation",
     thought: "This came from Hospitable. Nothing was sent.",
     property: stay.property,
+    stays: stay.stays,
   };
 }

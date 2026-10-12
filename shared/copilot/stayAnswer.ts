@@ -81,9 +81,9 @@ export async function answerStayDetail(
   prior = "",
   carried: StayCard[] = [],
   property: PropertyIdentity | null = null,
-): Promise<{ body: string; property: PropertyIdentity | null } | null> {
+): Promise<{ body: string; property: PropertyIdentity | null; stays?: StayCard[] } | null> {
   const sheet = await openDaySheet(question, prior, carried);
-  if (sheet) return { body: sheet.body, property };
+  if (sheet) return { body: sheet.body, property, stays: sheet.stays };
   const asked = question.trim();
   if (!asked || asksBuildingRegistration(asked)) return null;
   const code = asked.match(CODE)?.[1]?.toUpperCase() ?? "";

@@ -656,6 +656,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           role: "assistant",
           body: pinned.body,
           property: pinned.property,
+          stayRows: pinned.stays,
           steps: [{ text: pinned.step }],
           thought: pinned.thought,
         });
@@ -986,6 +987,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             role: "assistant",
             body: pinned.body,
             property: pinned.property ?? pinnedProperty,
+            stayRows: pinned.stays,
             steps: [{ text: pinned.step }],
             thought: pinned.thought,
           });
