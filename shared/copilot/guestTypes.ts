@@ -101,7 +101,8 @@ export type GuestDraftView = {
 };
 
 /** An open loop inside a thread. Separate from who owes the next reply. */
-export type GuestFollowUpKind = "owe" | "incident" | "inquiry";
+/** ask: a guest asked for early check-in or late checkout. Copilot only notices it. */
+export type GuestFollowUpKind = "owe" | "incident" | "inquiry" | "ask";
 
 export type GuestFollowUp = {
   id: string;

@@ -598,20 +598,6 @@ export function waitingDraftCard(item: WaitingDraft): BriefCard | null {
       rank: { kind: "guest", property: cleanPlace(item.body) || item.to.trim(), deadline: "", when: "Waiting", lead: headline },
     };
   }
-  if (item.upsellPhase) {
-    const headline = item.subject.trim();
-    const detail = item.upsellPhase === "remind"
-      ? "The fee is still unpaid. Approving sends the reminder. Release drops the hold. Nothing has been sent."
-      : "Copilot can't present a paid upsell to the guest yet, so Approve sends nothing. Nothing has been sent.";
-    return {
-      ...base,
-      headline,
-      detail,
-      text: `${headline}. ${detail}`,
-      action: item.upsellPhase === "remind" ? "Send reminder" : "Approve",
-      rank: { kind: "guest", property: cleanPlace(item.body) || item.to.trim() || "the portfolio", deadline: "", when: "Waiting", lead: headline },
-    };
-  }
   if (item.channel === "note" && item.subject.trim() && !/^a note$/i.test(item.subject.trim())) {
     const headline = item.subject.trim();
     const detail = "Approving keeps this note. Nothing has been sent.";

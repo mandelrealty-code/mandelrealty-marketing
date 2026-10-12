@@ -2,9 +2,11 @@
  * Open loops inside a guest thread. Separate from who owes the next reply.
  * We owe: a host commitment the guest accepted or asked for.
  * Incident: a flagged problem that stays open until the guest confirms.
+ * Ask: a guest asked for early check-in or late checkout. Open until a host answers it.
  * Inquiry rows are created elsewhere and only sorted here.
  */
 
+import { readTimeAsks, timeAskLine } from "./guestTimeAsk.js";
 import { addDays, torontoToday } from "./time.js";
 import type { GuestFollowUp, GuestFollowUpClose } from "./guestTypes.js";
 
@@ -24,6 +26,9 @@ export type FollowUpStay = {
   guestPhoto?: string;
   checkIn: string;
   checkOut: string;
+  /** Minutes after midnight. Absent means 4:00 PM check-in and 11:00 AM checkout. */
+  standardIn?: number;
+  standardOut?: number;
   turns: FollowUpTurn[];
 };
 
@@ -242,9 +247,39 @@ export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFol
       settleOwe(item, ended);
     }
   }
+  const asks = readTimeAsks({
+    turns,
+    checkIn: stay.checkIn,
+    checkOut: stay.checkOut,
+    today,
+    standardIn: stay.standardIn,
+    standardOut: stay.standardOut,
+  });
+  for (const row of asks.settled) settled.push({ id: `ask:${stay.reservationId}:${row.kind}`, guest, closeText: row.closeText });
   const open = [
     ...owes.filter((item) => item.accepted || item.asked).map((item) => oweCard(stay, item, today, now)),
     ...incidents.map((item) => incidentCard(stay, item, now)),
+    ...asks.open.map((ask) => paint(emptyFollowUp({
+      id: `ask:${stay.reservationId}:${ask.kind}`,
+      kind: "ask",
+      reservationId: stay.reservationId,
+      guest,
+      first,
+      property: stay.property,
+      propertyId: stay.propertyId,
+      propertyPhoto: stay.propertyPhoto || "",
+      guestPhoto: stay.guestPhoto || "",
+      checkIn: stay.checkIn,
+      checkOut: stay.checkOut,
+      line: timeAskLine(first, ask),
+      sourceAt: ask.at,
+      topic: ask.kind === "early" ? "Early check-in" : "Late checkout",
+      agreed: ask.quote,
+      agreedBy: first,
+      agreedAt: ask.at,
+      agreedWhen: `${first} · ${quoteStamp(ask.at)}`,
+      agreedAs: "asked",
+    }), today, now)),
   ];
   return { open, settled };
 }
@@ -378,6 +413,15 @@ function paint(row: GuestFollowUp, today: string, now: Date): GuestFollowUp {
     next.dueSub = next.whenSub;
     next.since = `no reply since, ${parts.long}`;
     next.dueText = "";
+    return next;
+  }
+  if (next.kind === "ask") {
+    next.dueNow = false;
+    next.dueLabel = "";
+    next.dueSub = "";
+    next.dueText = "";
+    next.when = next.dates;
+    next.whenSub = "";
     return next;
   }
   if (next.kind === "inquiry") {

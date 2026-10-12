@@ -433,8 +433,18 @@ async function handledNow(): Promise<Set<string>> {
   return handledFollowUps;
 }
 
+/** "16:00", "4:00 PM", or an ISO time on the reservation row, as minutes after midnight. */
+function clockMinutes(value: unknown): number | undefined {
+  const text = typeof value === "string" ? value.trim() : "";
+  const iso = /T(\d{2}):(\d{2})/.exec(text) ?? /^(\d{1,2}):(\d{2})$/.exec(text);
+  if (iso) return Number(iso[1]) * 60 + Number(iso[2]);
+  const spoken = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i.exec(text);
+  if (!spoken) return undefined;
+  return ((Number(spoken[1]) % 12) + (spoken[3]?.toLowerCase() === "pm" ? 12 : 0)) * 60 + Number(spoken[2] ?? "0");
+}
+
 function followStay(
-  stay: { stay: { id: string; guest: string; propertyId: string; checkIn: string; checkOut: string }; label: string },
+  stay: { stay: { id: string; guest: string; propertyId: string; checkIn: string; checkOut: string }; label: string; reservation?: Record<string, unknown> | null },
   messages: { at: string; role: string; name: string; body: string }[],
   propertyPhoto: string,
 ): FollowUpStay {
@@ -446,6 +456,8 @@ function followStay(
     propertyPhoto,
     checkIn: stay.stay.checkIn,
     checkOut: stay.stay.checkOut,
+    standardIn: clockMinutes(stay.reservation?.checkin_time),
+    standardOut: clockMinutes(stay.reservation?.checkout_time),
     turns: messages
       .filter((item) => item.role === "guest" || item.role === "host")
       .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body })),

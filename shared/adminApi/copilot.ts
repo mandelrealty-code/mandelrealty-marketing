@@ -48,7 +48,6 @@ import { answerOwnStore, asksClientList, CLIENT_STORE_EMPTY } from "../copilot/s
 import { asksProposal, asksProposalEdit, asksProposalSend, commitProposalSend, editProposal, prepareProposalSend, proposalFromWords } from "../copilot/proposal.js";
 import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, skippedText, skipPurchase } from "../copilot/purchase.js";
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable, sendReservationMessage } from "../copilot/hospitableAgent.js";
-import { approveUpsell, releaseUpsell } from "../copilot/upsell.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
@@ -1620,14 +1619,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         const message = await updateDraft(messageId, { status: "held" });
         return res.status(200).json({ message });
       }
-      if (action === "release") {
-        const current = await readMessage(messageId);
-        const offer = current?.draft?.upsell;
-        if (!offer) return res.status(400).json({ error: "That card has no time to release." });
-        const said = await releaseUpsell(offer, parityNow() ?? new Date());
-        const message = await updateDraft(messageId, { status: "held", bodyText: said });
-        return res.status(200).json({ message });
-      }
       if (action === "hold") {
         const message = await updateDraft(messageId, {
           status: "held",
@@ -1640,23 +1631,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         const current = await readMessage(messageId);
         const draft = current?.draft;
         if (draft?.upsell) {
-          const rawPrice = Number(body.priceCents);
-          const cents = Number.isFinite(rawPrice) && rawPrice > 0 ? Math.round(rawPrice) : draft.upsell.priceCents;
-          try {
-            const said = await approveUpsell(draft.upsell, cents, parityNow() ?? new Date());
-            const message = await updateDraft(messageId, {
-              status: "sent",
-              upsell: { ...draft.upsell, priceCents: cents, message: said },
-              bodyText: said,
-            });
-            return res.status(200).json({ message });
-          } catch (err) {
-            const message = await updateDraft(messageId, {
-              status: "waiting",
-              bodyText: err instanceof Error ? `${err.message} Nothing was sent.` : "Nothing was sent.",
-            });
-            return res.status(200).json({ message });
-          }
+          // Upsell approval is retired. Early check-in and late checkout are Guest Messaging follow-ups.
+          return res.status(400).json({ error: "Early check-in and late checkout are handled in Hospitable now. Nothing was sent." });
         }
         if (draft?.proposalSend?.proposalId) {
           try {

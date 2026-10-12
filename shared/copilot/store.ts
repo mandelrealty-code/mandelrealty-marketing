@@ -205,6 +205,8 @@ function waitingMessage(row: { id?: string; chat_id?: string; created_at?: strin
 function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; draft?: CopilotDraft | null }): WaitingDraft | null {
   const draft = row.draft;
   if (!draft || draft.status !== "waiting") return null;
+  // Early check-in and late checkout are Guest Messaging follow-ups now. Old upsell cards wait on nothing.
+  if (draft.upsell) return null;
   if (draft.channel !== "email" && draft.channel !== "note" && draft.channel !== "skill" && draft.channel !== "hospitable") return null;
   return {
     messageId: String(row.id ?? ""),
@@ -220,7 +222,7 @@ function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; dr
     cleanerName: draft.cleanerAssign?.cleanerName || "",
     cleanerUnit: draft.cleanerAssign?.unit || "",
     cleanerOn: draft.cleanerAssign?.scheduledOn || "",
-    upsellPhase: draft.upsell?.phase ?? "",
+    upsellPhase: "",
   };
 }
 

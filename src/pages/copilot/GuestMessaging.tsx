@@ -82,7 +82,7 @@ function Queue({ queue, onOpen, onRefresh }: { queue: GuestQueue; onOpen: (row: 
             <button key={row.id} type="button" className="cp-gq-fu" onClick={() => onOpen(rowFromFollowUp(row))}>
               {row.kind === "inquiry" ? <span className="cp-gq-tag">INQUIRY</span> : null}
               <span className="cp-gq-who"><strong>{row.guest}</strong><em> · {row.property}</em></span>
-              <span className="cp-gq-line">{row.line}</span>
+              <span className="cp-gq-line">{row.line}{row.kind === "ask" && row.agreed ? ` · “${row.agreed}”` : ""}</span>
               <span className="cp-gq-due">{row.when}</span>
             </button>
           ))}
