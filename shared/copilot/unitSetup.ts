@@ -6,7 +6,7 @@
 
 import { listPmProperties } from "../pm/propertyStore.js";
 import { atOrBelowLowAt, readCleanerUnit, supplyLevelLine } from "./cleanerRead.js";
-import { isManagedUnit } from "./managedUnits.js";
+import { copilotKeepsProperty } from "./hospitableConnection.js";
 
 export type CatalogItem = {
   key: string;
@@ -370,7 +370,10 @@ export async function answerUnitSetup(text: string): Promise<string | null> {
   const low = await answerRunningLow(text);
   if (low) return low;
   if (!asksUnitSetup(text)) return null;
-  const units = (await ensureUnitSetups()).filter((unit) => isManagedUnit(unit.name, unit.address));
+  const units = [];
+  for (const unit of await ensureUnitSetups()) {
+    if (await copilotKeepsProperty({ id: unit.propertyId, name: unit.name, address: unit.address })) units.push(unit);
+  }
   if (!units.length) return "No units are in the cleaner app. Nothing was guessed.";
   const named = units.filter((unit) => mentionsUnit(unit, text));
   const all = /\bwhat(?:'s| is) set up\b/i.test(text) || (asksSetupStatus(text) && !named.length);

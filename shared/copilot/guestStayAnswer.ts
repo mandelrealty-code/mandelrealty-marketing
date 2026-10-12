@@ -242,7 +242,7 @@ async function loadStays(): Promise<{ stays: GuestStay[]; disconnected: boolean;
   const end = addDays(today, 180);
   const properties = [];
   for (const row of await listPmProperties().catch(() => [])) {
-    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) properties.push(row);
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id || row.id, name: row.name, address: row.address })) properties.push(row);
   }
   const stays: GuestStay[] = [];
   let disconnected = false;

@@ -198,7 +198,7 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
   }
   const properties = [];
   for (const row of await listPmProperties().catch(() => [])) {
-    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) properties.push(row);
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id || row.id, name: row.name, address: row.address })) properties.push(row);
   }
   const reviews: ReviewQueueRow[] = [];
   for (const property of properties) {

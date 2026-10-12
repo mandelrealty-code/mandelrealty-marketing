@@ -42,6 +42,7 @@ import { chooseBriefOpenItem } from "../openItems.js";
 import type { BriefCard, BriefPayload } from "../types.js";
 import { parityItems, parityMemory, installWorld, type ParityMail, type ParityReservation, type ParityWorld } from "./world.js";
 import { runCopilotPass } from "../pass.js";
+import { rememberHospitableSelection, resetHospitableConnection } from "../hospitableConnection.js";
 
 class Gap extends Error {
   assertion: string;
@@ -1111,6 +1112,41 @@ async function fixtureDianeAlreadySent(): Promise<void> {
   expectNothingSent();
 }
 
+async function fixtureUnselectedTurnover(): Promise<void> {
+  const now = new Date("2026-10-09T15:00:00-04:00");
+  const bloor = "00000000-0000-4000-8000-000000000b10";
+  const world = worldAt("2026-10-09T15:00:00-04:00");
+  world.properties.push({ id: bloor, name: "120 Bloor Street", address: "120 Bloor Street, Toronto", managed: true });
+  world.reservations.push(boardStay("00000000-0000-4000-8000-00000000b101", bloor, "accepted", "2026-10-08", "2026-10-10", "Noah"));
+  world.cleaner = {
+    turnovers: [{ propertyId: bloor, scheduledOn: "2026-10-10", status: "scheduled", assigned: false, done: false, issue: "" }],
+  };
+  const chosen = [
+    { id: ID.charlotte, name: "Street" },
+    { id: ID.rose, name: "Roseglor" },
+    { id: ID.blue, name: "Blue Jays" },
+    { id: ID.shaw, name: "Shaw" },
+  ];
+  try {
+    installWorld(world);
+    setParityClock(now);
+    await rememberHospitableSelection(chosen);
+    resetCaptures();
+    const hidden = await buildBrief(now);
+    const hiddenText = `${JSON.stringify(hidden)}\n${capturedReports().map((row) => `${row.headline} ${row.text}`).join("\n")}`;
+    expect(!/bloor/i.test(hiddenText), "an unselected property's turnover stays out of Overview and Checks", hiddenText.slice(0, 500));
+    await rememberHospitableSelection([...chosen, { id: bloor, name: "120 Bloor Street" }]);
+    resetCaptures();
+    const shown = await buildBrief(now);
+    const shownOverview = [...(shown.overview?.today ?? []), ...(shown.overview?.coming ?? [])].map((row) => `${row.title} ${row.why}`).join("\n");
+    const shownChecks = capturedReports().map((row) => `${row.headline} ${row.text}`).join("\n");
+    expect(/bloor/i.test(shownOverview), "the same turnover appears on Overview once that property is selected", shownOverview.slice(0, 500));
+    expect(/bloor/i.test(shownChecks), "the same turnover appears in Checks once that property is selected", shownChecks.slice(0, 500));
+  } finally {
+    resetHospitableConnection();
+  }
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -1140,6 +1176,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "24", title: "A sent building email stays closed and the shutdown stays its own approval", run: fixtureDianeSent },
   { id: "26", title: "Diane is found on the same arrivals the plan uses", run: fixtureDianeLookup },
   { id: "27", title: "A sent building registration is reported instead of drafted", run: fixtureDianeAlreadySent },
+  { id: "29", title: "A turnover at an unselected property stays out until that property is selected", run: fixtureUnselectedTurnover },
 ];
 
 function guard(): void {

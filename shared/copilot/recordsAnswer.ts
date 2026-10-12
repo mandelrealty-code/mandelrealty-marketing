@@ -3,7 +3,7 @@
  * Read only. Nothing is sent to a guest.
  */
 
-import { copilotHospitableToken } from "./hospitableConnection.js";
+import { copilotHospitableToken, hospitableSelectionSaved, limitToSavedSelection } from "./hospitableConnection.js";
 import { listAllHospitableProperties, listHospitableReservations, listReservationMessages } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { getSupabaseAdmin } from "../supabase.js";
@@ -105,7 +105,7 @@ async function unitList(question: string): Promise<string> {
 async function propertiesFromHospitable() {
   const pat = await copilotHospitableToken();
   if (!pat) return null;
-  return listAllHospitableProperties(pat);
+  return limitToSavedSelection(await listAllHospitableProperties(pat));
 }
 
 async function newReviews(): Promise<string> {
@@ -131,20 +131,22 @@ async function newReviews(): Promise<string> {
     reviewed_at?: string | null;
     public_review?: string;
   }[];
-  if (!rows.length) {
+  const properties = await limitToSavedSelection(await listPmProperties().catch(() => []));
+  const nameFor = new Map(properties.map((property) => [property.id, property.name]));
+  const saved = await hospitableSelectionSaved();
+  const visible = saved ? rows.filter((row) => nameFor.has(String(row.property_id ?? ""))) : rows;
+  if (!visible.length) {
     return "No reviews are saved from the last 14 days. I didn't look past the review book, and I didn't guess.";
   }
-  const properties = await listPmProperties().catch(() => []);
-  const nameFor = new Map(properties.map((property) => [property.id, property.name]));
-  const lines = rows.slice(0, 5).map((row) => {
+  const lines = visible.slice(0, 5).map((row) => {
     const who = row.guest_first_name?.trim() || "A guest";
     const unit = nameFor.get(String(row.property_id ?? "")) || "a unit";
     const rating = row.rating == null ? "" : `, ${row.rating} of 5`;
     const quote = clip(row.public_review || "", 90);
     return `${who} at ${unit}${rating}, ${when(row.reviewed_at ?? null)}${quote ? `: “${quote}”` : ""}`;
   });
-  const more = rows.length > 5 ? ` ${rows.length - 5} more are in that window.` : "";
-  return `${rows.length} ${rows.length === 1 ? "review is" : "reviews are"} saved from the last 14 days. ${lines.join(" ")} ${more}`.replace(/\s+/g, " ").trim();
+  const more = visible.length > 5 ? ` ${visible.length - 5} more are in that window.` : "";
+  return `${visible.length} ${visible.length === 1 ? "review is" : "reviews are"} saved from the last 14 days. ${lines.join(" ")} ${more}`.replace(/\s+/g, " ").trim();
 }
 
 async function lastMessage(): Promise<string> {

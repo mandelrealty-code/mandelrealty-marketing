@@ -54,7 +54,7 @@ export async function answerPropertyFact(question: string): Promise<string | nul
 async function managedListings(): Promise<Listing[]> {
   const rows = [];
   for (const row of await listPmProperties().catch(() => [])) {
-    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) rows.push(row);
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id || row.id, name: row.name, address: row.address })) rows.push(row);
   }
   return rows.map((row) => {
     const label = labelFor(row.name, row.address);

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { hospitableRead } from "./hospitableConnection.js";
+import { copilotScopeActive, hospitableRead, withCopilotScope } from "./hospitableConnection.js";
 import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { hospitableDraft, isHospitableWrite } from "./hospitableAgent.js";
 import { readMail, searchMail } from "./mailSearch.js";
@@ -616,7 +616,8 @@ export async function callCopilotTool(name: string, args: Record<string, unknown
   return tool.call(args, { run: { id: "harness" } as CopilotRun, skill: { id: "harness", chat_id: "harness" } as CopilotSkill, chatId: "harness" });
 }
 
-export default async function handleCopilotTools(req: VercelRequest, res: VercelResponse) {
+export default async function handleCopilotTools(req: VercelRequest, res: VercelResponse): Promise<unknown> {
+  if (!copilotScopeActive()) return withCopilotScope(() => handleCopilotTools(req, res));
   if (req.method === "GET" || req.method === "DELETE") return res.status(405).json({ error: "Use POST." });
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   const ctx = await context(req);

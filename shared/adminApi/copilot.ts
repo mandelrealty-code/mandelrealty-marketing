@@ -49,7 +49,7 @@ import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, s
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable, sendReservationMessage } from "../copilot/hospitableAgent.js";
 import { approveUpsell, releaseUpsell } from "../copilot/upsell.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
-import { disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken } from "../copilot/hospitableConnection.js";
+import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { beginInquiryVerify, forgetStandingAnswer, holdGuestThread, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
@@ -331,7 +331,8 @@ async function factsFor(): Promise<string> {
   return lines.join("\n");
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<unknown> {
+  if (!copilotScopeActive()) return withCopilotScope(() => handler(req, res));
   if (!isAdminConfigured()) {
     return res.status(503).json({ error: "Admin is not configured." });
   }

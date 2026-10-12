@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { listPmProperties } from "../pm/propertyStore.js";
 import { readMail, searchMail } from "./mailSearch.js";
 import { readPropertyHub } from "./knowledgeHub.js";
 import { memoryBodies } from "./memoryFiles.js";
-import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
+import { copilotKeepsProperty, copilotScopeActive, hospitableRead, withCopilotScope } from "./hospitableConnection.js";
+import { scopedStayProperties } from "./dayBoard.js";
 import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -281,15 +281,12 @@ export type RecentStay = {
  */
 export async function loadRecentStays(now: Date, openThreads = false): Promise<{ stays: RecentStay[]; failed: string[] }> {
   const today = torontoToday(now);
-  const properties = [];
-  for (const row of await listPmProperties().catch(() => [])) {
-    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) properties.push(row);
-  }
+  const properties = await scopedStayProperties().catch(() => []);
   const stays: RecentStay[] = [];
   const failed: string[] = [];
   for (const property of properties) {
     const label = placeLabel(`${property.name} ${property.address}`, property.name);
-    const id = property.hospitable_property_id || property.id;
+    const id = property.id;
     if (!id) {
       failed.push(label);
       continue;
@@ -366,14 +363,12 @@ export async function memoryFor(blob: string): Promise<string> {
 }
 
 export async function runUnattendedChecks(now = new Date()): Promise<void> {
+  if (!copilotScopeActive()) return withCopilotScope(() => runUnattendedChecks(now));
   const today = torontoToday(now);
-  const properties = [];
-  for (const row of await listPmProperties().catch(() => [])) {
-    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) properties.push(row);
-  }
+  const properties = await scopedStayProperties().catch(() => []);
   await preApproval();
   for (const property of properties) {
-    const id = property.hospitable_property_id || property.id;
+    const id = property.id;
     if (!id) continue;
     let stays: Stay[] = [];
     try {

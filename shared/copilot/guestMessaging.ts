@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
+import { copilotHospitableToken, copilotScopeActive, hospitableRead, HOSPITABLE_NOT_CONNECTED, withCopilotScope } from "./hospitableConnection.js";
 import { sendReservationMessage } from "./hospitableAgent.js";
 import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIntelligence.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
@@ -376,6 +376,7 @@ export async function readSavedGuestQueue(): Promise<GuestQueue | null> {
 
 /** Same stays and threads as Checks and the unanswered-messages report. Saves the pass for the next open. */
 export async function loadGuestQueue(now = parityNow() ?? new Date()): Promise<GuestQueue> {
+  if (!copilotScopeActive()) return withCopilotScope(() => loadGuestQueue(now));
   const queue = await scanGuestQueue(now);
   queue.answer = waitingSurfaceText(queue);
   if (queue.connected) {

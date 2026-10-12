@@ -7,7 +7,7 @@
 import { Agent } from "@cursor/sdk";
 import { listHospitableReservations, listAllHospitableProperties } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
-import { copilotHospitableToken, hospitableRead } from "./hospitableConnection.js";
+import { copilotHospitableToken, hospitableRead, limitToSavedSelection } from "./hospitableConnection.js";
 import { searchMail } from "./mailSearch.js";
 import { listSkills } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
@@ -87,7 +87,7 @@ async function publicApiRow(): Promise<ConnectorRow> {
   try {
     const pat = await copilotHospitableToken();
     if (!pat) return row("Hospitable Public API", "failed", read, null, "Hospitable is not connected, so nothing was read.");
-    const linked = (await listPmProperties()).map((property) => property.hospitable_property_id).filter(Boolean);
+    const linked = (await limitToSavedSelection(await listPmProperties())).map((property) => property.hospitable_property_id).filter(Boolean);
     const propertyIds = linked.length ? linked : (await listAllHospitableProperties(pat)).map((property) => property.id);
     if (!propertyIds.length) return row("Hospitable Public API", "failed", read, 0, "No properties are linked to Hospitable, so nothing was read.");
     const stays = await listHospitableReservations({ pat, propertyIds, startDate: start, endDate: end, include: ["guest"] });

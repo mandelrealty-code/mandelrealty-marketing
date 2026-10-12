@@ -9,10 +9,12 @@ import { connectorHealthReport } from "./connectorHealth.js";
 import { saveConnectorFailures } from "./connectorFailures.js";
 import { saveGmailOffer } from "./store.js";
 import { refreshSavedBrief } from "./brief.js";
+import { copilotScopeActive, withCopilotScope } from "./hospitableConnection.js";
 import { parityEnabled } from "./parity/flag.js";
 import { publishCheckReport, runUnattendedChecks } from "./stayCheck.js";
 
 export async function runCopilotPass(now = new Date()): Promise<void> {
+  if (!copilotScopeActive()) return withCopilotScope(() => runCopilotPass(now));
   await runUnattendedChecks(now);
   let rows: Awaited<ReturnType<typeof connectorHealthReport>>;
   try {

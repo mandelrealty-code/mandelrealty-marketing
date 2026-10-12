@@ -11,6 +11,7 @@ import {
   listContracts,
 } from "../pm/contractStore.js";
 import { breakdownFromFinancials, isExcludedReservationStatus } from "../pm/financialBreakdown.js";
+import { limitToSavedSelection } from "./hospitableConnection.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { getPortalUserByClientId } from "../pm/portalUserStore.js";
 import { listReservationsForPropertyMonth } from "../pm/reservationStore.js";
@@ -68,7 +69,7 @@ export async function answerOps(question: string, now = new Date(), prior = ""):
   if (!month) return null;
   const label = new Date(`${month}-02T12:00:00Z`).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
   try {
-    const properties = await listPmProperties();
+    const properties = await limitToSavedSelection(await listPmProperties());
     const named = properties.filter((property) => mentionsProperty(question, property));
     if (followUp && named.length === 0) return "I didn't find that property in OPS.";
     if (named.length > 1 && /\bonly\b/i.test(question)) {
@@ -296,7 +297,7 @@ export function asksCleanerAssignment(text: string): boolean {
 }
 
 export async function prepareCleanerAssignment(input: { unit: string; scheduledOn: string; cleanerName?: string }): Promise<{ body: string; draft: CopilotDraft | null }> {
-  const properties = await listPmProperties();
+  const properties = await limitToSavedSelection(await listPmProperties());
   const needle = input.unit.toLowerCase();
   const property = properties.find((row) => `${row.name} ${row.address}`.toLowerCase().includes(needle) || needle.includes(row.address.toLowerCase()));
   if (!property) return { body: `I don't have ${input.unit} in OPS. Nothing was written to the cleaner app.`, draft: null };

@@ -7,7 +7,7 @@
 import { parityEnabled } from "./parity/flag.js";
 import { parityReportMaterial } from "./parity/world.js";
 import { hostMoney } from "./ops.js";
-import { copilotHospitableToken } from "./hospitableConnection.js";
+import { copilotHospitableToken, copilotKeepsProperty } from "./hospitableConnection.js";
 import { addDays, torontoToday } from "./time.js";
 import {
   breakdownFromFinancials,
@@ -20,7 +20,6 @@ import { listReservationsOverlappingRange, type PmReservationRow } from "../pm/r
 import { opsReservationsForProperty } from "./parity/opsState.js";
 import { rateOnDate, splitStayForTerms } from "../pm/statementMath.js";
 import type { PmPropertyDetail, PmPropertyListItem } from "../pm/types.js";
-import { isManagedUnit } from "./managedUnits.js";
 import {
   daysInclusive,
   eachMonth,
@@ -773,8 +772,12 @@ async function loadRows(propertyId: string, start: string, end: string): Promise
 }
 
 export async function managedReportProperties(): Promise<PmPropertyListItem[]> {
-  const rows = await listPmProperties();
-  return rows.filter((row) => row.active !== false && isManagedUnit(row.name, row.address));
+  const rows = (await listPmProperties()).filter((row) => row.active !== false);
+  const kept = [];
+  for (const row of rows) {
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id || row.id, name: row.name, address: row.address })) kept.push(row);
+  }
+  return kept;
 }
 
 export function mentionsProperty(question: string, property: Pick<PmPropertyListItem, "name" | "address">): boolean {

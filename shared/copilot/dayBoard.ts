@@ -5,7 +5,7 @@
  */
 
 import { readCleanerUnit } from "./cleanerRead.js";
-import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
+import { copilotKeepsProperty, hospitableRead, savedSelection } from "./hospitableConnection.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { addDays, torontoToday } from "./time.js";
 import { torontoWeekday } from "./skillSchedule.js";
@@ -162,11 +162,36 @@ async function staysFor(propertyId: string, from: string, to: string): Promise<R
   return [...found.values()];
 }
 
+/** The properties this request may read. A saved selection is that id list. Otherwise the managed names. */
+export async function scopedStayProperties(): Promise<{ id: string; name: string; address: string }[]> {
+  const saved = await savedSelection();
+  let listed: Awaited<ReturnType<typeof listPmProperties>> = [];
+  try {
+    listed = await listPmProperties();
+  } catch (err) {
+    if (!saved) throw err;
+  }
+  if (!saved) {
+    const kept: { id: string; name: string; address: string }[] = [];
+    for (const row of listed) {
+      const id = (row.hospitable_property_id || row.id).trim();
+      if (!id) continue;
+      if (await copilotKeepsProperty({ id, name: row.name, address: row.address })) kept.push({ id, name: row.name, address: row.address });
+    }
+    return kept;
+  }
+  return saved.map((item) => {
+    const matches = listed.filter((property) => (property.hospitable_property_id || property.id) === item.id);
+    const row = matches.find((property) => property.name.trim().toLowerCase() === item.name.trim().toLowerCase()) ?? matches[0];
+    return { id: item.id, name: item.name, address: row?.address || "" };
+  });
+}
+
 /** Reservations overlapping the period, then one turnover per property and date. */
 export async function loadPeriod(from: string, to: string, assignments = false): Promise<Loaded> {
   let properties;
   try {
-    properties = await listPmProperties();
+    properties = await scopedStayProperties();
   } catch {
     return { ok: false, error: "OPS didn't return the properties." };
   }
@@ -174,9 +199,8 @@ export async function loadPeriod(from: string, to: string, assignments = false):
   const departures: StayMove[] = [];
   const checkoutGuests = new Map<string, { propertyId: string; property: string; date: string; guests: string[] }>();
   for (const property of properties) {
-    const propertyId = property.hospitable_property_id || property.id;
+    const propertyId = property.id;
     if (!propertyId) continue;
-    if (!(await copilotKeepsProperty({ id: propertyId, name: property.name, address: property.address }))) continue;
     const propertyName = spokenProperty(property.name, property.address);
     let stays: RawStay[];
     try {

@@ -3,6 +3,7 @@
  * The browser receives the last four characters and the dates, never the token.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -45,6 +46,66 @@ type Probe = (token: string, name: string, args: Record<string, unknown>) => Pro
 let probe: Probe | null = null;
 let override: "unset" | "off" | Row = "unset";
 let cache: { loaded: boolean; row: Row | null } = { loaded: false, row: null };
+
+type PropertyScope = { saved: boolean; ids: Set<string>; names: string[] };
+
+const scopes = new AsyncLocalStorage<PropertyScope>();
+
+function scopeOf(chosen: ChosenProperty[] | null): PropertyScope {
+  if (!chosen) return { saved: false, ids: new Set(), names: [] };
+  return {
+    saved: true,
+    ids: new Set(chosen.map((item) => item.id).filter(Boolean)),
+    names: chosen.map((item) => item.name.trim()).filter(Boolean),
+  };
+}
+
+export function copilotScopeActive(): boolean {
+  return Boolean(scopes.getStore());
+}
+
+/** One read of the saved selection for this request. Nested calls reuse it. */
+export async function withCopilotScope<T>(fn: () => Promise<T>): Promise<T> {
+  if (scopes.getStore()) return fn();
+  const row = await storedRow();
+  return scopes.run(scopeOf(row?.chosen ?? null), fn);
+}
+
+/** Parity fixture: the saved Hospitable selection, without calling Hospitable again. */
+export async function rememberHospitableSelection(chosen: { id: string; name: string }[] | null): Promise<void> {
+  if (!parityEnabled()) return;
+  const token = (await copilotHospitableToken()) || parityPat() || "parity-hospitable-token";
+  const current = await storedRow();
+  const row: Row = {
+    cipher: current?.cipher?.startsWith("v1.") ? current.cipher : seal(token),
+    last4: current?.last4 || maskEnd(token),
+    savedAt: current?.savedAt || new Date().toISOString(),
+    checkedAt: current?.checkedAt || new Date().toISOString(),
+    propertyCount: current?.propertyCount ?? 0,
+    properties: current?.properties ?? [],
+    reads: current?.reads ?? [],
+    chosen: chosen?.map((item) => ({ id: item.id.trim(), name: item.name.trim() })).filter((item) => item.id) ?? null,
+  };
+  await persist(row);
+}
+
+export async function hospitableSelectionSaved(): Promise<boolean> {
+  return (await activeScope()).saved;
+}
+
+export async function savedSelection(): Promise<{ id: string; name: string }[] | null> {
+  const scope = await activeScope();
+  if (!scope.saved) return null;
+  const ids = [...scope.ids];
+  return ids.map((id, index) => ({ id, name: scope.names[index] || id }));
+}
+
+async function activeScope(): Promise<PropertyScope> {
+  const hit = scopes.getStore();
+  if (hit) return hit;
+  const row = await storedRow();
+  return scopeOf(row?.chosen ?? null);
+}
 
 export function setHospitableProbe(next: Probe | null): void {
   probe = next;
@@ -201,14 +262,26 @@ function cardFrom(row: Row, now: Date): HospitableCard {
   };
 }
 
-/** True for a property Copilot may read. A saved choice wins. Otherwise the four managed names still apply. */
+/** True for a property Copilot may read. A saved choice is an id match. Otherwise the four managed names still apply. */
 export async function copilotKeepsProperty(input: { id?: string; name?: string; address?: string; extra?: string }): Promise<boolean> {
-  const row = await storedRow();
-  const chosen = row?.chosen;
-  if (!chosen) return isManagedUnit(input.name || "", input.address || "", input.extra || "");
-  if (input.id && chosen.some((item) => item.id === input.id)) return true;
+  const scope = await activeScope();
+  if (!scope.saved) return isManagedUnit(input.name || "", input.address || "", input.extra || "");
+  const id = (input.id || "").trim();
+  if (id) return scope.ids.has(id);
   const blob = `${input.name ?? ""} ${input.address ?? ""} ${input.extra ?? ""}`.toLowerCase();
-  return chosen.some((item) => item.name && blob.includes(item.name.toLowerCase()));
+  return scope.names.some((name) => name.length >= 3 && blob.includes(name.toLowerCase()));
+}
+
+/** When a selection is saved, drop rows whose id is not in it. With no selection, the list stays as it was. */
+export async function limitToSavedSelection<T extends { id?: string; name?: string; address?: string; hospitable_property_id?: string }>(rows: T[]): Promise<T[]> {
+  const scope = await activeScope();
+  if (!scope.saved) return rows;
+  const kept: T[] = [];
+  for (const row of rows) {
+    const id = (row.hospitable_property_id || row.id || "").trim();
+    if (await copilotKeepsProperty({ id, name: row.name, address: row.address })) kept.push(row);
+  }
+  return kept;
 }
 
 export async function saveHospitableSelection(ids: string[], now = new Date()): Promise<HospitableCard> {

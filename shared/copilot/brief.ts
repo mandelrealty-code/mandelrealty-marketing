@@ -5,6 +5,7 @@ import { latestInboxOffer } from "../adminApi/gmail.js";
 import { latestOutlookOffer } from "../adminApi/outlook.js";
 import { chooseBriefOpenItem, listOpenItems, openItemChoice, verifiedLabel, type OpenItem } from "./openItems.js";
 import { turnoverLine, weekTurnovers, type TurnoverRow } from "./dayBoard.js";
+import { copilotKeepsProperty, copilotScopeActive, hospitableSelectionSaved, withCopilotScope } from "./hospitableConnection.js";
 import { inputFromCard, noteSignal, rankOverview } from "./overviewRank.js";
 import { listConnectorFailures, type ConnectorFailure } from "./connectorFailures.js";
 import { dismissCard, listChecksMessages, listDismissed, listDueReminders, listRuns, listSkills, listStoredOpenItems, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, readRankSignals, saveBriefSnapshot, saveGmailOffer, writeRankSignals, type WaitingDraft } from "./store.js";
@@ -32,11 +33,14 @@ export function quietBrief(now = new Date()): BriefPayload {
 
 /** The last brief written to the store. Page load paints this before any live connector read. */
 export async function readStoredBrief(now = new Date()): Promise<BriefPayload> {
-  return (await readBriefSnapshot().catch(() => null)) ?? quietBrief(now);
+  if (!copilotScopeActive()) return withCopilotScope(() => readStoredBrief(now));
+  const saved = (await readBriefSnapshot().catch(() => null)) ?? quietBrief(now);
+  return dropUnselectedTurnovers(saved);
 }
 
 /** The Checks chat's stored items, revalidated, then ranked. Cleaner rows come from the stay list. */
 export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
+  if (!copilotScopeActive()) return withCopilotScope(() => readSavedBrief(now));
   const saved = await readBriefSnapshot().catch(() => null);
   try {
     await revalidateWaitingReplies(now);
@@ -132,6 +136,7 @@ export async function noteRankPass(cardId: string, now = new Date()): Promise<Br
 }
 
 export async function buildBrief(now = new Date()): Promise<BriefPayload> {
+  if (!copilotScopeActive()) return withCopilotScope(() => buildBrief(now));
   const greet = greeting(now);
   const today = torontoToday(now);
   const tomorrow = addDays(today, 1);
@@ -764,6 +769,36 @@ function waitingFromMessage(message: CopilotMessage): WaitingDraft | null {
 function checkText(message: CopilotMessage): string {
   const rows = message.report?.sections.flatMap((section) => section.rows.map((row) => `${row.who} ${row.meta}`)) ?? [];
   return [message.report?.title, message.report?.summary, message.body, ...rows].filter(Boolean).join(" ");
+}
+
+async function dropUnselectedTurnovers(brief: BriefPayload): Promise<BriefPayload> {
+  if (!(await hospitableSelectionSaved())) return brief;
+  const focus = [];
+  for (const card of brief.focus) {
+    if (await turnoverCardInScope(card.id)) focus.push(card);
+  }
+  const eating = [];
+  for (const card of brief.eating) {
+    if (await turnoverCardInScope(card.id)) eating.push(card);
+  }
+  const overview = brief.overview;
+  if (!overview) return { ...brief, focus, eating };
+  const today = [];
+  for (const row of overview.today) {
+    if (await turnoverCardInScope(row.id)) today.push(row);
+  }
+  const coming = [];
+  for (const row of overview.coming) {
+    if (await turnoverCardInScope(row.id)) coming.push(row);
+  }
+  return { ...brief, focus, eating, overview: { ...overview, today, coming, count: today.length + coming.length } };
+}
+
+async function turnoverCardInScope(id: string): Promise<boolean> {
+  if (!id.startsWith("turnover:")) return true;
+  const propertyId = id.slice("turnover:".length).split(":")[0] ?? "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(propertyId)) return true;
+  return copilotKeepsProperty({ id: propertyId });
 }
 
 function boardTurnoverCard(row: TurnoverRow): BriefCard {

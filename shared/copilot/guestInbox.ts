@@ -1,4 +1,4 @@
-import { copilotHospitableToken } from "./hospitableConnection.js";
+import { copilotHospitableToken, copilotKeepsProperty } from "./hospitableConnection.js";
 import {
   listHospitableReservations,
   listReservationMessages,
@@ -100,7 +100,11 @@ async function upcoming(daysAhead: number, now: Date) {
   const pat = await copilotHospitableToken();
   if (!pat) throw new Error("Hospitable is not connected, so nothing was read.");
 
-  const properties = (await listPmProperties()).filter((p) => p.hospitable_property_id);
+  const properties = [];
+  for (const row of await listPmProperties()) {
+    if (!row.hospitable_property_id) continue;
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id, name: row.name, address: row.address })) properties.push(row);
+  }
   if (!properties.length) throw new Error("No properties are linked to Hospitable, so nothing was read.");
   const unitFor = new Map(properties.map((p) => [p.hospitable_property_id, p.name]));
 

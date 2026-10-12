@@ -9,7 +9,7 @@ import { getPmPropertyDetail, listPmProperties } from "../pm/propertyStore.js";
 import { listReservationsForPropertyMonth } from "../pm/reservationStore.js";
 import { rateOnDate, splitStayForTerms, type StayTermSplit } from "../pm/statementMath.js";
 import type { PmPropertyDetail, PmPropertyListItem } from "../pm/types.js";
-import { hospitableRead } from "./hospitableConnection.js";
+import { hospitableRead, limitToSavedSelection } from "./hospitableConnection.js";
 import { hostMoney } from "./ops.js";
 import { identityOf, textNamesProperty, type PropertyIdentity } from "./propertyIdentity.js";
 import { asksPayoutSplit } from "./route.js";
@@ -59,7 +59,7 @@ async function namesFor(prior: string): Promise<string> {
 }
 
 async function splitFor(question: string, now: Date, carried: PropertyIdentity | null): Promise<{ body: string; property: PropertyIdentity | null }> {
-  const properties = await listPmProperties();
+  const properties = await limitToSavedSelection(await listPmProperties());
   const named = properties.filter((property) => mentions(question, property));
   const carriedRow = carried ? properties.find((property) => property.id === carried.opsId) ?? null : null;
   if (named.length > 1) {

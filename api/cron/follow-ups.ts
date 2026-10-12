@@ -4,6 +4,7 @@ import { processUnansweredReviews } from "../../shared/pm/reviewReply/store.js";
 import { runNightlyDream } from "../../shared/copilot/memoryFiles.js";
 import { runScheduledSkills } from "../../shared/copilot/skillRunner.js";
 import { runCopilotPass } from "../../shared/copilot/pass.js";
+import { withCopilotScope } from "../../shared/copilot/hospitableConnection.js";
 
 export const config = { maxDuration: 60 };
 
@@ -32,6 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Copilot cron (vercel.json): 5:00 AM and 1:00 PM Toronto (EDT), via 09:00 and 17:00 UTC.
   // Skills start once that morning. Checks and connector health run both times. Nothing is sent.
   if (req.query.job === "copilot") {
+    return withCopilotScope(async () => {
     try {
       const copilot = await runScheduledSkills();
       const checks = await runCopilotPass().then(() => ({ ok: true })).catch((err: unknown) => ({
@@ -45,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error("[cron/follow-ups] copilot", error);
       return res.status(500).json({ ok: false, error });
     }
+    });
   }
 
   const followUps = await processDueFollowups({

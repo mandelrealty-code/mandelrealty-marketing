@@ -7,7 +7,6 @@
 import { asksBuildingRegistration } from "./buildingRegistration.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
-import { isManagedUnit } from "./managedUnits.js";
 import { resolveProperty, type PropertyIdentity } from "./propertyIdentity.js";
 import { addDays, torontoToday } from "./time.js";
 import type { StayCard } from "./types.js";
@@ -201,7 +200,7 @@ function asksInventory(text: string): boolean {
 async function managedListings(): Promise<Listing[]> {
   const rows = [];
   for (const row of await listPmProperties().catch(() => [])) {
-    if (await copilotKeepsProperty({ id: row.hospitable_property_id || "", name: row.name, address: row.address })) rows.push(row);
+    if (await copilotKeepsProperty({ id: row.hospitable_property_id || row.id, name: row.name, address: row.address })) rows.push(row);
   }
   return rows.map((row) => {
     const address = row.address;
@@ -245,7 +244,7 @@ export async function openDaySheet(question: string, prior = "", carried: StayCa
     ...(wantsIn || !wantsOut ? ["check-in" as const] : []),
     ...(wantsOut ? ["check-out" as const] : []),
   ];
-  const listings = (await managedListings()).filter((row) => isManagedUnit(row.label, row.address, row.name));
+  const listings = await managedListings();
   if (!listings.length) return { body: "This read is incomplete. The managed properties failed read.", stays: [] };
   const blocks: string[] = [];
   const stays: StayCard[] = [];
@@ -280,7 +279,6 @@ async function oneSide(
       const loaded = await loadStays([listing.id], addDays(day, -1), addDays(day, 1), kind === "check-in" ? "checkin" : "checkout", true);
       const accepted = loaded.filter((stay) => {
         if (stay.propertyId && listing.id && stay.propertyId !== listing.id) return false;
-        if (!isManagedUnit(listing.label, listing.address, listing.name)) return false;
         return stay.status === "accepted" && (kind === "check-in" ? stay.checkIn === day : stay.checkOut === day);
       });
       if (!accepted.length) {

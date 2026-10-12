@@ -4,6 +4,7 @@
  */
 
 import { PDFDocument, StandardFonts } from "pdf-lib";
+import { limitToSavedSelection } from "./hospitableConnection.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { hostMoney, loadHostRevenue } from "./ops.js";
 
@@ -70,7 +71,7 @@ export async function answerPdfReport(question: string, now = new Date()): Promi
   if (!when) return refused("I can't make that PDF. Say which month the revenue report should cover.");
   let properties;
   try {
-    properties = await listPmProperties();
+    properties = await limitToSavedSelection(await listPmProperties());
   } catch {
     return refused("I can't make that PDF. OPS didn't return the properties.");
   }
