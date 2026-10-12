@@ -318,6 +318,114 @@ export async function loadRecentStays(now: Date, openThreads = false): Promise<{
   return { stays, failed };
 }
 
+export type Conversation = RecentStay & {
+  /** Latest message activity Hospitable reports for the conversation. Orders the inbox. */
+  lastMessageAt: string;
+  inquiry: boolean;
+  /** An inquiry's messages come with the inquiry read. */
+  turns?: { at: string; role: string; name: string; body: string }[];
+};
+
+const PAGE_CAP = 60;
+
+function lastPageOf(raw: unknown): number {
+  const meta = isRow(raw) && isRow(raw.meta) ? raw.meta : {};
+  const last = Number(meta.last_page);
+  return Number.isFinite(last) && last > 0 ? last : 1;
+}
+
+function activityOf(row: Record<string, unknown>, fallback: string): string {
+  return text(row.last_message_at) || text(row.lastMessageAt) || text(row.updated_at) || text(row.booked_at) || text(row.created_at) || fallback;
+}
+
+function inquiryTurns(row: Record<string, unknown>): { at: string; role: string; name: string; body: string }[] {
+  const messages = Array.isArray(row.messages) ? row.messages.filter(isRow) : [];
+  return messages.map((message) => {
+    const author = isRow(message.author) ? message.author : {};
+    const roleRaw = `${text(message.sender_role)} ${text(message.sender_type)} ${text(message.role)}`.toLowerCase();
+    return {
+      at: text(message.created_at) || text(message.at),
+      role: roleRaw.includes("host") ? "host" : roleRaw.includes("system") ? "system" : "guest",
+      name: spokenName(author.name) || spokenName(message.name),
+      body: text(message.body),
+    };
+  }).filter((turn) => turn.body.trim());
+}
+
+/**
+ * Every reservation and inquiry conversation on the selected properties, newest activity first.
+ * Nothing is left out for being old, ended, cancelled, or past a page: every page is read until
+ * Hospitable says it is the last one. A property or page that fails is named in `failed`.
+ */
+export async function loadConversations(now: Date): Promise<{ conversations: Conversation[]; failed: string[] }> {
+  const today = torontoToday(now);
+  const properties = await scopedStayProperties();
+  const found = new Map<string, Conversation>();
+  const failed: string[] = [];
+  for (const property of properties) {
+    const label = placeLabel(`${property.name} ${property.address}`, property.name);
+    const id = property.id;
+    if (!id) {
+      failed.push(label);
+      continue;
+    }
+    const readAll = async (startDate: string) => {
+      for (let page = 1; ; page += 1) {
+        const raw = await callTool("get-reservations", {
+          properties: [id],
+          start_date: startDate,
+          end_date: addDays(today, 1095),
+          date_query: "checkout",
+          per_page: 100,
+          page,
+          include: "guest",
+        });
+        const rows = rowsOf(raw);
+        for (const row of rows) {
+          const stay = toStay(row, id);
+          if (!stay.id || found.has(stay.id)) continue;
+          found.set(stay.id, { stay, propertyName: property.name, address: property.address, label, reservation: row, lastMessageAt: activityOf(row, stay.checkIn), inquiry: false });
+        }
+        if (!rows.length || page >= lastPageOf(raw)) break;
+        if (page >= PAGE_CAP) {
+          failed.push(`${label} (more than ${PAGE_CAP * 100} reservations)`);
+          break;
+        }
+      }
+    };
+    try {
+      await readAll("2010-01-01");
+    } catch {
+      // A long date range can be refused. The last two years are read instead, and the gap is said.
+      try {
+        await readAll(addDays(today, -730));
+        failed.push(`${label} (conversations from stays that ended more than two years ago)`);
+      } catch {
+        failed.push(label);
+        continue;
+      }
+    }
+    try {
+      for (let page = 1; ; page += 1) {
+        const raw = await callTool("get-inquiries", { properties: [id], include: "guest,messages", per_page: 100, page });
+        const rows = rowsOf(raw);
+        for (const row of rows) {
+          const stay = toStay(row, id);
+          if (!stay.id || found.has(stay.id)) continue;
+          const turns = inquiryTurns(row);
+          const latest = turns.map((turn) => turn.at).sort().at(-1) ?? "";
+          found.set(stay.id, { stay, propertyName: property.name, address: property.address, label, reservation: row, lastMessageAt: activityOf(row, latest || stay.checkIn), inquiry: true, turns });
+        }
+        if (!rows.length || page >= lastPageOf(raw) || page >= PAGE_CAP) break;
+      }
+    } catch {
+      failed.push(`${label} inquiries`);
+    }
+  }
+  const conversations = [...found.values()].sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt) || a.stay.id.localeCompare(b.stay.id));
+  return { conversations, failed };
+}
+
 function hubLines(hub: string, ask: string): string[] {
   const keys = [/dishwasher/i, /paper towel/i, /quiet hours/i, /netflix/i];
   const matched = keys.filter((key) => key.test(ask));

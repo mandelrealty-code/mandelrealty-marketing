@@ -325,7 +325,8 @@ installWorld({
 const blocked = await loadGuestQueue(new Date("2026-10-08T16:06:00Z"));
 const blockedText = guestTabText(blocked);
 if (!blockedText.startsWith("The message read is incomplete for 20 Blue Jays Way Unit 318.")) fail("blocked headline");
-if (blocked.failed.length !== 1 || blocked.failed[0] !== "Couldn't read messages for 20 Blue Jays Way Unit 318, so anyone waiting there isn't listed. Nothing was sent.") fail("one failure line");
+if (blocked.failed.length !== 1 || blocked.failed[0] !== "Couldn't read messages for 20 Blue Jays Way Unit 318, so those conversations show without their latest message. Nothing was sent.") fail("one failure line");
+if (guestQueueRows(blocked).length !== 5) fail(`a failed thread read dropped conversations: ${guestQueueRows(blocked).length} of 5 listed`);
 if (blockedText.includes("No one is waiting") || blockedText.includes("Every guest has a reply.")) fail("all-clear while the read failed");
 if (blocked.waiting.length) fail("unread guests listed as waiting");
 
@@ -1152,5 +1153,71 @@ if (paired.followUps.some((row) => row.tag === "WE OWE" || row.tag === "INCIDENT
 // Nobody is owed a reply tonight: the list still shows every thread the queue read.
 const onlyThanks = guestQueueRows({ waiting: [], held: [], onGuest: queue.thanks, thanks: [] });
 if (onlyThanks.length !== 1 || onlyThanks[0]?.guest !== "Tom Becker") fail("the list was empty with a thread on the queue");
+
+// Side by side with the Airbnb inbox: every conversation on the selected property, newest activity first.
+{
+  const SHAW_ID = "prop-shaw-inbox";
+  const at = (iso: string, role: "guest" | "host", name: string, body: string, id: string) => ({ id, at: iso, role, name, body });
+  const conv = (id: string, guest: string, checkIn: string, checkOut: string, status: string, messages: ReturnType<typeof at>[], extra: Record<string, unknown> = {}) => ({
+    id, code: `HM${id.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase()}`, propertyId: SHAW_ID, status, checkIn, checkOut, guest, adults: 2, children: 0, messages, ...extra,
+  });
+  const filler = Array.from({ length: 125 }, (_, index) => {
+    const day = String((index % 28) + 1).padStart(2, "0");
+    const month = String((Math.floor(index / 28) % 9) + 1).padStart(2, "0");
+    return conv(`stay-past-${index}`, `Past${index}`, `2025-${month}-${day}`, `2025-${month}-${day}`, "accepted", [
+      at(`2025-${month}-${day}T${String(10 + (index % 9)).padStart(2, "0")}:00:00Z`, "guest", `Past${index}`, "Thanks for the stay!", `past-${index}`),
+    ]);
+  });
+  const reservations = [
+    conv("stay-michael", "Michael & Adele", "2026-10-06", "2026-10-12", "accepted", [
+      at("2026-10-06T20:00:00Z", "host", "Sam", "Welcome to 1065 Shaw Street! Let us know if you need anything.", "m1"),
+      at("2026-10-12T13:20:20Z", "guest", "Michael", "We've checked out and left the keys on the counter. Thanks for everything!", "m2"),
+    ], { lastMessageAt: "2026-10-12T13:20:20Z" }),
+    conv("stay-eloise-inbox", "Eloise", "2026-10-03", "2026-10-24", "accepted", eloiseTurns.map((turn, index) => at(turn.at, turn.role as "guest" | "host", turn.name, turn.body, `e${index}`))),
+    conv("stay-august", "August", "2026-08-01", "2026-08-05", "accepted", [
+      at("2026-08-06T14:00:00Z", "host", "Sam", "Thanks for staying with us!", "a1"),
+    ]),
+    conv("stay-cancelled", "Casey", "2026-11-02", "2026-11-04", "cancelled", [
+      at("2026-09-20T12:00:00Z", "guest", "Casey", "Sorry, we have to cancel.", "c1"),
+    ]),
+    conv("stay-future", "Farah", "2026-12-01", "2026-12-05", "accepted", [], { bookedAt: "2026-09-30T12:00:00Z" }),
+    ...filler,
+  ];
+  resetGuestMessaging();
+  installWorld({
+    now: new Date("2026-10-12T14:00:00Z"),
+    properties: [{ id: SHAW_ID, name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true }],
+    reservations,
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+  });
+  const inbox = await loadGuestQueue(new Date("2026-10-12T14:00:00Z"));
+  const listed = guestQueueRows(inbox).map((row) => row.id);
+  const activity = (row: (typeof reservations)[number]) => String((row as { lastMessageAt?: string }).lastMessageAt || row.messages.map((message) => message.at).sort().at(-1) || (row as { bookedAt?: string }).bookedAt || row.checkIn);
+  const airbnb = reservations.slice().sort((a, b) => activity(b).localeCompare(activity(a)) || a.id.localeCompare(b.id)).map((row) => row.id);
+  if (inbox.failed.length) fail(`inbox read failed: ${inbox.failed.join(" | ")}`);
+  if (listed[0] !== "stay-michael") fail(`Michael & Adele's thread is not first: ${listed.slice(0, 3).join(", ")}`);
+  for (const id of airbnb) if (!listed.includes(id)) fail(`conversation ${id} is missing from the queue`);
+  if (listed.length !== airbnb.length) fail(`queue lists ${listed.length} conversations, the inbox has ${airbnb.length}`);
+  if (listed.join(",") !== airbnb.join(",")) fail(`queue order differs from the inbox at ${listed.findIndex((id, index) => id !== airbnb[index])}`);
+  const michael = guestQueueRows(inbox).find((row) => row.id === "stay-michael");
+  if (!michael?.preview?.includes("checked out and left the keys")) fail(`Michael's latest message ${michael?.preview}`);
+  if (!(inbox.followUps ?? []).some((row) => row.reservationId === "stay-eloise-inbox" && /Window cleaning/i.test(row.line))) fail("Eloise's window cleaning is missing from Follow-ups");
+
+  installWorld({
+    now: new Date("2026-10-12T14:00:00Z"),
+    properties: [{ id: SHAW_ID, name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true, reservationsError: "Hospitable timed out." }],
+    reservations,
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+  });
+  resetGuestMessaging();
+  const down = await loadGuestQueue(new Date("2026-10-12T14:00:00Z"));
+  if (!down.failed.some((line) => /Couldn't read the conversations for 1065 Shaw Street/.test(line))) fail(`a failed read did not say so: ${down.failed.join(" | ") || "no failure line"}`);
+}
 
 console.log("Guest messaging harness passed.");

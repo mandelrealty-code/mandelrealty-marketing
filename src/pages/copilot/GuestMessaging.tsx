@@ -101,7 +101,7 @@ function Queue({ queue, onOpen, onRefresh }: { queue: GuestQueue; onOpen: (row: 
             <span className="cp-gq-time">{activityTime(row.activityAt)}</span>
           </button>
         ))}
-        {rows.length === 0 ? (
+        {rows.length === 0 && !queue.failed.length ? (
           <div className="cp-gq-empty">
             <span>No conversations need you right now.</span>
             <em>New guest messages appear here as they arrive.</em>
@@ -458,6 +458,7 @@ function guestRowFromStay(stay: StayCard): GuestRow {
 }
 
 function lastLine(row: GuestRow): string {
+  if (row.preview?.trim()) return row.preview;
   if (!row.asked.trim() && /video/i.test(row.mediaLabel)) return "Sent a video";
   if (!row.asked.trim() && /photo/i.test(row.mediaLabel)) return "Sent a photo";
   return row.asked;

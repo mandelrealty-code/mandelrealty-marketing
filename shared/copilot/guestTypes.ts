@@ -46,6 +46,10 @@ export type GuestRow = {
   lastNote: string;
   /** When the latest message in the thread was sent. */
   activityAt?: string;
+  /** The latest message, whoever sent it, as the inbox shows it. */
+  preview?: string;
+  /** An inquiry conversation: its messages come from the inquiry, not a reservation. */
+  inquiry?: boolean;
 };
 
 export type GuestBubble = {
@@ -183,6 +187,8 @@ export type GuestQueue = {
   onGuest: GuestRow[];
   held: GuestRow[];
   thanks: GuestRow[];
+  /** Every other conversation: ended, nothing owed, or not read in time. Still listed. */
+  quiet?: GuestRow[];
   failed: string[];
   properties: GuestPropertyChip[];
   followUps: GuestFollowUp[];

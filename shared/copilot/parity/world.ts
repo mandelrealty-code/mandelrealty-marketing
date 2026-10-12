@@ -53,6 +53,8 @@ export type ParityReservation = {
   threadUnreadable?: boolean;
   /** When set, the message read throws this instead of the generic thread failure. */
   threadError?: string;
+  /** Hospitable's last_message_at. Absent means the latest message time. */
+  lastMessageAt?: string;
   /** The send is acknowledged and the body never lands on the thread. */
   dropOutbound?: boolean;
   /** 24-hour clock, when a time has been set on the reservation. Absent uses 4:00 PM and 11:00 AM. */
@@ -90,6 +92,8 @@ export type ParityPayment = {
 export type ParityProperty = {
   id: string;
   name: string;
+  /** The reservation list for this property fails with this error. */
+  reservationsError?: string;
   /** Hospitable display title, when it differs from the internal name. */
   publicName?: string;
   address: string;
@@ -815,21 +819,7 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
     return { handled: true, value: { data: rows.map(mcpInquiry), meta: { last_page: 1 } } };
   }
   if (name === "get-reservations") {
-    const ids = Array.isArray(args.properties) ? args.properties.map(String) : [];
-    if (!args.reservation_code && ids.length !== 1) markAccountWide();
-    const code = String(args.reservation_code ?? "").toUpperCase();
-    // Like Hospitable: start_date and end_date filter on one date, check-in unless date_query says checkout.
-    const field = String(args.date_query ?? "checkin") === "checkout" ? "checkOut" : "checkIn";
-    const from = String(args.start_date ?? "").slice(0, 10);
-    const to = String(args.end_date ?? "").slice(0, 10);
-    const rows = current.reservations.filter((row) => {
-      if (ids.length && !ids.includes(row.propertyId)) return false;
-      if (code && row.code.toUpperCase() !== code) return false;
-      if (!code && from && row[field] < from) return false;
-      if (!code && to && row[field] > to) return false;
-      return true;
-    });
-    return { handled: true, value: { data: rows.map((row) => mcpReservation(row, current)), meta: { last_page: 1, total: rows.length } } };
+    return { handled: true, value: reservationsPage(current, args) };
   }
   if (name === "get-property-knowledge-hub") {
     const id = String(args.property_id ?? args.uuid ?? args.id ?? "");
@@ -872,10 +862,7 @@ export function parityHttp(method: string, path: string, query: Record<string, u
     return { handled: true, value: { data: rows.map(mcpInquiry), meta: { last_page: 1 } } };
   }
   if (path === "/reservations") {
-    const ids = Array.isArray(query.properties) ? query.properties.map(String) : [];
-    if (ids.length !== 1) markAccountWide();
-    const rows = current.reservations.filter((row) => !ids.length || ids.includes(row.propertyId));
-    return { handled: true, value: { data: rows.map((row) => mcpReservation(row, current)), meta: { last_page: 1 } } };
+    return { handled: true, value: reservationsPage(current, query) };
   }
   const reviewPath = path.match(/^\/properties\/([^/]+)\/reviews$/);
   if (reviewPath) {
@@ -947,6 +934,34 @@ function mcpInquiry(row: ParityInquiry) {
   };
 }
 
+/**
+ * Like Hospitable's reservation list: start_date and end_date filter on one date (check-in unless
+ * date_query says checkout), per_page rows per page, meta.last_page says when to stop, and a property
+ * can be made to fail.
+ */
+function reservationsPage(current: ParityWorld, args: Record<string, unknown>): { data: unknown[]; meta: Record<string, number> } {
+  const ids = Array.isArray(args.properties) ? args.properties.map(String) : [];
+  if (!args.reservation_code && ids.length !== 1) markAccountWide();
+  const code = String(args.reservation_code ?? "").toUpperCase();
+  const field = String(args.date_query ?? "checkin") === "checkout" ? "checkOut" : "checkIn";
+  const from = String(args.start_date ?? "").slice(0, 10);
+  const to = String(args.end_date ?? "").slice(0, 10);
+  const failing = ids.length === 1 ? current.properties.find((item) => item.id === ids[0])?.reservationsError : undefined;
+  if (failing) throw new Error(failing);
+  const rows = current.reservations.filter((row) => {
+    if (ids.length && !ids.includes(row.propertyId)) return false;
+    if (code && row.code.toUpperCase() !== code) return false;
+    if (!code && from && row[field] < from) return false;
+    if (!code && to && row[field] > to) return false;
+    return true;
+  });
+  const perPage = Number(args.per_page) > 0 ? Number(args.per_page) : rows.length || 1;
+  const page = Number(args.page) > 0 ? Number(args.page) : 1;
+  const lastPage = Math.max(1, Math.ceil(rows.length / perPage));
+  const slice = rows.slice((page - 1) * perPage, page * perPage);
+  return { data: slice.map((row) => mcpReservation(row, current)), meta: { last_page: lastPage, current_page: page, total: rows.length } };
+}
+
 function mcpReservation(row: ParityReservation, current: ParityWorld) {
   const property = current.properties.find((item) => item.id === row.propertyId);
   return {
@@ -964,6 +979,7 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     checkout_time: padClock(row.checkOutTime, "11:00"),
     booked_at: row.bookedAt || "",
     booking_date: row.bookingDate || "",
+    last_message_at: row.lastMessageAt || row.messages.map((message) => message.at).sort().at(-1) || "",
     ...(row.statusHistory?.length
       ? {
           status_history: row.statusHistory.map((item) => ({

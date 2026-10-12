@@ -11,7 +11,7 @@ import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { detectFollowUps, orderFollowUps, type FollowUpStay } from "./guestFollowUps.js";
 import { bookingRequestFollowUp, guestPhotoUrl, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
 import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, type InquiryVerify } from "./store.js";
-import { leaveDraft, loadRecentStays, memoryFor, readStayThread } from "./stayCheck.js";
+import { leaveDraft, loadConversations, memoryFor, readStayThread } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
 import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
@@ -468,7 +468,8 @@ function followStay(
 async function scanGuestQueue(now: Date): Promise<GuestQueue> {
   if (!(await copilotHospitableToken())) return disconnectedQueue();
   try {
-    const loaded = await loadRecentStays(now, true);
+    const read = await loadConversations(now);
+    const loaded = { stays: read.conversations, failed: read.failed };
     const photos = await propertyPhotos();
     const waiting: GuestRow[] = [];
     const onGuest: GuestRow[] = [];
@@ -481,7 +482,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     const handled = await handledNow();
     await rememberVerifying();
     const unread = [...loaded.failed];
-    const failed = loaded.failed.map((label) => `Couldn't read reservations for ${label}, so anyone waiting there isn't listed. Nothing was sent.`);
+    const failed = loaded.failed.map((label) => `Couldn't read the conversations for ${label}, so they are missing from this list. Nothing was sent.`);
     const messageFailed = new Set<string>();
     const seenProperties = new Map<string, { id: string; label: string; failed: boolean }>();
     for (const stay of loaded.stays) {
@@ -490,36 +491,57 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     for (const label of loaded.failed) {
       if (![...seenProperties.values()].some((row) => row.label === label)) seenProperties.set(label, { id: label, label, failed: true });
     }
-    for (const stay of loaded.stays) {
-      let messages: { at: string; role: string; name: string; body: string; media?: ThreadTurn["media"] }[] = [];
-      let threadRead = false;
-      try {
-        messages = await readStayThread(stay.stay.id, now);
-        threadRead = true;
-      } catch {
-        unreadThreads.add(stay.stay.id);
-        if (!messageFailed.has(stay.label)) {
-          messageFailed.add(stay.label);
-          if (!unread.includes(stay.label)) unread.push(stay.label);
-          failed.push(`Couldn't read messages for ${stay.label}, so anyone waiting there isn't listed. Nothing was sent.`);
-          const chip = seenProperties.get(stay.stay.propertyId);
-          if (chip) chip.failed = true;
+    const quiet: GuestRow[] = [];
+    // Read threads newest first, a few at a time, until the time budget runs out.
+    // A conversation whose thread is not read is still listed, at its place by latest activity.
+    const threads = new Map<string, { at: string; role: string; name: string; body: string; media?: ThreadTurn["media"] }[]>();
+    const deadline = Date.now() + 35_000;
+    // Recent activity or a stay that is current. Older conversations stay listed without a preview.
+    const recentFrom = new Date(now.getTime() - 45 * 86_400_000).toISOString();
+    const endedBefore = addDays(torontoToday(now), -7);
+    const worthReading = (stay: (typeof loaded.stays)[number]) => stay.lastMessageAt >= recentFrom || stay.stay.checkOut >= endedBefore;
+    let cursor = 0;
+    const lane = async () => {
+      while (cursor < loaded.stays.length && Date.now() < deadline) {
+        const stay = loaded.stays[cursor++];
+        if (!stay || stay.inquiry || !worthReading(stay)) continue;
+        try {
+          threads.set(stay.stay.id, await readStayThread(stay.stay.id, now));
+        } catch {
+          unreadThreads.add(stay.stay.id);
+          if (!messageFailed.has(stay.label)) {
+            messageFailed.add(stay.label);
+            if (!unread.includes(stay.label)) unread.push(stay.label);
+            failed.push(`Couldn't read messages for ${stay.label}, so those conversations show without their latest message. Nothing was sent.`);
+            const chip = seenProperties.get(stay.stay.propertyId);
+            if (chip) chip.failed = true;
+          }
         }
       }
+    };
+    await Promise.all(Array.from({ length: 4 }, lane));
+    for (const stay of loaded.stays) {
+      const photo = photos.get(stay.stay.propertyId) || "";
+      const messages = stay.inquiry
+        ? (stay.turns ?? []).map((turn) => ({ ...turn, media: [] as ThreadTurn["media"] }))
+        : threads.get(stay.stay.id) ?? [];
+      const threadRead = stay.inquiry || threads.has(stay.stay.id);
+      if (!threadRead && !unreadThreads.has(stay.stay.id)) unreadThreads.add(stay.stay.id);
       const record = recordFromRow(stay.reservation ?? {}, stay.label, stay.stay.propertyId);
-      if (record && isOpenRequest(record.status) && record.pendingAt) {
+      if (!stay.inquiry && record && isOpenRequest(record.status) && record.pendingAt) {
         scanned.add(record.id);
         const inquiryTurns: InquiryTurn[] = messages.map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body }));
         const card = bookingRequestFollowUp(record, inquiryTurns, now, phaseFor(record.id));
         if (card && !handled.has(card.id) && !followUps.some((item) => item.id === card.id)) followUps.push(card);
       }
-      if (!threadRead) continue;
-      scanned.add(stay.stay.id);
-      const detected = detectFollowUps(followStay(stay, messages, photos.get(stay.stay.propertyId) || ""), now);
-      for (const row of detected.open) {
-        if (!handled.has(row.id)) followUps.push(row);
+      if (threadRead && !stay.inquiry) {
+        scanned.add(stay.stay.id);
+        const detected = detectFollowUps(followStay(stay, messages, photo), now);
+        for (const row of detected.open) {
+          if (!handled.has(row.id)) followUps.push(row);
+        }
+        for (const row of detected.settled) settled.set(row.id, row.closeText);
       }
-      for (const row of detected.settled) settled.set(row.id, row.closeText);
       const turns = messages
         .filter((item) => item.role !== "system")
         .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body, media: item.media ?? [] }));
@@ -527,33 +549,40 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       const lastHost = spoken.filter((item) => item.role === "host").map((item) => item.at).sort().at(-1) ?? "";
       const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
       const last = spoken[spoken.length - 1];
-      if (!last) continue;
+      const activity = [last?.at ?? "", stay.lastMessageAt].sort().at(-1) || stay.lastMessageAt;
+      const list = (row: GuestRow, bucket: GuestRow[]) => {
+        row.activityAt = activity;
+        row.preview = last ? clip(last.body.trim() || (last.media.length ? "Sent a photo" : ""), 140) : "";
+        row.inquiry = stay.inquiry || undefined;
+        bucket.push(row);
+      };
+      if (!last) {
+        list(rowFrom(stay, "", activity, "", photo, now, readThread([], stay.stay.guest || "Guest")), quiet);
+        continue;
+      }
       if (last.role !== "guest" || !pending.length) {
-        if (last.role === "host") {
-          const parked = readThread(turns, stay.stay.guest || "Guest");
-          const row = rowFrom(stay, "", last.at, "", photos.get(stay.stay.propertyId) || "", now, {
-            ...parked,
-            lane: "guest",
-            watch: parked.watch || "their next message",
-          });
-          row.thanks = false;
-          onGuest.push(row);
-        }
+        const parked = readThread(turns, stay.stay.guest || "Guest");
+        const row = rowFrom(stay, "", last.at, "", photo, now, {
+          ...parked,
+          lane: last.role === "host" ? "guest" : parked.lane,
+          watch: parked.watch || "their next message",
+        });
+        row.thanks = false;
+        list(row, last.role === "host" ? onGuest : quiet);
         continue;
       }
       const ask = pending.map((item) => [item.body.trim(), ...item.media.map((media) => media.shows)].filter(Boolean).join(" ")).join(" ");
       const read = readThread(turns, stay.stay.guest || "Guest");
-      if (read.lane === "none" && !isThanksOnly(ask)) continue;
       const at = pending[pending.length - 1]?.at || last.at;
       const language = messageLanguage(ask);
-      const row = rowFrom(stay, ask, at, language, photos.get(stay.stay.propertyId) || "", now, read);
+      const row = rowFrom(stay, ask, at, language, photo, now, read);
       if (read.lane === "guest") {
         row.thanks = false;
-        onGuest.push(row);
+        list(row, onGuest);
       } else if (read.lane === "reply") {
-        if (heldIds.has(stay.stay.id)) held.push(row);
-        else waiting.push(row);
-      } else if (isThanksOnly(ask)) thanks.push(row);
+        list(row, heldIds.has(stay.stay.id) ? held : waiting);
+      } else if (isThanksOnly(ask)) list(row, thanks);
+      else list(row, quiet);
     }
     const longest = waiting.slice().sort((a, b) => b.waitedMs - a.waitedMs)[0]?.wait || "";
     waiting.sort((a, b) => a.waitedMs - b.waitedMs || a.guest.localeCompare(b.guest));
@@ -581,6 +610,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       onGuest,
       held,
       thanks,
+      quiet: quiet.sort((a, b) => (b.activityAt || "").localeCompare(a.activityAt || "")),
       followUps: ordered,
       closedFollowUps,
       failed,
@@ -715,8 +745,19 @@ async function propertyPhotos(): Promise<Map<string, string>> {
   return photos;
 }
 
+/** An inquiry's messages come with the inquiry, not from a reservation thread. */
+async function inquiryThread(id: string): Promise<{ at: string; role: string; name: string; body: string; media: GuestMedia[] }[]> {
+  const raw = await hospitableRead("get-inquiry", { uuid: id, identifier: id, include: "guest,messages" });
+  const row = oneRecord(raw) ?? {};
+  return turnsFrom(row).map((turn) => ({
+    ...turn,
+    role: /host/i.test(turn.role) ? "host" : /system|automat/i.test(turn.role) ? "system" : "guest",
+    media: [] as GuestMedia[],
+  }));
+}
+
 export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<GuestDraftView> {
-  const messages = await readStayThread(row.id, now);
+  const messages = row.inquiry ? await inquiryThread(row.id) : await readStayThread(row.id, now);
   const turns: ThreadTurn[] = messages
     .filter((item) => item.role !== "system")
     .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body, media: item.media ?? [] }));
