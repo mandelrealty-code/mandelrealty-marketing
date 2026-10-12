@@ -549,6 +549,85 @@ const readPicked = detectFollowUps({
 }, new Date("2026-10-10T21:30:00-04:00"));
 if (readPicked.open.length !== 0) fail("confirmed suitcase stayed open");
 if (!/picked up/i.test(readPicked.settled.map((row) => row.closeText).join(" "))) fail(`suitcase close ${readPicked.settled.map((row) => row.closeText).join(" | ")}`);
+const readBagEnded = detectFollowUps({
+  reservationId: "stay-priya",
+  guest: "Priya Raman",
+  property: "20 Blue Jays Way Unit 318",
+  propertyId: "prop-fu",
+  checkIn: "2026-10-07",
+  checkOut: "2026-10-10",
+  turns: suitcase,
+}, new Date("2026-10-11T21:00:00-04:00"));
+if (readBagEnded.open.length !== 0) fail("suitcase lingered after checkout");
+if (!/stay ended/i.test(readBagEnded.settled.map((row) => row.closeText).join(" "))) fail(`ended suitcase ${readBagEnded.settled.map((row) => row.closeText).join(" | ")}`);
+const readBagContinued = detectFollowUps({
+  reservationId: "stay-priya",
+  guest: "Priya Raman",
+  property: "20 Blue Jays Way Unit 318",
+  propertyId: "prop-fu",
+  checkIn: "2026-10-07",
+  checkOut: "2026-10-10",
+  turns: [...suitcase, { at: "2026-10-11T15:00:00Z", role: "guest", name: "Priya Raman", body: "The suitcase is still at the front desk." }],
+}, new Date("2026-10-11T21:00:00-04:00"));
+if (readBagContinued.open.length !== 1 || readBagContinued.open[0]?.kind !== "incident") fail("continued suitcase closed after checkout");
+
+const KEY_LOGISTICS = `Hi Carson,
+
+We're looking forward to hosting you at the condo on Blue Jays Way!
+
+Just a couple quick details to help us prepare for your arrival:
+
+- Address is 20 Blue jays way unit 318.
+
+1️⃣ Keys
+We provide 1 key & fob for your stay.
+We use a lockbox to store keys. The lockbox is located at a convenience store just steps away from the building located at 270 Wellington street called JC Foodlane.
+See below store hours for the store. If your going to be checking in outside of these hours please let us know and we can hand off the keys to you or use an alternative method to get you the keys.
+Monday - Friday: 7:30 am - Midnight
+Saturday - Sunday: 8 am - Midnight
+
+Lockbox has a blue ribbon on it, circled in red in the attached photo. (see photo to find easier)
+Opening the Lockbox
+Pull the clear button (C button) down to reset it before you start
+Enter the code: 0146
+Press the main button down to open.
+
+If you make a mistake, pull the clear button down again to reset and try again.
+
+Note: If your arriving with a vehicle please ensure to pick up keys from lockbox before entering the underground parking garage, as you'll need the fob to get through the door to get to the elevators, and then follow below instructions about parking.
+
+2️⃣ Snacks
+We like to leave a few welcome snacks for our guests. Do you have any allergies or dietary restrictions (nuts, gluten, lactose, etc.)?
+
+3️⃣ Parking (if applicable) Parking spot: Level P4, Spot 62
+If you'll be parking, you must send us the make, model, and license plate number of your vehicle so we can register it.
+Without this information, the gate will not open to the underground garage. If you have any issues with entering the garage please click the button to speak to concierge. They will be able to sort this out for you. If you need additional assistance don't hesitate to let us know. We'd be happy to help.
+
+Thanks, and looking forward to hosting you.`;
+const readCarson = detectFollowUps({
+  reservationId: "stay-carson",
+  guest: "Carson",
+  property: "20 Blue Jays Way Unit 318",
+  propertyId: "prop-fu",
+  checkIn: "2026-09-30",
+  checkOut: "2026-10-04",
+  turns: [
+    { at: "2026-09-27T20:02:15Z", role: "host", name: "Shane Mosoff", body: KEY_LOGISTICS },
+    { at: "2026-10-04T15:46:05Z", role: "guest", name: "Carson", body: "Hello, yes we left a little before 11" },
+    { at: "2026-10-05T18:42:09Z", role: "guest", name: "Carson", body: "Thanks for the reminder; I left a 5 star review! We had a phenomenal experience." },
+  ],
+}, new Date("2026-10-11T21:00:00-04:00"));
+if (readCarson.open.length !== 0) fail(`carson key message stayed open ${readCarson.open.map((row) => `${row.kind}:${row.line}`).join(",")}`);
+const readDianeKeys = detectFollowUps({
+  reservationId: "stay-diane-keys",
+  guest: "Diane",
+  property: "20 Blue Jays Way Unit 318",
+  propertyId: "prop-fu",
+  checkIn: "2026-10-09",
+  checkOut: "2026-10-12",
+  turns: [{ at: "2026-10-06T20:00:29Z", role: "host", name: "Shane Mosoff", body: KEY_LOGISTICS.replace("Hi Carson,", "Hi Diane,") }],
+}, new Date("2026-10-11T21:00:00-04:00"));
+if (readDianeKeys.open.some((row) => row.kind === "incident")) fail(`diane key logistics ${readDianeKeys.open.map((row) => row.line).join(",")}`);
 
 const readDone = detectFollowUps({
   reservationId: "stay-maya",
@@ -603,9 +682,8 @@ const queuedBag = fuQueue.followUps.find((row) => row.guest === "Priya Raman");
 if (!queuedBag || queuedBag.kind !== "incident") fail("queue suitcase");
 const crib = fuQueue.followUps.find((row) => row.guest === "Imani");
 if (!crib || crib.due !== "2026-10-20" || crib.dueFrom !== "stay") fail(`crib date ${crib?.due} ${crib?.dueFrom}`);
-const recipe = fuQueue.followUps.find((row) => row.guest === "Luis");
-if (!recipe || recipe.due || recipe.when !== "No date given") fail(`recipe dropped ${recipe?.when}`);
-if (fuQueue.followUps.map((row) => row.guest).join(",") !== "Eloise,Imani,Luis,Priya Raman") fail(`order ${fuQueue.followUps.map((row) => row.guest).join(",")}`);
+if (fuQueue.followUps.some((row) => row.guest === "Luis")) fail("ended stay kept the recipe");
+if (fuQueue.followUps.map((row) => row.guest).join(",") !== "Eloise,Imani,Priya Raman") fail(`order ${fuQueue.followUps.map((row) => row.guest).join(",")}`);
 if (fuQueue.closedFollowUps.length) fail("first load flashed a close");
 
 const oct14 = new Date("2026-10-14T16:00:00-04:00");
@@ -631,6 +709,19 @@ if (!ranked[0]?.dueNow) fail("dated promise was not due now");
 await markFollowUpHandled(dueWindows.id, oct14);
 const handledQueue = await loadGuestQueue(oct14);
 if (handledQueue.followUps.some((row) => row.id === dueWindows.id)) fail("mark handled came back");
+installWorld({
+  now: fuNow,
+  properties: [{ id: "prop-fu", name: "8 Charlotte St Unit 606", address: "606, 8 Charlotte Street, Toronto", managed: true }],
+  reservations: [
+    { id: "stay-eloise", code: "HMELO1", propertyId: "prop-fu", status: "accepted", checkIn: "2026-10-03", checkOut: "2026-10-24", guest: "Eloise", adults: 1, children: 0, messages: eloiseTurns.map((row, index) => ({ id: `el-${index}`, ...row, role: row.role as "guest" | "host" })) },
+    { id: "stay-priya", code: "HMPRI1", propertyId: "prop-fu", status: "accepted", checkIn: "2026-10-07", checkOut: "2026-10-10", guest: "Priya Raman", adults: 1, children: 0, messages: suitcase.map((row, index) => ({ id: `pr-${index}`, ...row, role: row.role as "guest" | "host" })) },
+  ],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+if (!(await loadGuestQueue(fuNow)).followUps.some((row) => row.guest === "Priya Raman" && row.kind === "incident")) fail("suitcase missing before confirmation");
 installWorld({
   now: new Date("2026-10-10T21:30:00-04:00"),
   properties: [{ id: "prop-fu", name: "8 Charlotte St Unit 606", address: "606, 8 Charlotte Street, Toronto", managed: true }],

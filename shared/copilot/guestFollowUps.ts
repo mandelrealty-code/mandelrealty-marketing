@@ -1,7 +1,7 @@
 /**
  * Open loops inside a guest thread. Separate from who owes the next reply.
  * We owe: a host commitment the guest accepted or asked for.
- * Incident: a handoff that stays open until the guest confirms.
+ * Incident: a flagged problem that stays open until the guest confirms.
  * Inquiry rows are created elsewhere and only sorted here.
  */
 
@@ -230,6 +230,18 @@ export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFol
   }
 
   const today = torontoToday(now);
+  if (stay.checkOut && stay.checkOut < today) {
+    const ended = `the stay ended ${weekdayDate(stay.checkOut)} and the thread did not continue it`;
+    for (const item of [...incidents]) {
+      if (continuesPastCheckout(turns, stay.checkOut, item.topic)) continue;
+      settleIncident(item, ended);
+    }
+    for (const item of [...owes]) {
+      if (!(item.accepted || item.asked)) continue;
+      if (continuesPastCheckout(turns, stay.checkOut, item.topic)) continue;
+      settleOwe(item, ended);
+    }
+  }
   const open = [
     ...owes.filter((item) => item.accepted || item.asked).map((item) => oweCard(stay, item, today, now)),
     ...incidents.map((item) => incidentCard(stay, item, now)),
@@ -443,12 +455,33 @@ function delivers(body: string, topic: Topic): boolean {
   return named.length === 0 || named.some((item) => sameTopic(topic, item));
 }
 
+function continuesPastCheckout(turns: FollowUpTurn[], checkOut: string, topic: Topic): boolean {
+  return turns.some((turn) => torontoDay(turn.at) > checkOut && topic.test(turn.body));
+}
+
 function isIncidentNotice(body: string): boolean {
   const text = plain(body);
   if (FUTURE.test(text)) return false;
-  const place = /\b(front desk|building security|concierge)\b/i.test(text);
-  const item = /\b(suitcase|luggage|package|pick(?:\s+it)?\s+up|under (?:your|her|his) name)\b/i.test(text);
-  return place && item;
+  if (isLeftBehind(text)) return true;
+  if (isRoutineHostLogistics(text)) return false;
+  return isFlaggedProblem(text);
+}
+
+function isLeftBehind(text: string): boolean {
+  const item = /\b(suitcase|luggage|package)\b/i.test(text);
+  const collect = /\b(front desk|building security|left\b|pick(?:\s+it)?\s+up|under (?:your|her|his) name)\b/i.test(text);
+  return item && collect;
+}
+
+function isRoutineHostLogistics(text: string): boolean {
+  return /\b(keys?|fobs?|lock\s?box|parking|licen[cs]e plates?|building registration)\b/i.test(text);
+}
+
+function isFlaggedProblem(text: string): boolean {
+  if (/\b(unsafe|safety issue|safety concern|break-?in|broken into)\b/i.test(text)) return true;
+  if (/\bsecurity (?:has|informed|told|reported|called)\b/i.test(text)) return true;
+  return /\b(building|concierge|security)\b/i.test(text)
+    && /\b(reported|leak|flood|no hot water|out of order|isn'?t working|is not working)\b/i.test(text);
 }
 
 function isPromiseSentence(sentence: string): boolean {
