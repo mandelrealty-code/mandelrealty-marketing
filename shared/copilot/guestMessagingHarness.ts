@@ -35,6 +35,7 @@ import {
   improveGuestDraft,
 } from "./guestMessaging.js";
 import type { GuestFollowUp } from "./guestTypes.js";
+import { guestQueueRows } from "./guestQueueRows.js";
 import { installWorld } from "./parity/world.js";
 
 const GOOD = "copilot-guest-token-not-a-secret-7Kq2";
@@ -126,6 +127,9 @@ if (queue.waiting.some((row) => !/Charlotte/.test(row.property))) fail("charlott
 if (queue.waiting.some((row) => row.property === "Partner Loft") || queue.thanks.some((row) => row.property === "Partner Loft")) fail("unmanaged property");
 if (queue.thanks.length !== 1 || queue.thanks[0]?.guest !== "Tom Becker") fail("thanks row");
 if (queue.waiting.some((row) => /thanks so much/i.test(row.asked))) fail("thanks is waiting");
+const homeRows = guestQueueRows(queue);
+if (!homeRows.some((row) => row.guest === "Tom Becker")) fail("a thread with no reply needed is missing from the Guest Messaging list");
+if (homeRows.length !== new Set([...queue.waiting, ...queue.held, ...queue.onGuest, ...queue.thanks].map((row) => row.id)).size) fail("the Guest Messaging list dropped threads the queue read");
 const started = performance.now();
 const saved = await readSavedGuestQueue();
 if (performance.now() - started > 200) fail("saved queue wait");
@@ -1142,5 +1146,9 @@ if (!pairedOwe || !pairedInquiry) fail(`pair ${paired.followUps.map((row) => `${
 if (pairedOwe.tag) fail(`commitment labelled ${pairedOwe.tag}`);
 if (pairedInquiry.tag !== "INQUIRY") fail(`inquiry tag ${pairedInquiry.tag}`);
 if (paired.followUps.some((row) => row.tag === "WE OWE" || row.tag === "INCIDENT")) fail("retired follow-up label");
+
+// Nobody is owed a reply tonight: the list still shows every thread the queue read.
+const onlyThanks = guestQueueRows({ waiting: [], held: [], onGuest: queue.thanks, thanks: [] });
+if (onlyThanks.length !== 1 || onlyThanks[0]?.guest !== "Tom Becker") fail("the list was empty with a thread on the queue");
 
 console.log("Guest messaging harness passed.");

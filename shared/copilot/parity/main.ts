@@ -910,6 +910,80 @@ function namedDays(text: string): string[] {
   return days;
 }
 
+async function fixtureDianeProof(): Promise<void> {
+  const now = new Date("2026-10-09T10:00:00-04:00");
+  const sent = dianeSentMail();
+  const recipients = sent.to;
+  const question = "Has the building been emailed about Diane Castagnier's cars for her stay that started today?";
+  const install = (mail: ParityMail[]) => {
+    const world = worldAt("2026-10-09T10:00:00-04:00", false, mail);
+    const diane = world.reservations.find((row) => row.code === CODE.diane);
+    if (diane) diane.guest = "Diane Castagnier";
+    installWorld(world);
+    setParityClock(now);
+    resetCaptures();
+  };
+  install([sent]);
+  const proof = await chatAnswer(question);
+  expect(proof.includes(`“${sent.subject}”`), "the proof quotes the matched message's subject", proof);
+  expect(proof.includes(`to ${recipients}.`), "the proof lists the matched message's recipients", proof);
+  expect(/on October 8, 2026 at 11:24\s?AM/.test(proof), "the proof gives the matched message's send time", proof);
+
+  const wrongDates: ParityMail = { ...sent, id: "diane-wrong-dates", subject: "AirBNB Rental for Unit 318 from October 9, 2026 - October 11, 2026", body: sent.body.replace("October 12, 2026", "October 11, 2026") };
+  const wrongUnit: ParityMail = { ...sent, id: "diane-wrong-unit", subject: sent.subject.replace("Unit 318", "Unit 418"), body: sent.body.replace(/Unit 318/g, "Unit 418") };
+  const noBuilding: ParityMail = { ...sent, id: "diane-no-building", to: "friend@example.com" };
+  for (const decoy of [wrongDates, wrongUnit, noBuilding]) {
+    install([decoy]);
+    const answer = await chatAnswer(question);
+    expect(!/already sent/.test(answer), `a sent message that does not match the stay is not proof (${decoy.id})`, answer);
+  }
+  expectNothingSent();
+}
+
+function checksTurnover(id: string, writtenAt: string, line: string): void {
+  paritySaveChecksMessage({
+    id,
+    chat_id: "checks",
+    created_at: writtenAt,
+    role: "assistant",
+    body: `HM${id.slice(-4).toUpperCase()} at 8 Charlotte 606. ${line}`,
+    draft: null,
+    report: { title: `HM${id.slice(-4).toUpperCase()}`, summary: line, sections: [] },
+  });
+}
+
+async function fixtureOverviewTurnovers(): Promise<void> {
+  const now = new Date("2026-10-12T10:00:00-04:00");
+  const world = worldAt("2026-10-12T10:00:00-04:00");
+  world.reservations = [];
+  world.cleaner = { turnovers: [] };
+  installWorld(world);
+  setParityClock(now);
+  resetCaptures();
+  // Written last night: "in 1 day" is today. Written three days ago: "in 1 day" has passed.
+  checksTurnover("00000000-0000-4000-8000-0000000c0a01", "2026-10-11T20:00:00-04:00", "no cleaner assigned, turnover in 1 day.");
+  checksTurnover("00000000-0000-4000-8000-0000000c0a02", "2026-10-09T20:00:00-04:00", "no cleaner assigned, turnover in 1 day.");
+  for (const [label, brief] of [["saved", await readSavedBrief(now)], ["live", await buildBrief(now)]] as const) {
+    const rows = [...(brief.overview?.today ?? []), ...(brief.overview?.coming ?? [])];
+    const turnovers = rows.filter((row) => row.id.startsWith("turnover:"));
+    const summary = brief.overview?.summary ?? "";
+    expect(turnovers.length === 1 && /Charlotte 606/.test(`${turnovers[0]?.title} ${turnovers[0]?.why}`), `${label} Overview shows the unassigned turnover from Checks within 48 hours`, rows.map((row) => `${row.id} ${row.title}`).join("\n") || summary);
+    expect(!summary.startsWith("Nothing needs you today"), `${label} Overview does not say nothing needs you while a turnover has no cleaner`, summary);
+  }
+
+  // The same turnover on the board and in Checks is one row.
+  const both = worldAt("2026-10-12T10:00:00-04:00");
+  both.reservations = [boardStay("00000000-0000-4000-8000-0000000c0a10", ID.charlotte, "accepted", "2026-10-09", "2026-10-12", "Ulrike")];
+  both.cleaner = { turnovers: [{ propertyId: ID.charlotte, scheduledOn: "2026-10-12", status: "scheduled", assigned: false, done: false, issue: "" }] };
+  installWorld(both);
+  setParityClock(now);
+  checksTurnover("00000000-0000-4000-8000-0000000c0a11", "2026-10-11T20:00:00-04:00", "no cleaner assigned, turnover in 1 day.");
+  const merged = await buildBrief(now);
+  const charlotte = [...(merged.overview?.today ?? []), ...(merged.overview?.coming ?? [])].filter((row) => row.id.startsWith("turnover:") && /Charlotte 606/.test(`${row.title} ${row.why}`));
+  expect(charlotte.length === 1, "one turnover on the board and in Checks is one Overview row", charlotte.map((row) => `${row.id} ${row.title}`).join("\n"));
+  expectNothingSent();
+}
+
 async function fixtureLongStayAvailability(): Promise<void> {
   const now = new Date("2026-10-11T15:00:00-04:00");
   const world = worldAt("2026-10-11T15:00:00-04:00");
@@ -1227,6 +1301,8 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "26", title: "Diane is found on the same arrivals the plan uses", run: fixtureDianeLookup },
   { id: "27", title: "A sent building registration is reported instead of drafted", run: fixtureDianeAlreadySent },
   { id: "29", title: "A turnover at an unselected property stays out until that property is selected", run: fixtureUnselectedTurnover },
+  { id: "32", title: "Diane's sent proof quotes the matched message, and a message for another unit, building, or dates is not proof", run: fixtureDianeProof },
+  { id: "33", title: "Overview shows unassigned turnovers from Checks within 48 hours and never says nothing needs you while they exist", run: fixtureOverviewTurnovers },
   { id: "30", title: "A 39-night stay blocks every all-empty night before it leaves, and no past date is offered", run: fixtureLongStayAvailability },
   { id: "31", title: "A stay that arrived before the asked window still blocks its nights inside it", run: fixtureStayBeforeWindow },
 ];

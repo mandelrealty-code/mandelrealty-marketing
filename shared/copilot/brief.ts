@@ -57,15 +57,10 @@ export async function readSavedBrief(now = new Date()): Promise<BriefPayload> {
       signals,
       skipped: skippedIds,
     });
-    const focus = stored.focus.filter((card) => !card.id.startsWith("turnover:"));
+    const checks = storedCheckCards(messages, [], [], now);
+    const rows = await weekTurnovers(now).catch(() => null);
+    const focus = mergeTurnoverCards(stored.focus, checks, rows, skipped, now);
     const eating = stored.eating.filter((card) => !card.id.startsWith("turnover:"));
-    const rows = await weekTurnovers(now);
-    if (rows) {
-      for (const row of rows) {
-        const card = boardTurnoverCard(row);
-        if (!skipped.has(card.id) && !focus.some((item) => item.id === card.id)) focus.push(card);
-      }
-    }
     return finishBrief(stored, focus, eating, signals, now, stored.overview?.done ?? []);
   } catch {
     return saved ?? quietBrief(now);
@@ -394,16 +389,12 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
     }, skipped);
   }
 
-  const openTurnovers = await weekTurnovers(now);
-  if (openTurnovers) {
-    const kept = focus.filter((card) => !card.id.startsWith("turnover:"));
-    focus.length = 0;
-    focus.push(...kept);
-    for (const row of openTurnovers) {
-      const card = boardTurnoverCard(row);
-      if (!skipped.has(card.id) && !focus.some((item) => item.id === card.id)) focus.push(card);
-    }
-  }
+  const openTurnovers = await weekTurnovers(now).catch(() => null);
+  // The same Checks rows the saved Overview reads, so both paths show the same turnovers.
+  const checkCards = await checksOverviewMessages().then((messages) => storedCheckCards(messages, [], [], now)).catch(() => [] as BriefCard[]);
+  const merged = mergeTurnoverCards(focus, checkCards, openTurnovers, skipped, now);
+  focus.length = 0;
+  focus.push(...merged);
   const failed = [...focus, ...eating].filter((card) => card.id.startsWith("failed-read:"));
   const rest = [...focus, ...eating].filter((card) => !card.id.startsWith("failed-read:"));
   const turnovers = rest.filter((card) => card.id.startsWith("turnover:"));
@@ -780,8 +771,34 @@ async function dropUnselectedTurnovers(brief: BriefPayload): Promise<BriefPayloa
   return { ...brief, focus, eating, overview: { ...overview, today, coming, count: today.length + coming.length } };
 }
 
+/**
+ * Unassigned turnovers on Overview come from the same Checks data the Checks chat shows,
+ * merged with the day board. Where both name one property and date, the board card is kept.
+ * A failed board read never hides the Checks items. Checks items cover today through 48 hours.
+ */
+function mergeTurnoverCards(focus: BriefCard[], checks: BriefCard[], rows: TurnoverRow[] | null, skipped: Set<string>, now: Date): BriefCard[] {
+  const kept = focus.filter((card) => !card.id.startsWith("turnover:"));
+  const board = (rows ?? []).map(boardTurnoverCard).filter((card) => !skipped.has(card.id));
+  const keys = new Set(board.map(cleanerKey));
+  const today = torontoToday(now);
+  const horizon = addDays(today, 2);
+  const fromChecks: BriefCard[] = [];
+  for (const card of [...checks, ...focus]) {
+    if (!card.id.startsWith("turnover:") || card.rank?.kind !== "cleaner" || skipped.has(card.id)) continue;
+    const day = card.rank.deadline.slice(0, 10);
+    if (!day || day < today || day > horizon) continue;
+    const key = cleanerKey(card);
+    if (keys.has(key)) continue;
+    keys.add(key);
+    fromChecks.push(card);
+  }
+  return [...kept, ...board, ...fromChecks];
+}
+
 async function turnoverCardInScope(id: string): Promise<boolean> {
   if (!id.startsWith("turnover:")) return true;
+  // A Checks card is turnover:<message id>. Only a board card, turnover:<property id>:<date>, names a property.
+  if (id.split(":").length < 3) return true;
   const propertyId = id.slice("turnover:".length).split(":")[0] ?? "";
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(propertyId)) return true;
   return copilotKeepsProperty({ id: propertyId });
@@ -809,7 +826,8 @@ function turnoverCard(message: CopilotMessage, now: Date): BriefCard | null {
   if (!/no cleaner assigned/i.test(text)) return null;
   const place = cleanPlace(text) || "the unit";
   const guest = text.match(/\b([A-Z][a-z]+) arrives\b/)?.[1] ?? text.match(/\b([A-Z][a-z]+)'s\b/)?.[1] ?? "";
-  const day = turnoverDay(text, now);
+  const written = message.created_at ? new Date(message.created_at) : now;
+  const day = turnoverDay(text, Number.isNaN(written.getTime()) ? now : written);
   const when = spokenWhen(day);
   const soon = day === torontoToday(now) ? "today" : day === addDays(torontoToday(now), 1) ? "tomorrow" : when;
   const headline = guest
@@ -833,6 +851,7 @@ function turnoverCard(message: CopilotMessage, now: Date): BriefCard | null {
   };
 }
 
+/** The turnover's date. Relative words ("in 1 day") count from when the Checks message was written. */
 function turnoverDay(text: string, now: Date): string {
   const today = torontoToday(now);
   const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/)?.[1];
@@ -865,8 +884,10 @@ function failedCard(message: CopilotMessage): BriefCard | null {
   };
 }
 
+/** One turnover per place and day, whether Checks says "Charlotte 606" or the board says "8 Charlotte 606". */
 function cleanerKey(card: BriefCard): string {
-  return `${(card.rank?.property ?? "").toLowerCase()}|${card.rank?.deadline.slice(0, 10) ?? ""}`;
+  const place = card.rank?.property ?? "";
+  return `${(cleanPlace(place) || place).toLowerCase()}|${card.rank?.deadline.slice(0, 10) ?? ""}`;
 }
 
 function spokenWhen(iso: string): string {

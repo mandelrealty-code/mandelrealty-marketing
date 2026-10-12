@@ -25,7 +25,8 @@ import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
 import { INTERNAL_TERMS, hasInternalContent } from "./marketingCopy.js";
 import { answerInboxToday } from "./mailInbox.js";
-import { asksMailBreakdown, pastedThread } from "./mailChain.js";
+import { asksMailBreakdown, ownWords, pastedThread } from "./mailChain.js";
+import { addMessage, createChat, listMessages } from "./store.js";
 import { questionRoute, skipsWeb } from "./route.js";
 import { installResearch, researchWebCalls, resetResearch } from "./skillResearch.js";
 import { answerRecords, asksUnitRoster, missingSourceAnswer } from "./recordsAnswer.js";
@@ -909,6 +910,45 @@ if (pastedThread(giveA, MANIK_BODIES)) fail("manik give", `still pasted the thre
 for (const body of MANIK_BODIES) {
   if (giveA.includes(body)) fail("manik give", `pasted a message body\n${giveA}`);
 }
+// Real replies carry quoted history and a signature. Every wording is composed, never pasted.
+const QUOTED_2 = "I can send a plumber Thursday morning.\n\nThanks,\nShane\n--\nMandel Realty Group\n\nOn Wed, Oct 1, 2026 at 9:00 AM Manik <manik@example.com> wrote:\n> The dishwasher at 8 Charlotte 606 is leaking. Can you send a plumber?";
+const QUOTED_3 = "Thursday works. Please confirm once the plumber is booked.\n\nSent from my iPhone\n\nOn Thu, Oct 2, 2026 at 10:00 AM Shane <shane@mandelrealtygroup.com> wrote:\n> I can send a plumber Thursday morning.\n> On Wed, Oct 1, 2026 Manik wrote:\n> > The dishwasher at 8 Charlotte 606 is leaking. Can you send a plumber?";
+installWorld(worldAt("2026-10-07T11:00:00-04:00", false, [
+  { id: "manik-q1", threadId: "manik-quoted", mailbox: "gmail", folder: "inbox", from: "Manik", email: "manik@example.com", to: "shane@mandelrealtygroup.com", date: "2026-10-01T09:00:00-04:00", subject: "Dishwasher at 8 Charlotte 606", snippet: "The dishwasher is leaking.", body: "The dishwasher at 8 Charlotte 606 is leaking. Can you send a plumber?", airbnb: false },
+  { id: "manik-q2", threadId: "manik-quoted", mailbox: "gmail", folder: "sent", from: "Shane", email: "shane@mandelrealtygroup.com", to: "manik@example.com", date: "2026-10-02T10:00:00-04:00", subject: "Re: Dishwasher at 8 Charlotte 606", snippet: "Thursday morning.", body: QUOTED_2, airbnb: false },
+  { id: "manik-q3", threadId: "manik-quoted", mailbox: "gmail", folder: "inbox", from: "Manik", email: "manik@example.com", to: "shane@mandelrealtygroup.com", date: "2026-10-03T11:00:00-04:00", subject: "Re: Dishwasher at 8 Charlotte 606", snippet: "Please confirm.", body: QUOTED_3, airbnb: false },
+]));
+if (/On Thu|Sent from my|wrote:|^>/m.test(ownWords(QUOTED_3)) || ownWords(QUOTED_3) !== "Thursday works. Please confirm once the plumber is booked.") fail("manik quoted", `own words kept the history: ${ownWords(QUOTED_3)}`);
+const QUOTED_SOURCES = [...MANIK_BODIES, QUOTED_2, QUOTED_3];
+for (const [index, wording] of [
+  "Summarize the email thread with Manik",
+  "Can you recap my emails with Manik?",
+  "Catch me up on the email chain with Manik",
+].entries()) {
+  if (!asksMailBreakdown(wording)) fail("manik wording", `not treated as a breakdown: ${wording}`);
+  let status = 0;
+  let payload: { messages?: { role: string; body: string }[]; error?: string } = {};
+  await handleCopilot(
+    { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text: wording, chatId: `parity-manik-wording-${index}`, kind: "chat" }, query: {} } as never,
+    { status(code: number) { status = code; return this; }, json(body: typeof payload) { payload = body; return this; } } as never,
+  );
+  const answer = [...(payload.messages ?? [])].reverse().find((message) => message.role === "assistant")?.body ?? "";
+  const paragraphs = answer.split(/\n\n/).filter(Boolean);
+  if (status !== 200 || paragraphs.length < 2 || paragraphs.length > 3 || !answer.includes("Manik")) fail("manik wording", `${wording}\n${answer || payload.error || "no answer"}`);
+  if (pastedThread(answer, QUOTED_SOURCES)) fail("manik wording", `pasted the thread for "${wording}"\n${answer}`);
+  if (/wrote:|Sent from my|^>/m.test(answer)) fail("manik wording", `quoted history in the answer\n${answer}`);
+  if (/\bthanks, shane\b/i.test(answer)) fail("manik wording", `the sign-off leaked into the answer\n${answer}`);
+  if (answer !== ((await answerMailChain(wording)) ?? "")) fail("manik wording", `not the shared composer for "${wording}"\n${answer}`);
+}
+if (asksMailBreakdown("Summarize today's emails")) fail("manik wording", "an inbox question was taken as a chain breakdown");
+
+// The response layer: a reply that pastes the thread is recomposed before it is stored.
+const layerChat = await createChat("Manik recap");
+await addMessage({ chatId: layerChat.id, role: "user", body: "Recap the email thread with Manik" });
+await addMessage({ chatId: layerChat.id, role: "assistant", body: [QUOTED_2, QUOTED_3].join("\n\n") });
+const stored = [...(await listMessages(layerChat.id))].reverse().find((message) => message.role === "assistant")?.body ?? "";
+if (pastedThread(stored, QUOTED_SOURCES) || stored.includes("I can send a plumber Thursday morning.")) fail("manik layer", `a pasted reply was stored\n${stored}`);
+
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
 else process.env.ADMIN_PASSWORD = previousPassword;
 if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;

@@ -1,3 +1,4 @@
+import { guestQueueRows } from "../../../shared/copilot/guestQueueRows";
 import { useEffect, useRef, useState } from "react";
 import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
 import type { StayCard } from "../../../shared/copilot/types";
@@ -64,7 +65,7 @@ export function GuestMessaging({
 }
 
 function Queue({ queue, onOpen, onRefresh }: { queue: GuestQueue; onOpen: (row: GuestRow) => void; onRefresh?: () => void }) {
-  const rows = [...queue.waiting, ...(queue.held ?? [])].sort((a, b) => a.waitedMs - b.waitedMs || a.guest.localeCompare(b.guest));
+  const rows = guestQueueRows(queue);
   const followUps = queue.followUps ?? [];
   return (
     <div className="cp-gq">

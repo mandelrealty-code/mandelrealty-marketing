@@ -316,6 +316,19 @@ if (!splitFollow.body.includes(roseMrg) || !splitFollow.body.includes(roseHost) 
 if (/didn't find that property in OPS/i.test(splitFollow.body)) fail(splitFollow.body);
 if (researchWebCalls() !== 0) fail(`web calls on the Roseglor sequence: ${researchWebCalls()}`);
 
+// One question, three parts: how many, who, and what the host makes. Every part is answered.
+for (const [index, question] of [
+  "For 41 Roseglor in November: how many reservations, what are the guest names, and how much will we and the host make?",
+  "How many reservations does 41 Roseglor have in November, who are the guests, and what does the host make?",
+].entries()) {
+  const combined = await chatTurn(`parity-rose-combined-${index}`, question);
+  if (!/41 Roseglor[^\n]* has 2 accepted stays with a night in November 2026/.test(combined.body)) fail(`count part missing\n${combined.body}`);
+  if (!combined.body.includes("Ruzaina Sathar") || !combined.body.includes("Bethanie Fils")) fail(`guest names part missing\n${combined.body}`);
+  if ((combined.body.match(/host revenue \$[\d,]+\.\d{2}/g) ?? []).length < 3) fail(`host revenue part missing per stay and in total\n${combined.body}`);
+  if (!combined.body.includes(roseMrg) || !combined.body.includes(roseHost)) fail(`split totals ${roseMrg} / ${roseHost}\n${combined.body}`);
+}
+if (researchWebCalls() !== 0) fail(`web calls on the combined Roseglor question: ${researchWebCalls()}`);
+
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
 else process.env.ADMIN_PASSWORD = previousPassword;
 if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;

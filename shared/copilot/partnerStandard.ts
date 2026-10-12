@@ -8,6 +8,7 @@ import { parityEnabled } from "./parity/flag.js";
 import { parityChecksMessages } from "./parity/storeStub.js";
 import { draftsRecorded, listChecksMessages, recordDrafts, updateDraft } from "./store.js";
 import { addDays } from "./time.js";
+import { BLUE_JAYS_CONTACTS } from "./processFacts.js";
 
 const openKeys = new Set<string>();
 
@@ -47,12 +48,26 @@ function stayDateIn(hay: string, checkIn: string): boolean {
   return hay.includes(day) || hay.includes(plain);
 }
 
-/** A building email is resolved only when Sent has this stay's date and both plates. */
-export function registrationAlreadySent(letters: MailLetter[], checkIn: string, threadPlates: string[]): MailLetter | null {
+/**
+ * A sent message counts as this stay's building registration only when it names the unit,
+ * the arrival date, and the departure date, and is about the building: it names 20 Blue Jays Way
+ * or went to the building's recorded registration contacts. A guest's name is never enough.
+ */
+export function registrationMatchesStay(letter: Pick<MailLetter, "subject" | "body"> & { to?: string }, checkIn: string, checkOut: string): boolean {
+  if (!checkIn || !checkOut) return false;
+  const hay = `${letter.subject}\n${letter.body}`;
+  if (!/\b(?:unit\s*#?\s*318|#\s*318|suite\s*318)\b/i.test(hay)) return false;
+  const to = (letter.to ?? "").toLowerCase();
+  const building = /\bblue\s+jays\b/i.test(hay) || BLUE_JAYS_CONTACTS.some((address) => to.includes(address));
+  if (!building) return false;
+  return stayDateIn(hay, checkIn) && stayDateIn(hay, checkOut);
+}
+
+/** A building email is resolved only when Sent has this stay's unit, building, both dates, and both plates. */
+export function registrationAlreadySent(letters: MailLetter[], checkIn: string, checkOut: string, threadPlates: string[]): MailLetter | null {
   for (const letter of letters) {
+    if (!registrationMatchesStay(letter, checkIn, checkOut)) continue;
     const hay = `${letter.subject}\n${letter.body}`;
-    if (!stayDateIn(hay, checkIn)) continue;
-    if (!/unit\s*318|blue jays/i.test(hay)) continue;
     const plates = platesFrom(hay);
     if (plates.length < 2) continue;
     if (threadPlates.length && threadPlates.some((plate) => !plates.includes(plate))) continue;
@@ -77,7 +92,9 @@ export function sentProof(letter: Pick<MailLetter, "date" | "from" | "mailbox" |
   const who = letter.from || "The sender";
   const channel = letter.mailbox === "outlook" ? "Outlook" : "Gmail";
   const listed = plates.length >= 2 ? ` It includes both vehicles, plates ${plates.join(" and ")}.` : "";
-  return `The Unit 318 building email is already sent, so that draft is closed. ${who} sent it by ${channel} on ${day} at ${time} to ${letter.to}.${listed}`;
+  const subject = letter.subject.trim() ? `“${letter.subject.trim()}”` : "it";
+  const to = letter.to.trim() || "recipients the message does not list";
+  return `The Unit 318 building email is already sent, so that draft is closed. ${who} sent ${subject} by ${channel} on ${day} at ${time} to ${to}.${listed}`;
 }
 
 /** Relative words follow the day the message would actually be sent. */

@@ -13,6 +13,12 @@ export const BLUE_JAYS_PROCESS = [
   "Snack rule: note diet flags, promise no specific items.",
 ].join("\n");
 
+/** The 20 Blue Jays Way building's registration addresses, from the line above. */
+export const BLUE_JAYS_CONTACTS: string[] = (/Building contacts:\s*([^\n]+)/.exec(BLUE_JAYS_PROCESS)?.[1] ?? "")
+  .split(/[,\s]+/)
+  .map((item) => item.replace(/\.$/, "").trim().toLowerCase())
+  .filter((item) => item.includes("@"));
+
 export function isBlueJaysLine(line: string): boolean {
   return /blue jays/i.test(line);
 }

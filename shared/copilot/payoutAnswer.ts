@@ -28,9 +28,30 @@ export async function answerPayout(
   if (asksGuestNames(question) && isPayoutAnswer(prior)) {
     return { body: await namesFor(prior), step: "Read the reservation records", property: carried };
   }
-  if (!asksPayoutSplit(question)) return null;
+  if (!asksPayoutSplit(question) && !asksStayMoneyParts(question)) return null;
   const split = await splitFor(question, now, carried);
   return { body: split.body, step: "Read the payout terms", property: split.property };
+}
+
+const MONTH_WORD = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|this month|next month|last month)\b/i;
+
+function asksCount(question: string): boolean {
+  return /\bhow many\b/i.test(question) && /\b(reservations?|stays?|bookings?|guests?)\b/i.test(question);
+}
+
+function asksHostMoney(question: string): boolean {
+  return /\bhost revenue\b|\bhost (?:net|payout)\b/i.test(question)
+    || (/\b(host|owner)\b/i.test(question) && /\b(make|makes|making|earn|earns|net|revenue|payout|get|gets)\b/i.test(question))
+    || (/\bhow much\b/i.test(question) && /\b(we|mrg)\b/i.test(question) && /\b(make|take|earn)\b/i.test(question));
+}
+
+/**
+ * One question with several parts about a property's month: how many stays, who the guests are,
+ * and what the host makes. Every part is answered, not only the first one the router recognises.
+ */
+export function asksStayMoneyParts(question: string): boolean {
+  if (!MONTH_WORD.test(question) || !asksHostMoney(question)) return false;
+  return asksCount(question) || asksGuestNames(question) || /\bwho (?:are|were|is) (?:the )?guests?\b|\bwho(?:'s| is) staying\b/i.test(question);
 }
 
 function asksGuestNames(question: string): boolean {
@@ -90,6 +111,7 @@ async function splitFor(question: string, now: Date, carried: PropertyIdentity |
   let mrgTake = 0;
   let hostNet = 0;
   const lines: string[] = [];
+  const guests: string[] = [];
   for (const stay of stays) {
     const on = stay.check_out || stay.check_in || `${month}-01`;
     const rate = rateOnDate(detail.terms, on) ?? lastRate ?? 0;
@@ -116,6 +138,7 @@ async function splitFor(question: string, now: Date, carried: PropertyIdentity |
     const code = (stay.platform_id || stay.hospitable_reservation_id || "").trim();
     const record = code ? await reservationRecord(code) : null;
     const guest = record ? guestName(record) : "";
+    guests.push(guest);
     lines.push(stayLine(guest, stay.check_in, stay.check_out, code, split));
   }
   const future = month > yearMonthNow(now);
@@ -123,7 +146,18 @@ async function splitFor(question: string, now: Date, carried: PropertyIdentity |
     ? `${label} booked business for ${place} is ${hostMoney(mrgTake)} MRG and ${hostMoney(hostNet)} to the host. This is booked business, not money received.`
     : `${label} for ${place} is ${hostMoney(mrgTake)} MRG and ${hostMoney(hostNet)} to the host.`;
   const totals = `${label} totals: guest paid ${hostMoney(guestPaid)}, host revenue ${hostMoney(hostRevenue)}, MRG take ${hostMoney(mrgTake)}, host net ${hostMoney(hostNet)}.`;
-  return { body: [lead, termsLine(detail), ...lines, totals].join("\n"), property: identity };
+  const opening: string[] = [];
+  if (asksCount(question) || asksGuestNames(question) || /\bwho (?:are|were|is) (?:the )?guests?\b|\bwho(?:'s| is) staying\b/i.test(question)) {
+    const names = guests.filter(Boolean);
+    const count = `${place} has ${stays.length} accepted ${stays.length === 1 ? "stay" : "stays"} with a night in ${label}`;
+    opening.push(names.length === stays.length ? `${count}: ${joinNames(names)}.` : `${count}. ${names.length ? `Named on the reservations: ${joinNames(names)}.` : "The guest names weren't on the reservations."}`);
+  }
+  return { body: [...opening, lead, termsLine(detail), ...lines, totals].join("\n"), property: identity };
+}
+
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 function stayLine(guest: string, checkIn: string | null, checkOut: string | null, code: string, split: StayTermSplit): string {

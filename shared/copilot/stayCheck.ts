@@ -741,7 +741,7 @@ async function oneStay(input: {
     await ensureTurnover();
     return;
   }
-  const sentLetter = await sentBuildingLetter(stay.checkIn, messages);
+  const sentLetter = await sentBuildingLetter(stay.checkIn, stay.checkOut, messages);
   if (sentLetter) {
     if (!(await draftsRecorded(stay.code))) await recordDrafts(stay.code);
     const plates = platesFrom(`${sentLetter.subject}\n${sentLetter.body}`);
@@ -781,7 +781,7 @@ async function oneStay(input: {
   await raiseShutdown(stay, messages);
 }
 
-async function sentBuildingLetter(checkIn: string, messages: Msg[]): Promise<MailLetter | null> {
+async function sentBuildingLetter(checkIn: string, checkOut: string, messages: Msg[]): Promise<MailLetter | null> {
   const found = await searchMail({ keywords: "Blue Jays 318", where: "sent", includeAirbnb: false }).catch(() => ({ hits: [], notes: [] as string[] }));
   const letters: MailLetter[] = [];
   for (const hit of found.hits) {
@@ -792,7 +792,7 @@ async function sentBuildingLetter(checkIn: string, messages: Msg[]): Promise<Mai
     }
   }
   const threadPlates = platesFrom(messages.filter((row) => row.role === "guest").map((row) => row.body).join("\n"));
-  return registrationAlreadySent(letters, checkIn, threadPlates);
+  return registrationAlreadySent(letters, checkIn, checkOut, threadPlates);
 }
 
 async function raiseShutdown(stay: Stay, messages: Msg[]): Promise<void> {

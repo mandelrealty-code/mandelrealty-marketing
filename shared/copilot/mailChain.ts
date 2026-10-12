@@ -8,9 +8,20 @@ import { readMailThread, searchMail, type MailHit, type MailLetter } from "./mai
 
 const BREAKDOWN = /\bbreak\s*down\b/i;
 const CHAIN = /\b(e-?mails?|chains?|threads?)\b/i;
+const RETELL = /\b(break\s*down|breakdown|summar(?:y|ise|ize)|recap|rundown|run-down|run me through|walk me through|catch me up|go over|fill me in)\b/i;
+const THREAD = /\b(chains?|threads?|conversation)\b/i;
+const WITH_PERSON = /\b(?:e-?mails?|messages?|notes?)\b[^.?!]*\b(?:with|from|between|to)\s+[A-Z][\w'.-]+/;
 
+/**
+ * "Break down the email chain with Manik", "Summarize the thread with Manik", "Recap my emails with Manik".
+ * Every wording goes to the same composer, and the stored reply is recomposed, so no path pastes the thread.
+ * Inbox questions ("summarize today's emails") stay with the inbox answer.
+ */
 export function asksMailBreakdown(text: string): boolean {
-  return BREAKDOWN.test(text) && CHAIN.test(text);
+  if (BREAKDOWN.test(text) && CHAIN.test(text)) return true;
+  if (!RETELL.test(text)) return false;
+  if (/\b(today|inbox|new e-?mails?|unread)\b/i.test(text)) return false;
+  return (THREAD.test(text) && CHAIN.test(text)) || WITH_PERSON.test(text);
 }
 
 function chainKeywords(text: string): string {
@@ -23,8 +34,22 @@ function chainKeywords(text: string): string {
     .trim();
 }
 
+/** The message's own words: quoted history, forwarded headers, signatures, and markup removed. */
+export function ownWords(text: string): string {
+  const kept: string[] = [];
+  for (const raw of text.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, " ").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^>/.test(line)) continue;
+    if (/^On .{4,200} wrote:?$/i.test(line) || /^-{2,}\s*(?:Original|Forwarded) Message/i.test(line) || /^From:\s.+/i.test(line) || /^_{5,}$/.test(line)) break;
+    if (/^--\s*$/.test(line) || /^Sent from my\b/i.test(line) || /^Get Outlook for\b/i.test(line)) break;
+    if (/^(?:thanks|thank you|many thanks|best|best regards|kind regards|regards|cheers|sincerely|warmly)[,.!]?$/i.test(line)) break;
+    kept.push(line);
+  }
+  return kept.join(" ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function plain(letter: MailLetter): string {
-  return (letter.body || letter.snippet).replace(/\s+/g, " ").trim();
+  return ownWords(letter.body || letter.snippet);
 }
 
 function lowerFirst(value: string): string {
@@ -86,7 +111,38 @@ export function breakdownFrom(letters: MailLetter[]): string {
       : chainNarrative(ordered, (letter) => speak(letter, quiet));
   }
   const shaped = withoutBodies(narrative, ordered);
-  return pastedThread(shaped, sources) ? stripSpans(shaped, sources) : shaped;
+  if (!pastedThread(shaped, sources) && !pastedThread(shaped, ordered.map((letter) => letter.body || ""))) return shaped;
+  // Still too close to the thread: say what happened from names, dates, and the subject only.
+  return factsOnly(ordered);
+}
+
+function topicOf(letters: MailLetter[]): string {
+  const subject = letters.map((letter) => letter.subject.replace(/^(?:\s*(?:re|fwd?|fw)\s*:\s*)+/i, "").trim()).find(Boolean) ?? "";
+  return subject ? `“${subject}”` : "the thread";
+}
+
+function dayOf(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "America/Toronto" }).format(at);
+}
+
+/** A breakdown built from who wrote, when, and the subject. No sentence from a body is used. */
+export function factsOnly(letters: MailLetter[]): string {
+  const ordered = [...letters].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const first = ordered[0];
+  const last = ordered[ordered.length - 1];
+  if (!first || !last) return "I didn't find that email chain. I didn't guess.";
+  const people = [...new Set(ordered.map((letter) => letter.from).filter(Boolean))];
+  const opening = `${first.from} started the thread about ${topicOf(ordered)} on ${dayOf(first.date)}.`;
+  const middle = ordered.length > 2
+    ? `${ordered.length - 2} ${ordered.length - 2 === 1 ? "reply" : "replies"} followed between ${people.join(" and ")}.`
+    : ordered.length === 2 ? `${last.from} replied on ${dayOf(last.date)}.` : "";
+  const body = plain(last);
+  const ending = /\bplease\b|\?/i.test(body)
+    ? `The last message is from ${last.from} on ${dayOf(last.date)}, and it is waiting on an answer.`
+    : `The last message is from ${last.from} on ${dayOf(last.date)}, and nothing further is waiting in it.`;
+  return [`${opening}${middle ? ` ${middle}` : ""}`, ending].join("\n\n");
 }
 
 /**
@@ -199,29 +255,6 @@ function sixGrams(source: string): string[] {
   const spans: string[] = [];
   for (let i = 0; i + 6 <= words.length; i += 1) spans.push(words.slice(i, i + 6).join(" "));
   return spans;
-}
-
-function stripSpans(text: string, sources: string[]): string {
-  let out = text;
-  for (let pass = 0; pass < 8 && pastedThread(out, sources); pass += 1) {
-    const quotes = quotedPassages(out);
-    if (quotes.length > 1 || quotes.some((quote) => quote.split(/\s+/).length > 8 || quote.length > 80)) {
-      let kept = false;
-      out = out.replace(/["“]([^"”]+)["”]/g, (_all, inner: string) => {
-        if (kept) return inner;
-        const quote = String(inner).trim();
-        if (quote.split(/\s+/).length > 8 || quote.length > 80) return quote;
-        kept = true;
-        return `"${quote}"`;
-      });
-    }
-    const span = longFragments(out, sources)[0];
-    if (!span) break;
-    const words = span.split(" ");
-    const broken = [...words.slice(0, 3), ...words.slice(4)].join(" ");
-    out = out.replace(new RegExp(span.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), broken);
-  }
-  return out;
 }
 
 function withoutBodies(narrative: string, letters: MailLetter[]): string {

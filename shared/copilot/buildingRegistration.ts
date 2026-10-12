@@ -11,7 +11,7 @@ import { parityNow } from "./parity/clock.js";
 import { confirmedChecksDraft } from "./checksClaim.js";
 import { leaveDraft, loadRecentStays, readStayThread, type RecentStay } from "./stayCheck.js";
 import { captureMailMatch } from "./parity/capture.js";
-import { namesMatch, platesFrom, sentProof } from "./partnerStandard.js";
+import { namesMatch, platesFrom, registrationMatchesStay, sentProof } from "./partnerStandard.js";
 import { torontoToday } from "./time.js";
 
 const DATE = /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}, \d{4}/g;
@@ -118,7 +118,7 @@ async function sentRegistrationLetters(guest: string, property: string, checkIn:
     const found = await lettersInSent(keywords);
     note = found.note;
     const matched = found.letters
-      .filter((letter) => subjectForStay(letter.subject, checkIn, checkOut))
+      .filter((letter) => subjectForStay(letter.subject, checkIn, checkOut) && registrationMatchesStay(letter, checkIn, checkOut))
       .sort((a, b) => b.date.localeCompare(a.date));
     if (matched.length) return { letters: matched, note: "", keywords };
   }
@@ -312,12 +312,7 @@ function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string,
 }
 
 function alreadySent(stay: RecentStay["stay"], letters: MailLetter[]): boolean {
-  const arrival = longDate(stay.checkIn);
-  const departure = longDate(stay.checkOut);
-  return letters.some((letter) => {
-    const hay = `${letter.subject}\n${letter.body}`;
-    return hay.includes(arrival) || hay.includes(departure);
-  });
+  return letters.some((letter) => registrationMatchesStay(letter, stay.checkIn, stay.checkOut));
 }
 
 async function sentLetters(question: string): Promise<{ letters: MailLetter[]; note: string }> {
@@ -360,7 +355,9 @@ export async function answerBuildingRegistration(text: string): Promise<string |
     .sort((a, b) => a.stay.checkIn.localeCompare(b.stay.checkIn) || a.stay.id.localeCompare(b.stay.id));
   const next = upcoming[0];
   if (!next) {
-    const closed = sent.letters.find((letter) => platesFrom(`${letter.subject}\n${letter.body}`).length >= 2);
+    // Proof is only for a sent message that matches one of this property's stays.
+    const stays = loaded.stays.filter((row) => samePlace(text, row) && !/cancel/.test(row.stay.status));
+    const closed = sent.letters.find((letter) => stays.some((row) => registrationMatchesStay(letter, row.stay.checkIn, row.stay.checkOut)));
     if (closed) return sentProof(closed, platesFrom(`${closed.subject}\n${closed.body}`));
     return "I didn't find an upcoming guest there whose registration hasn't been sent. I didn't draft one.";
   }
