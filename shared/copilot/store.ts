@@ -1247,6 +1247,8 @@ const THREAD_CACHE_PREFIX = "thread-cache|";
 
 export type CachedStayThread = {
   at: string;
+  /** The conversation's latest activity when this thread was read. */
+  watermark?: string;
   messages: { at: string; role: string; name: string; body: string }[];
 };
 

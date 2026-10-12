@@ -7,6 +7,7 @@ import { scopedStayProperties } from "./dayBoard.js";
 import { prepareCleanerAssignment } from "./ops.js";
 import { captureDraft, captureReport, type DraftCapture, type ReportCapture } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
+import { registerThreadReset } from "./parity/world.js";
 import { parityChecksMessages, parityRetireGuestReplies, paritySaveChecksMessage } from "./parity/storeStub.js";
 import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, listChecksMessages, listWaitingDrafts, readStayThreadCache, recordCancellation, recordDrafts, recordReport, refreshSupplyDrafts, reportRecorded, saveStayThreadCache, updateDraft } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
@@ -103,8 +104,20 @@ function toStay(row: Record<string, unknown>, propertyId: string): Stay {
 }
 
 const THREAD_FRESH_MS = 70_000;
-const threadMemory = new Map<string, { at: number; messages: Msg[] }>();
+/** Cached threads kept for conversations seen in the last 60 days. */
+const THREAD_KEEP_MS = 60 * 86_400_000;
+type CachedThread = { at: number; watermark: string; messages: Msg[] };
+const threadMemory = new Map<string, CachedThread>();
 let threadCacheLoaded: Promise<void> | null = null;
+let threadCacheDirty = false;
+
+function resetThreadCache(): void {
+  threadMemory.clear();
+  threadCacheLoaded = null;
+  threadCacheDirty = false;
+}
+
+registerThreadReset(resetThreadCache);
 
 function freshThread(id: string, nowMs: number): Msg[] | null {
   const hit = threadMemory.get(id);
@@ -120,8 +133,8 @@ async function loadThreadCache(): Promise<void> {
         const nowMs = Date.now();
         for (const [id, row] of Object.entries(saved)) {
           const at = Date.parse(row.at);
-          if (!Number.isFinite(at) || nowMs - at > THREAD_FRESH_MS) continue;
-          threadMemory.set(id, { at, messages: row.messages });
+          if (!Number.isFinite(at) || nowMs - at > THREAD_KEEP_MS) continue;
+          if (!threadMemory.has(id)) threadMemory.set(id, { at, watermark: row.watermark ?? "", messages: row.messages });
         }
       })
       .catch(() => undefined);
@@ -129,22 +142,59 @@ async function loadThreadCache(): Promise<void> {
   await threadCacheLoaded;
 }
 
-function rememberThread(id: string, messages: Msg[]): void {
-  if (parityEnabled()) return;
-  threadMemory.set(id, { at: Date.now(), messages });
-  const saved: Record<string, { at: string; messages: Msg[] }> = {};
-  const nowMs = Date.now();
-  for (const [key, row] of threadMemory) {
-    if (nowMs - row.at > THREAD_FRESH_MS) continue;
-    saved[key] = { at: new Date(row.at).toISOString(), messages: row.messages };
-  }
-  void saveStayThreadCache(saved).catch(() => undefined);
+/** An activity time as one comparable instant. "…20Z" and "…20.000000Z" are the same moment. */
+function instant(value: string): number {
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : 0;
 }
 
-export async function readStayThread(reservationId: string, now: Date): Promise<Msg[]> {
-  if (!parityEnabled()) {
-    await loadThreadCache();
-    const cached = freshThread(reservationId, Date.now());
+function rememberThread(id: string, messages: Msg[], watermark = ""): void {
+  const latest = Math.max(instant(watermark), ...messages.map((row) => instant(row.at)));
+  threadMemory.set(id, { at: Date.now(), watermark: latest ? new Date(latest).toISOString() : "", messages });
+  threadCacheDirty = true;
+}
+
+/** Saves the thread cache once, after a pass, instead of after every read. */
+export async function flushThreadCache(): Promise<void> {
+  if (parityEnabled() || !threadCacheDirty) return;
+  threadCacheDirty = false;
+  const saved: Record<string, { at: string; watermark: string; messages: Msg[] }> = {};
+  const nowMs = Date.now();
+  for (const [key, row] of threadMemory) {
+    if (nowMs - row.at > THREAD_KEEP_MS) continue;
+    saved[key] = { at: new Date(row.at).toISOString(), watermark: row.watermark, messages: row.messages };
+  }
+  await saveStayThreadCache(saved).catch(() => undefined);
+}
+
+function rateLimited(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /\b429\b|too many|rate.?limit|throttl/i.test(message);
+}
+
+/** One read, with one wait and retry when Hospitable rate-limits it. */
+export async function readWithRetry<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (err) {
+    if (!rateLimited(err)) throw err;
+    await new Promise((resolve) => setTimeout(resolve, parityEnabled() ? 0 : 1500));
+    return read();
+  }
+}
+
+/**
+ * One reservation's thread. With a watermark (the conversation's last_message_at), a cached thread
+ * read at or after that activity is reused and Hospitable is not called again.
+ */
+export async function readStayThread(reservationId: string, now: Date, watermark = ""): Promise<Msg[]> {
+  await loadThreadCache();
+  const hit = threadMemory.get(reservationId);
+  const reuse = hit && watermark
+    ? (hit.watermark && instant(hit.watermark) >= instant(watermark) ? hit.messages : null)
+    : (parityEnabled() ? null : freshThread(reservationId, Date.now()));
+  {
+    const cached = reuse;
     if (cached) {
       return cached.filter((row) => {
         const at = new Date(row.at);
@@ -152,7 +202,7 @@ export async function readStayThread(reservationId: string, now: Date): Promise<
       });
     }
   }
-  const raw = await hospitableRead("get-reservation-messages", { uuid: reservationId });
+  const raw = await readWithRetry(() => hospitableRead("get-reservation-messages", { uuid: reservationId }));
   const messages = rowsOf(raw)
     .map((row) => {
       const author = isRow(row.author) ? row.author : {};
@@ -173,7 +223,7 @@ export async function readStayThread(reservationId: string, now: Date): Promise<
       const at = new Date(row.at);
       return !row.at || Number.isNaN(at.getTime()) || at <= now;
     });
-  rememberThread(reservationId, messages);
+  rememberThread(reservationId, messages, watermark);
   return messages;
 }
 
@@ -371,7 +421,7 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
     }
     const readAll = async (startDate: string) => {
       for (let page = 1; ; page += 1) {
-        const raw = await callTool("get-reservations", {
+        const raw = await readWithRetry(() => callTool("get-reservations", {
           properties: [id],
           start_date: startDate,
           end_date: addDays(today, 1095),
@@ -379,7 +429,7 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
           per_page: 100,
           page,
           include: "guest",
-        });
+        }));
         const rows = rowsOf(raw);
         for (const row of rows) {
           const stay = toStay(row, id);
@@ -407,7 +457,7 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
     }
     try {
       for (let page = 1; ; page += 1) {
-        const raw = await callTool("get-inquiries", { properties: [id], include: "guest,messages", per_page: 100, page });
+        const raw = await readWithRetry(() => callTool("get-inquiries", { properties: [id], include: "guest,messages", per_page: 100, page }));
         const rows = rowsOf(raw);
         for (const row of rows) {
           const stay = toStay(row, id);
@@ -554,6 +604,7 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
       await refreshSupplyDrafts(picture.orders);
     }
   }
+  await flushThreadCache();
   await revalidateWaitingReplies(now);
 }
 

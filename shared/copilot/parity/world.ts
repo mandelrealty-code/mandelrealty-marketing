@@ -55,6 +55,8 @@ export type ParityReservation = {
   threadError?: string;
   /** Hospitable's last_message_at. Absent means the latest message time. */
   lastMessageAt?: string;
+  /** The first thread read is rate-limited; the retry succeeds. */
+  rateLimitOnce?: boolean;
   /** The send is acknowledged and the body never lands on the thread. */
   dropOutbound?: boolean;
   /** 24-hour clock, when a time has been set on the reservation. Absent uses 4:00 PM and 11:00 AM. */
@@ -286,9 +288,34 @@ export function installWorld(next: ParityWorld): void {
   resetParityReports();
   resetPurchaseFlow();
   resetUpsellFlow();
+  resetThreads();
+  threadReads = 0;
+  limited.clear();
 }
 
 let resetUpsellFlow: () => void = () => undefined;
+let resetThreads: () => void = () => undefined;
+let threadReads = 0;
+const limited = new Set<string>();
+
+/** The thread cache lives beside the fixture world. Its module registers the reset. */
+export function registerThreadReset(fn: () => void): void {
+  resetThreads = fn;
+}
+
+/** A new message arrives on one conversation: it is added and the conversation's activity moves. */
+export function pushParityMessage(reservationId: string, message: ParityMessage): boolean {
+  const stay = live()?.reservations.find((row) => row.id === reservationId);
+  if (!stay) return false;
+  stay.messages.push({ ...message });
+  stay.lastMessageAt = message.at;
+  return true;
+}
+
+/** How many thread reads reached Hospitable since the world was installed. */
+export function parityThreadReads(): number {
+  return threadReads;
+}
 
 /** Upsell watches live beside the fixture world. The module registers its own reset. */
 export function registerUpsellReset(fn: () => void): void {
@@ -842,6 +869,11 @@ export function parityHttp(method: string, path: string, query: Record<string, u
   const messagePath = path.match(/^\/reservations\/([^/]+)\/messages$/);
   if (messagePath) {
     const stay = current.reservations.find((row) => row.id === decodeURIComponent(messagePath[1]));
+    threadReads += 1;
+    if (stay?.rateLimitOnce && !limited.has(stay.id)) {
+      limited.add(stay.id);
+      throw new Error("Hospitable API error (429): Too Many Attempts.");
+    }
     if (stay?.threadUnreadable || stay?.threadError) throw new Error(stay.threadError || "The message thread could not be read.");
     return { handled: true, value: { data: (stay?.messages ?? []).map(mcpMessage) } };
   }

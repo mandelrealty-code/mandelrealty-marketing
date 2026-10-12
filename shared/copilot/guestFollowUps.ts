@@ -513,14 +513,18 @@ function isIncidentNotice(body: string): boolean {
   return isFlaggedProblem(text);
 }
 
+/** Something that belongs to the guest. Towels, keys, and packages the host left are not. */
+const BELONGING = /\b(?:suitcase|luggage)\b|\b(?:your|her|his|their)\s+(?:\w+\s+)?(?:bag|backpack|jacket|coat|wallet|phone|charger|laptop|passport|glasses|sunglasses|watch|ring|headphones|toy|belongings)\b|\b(?:you|they|she|he)\s+(?:left|forgot)\b|\bleft behind\b/i;
+const PICK_UP = /\b(front desk|building security|concierge|pick(?:\s+(?:it|them))?\s+up|collect|retrieve|under (?:your|her|his|their) name)\b/i;
+
+/** A guest left something behind and has to pick it up. */
 function isLeftBehind(text: string): boolean {
-  const item = /\b(suitcase|luggage|package)\b/i.test(text);
-  const collect = /\b(front desk|building security|left\b|pick(?:\s+it)?\s+up|under (?:your|her|his) name)\b/i.test(text);
-  return item && collect;
+  return BELONGING.test(text) && PICK_UP.test(text);
 }
 
+/** Host logistics about things left for the guest: towels, linens, keys, fobs, packages, parking. Never an incident. */
 function isRoutineHostLogistics(text: string): boolean {
-  return /\b(keys?|fobs?|lock\s?box|parking|licen[cs]e plates?|building registration)\b/i.test(text);
+  return /\b(towels?|linens?|sheets?|blankets?|pillows?|toiletries|keys?|fobs?|lock\s?box|packages?|parcels?|deliver(?:y|ies)|groceries|parking|licen[cs]e plates?|building registration)\b/i.test(text);
 }
 
 function isFlaggedProblem(text: string): boolean {

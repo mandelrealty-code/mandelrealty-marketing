@@ -36,7 +36,8 @@ import {
 } from "./guestMessaging.js";
 import type { GuestFollowUp } from "./guestTypes.js";
 import { guestQueueRows } from "./guestQueueRows.js";
-import { installWorld } from "./parity/world.js";
+import { installWorld, parityThreadReads, pushParityMessage } from "./parity/world.js";
+import { saveGuestQueueSnapshot } from "./store.js";
 
 const GOOD = "copilot-guest-token-not-a-secret-7Kq2";
 const FRENCH = "Est-ce qu'on pourrait arriver à 13 h au lieu de 16 h ? Notre vol atterrit à 11 h.";
@@ -325,7 +326,7 @@ installWorld({
 const blocked = await loadGuestQueue(new Date("2026-10-08T16:06:00Z"));
 const blockedText = guestTabText(blocked);
 if (!blockedText.startsWith("The message read is incomplete for 20 Blue Jays Way Unit 318.")) fail("blocked headline");
-if (blocked.failed.length !== 1 || blocked.failed[0] !== "Couldn't read messages for 20 Blue Jays Way Unit 318, so those conversations show without their latest message. Nothing was sent.") fail("one failure line");
+if (blocked.failed.length !== 1 || blocked.failed[0] !== "Couldn't read the latest messages for 20 Blue Jays Way Unit 318 from Hospitable, so some conversations are missing or show without their latest activity. Nothing was sent.") fail(`one failure line: ${blocked.failed.join(" | ")}`);
 if (guestQueueRows(blocked).length !== 5) fail(`a failed thread read dropped conversations: ${guestQueueRows(blocked).length} of 5 listed`);
 if (blockedText.includes("No one is waiting") || blockedText.includes("Every guest has a reply.")) fail("all-clear while the read failed");
 if (blocked.waiting.length) fail("unread guests listed as waiting");
@@ -1217,7 +1218,7 @@ if (onlyThanks.length !== 1 || onlyThanks[0]?.guest !== "Tom Becker") fail("the 
   });
   resetGuestMessaging();
   const down = await loadGuestQueue(new Date("2026-10-12T14:00:00Z"));
-  if (!down.failed.some((line) => /Couldn't read the conversations for 1065 Shaw Street/.test(line))) fail(`a failed read did not say so: ${down.failed.join(" | ") || "no failure line"}`);
+  if (down.failed.length !== 1 || !/Couldn't read the conversations for 1065 Shaw Street/.test(down.failed[0] ?? "")) fail(`a failed read did not say so in one line: ${down.failed.join(" | ") || "no failure line"}`);
 }
 
 // A promise dated after checkout stays open until its date, then closes.
@@ -1233,6 +1234,82 @@ for (const [when, open] of [["2026-10-12T12:00:00-04:00", true], ["2026-10-14T12
   }, new Date(when));
   const windowsOpen = read.open.some((row) => /Window cleaning/i.test(row.line));
   if (windowsOpen !== open) fail(`Eloise's window cleaning on ${when.slice(0, 10)} after a stay that ended Oct 10: ${windowsOpen ? "open" : "closed"}`);
+}
+
+// A host note about towels at the building is logistics, never an incident.
+const thomasTurns = [
+  { at: "2026-09-25T16:53:00Z", role: "host", name: "Sam", body: "Hi Thomas, building security reported a package of fresh towels for you. It's at the building front desk." },
+];
+for (const when of ["2026-09-26T12:00:00-04:00", "2026-10-12T12:00:00-04:00"]) {
+  const read = detectFollowUps({ reservationId: "stay-thomas", guest: "Thomas", property: "1065 Shaw Street", propertyId: "prop-fu", checkIn: "2026-09-22", checkOut: "2026-09-27", turns: thomasTurns }, new Date(when));
+  if (read.open.some((row) => row.kind === "incident")) fail(`a towels note opened an incident on ${when.slice(0, 10)}: ${read.open.map((row) => row.line).join(" | ")}`);
+}
+// A guest told to pick up their suitcase still opens one.
+const pickUp = detectFollowUps({
+  reservationId: "stay-left", guest: "Priya", property: "20 Blue Jays Way Unit 318", propertyId: "prop-fu", checkIn: "2026-10-09", checkOut: "2026-10-12",
+  turns: [{ at: "2026-10-12T17:00:00Z", role: "host", name: "Jordan", body: "You left your suitcase in the bedroom closet. Please pick it up from the front desk right away." }],
+}, new Date("2026-10-12T14:00:00-04:00"));
+if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${row.topic} ${row.line}`))) fail(`the suitcase pickup did not open an incident: ${pickUp.open.map((row) => row.line).join(" | ") || "none"}`);
+
+// An incident saved last time does not come back for an ended stay whose thread went quiet.
+{
+  const SHAW = "prop-shaw-thomas";
+  const base = (id: string, guest: string, checkIn: string, checkOut: string, messages: { id: string; at: string; role: "guest" | "host"; name: string; body: string }[]) => ({
+    id, code: `HM${id.slice(-6).toUpperCase()}`, propertyId: SHAW, status: "accepted", checkIn, checkOut, guest, adults: 2, children: 0, messages,
+  });
+  installWorld({
+    now: new Date("2026-10-12T16:00:00Z"),
+    properties: [{ id: SHAW, name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true }],
+    reservations: [
+      base("stay-thomas", "Thomas", "2026-09-22", "2026-09-27", thomasTurns.map((turn, index) => ({ id: `t${index}`, at: turn.at, role: "host" as const, name: turn.name, body: turn.body }))),
+      base("stay-oldtom", "Tomas", "2026-07-20", "2026-08-01", [{ id: "o1", at: "2026-07-30T16:53:00Z", role: "host", name: "Sam", body: "Towels are at the front desk." }]),
+    ],
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+  });
+  resetGuestMessaging();
+  const template = readBag.open.find((row) => row.kind === "incident");
+  if (!template) fail("no incident template");
+  const stale = [
+    { ...template, id: "incident:stay-thomas:towels", reservationId: "stay-thomas", guest: "Thomas", property: "1065 Shaw Street", checkIn: "2026-09-22", checkOut: "2026-09-27", line: "Towels at building · sent 12:53 PM, no confirmation yet" },
+    { ...template, id: "incident:stay-oldtom:towels", reservationId: "stay-oldtom", guest: "Tomas", property: "1065 Shaw Street", checkIn: "2026-07-20", checkOut: "2026-08-01", line: "Towels at building · sent 12:53 PM, no confirmation yet" },
+  ];
+  await saveGuestQueueSnapshot({ ...queue, followUps: stale });
+  await readSavedGuestQueue();
+  const after = await loadGuestQueue(new Date("2026-10-12T16:00:00Z"));
+  const left = (after.followUps ?? []).filter((row) => /towels/i.test(row.line));
+  if (left.length) fail(`an ended stay's towels incident is still open: ${left.map((row) => `${row.guest} ${row.line}`).join(" | ")}`);
+}
+
+// Watermarks: a second load reads no thread whose activity did not change, and one new message re-reads one thread.
+{
+  const SHAW = "prop-shaw-marks";
+  const conv = (id: string, at: string, rateLimitOnce = false) => ({
+    id, code: `HM${id.slice(-6).toUpperCase()}`, propertyId: SHAW, status: "accepted", checkIn: "2026-10-10", checkOut: "2026-10-14", guest: id, adults: 2, children: 0, rateLimitOnce,
+    messages: [{ id: `${id}-1`, at, role: "guest" as const, name: id, body: "Is parking included?" }],
+  });
+  installWorld({
+    now: new Date("2026-10-12T16:00:00Z"),
+    properties: [{ id: SHAW, name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true }],
+    reservations: [conv("stay-mark-a", "2026-10-12T10:00:00Z", true), conv("stay-mark-b", "2026-10-12T11:00:00Z"), conv("stay-mark-c", "2026-10-12T12:00:00Z")],
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+  });
+  resetGuestMessaging();
+  const first = await loadGuestQueue(new Date("2026-10-12T16:00:00Z"));
+  if (first.failed.length) fail(`a rate-limited read failed the queue instead of retrying: ${first.failed.join(" | ")}`);
+  if (guestQueueRows(first).find((row) => row.id === "stay-mark-a")?.preview !== "Is parking included?") fail("the retried thread is missing its latest message");
+  const afterFirst = parityThreadReads();
+  await loadGuestQueue(new Date("2026-10-12T16:05:00Z"));
+  if (parityThreadReads() !== afterFirst) fail(`a load with no new activity re-read ${parityThreadReads() - afterFirst} threads`);
+  pushParityMessage("stay-mark-b", { id: "stay-mark-b-2", at: "2026-10-12T16:06:00Z", role: "guest", name: "stay-mark-b", body: "Also, is there a crib?" });
+  const third = await loadGuestQueue(new Date("2026-10-12T16:10:00Z"));
+  if (parityThreadReads() !== afterFirst + 1) fail(`one new message re-read ${parityThreadReads() - afterFirst} threads`);
+  if (guestQueueRows(third)[0]?.id !== "stay-mark-b" || guestQueueRows(third)[0]?.preview !== "Also, is there a crib?") fail("the new message did not reach the list");
 }
 
 console.log("Guest messaging harness passed.");

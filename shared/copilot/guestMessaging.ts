@@ -11,7 +11,7 @@ import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { detectFollowUps, orderFollowUps, type FollowUpStay } from "./guestFollowUps.js";
 import { bookingRequestFollowUp, guestPhotoUrl, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
 import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, type InquiryVerify } from "./store.js";
-import { leaveDraft, loadConversations, memoryFor, readStayThread } from "./stayCheck.js";
+import { flushThreadCache, leaveDraft, loadConversations, memoryFor, readStayThread } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
 import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
@@ -482,14 +482,17 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     const handled = await handledNow();
     await rememberVerifying();
     const unread = [...loaded.failed];
-    const failed = loaded.failed.map((label) => `Couldn't read the conversations for ${label}, so they are missing from this list. Nothing was sent.`);
+    const failed: string[] = [];
     const messageFailed = new Set<string>();
     const seenProperties = new Map<string, { id: string; label: string; failed: boolean }>();
     for (const stay of loaded.stays) {
       if (!seenProperties.has(stay.stay.propertyId)) seenProperties.set(stay.stay.propertyId, { id: stay.stay.propertyId, label: stay.label, failed: false });
     }
-    for (const label of loaded.failed) {
-      if (![...seenProperties.values()].some((row) => row.label === label)) seenProperties.set(label, { id: label, label, failed: true });
+    for (const failure of loaded.failed) {
+      const label = failure.replace(/ inquiries$| \(.*\)$/, "");
+      const chip = [...seenProperties.values()].find((row) => row.label === label);
+      if (chip) chip.failed = true;
+      else seenProperties.set(label, { id: label, label, failed: true });
     }
     const quiet: GuestRow[] = [];
     // Read threads newest first, a few at a time, until the time budget runs out.
@@ -506,20 +509,21 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
         const stay = loaded.stays[cursor++];
         if (!stay || stay.inquiry || !worthReading(stay)) continue;
         try {
-          threads.set(stay.stay.id, await readStayThread(stay.stay.id, now));
+          // Re-read only when the conversation's latest activity moved past what is cached.
+          threads.set(stay.stay.id, await readStayThread(stay.stay.id, now, stay.lastMessageAt));
         } catch {
           unreadThreads.add(stay.stay.id);
           if (!messageFailed.has(stay.label)) {
             messageFailed.add(stay.label);
             if (!unread.includes(stay.label)) unread.push(stay.label);
-            failed.push(`Couldn't read messages for ${stay.label}, so those conversations show without their latest message. Nothing was sent.`);
             const chip = seenProperties.get(stay.stay.propertyId);
             if (chip) chip.failed = true;
           }
         }
       }
     };
-    await Promise.all(Array.from({ length: 4 }, lane));
+    await Promise.all(Array.from({ length: 2 }, lane));
+    await flushThreadCache();
     for (const stay of loaded.stays) {
       const photo = photos.get(stay.stay.propertyId) || "";
       const messages = stay.inquiry
@@ -584,12 +588,27 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       } else if (isThanksOnly(ask)) list(row, thanks);
       else list(row, quiet);
     }
+    // One line for everything that could not be read, however many properties and read types failed.
+    const notRead = failedReadsLine(loaded.failed, [...messageFailed]);
+    if (notRead) failed.push(notRead);
     const longest = waiting.slice().sort((a, b) => b.waitedMs - a.waitedMs)[0]?.wait || "";
     waiting.sort((a, b) => a.waitedMs - b.waitedMs || a.guest.localeCompare(b.guest));
     await collectInquiries(seenProperties, followUps, scanned, handled, now);
     const previous = rememberedQueue?.followUps ?? [];
+    const today = torontoToday(now);
+    const activityById = new Map(loaded.stays.map((row) => [row.stay.id, row.lastMessageAt]));
+    // A follow-up kept from the last load because its thread was not read this time still has to hold:
+    // once the stay has ended and the thread has not continued since checkout, it closes.
+    const stillHolds = (row: GuestFollowUp) => {
+      if (row.kind === "inquiry" || !row.checkOut || row.checkOut >= today) return true;
+      if (row.kind === "owe" && row.due && row.due >= today) return true;
+      const activity = activityById.get(row.reservationId) ?? "";
+      return Boolean(activity) && torontoToday(new Date(activity)) > row.checkOut;
+    };
     for (const row of previous) {
-      if (unreadThreads.has(row.reservationId) && !handled.has(row.id) && !followUps.some((item) => item.id === row.id)) followUps.push(row);
+      if (!unreadThreads.has(row.reservationId) || handled.has(row.id) || followUps.some((item) => item.id === row.id)) continue;
+      if (stillHolds(row)) followUps.push(row);
+      else settled.set(row.id, `the stay ended ${row.checkOut} and the thread did not continue it`);
     }
     for (const row of stagedInquiries) {
       if (!handled.has(row.id) && !followUps.some((item) => item.id === row.id)) followUps.push(row);
@@ -804,6 +823,24 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
     savedLine: "",
     failedLine: "",
   };
+}
+
+function joinPlaces(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** Every failed read named in one sentence: conversations, inquiries, and latest messages. */
+export function failedReadsLine(listFailures: string[], messageFailures: string[]): string {
+  const inquiries = listFailures.filter((label) => / inquiries$/.test(label)).map((label) => label.replace(/ inquiries$/, ""));
+  const conversations = listFailures.filter((label) => !/ inquiries$/.test(label));
+  const parts = [
+    conversations.length ? `the conversations for ${joinPlaces([...new Set(conversations)])}` : "",
+    inquiries.length ? `the inquiries for ${joinPlaces([...new Set(inquiries)])}` : "",
+    messageFailures.length ? `the latest messages for ${joinPlaces([...new Set(messageFailures)])}` : "",
+  ].filter(Boolean);
+  if (!parts.length) return "";
+  return `Couldn't read ${parts.join("; ")} from Hospitable, so some conversations are missing or show without their latest activity. Nothing was sent.`;
 }
 
 function rowFrom(
