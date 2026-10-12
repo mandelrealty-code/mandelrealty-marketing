@@ -325,7 +325,7 @@ function normalizeReservation(raw: unknown): HospitableReservationNormalized | n
   };
 }
 
-/** List reservations for property UUIDs in a date window (by checkout). */
+/** List reservations for property UUIDs in a date window (by checkout unless dateQuery says checkin). */
 export async function listHospitableReservations(input: {
   pat: string;
   propertyIds: string[];
@@ -333,6 +333,7 @@ export async function listHospitableReservations(input: {
   endDate: string;
   /** Extra includes, e.g. "guest". Financials and properties are always included. */
   include?: string[];
+  dateQuery?: "checkin" | "checkout";
 }): Promise<HospitableReservationNormalized[]> {
   if (!input.propertyIds.length) return [];
   const out: HospitableReservationNormalized[] = [];
@@ -346,7 +347,7 @@ export async function listHospitableReservations(input: {
       include: ["financials", "financialsV2", "properties", ...(input.include ?? [])].join(","),
       start_date: input.startDate,
       end_date: input.endDate,
-      date_query: "checkout",
+      date_query: input.dateQuery ?? "checkout",
       // Must be properties[]=uuid — comma-separated properties= returns 400
       properties: input.propertyIds,
     })) as HospitableListResponse;

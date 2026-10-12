@@ -35,6 +35,7 @@ import { answerStayDetail, openDaySheet, type StayCard } from "../copilot/stayAn
 import type { PropertyIdentity } from "../copilot/propertyIdentity.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerPayout } from "../copilot/payoutAnswer.js";
+import { answerAvailability } from "../copilot/availabilityAnswer.js";
 import { answerPropertyReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "../copilot/fileError.js";
@@ -949,6 +950,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             carriedProperty = earlier[i]?.property ?? null;
             break;
           }
+        }
+        const availability = await answerAvailability(text, clock);
+        if (availability) {
+          const unread = /couldn't read|didn't guess/.test(availability);
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: availability,
+            steps: [{ text: unread ? "A reservation read failed" : "Read every stay overlapping those nights" }],
+            thought: unread
+              ? "A property that wasn't read is not counted as empty. Nothing was sent."
+              : "Each stay counts from its arrival night up to its departure day, including stays that began before the window. Nothing was sent.",
+          });
+          return done();
         }
         const payout = await answerPayout(text, priorBody, clock, carriedProperty);
         if (payout) {

@@ -1,4 +1,5 @@
-import { copilotHospitableToken } from "./hospitableConnection.js";
+import { copilotHospitableToken, limitToSavedSelection } from "./hospitableConnection.js";
+import { LOOKBACK_DAYS } from "./occupancy.js";
 import {
   hospitableFetch,
   listAllHospitableProperties,
@@ -340,7 +341,7 @@ async function patTools(): Promise<ToolDef[]> {
     },
     {
       name: "get-reservations",
-      description: "List reservations in a date window. Dates are YYYY-MM-DD. Defaults to 21 days ago through 45 days ahead. Public API fallback.",
+      description: "List every booked stay that overlaps a date window on the selected properties, including stays that arrived before the window and are still in it. A stay occupies each night from check_in up to, not including, check_out. Dates are YYYY-MM-DD, end_date inclusive. Defaults to 21 days ago through 45 days ahead. Public API fallback.",
       inputSchema: {
         type: "object",
         properties: {
@@ -350,20 +351,27 @@ async function patTools(): Promise<ToolDef[]> {
         },
       },
       run: async (args) => {
-        const properties = await listAllHospitableProperties(pat);
+        const properties = await limitToSavedSelection(await listAllHospitableProperties(pat));
         const ids = text(args.property_id)
           ? properties.filter((row) => row.id === text(args.property_id)).map((row) => row.id)
           : properties.map((row) => row.id);
         const today = torontoToday();
-        const stays = await listHospitableReservations({
+        const start = text(args.start_date).slice(0, 10) || addDays(today, -21);
+        const end = text(args.end_date).slice(0, 10) || addDays(today, 45);
+        // Read by check-in from far enough back to catch a stay already in progress, then keep the overlaps.
+        const stays = (await listHospitableReservations({
           pat,
           propertyIds: ids,
-          startDate: text(args.start_date) || addDays(today, -21),
-          endDate: text(args.end_date) || addDays(today, 45),
+          startDate: addDays(start, -LOOKBACK_DAYS),
+          endDate: end,
           include: ["guest"],
-        });
+          dateQuery: "checkin",
+        })).filter((stay) => Boolean(stay.check_in && stay.check_out) && (stay.check_in as string) <= end && (stay.check_out as string) > start);
         const nameFor = new Map(properties.map((row) => [row.id, row.name]));
-        return stays.slice(0, 40).map((stay) => ({
+        if (stays.length > 100) {
+          return { note: `${stays.length} stays overlap that window. Ask for a shorter window; this list would be cut off.` };
+        }
+        return stays.map((stay) => ({
           id: stay.id,
           property_id: stay.property_id,
           property: nameFor.get(stay.property_id) || "",

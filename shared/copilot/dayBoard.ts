@@ -91,7 +91,7 @@ export function longDate(iso: string): string {
   }).format(new Date(Date.UTC(year, month - 1, dayNum)));
 }
 
-function spokenProperty(name: string, address: string): string {
+export function spokenProperty(name: string, address: string): string {
   const place = `${name} ${address}`;
   if (/blue jays/i.test(place)) return "20 Blue Jays Way";
   if (/roseglor|spacious/i.test(place)) return "41 Roseglor Cres";

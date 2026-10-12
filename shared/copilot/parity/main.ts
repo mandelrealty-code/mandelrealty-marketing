@@ -42,6 +42,7 @@ import { chooseBriefOpenItem } from "../openItems.js";
 import type { BriefCard, BriefPayload } from "../types.js";
 import { parityItems, parityMemory, installWorld, type ParityMail, type ParityReservation, type ParityWorld } from "./world.js";
 import { runCopilotPass } from "../pass.js";
+import { answerAvailability } from "../availabilityAnswer.js";
 import { rememberHospitableSelection, resetHospitableConnection } from "../hospitableConnection.js";
 
 class Gap extends Error {
@@ -897,6 +898,55 @@ async function fixtureDayBoard(): Promise<void> {
   expect(!/Yingjia|cancel/i.test(overviewLines.join("\n")), "Overview does not list the cancelled reservation", overviewLines.join("\n"));
 }
 
+/** Every "Mon D" date the answer names, as YYYY-MM-DD in 2026. */
+function namedDays(text: string): string[] {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const days: string[] = [];
+  for (const match of text.matchAll(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2})(?:–(\d{1,2}))?/g)) {
+    const month = String(months.indexOf(match[1] ?? "") + 1).padStart(2, "0");
+    days.push(`2026-${month}-${String(match[2]).padStart(2, "0")}`);
+    if (match[3]) days.push(`2026-${month}-${String(match[3]).padStart(2, "0")}`);
+  }
+  return days;
+}
+
+async function fixtureLongStayAvailability(): Promise<void> {
+  const now = new Date("2026-10-11T15:00:00-04:00");
+  const world = worldAt("2026-10-11T15:00:00-04:00");
+  world.reservations = [boardStay("00000000-0000-4000-8000-00000000a039", ID.charlotte, "accepted", "2026-09-29", "2026-11-07", "Morgan")];
+  installWorld(world);
+  setParityClock(now);
+  resetCaptures();
+  for (const question of [
+    "Is there any day where all four units are not booked?",
+    "Is there any day in October or November where all four units are not booked?",
+  ]) {
+    const said = (await answerAvailability(question, now)) ?? "";
+    expect(Boolean(said), "an all-units availability question gets the availability answer", question);
+    const listed = said.split("\n").find((line) => /have no guest at all on/.test(line)) ?? "";
+    const empty = namedDays(listed.slice(listed.indexOf("have no guest at all on")));
+    expect(empty.length > 0 && empty.every((day) => day >= "2026-11-08"), "no all-empty day before Nov 8 while the 39-night stay runs Sep 29 to Nov 7", said);
+    expect(/have no guest at all on Nov 8/.test(said), "the first all-empty day is Nov 8, the day after departure", said);
+    expect(namedDays(said).every((day) => day >= "2026-10-11"), "no day before today is offered", said);
+  }
+  const past = (await answerAvailability("Is there any day in October or November where all four units are not booked?", now)) ?? "";
+  expect(/^The nights before today have passed, so this starts today, Sun, Oct 11\./.test(past), "a window with past days starts today and says so in one line", past);
+  const nights = (await answerAvailability("Which nights are all four units empty in November?", now)) ?? "";
+  expect(/empty on the nights of Nov 7–30/.test(nights), "by nights, the departure night Nov 7 is open to book", nights);
+  expectNothingSent();
+}
+
+async function fixtureStayBeforeWindow(): Promise<void> {
+  const now = new Date("2026-10-11T15:00:00-04:00");
+  const world = worldAt("2026-10-11T15:00:00-04:00");
+  world.reservations = [boardStay("00000000-0000-4000-8000-00000000a040", ID.rose, "accepted", "2026-10-15", "2026-10-23", "Avery")];
+  installWorld(world);
+  setParityClock(now);
+  const said = (await answerAvailability("When is Roseglor free Oct 20 to Oct 25?", now)) ?? "";
+  expect(/41 Roseglor Cres is open the nights of Oct 23–25\./.test(said), "a stay that arrived before the window blocks its nights inside it", said);
+  expect(!namedDays(said.split("\n").slice(1).join("\n")).some((day) => day >= "2026-10-20" && day < "2026-10-23"), "Oct 20 to 22 are not offered", said);
+}
+
 async function fixtureOneList(): Promise<void> {
   const now = new Date("2026-10-09T10:00:00-04:00");
   const world = worldAt("2026-10-09T10:00:00-04:00");
@@ -1177,6 +1227,8 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "26", title: "Diane is found on the same arrivals the plan uses", run: fixtureDianeLookup },
   { id: "27", title: "A sent building registration is reported instead of drafted", run: fixtureDianeAlreadySent },
   { id: "29", title: "A turnover at an unselected property stays out until that property is selected", run: fixtureUnselectedTurnover },
+  { id: "30", title: "A 39-night stay blocks every all-empty night before it leaves, and no past date is offered", run: fixtureLongStayAvailability },
+  { id: "31", title: "A stay that arrived before the asked window still blocks its nights inside it", run: fixtureStayBeforeWindow },
 ];
 
 function guard(): void {

@@ -816,9 +816,15 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
     const ids = Array.isArray(args.properties) ? args.properties.map(String) : [];
     if (!args.reservation_code && ids.length !== 1) markAccountWide();
     const code = String(args.reservation_code ?? "").toUpperCase();
+    // Like Hospitable: start_date and end_date filter on one date, check-in unless date_query says checkout.
+    const field = String(args.date_query ?? "checkin") === "checkout" ? "checkOut" : "checkIn";
+    const from = String(args.start_date ?? "").slice(0, 10);
+    const to = String(args.end_date ?? "").slice(0, 10);
     const rows = current.reservations.filter((row) => {
       if (ids.length && !ids.includes(row.propertyId)) return false;
       if (code && row.code.toUpperCase() !== code) return false;
+      if (!code && from && row[field] < from) return false;
+      if (!code && to && row[field] > to) return false;
       return true;
     });
     return { handled: true, value: { data: rows.map((row) => mcpReservation(row, current)), meta: { last_page: 1, total: rows.length } } };
