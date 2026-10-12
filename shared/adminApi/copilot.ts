@@ -350,7 +350,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         return res.status(200).json({ messages: await listMessages(chatId, { lookup: false }) });
       }
       if (op === "report-view") {
-        return res.status(200).json(await readReportView(String(req.query.id ?? "")));
+        return res.status(200).json(await readReportView(String(req.query.id ?? ""), String(req.query.messageId ?? "")));
       }
       if (op === "guests-refresh" || op === "guests-queue") {
         return res.status(200).json(await loadGuestQueue());

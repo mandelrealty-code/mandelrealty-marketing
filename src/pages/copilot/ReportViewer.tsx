@@ -77,8 +77,11 @@ export function ReportViewer({
     const link = document.createElement("a");
     link.href = url;
     link.download = open.filename || `${open.id}.pdf`;
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    // Revoking at once can cancel the save in some browsers. Give it a moment first.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setDownloaded(true);
     window.setTimeout(() => setDownloaded(false), 2000);
   }

@@ -22,7 +22,8 @@ import { setReportReconcileFault } from "./reportFigures.js";
 import { failNextReportWrite, rememberReport, removeStoredReport, reportDirectory, resetReportStore, useReportDirectory } from "./reportStore.js";
 import { openChatReport, openGeneratedReport } from "./reportRead.js";
 import { REPORT_GONE, reportIdIn } from "./reportView.js";
-import { createChat } from "./store.js";
+import { createChat, removeMessageFile } from "./store.js";
+import type { ReportView } from "./reportView.js";
 import { skipsWeb } from "./route.js";
 import { researchWebCalls, resetResearch } from "./skillResearch.js";
 import type { PmReservationRow } from "../pm/reservationStore.js";
@@ -297,7 +298,7 @@ process.env.ADMIN_SESSION_SECRET = "parity-secret";
 const token = createAdminSessionToken();
 
 type ChatPayload = {
-  messages?: { role: string; body: string; file?: { filename: string; data: string } | null; thought?: string | null; steps?: { text: string }[] | null }[];
+  messages?: { id?: string; role: string; body: string; file?: { filename: string; data: string } | null; thought?: string | null; steps?: { text: string }[] | null }[];
   error?: string;
 };
 
@@ -504,6 +505,41 @@ removeStoredReport(viewedId);
 const gone = await openChatReport(olderMessage.body);
 if (gone.status !== "missing" || gone.line !== REPORT_GONE) fail(gone.status === "missing" ? gone.line : "missing state");
 if (RAW_ERROR.test(gone.line)) fail(gone.line);
+
+// A fresh internal report, opened in the panel by a different server instance than the one that made it.
+async function getOp(query: Record<string, string>): Promise<{ status: number; body: unknown }> {
+  let status = 0;
+  let body: unknown = null;
+  await handleCopilot(
+    { method: "GET", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, query, body: {} } as never,
+    {
+      status(code: number) { status = code; return this; },
+      json(next: unknown) { body = next; return this; },
+    } as never,
+  );
+  return { status, body };
+}
+
+resetReportStore();
+const fresh = await chat("viewer-fresh", allAsk);
+const freshId = reportIdIn(fresh.body) || "";
+if (!freshId || !/\| Internal/.test(fresh.body) || !fresh.file?.data) fail(`fresh internal report ${fresh.body}`);
+const freshRows = (await getOp({ op: "messages", chatId: "viewer-fresh" })).body as ChatPayload;
+const freshMessage = (freshRows.messages ?? []).find((row) => row.role === "assistant" && reportIdIn(row.body) === freshId);
+if (!freshMessage?.id) fail("the fresh report message has no id");
+// Another instance: its temp report store never saw this file.
+resetReportStore();
+const panel = await getOp({ op: "report-view", id: freshId, messageId: freshMessage.id });
+const shownView = panel.body as ReportView;
+if (panel.status !== 200 || shownView.status !== "open") fail(`a just-generated report did not open: ${shownView.status === "missing" ? shownView.line : panel.status}`);
+if (shownView.id !== freshId) fail(`panel id ${shownView.id} for ${freshId}`);
+if (shownView.data !== fresh.file.data) fail("the panel did not load the file the chat downloads");
+if (!Buffer.from(shownView.data, "base64").subarray(0, 5).toString("latin1").startsWith("%PDF")) fail("the panel's Download is not a PDF");
+if (!shownView.filename.endsWith(".pdf") || shownView.pages < 1) fail(`download ${shownView.filename} ${shownView.pages}`);
+await removeMessageFile(freshMessage.id);
+const missing = (await getOp({ op: "report-view", id: freshId, messageId: freshMessage.id })).body as ReportView;
+if (missing.status !== "missing" || missing.line !== REPORT_GONE) fail(`deleted file ${missing.status}`);
+if (RAW_ERROR.test(missing.line)) fail(missing.line);
 
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
 else process.env.ADMIN_PASSWORD = previousPassword;

@@ -1187,11 +1187,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setPictureMode(false);
   }
 
-  async function openReport(id: string) {
+  async function openReport(id: string, messageId = "") {
     const chat = chatIdRef.current;
     setReportDock({ status: "loading", id });
     try {
-      const view = await api<ReportView>(`report-view&id=${encodeURIComponent(id)}`);
+      const view = await api<ReportView>(`report-view&id=${encodeURIComponent(id)}&messageId=${encodeURIComponent(messageId)}`);
       if (chatIdRef.current !== chat) return;
       setReportDock(view.status === "open" || view.status === "missing" ? view : { status: "missing", id, line: REPORT_GONE });
     } catch {
@@ -1372,7 +1372,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       setMessages(data.messages);
       const generated = [...data.messages].reverse().find((row) => row.role === "assistant" && reportMessageSummary(row.body));
       const generatedId = generated ? reportMessageSummary(generated.body)?.id : "";
-      if (generatedId) void openReport(generatedId);
+      if (generatedId && generated) void openReport(generatedId, generated.id);
       if (data.chats) setBoot((prev) => (prev ? { ...prev, chats: data.chats ?? prev.chats } : prev));
       setPending(null);
       let shown = data.messages;
@@ -2615,7 +2615,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                                 <>
                                   <ChatText text={summary.lines.join("\n")} />
                                   <div className="cp-rv-viewrow">
-                                    <button type="button" className={`cp-rv-openbtn${openHere ? " on" : ""}`} onClick={() => void openReport(summary.id)}>
+                                    <button type="button" className={`cp-rv-openbtn${openHere ? " on" : ""}`} onClick={() => void openReport(summary.id, message.id)}>
                                       <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><path d="M1.5 1h6l3 3v9h-9z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>
                                       View report
                                     </button>

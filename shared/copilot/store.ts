@@ -1139,6 +1139,11 @@ export async function saveGmailOffer(offer: GmailOffer): Promise<void> {
   await writePrefixed("gmail-offer|", JSON.stringify(offer));
 }
 
+/** Drops the file saved on one message. Its download and its report panel then have nothing to open. */
+export async function removeMessageFile(messageId: string): Promise<void> {
+  await updateDraft(messageId, { file: null } as Partial<CopilotDraft>);
+}
+
 export async function readMessage(messageId: string): Promise<CopilotMessage | null> {
   if (parityEnabled()) {
     const row = parityBoard.messages.find((item) => item.id === messageId);

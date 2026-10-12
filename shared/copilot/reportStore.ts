@@ -84,7 +84,14 @@ export function removeStoredReport(id: string): void {
 export function findStoredReport(text: string, prior = ""): StoredReport | null {
   load();
   const id = /\b(MRG-\d{4}-[A-Z0-9]+-[A-Z]{2}-\d{3})\b/.exec(`${text}\n${prior}`)?.[1];
-  if (id) return memory.find((row) => row.id === id) ?? null;
+  if (id) {
+    const hit = memory.find((row) => row.id === id);
+    if (hit) return hit;
+    // Another request may have saved it since this instance last read the file.
+    loaded = false;
+    load();
+    return memory.find((row) => row.id === id) ?? null;
+  }
   if (/\b(download|again)\b/i.test(text) && /\breport\b/i.test(text)) return memory[0] ?? null;
   return null;
 }
