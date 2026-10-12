@@ -17,6 +17,8 @@ import { needsLiveBrowser, PAGE_UNREAD } from "../../../shared/copilot/browserTi
 import { inputFromCard, rankOverview, type OverviewRow } from "../../../shared/copilot/overviewRank";
 import { skipsWeb } from "../../../shared/copilot/route";
 import { asksPropertyReport } from "../../../shared/copilot/reportParse";
+import { REPORT_GONE, reportMessageSummary, type ReportView } from "../../../shared/copilot/reportView";
+import { ReportViewer } from "./ReportViewer";
 import { withoutFilesystemDetail } from "../../../shared/copilot/fileError";
 import type { AccountSpend } from "../../../shared/copilot/models";
 import { BLANK, type NodeResult, type Workflow } from "../../../shared/copilot/workflow";
@@ -822,6 +824,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [comingOpen, setComingOpen] = useState(false);
   const [trail, setTrail] = useState<Record<string, boolean>>({});
   const [report, setReport] = useState(false);
+  const [reportDock, setReportDock] = useState<ReportView | { status: "loading"; id: string } | null>(null);
+  useEffect(() => {
+    if (screen !== "chat") setReportDock(null);
+  }, [screen]);
   const [plusOpen, setPlusOpen] = useState(false);
   const [accounts, setAccounts] = useState<AccountSpend[] | null>(null);
   const [webSearch, setWebSearch] = useState(false);
@@ -1164,6 +1170,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setScreen("brief");
     setSheet(false);
     setReport(false);
+    setReportDock(null);
     setStage(null);
     setWebSearch(false);
     setPictureMode(false);
@@ -1175,9 +1182,23 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setScreen("empty");
     setSheet(false);
     setReport(false);
+    setReportDock(null);
     setStage(null);
     setWebSearch(false);
     setPictureMode(false);
+  }
+
+  async function openReport(id: string) {
+    const chat = chatIdRef.current;
+    setReportDock({ status: "loading", id });
+    try {
+      const view = await api<ReportView>(`report-view&id=${encodeURIComponent(id)}`);
+      if (chatIdRef.current !== chat) return;
+      setReportDock(view.status === "open" || view.status === "missing" ? view : { status: "missing", id, line: REPORT_GONE });
+    } catch {
+      if (chatIdRef.current !== chat) return;
+      setReportDock({ status: "missing", id, line: REPORT_GONE });
+    }
   }
 
   async function openChat(id: string, messageId?: string) {
@@ -1186,6 +1207,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setScreen("chat");
     setSheet(false);
     setReport(false);
+    setReportDock(null);
     setStopped(false);
     if (still) {
       setThinking(true);
@@ -1332,6 +1354,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       });
       activeId = data.chatId;
       setChatId(data.chatId);
+      chatIdRef.current = data.chatId;
       if (data.memoryFiles) setBoot((prev) => (prev ? { ...prev, memoryFiles: data.memoryFiles } : prev));
       if (searching && needsLiveBrowser(typed)) {
         closedBrowsers.current.delete(data.chatId);
@@ -1348,6 +1371,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (data.steps?.length) setLiveSteps(data.steps);
       if (data.thought) setLiveThought(data.thought);
       setMessages(data.messages);
+      const generated = [...data.messages].reverse().find((row) => row.role === "assistant" && reportMessageSummary(row.body));
+      const generatedId = generated ? reportMessageSummary(generated.body)?.id : "";
+      if (generatedId) void openReport(generatedId);
       if (data.chats) setBoot((prev) => (prev ? { ...prev, chats: data.chats ?? prev.chats } : prev));
       setPending(null);
       let shown = data.messages;
@@ -1953,7 +1979,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       ) : (
       <div className={`cp-body${stage && !inSettings && screen !== "reviews" && screen !== "guests" ? " work" : ""}`}>
         <aside className="cp-side">{sideList()}</aside>
-        <main className="cp-main">
+        <main className={`cp-main${reportDock && screen === "chat" ? " rv-open" : ""}`}>
+          <div className="cp-chatpane">
           <header className="cp-mobilebar">
             <Mark size={22} />
             <Switcher onModeChange={onModeChange} />
@@ -2587,9 +2614,25 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                               }} />
                             </>
                           ) : (
-                            <ChatText text={withoutFilesystemDetail(message.body, true)} muted={message.draft?.status !== "waiting" && !!message.draft} />
+                            (() => {
+                              const summary = reportMessageSummary(message.body);
+                              if (!summary) return <ChatText text={withoutFilesystemDetail(message.body, true)} muted={message.draft?.status !== "waiting" && !!message.draft} />;
+                              const openHere = Boolean(reportDock && reportDock.id === summary.id);
+                              return (
+                                <>
+                                  <ChatText text={summary.lines.join("\n")} />
+                                  <div className="cp-rv-viewrow">
+                                    <button type="button" className={`cp-rv-openbtn${openHere ? " on" : ""}`} onClick={() => void openReport(summary.id)}>
+                                      <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><path d="M1.5 1h6l3 3v9h-9z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>
+                                      View report
+                                    </button>
+                                    <span className="cp-rv-meta">{summary.id}{reportDock?.status === "open" && reportDock.id === summary.id ? ` · ${reportDock.pages} pages` : ""}</span>
+                                  </div>
+                                </>
+                              );
+                            })()
                           )}
-                          {message.file ? (
+                          {message.file && !reportMessageSummary(message.body) ? (
                             <div className="cp-pdfcard">
                               <strong>{message.file.filename}</strong>
                               <a href={`data:${message.file.mime};base64,${message.file.data}`} download={message.file.filename}>Download</a>
@@ -2809,6 +2852,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
               </div>
               )}
             </>
+          </div>
+          {reportDock && screen === "chat" ? <ReportViewer view={reportDock} onClose={() => setReportDock(null)} /> : null}
         </main>
         {stage && !inSettings && screen !== "reviews" && screen !== "guests" ? (
           <aside className={`cp-stage${stage.control ? " control" : ""}`}>

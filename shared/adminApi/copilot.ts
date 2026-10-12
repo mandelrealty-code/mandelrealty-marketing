@@ -36,6 +36,7 @@ import type { PropertyIdentity } from "../copilot/propertyIdentity.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerPayout } from "../copilot/payoutAnswer.js";
 import { answerPropertyReport } from "../copilot/reportAnswer.js";
+import { readReportView } from "../copilot/reportRead.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "../copilot/fileError.js";
 import { asksPropertyReport } from "../copilot/reportParse.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
@@ -347,6 +348,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       if (op === "messages") {
         const chatId = String(req.query.chatId ?? "");
         return res.status(200).json({ messages: await listMessages(chatId, { lookup: false }) });
+      }
+      if (op === "report-view") {
+        return res.status(200).json(await readReportView(String(req.query.id ?? "")));
       }
       if (op === "guests-refresh" || op === "guests-queue") {
         return res.status(200).json(await loadGuestQueue());

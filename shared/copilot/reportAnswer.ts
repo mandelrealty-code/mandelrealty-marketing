@@ -130,6 +130,7 @@ async function composePropertyReport(text: string, prior = "", now = new Date())
     request: parsed.request,
     audience: portfolio.audience,
     totalsLine: totals,
+    title: lines.find((line) => line.startsWith("# "))?.replace(/^#\s*/, "") || "Property report",
     createdAt: new Date().toISOString(),
   });
   const body = [

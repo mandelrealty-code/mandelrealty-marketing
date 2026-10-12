@@ -19,7 +19,9 @@ import { installOpsReservations } from "./parity/opsState.js";
 import { installWorld, type ParityReservation } from "./parity/world.js";
 import { asksPropertyReport } from "./reportParse.js";
 import { setReportReconcileFault } from "./reportFigures.js";
-import { failNextReportWrite, rememberReport, reportDirectory, resetReportStore, useReportDirectory } from "./reportStore.js";
+import { failNextReportWrite, rememberReport, removeStoredReport, reportDirectory, resetReportStore, useReportDirectory } from "./reportStore.js";
+import { openChatReport, openGeneratedReport } from "./reportRead.js";
+import { REPORT_GONE, reportIdIn } from "./reportView.js";
 import { createChat } from "./store.js";
 import { skipsWeb } from "./route.js";
 import { researchWebCalls, resetResearch } from "./skillResearch.js";
@@ -468,6 +470,40 @@ try {
   rmSync(scratch, { recursive: true, force: true });
   rmSync(path.join(tmpdir(), "mrg-copilot"), { recursive: true, force: true });
 }
+
+resetReportStore();
+const viewed = await chat("viewer-older", roseAsk);
+const viewedId = reportIdIn(viewed.body) || "";
+const opened = await openGeneratedReport(viewed.body);
+if (!opened || opened.status !== "open" || opened.id !== viewedId || !viewedId) fail(`panel ${opened?.status ?? "none"}`);
+if (opened.status === "open" && (opened.data !== viewed.file?.data || !/41 Roseglor/.test(opened.title))) fail(opened.title || "panel file");
+const replacedAsk = await chat("viewer-older", "generate a report for Charlotte for November");
+const replacedId = reportIdIn(replacedAsk.body) || "";
+const replaced = await openGeneratedReport(replacedAsk.body);
+if (!replaced || replaced.status !== "open" || replaced.id !== replacedId || replaced.id === viewedId) fail("second report did not replace the panel");
+let olderStatus = 0;
+let olderPayload: ChatPayload = {};
+await handleCopilot(
+  {
+    method: "GET",
+    headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` },
+    query: { op: "messages", chatId: "viewer-older" },
+    body: {},
+  } as never,
+  {
+    status(code: number) { olderStatus = code; return this; },
+    json(body: ChatPayload) { olderPayload = body; return this; },
+  } as never,
+);
+if (olderStatus !== 200) fail(`older chat ${olderStatus}`);
+const olderMessage = (olderPayload.messages ?? []).find((row) => row.role === "assistant" && reportIdIn(row.body) === viewedId);
+if (!olderMessage) fail("older chat lost its report");
+const fromOlder = await openChatReport(olderMessage.body);
+if (fromOlder.status !== "open" || fromOlder.id !== viewedId || fromOlder.data !== viewed.file?.data) fail("older chat opened the wrong report");
+removeStoredReport(viewedId);
+const gone = await openChatReport(olderMessage.body);
+if (gone.status !== "missing" || gone.line !== REPORT_GONE) fail(gone.status === "missing" ? gone.line : "missing state");
+if (RAW_ERROR.test(gone.line)) fail(gone.line);
 
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
 else process.env.ADMIN_PASSWORD = previousPassword;

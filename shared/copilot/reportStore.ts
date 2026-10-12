@@ -18,6 +18,7 @@ export type StoredReport = {
   audience: "client" | "internal";
   totalsLine: string;
   createdAt: string;
+  title?: string;
 };
 
 const FILE_NAME = "copilot-reports.json";
@@ -72,6 +73,12 @@ export function rememberReport(report: StoredReport): StoredReport {
     throw err;
   }
   return report;
+}
+
+export function removeStoredReport(id: string): void {
+  load();
+  memory = memory.filter((row) => row.id !== id);
+  save();
 }
 
 export function findStoredReport(text: string, prior = ""): StoredReport | null {
