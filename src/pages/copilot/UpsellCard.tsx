@@ -47,7 +47,6 @@ export function UpsellCard({
               />
             ) : <span className="subj">{dollars(offer.priceCents)}</span>}
           </div>
-          <div className="r"><span className="k">Payment</span><span className="subj">{priceOk ? dollars(cents) : dollars(offer.priceCents)}</span></div>
         </div>
         <div className="cp-sk-mailbody">
           <span className="cp-sk-pre">{shownMessage}</span>
@@ -66,7 +65,7 @@ export function UpsellCard({
             <button type="button" className="cp-sk-gold" disabled={busy || !priceOk} onClick={() => onApprove(cents)}>Approve</button>
             <button type="button" className="cp-sk-ghost" disabled={busy} onClick={onHold}>Hold</button>
           </div>
-          <p className="cp-sk-after muted">Approving sends the guest message and the Airbnb payment request. Nothing has been sent.</p>
+          <p className="cp-sk-after muted">Copilot can't present a paid upsell to the guest yet, so Approve sends nothing. Nothing has been sent.</p>
         </>
       ) : null}
       {message.draft.status === "sent" ? <p className="cp-sk-tight">Sent. Copilot is watching the payment.</p> : null}

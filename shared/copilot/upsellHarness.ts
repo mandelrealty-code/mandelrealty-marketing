@@ -1,16 +1,19 @@
 /**
  * Early check-in and late checkout on the production pass.
- * Sends and payments stay on the fixture channel until a partner approves the price.
+ * Approve refuses: Hospitable's tools have no way to present one guest a priced upsell.
+ * The settlement half keeps its coverage through parityWatchUpsell, a fixture-only watch.
  */
 
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
 import { callHospitableMcp } from "./hospitableMcp.js";
 import { readCleanerUnit } from "./cleanerRead.js";
 import { capturedCommits, capturedDrafts, capturedReports, resetCaptures } from "./parity/capture.js";
 import { setParityClock } from "./parity/clock.js";
 import { parityChecksMessages } from "./parity/storeStub.js";
-import { installWorld, markParityUpsellPaid, type ParityWorld } from "./parity/world.js";
+import { installWorld, markParityUpsellPaid, requestParityPayment, type ParityWorld } from "./parity/world.js";
 import { runUnattendedChecks } from "./stayCheck.js";
-import { approveUpsell, quoteUpsell, releaseUpsell, saveUpsellSchedule, upsellWatch } from "./upsell.js";
+import { UPSELL_PAYMENT_MISSING, approveUpsell, parityWatchUpsell, quoteUpsell, releaseUpsell, saveUpsellSchedule, upsellWatch } from "./upsell.js";
 import type { UpsellOffer } from "./types.js";
 
 function fail(label: string): never {
@@ -37,6 +40,46 @@ function offerFor(guest: string): UpsellOffer {
   const offer = row?.draft?.upsell;
   if (!offer) fail(`no card for ${guest}`);
   return offer;
+}
+
+/** The guest bought the upsell in their Guest Portal: one paid row in get-purchased-upsells. */
+function guestPaid(reservationId: string, amountCents: number): void {
+  requestParityPayment({ reservationId, amountCents, label: "upsell" });
+  if (!markParityUpsellPaid(reservationId)) fail(`payment fixture ${reservationId}`);
+}
+
+/** Approve sends nothing, charges nothing, and opens no watch. */
+async function approveRefuses(offer: UpsellOffer, cents: number): Promise<void> {
+  const before = JSON.stringify(await callHospitableMcp("get-reservation-messages", { uuid: offer.reservationId }));
+  resetCaptures();
+  let said = "";
+  try {
+    said = await approveUpsell(offer, cents);
+  } catch (err) {
+    said = err instanceof Error ? err.message : String(err);
+  }
+  if (said !== UPSELL_PAYMENT_MISSING) fail(`approve said ${said}`);
+  if (/payment request|through airbnb|was sent|have sent|I sent/i.test(said)) fail(`approve claimed a send: ${said}`);
+  if (commits()) fail(`approve committed ${commits()}`);
+  const after = JSON.stringify(await callHospitableMcp("get-reservation-messages", { uuid: offer.reservationId }));
+  if (after !== before) fail("approve changed the guest thread");
+  if (upsellWatch(offer.reservationId)) fail("approve opened a payment watch");
+}
+
+const INVENTED = ["send", "airbnb", "payment", "request"].join("-");
+
+function inventedNameFound(): string[] {
+  const hits: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      if (name === "node_modules" || name === "dist" || name.startsWith(".")) continue;
+      const full = path.join(dir, name);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (/\.(ts|tsx|js|mjs|json|md|sql|html)$/.test(name) && readFileSync(full, "utf8").includes(INVENTED)) hits.push(full);
+    }
+  };
+  for (const dir of ["shared", "src", "api", "scripts", "docs", "supabase"]) walk(path.join(process.cwd(), dir));
+  return hits;
 }
 
 function commits(): string {
@@ -100,14 +143,18 @@ async function ruzaina(): Promise<void> {
   if (card.requestedLabel !== "7:30 AM" || card.priceCents !== 9900) fail(`proposal ${card.requestedLabel} ${card.priceCents}`);
   if (!/previous night/.test(cardText(card)) || !/\$99/.test(card.message)) fail("price reason");
   if (!/night before is empty/.test(card.reason)) fail(card.reason);
+  if (/payment request|through airbnb/i.test(card.message) || /payment request/i.test(cardText(card))) fail(`card claims a payment request: ${card.message}`);
   const before = await reservationClock("stay-ruzaina", "checkin_time");
   if (before !== "16:00") fail(`check-in changed before payment: ${before}`);
-  await approveUpsell(card, card.priceCents, now);
-  if (!/send-airbnb-payment-request/.test(commits()) || !/send-reservation-message/.test(commits())) fail(`execute ${commits()}`);
+  await approveRefuses(card, card.priceCents);
+  parityWatchUpsell(card, card.priceCents);
+  resetCaptures();
+  await runUnattendedChecks(now);
   const held = await reservationClock("stay-ruzaina", "checkin_time");
-  if (held !== "16:00") fail(`time changed before payment: ${held}`);
+  if (held !== "16:00") fail(`unpaid upsell changed the time: ${held}`);
+  if (/update-reservation/.test(commits())) fail(`unpaid upsell committed ${commits()}`);
   if (upsellWatch("stay-ruzaina")?.phase !== "watching") fail("not watching payment");
-  if (!markParityUpsellPaid("stay-ruzaina")) fail("payment fixture");
+  guestPaid("stay-ruzaina", card.priceCents);
   resetCaptures();
   await runUnattendedChecks(now);
   const after = await reservationClock("stay-ruzaina", "checkin_time");
@@ -169,8 +216,9 @@ async function sameDay(): Promise<void> {
   const card = offerFor("Sam");
   if (card.verdict !== "feasible" || card.priceCents !== 9900 || card.offeredLabel !== "1:30 PM") fail(`${card.verdict} ${card.offeredLabel} ${card.priceCents}`);
   if (/previous night/.test(cardText(card))) fail("same-day used the night rate");
-  await approveUpsell(card, 9900, now);
-  if (!markParityUpsellPaid("stay-sam")) fail("sam payment");
+  await approveRefuses(card, 9900);
+  parityWatchUpsell(card, 9900);
+  guestPaid("stay-sam", 9900);
   await runUnattendedChecks(now);
   const picture = await readCleanerUnit({ propertyId: CHARLOTTE.id, from: "2026-11-13", to: "2026-11-16" });
   if (!picture.ok) fail("same-day cleaner");
@@ -202,8 +250,8 @@ async function syncFail(): Promise<void> {
   }));
   setParityClock(now);
   await runUnattendedChecks(now);
-  await approveUpsell(offerFor("Ruzaina"), 9900, now);
-  if (!markParityUpsellPaid("stay-ruzaina")) fail("sync payment");
+  parityWatchUpsell(offerFor("Ruzaina"), 9900);
+  guestPaid("stay-ruzaina", 9900);
   resetCaptures();
   await runUnattendedChecks(now);
   const hospitable = await reservationClock("stay-ruzaina", "checkin_time");
@@ -264,10 +312,12 @@ async function decline(): Promise<void> {
   if (card.offeredLabel !== "1:00 PM" || card.priceCents !== 4900) fail(`alternative ${card.offeredLabel} ${card.priceCents}`);
   if (!/isn't available/.test(card.message) || !/1:00 PM/.test(card.message) || !/\$49/.test(card.message)) fail(card.message);
   if (!/4:00 PM/.test(card.reason)) fail(card.reason);
-  await approveUpsell(card, 5500, now);
-  const sent = JSON.stringify(await callHospitableMcp("get-reservation-messages", { uuid: "stay-lee" }));
-  if (!/\$55/.test(sent) || /\$49/.test(sent)) fail("edited price was not the amount sent");
+  await approveRefuses(card, 5500);
+  parityWatchUpsell(card, 5500);
   if (upsellWatch("stay-lee")?.amountCents !== 5500) fail("watch kept the schedule price");
+  guestPaid("stay-lee", 4900);
+  await runUnattendedChecks(now);
+  if (upsellWatch("stay-lee")?.phase === "complete") fail("a paid row for a different amount settled the time");
   saveUpsellSchedule(SHAW.id, { lateTiers: [{ until: "13:00", cents: 6400 }, { until: "16:00", cents: 12900 }] });
   const edited = quoteUpsell({ propertyId: SHAW.id, kind: "late", minutes: 13 * 60, nightCents: null, thread: "" });
   if (edited?.cents !== 6400) fail(`schedule edit ${edited?.cents}`);
@@ -296,7 +346,7 @@ async function unpaid(): Promise<void> {
   }));
   setParityClock(now);
   await runUnattendedChecks(now);
-  await approveUpsell(offerFor("Ruzaina"), 9900, now);
+  parityWatchUpsell(offerFor("Ruzaina"), 9900);
   const deadline = new Date("2026-11-09T21:30:00Z");
   setParityClock(deadline);
   resetCaptures();
@@ -306,6 +356,7 @@ async function unpaid(): Promise<void> {
   const card = offerFor("Ruzaina");
   if (card.phase !== "remind") fail(`escalation phase ${card.phase}`);
   if (!/reminder/.test(card.message) || !/\$99/.test(card.message)) fail(card.message);
+  if (/airbnb|payment request/i.test(card.message)) fail(`reminder claims an Airbnb request: ${card.message}`);
   const flag = capturedReports().map((item) => item.text).join("\n");
   if (!/has not paid/.test(flag) || !/release the time/.test(flag)) fail(`unpaid flag: ${flag}`);
   if (/send-reservation-message/.test(commits())) fail("reminder sent on its own");
@@ -359,6 +410,8 @@ async function discount(): Promise<void> {
   if (!priced || priced.cents !== 8400 || !/lower price/.test(priced.reason)) fail(`discount ${priced?.cents} ${priced?.reason}`);
 }
 
+const invented = inventedNameFound();
+if (invented.length) fail(`invented payment tool still named in ${invented.join(", ")}`);
 await ruzaina();
 await sameDay();
 await syncFail();

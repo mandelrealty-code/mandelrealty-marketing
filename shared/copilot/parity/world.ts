@@ -315,6 +315,7 @@ export function writeParityStayTime(
   return true;
 }
 
+/** Fixture: the guest bought an upsell in their Guest Portal. markParityUpsellPaid then makes it a paid row. */
 export function requestParityPayment(input: { reservationId: string; amountCents: number; label: string }): void {
   const current = live();
   if (!current) return;
@@ -752,17 +753,6 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
         total_price: { amount: row.amountCents },
       }));
     return { handled: true, value: { data: rows, meta: { last_page: 1, total: rows.length } } };
-  }
-  if (name === "send-airbnb-payment-request") {
-    const reservationId = String(args.uuid ?? "");
-    const amountCents = Number(args.amount);
-    requestParityPayment({
-      reservationId,
-      amountCents: Number.isFinite(amountCents) ? amountCents : 0,
-      label: String(args.reason ?? "upsell"),
-    });
-    captureCommit("hospitable-mcp", name);
-    return { handled: true, value: { data: { id: `pay-${reservationId}`, status: "requested", amount: amountCents } } };
   }
   if (name === "send-reservation-message") {
     const id = String(args.uuid ?? args.reservation_id ?? "");

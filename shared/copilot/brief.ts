@@ -602,7 +602,7 @@ export function waitingDraftCard(item: WaitingDraft): BriefCard | null {
     const headline = item.subject.trim();
     const detail = item.upsellPhase === "remind"
       ? "The fee is still unpaid. Approving sends the reminder. Release drops the hold. Nothing has been sent."
-      : "Approving sends the guest message and the Airbnb payment request for this price. Nothing has been sent.";
+      : "Copilot can't present a paid upsell to the guest yet, so Approve sends nothing. Nothing has been sent.";
     return {
       ...base,
       headline,

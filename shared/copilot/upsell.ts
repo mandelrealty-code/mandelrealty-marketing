@@ -2,8 +2,15 @@
  * Early check-in and late checkout.
  * Copilot reads the thread, judges the calendar, and leaves one price card.
  * Nothing is sent until a partner approves or edits that price.
- * After payment, the reservation time and the cleaner-app turnover both have to read back
- * as the new time before the update is complete.
+ *
+ * There is no payment step yet. Hospitable's tools cannot offer one guest a priced upsell:
+ * there is no payment-request tool, upsell prices live on the product (get-upsells, read only),
+ * and a message sent from Copilot carries %guest_portal% as plain text, not the portal link.
+ * So Approve refuses in plain words and sends nothing.
+ *
+ * The settlement half below is real: a matching paid row in get-purchased-upsells, then
+ * update-reservation, the get-reservation read-back, and the cleaner-app read-back.
+ * It starts only from a payment watch, and production has nothing that opens one.
  */
 
 import { randomUUID } from "node:crypto";
@@ -16,6 +23,10 @@ import { captureDraft, captureReport } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { paritySaveChecksMessage } from "./parity/storeStub.js";
 import { registerUpsellReset, writeParityTurnoverClock } from "./parity/world.js";
+
+/** What Approve says on an early check-in or late checkout card. Nothing is sent. */
+export const UPSELL_PAYMENT_MISSING =
+  "Copilot can't present this upsell to the guest to pay. Hospitable's tools have no way to offer one guest a priced upsell, and a message sent from Copilot can't carry their Guest Portal link.";
 import { addMessage, createChat, draftsRecorded, listChats, recordDrafts, recordReport, reportRecorded } from "./store.js";
 import { addDays } from "./time.js";
 import type { CopilotDraft, CopilotMessage, UpsellOffer } from "./types.js";
@@ -395,16 +406,16 @@ function judge(input: {
 function offerMessage(guest: string, kind: "early" | "late", time: string, when: string, price: string, decline: boolean, requested: string): string {
   if (decline) {
     const noun = kind === "early" ? "arrival" : "checkout";
-    return `Hi ${guest}, ${requested} isn't available for your ${noun} on ${when}. I can offer ${time} for ${price}. If that works for you, I'll send a payment request for ${price} through Airbnb.`;
+    return `Hi ${guest}, ${requested} isn't available for your ${noun} on ${when}. I can offer ${time} for ${price}. Let me know if that works for you.`;
   }
   if (requested !== time) {
     const noun = kind === "early" ? "arrival" : "checkout";
-    return `Hi ${guest}, ${requested} isn't open for your ${noun}. The closest I can do is ${time} on ${when}, for ${price}. I'll send a payment request for ${price} through Airbnb. Once it's paid, you're confirmed for ${time}.`;
+    return `Hi ${guest}, ${requested} isn't open for your ${noun}. The closest I can do is ${time} on ${when}, for ${price}. Once it's paid, you're confirmed for ${time}.`;
   }
   if (kind === "early") {
-    return `Hi ${guest}, ${time} works for your arrival on ${when}. The early check-in is ${price}. I'll send a payment request for ${price} through Airbnb. Once it's paid, you're confirmed for ${time}.`;
+    return `Hi ${guest}, ${time} works for your arrival on ${when}. The early check-in is ${price}. Once it's paid, you're confirmed for ${time}.`;
   }
-  return `Hi ${guest}, ${time} works for your checkout on ${when}. The late checkout is ${price}. I'll send a payment request for ${price} through Airbnb. Once it's paid, you're confirmed for ${time}.`;
+  return `Hi ${guest}, ${time} works for your checkout on ${when}. The late checkout is ${price}. Once it's paid, you're confirmed for ${time}.`;
 }
 
 function cardText(offer: UpsellOffer): string {
@@ -414,7 +425,6 @@ function cardText(offer: UpsellOffer): string {
     `Requested: ${offer.kind === "early" ? "early arrival" : "late checkout"} at ${offer.requestedLabel}`,
     `Feasibility: ${offer.verdict}. ${offer.reason}`,
     `Proposed price: ${dollars(offer.priceCents)}`,
-    `Payment request: ${dollars(offer.priceCents)}`,
     "Guest message:",
     offer.message,
     "",
@@ -647,17 +657,12 @@ export async function reviewStayUpsell(input: {
   });
 }
 
-function pricedMessage(offer: UpsellOffer, cents: number): string {
-  if (cents === offer.priceCents) return offer.message;
-  return offer.message.split(dollars(offer.priceCents)).join(dollars(cents));
-}
-
 async function noteReservation(reservationId: string, line: string): Promise<void> {
   await commitHospitable("update-reservation", { uuid: reservationId, notes: line });
 }
 
-export async function approveUpsell(offer: UpsellOffer, priceCents: number, now = new Date()): Promise<string> {
-  const cents = Number.isFinite(priceCents) && priceCents > 0 ? Math.round(priceCents) : offer.priceCents;
+/** A reminder on an open watch sends. A new early check-in or late checkout refuses: there is no payment step. */
+export async function approveUpsell(offer: UpsellOffer, _priceCents: number, now = new Date()): Promise<string> {
   if (offer.phase === "remind") {
     const posted = await sendReservationMessage({ reservationId: offer.reservationId, body: offer.message });
     if (!posted.sent) return posted.reason;
@@ -666,26 +671,17 @@ export async function approveUpsell(offer: UpsellOffer, priceCents: number, now 
     await saveCheck({ body: line, headline: `${offer.guest} reminder sent`, needsYou: false });
     return `Sent ${offer.guest} the reminder. The time stays on hold until it's paid or you release it.`;
   }
-  const message = pricedMessage(offer, cents);
-  const reason = offer.kind === "early" ? `Early check-in ${offer.offeredLabel}` : `Late checkout ${offer.offeredLabel}`;
-  await commitHospitable("send-airbnb-payment-request", {
-    uuid: offer.reservationId,
-    amount: cents,
-    currency: "CAD",
-    reason,
-  });
-  const posted = await sendReservationMessage({ reservationId: offer.reservationId, body: message });
-  if (!posted.sent) return posted.reason;
-  const line = `${stamp(now)}. Sent ${offer.guest} the ${offer.kind === "early" ? "early check-in" : "late checkout"} message and a ${dollars(cents)} Airbnb payment request. Waiting on payment.`;
-  await noteReservation(offer.reservationId, line);
-  const picture = await readCleanerUnit({
-    propertyId: offer.propertyId,
-    from: addDays(offer.checkIn, -1),
-    to: offer.checkOut,
-  });
+  throw new Error(UPSELL_PAYMENT_MISSING);
+}
+
+/**
+ * Parity only. Opens the payment watch that production has no step for, so the settlement
+ * half keeps its fixture coverage. Throws outside the parity harness.
+ */
+export function parityWatchUpsell(offer: UpsellOffer, priceCents: number): void {
+  if (!parityEnabled()) throw new Error("This only runs in the parity harness.");
   const turnoverOn = offer.kind === "late" ? offer.checkOut : offer.checkIn;
-  const found = picture.ok ? picture.turnovers.find((row) => row.scheduledOn === turnoverOn) : undefined;
-  const watch: Watch = {
+  watches.set(offer.reservationId, {
     reservationId: offer.reservationId,
     propertyId: offer.propertyId,
     property: offer.property,
@@ -695,16 +691,12 @@ export async function approveUpsell(offer: UpsellOffer, priceCents: number, now 
     minutes: offer.offeredMinutes,
     checkIn: offer.checkIn,
     checkOut: offer.checkOut,
-    amountCents: cents,
-    turnoverOn: found?.scheduledOn || turnoverOn,
+    amountCents: priceCents,
+    turnoverOn,
     cleanOn: offer.nightBefore ? addDays(offer.checkIn, -1) : turnoverOn,
     nightBefore: offer.nightBefore,
     phase: "watching",
-  };
-  watches.set(offer.reservationId, watch);
-  savePersisted();
-  await saveCheck({ body: line, headline: `${offer.guest} is waiting on payment`, needsYou: false });
-  return line;
+  });
 }
 
 export async function releaseUpsell(offer: UpsellOffer, now = new Date()): Promise<string> {
@@ -873,7 +865,7 @@ async function escalate(watch: Watch, now: Date): Promise<void> {
   watch.phase = "escalated";
   savePersisted();
   const deadline = longDate(addDays(watch.checkIn, -2));
-  const message = `Hi ${watch.guest}, a reminder that the ${dollars(watch.amountCents)} ${watch.kind === "early" ? "early check-in" : "late checkout"} request is still waiting in Airbnb. It needs to be paid by ${deadline} or the ${watch.label} time will be released.`;
+  const message = `Hi ${watch.guest}, a reminder that the ${dollars(watch.amountCents)} ${watch.kind === "early" ? "early check-in" : "late checkout"} fee is still unpaid. It needs to be paid by ${deadline} or the ${watch.label} time will be released.`;
   const offer: UpsellOffer = {
     phase: "remind",
     reservationId: watch.reservationId,
