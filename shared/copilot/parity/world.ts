@@ -69,6 +69,8 @@ export type ParityReservation = {
   /** Review count from the guest record. Absent when the record doesn't say. */
   reviews?: number;
   guestSince?: string;
+  /** The co-host named on the reservation, when a message author is blank. */
+  hostName?: string;
 };
 
 export type ParityCalendarDay = {
@@ -963,6 +965,7 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     properties: property ? [mcpProperty(property)] : [],
     ...(row.financials ? { financials: row.financials } : {}),
     ...(row.airbnbThread ? { conversation: { platform_id: row.airbnbThread } } : {}),
+    ...(row.hostName ? { user: { name: row.hostName, first_name: row.hostName } } : {}),
   };
 }
 

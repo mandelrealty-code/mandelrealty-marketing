@@ -64,6 +64,12 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function spokenName(value: unknown): string {
+  const name = text(value).trim();
+  if (!name || /^(unknown|airbnb|system)$/i.test(name)) return "";
+  return name;
+}
+
 function day(value: string): string {
   return value.slice(0, 10);
 }
@@ -158,7 +164,7 @@ export async function readStayThread(reservationId: string, now: Date): Promise<
       return {
         at: text(row.created_at) || text(row.sent_at) || text(row.timestamp),
         role,
-        name: text(author.name) || text(sender.name) || text(sender.full_name) || text(sender.first_name),
+        name: spokenName(author.name) || spokenName(sender.name) || spokenName(sender.full_name) || spokenName(sender.first_name) || spokenName(isRow(row.user) ? row.user.name : ""),
         body: text(row.body) || text(row.message) || text(row.content) || text(row.text),
         media,
       };

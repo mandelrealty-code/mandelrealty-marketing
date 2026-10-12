@@ -44,10 +44,12 @@ export type GuestRow = {
   checkOut: string;
   mediaLabel: string;
   lastNote: string;
+  /** When the latest message in the thread was sent. */
+  activityAt?: string;
 };
 
 export type GuestBubble = {
-  role: "guest" | "host";
+  role: "guest" | "host" | "automated";
   who: string;
   at: string;
   time: string;
@@ -74,6 +76,8 @@ export type GuestDraftView = {
   statusLead: string;
   statusRest: string;
   dates: string;
+  checkIn?: string;
+  checkOut?: string;
   when: string;
   lane: "reply" | "guest" | "none";
   status: string;

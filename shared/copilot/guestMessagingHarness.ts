@@ -32,6 +32,7 @@ import {
   toGuestLanguage,
   guestDrafts,
   guestTabText,
+  improveGuestDraft,
 } from "./guestMessaging.js";
 import type { GuestFollowUp } from "./guestTypes.js";
 import { installWorld } from "./parity/world.js";
@@ -934,5 +935,121 @@ if (liveBag.followUps.length !== 1 || liveBag.followUps[0]?.kind !== "incident")
 if (!/no confirmation yet/i.test(liveBag.followUps[0]?.line || "")) fail(`live suitcase line ${liveBag.followUps[0]?.line}`);
 const liveBagAgain = await loadGuestQueue(liveNow);
 if (liveBagAgain.followUps.length !== 1 || liveBagAgain.followUps[0]?.kind !== "incident") fail("suitcase dropped on revalidation");
+
+resetGuestMessaging();
+await clearHandledFollowUps();
+const threadNow = new Date("2026-10-11T21:00:00Z");
+installWorld({
+  now: threadNow,
+  properties: [{ id: "prop-thread", name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true }],
+  reservations: [{
+    id: "stay-maya-thread",
+    code: "HMMAYA1",
+    propertyId: "prop-thread",
+    status: "accepted",
+    checkIn: "2026-10-14",
+    checkOut: "2026-10-17",
+    guest: "Maya Chen",
+    adults: 2,
+    children: 0,
+    hostName: "Jordan Hale",
+    messages: [
+      { id: "maya-4", at: "2026-10-11T20:00:00Z", role: "guest", name: "Maya Chen", body: "Can we leave a bag on Oct 14? The locker is $50." },
+      { id: "maya-3", at: "2026-10-11T18:00:00Z", role: "host", name: "Unknown", body: "Yes, the side door is fine." },
+      { id: "maya-2", at: "2026-10-10T15:00:00Z", role: "host", name: "Jordan Hale", body: "Welcome, Maya. Check-in is from 4 PM." },
+      { id: "maya-1", at: "2026-10-09T12:00:00Z", role: "system", name: "Airbnb", body: "Reservation confirmed: Maya Chen, Wed Oct 14 to Sat Oct 17." },
+    ],
+  }],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const threadQueue = await loadGuestQueue(threadNow);
+const maya = threadQueue.waiting.find((row) => row.guest === "Maya Chen");
+if (!maya) fail("maya was not waiting");
+const mayaView = await openGuestAnswer(maya, threadNow);
+const mayaOrder = mayaView.thread.map((row) => `${row.role}:${row.who}:${row.text}`).join("\n");
+if (mayaView.thread.some((row) => /unknown/i.test(row.who))) fail(`unknown sender\n${mayaOrder}`);
+if (mayaView.thread[0]?.who !== "Automated message" || mayaView.thread[0]?.role !== "automated") fail(`oldest is not the automated message\n${mayaOrder}`);
+if (!mayaView.thread.some((row) => row.role === "guest" && row.who === "Maya Chen")) fail(`guest name\n${mayaOrder}`);
+if (!mayaView.thread.filter((row) => row.role === "host").every((row) => row.who === "Jordan Hale")) fail(`co-host name\n${mayaOrder}`);
+const mayaTimes = mayaView.thread.map((row) => row.at);
+if (mayaTimes.join(",") !== [...mayaTimes].sort().join(",")) fail(`thread is not oldest-first\n${mayaOrder}`);
+if (!/Oct 14/.test(mayaView.thread[mayaView.thread.length - 1]?.text || "")) fail("newest message is not last");
+const rough = "pls confirm the bag drop on Oct 14 for $50";
+const commitsBeforeImprove = capturedCommits().length;
+const improved = improveGuestDraft(rough, "Maya");
+if (improved === rough || !/please/i.test(improved)) fail(`wording did not change: ${improved}`);
+if (!improved.includes("Oct 14") || !improved.includes("$50")) fail(`facts changed: ${improved}`);
+if (capturedCommits().length !== commitsBeforeImprove) fail("improve sent a message");
+const sentBody = "The locker on Oct 14 is $50. I'll leave the side door unlatched.";
+const sent = await submitGuestReply({
+  reservationId: "stay-maya-thread",
+  propertyId: "prop-thread",
+  property: "1065 Shaw Street",
+  guest: "Maya Chen",
+  english: sentBody,
+  language: "",
+  fact: "",
+});
+if (!sent.sent) fail(`send did not read back: ${sent.reason}`);
+const afterSend = await openGuestAnswer(maya, new Date());
+if (!afterSend.thread.some((row) => row.text === sentBody)) fail("sent message is not on the thread");
+if (!capturedCommits().some((row) => row.detail === "send-reservation-message")) fail("send did not use the commit path");
+
+resetGuestMessaging();
+await clearHandledFollowUps();
+const pairNow = new Date("2026-10-11T23:00:00.000Z");
+installWorld({
+  now: pairNow,
+  properties: [
+    { id: "prop-pair-jays", name: "20 Blue Jays Way", address: "318, 20 Blue Jays Way, Toronto", managed: true },
+    { id: "prop-pair-charlotte", name: "Unit #606", address: "606, 8 Charlotte Street, Toronto", managed: true },
+  ],
+  reservations: [
+    {
+      id: "stay-pair-anlel",
+      code: "HM5AN2HEB9",
+      propertyId: "prop-pair-jays",
+      status: "pending payment",
+      checkIn: "2026-11-20",
+      checkOut: "2026-11-23",
+      guest: "Anlel",
+      adults: 4,
+      children: 0,
+      messages: [],
+      bookingDate: "2026-10-11T02:48:56Z",
+      statusHistory: [{ status: "pending", category: "Pending", changed_at: "2026-10-11T00:15:54+00:00" }],
+    },
+    {
+      id: "stay-pair-eloise",
+      code: "HMJSMMMFSF",
+      propertyId: "prop-pair-charlotte",
+      status: "accepted",
+      checkIn: "2026-09-29",
+      checkOut: "2026-11-07",
+      guest: "Eloise",
+      adults: 1,
+      children: 0,
+      messages: [
+        { id: "pair-3", at: "2026-10-10T15:24:43Z", role: "guest", name: "Eloise", body: AGREED },
+        { id: "pair-2", at: "2026-10-07T17:01:04Z", role: "host", name: "Jordan Hale", body: WINDOWS },
+        { id: "pair-1", at: "2026-10-02T12:30:39Z", role: "guest", name: "Eloise", body: "The windows are quite dirty, might it be possible for these to be cleaned?" },
+      ],
+    },
+  ],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+});
+const paired = await loadGuestQueue(pairNow);
+const pairedOwe = paired.followUps.find((row) => row.guest === "Eloise" && row.kind === "owe");
+const pairedInquiry = paired.followUps.find((row) => row.guest === "Anlel" && row.kind === "inquiry");
+if (!pairedOwe || !pairedInquiry) fail(`pair ${paired.followUps.map((row) => `${row.guest}:${row.kind}:${row.tag}`).join(",") || "none"}`);
+if (pairedOwe.tag) fail(`commitment labelled ${pairedOwe.tag}`);
+if (pairedInquiry.tag !== "INQUIRY") fail(`inquiry tag ${pairedInquiry.tag}`);
+if (paired.followUps.some((row) => row.tag === "WE OWE" || row.tag === "INCIDENT")) fail("retired follow-up label");
 
 console.log("Guest messaging harness passed.");

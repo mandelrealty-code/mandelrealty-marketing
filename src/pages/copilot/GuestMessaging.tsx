@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestFollowUpClose, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
+import { useEffect, useRef, useState } from "react";
+import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
 import type { StayCard } from "../../../shared/copilot/types";
 
 type SubmitResult = { sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string };
@@ -15,12 +15,10 @@ export function GuestMessaging({
   onOpen,
   onBack,
   onSubmit,
-  onHold,
-  onStand,
-  onUnstand,
   onRefresh,
   onHandleFollowUp,
   onInquiry,
+  onImprove,
 }: {
   queue: GuestQueue | null;
   answer: GuestDraftView | null;
@@ -33,650 +31,342 @@ export function GuestMessaging({
   onRefresh?: () => void;
   onHandleFollowUp?: (id: string) => Promise<void>;
   onInquiry?: (id: string, action: "approve" | "decline") => Promise<string>;
+  onImprove?: (text: string) => Promise<string>;
 }) {
-  const [query, setQuery] = useState("");
-  const [chip, setChip] = useState("all");
-  const [waitOpen, setWaitOpen] = useState(false);
-  const [doneOpen, setDoneOpen] = useState(false);
-  const [heldOpen, setHeldOpen] = useState(false);
-  const [reviewAt, setReviewAt] = useState<number | null>(null);
-  const [sentN, setSentN] = useState(0);
-  const [heldN, setHeldN] = useState(0);
-  const [localHeld, setLocalHeld] = useState<string[]>([]);
-  const [followUp, setFollowUp] = useState<GuestFollowUp | null>(null);
-  const closeKey = (queue?.closedFollowUps ?? []).map((row) => row.id).join("|");
-  const [dismissedCloseKey, setDismissedCloseKey] = useState("");
-  useEffect(() => {
-    if (!closeKey || closeKey === dismissedCloseKey) return;
-    const timer = setTimeout(() => setDismissedCloseKey(closeKey), 4000);
-    return () => clearTimeout(timer);
-  }, [closeKey, dismissedCloseKey]);
-
   if (!queue) {
-    return <div className="cp-gm"><h1>Guest messaging</h1><p className="cp-gm-quiet">Loading guests.</p></div>;
+    return <div className="cp-gq"><h1>Guest messaging</h1><p className="cp-gq-quiet">Loading guests.</p></div>;
   }
   if (queue.connected === false) {
-    return <div className="cp-gm"><h1>Guest messaging</h1><p className="cp-gm-summary">{queue.line || "Hospitable is not connected."}</p></div>;
+    return <div className="cp-gq"><h1>Guest messaging</h1><p className="cp-gq-quiet">{queue.line || "Hospitable is not connected."}</p></div>;
   }
-
-  const incomplete = queue.failed.length > 0 || queue.summaryLead.startsWith("The message read is incomplete");
-  const onGuest = queue.onGuest ?? [];
-  const held = [...(queue.held ?? []), ...queue.waiting.filter((row) => localHeld.includes(row.id))];
-  const needs = queue.waiting.filter((row) => !localHeld.includes(row.id));
-  const match = (row: GuestRow) => {
-    if (chip !== "all" && row.propertyId !== chip && row.property !== chip) return false;
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return `${row.guest} ${row.property} ${row.status} ${row.statusLead} ${row.statusRest} ${row.watch} ${row.asked}`.toLowerCase().includes(q);
-  };
-  const needRows = needs.filter(match);
-  const waitRows = onGuest.filter(match);
-  const doneRows = queue.thanks.filter(match);
-  const heldRows = held.filter(match);
-  const filtered = chip !== "all" || query.trim().length > 0;
-  const properties = queue.properties ?? [];
-  const readable = properties.filter((item) => !item.failed).length;
-
-  if (reviewAt !== null) {
-    const item = needs[reviewAt];
-    if (!item || reviewAt >= needs.length) {
-      return (
-        <Queue
-          incomplete={incomplete}
-          queue={queue}
-          needRows={[]}
-          waitRows={waitRows}
-          doneRows={doneRows}
-          heldRows={heldRows}
-          properties={properties}
-          chip={chip}
-          query={query}
-          filtered={filtered}
-          readable={readable}
-          waitOpen={waitOpen}
-          doneOpen={doneOpen}
-          heldOpen={heldOpen}
-          caughtUp={!incomplete}
-          onQuery={setQuery}
-          onChip={setChip}
-          onToggleWait={() => setWaitOpen((open) => !open)}
-          onToggleDone={() => setDoneOpen((open) => !open)}
-          onToggleHeld={() => setHeldOpen((open) => !open)}
-          onOpen={(row) => { setFollowUp(null); setReviewAt(null); onOpen(row); }}
-          onOpenFollowUp={(item) => { setFollowUp(item); onOpen(rowFromFollowUp(item)); }}
-          onReview={() => undefined}
-          onRefresh={onRefresh}
-          flashRows={closeKey && closeKey !== dismissedCloseKey ? (queue.closedFollowUps ?? []) : []}
-        />
-      );
-    }
-    return (
-      <Review
-        answer={answer && answer.id === item.id ? answer : null}
-        index={reviewAt}
-        total={needs.length}
-        sent={sentN}
-        held={heldN}
-        guest={item}
-        onBack={() => { setReviewAt(null); onBack(); }}
-        onSubmit={async (text, files) => {
-          const result = await onSubmit(text, "", files);
-          if (!result.sent) throw new Error(result.reason || "It is not sent.");
-          setSentN((n) => n + 1);
-          const next = reviewAt + 1;
-          setReviewAt(next);
-          const following = needs[next];
-          if (following) onOpen(following);
-          else onBack();
-          return result;
-        }}
-        onHold={async () => {
-          await onHold?.(item.id);
-          setLocalHeld((ids) => [...ids, item.id]);
-          setHeldN((n) => n + 1);
-          const next = reviewAt + 1;
-          setReviewAt(next);
-          const following = needs[next];
-          if (following) onOpen(following);
-          else onBack();
-        }}
-        onStand={onStand}
-        onUnstand={onUnstand}
-      />
-    );
-  }
-
-  if (followUp) {
-    const live = (queue.followUps ?? []).find((row) => row.id === followUp.id) ?? followUp;
-    const threadClose = (queue.closedFollowUps ?? []).find((row) => row.id === followUp.id)?.closeText ?? "";
-    const stillOpen = (queue.followUps ?? []).some((row) => row.id === followUp.id);
-    return (
-      <FollowUpScreen
-        item={live}
-        answer={answer && answer.id === live.reservationId ? answer : null}
-        threadClose={threadClose}
-        stillOpen={stillOpen}
-        onBack={() => { setFollowUp(null); onBack(); }}
-        onSubmit={onSubmit}
-        onHandle={async () => { await onHandleFollowUp?.(followUp.id); }}
-        onInquiry={async (action) => {
-          const url = await onInquiry?.(live.id, action) ?? live.airbnbUrl ?? "";
-          if (url) window.open(url, "_blank", "noopener");
-          return url;
-        }}
-      />
-    );
-  }
-
   if (answer) {
+    const follow = (queue.followUps ?? []).find((row) => row.reservationId === answer.id) ?? null;
+    const closed = (queue.closedFollowUps ?? []).find((row) => follow ? row.id === follow.id : false)?.closeText ?? "";
     return (
       <Thread
         answer={answer}
+        follow={follow}
+        closeText={closed}
         onBack={onBack}
         onSubmit={onSubmit}
-        onHold={async () => {
-          await onHold?.(answer.id);
-          setLocalHeld((ids) => [...ids, answer.id]);
+        onHandle={async () => { if (follow) await onHandleFollowUp?.(follow.id); }}
+        onInquiry={async (action) => {
+          if (!follow) return "";
+          const url = await onInquiry?.(follow.id, action) ?? follow.airbnbUrl ?? "";
+          if (url) window.open(url, "_blank", "noopener");
+          return url;
         }}
-        onStand={onStand}
-        onUnstand={onUnstand}
+        onImprove={onImprove}
       />
     );
   }
-
-  return (
-    <Queue
-      incomplete={incomplete}
-      queue={queue}
-      needRows={needRows}
-      waitRows={waitRows}
-      doneRows={doneRows}
-      heldRows={heldRows}
-      properties={properties}
-      chip={chip}
-      query={query}
-      filtered={filtered}
-      readable={readable}
-      waitOpen={waitOpen}
-      doneOpen={doneOpen}
-      heldOpen={heldOpen}
-      caughtUp={!incomplete && !filtered && needs.length === 0}
-      onQuery={setQuery}
-      onChip={setChip}
-      onToggleWait={() => setWaitOpen((open) => !open)}
-      onToggleDone={() => setDoneOpen((open) => !open)}
-      onToggleHeld={() => setHeldOpen((open) => !open)}
-      onOpen={(row) => { setFollowUp(null); onOpen(row); }}
-      onOpenFollowUp={(item) => { setFollowUp(item); onOpen(rowFromFollowUp(item)); }}
-      onReview={() => {
-        const first = needs[0];
-        if (!first) return;
-        setReviewAt(0);
-        setSentN(0);
-        setHeldN(0);
-        onOpen(first);
-      }}
-      onRefresh={onRefresh}
-      flashRows={closeKey && closeKey !== dismissedCloseKey ? (queue.closedFollowUps ?? []) : []}
-    />
-  );
+  return <Queue queue={queue} onOpen={onOpen} onRefresh={onRefresh} />;
 }
 
-function Queue({
-  incomplete,
-  queue,
-  needRows,
-  waitRows,
-  doneRows,
-  heldRows,
-  properties,
-  chip,
-  query,
-  filtered,
-  readable,
-  waitOpen,
-  doneOpen,
-  heldOpen,
-  caughtUp,
-  onQuery,
-  onChip,
-  onToggleWait,
-  onToggleDone,
-  onToggleHeld,
-  onOpen,
-  onOpenFollowUp,
-  onReview,
-  onRefresh,
-  flashRows,
-}: {
-  incomplete: boolean;
-  queue: GuestQueue;
-  needRows: GuestRow[];
-  waitRows: GuestRow[];
-  doneRows: GuestRow[];
-  heldRows: GuestRow[];
-  properties: GuestQueue["properties"];
-  chip: string;
-  query: string;
-  filtered: boolean;
-  readable: number;
-  waitOpen: boolean;
-  doneOpen: boolean;
-  heldOpen: boolean;
-  caughtUp: boolean;
-  onQuery: (value: string) => void;
-  onChip: (id: string) => void;
-  onToggleWait: () => void;
-  onToggleDone: () => void;
-  onToggleHeld: () => void;
-  onOpen: (row: GuestRow) => void;
-  onOpenFollowUp: (item: GuestFollowUp) => void;
-  onReview: () => void;
-  onRefresh?: () => void;
-  flashRows: GuestFollowUpClose[];
-}) {
-  const [now, setNow] = useState(() => Date.now());
+function Queue({ queue, onOpen, onRefresh }: { queue: GuestQueue; onOpen: (row: GuestRow) => void; onRefresh?: () => void }) {
+  const rows = [...queue.waiting, ...(queue.held ?? [])].sort((a, b) => a.waitedMs - b.waitedMs || a.guest.localeCompare(b.guest));
   const followUps = queue.followUps ?? [];
-  const liveInquiry = followUps.some((row) => row.kind === "inquiry" && row.expiresAt && new Date(row.expiresAt).getTime() > now);
-  useEffect(() => {
-    if (!liveInquiry) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [liveInquiry]);
-  const q = query.trim().toLowerCase();
-  const followRows = followUps.filter((row) => {
-    if (chip !== "all" && row.propertyId !== chip && row.property !== chip) return false;
-    if (!q) return true;
-    return `${row.guest} ${row.property} ${row.line} ${row.promised} ${row.agreed} ${row.what} ${row.topic}`.toLowerCase().includes(q);
-  });
-  const followLabel = followUps.length === 1 ? "1 follow-up" : `${followUps.length} follow-ups`;
-  const failedNames = (queue.properties ?? []).filter((item) => item.failed).map((item) => item.label);
-  const empty = incomplete
-    ? `No one waiting at the ${readable || "read"} properties Copilot could read.${failedNames.length ? ` ${failedNames.join(", ")} is still unread.` : ""}`
-    : filtered
-      ? "No one waiting matches this filter."
-      : "No one is waiting on you.";
   return (
-    <div className="cp-gm">
-      <div className="cp-gm-top">
-        <div className="cp-gm-title">
-          <h1>Guest messaging</h1>
-          <span className="cp-gm-live" aria-live="polite"><i />Live<em>{incomplete ? "· message read incomplete" : "· up to date"}</em></span>
-        </div>
-        <input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Search guests, properties, what was agreed" aria-label="Search guests, properties, what was agreed" />
-      </div>
-      <p className="cp-gm-summary">
-        <span>{followLabel}</span>
-        {" · "}
-        <strong>{queue.waiting.length} need a reply</strong>
-        {` · ${(queue.onGuest ?? []).length} waiting on guest · ${queue.thanks.length} no reply needed`}
-      </p>
-      {properties.length ? (
-        <div className="cp-gm-chips">
-          <Chip label="All properties" count={String(queue.waiting.length)} on={chip === "all"} onPick={() => onChip("all")} />
-          {properties.map((item) => (
-            <Chip
-              key={item.id}
-              label={item.label}
-              count={item.failed ? "not read" : String(queue.waiting.filter((row) => row.propertyId === item.id).length)}
-              on={chip === item.id}
-              onPick={() => onChip(item.id)}
-            />
+    <div className="cp-gq">
+      <h1>Guest messaging</h1>
+      {queue.failed.map((line) => (
+        <p key={line} className="cp-gq-fail">
+          {line}
+          {onRefresh ? <button type="button" onClick={onRefresh}>Try again</button> : null}
+        </p>
+      ))}
+      {followUps.length ? (
+        <div className="cp-gq-fus">
+          <span className="cp-gq-label">Follow-ups</span>
+          {followUps.map((row) => (
+            <button key={row.id} type="button" className="cp-gq-fu" onClick={() => onOpen(rowFromFollowUp(row))}>
+              {row.kind === "inquiry" ? <span className="cp-gq-tag">INQUIRY</span> : null}
+              <span className="cp-gq-who"><strong>{row.guest}</strong><em> · {row.property}</em></span>
+              <span className="cp-gq-line">{row.line}</span>
+              <span className="cp-gq-due">{row.when}</span>
+            </button>
           ))}
         </div>
       ) : null}
-      {queue.failed.map((line) => (
-        <div key={line} className="cp-gm-failrow">
-          <p className="fail">{line}</p>
-          {onRefresh ? <button type="button" onClick={onRefresh}>Try again</button> : null}
-        </div>
-      ))}
-      <div className="cp-gm-group cp-gm-follow">
-        <div className="cp-gm-glabel">
-          <span>Follow-ups</span>
-          {followRows.length ? <b>{followRows.length}</b> : null}
-          {followRows.length ? <em>Open loops Copilot found in threads · soonest deadline first</em> : null}
-        </div>
-        {flashRows.map((row) => (
-          <p key={row.id} className="cp-gm-fu-closed" aria-live="polite"><b>Closed by the thread</b> · {row.closeText}</p>
-        ))}
-        {followRows.map((row) => <FollowUpRow key={row.id} row={row} now={now} onOpen={() => onOpenFollowUp(row)} />)}
-        {followRows.length === 0 && flashRows.length === 0 ? <p className="cp-gm-none">No follow-ups</p> : null}
-      </div>
-      <div className="cp-gm-group">
-        <div className="cp-gm-glabel">
-          <span>Needs a reply</span>
-          <b>{needRows.length}</b>
-          <em>{incomplete ? `From the ${readable || "read"} properties Copilot could read${failedNames.length ? ` · ${failedNames.join(", ")} not included` : ""}` : "Arrivals today and tomorrow first"}</em>
-          {needRows.length > 1 ? <button type="button" className="cp-gm-text" onClick={onReview}>Review</button> : null}
-        </div>
-        {needRows.map((row) => <NeedRow key={row.id} row={row} onOpen={() => onOpen(row)} />)}
-        {needRows.length === 0 ? <p className="cp-gm-empty">{caughtUp ? "No one is waiting on you." : empty}</p> : null}
-        {caughtUp ? <p className="cp-gm-quiet">Every guest who asked something has a reply.</p> : null}
-      </div>
-      <Fold title="Waiting on guest" count={waitRows.length} hint="Copilot is watching each one and will bring it back here" open={waitOpen} onToggle={onToggleWait}>
-        {waitRows.map((row) => (
-          <button key={row.id} type="button" className="cp-gm-waitrow" onClick={() => onOpen(row)}>
-            <span className="face sm" aria-label={`${row.guest} profile photo`}>{row.initials}</span>
-            <span>
-              <strong>{row.guest}</strong>
-              <em><i className="tile sm" aria-hidden />{row.property} · {row.dates}</em>
-              <span className="watch"><b>Watching for:</b> {row.watch}</span>
+      <div className="cp-gq-list">
+        {rows.map((row) => (
+          <button key={row.id} type="button" className="cp-gq-row" onClick={() => onOpen(row)}>
+            <Face name={row.guest} photo={row.guestPhoto} initials={row.initials} size={36} />
+            <span className="cp-gq-copy">
+              <span className="cp-gq-title"><strong>{row.guest}</strong><em> · {row.property}{row.dates ? ` · ${row.dates}` : ""}</em></span>
+              <span className="cp-gq-last">{lastLine(row)}</span>
             </span>
-            <span className="ago">{row.lastNote}</span>
+            <span className="cp-gq-time">{activityTime(row.activityAt)}</span>
           </button>
         ))}
-      </Fold>
-      {heldRows.length ? (
-        <Fold title="Held by you" count={heldRows.length} hint="Drafts you set aside; nothing was sent" open={heldOpen} onToggle={onToggleHeld}>
-          {heldRows.map((row) => <NeedRow key={row.id} row={row} onOpen={() => onOpen(row)} />)}
-        </Fold>
-      ) : null}
-      <Fold title="No reply needed" count={doneRows.length} hint="Thank-yous and acknowledgements" open={doneOpen} onToggle={onToggleDone}>
-        {doneRows.map((row) => (
-          <p key={row.id} className="cp-gm-done"><strong>{row.guest}</strong> · {row.property} · “{row.asked}”</p>
-        ))}
-      </Fold>
+        {rows.length === 0 ? (
+          <div className="cp-gq-empty">
+            <span>No conversations need you right now.</span>
+            <em>New guest messages appear here as they arrive.</em>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function FollowUpRow({ row, now, onOpen }: { row: GuestFollowUp; now: number; onOpen: () => void }) {
-  const inquiry = inquiryTag(row, now);
-  const due = row.dueNow || inquiry.due;
-  return (
-    <button type="button" className={due ? "cp-gm-fu due" : "cp-gm-fu"} onClick={onOpen}>
-      {row.guestPhoto ? <img src={row.guestPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="face" aria-label={`${row.guest} profile photo`}>{row.initials}</span>}
-      <span>
-        <span className="who">
-          {due ? <span className="cp-gm-tag due">DUE NOW</span> : null}
-          <span className={inquiry.hot ? "cp-gm-tag hot" : "cp-gm-tag"}>{inquiry.text}</span>
-          <strong>{row.guest}</strong>
-          <em>{row.propertyPhoto ? <img src={row.propertyPhoto} alt="" referrerPolicy="no-referrer" /> : <i className="thumb" aria-label={`${row.property} photo`} />}{row.property}</em>
-        </span>
-        <span className="line">{row.line}</span>
-      </span>
-      <span className={due || inquiry.hot ? "when hot" : "when"}>
-        <b>{row.when}</b>
-        <small>{row.whenSub}</small>
-      </span>
-    </button>
-  );
-}
-
-function inquiryTag(row: GuestFollowUp, now: number): { text: string; hot: boolean; due: boolean } {
-  if (row.kind !== "inquiry") return { text: row.tag, hot: false, due: false };
-  if (!row.expiresAt) return { text: row.tag || "INQUIRY", hot: false, due: row.dueNow };
-  const left = new Date(row.expiresAt).getTime() - now;
-  if (left <= 0) return { text: "INQUIRY", hot: false, due: true };
-  if (left >= 48 * 3600 * 1000) return { text: "INQUIRY", hot: false, due: false };
-  const total = Math.floor(left / 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return { text: `INQUIRY · ${pad(Math.floor(total / 3600))}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`, hot: true, due: false };
-}
-
-function FollowUpScreen({
-  item,
+function Thread({
   answer,
-  threadClose,
-  stillOpen,
+  follow,
+  closeText,
   onBack,
   onSubmit,
   onHandle,
   onInquiry,
+  onImprove,
 }: {
-  item: GuestFollowUp;
-  answer: GuestDraftView | null;
-  threadClose: string;
-  stillOpen: boolean;
+  answer: GuestDraftView;
+  follow: GuestFollowUp | null;
+  closeText: string;
   onBack: () => void;
   onSubmit: (draft: string, fact: string, attachments: GuestFile[]) => Promise<SubmitResult>;
   onHandle: () => Promise<void>;
-  onInquiry?: (action: "approve" | "decline") => Promise<string>;
+  onInquiry: (action: "approve" | "decline") => Promise<string>;
+  onImprove?: (text: string) => Promise<string>;
 }) {
-  const [drafting, setDrafting] = useState(false);
-  const [declining, setDeclining] = useState(false);
-  const [declineText, setDeclineText] = useState(item.declineDraft || "");
-  const [text, setText] = useState(item.draft);
-  const [tick, setTick] = useState(() => Date.now());
+  const needsReply = answer.lane === "reply";
+  const [text, setText] = useState(needsReply ? answer.draft : "");
+  const [edited, setEdited] = useState(false);
+  const [improving, setImproving] = useState(false);
   const [files, setFiles] = useState<GuestFile[]>([]);
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
-  const [sent, setSent] = useState("");
-  const [handled, setHandled] = useState(false);
+  const [note, setNote] = useState("");
+  const [tick, setTick] = useState(() => Date.now());
   const input = useRef<HTMLInputElement>(null);
-  const verifying = item.phase === "verifying-approve" || item.phase === "verifying-decline";
   useEffect(() => {
-    setDeclining(false);
-    setDeclineText(item.declineDraft || "");
-    setText(item.draft);
-  }, [item.id, item.suggested, item.declineDraft, item.draft]);
+    setText(answer.lane === "reply" ? answer.draft : "");
+    setEdited(false);
+    setFail("");
+    setFiles([]);
+  }, [answer.id]);
   useEffect(() => {
-    if (item.kind !== "inquiry" || !item.expiresAt) return;
-    const timer = setInterval(() => setTick(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [item.kind, item.expiresAt]);
-  const days = answer ? groupDays(answer.thread) : [];
-  const closed = handled || Boolean(threadClose) || !stillOpen;
+    if (edited) return;
+    setText(answer.lane === "reply" ? answer.draft : "");
+  }, [answer.draft, answer.lane, answer.thread.length, edited]);
+  useEffect(() => {
+    if (!closeText) return;
+    setNote(closeText);
+    const timer = window.setTimeout(() => setNote(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [closeText]);
+  useEffect(() => {
+    if (follow?.kind !== "inquiry" || !follow.expiresAt) return;
+    const timer = window.setInterval(() => setTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [follow?.kind, follow?.expiresAt]);
+  const empty = !text.trim();
+  const nights = nightCount(answer.checkIn ?? "", answer.checkOut ?? "");
+  const showDraft = needsReply && Boolean(answer.draft) && !edited && !empty;
+  const idle = !needsReply && empty;
+  const days = groupDays(answer.thread);
   return (
-    <div className="cp-gm cp-gm-fill">
-      <div className="cp-gm-split fu">
-        <div className="cp-gm-conv">
-          <header>
-            <button type="button" className="cp-gm-back" onClick={onBack}>← Queue</button>
-            <span className="face" aria-label={`${item.guest} profile photo`}>{item.initials}</span>
-            <div>
-              <strong>{item.guest}</strong>
-              <span>{item.stay || answer?.stay}</span>
+    <div className="cp-gt">
+      <header className="cp-gt-head">
+        <button type="button" onClick={onBack}>← Back</button>
+        <Face name={answer.guest} photo={answer.guestPhoto} initials={answer.initials} size={28} />
+        <strong>{answer.guest}</strong>
+        <i className="rule" />
+        {answer.propertyPhoto ? <img className="prop" src={answer.propertyPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="prop" aria-label={`${answer.property} photo`} />}
+        <em>{answer.property}</em>
+        <span className="stay">{answer.dates}{nights ? ` · ${nights}` : ""}</span>
+      </header>
+      <div className="cp-gt-scroll">
+        <div className="cp-gt-flow">
+          {days.map((block) => (
+            <div key={block.day} className="cp-gt-day">
+              <div className="day"><span /><em>{block.day}</em><span /></div>
+              {block.messages.map((message, index) => <Bubble key={`${message.at}-${index}`} message={message} guestPhoto={answer.guestPhoto} initials={answer.initials} />)}
             </div>
-            {item.propertyPhoto ? <img className="prop" src={item.propertyPhoto} alt="" referrerPolicy="no-referrer" /> : <i className="tile" aria-label={`${item.property} photo`} />}
-            <em>{item.property}</em>
-            <span className="cp-gm-live"><i />Live</span>
-          </header>
-          <div className="cp-gm-thread">
-            {answer ? days.map((block) => (
-              <div key={block.day}>
-                <div className="day"><span /><em>{block.day}</em><span /></div>
-                {block.messages.map((message, index) => (
-                  <Bubble key={`${message.at}-${index}`} message={message} onPhoto={() => undefined} source={message.at === item.sourceAt} />
-                ))}
-              </div>
-            )) : <p className="cp-gm-quiet">Loading the thread.</p>}
-          </div>
+          ))}
         </div>
-        <aside className="cp-gm-read">
-          <div className="cp-gm-readtop">
-            <span>Copilot · follow-up <span className="cp-gm-tag">{item.tag}</span>{item.dueNow && !closed ? <span className="cp-gm-tag due">DUE NOW</span> : null}</span>
-            <span className="cp-gm-when">{closed ? "" : item.kind === "incident" ? `Sent ${item.when}` : item.dueNow ? "Today" : item.due ? `Due ${item.dueSub}` : item.when}</span>
-          </div>
-          <p className="cp-gm-source">{item.sourceLine}</p>
-          {item.kind === "owe" ? (
-            <div className="cp-gm-fucard">
-              <div>
-                <span className="k">What we promised</span>
-                <blockquote><p>“{item.promised}”</p><small>{item.promisedWhen}</small></blockquote>
-              </div>
-              {item.agreed ? (
-                <div>
-                  <span className="k">{item.agreedAs === "asked" ? `What ${item.first} asked` : `What ${item.first} agreed to`}</span>
-                  <blockquote><p>“{item.agreed}”</p><small>{item.agreedWhen}</small></blockquote>
-                </div>
-              ) : null}
-              <div className="cp-gm-meta">
-                <span>Due</span>
-                <p>{item.dueText || "No date given"}</p>
-                <span>Stay</span>
-                <p>{item.stay}</p>
-              </div>
-              {sent && !handled ? <p>Sent to {item.first}. It’s in the thread. This stays open until the thread shows it done, or you mark it handled.</p> : null}
+      </div>
+      <div className="cp-gt-reply">
+        <div className="cp-gt-box">
+          {follow && follow.kind !== "inquiry" ? (
+            <div className="cp-gt-fu">
+              <i />
+              <span><strong>Follow-up:</strong> {follow.line}</span>
+              <button type="button" onClick={() => { void onHandle(); }}>Mark handled</button>
             </div>
           ) : null}
-          {item.kind === "incident" ? (
-            <div className="cp-gm-fucard">
-              <div>
-                <span className="k">What happened</span>
-                <p className="story">{item.what}</p>
-              </div>
-              <div className="cp-gm-meta">
-                <span>Sent</span>
-                <p>{item.sentWhen}{item.since ? ` · ${item.since}` : ""}</p>
-                <span>Resolved when</span>
-                <p>{item.resolvesWhen}</p>
-              </div>
+          {follow?.kind === "inquiry" ? <InquiryCard item={follow} now={tick} busy={busy} onInquiry={onInquiry} onBusy={setBusy} onFail={setFail} /> : null}
+          {note ? <p className="cp-gt-closed" aria-live="polite"><strong>Follow-up closed</strong> · {note}</p> : null}
+          {showDraft ? <p className="cp-gt-src">Copilot draft · from the {answer.property} Knowledge Hub and the full conversation</p> : null}
+          {idle ? <p className="cp-gt-idle" aria-live="polite">Nothing to send. Copilot is watching this thread.</p> : null}
+          <div className="cp-gt-compose">
+            <div className="cp-gt-field">
+              <button type="button" className="plus" aria-label="Add files, photos or context" title="Add files, photos or context" onClick={() => input.current?.click()}>+</button>
+              <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { void readFiles(event.target.files).then((next) => setFiles((current) => [...current, ...next])); event.target.value = ""; }} />
+              <textarea
+                aria-label={`Reply to ${answer.guest}`}
+                rows={4}
+                value={text}
+                placeholder={`Write a message to ${answer.first}`}
+                onChange={(event) => { setText(event.target.value); setEdited(true); setFail(""); }}
+              />
             </div>
-          ) : null}
-          {item.kind === "inquiry" ? (
-            <div className="cp-gm-fucard">
-              <div className="cp-gm-who">
-                {item.guestPhoto ? <img src={item.guestPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="face" aria-label={`${item.guest} profile photo`}>{item.initials}</span>}
-                <div>
-                  <strong>{item.guest}</strong>
-                  {item.newToAirbnb ? <span className="cp-gm-new">New to Airbnb</span> : null}
-                  {item.joined ? <em>{item.joined}</em> : null}
-                </div>
-              </div>
-              <div className="cp-gm-meta">
-                <span>Dates</span><p>{item.dates}</p>
-                <span>Nights</span><p>{item.nights}</p>
-                <span>Guests</span><p>{item.guestCount}</p>
-                <span>Price</span><p>{item.price}</p>
-              </div>
-              <div>
-                <span className="k">House rules</span>
-                {item.rulesConfirmed && item.rulesQuote ? (
-                  <>
-                    <p>House rules confirmed by guest, {item.rulesWhen}</p>
-                    <blockquote><p>“{item.rulesQuote}”</p></blockquote>
-                  </>
-                ) : item.newToAirbnb ? <p className="needs">Not yet confirmed</p> : <p>Not required for this guest.</p>}
-              </div>
-              {item.notes.length ? (
-                <div>
-                  <span className="k">Worth knowing</span>
-                  {item.notes.map((note) => <p key={note}>{note}</p>)}
-                </div>
-              ) : null}
-              <div>
-                <span className="k">Respond by</span>
-                <p>{item.dueText}{inquiryTag(item, tick).text.startsWith("INQUIRY · ") ? ` · ${inquiryTag(item, tick).text.slice("INQUIRY · ".length)} left` : ""}</p>
-                <p className="cp-gm-quiet">If it passes, Airbnb expires the request and this follow-up closes.</p>
-              </div>
-            </div>
-          ) : null}
-          {handled || threadClose ? (
-            <div className="cp-gm-fu-done" aria-live="polite">
-              <span>{handled ? "Handled · follow-up closed" : "Closed by the thread"}</span>
-              <p>{handled ? "Marked handled. It won’t come back." : threadClose}</p>
-            </div>
-          ) : item.kind === "inquiry" ? (
-            verifying ? (
-              <div className="cp-gm-fu-done" aria-live="polite">
-                <span>Verifying</span>
-                <p>{item.phase === "verifying-decline" ? "Opened in Airbnb. Copilot closes this when the reservation reads back declined." : "Opened in Airbnb. Copilot closes this when the reservation reads back accepted."}</p>
-              </div>
-            ) : declining ? (
-              <div className="cp-gm-fudraft">
-                <div className="cp-gm-draft">
-                  <span>Decline message to {item.first} · edit before you open Airbnb</span>
-                  <textarea rows={5} value={declineText} onChange={(event) => setDeclineText(event.target.value)} />
-                  <button type="button" className="plus" aria-label="Add files, photos or context" title="Add files, photos or context" onClick={() => input.current?.click()}>+</button>
-                  <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { void readFiles(event.target.files).then((next) => setFiles((current) => [...current, ...next])); event.target.value = ""; }} />
-                </div>
-                <div className="cp-gm-actions">
-                  <span className="hint">Opens the request in Airbnb. This draft is not sent.</span>
-                  <button type="button" onClick={() => setDeclining(false)}>Cancel</button>
-                  <button type="button" className="submit" disabled={busy} onClick={() => {
-                    setBusy(true);
-                    setFail("");
-                    void onInquiry?.("decline").catch((err: unknown) => {
-                      setFail(err instanceof Error ? err.message : "The request was not opened.");
-                    }).finally(() => setBusy(false));
-                  }}>{busy ? "Opening…" : "Open in Airbnb"}</button>
-                </div>
-                {fail ? <p className="fail">{fail}</p> : null}
-              </div>
-            ) : item.suggested === "rules" ? (
-              <div className="cp-gm-fudraft">
-                <div className="cp-gm-draft">
-                  <span>House rules to {item.first} · acceptance stays closed until they confirm</span>
-                  <textarea rows={4} value={text} onChange={(event) => setText(event.target.value)} />
-                  <button type="button" className="plus" aria-label="Add files, photos or context" title="Add files, photos or context" onClick={() => input.current?.click()}>+</button>
-                  <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { void readFiles(event.target.files).then((next) => setFiles((current) => [...current, ...next])); event.target.value = ""; }} />
-                </div>
-                <div className="cp-gm-actions">
-                  <span className="hint">Sends the rules ask. It does not accept the request.</span>
-                  <button type="button" onClick={() => setDeclining(true)}>Decline</button>
-                  <button type="button" className="submit" disabled={busy || !text.trim()} onClick={() => {
-                    setBusy(true);
-                    setFail("");
-                    void onSubmit(text, "", files).then((result) => {
-                      const problem = submitProblem(result);
-                      if (problem) setFail(problem);
-                      else setSent(result.sentText || `Sent to ${item.first}.`);
-                    }).catch((err: unknown) => {
-                      setFail(err instanceof Error ? err.message : "Nothing was sent.");
-                    }).finally(() => setBusy(false));
-                  }}>{busy ? "Sending…" : "Send the house rules"}</button>
-                </div>
-                {fail ? <p className="fail">{fail}</p> : null}
-                {sent ? <p className="sent">{sent}</p> : null}
-              </div>
-            ) : (
-              <div className="cp-gm-fuacts">
-                <div>
-                  <button type="button" onClick={() => setDeclining(true)}>Decline</button>
-                  <button type="button" className="submit" disabled={busy} onClick={() => {
-                    setBusy(true);
-                    setFail("");
-                    void onInquiry?.("approve").catch((err: unknown) => {
-                      setFail(err instanceof Error ? err.message : "The request was not opened.");
-                    }).finally(() => setBusy(false));
-                  }}>{busy ? "Opening…" : "Approve booking"}</button>
-                </div>
-                <span>Opens this request in Airbnb. Nothing is accepted until the reservation reads back accepted.</span>
-                {fail ? <p className="fail">{fail}</p> : null}
-              </div>
-            )
-          ) : drafting && item.kind === "owe" ? (
-            <div className="cp-gm-fudraft">
-              <div className="cp-gm-draft">
-                <span>Draft to {item.first} · edit anything before you submit</span>
-                <textarea rows={4} value={text} onChange={(event) => setText(event.target.value)} />
-                <button type="button" className="plus" aria-label="Add files, photos or context" title="Add files, photos or context" onClick={() => input.current?.click()}>+</button>
-                <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { void readFiles(event.target.files).then((next) => setFiles((current) => [...current, ...next])); event.target.value = ""; }} />
-              </div>
-              {files.length ? <p className="cp-gm-quiet">{files.map((file) => file.name).join(", ")}</p> : null}
-              {fail ? <p className="fail">{fail}</p> : null}
-              <div className="cp-gm-actions">
-                <span className="hint">Sends to {item.first}</span>
-                <button type="button" onClick={() => setDrafting(false)}>Cancel</button>
-                <button type="button" className="submit" disabled={busy || !text.trim()} onClick={() => {
+            <div className="cp-gt-actions">
+              <button
+                type="button"
+                disabled={empty || improving}
+                onClick={() => {
+                  if (!onImprove || empty || improving) return;
+                  setImproving(true);
+                  setFail("");
+                  void onImprove(text).then((next) => {
+                    if (next.trim()) {
+                      setText(next);
+                      setEdited(true);
+                    }
+                  }).catch((err: unknown) => {
+                    setFail(err instanceof Error ? err.message : "The draft was not changed.");
+                  }).finally(() => setImproving(false));
+                }}
+              >{improving ? "Improving…" : "Improve"}</button>
+              <button
+                type="button"
+                className="send"
+                disabled={empty || busy}
+                onClick={() => {
                   setBusy(true);
                   setFail("");
                   void onSubmit(text, "", files).then((result) => {
                     const problem = submitProblem(result);
                     if (problem) setFail(problem);
-                    else { setSent(result.sentText || `Sent to ${item.first}.`); setDrafting(false); }
+                    else {
+                      setText("");
+                      setEdited(false);
+                      setFiles([]);
+                    }
                   }).catch((err: unknown) => {
                     setFail(err instanceof Error ? err.message : "Nothing was sent.");
                   }).finally(() => setBusy(false));
-                }}>{busy ? "Sending…" : "Submit"}</button>
-              </div>
+                }}
+              >Send</button>
             </div>
-          ) : (
-            <div className="cp-gm-fuacts">
-              <div>
-                {item.kind === "incident" ? null : <span />}
-                <button type="button" onClick={() => { setHandled(true); void onHandle().catch(() => setHandled(false)); }}>Mark handled</button>
-                {item.kind === "owe" ? <button type="button" className="submit" onClick={() => setDrafting(true)}>Draft a message to the guest</button> : null}
-              </div>
-              {item.kind === "owe" ? <span>Mark handled closes this for good. It won’t resurface.</span> : null}
-            </div>
-          )}
-        </aside>
+          </div>
+          {files.length ? <p className="cp-gt-files">{files.map((file) => file.name).join(", ")}</p> : null}
+          {fail ? <p className="cp-gt-fail">{fail}</p> : null}
+        </div>
       </div>
     </div>
   );
+}
+
+function InquiryCard({
+  item,
+  now,
+  busy,
+  onInquiry,
+  onBusy,
+  onFail,
+}: {
+  item: GuestFollowUp;
+  now: number;
+  busy: boolean;
+  onInquiry: (action: "approve" | "decline") => Promise<string>;
+  onBusy: (value: boolean) => void;
+  onFail: (value: string) => void;
+}) {
+  const left = item.expiresAt ? new Date(item.expiresAt).getTime() - now : NaN;
+  const countdown = Number.isFinite(left) && left > 0 && left < 48 * 3600 * 1000 ? formatLeft(left) : "";
+  const verifying = item.phase === "verifying-approve" || item.phase === "verifying-decline";
+  return (
+    <div className="cp-gt-inquiry">
+      <div className="cp-gt-facts">
+        <span>Dates</span><p>{item.dates}</p>
+        <span>Guests</span><p>{item.guestCount}</p>
+        <span>Total</span><p>{item.price}</p>
+        <span>House rules</span>
+        <p>{item.rulesConfirmed ? `Confirmed${item.rulesWhen ? `, ${item.rulesWhen}` : ""}` : "Not yet confirmed"}</p>
+        <span>Respond by</span>
+        <p>{item.dueText}{countdown ? ` · ${countdown} left` : ""}</p>
+      </div>
+      {verifying ? (
+        <p className="cp-gt-verify">{item.phase === "verifying-decline" ? "Opened in Airbnb. Copilot closes this when the reservation reads back declined." : "Opened in Airbnb. Copilot closes this when the reservation reads back accepted."}</p>
+      ) : (
+        <div className="cp-gt-decide">
+          <button type="button" disabled={busy} onClick={() => {
+            onBusy(true);
+            onFail("");
+            void onInquiry("decline").catch((err: unknown) => onFail(err instanceof Error ? err.message : "The request was not opened.")).finally(() => onBusy(false));
+          }}>Decline</button>
+          <button type="button" className="send" disabled={busy} onClick={() => {
+            onBusy(true);
+            onFail("");
+            void onInquiry("approve").catch((err: unknown) => onFail(err instanceof Error ? err.message : "The request was not opened.")).finally(() => onBusy(false));
+          }}>Approve</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Bubble({ message, guestPhoto, initials }: { message: GuestBubble; guestPhoto: string; initials: string }) {
+  if (message.role === "automated") {
+    return (
+      <div className="cp-gt-auto">
+        <span><strong>Automated message</strong> · {message.time}</span>
+        {message.text ? <p>{message.text}</p> : null}
+        <Media message={message} />
+      </div>
+    );
+  }
+  if (message.role === "host") {
+    return (
+      <div className="cp-gt-host">
+        <span><strong>{message.who}</strong> · {message.time}</span>
+        {message.text ? <p>{message.text}</p> : null}
+        <Media message={message} />
+      </div>
+    );
+  }
+  return (
+    <div className="cp-gt-guest">
+      <Face name={message.who} photo={guestPhoto} initials={initials} size={32} />
+      <div>
+        <span><strong>{message.who}</strong> · {message.time}</span>
+        {message.text ? <p>{message.text}{message.english && message.english !== message.text ? <em>{message.english}</em> : null}</p> : null}
+        <Media message={message} />
+      </div>
+    </div>
+  );
+}
+
+function Media({ message }: { message: GuestBubble }) {
+  if (!message.media.length) return null;
+  return (
+    <>
+      {message.media.map((item, index) => item.kind === "video" ? (
+        <Video key={index} url={item.url} duration={item.duration} shows={item.shows} name={message.who} />
+      ) : (
+        <figure key={index} className="cp-gt-photo" aria-label={`Photo sent by ${message.who}`}>
+          {item.url ? <img src={item.url} alt={item.shows || `Photo sent by ${message.who}`} /> : <span>{item.shows || "Photo"}</span>}
+        </figure>
+      ))}
+    </>
+  );
+}
+
+function Video({ url, duration, shows, name }: { url: string; duration: string; shows: string; name: string }) {
+  return (
+    <div className="cp-gt-video" aria-label={`Video sent by ${name}`}>
+      {url ? <video src={url} controls preload="metadata" /> : <span className="play" aria-hidden />}
+      {shows ? <em>{shows}</em> : null}
+      <b>{duration || ""}</b>
+    </div>
+  );
+}
+
+function Face({ name, photo, initials, size }: { name: string; photo: string; initials: string; size: number }) {
+  if (photo) return <img className="cp-gt-face" src={photo} alt="" width={size} height={size} style={{ width: size, height: size }} referrerPolicy="no-referrer" aria-label={`${name} profile photo`} />;
+  return <span className="cp-gt-face" style={{ width: size, height: size }} aria-label={`${name} profile photo`}>{initials}</span>;
 }
 
 function rowFromFollowUp(item: GuestFollowUp): GuestRow {
@@ -710,81 +400,24 @@ function rowFromFollowUp(item: GuestFollowUp): GuestRow {
   };
 }
 
-function Chip({ label, count, on, onPick }: { label: string; count: string; on: boolean; onPick: () => void }) {
-  return (
-    <button type="button" className={on ? "on" : ""} onClick={onPick}>
-      {label}<span>{count}</span>
-    </button>
-  );
-}
-
-function Fold({ title, count, hint, open, onToggle, children }: { title: string; count: number; hint: string; open: boolean; onToggle: () => void; children: ReactNode }) {
-  return (
-    <div className="cp-gm-fold">
-      <div>
-        <span>{title}</span>
-        <b>{count}</b>
-        <em>{hint}</em>
-        <button type="button" onClick={onToggle}>{open ? "Hide" : `Show ${count}`}</button>
-      </div>
-      {open ? children : null}
-    </div>
-  );
-}
-
-function NeedRow({ row, onOpen, link }: { row: GuestRow; onOpen: () => void; link?: { href: string; label: string } | { note: string } }) {
-  const linked = Boolean(link);
-  return linked ? (
-    <div className="cp-gm-row" onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter") onOpen(); }} role="link" tabIndex={0}>
-      {needFace(row, link)}
-    </div>
-  ) : (
-    <button type="button" className="cp-gm-row" onClick={onOpen}>
-      {needFace(row, link)}
-    </button>
-  );
-}
-
-function needFace(row: GuestRow, link?: { href: string; label: string } | { note: string }) {
-  return (
-    <>
-      {row.guestPhoto ? <img src={row.guestPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="face" aria-label={`${row.guest} profile photo`}>{row.initials}</span>}
-      <span>
-        <strong>{row.guest}</strong>
-        <small className="dates">{row.dates}</small>
-        {row.when ? <small className={row.urgent ? "when hot" : "when"}>{row.when}</small> : null}
-        <em>{row.propertyPhoto ? <img src={row.propertyPhoto} alt="" referrerPolicy="no-referrer" /> : <i className="tile" aria-label={`${row.property} photo`} />}{row.property}</em>
-        <q><b>{row.statusLead || row.asked}</b>{row.statusRest ? ` · ${row.statusRest}` : ""}</q>
-      </span>
-      <span className="wait">
-        {link && "href" in link ? (
-          <span className="cp-answer"><a href={link.href} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>{link.label}</a></span>
-        ) : link && "note" in link ? (
-          <small>{link.note}</small>
-        ) : (
-          <>
-            <b>{row.wait}</b>
-            <small>waiting</small>
-            {row.mediaLabel ? <small className="media">{row.mediaLabel}</small> : null}
-          </>
-        )}
-      </span>
-    </>
-  );
-}
-
 export function StayCards({ stays, onOpen }: { stays: StayCard[]; onOpen: (row: GuestRow) => void }) {
   return (
     <div className="cp-gm" style={{ margin: 0, maxWidth: "none", padding: 0 }}>
       {stays.map((stay) => {
         const row = guestRowFromStay(stay);
         return (
-          <NeedRow
-            key={`${stay.kind}-${stay.id}`}
-            row={row}
-            onOpen={() => onOpen(row)}
-            link={stay.airbnbUrl ? { href: stay.airbnbUrl, label: stay.airbnbLabel } : { note: stay.airbnbNote }}
-          />
+          <div key={`${stay.kind}-${stay.id}`} className="cp-gm-row" role="link" tabIndex={0} onClick={() => onOpen(row)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(row); }}>
+            <span className="face" aria-label={`${row.guest} profile photo`}>{row.initials}</span>
+            <span>
+              <strong>{row.guest}</strong>
+              <small className="dates">{row.dates}</small>
+              <em>{row.property}</em>
+              <q>{row.asked}</q>
+            </span>
+            <span className="wait">
+              {stay.airbnbUrl ? <a href={stay.airbnbUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>{stay.airbnbLabel}</a> : <small>{stay.airbnbNote}</small>}
+            </span>
+          </div>
         );
       })}
     </div>
@@ -822,338 +455,33 @@ function guestRowFromStay(stay: StayCard): GuestRow {
   };
 }
 
-function Thread({
-  answer,
-  onBack,
-  onSubmit,
-  onHold,
-  onStand,
-  onUnstand,
-}: {
-  answer: GuestDraftView;
-  onBack: () => void;
-  onSubmit: (draft: string, fact: string, attachments: GuestFile[]) => Promise<SubmitResult>;
-  onHold: () => Promise<void>;
-  onStand?: (situation: string, wording: string) => Promise<void>;
-  onUnstand?: (situation: string) => Promise<void>;
-}) {
-  const held = answer.mode === "held" || !answer.sendable;
-  const [text, setText] = useState(answer.draft);
-  const [editing, setEditing] = useState(false);
-  const [files, setFiles] = useState<GuestFile[]>([]);
-  const [slot, setSlot] = useState(answer.mediaSlot);
-  const [busy, setBusy] = useState(false);
-  const [fail, setFail] = useState("");
-  const [sent, setSent] = useState("");
-  const [heldNote, setHeldNote] = useState("");
-  const [stood, setStood] = useState(false);
-  const [photo, setPhoto] = useState<GuestBubble | null>(null);
-  const [alt, setAlt] = useState(0);
-  const input = useRef<HTMLInputElement>(null);
-  const edited = text.trim() !== answer.draft.trim();
-  const days = groupDays(answer.thread);
-
-  async function addFiles(list: FileList | null) {
-    if (!list?.length) return;
-    const next = await readFiles(list);
-    setFiles((current) => [...current, ...next]);
-    setSlot("");
-    setFail("");
-  }
-
-  return (
-    <div className="cp-gm cp-gm-fill">
-      <div className="cp-gm-split">
-        <div className="cp-gm-conv">
-          <header>
-            <button type="button" className="cp-gm-back" onClick={onBack}>← Queue</button>
-            <span className="face" aria-label={`${answer.guest} profile photo`}>{answer.initials}</span>
-            <div>
-              <strong>{answer.guest}</strong>
-              <span>{answer.stay}</span>
-            </div>
-            {answer.propertyPhoto ? <img className="prop" src={answer.propertyPhoto} alt="" referrerPolicy="no-referrer" /> : <i className="tile" aria-label={`${answer.property} photo`} />}
-            <em>{answer.property}</em>
-          </header>
-          <div className="cp-gm-thread">
-            {days.map((block) => (
-              <div key={block.day}>
-                <div className="day"><span /><em>{block.day}</em><span /></div>
-                {block.messages.map((message, index) => (
-                  <Bubble key={`${message.at}-${index}`} message={message} onPhoto={() => setPhoto(message)} />
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-        <aside className="cp-gm-read">
-          <div className="cp-gm-readtop">
-            <span>Copilot · read for you</span>
-            {held ? <b className="info">Waiting on guest</b> : <b className="needs">Waiting on you · {answer.wait}</b>}
-          </div>
-          <div>
-            <span className="k">Where this stands</span>
-            <p className="status">{answer.status || answer.asked}</p>
-          </div>
-          <div className="cp-gm-meta">
-            <span>Waiting on</span>
-            <p>{answer.waitingLine || (held ? "Guest. Nothing to send now." : "You. A draft is ready below.")}</p>
-            <span>Watching for</span>
-            <p>{answer.watch}</p>
-          </div>
-          {answer.draft ? (
-            <div className={held ? "cp-gm-held" : "cp-gm-live"}>
-              {held ? <span className="lock">Ready for the next message. Not sendable now.</span> : <span className="k">Draft reply to {answer.first} · edit anything before you submit</span>}
-              {editing ? (
-                <textarea rows={7} value={text} onChange={(event) => setText(event.target.value)} />
-              ) : (
-                <Rich text={text} />
-              )}
-              {!held && slot ? (
-                <div className="cp-gm-slot">
-                  <span>video</span>
-                  <div>
-                    <strong>{slot}</strong>
-                    <em>Record it now or pick a file. It sends with the reply, only on Submit.</em>
-                    <div>
-                      <button type="button" onClick={() => input.current?.click()}>Record</button>
-                      <button type="button" onClick={() => input.current?.click()}>Choose file</button>
-                      <button type="button" className="cp-gm-text" onClick={() => setSlot("")}>Send without a video</button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-              {files.map((file) => (
-                <div key={`${file.name}-${file.data.slice(0, 12)}`} className="cp-gm-file">
-                  <span>{file.mime.startsWith("video") ? "video" : "photo"}</span>
-                  <div>
-                    <strong>{file.name}</strong>
-                    <em>sends with the reply on Submit</em>
-                  </div>
-                  <button type="button" aria-label={`Remove ${file.name}`} onClick={() => setFiles((current) => current.filter((item) => item !== file))}>×</button>
-                </div>
-              ))}
-              {fail ? <p className="fail">{fail}</p> : null}
-              {sent || heldNote ? <p className="sent">{heldNote || sent}</p> : (
-                <div className="cp-gm-actions">
-                  <button type="button" className="plus" aria-label="Add files, photos or context" title="Add files, photos or context" onClick={() => input.current?.click()}>+</button>
-                  <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { void addFiles(event.target.files); event.target.value = ""; }} />
-                  {held ? <span className="hint">Submit appears when they reply</span> : null}
-                  <button type="button" onClick={() => editing ? setEditing(false) : setEditing(true)}>{editing ? "Done" : "Edit"}</button>
-                  <button type="button" onClick={() => {
-                    const pool = answer.alternates.length ? answer.alternates : [answer.draft];
-                    const next = (alt + 1) % pool.length;
-                    setAlt(next);
-                    setText(pool[next] || answer.draft);
-                    setEditing(false);
-                    setStood(false);
-                  }}>{held ? "Regenerate" : "Regenerate with AI"}</button>
-                  {!held ? (
-                    <>
-                      <span className="grow" />
-                      <button type="button" onClick={() => { void onHold().then(() => setHeldNote("Held. It stays under “Held by you”; nothing was sent.")); }}>Hold</button>
-                      <button type="button" className="submit" disabled={busy || !text.trim()} onClick={() => {
-                        setBusy(true);
-                        setFail("");
-                        void onSubmit(text, answer.mode === "gap" ? text : "", files).then((result) => {
-                          const problem = submitProblem(result);
-                          if (problem) setFail(problem);
-                          else setSent(result.sentText || `Sent to ${answer.first}.`);
-                        }).catch((err: unknown) => {
-                          setFail(err instanceof Error ? err.message : "Nothing was sent.");
-                        }).finally(() => setBusy(false));
-                      }}>{fail ? "Submit again" : busy ? "Sending…" : "Submit"}</button>
-                    </>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          ) : null}
-          {answer.basedOn ? <p className="cp-gm-based"><strong>Based on</strong> · {answer.basedOn}</p> : null}
-          {edited && answer.situation && !stood ? (
-            <div className="cp-gm-stand">
-              <button type="button" onClick={() => { void onStand?.(answer.situation, text).then(() => setStood(true)); }}>Make this my standing answer</button>
-              <span>Copilot will start from your wording whenever {answer.situation}.</span>
-            </div>
-          ) : null}
-          {stood ? (
-            <p className="cp-gm-stood"><strong>Standing answer saved</strong> · used next time {answer.situation} <button type="button" onClick={() => { void onUnstand?.(answer.situation).then(() => setStood(false)); }}>Undo</button></p>
-          ) : null}
-          {answer.partnerNotes.length ? (
-            <div className="cp-gm-you">
-              <span>For you · never sent to the guest</span>
-              {answer.partnerNotes.map((note) => <p key={note}>{note}</p>)}
-            </div>
-          ) : null}
-          <p className="cp-gm-source">{answer.sourceLine}</p>
-        </aside>
-      </div>
-      {photo ? (
-        <div className="cp-gm-lb" onClick={() => setPhoto(null)}>
-          <div onClick={(event) => event.stopPropagation()}>
-            {photo.media[0]?.url ? <img src={photo.media[0].url} alt={photo.media[0].shows || "Guest photo"} /> : <div className="ph" />}
-            <div>
-              <span>{photo.who} · {photo.time}{photo.text ? ` · “${photo.text}”` : ""}</span>
-              <strong>What Copilot read in this photo</strong>
-              <p>{photo.media.map((item) => item.shows).filter(Boolean).join(" ") || "A photo from the guest."}</p>
-              <button type="button" onClick={() => setPhoto(null)}>Close</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
+function lastLine(row: GuestRow): string {
+  if (!row.asked.trim() && /video/i.test(row.mediaLabel)) return "Sent a video";
+  if (!row.asked.trim() && /photo/i.test(row.mediaLabel)) return "Sent a photo";
+  return row.asked;
 }
 
-function Review({
-  answer,
-  index,
-  total,
-  sent,
-  held,
-  guest,
-  onBack,
-  onSubmit,
-  onHold,
-  onStand,
-  onUnstand,
-}: {
-  answer: GuestDraftView | null;
-  index: number;
-  total: number;
-  sent: number;
-  held: number;
-  guest: GuestRow;
-  onBack: () => void;
-  onSubmit: (text: string, files: GuestFile[]) => Promise<SubmitResult>;
-  onHold: () => Promise<void>;
-  onStand?: (situation: string, wording: string) => Promise<void>;
-  onUnstand?: (situation: string) => Promise<void>;
-}) {
-  const seed = answer?.id === guest.id ? answer.draft : "";
-  const [text, setText] = useState(seed);
-  const [files, setFiles] = useState<GuestFile[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [fail, setFail] = useState("");
-  const [stood, setStood] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    setText(seed);
-    setFiles([]);
-    setFail("");
-    setStood(false);
-    setBusy(false);
-  }, [guest.id, seed]);
-  const showing = text || seed;
-  const edited = Boolean(seed) && showing.trim() !== seed.trim();
-  return (
-    <div className="cp-gm cp-gm-review">
-      <div className="cp-gm-pos">
-        <button type="button" className="cp-gm-back" onClick={onBack}>← Queue</button>
-        <b>{index + 1} of {total}</b>
-        <span>{sent} sent · {held} held</span>
-      </div>
-      <div className="cp-gm-segs">{Array.from({ length: total }, (_, key) => <i key={key} className={key < index ? "done" : key === index ? "now" : ""} />)}</div>
-      <div className="cp-gm-who">
-        <span className="face" aria-label={`${guest.guest} profile photo`}>{guest.initials}</span>
-        <div>
-          <strong>{guest.guest}</strong>
-          <span><i className="tile" aria-hidden />{guest.property} · {guest.dates}</span>
-        </div>
-        <b className="needs">Waiting {guest.wait}</b>
-      </div>
-      <p className="status">{answer?.status || guest.status || guest.asked}</p>
-      <p className="cp-gm-quiet">{guest.first} · last message</p>
-      <p className="cp-gm-ask">{guest.asked}</p>
-      {guest.mediaLabel ? <p className="cp-gm-quiet">{guest.mediaLabel} · read by Copilot</p> : null}
-      <label>Draft reply{edited ? " · Edited by you" : ""}</label>
-      <textarea rows={4} value={showing} onChange={(event) => { setText(event.target.value); setStood(false); }} />
-      <div className="cp-gm-actions">
-        <button type="button" className="plus" aria-label="Add files, photos or context" onClick={() => input.current?.click()}>+</button>
-        <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { void readFiles(event.target.files).then((next) => setFiles((current) => [...current, ...next])); event.target.value = ""; }} />
-        <button type="button" onClick={() => { setText(seed); setStood(false); }}>Regenerate with AI</button>
-      </div>
-      {files.length ? <p className="cp-gm-quiet">{files.map((file) => file.name).join(", ")} · sends on Submit</p> : null}
-      {answer?.basedOn ? <p className="cp-gm-based"><strong>Based on</strong> · {answer.basedOn}</p> : null}
-      {edited && answer?.situation && !stood ? (
-        <div className="cp-gm-stand">
-          <button type="button" onClick={() => { void onStand?.(answer.situation, showing).then(() => setStood(true)); }}>Make this my standing answer</button>
-          <span>Copilot will start from your wording whenever {answer.situation}.</span>
-        </div>
-      ) : null}
-      {stood && answer?.situation ? <p className="cp-gm-stood"><strong>Standing answer saved</strong> · used next time {answer.situation} <button type="button" onClick={() => { void onUnstand?.(answer.situation).then(() => setStood(false)); }}>Undo</button></p> : null}
-      {fail ? <p className="fail">{fail}</p> : null}
-      <div className="cp-gm-actions end">
-        <span>Submit sends to {guest.first} and opens the next guest. Hold keeps it here for later.</span>
-        <button type="button" onClick={() => void onHold()}>Hold</button>
-        <button type="button" className="submit" disabled={busy || !showing.trim()} onClick={() => {
-          setBusy(true);
-          setFail("");
-          void onSubmit(showing, files).catch((err: unknown) => {
-            setFail(err instanceof Error ? err.message : "Nothing was sent.");
-            setBusy(false);
-          });
-        }}>{busy ? "Sending…" : "Submit"}</button>
-      </div>
-    </div>
-  );
+function activityTime(iso: string | undefined): string {
+  if (!iso) return "";
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" });
+  const same = day.format(at) === day.format(new Date());
+  if (same) return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }).format(at);
+  return new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/Toronto" }).format(at);
 }
 
-function Bubble({ message, onPhoto, source = false }: { message: GuestBubble; onPhoto: () => void; source?: boolean }) {
-  const guest = message.role === "guest";
-  return (
-    <div className={guest ? "guest" : "host"}>
-      <span className="face sm" aria-label={`${message.who} photo`}>{message.who.slice(0, 1)}</span>
-      <div>
-        <span className="who">{message.who} <em>{guest ? "Guest" : "Co-host"} · {message.time}</em></span>
-        {message.text ? <p>{message.text}{message.english && message.english !== message.text ? <em>{message.english}</em> : null}</p> : null}
-        {message.media.map((item, index) => item.kind === "video" ? (
-          <Video key={index} url={item.url} duration={item.duration} shows={item.shows} />
-        ) : (
-          <button key={index} type="button" className="cp-gm-photo" aria-label={`Expand ${message.who}’s photo`} onClick={onPhoto}>
-            {item.url ? <img src={item.url} alt="" /> : <span>{item.shows || "guest photo"}</span>}
-          </button>
-        ))}
-        {message.flag ? <span className="flag">{message.flag}</span> : null}
-        {source ? <span className="cp-gm-found"><i />Follow-up found here</span> : null}
-      </div>
-    </div>
-  );
+function nightCount(checkIn: string, checkOut: string): string {
+  if (!checkIn || !checkOut) return "";
+  const nights = Math.round((Date.parse(`${checkOut}T12:00:00Z`) - Date.parse(`${checkIn}T12:00:00Z`)) / 86400000);
+  if (!Number.isFinite(nights) || nights <= 0) return "";
+  return `${nights} nights`;
 }
 
-function Video({ url, duration, shows }: { url: string; duration: string; shows: string }) {
-  const ref = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying] = useState(false);
-  return (
-    <div className="cp-gm-video">
-      {url ? <video ref={ref} src={url} preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} /> : null}
-      {shows ? <span className="tag">{shows}</span> : null}
-      <button type="button" aria-label={playing ? "Pause video" : "Play video"} onClick={() => {
-        const node = ref.current;
-        if (!node) { setPlaying((on) => !on); return; }
-        if (node.paused) void node.play();
-        else node.pause();
-      }}>{playing ? "Pause" : "Play"}</button>
-      <span className="dur">{duration || "0:00"}</span>
-    </div>
-  );
-}
-
-function Rich({ text }: { text: string }) {
-  const parts = text.split(/(https?:\/\/\S+|airbnb\.ca\/resolutions)/g);
-  return (
-    <p className="draft">
-      {parts.map((part, index) => {
-        if (/^https?:\/\//i.test(part)) {
-          return <a key={index} href={part} target="_blank" rel="noopener">{part.replace(/^https?:\/\/(?:www\.)?/i, "")}</a>;
-        }
-        if (part === "airbnb.ca/resolutions") {
-          return <a key={index} href="https://www.airbnb.ca/resolutions" target="_blank" rel="noopener">{part}</a>;
-        }
-        return <span key={index}>{part}</span>;
-      })}
-    </p>
-  );
+function formatLeft(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(total / 3600))}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
 }
 
 function groupDays(messages: GuestBubble[]): { day: string; messages: GuestBubble[] }[] {

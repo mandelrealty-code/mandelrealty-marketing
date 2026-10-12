@@ -1762,6 +1762,26 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     void openCard(card.text, label);
   }
 
+  useEffect(() => {
+    if (screen !== "guests") return;
+    const pull = () => {
+      void api<GuestQueue>("guests-refresh", {})
+        .then((queue) => {
+          if (!isGuestQueue(queue)) return;
+          setGuestQueue(queue);
+          setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+        })
+        .catch(() => undefined);
+      const open = guestAnswer;
+      if (!open) return;
+      void api<GuestDraftView>("guests-open", { ...open })
+        .then((next) => setGuestAnswer((current) => (current && current.id === open.id ? next : current)))
+        .catch(() => undefined);
+    };
+    const timer = window.setInterval(pull, 4000);
+    return () => window.clearInterval(timer);
+  }, [screen, guestAnswer?.id]);
+
   function showGuests() {
     setScreen("guests");
     setGuestAnswer(null);
@@ -2306,6 +2326,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
                       }).catch(() => undefined);
                     }}
+                    onImprove={async (text) => {
+                      const result = await api<{ draft: string }>("guests-improve", { text, guest: guestAnswer?.first ?? "" });
+                      return result.draft ?? text;
+                    }}
                     onHold={async (id) => {
                       await api("guests-hold", { id });
                     }}
@@ -2341,6 +2365,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         fact,
                         attachments,
                       });
+                      if (result.sent && row) {
+                        const queue = await api<GuestQueue>("guests-refresh", {}).catch(() => null);
+                        if (isGuestQueue(queue)) {
+                          setGuestQueue(queue);
+                          setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+                        }
+                        const opened = await api<GuestDraftView>("guests-open", { ...row }).catch(() => null);
+                        if (opened) setGuestAnswer(opened);
+                      }
                       return result;
                     }}
                   />

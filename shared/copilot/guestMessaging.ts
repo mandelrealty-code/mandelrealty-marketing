@@ -16,7 +16,7 @@ import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
 import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
 import { getSupabaseAdmin } from "../supabase.js";
-import type { GuestDraftView, GuestFile, GuestFollowUp, GuestQueue, GuestRow } from "./guestTypes.js";
+import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestMedia, GuestQueue, GuestRow } from "./guestTypes.js";
 
 export type { GuestBubble, GuestDraftView, GuestFollowUp, GuestQueue, GuestRow } from "./guestTypes.js";
 export { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
@@ -291,6 +291,44 @@ export function replyFromAnswer(guest: string, answer: string): string {
   return `Hi ${name}, ${answer.trim()}`;
 }
 
+const KEPT_FACT = /\$\d[\d,]*(?:\.\d+)?|\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{4})?|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\s*(?:AM|PM)\b/gi;
+
+/** Polishes the partner's current reply. Dates and amounts stay character for character. Nothing is sent. */
+export function improveGuestDraft(text: string, guest = ""): string {
+  const source = text.trim();
+  if (!source) return "";
+  const kept: string[] = [];
+  const masked = source.replace(KEPT_FACT, (match) => {
+    const token = `\u0000${kept.length}\u0000`;
+    kept.push(match);
+    return token;
+  });
+  let polished = polishWording(masked, guest);
+  polished = polished.replace(/\u0000(\d+)\u0000/g, (_match, index: string) => kept[Number(index)] ?? "");
+  if (kept.some((fact) => !polished.includes(fact))) return source;
+  return polished === source ? source : polished;
+}
+
+function polishWording(text: string, guest: string): string {
+  let spoken = text.trim().replace(/\s+/g, " ");
+  spoken = spoken
+    .replace(/\bpls\b/gi, "please")
+    .replace(/\bu\b/gi, "you")
+    .replace(/\bur\b/gi, "your")
+    .replace(/\bthx\b/gi, "thanks")
+    .replace(/\bim\b/gi, "I'm")
+    .replace(/\bdont\b/gi, "don't")
+    .replace(/\bcant\b/gi, "can't")
+    .replace(/\bits\b/gi, "it's");
+  spoken = spoken.replace(/(^|[.!?]\s+)([a-z])/g, (_match, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`);
+  if (!/[.!?]$/.test(spoken)) spoken = `${spoken}.`;
+  const first = guest.trim().split(/\s+/)[0] || "";
+  if (first && !/^(hi|hello|hey|dear)\b/i.test(spoken)) {
+    spoken = `Hi ${first}, ${spoken.charAt(0).toLowerCase()}${spoken.slice(1)}`;
+  }
+  return spoken;
+}
+
 export type GuestSubmitResult = {
   sent: boolean;
   reason: string;
@@ -419,7 +457,6 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
   try {
     const loaded = await loadRecentStays(now, true);
     const photos = await propertyPhotos();
-    const today = torontoToday(now);
     const waiting: GuestRow[] = [];
     const onGuest: GuestRow[] = [];
     const held: GuestRow[] = [];
@@ -473,7 +510,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       const turns = messages
         .filter((item) => item.role !== "system")
         .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body, media: item.media ?? [] }));
-      const spoken = turns.filter((item) => item.body.trim() || item.media.length);
+      const spoken = turns.filter((item) => item.body.trim() || item.media.length).slice().sort((a, b) => a.at.localeCompare(b.at));
       const lastHost = spoken.filter((item) => item.role === "host").map((item) => item.at).sort().at(-1) ?? "";
       const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
       const last = spoken[spoken.length - 1];
@@ -505,7 +542,8 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
         else waiting.push(row);
       } else if (isThanksOnly(ask)) thanks.push(row);
     }
-    waiting.sort((a, b) => arrivalRank(a, today) - arrivalRank(b, today) || b.waitedMs - a.waitedMs || a.guest.localeCompare(b.guest));
+    const longest = waiting.slice().sort((a, b) => b.waitedMs - a.waitedMs)[0]?.wait || "";
+    waiting.sort((a, b) => a.waitedMs - b.waitedMs || a.guest.localeCompare(b.guest));
     await collectInquiries(seenProperties, followUps, scanned, handled, now);
     const previous = rememberedQueue?.followUps ?? [];
     for (const row of previous) {
@@ -520,7 +558,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     const closedFollowUps = previous
       .filter((row) => scanned.has(row.reservationId) && !openIds.has(row.id) && !handled.has(row.id))
       .map((row) => ({ id: row.id, guest: row.guest, closeText: settled.get(row.id) || "the thread shows it resolved" }));
-    const summary = guestSummary(waiting.length, waiting[0]?.wait || "", unread);
+    const summary = guestSummary(waiting.length, longest, unread);
     return {
       connected: true,
       line: "",
@@ -684,17 +722,7 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
   const held = read.lane === "guest";
   const draft = held ? (stood || outside.draft) : stood || (fromHub.mode === "hub" ? fromHub.draft : outside.draft);
   const mode = held ? "held" as const : draft ? "hub" as const : "gap" as const;
-  const thread = turns.filter((item) => item.role === "guest" || item.role === "host").map((item) => ({
-    role: item.role as "guest" | "host",
-    who: item.role === "guest" ? row.first : (item.name.trim().split(/\s+/)[0] || "Host"),
-    at: item.at,
-    time: messageTime(item.at, now),
-    text: item.body,
-    english: item.role === "guest" || messageLanguage(item.body) ? toEnglish(item.body) : "",
-    language: messageLanguage(item.body),
-    media: item.media,
-    flag: item.role === "host" && read.copied && /\b(he|his|him|she|her)\b/i.test(item.body) ? `Copied text: says “${read.copied}” for ${row.guest}` : "",
-  }));
+  const thread = presentGuestThread(messages, row.guest, hostNameFrom(stayRaw), now, read.copied);
   if (!held && mode === "hub" && draft) rememberGuestDraft({ to: row.guest, body: draft, reservationId: row.id, language: row.language });
   const reservation = reservationSpan(stayRaw);
   return {
@@ -765,14 +793,8 @@ function rowFrom(
     checkOut: stay.stay.checkOut,
     mediaLabel: read.mediaLabel,
     lastNote: read.lane === "guest" ? `Said they will check · ${waitLabel(waitedMs)} ago` : "",
+    activityAt: at,
   };
-}
-
-function arrivalRank(row: GuestRow, today: string): number {
-  if (!row.checkIn) return 2;
-  if (row.checkIn === today || row.checkIn === addDays(today, 1)) return 0;
-  if (row.checkIn < today && row.checkOut > today) return 1;
-  return 2;
 }
 
 function whenLabel(checkIn: string, checkOut: string, today: string): { when: string; urgent: boolean } {
@@ -853,6 +875,57 @@ function reservationSpan(raw: unknown): string {
   const checkIn = String(data.arrival_date ?? data.check_in ?? "").slice(0, 10);
   const checkOut = String(data.departure_date ?? data.check_out ?? "").slice(0, 10);
   return shortRange(checkIn, checkOut).replace("–", "-");
+}
+
+function realPerson(value: unknown): string {
+  const name = typeof value === "string" ? value.trim() : "";
+  if (!name || /^(unknown|host|guest|airbnb|system|automated message)$/i.test(name)) return "";
+  return name;
+}
+
+function hostNameFrom(raw: unknown): string {
+  const data = raw && typeof raw === "object" && (raw as { data?: unknown }).data && typeof (raw as { data?: unknown }).data === "object"
+    ? (raw as { data: Record<string, unknown> }).data
+    : raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const user = data.user && typeof data.user === "object" ? data.user as Record<string, unknown> : {};
+  const host = data.host && typeof data.host === "object" ? data.host as Record<string, unknown> : {};
+  return realPerson(user.name) || realPerson(user.full_name) || realPerson(user.first_name) || realPerson(host.name) || realPerson(host.first_name);
+}
+
+/** Oldest message first. Guest, co-host, or Automated message. The word Unknown is never a sender. */
+export function presentGuestThread(
+  messages: { at: string; role: string; name: string; body: string; media?: GuestMedia[] }[],
+  guest: string,
+  hostName: string,
+  now: Date,
+  copied = "",
+): GuestBubble[] {
+  const ordered = messages
+    .filter((item) => item.body.trim() || item.media?.length)
+    .slice()
+    .sort((a, b) => a.at.localeCompare(b.at));
+  const guestName = guest.trim() || "Guest";
+  const knownHost = realPerson(hostName) || ordered.map((item) => item.role === "host" ? realPerson(item.name) : "").find(Boolean) || "";
+  return ordered.map((item) => {
+    const automated = item.role === "system" || item.role === "automated";
+    const fromGuest = item.role === "guest";
+    const who = automated
+      ? "Automated message"
+      : fromGuest
+        ? realPerson(item.name) || guestName
+        : realPerson(item.name) || knownHost;
+    return {
+      role: automated ? "automated" as const : fromGuest ? "guest" as const : "host" as const,
+      who: /^unknown$/i.test(who) ? (automated ? "Automated message" : fromGuest ? guestName : knownHost) : who,
+      at: item.at,
+      time: messageTime(item.at, now),
+      text: item.body,
+      english: fromGuest || messageLanguage(item.body) ? toEnglish(item.body) : "",
+      language: messageLanguage(item.body),
+      media: item.media ?? [],
+      flag: !fromGuest && !automated && copied && /\b(he|his|him|she|her)\b/i.test(item.body) ? `Copied text: says “${copied}” for ${guestName}` : "",
+    };
+  });
 }
 
 function messageTime(iso: string, now: Date): string {
