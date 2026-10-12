@@ -130,6 +130,8 @@ export type StayCard = {
   guest: string;
   first: string;
   initials: string;
+  /** Airbnb profile photo from the Hospitable guest record. */
+  guestPhoto?: string;
   property: string;
   propertyId: string;
   kind: "check-in" | "check-out";

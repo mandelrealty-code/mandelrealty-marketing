@@ -236,7 +236,7 @@ export function ReviewsQueue({
               <article key={row.id} className="cp-rv-row">
                 <div className="cp-rv-who">
                   <div>
-                    {row.guestPhoto ? <img src={row.guestPhoto} alt="" /> : <span className="cp-rv-initials">{row.initials}</span>}
+                    {row.guestPhoto ? <img src={row.guestPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="cp-rv-initials">{row.initials}</span>}
                     <span><strong>{row.guest}</strong><em>{row.when}</em></span>
                   </div>
                   <div>

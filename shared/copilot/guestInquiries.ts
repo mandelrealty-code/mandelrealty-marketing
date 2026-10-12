@@ -171,7 +171,7 @@ export function recordFromRow(row: Record<string, unknown>, property: string, pr
     code: text(row.code) || text(row.platform_id),
     status: reservationStatus(row),
     guest: name,
-    guestPhoto: photoOf(guest) || photoOf(row),
+    guestPhoto: guestPhotoUrl(row),
     reviews,
     guestSince: text(guest.created_at) || text(guest.joined_at),
     property,
@@ -335,9 +335,21 @@ function threadId(row: Record<string, unknown>): string {
   return "";
 }
 
+/** Hospitable puts the Airbnb profile photo on `guest.profile_picture`. Older reads used `picture`. */
+export function guestPhotoUrl(row: Record<string, unknown> | null | undefined): string {
+  if (!row) return "";
+  const guest = isRow(row.guest) ? row.guest : null;
+  if (guest) {
+    const fromGuest = photoOf(guest);
+    if (fromGuest) return fromGuest;
+  }
+  return photoOf(row);
+}
+
 function photoOf(row: Record<string, unknown>): string {
   const picture = isRow(row.picture) ? row.picture : {};
-  for (const value of [row.picture, row.picture_url, row.photo, row.thumbnail, row.profile_picture, picture.url, picture.original]) {
+  const profile = isRow(row.profile_picture) ? row.profile_picture : {};
+  for (const value of [row.profile_picture, row.picture, row.picture_url, row.photo, row.thumbnail, row.avatar, picture.url, picture.original, picture.thumbnail, profile.url, profile.original]) {
     if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
   }
   return "";

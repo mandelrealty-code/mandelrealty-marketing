@@ -6,6 +6,7 @@
 import { listHospitableReviews, respondToHospitableReview } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { copilotHospitableToken, copilotKeepsProperty, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
+import { guestPhotoUrl } from "./guestInquiries.js";
 import { hubPlain } from "./knowledgeHub.js";
 import { addDays, torontoToday } from "./time.js";
 import type { PostedReviewLine, ReviewFact, ReviewQueuePayload, ReviewQueueProperty, ReviewQueueRow } from "./reviewTypes.js";
@@ -686,10 +687,6 @@ function reviewedLabel(iso: string, now: Date): string {
 }
 
 function guestPhoto(raw: Record<string, unknown>): string {
-  const guest = raw.guest && typeof raw.guest === "object" ? raw.guest as Record<string, unknown> : {};
-  for (const key of ["picture", "picture_url", "profile_picture", "avatar", "photo"]) {
-    const value = guest[key];
-    if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
-  }
-  return "";
+  const guest = raw.guest && typeof raw.guest === "object" ? raw.guest as Record<string, unknown> : null;
+  return guest ? guestPhotoUrl(guest) : "";
 }

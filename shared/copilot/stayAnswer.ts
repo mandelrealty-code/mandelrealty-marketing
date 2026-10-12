@@ -6,6 +6,7 @@
 
 import { asksBuildingRegistration } from "./buildingRegistration.js";
 import { listPmProperties } from "../pm/propertyStore.js";
+import { guestPhotoUrl } from "./guestInquiries.js";
 import { copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
 import { resolveProperty, type PropertyIdentity } from "./propertyIdentity.js";
 import { addDays, torontoToday } from "./time.js";
@@ -29,6 +30,7 @@ type Stay = {
   checkInAt: string;
   checkOutAt: string;
   guest: string;
+  guestPhoto: string;
   adults: number | null;
   children: number | null;
   infants: number | null;
@@ -315,6 +317,7 @@ function cardFor(stay: Stay, listing: Listing, kind: "check-in" | "check-out"): 
     guest,
     first: guest.split(/\s+/)[0] || guest,
     initials: initialsOf(guest),
+    guestPhoto: stay.guestPhoto,
     property: listing.label,
     propertyId: listing.id,
     kind,
@@ -701,6 +704,7 @@ function toStay(row: Record<string, unknown>): Stay {
     checkInAt: text(row.check_in),
     checkOutAt: text(row.check_out),
     guest: [first, last].filter(Boolean).join(" "),
+    guestPhoto: guestPhotoUrl(row),
     adults: countOf(guests.adult_count ?? guests.adults ?? row.adults),
     children: countOf(guests.child_count ?? guests.children ?? row.children),
     infants: countOf(guests.infant_count ?? guests.infants ?? row.infants),

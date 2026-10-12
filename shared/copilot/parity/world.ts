@@ -936,7 +936,7 @@ function mcpInquiry(row: ParityInquiry) {
     code: "",
     guest: {
       first_name: row.guest,
-      ...(row.guestPhoto ? { picture: row.guestPhoto } : {}),
+      ...(row.guestPhoto ? { picture: row.guestPhoto, profile_picture: row.guestPhoto } : {}),
       ...(row.reviews == null ? {} : { reviews_count: row.reviews }),
       ...(row.guestSince ? { created_at: row.guestSince } : {}),
     },
@@ -984,7 +984,7 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     guest: {
       first_name: row.guest,
       ...(row.phone ? { phone: row.phone } : {}),
-      ...(row.guestPhoto ? { picture: row.guestPhoto } : {}),
+      ...(row.guestPhoto ? { picture: row.guestPhoto, profile_picture: row.guestPhoto } : {}),
       ...(row.reviews == null ? {} : { reviews_count: row.reviews }),
       ...(row.guestSince ? { created_at: row.guestSince } : {}),
     },

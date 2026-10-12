@@ -9,7 +9,7 @@ import { sendReservationMessage } from "./hospitableAgent.js";
 import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIntelligence.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { detectFollowUps, orderFollowUps, type FollowUpStay } from "./guestFollowUps.js";
-import { bookingRequestFollowUp, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
+import { bookingRequestFollowUp, guestPhotoUrl, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
 import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, type InquiryVerify } from "./store.js";
 import { leaveDraft, loadRecentStays, memoryFor, readStayThread } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
@@ -454,6 +454,7 @@ function followStay(
     property: stay.label,
     propertyId: stay.stay.propertyId,
     propertyPhoto,
+    guestPhoto: guestPhotoUrl(stay.reservation),
     checkIn: stay.stay.checkIn,
     checkOut: stay.stay.checkOut,
     standardIn: clockMinutes(stay.reservation?.checkin_time),
@@ -765,7 +766,7 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
 }
 
 function rowFrom(
-  stay: { stay: { id: string; guest: string; propertyId: string; checkIn: string; checkOut: string }; label: string },
+  stay: { stay: { id: string; guest: string; propertyId: string; checkIn: string; checkOut: string }; label: string; reservation?: Record<string, unknown> | null },
   ask: string,
   at: string,
   language: string,
@@ -783,7 +784,7 @@ function rowFrom(
     guest,
     first,
     initials: initials(guest),
-    guestPhoto: "",
+    guestPhoto: guestPhotoUrl(stay.reservation),
     property: stay.label,
     propertyId: stay.stay.propertyId,
     propertyPhoto,

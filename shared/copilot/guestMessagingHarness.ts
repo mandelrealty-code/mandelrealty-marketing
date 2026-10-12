@@ -9,7 +9,7 @@ import { callHospitableMcp } from "./hospitableMcp.js";
 import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerWaitingDrafts } from "./guestInboxAnswer.js";
 import { detectFollowUps, orderFollowUps } from "./guestFollowUps.js";
-import { bookingRequestFollowUp, responseDeadline, type InquiryRecord, type InquiryTurn } from "./guestInquiries.js";
+import { bookingRequestFollowUp, guestPhotoUrl, responseDeadline, type InquiryRecord, type InquiryTurn } from "./guestInquiries.js";
 import { capturedCommits } from "./parity/capture.js";
 import {
   beginInquiryVerify,
@@ -841,6 +841,8 @@ const requestQueue = await loadGuestQueue(anlelNow);
 const queuedAnlel = requestQueue.followUps.find((row) => row.guest === "Anlel");
 if (!queuedAnlel || queuedAnlel.expiresAt !== anlelCard.expiresAt || queuedAnlel.rulesQuote !== ANLEL_RULES || queuedAnlel.price !== "CA$1,222.13") fail(`queue anlel ${queuedAnlel?.expiresAt} ${queuedAnlel?.price} ${queuedAnlel?.rulesQuote}`);
 if (!requestQueue.followUps.some((row) => row.guest === "Jules" && row.kind === "inquiry")) fail("open inquiry missing");
+if (queuedAnlel.guestPhoto !== "https://example.test/anlel.jpg") fail(`anlel photo ${queuedAnlel.guestPhoto}`);
+if (guestPhotoUrl({ guest: { profile_picture: "https://example.test/anlel.jpg" } }) !== "https://example.test/anlel.jpg") fail("hospitable profile picture");
 if (capturedCommits().length !== beforeCommits) fail("inquiry load wrote to Hospitable");
 const verified = await beginInquiryVerify(queuedAnlel.id, "approve", anlelNow);
 if (verified.airbnbUrl !== queuedAnlel.airbnbUrl || capturedCommits().length !== beforeCommits) fail("approve pressed a Hospitable write");

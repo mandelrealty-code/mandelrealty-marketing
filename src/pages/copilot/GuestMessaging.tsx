@@ -81,6 +81,7 @@ function Queue({ queue, onOpen, onRefresh }: { queue: GuestQueue; onOpen: (row: 
           <span className="cp-gq-label">Follow-ups</span>
           {followUps.map((row) => (
             <button key={row.id} type="button" className="cp-gq-fu" onClick={() => onOpen(rowFromFollowUp(row))}>
+              <Face name={row.guest} photo={row.guestPhoto} initials={row.initials} size={28} />
               {row.kind === "inquiry" ? <span className="cp-gq-tag">INQUIRY</span> : null}
               <span className="cp-gq-who"><strong>{row.guest}</strong><em> · {row.property}</em></span>
               <span className="cp-gq-line">{row.line}{row.kind === "ask" && row.agreed ? ` · “${row.agreed}”` : ""}</span>
@@ -408,7 +409,7 @@ export function StayCards({ stays, onOpen }: { stays: StayCard[]; onOpen: (row: 
         const row = guestRowFromStay(stay);
         return (
           <div key={`${stay.kind}-${stay.id}`} className="cp-gm-row" role="link" tabIndex={0} onClick={() => onOpen(row)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(row); }}>
-            <span className="face" aria-label={`${row.guest} profile photo`}>{row.initials}</span>
+            <Face name={row.guest} photo={row.guestPhoto} initials={row.initials} size={40} />
             <span>
               <strong>{row.guest}</strong>
               <small className="dates">{row.dates}</small>
@@ -431,7 +432,7 @@ function guestRowFromStay(stay: StayCard): GuestRow {
     guest: stay.guest,
     first: stay.first,
     initials: stay.initials,
-    guestPhoto: "",
+    guestPhoto: stay.guestPhoto || "",
     property: stay.property,
     propertyId: stay.propertyId,
     propertyPhoto: "",
