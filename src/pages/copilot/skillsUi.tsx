@@ -503,6 +503,7 @@ export function HospitableDraftCard({
   busy,
   onApprove,
   onHold,
+  onHandled,
 }: {
   message: CopilotMessage;
   body: string;
@@ -510,9 +511,12 @@ export function HospitableDraftCard({
   busy: boolean;
   onApprove: () => void;
   onHold: () => void;
+  /** A due follow-up: closes it here, in Overview, and in Guest messaging. */
+  onHandled?: () => void;
 }) {
   const draft = message.draft;
   if (!draft || draft.channel !== "hospitable") return null;
+  const followUp = draft.followUp;
   return (
     <div className="cp-sk-prop">
       {message.run_id ? <span className="cp-sk-stamp">{runWhen(message.created_at, true)}</span> : null}
@@ -521,7 +525,7 @@ export function HospitableDraftCard({
         <div className="cp-sk-mailmeta">
           <div className="r">
             <span className="k">Change</span>
-            <span className="subj">{draft.subject || "Hospitable"}</span>
+            <span className="subj">{draft.subject || (followUp ? `Message to ${followUp.guest}` : "Hospitable")}</span>
           </div>
         </div>
         <div className="cp-sk-mailbody">
@@ -534,8 +538,9 @@ export function HospitableDraftCard({
           <div className="cp-sk-btns">
             <button type="button" className="cp-sk-gold" disabled={busy} onClick={onApprove}>Submit</button>
             <button type="button" className="cp-sk-ghost" disabled={busy} onClick={onHold}>Hold</button>
+            {followUp && onHandled ? <button type="button" className="cp-sk-ghost" disabled={busy} onClick={onHandled}>Already handled</button> : null}
           </div>
-          <p className="cp-sk-after muted">{draft.cleanerAssign ? `Submit writes ${draft.cleanerAssign.cleanerName} onto the turnover in the cleaner app. Nothing has been written yet.` : "Submit commits this in Hospitable. Hold leaves it here."}</p>
+          <p className="cp-sk-after muted">{followUp ? `Fill in the marked blank. Submit sends exactly this text to ${followUp.guest} in Hospitable. Nothing has been sent.` : draft.cleanerAssign ? `Submit writes ${draft.cleanerAssign.cleanerName} onto the turnover in the cleaner app. Nothing has been written yet.` : "Submit commits this in Hospitable. Hold leaves it here."}</p>
         </>
       ) : null}
       {draft.status === "sent" ? (
@@ -544,7 +549,7 @@ export function HospitableDraftCard({
           <p className="cp-sk-tight">It is in Hospitable.</p>
         </>
       ) : null}
-      {draft.status === "held" ? <p className="cp-sk-tight">Held. Nothing was changed.</p> : null}
+      {draft.status === "held" && !followUp ? <p className="cp-sk-tight">Held. Nothing was changed.</p> : null}
     </div>
   );
 }

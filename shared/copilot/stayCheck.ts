@@ -13,6 +13,7 @@ import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft, CopilotMessage } from "./types.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
+import { raiseDueFollowUps } from "./dueFollowUps.js";
 import { mediaFromMessage, type ThreadMedia } from "./guestMedia.js";
 import { isThanksOnly, needsGuestReply } from "./guestTranslate.js";
 import { readCleanerUnit, type CleanerPicture, type CleanerSupply, type CleanerTurnover } from "./cleanerRead.js";
@@ -287,8 +288,9 @@ export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise
     ...(prepared.cleanerAssign ? { cleanerAssign: prepared.cleanerAssign } : {}),
     ...(prepared.purchase ? { purchase: prepared.purchase } : {}),
     ...(hospitable ? { hospitable } : {}),
+    ...(prepared.followUp ? { followUp: prepared.followUp } : {}),
   };
-  const body = `${prepared.cleanerAssign ? prepared.body : prepared.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : prepared.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : "Here is the building email. Nothing was sent."}${warnings}`;
+  const body = prepared.lead ? `${prepared.lead}${warnings}` : `${prepared.cleanerAssign ? prepared.body : prepared.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : prepared.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : "Here is the building email. Nothing was sent."}${warnings}`;
   if (parityEnabled()) {
     try {
       return paritySaveChecksMessage({
@@ -638,6 +640,8 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
   }
   await flushThreadCache();
   await revalidateWaitingReplies(now);
+  // Promises to guests that come due today or tomorrow become a question in Checks. Nothing is sent.
+  await raiseDueFollowUps(now);
 }
 
 async function preApproval(): Promise<void> {
@@ -806,7 +810,8 @@ function sameGuest(stayGuest: string, draftTo: string): boolean {
 export async function revalidateWaitingReplies(now = new Date()): Promise<void> {
   const waiting = (await checksOverviewMessages()).filter((message) => {
     const draft = message.draft;
-    return Boolean(draft && draft.status === "waiting" && draft.channel === "hospitable" && !draft.cleanerAssign && draft.to.trim());
+    // A due follow-up is not a reply to the guest's last message. It closes with the follow-up.
+    return Boolean(draft && draft.status === "waiting" && draft.channel === "hospitable" && !draft.cleanerAssign && !draft.followUp && draft.to.trim());
   });
   if (!waiting.length) return;
   const loaded = await loadRecentStays(now).catch(() => null);
@@ -839,7 +844,7 @@ async function retireWaitingReplies(guest: string): Promise<void> {
   }
   const waiting = await listWaitingDrafts().catch(() => []);
   for (const item of waiting) {
-    if (item.channel !== "hospitable" || item.cleanerName) continue;
+    if (item.channel !== "hospitable" || item.cleanerName || item.followUp) continue;
     if (item.to.trim().toLowerCase() !== name) continue;
     await updateDraft(item.messageId, { status: "held" });
   }

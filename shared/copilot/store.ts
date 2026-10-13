@@ -14,7 +14,7 @@ import type { OpenItem } from "./openItems.js";
 import type { CleanerPicture } from "./cleanerRead.js";
 import { openLegacyPurchase } from "./openPurchase.js";
 import type { RankSignals } from "./overviewRank.js";
-import type { BriefPayload, CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, SkillRunResult } from "./types.js";
+import type { BriefPayload, CopilotChat, CopilotDraft, CopilotMessage, CopilotReport, CopilotReminder, CopilotRun, CopilotSkill, CopilotTextSend, DraftFollowUp, SkillRunResult } from "./types.js";
 
 type FileShape = {
   chats: CopilotChat[];
@@ -189,6 +189,7 @@ export type WaitingDraft = {
   cleanerUnit: string;
   cleanerOn: string;
   upsellPhase: "" | "verify" | "decline" | "remind";
+  followUp?: DraftFollowUp;
 };
 
 function waitingMessage(row: { id?: string; chat_id?: string; created_at?: string; body?: string; draft?: CopilotDraft | null }): CopilotMessage {
@@ -223,6 +224,7 @@ function asWaiting(row: { id?: string; chat_id?: string; created_at?: string; dr
     cleanerUnit: draft.cleanerAssign?.unit || "",
     cleanerOn: draft.cleanerAssign?.scheduledOn || "",
     upsellPhase: "",
+    ...(draft.followUp ? { followUp: draft.followUp } : {}),
   };
 }
 

@@ -399,6 +399,11 @@ function incidentCard(stay: FollowUpStay, item: Incident, now: Date): GuestFollo
   return paint(card, torontoToday(now), now);
 }
 
+/** A stored follow-up shown again: its due line and stay line are worked out for today. */
+export function repaintFollowUp(row: GuestFollowUp, now: Date): GuestFollowUp {
+  return paint({ ...row, stay: "" }, torontoToday(now), now);
+}
+
 function paint(row: GuestFollowUp, today: string, now: Date): GuestFollowUp {
   const next = { ...row };
   next.initials = initials(next.guest);

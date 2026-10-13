@@ -87,6 +87,10 @@ export function failChecksDrafts(message: string | null): void {
   checksSaveError = message;
 }
 
+export function resetParityChecksMessages(): void {
+  checksMessages.length = 0;
+}
+
 export function parityChecksMessages(): CopilotMessage[] {
   return checksMessages.map((row) => ({ ...row, draft: row.draft ? { ...row.draft } : null }));
 }
@@ -110,7 +114,7 @@ export function parityRetireGuestReplies(guest: string): void {
   if (!name) return;
   for (const message of checksMessages) {
     const draft = message.draft;
-    if (!draft || draft.status !== "waiting" || draft.channel !== "hospitable" || draft.cleanerAssign) continue;
+    if (!draft || draft.status !== "waiting" || draft.channel !== "hospitable" || draft.cleanerAssign || draft.followUp) continue;
     if ((draft.to || "").trim().toLowerCase() !== name) continue;
     message.draft = { ...draft, status: "held" };
   }

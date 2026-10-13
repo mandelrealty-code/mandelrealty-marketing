@@ -14,6 +14,10 @@ export type DraftCapture = {
   purchase?: PurchaseDetail;
   /** What Submit on this card will send. Absent until the card exists. */
   hospitable?: { tool: string; args: Record<string, unknown> };
+  /** A due Guest Messaging follow-up this draft answers. */
+  followUp?: import("../types.js").DraftFollowUp;
+  /** The Checks message text above the draft. Defaults to the plain "Here is the guest reply" line. */
+  lead?: string;
 };
 
 export type ReportCapture = {

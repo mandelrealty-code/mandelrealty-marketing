@@ -30,6 +30,7 @@ import {
   submitGuestReply,
   toEnglish,
   toGuestLanguage,
+  forgetGuestProcessMemory,
   guestDrafts,
   guestTabText,
   improveGuestDraft,
@@ -38,6 +39,11 @@ import type { GuestFollowUp } from "./guestTypes.js";
 import { guestQueueRows } from "./guestQueueRows.js";
 import { installWorld, parityThreadReads, pushParityMessage } from "./parity/world.js";
 import { saveGuestQueueSnapshot } from "./store.js";
+import { buildBrief } from "./brief.js";
+import { BLANK, closeFollowUpEverywhere } from "./dueFollowUps.js";
+import { runUnattendedChecks } from "./stayCheck.js";
+import { parityChecksMessages, resetParityChecksMessages } from "./parity/storeStub.js";
+import { resetCaptures } from "./parity/capture.js";
 
 const GOOD = "copilot-guest-token-not-a-secret-7Kq2";
 const FRENCH = "Est-ce qu'on pourrait arriver à 13 h au lieu de 16 h ? Notre vol atterrit à 11 h.";
@@ -1310,6 +1316,95 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   const third = await loadGuestQueue(new Date("2026-10-12T16:10:00Z"));
   if (parityThreadReads() !== afterFirst + 1) fail(`one new message re-read ${parityThreadReads() - afterFirst} threads`);
   if (guestQueueRows(third)[0]?.id !== "stay-mark-b" || guestQueueRows(third)[0]?.preview !== "Also, is there a crib?") fail("the new message did not reach the list");
+}
+
+// Item 6. A promise that comes due asks the partner, with the draft ready, and never disappears on its own.
+{
+  const eloiseWorld = (now: Date, unreadable = false) => installWorld({
+    now,
+    properties: [{ id: "prop-live-charlotte", name: "Unit #606", address: "606, 8 Charlotte Street, Toronto", managed: true }],
+    reservations: [{
+      id: "stay-eloise-due",
+      code: "HMJSMMMFSF",
+      propertyId: "prop-live-charlotte",
+      status: "accepted",
+      checkIn: "2026-09-29",
+      checkOut: "2026-11-07",
+      guest: "Eloise",
+      adults: 1,
+      children: 0,
+      ...(unreadable ? { threadUnreadable: true } : {}),
+      messages: [
+        { id: "due-0", at: "2026-10-02T12:30:39Z", role: "guest", name: "Eloise", body: "The windows are quite dirty, might it be possible for these to be cleaned?" },
+        { id: "due-1", at: "2026-10-07T17:01:04Z", role: "host", name: "Unknown", body: LIVE_PROMISE },
+        { id: "due-2", at: "2026-10-10T15:24:43Z", role: "guest", name: "Eloise", body: LIVE_AGREED },
+        { id: "due-3", at: "2026-10-10T15:25:34Z", role: "host", name: "Unknown", body: "Okay I’ll see what I can do for windows." },
+      ],
+    }],
+    inquiries: [],
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+  });
+  const questions = (id: string) => parityChecksMessages().filter((message) => message.draft?.followUp?.id === id);
+  resetGuestMessaging();
+  await clearHandledFollowUps();
+  resetParityChecksMessages();
+  resetCaptures();
+
+  // Oct 13: the agreed window opens tomorrow.
+  const oct13 = new Date("2026-10-13T15:00:00Z");
+  eloiseWorld(oct13);
+  await runUnattendedChecks(oct13);
+  const queue13 = await loadGuestQueue(oct13);
+  const windowsDue = queue13.followUps.find((row) => row.guest === "Eloise" && row.kind === "owe");
+  if (!windowsDue || windowsDue.due !== "2026-10-14") fail(`due windows ${windowsDue?.due}`);
+  const asked = questions(windowsDue.id);
+  if (asked.length !== 1 || asked[0]?.draft?.status !== "waiting") fail(`due question count ${asked.length}`);
+  const question = asked[0];
+  const lead = question?.body ?? "";
+  if (!/on or after October 14th/.test(lead) || !/On or after 14th is fine/.test(lead)) fail(`question quotes ${lead}`);
+  if (!/What was promised/.test(lead) || !/What Eloise agreed/.test(lead) || !/Why now: .*tomorrow/.test(lead)) fail(`question shape ${lead}`);
+  if (!/Already handled/.test(lead) || !/Nothing has been sent/.test(lead)) fail(`question close ${lead}`);
+  const draftText = question?.draft?.body ?? "";
+  if (!draftText.includes("[day and time]") || !BLANK.test(draftText) || !/^Hi Eloise/.test(draftText)) fail(`question draft ${draftText}`);
+  if (question?.draft?.hospitable?.args.reservation_id !== "stay-eloise-due") fail("the draft does not answer Eloise's reservation");
+  if (capturedCommits().length) fail(`the checks sent ${capturedCommits().map((row) => row.detail).join(" ")}`);
+  const brief13 = await buildBrief(oct13);
+  const card13 = [...brief13.focus, ...brief13.eating].find((card) => card.followUpId === windowsDue.id);
+  if (!card13 || !card13.actions?.includes("Already handled") || !/tomorrow/i.test(card13.headline ?? "")) fail(`overview card ${card13?.headline}`);
+  if (questions(windowsDue.id).length !== 1) fail("Overview repeated the question");
+
+  // A fresh server instance that cannot read the thread still shows the stored follow-up.
+  forgetGuestProcessMemory();
+  eloiseWorld(oct13, true);
+  const unreadQueue = await loadGuestQueue(oct13);
+  if (!unreadQueue.followUps.some((row) => row.id === windowsDue.id)) fail("a stored follow-up disappeared when its thread was not read");
+
+  // Oct 14, unresolved: it is still there, once.
+  const oct14 = new Date("2026-10-14T15:00:00Z");
+  eloiseWorld(oct14);
+  const brief14 = await buildBrief(oct14);
+  if (questions(windowsDue.id).filter((message) => message.draft?.status === "waiting").length !== 1) fail(`next day questions ${questions(windowsDue.id).length}`);
+  if (![...brief14.focus, ...brief14.eating].some((card) => card.followUpId === windowsDue.id)) fail("the question left Overview the next day");
+  const queue14 = await loadGuestQueue(oct14);
+  if (!queue14.followUps.some((row) => row.id === windowsDue.id)) fail("the follow-up left Guest messaging the next day");
+
+  // A partner closes it: gone from Checks, Overview, and Guest messaging, and not raised again.
+  await closeFollowUpEverywhere(windowsDue.id);
+  if (questions(windowsDue.id).some((message) => message.draft?.status === "waiting")) fail("the question stayed open after Already handled");
+  const brief14b = await buildBrief(oct14);
+  if ([...brief14b.focus, ...brief14b.eating].some((card) => card.followUpId === windowsDue.id)) fail("Overview kept a handled follow-up");
+  const queue14b = await loadGuestQueue(oct14);
+  if (queue14b.followUps.some((row) => row.id === windowsDue.id)) fail("Guest messaging kept a handled follow-up");
+  const oct15 = new Date("2026-10-15T15:00:00Z");
+  eloiseWorld(oct15);
+  await runUnattendedChecks(oct15);
+  if (questions(windowsDue.id).some((message) => message.draft?.status === "waiting")) fail("a handled follow-up was asked again");
+  if (capturedCommits().length) fail(`the checks sent ${capturedCommits().map((row) => row.detail).join(" ")}`);
+  await clearHandledFollowUps();
+  resetParityChecksMessages();
 }
 
 console.log("Guest messaging harness passed.");

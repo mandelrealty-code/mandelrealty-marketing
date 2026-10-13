@@ -8,10 +8,11 @@ import { copilotHospitableToken, copilotScopeActive, hospitableRead, HOSPITABLE_
 import { sendReservationMessage } from "./hospitableAgent.js";
 import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIntelligence.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
-import { detectFollowUps, orderFollowUps, type FollowUpStay } from "./guestFollowUps.js";
+import { detectFollowUps, orderFollowUps, repaintFollowUp, type FollowUpStay } from "./guestFollowUps.js";
 import { bookingRequestFollowUp, guestPhotoUrl, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
 import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, type InquiryVerify } from "./store.js";
 import { parityEnabled } from "./parity/flag.js";
+import { closeFollowUpEverywhere } from "./dueFollowUps.js";
 import { flushThreadCache, leaveDraft, loadConversations, memoryFor, readStayThread, type Conversation } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
@@ -31,6 +32,8 @@ const handledFollowUps = new Set<string>();
 const verifyingInquiries = new Map<string, InquiryVerify>();
 let stagedInquiries: GuestFollowUp[] = [];
 let rememberedQueue: GuestQueue | null = null;
+/** Parity stand-in for the saved queue, which outlives one server instance. */
+let paritySavedQueue: GuestQueue | null = null;
 
 export function resetGuestMessaging(): void {
   uploader = null;
@@ -42,6 +45,21 @@ export function resetGuestMessaging(): void {
   verifyingInquiries.clear();
   stagedInquiries = [];
   rememberedQueue = null;
+  paritySavedQueue = null;
+}
+
+/** A fresh server instance: nothing in memory, the saved queue is still there. */
+export function forgetGuestProcessMemory(): void {
+  rememberedQueue = null;
+  handledFollowUps.clear();
+}
+
+/** Open follow-ups from the last pass: this instance's memory, else the saved queue. */
+async function storedFollowUps(): Promise<GuestFollowUp[]> {
+  if (rememberedQueue) return rememberedQueue.followUps ?? [];
+  if (parityEnabled()) return paritySavedQueue?.followUps ?? [];
+  const saved = await readGuestQueueSnapshot<GuestQueue>().catch(() => null);
+  return Array.isArray(saved?.followUps) ? saved.followUps : [];
 }
 
 /** Inquiry rows are created by the booking-request pass. This pass only places them in the group. */
@@ -74,11 +92,18 @@ export async function beginInquiryVerify(id: string, action: "approve" | "declin
   return { queue, airbnbUrl: card?.airbnbUrl || "" };
 }
 
-/** Closes a follow-up for good. A later read of the same thread will not bring it back. */
-export async function markFollowUpHandled(id: string, now = parityNow() ?? new Date()): Promise<GuestQueue> {
+/** Records a follow-up as handled. A later read of the same thread will not bring it back. */
+export async function recordFollowUpHandled(id: string): Promise<void> {
   const trimmed = id.trim();
-  if (trimmed) handledFollowUps.add(trimmed);
+  if (!trimmed) return;
+  await handledNow();
+  handledFollowUps.add(trimmed);
   await saveHandledFollowUps([...handledFollowUps]).catch(() => undefined);
+}
+
+/** Closes a follow-up for good, here, in Checks, and in Overview. */
+export async function markFollowUpHandled(id: string, now = parityNow() ?? new Date()): Promise<GuestQueue> {
+  await closeFollowUpEverywhere(id);
   return loadGuestQueue(now);
 }
 
@@ -429,6 +454,7 @@ async function loadGuestQueueOnce(now: Date): Promise<GuestQueue> {
   queue.answer = waitingSurfaceText(queue);
   if (queue.connected) {
     rememberedQueue = queue;
+    if (parityEnabled()) paritySavedQueue = queue;
     await saveGuestQueueSnapshot(queue).catch(() => undefined);
   }
   return queue;
@@ -610,7 +636,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     const longest = waiting.slice().sort((a, b) => b.waitedMs - a.waitedMs)[0]?.wait || "";
     waiting.sort((a, b) => a.waitedMs - b.waitedMs || a.guest.localeCompare(b.guest));
     collectInquiries(loaded.stays, seenProperties, followUps, scanned, handled, now);
-    const previous = rememberedQueue?.followUps ?? [];
+    const previous = await storedFollowUps();
     const today = torontoToday(now);
     const activityById = new Map(loaded.stays.map((row) => [row.stay.id, row.lastMessageAt]));
     // A follow-up kept from the last load because its thread was not read this time still has to hold:
@@ -621,9 +647,18 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       const activity = activityById.get(row.reservationId) ?? "";
       return Boolean(activity) && torontoToday(new Date(activity)) > row.checkOut;
     };
+    // A stored open follow-up never disappears on its own. It closes when the thread settles it,
+    // a partner marks it handled, or its stay has ended (a dated promise still ahead holds).
+    // A thread that was not read this time, or a detection that no longer finds it, keeps it open.
+    const sameLoop = (a: GuestFollowUp, b: GuestFollowUp) => a.reservationId === b.reservationId && a.kind === b.kind && a.topic === b.topic;
     for (const row of previous) {
-      if (!unreadThreads.has(row.reservationId) || handled.has(row.id) || followUps.some((item) => item.id === row.id)) continue;
-      if (stillHolds(row)) followUps.push(row);
+      if (handled.has(row.id) || followUps.some((item) => item.id === row.id || sameLoop(item, row))) continue;
+      if (settled.has(row.id)) continue;
+      if (row.kind === "inquiry") {
+        if (unreadThreads.has(row.reservationId)) followUps.push(row);
+        continue;
+      }
+      if (stillHolds(row)) followUps.push(repaintFollowUp(row, now));
       else settled.set(row.id, `the stay ended ${row.checkOut} and the thread did not continue it`);
     }
     for (const row of stagedInquiries) {

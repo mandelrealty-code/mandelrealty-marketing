@@ -34,6 +34,20 @@ export type CopilotDraft = {
   purchase?: PurchaseState;
   /** Early check-in or late checkout. Nothing is sent until the price is approved. */
   upsell?: UpsellOffer;
+  /** A Guest Messaging follow-up that is due. Already handled closes the follow-up everywhere. */
+  followUp?: DraftFollowUp;
+};
+
+export type DraftFollowUp = {
+  id: string;
+  reservationId: string;
+  due: string;
+  guest: string;
+  property: string;
+  /** "Eloise's window cleaning is due tomorrow, Wed Oct 14" */
+  headline: string;
+  /** Why it is due now, one sentence. */
+  why: string;
 };
 
 export type UpsellOffer = {
@@ -188,6 +202,8 @@ export type BriefCard = {
   messageId?: string;
   purchaseStatus?: "ordered" | "shipped" | "delivered";
   trackingUrl?: string;
+  /** A due Guest Messaging follow-up. Already handled closes it everywhere. */
+  followUpId?: string;
   /** Ranking facts. Absent cards are inferred from the headline. */
   rank?: {
     kind: "registration" | "guest" | "cleaner" | "expiring" | "stock" | "draft" | "failed" | "other";

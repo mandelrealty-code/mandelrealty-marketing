@@ -1468,7 +1468,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     setLiveRuns((prev) => prev.filter((id) => id !== current.chatId));
   }
 
-  async function act(message: CopilotMessage, action: "send" | "hold" | "purchase" | "not-now" | "skip" | "alternative", extra?: Record<string, unknown>) {
+  async function act(message: CopilotMessage, action: "send" | "hold" | "handled" | "purchase" | "not-now" | "skip" | "alternative", extra?: Record<string, unknown>) {
     setBusy(true);
     try {
       await api("draft", {
@@ -1756,6 +1756,19 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
+  async function closeFollowUpCard(item: BriefCard) {
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await api<{ brief: BriefPayload }>("followup-handled", { followUpId: item.followUpId, cardId: item.id });
+      setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not close that follow-up.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function pickOpenItem(item: BriefCard, choice: string) {
     setBusy(true);
     setError(null);
@@ -1775,6 +1788,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       .then((data) => setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev)))
       .catch(() => undefined);
     if (!card) return;
+    if (card.followUpId && label === "Already handled") {
+      void closeFollowUpCard(card);
+      return;
+    }
+    if (card.followUpId && card.chatId) {
+      void openChat(card.chatId, card.messageId);
+      return;
+    }
     if (card.actions?.includes(label)) {
       void pickOpenItem(card, label);
       return;
@@ -2561,6 +2582,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             busy={busy}
                             onApprove={() => void act(message, "send")}
                             onHold={() => void act(message, "hold")}
+                            onHandled={() => void act(message, "handled")}
                           />
                         </div>
                       ) : message.draft?.upsell ? (

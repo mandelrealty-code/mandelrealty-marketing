@@ -52,6 +52,7 @@ import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitabl
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
+import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
 import { beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestDraft, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, listStoredMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
@@ -609,6 +610,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     if (op === "refresh-brief") {
       return res.status(200).json({ brief: await refreshSavedBrief() });
+    }
+
+    if (op === "followup-handled") {
+      const followUpId = String(body.followUpId ?? "").trim();
+      const cardId = String(body.cardId ?? "").trim();
+      if (!followUpId) return res.status(400).json({ error: "Missing follow-up." });
+      await closeFollowUpEverywhere(followUpId);
+      return res.status(200).json({ brief: cardId ? await dismissSavedCard(cardId, new Date(), true) : await readStoredBrief() });
     }
 
     if (op === "dismiss") {
@@ -1634,6 +1643,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         const message = await updateDraft(messageId, { status: "held" });
         return res.status(200).json({ message });
       }
+      if (action === "handled") {
+        const current = await readMessage(messageId);
+        const followUpId = current?.draft?.followUp?.id ?? "";
+        if (!followUpId) return res.status(400).json({ error: "That card is not a follow-up." });
+        await closeFollowUpEverywhere(followUpId);
+        return res.status(200).json({ message: await readMessage(messageId) });
+      }
       if (action === "hold") {
         const message = await updateDraft(messageId, {
           status: "held",
@@ -1696,6 +1712,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           }
         }
         if (draft?.channel === "hospitable" && draft.hospitable?.tool) {
+          const blank = draft.followUp ? BLANK.exec(edited || draft.body) : null;
+          if (blank) return res.status(400).json({ error: `Fill in ${blank[0]} in the draft first. Nothing was sent.` });
           try {
             const args = applyHospitableEdit(draft.hospitable.args, draft.body, edited || draft.body);
             if (draft.hospitable.tool === "send-reservation-message") {

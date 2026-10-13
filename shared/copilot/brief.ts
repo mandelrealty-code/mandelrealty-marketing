@@ -8,7 +8,7 @@ import { turnoverLine, weekTurnovers, type TurnoverRow } from "./dayBoard.js";
 import { copilotKeepsProperty, copilotScopeActive, hospitableSelectionSaved, withCopilotScope } from "./hospitableConnection.js";
 import { inputFromCard, noteSignal, rankOverview } from "./overviewRank.js";
 import { listConnectorFailures, type ConnectorFailure } from "./connectorFailures.js";
-import { dismissCard, listChecksMessages, listDismissed, listDueReminders, listRuns, listSkills, listStoredOpenItems, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, readRankSignals, saveBriefSnapshot, saveGmailOffer, writeRankSignals, type WaitingDraft } from "./store.js";
+import { dismissCard, listDismissed, listDueReminders, listRuns, listSkills, listStoredOpenItems, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, readRankSignals, saveBriefSnapshot, saveGmailOffer, writeRankSignals, type WaitingDraft } from "./store.js";
 import { runsOnItsOwn } from "./skillRunner.js";
 import { runUnattendedChecks, checksOverviewMessages, revalidateWaitingReplies } from "./stayCheck.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -123,14 +123,15 @@ export async function refreshSavedBrief(now = parityNow() ?? new Date()): Promis
   return brief;
 }
 
-export async function dismissSavedCard(cardId: string, now = new Date()): Promise<BriefPayload> {
+/** handled: the partner closed it as done, so it is not a "not important" signal for ranking. */
+export async function dismissSavedCard(cardId: string, now = new Date(), handled = false): Promise<BriefPayload> {
   await dismissCard(cardId);
   const current = await readSavedBrief(now);
   const card = [...current.focus, ...current.eating].find((row) => row.id === cardId);
   let signals = await readRankSignals().catch(() => ({}));
   const kind = card?.rank?.kind ?? inputFromCard(card ?? { id: cardId, text: "", action: "" }).kind;
   const property = card?.rank?.property || inputFromCard(card ?? { id: cardId, text: cardId, action: "" }).property;
-  if (card && kind !== "failed") {
+  if (card && kind !== "failed" && !handled) {
     signals = noteSignal(signals, "dismiss", kind, property);
     await writeRankSignals(signals);
   }
@@ -140,7 +141,7 @@ export async function dismissSavedCard(cardId: string, now = new Date()): Promis
     id: cardId,
     at: "Just now",
     who: "You",
-    text: `Set aside ${card?.headline || card?.text || "an item"}.`,
+    text: handled ? `Marked already handled: ${card?.headline || card?.text || "an item"}.` : `Set aside ${card?.headline || card?.text || "an item"}.`,
   }];
   const next = finishBrief(current, focus, eating, signals, now, done);
   await saveBriefSnapshot(next);
@@ -312,7 +313,7 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
     if (card) ship(focus, card, skipped);
   }
   try {
-    for (const card of storedCheckCards(await listChecksMessages(), [], [], now)) {
+    for (const card of storedCheckCards(await checksOverviewMessages(), [], [], now)) {
       if ([...focus, ...eating].some((row) => row.id === card.id || (row.messageId && row.messageId === card.messageId && row.rank?.kind === "cleaner" && card.rank?.kind === "cleaner"))) continue;
       ship(focus, card, skipped);
     }
@@ -568,6 +569,26 @@ export function waitingDraftCard(item: WaitingDraft): BriefCard | null {
     action: "Review",
     source: item.purchaseLine ? `Supplies · ${item.purchaseProperty}` : "Checks",
   };
+  if (item.followUp) {
+    const due = item.followUp;
+    const detail = `${due.why} The draft to ${due.guest.split(/\s+/)[0] || "the guest"} is ready in Checks with the missing choice marked. Nothing has been sent.`;
+    return {
+      ...base,
+      headline: due.headline,
+      detail,
+      text: `${due.headline}. ${detail}`,
+      action: "Review draft",
+      actions: ["Review draft", "Already handled"],
+      followUpId: due.id,
+      rank: {
+        kind: "guest",
+        property: due.property || "the portfolio",
+        deadline: `${due.due}T13:00:00Z`,
+        when: due.headline.replace(/^.*?(today|tomorrow|was due)/i, (_, word: string) => word[0]?.toUpperCase() + word.slice(1)),
+        lead: due.headline,
+      },
+    };
+  }
   if (item.cleanerName && item.cleanerUnit && item.cleanerOn) {
     const place = cleanPlace(item.cleanerUnit);
     const when = spokenWhen(item.cleanerOn);
@@ -788,6 +809,7 @@ function waitingFromMessage(message: CopilotMessage): WaitingDraft | null {
     cleanerUnit: draft.cleanerAssign?.unit || "",
     cleanerOn: draft.cleanerAssign?.scheduledOn || "",
     upsellPhase: draft.upsell?.phase ?? "",
+    ...(draft.followUp ? { followUp: draft.followUp } : {}),
   };
 }
 
