@@ -8,7 +8,7 @@
  * is searched, and the answer says what was found and what could not be confirmed.
  */
 
-import { comparableRates, estimateByAddress, type ComparableRate } from "../airroi.js";
+import { comparableRates, estimateByAddress, listingSpecs, type ComparableRate } from "../airroi.js";
 import { spokenProperty } from "./dayBoard.js";
 import { hospitableRead } from "./hospitableConnection.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -71,25 +71,57 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-/** Bedrooms, bathrooms, guests and coordinates from Hospitable's property record. */
+type Specs = { bedrooms: number; bathrooms: number; guests: number; latitude: number | null; longitude: number | null };
+let listingSource: ((listingId: string) => Promise<Specs | null>) | null = null;
+
+/** Test seam: the parity suite supplies the Airbnb listing's specs. */
+export function setListingSource(next: ((listingId: string) => Promise<Specs | null>) | null): void {
+  listingSource = next;
+}
+
+/** The property's Airbnb listing id, from Hospitable's listings. */
+function airbnbListing(row: Record<string, unknown> | null): string {
+  const listings = Array.isArray(row?.listings) ? (row!.listings as Record<string, unknown>[]) : [];
+  const airbnb = listings.find((item) => /airbnb/i.test(String(item.platform ?? item.channel ?? "")));
+  return String(airbnb?.platform_id ?? airbnb?.listing_id ?? airbnb?.id ?? "").trim();
+}
+
+/**
+ * The unit's specs and location: its Airbnb listing first (what guests book), then Hospitable's own
+ * capacity fields. known is false only when neither said how many it sleeps.
+ */
 export async function sizeOf(hospitableId: string): Promise<Size> {
+  let row: Record<string, unknown> | null = null;
   try {
     const raw = await hospitableRead("get-properties", {});
     const rows = Array.isArray((raw as { data?: unknown })?.data) ? (raw as { data: Record<string, unknown>[] }).data : [];
-    const row = rows.find((item) => String(item.id ?? "") === hospitableId) ?? null;
-    const capacity = record(row?.capacity ?? row?.details ?? row);
-    const address = record(row?.address);
-    const coordinates = record(address.coordinates ?? row?.coordinates);
-    const latitude = num(coordinates.latitude ?? coordinates.lat ?? address.latitude ?? row?.latitude);
-    const longitude = num(coordinates.longitude ?? coordinates.lng ?? address.longitude ?? row?.longitude);
-    const bedrooms = num(capacity.bedrooms ?? row?.bedrooms);
-    const bathrooms = num(capacity.bathrooms ?? row?.bathrooms);
-    const guests = num(capacity.max ?? capacity.max_guests ?? row?.max_guests ?? capacity.guests);
-    if (bedrooms) return { bedrooms, bathrooms: bathrooms ?? 1, guests: guests ?? bedrooms * 2, known: true, latitude, longitude };
-    return { bedrooms: 2, bathrooms: 1, guests: 4, known: false, latitude, longitude };
+    row = rows.find((item) => String(item.id ?? "") === hospitableId) ?? null;
   } catch {
-    return { bedrooms: 2, bathrooms: 1, guests: 4, known: false, latitude: null, longitude: null };
+    row = null;
   }
+  const capacity = record(row?.capacity ?? row?.details ?? row);
+  const address = record(row?.address);
+  const coordinates = record(address.coordinates ?? row?.coordinates);
+  let latitude = num(coordinates.latitude ?? coordinates.lat ?? address.latitude ?? row?.latitude);
+  let longitude = num(coordinates.longitude ?? coordinates.lng ?? address.longitude ?? row?.longitude);
+  const listing = airbnbListing(row);
+  if (listing) {
+    try {
+      const specs = listingSource ? await listingSource(listing) : parityEnabled() ? null : await listingSpecs(listing);
+      if (specs && specs.bedrooms && specs.guests) {
+        return { bedrooms: specs.bedrooms, bathrooms: specs.bathrooms || 1, guests: specs.guests, known: true, latitude: specs.latitude ?? latitude, longitude: specs.longitude ?? longitude };
+      }
+      latitude = specs?.latitude ?? latitude;
+      longitude = specs?.longitude ?? longitude;
+    } catch {
+      /* Fall back to Hospitable's own fields. */
+    }
+  }
+  const bedrooms = num(capacity.bedrooms ?? row?.bedrooms);
+  const bathrooms = num(capacity.bathrooms ?? row?.bathrooms);
+  const guests = num(capacity.max ?? capacity.max_guests ?? capacity.person_capacity ?? capacity.guests ?? row?.max_guests ?? row?.person_capacity);
+  if (bedrooms && guests) return { bedrooms, bathrooms: bathrooms ?? 1, guests, known: true, latitude, longitude };
+  return { bedrooms: bedrooms ?? 2, bathrooms: bathrooms ?? 1, guests: guests ?? (bedrooms ?? 2) * 2, known: false, latitude, longitude };
 }
 
 export function money(value: number): string {
@@ -130,6 +162,8 @@ export type CompSet = {
  */
 export async function compSet(address: string, size: Size): Promise<CompSet | null> {
   if (!source && parityEnabled()) return null;
+  // Comps for a guessed size would be someone else's comps; don't print them.
+  if (!size.known) return null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       let latitude = size.latitude;
@@ -210,7 +244,7 @@ export async function answerComps(text: string, history: CompsTurn[], now = new 
   const name = unitNo && !spoken.includes(unitNo) ? `${spoken} Unit ${unitNo}` : spoken;
   const whose = found.client ? `${found.client.short}'s unit, ` : "";
   const size = await sizeOf(unit.hospitable_property_id || unit.id);
-  const sizeWords = `${size.bedrooms} bed, ${size.bathrooms} bath, sleeps ${size.guests}${size.known ? "" : " (size assumed; Hospitable didn't return it)"}`;
+  const sizeWords = size.known ? `${size.bedrooms} bed, ${size.bathrooms} bath, sleeps ${size.guests}` : "size not confirmed";
   const nightly = /\b(week|weekly|total|whole stay|monthly)\b/i.test(asked) ? "" : "nightly rates";
   const scope = /\bacross toronto|city[- ]wide|whole city\b/i.test(asked) ? "across Toronto" : "same building and neighbourhood";
   const dates = datesFrom([...history, { role: "user", body: text }]);
@@ -228,6 +262,13 @@ export async function answerComps(text: string, history: CompsTurn[], now = new 
     return { body: lines.filter(Boolean).join("\n"), step: "Pulled AirROI comps", thought: "Read from AirROI for the unit in the records. Nothing was sent." };
   }
 
+  if (!size.known) {
+    return {
+      body: [lead, `I couldn't confirm how many guests ${name} sleeps from its Airbnb listing or Hospitable, so I didn't pull comps for a guessed size. Tell me the bedrooms, baths and guest count and I'll pull them.`].join("\n"),
+      step: "The unit's size didn't return",
+      thought: "Nothing was sent.",
+    };
+  }
   // AirROI failed twice: search the web, and say plainly what could not be confirmed.
   const web = await answerWebQuestion(`Nightly rates for ${size.bedrooms}-bedroom short-term rentals at ${unit.address || name} and nearby${dates ? ` for ${dates}` : ""}`, now);
   const confirmed = !/couldn't confirm/i.test(web.body);

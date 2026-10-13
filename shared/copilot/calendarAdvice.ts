@@ -72,9 +72,10 @@ function eventNights(text: string, year: number, month: number): string[] {
   return [...days].filter((day) => day >= 1 && day <= last).map((day) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
 }
 
-type Night = { date: string; available: boolean; minStay: number };
+export type Night = { date: string; available: boolean; minStay: number; priceCents: number | null };
 
-async function calendarNights(propertyId: string, from: string, to: string): Promise<Night[] | null> {
+/** Each night from Hospitable's calendar: open or not, its minimum stay, and its listed price. */
+export async function calendarNights(propertyId: string, from: string, to: string): Promise<Night[] | null> {
   try {
     const raw = await callHospitableMcp("get-property-calendar", { uuid: propertyId, start_date: from, end_date: addDays(to, -1) });
     const data = (raw as { data?: unknown })?.data;
@@ -86,7 +87,8 @@ async function calendarNights(propertyId: string, from: string, to: string): Pro
       const flag = status.available ?? row.available;
       const available = flag !== false && String(flag) !== "false" && !/unavailable|booked|blocked|reserved/.test(reason);
       const minStay = Number(row.min_stay ?? row.min_nights ?? row.minimum_stay ?? 1);
-      return { date: String(row.date ?? "").slice(0, 10), available, minStay: Number.isFinite(minStay) && minStay > 0 ? minStay : 1 };
+      const price = row.price && typeof row.price === "object" ? Number((row.price as Record<string, unknown>).amount) : Number(row.price);
+      return { date: String(row.date ?? "").slice(0, 10), available, minStay: Number.isFinite(minStay) && minStay > 0 ? minStay : 1, priceCents: Number.isFinite(price) && price > 0 ? price : null };
     }).filter((row) => row.date >= from && row.date < to);
   } catch {
     return null;
@@ -191,6 +193,7 @@ export async function answerOpenCalendar(text: string, history: { role: string; 
   // 1. What I found.
   const found1: string[] = [];
   if (comps) found1.push(`AirROI comps for units like ${whose === "The" ? "this one" : `${owner!.short}'s`} (${comps.specs}, same building and neighbourhood): ${compLines(comps).join(" ")}`);
+  else if (!size.known) found1.push(`I couldn't confirm how many guests ${name} sleeps from its Airbnb listing or Hospitable, so I didn't pull comps for a guessed size.`);
   else found1.push(`AirROI didn't return comps for ${name} (tried twice), so the pricing below isn't benchmarked.`);
   if (calendar) {
     const minNote = demandStay > 1 ? `, with a ${demandStay}-night minimum stay${demand.length ? " on the event nights" : ""}` : "";

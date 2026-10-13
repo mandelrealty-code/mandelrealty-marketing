@@ -603,7 +603,7 @@ async function fixtureNamedGuestDraft(): Promise<void> {
     isabelleStay("00000000-0000-4000-8000-00000000aa02", ID.charlotte, "2026-09-28", "2026-10-01", "2026-10-01T10:00:00-04:00", "Thanks for the stay."),
   );
   installWorld(recent);
-  const answer = (await answerNamedGuestDraft(asked)) ?? "";
+  const answer = (await answerNamedGuestDraft(asked))?.body ?? "";
   expect(/Isabelle/.test(answer) && /1065 Shaw Street/.test(answer) && /Guest messaging/.test(answer) && /Submit/.test(answer), "the answer names Isabelle, the property, and Guest messaging", answer || "no answer");
   expect(!/Charlotte|which one|which guest/i.test(answer), "the newer thread is chosen without a question", answer);
   const card = guestDrafts().find((row) => row.to === "Isabelle");
@@ -621,13 +621,13 @@ async function fixtureNamedGuestDraft(): Promise<void> {
     isabelleStay("00000000-0000-4000-8000-00000000aa04", ID.rose, "2026-10-03", "2026-10-05", sameTime, "Lovely house."),
   );
   installWorld(tied);
-  const which = (await answerNamedGuestDraft(asked)) ?? "";
+  const which = (await answerNamedGuestDraft(asked))?.body ?? "";
   expect(/equally recent/i.test(which) && /1065 Shaw Street/.test(which) && /Roseglor/.test(which) && /Which one/i.test(which), "a tie asks which stay", which || "no answer");
   expect(capturedDrafts().length === 0, "a tie does not draft", `drafts ${capturedDrafts().length}`);
   expectNothingSent();
 
   installWorld(worldAt("2026-10-07T11:00:00-04:00"));
-  const missing = (await answerNamedGuestDraft("Draft a reply to Marcel thanking him for staying with us")) ?? "";
+  const missing = (await answerNamedGuestDraft("Draft a reply to Marcel thanking him for staying with us"))?.body ?? "";
   expect(/didn't find Marcel/i.test(missing) && /Which guest/i.test(missing), "an unknown guest asks who", missing || "no answer");
   expect(capturedDrafts().length === 0, "an unknown guest does not draft", `drafts ${capturedDrafts().length}`);
   expectNothingSent();

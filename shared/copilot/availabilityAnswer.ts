@@ -18,7 +18,11 @@ export function asksAvailability(question: string): boolean {
   const empty = /\b(not booked|unbooked|isn'?t booked|aren'?t booked|no bookings?|nothing booked|empty|vacant|vacanc\w*|available|availability|free|open|unoccupied|unbooked)\b/.test(text);
   const when = /\b(day|days|night|nights|date|dates|when|week|weeks|weekend|weekends|gap|gaps|month)\b/.test(text);
   const place = /\b(unit|units|propert(?:y|ies)|place|places|listing|listings|charlotte|roseglor|blue jays|shaw|all four|all 4|portfolio|calendar)\b/.test(text);
-  return empty && when && place;
+  if (empty && when && place) return true;
+  // "If I wanted to visit all four units in one day, when could I?" asks when they're all empty at once.
+  const visit = /\b(visit|see|inspect|walk ?through|tour|check on|go (?:to|see)|stop by|drop by)\b/.test(text);
+  const together = /\b(all (?:four|4|the units|units|properties|of them)|every unit|each unit|same day|one day|all in one)\b/.test(text);
+  return visit && together && /\b(when|which day|what day|could i|can i|able to|possible)\b/.test(text);
 }
 
 function wantsAll(question: string): boolean {

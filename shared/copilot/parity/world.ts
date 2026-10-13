@@ -107,6 +107,8 @@ export type ParityProperty = {
   capacity?: { bedrooms: number; bathrooms: number; max: number };
   /** Hospitable's map coordinates for the address. */
   coordinates?: { latitude: number; longitude: number };
+  /** The Airbnb listing this property is connected to in Hospitable. */
+  airbnbListingId?: string;
   managed: boolean;
   /** Listing photo from Hospitable, when one is connected. */
   photo?: string;
@@ -1021,6 +1023,7 @@ function mcpProperty(row: ParityProperty) {
     address: { display: row.address, ...(row.coordinates ? { coordinates: row.coordinates } : {}) },
     listed: true,
     ...(row.capacity ? { capacity: row.capacity } : {}),
+    ...(row.airbnbListingId ? { listings: [{ platform: "airbnb", platform_id: row.airbnbListingId }] } : {}),
   };
 }
 

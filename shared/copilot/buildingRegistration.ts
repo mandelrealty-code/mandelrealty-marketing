@@ -125,6 +125,15 @@ async function sentRegistrationLetters(guest: string, property: string, checkIn:
   return { letters: [], note, keywords: subject || guest.trim() };
 }
 
+/** Whether the building registration for this arrival is in Sent: the proof line, or what's missing. */
+export async function registrationState(arrival: StayMove): Promise<string> {
+  const sent = await sentRegistrationLetters(arrival.guest, arrival.property, arrival.date, arrival.checkOut ?? "");
+  const closed = sent.letters[0];
+  if (closed) return sentProof(closed, platesFrom(`${closed.subject}\n${closed.body}`));
+  if (/isn't connected|didn't return/i.test(sent.note)) return `${sent.note} The building registration wasn't checked.`;
+  return `No building registration for ${arrival.guest}'s stay is in Sent yet.`;
+}
+
 export async function answerRegistrationStatus(text: string, now?: Date): Promise<string | null> {
   if (!asksRegistrationStatus(text)) return null;
   const name = guestInQuestion(text);

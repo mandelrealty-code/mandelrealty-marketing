@@ -1075,6 +1075,15 @@ export type ComparableRate = {
  * Comparable listings for a unit's own specs at its own location, in local currency (CAD in
  * Toronto). Each row carries its 12-month and 90-day average nightly rate.
  */
+/** An Airbnb listing's own specs and location, as AirROI has them. */
+export async function listingSpecs(listingId: string): Promise<{ bedrooms: number; bathrooms: number; guests: number; latitude: number | null; longitude: number | null } | null> {
+  const id = extractAirbnbListingId(listingId) ?? listingId.replace(/\D/g, "");
+  if (!id) return null;
+  const subject = mapListing(await airroiGet("/listings", { id, listing_id: id, currency: "native" }));
+  if (!subject.bedrooms && !subject.guests) return null;
+  return { bedrooms: subject.bedrooms, bathrooms: subject.bathrooms, guests: subject.guests, latitude: subject.latitude, longitude: subject.longitude };
+}
+
 export async function comparableRates(input: {
   latitude: number;
   longitude: number;

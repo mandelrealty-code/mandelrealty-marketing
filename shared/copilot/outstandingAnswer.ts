@@ -19,7 +19,7 @@ const EVERYONE = /\b(anyone else|everybody|everyone|all of them|or anyone)\b/i;
 const NOTICE = /\b(outage|shut\s?down|hot water|heating|no heat|repair notice|water (?:is )?off)\b/i;
 const WINDOW = /\b(?:until|from|between)\s+\d|\bby\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\b(?:restored|back on|resumes)\b/i;
 
-type Line = {
+export type Line = {
   place: string;
   text: string;
   urgent: string;
@@ -34,6 +34,9 @@ export function asksOutstanding(text: string): boolean {
   if (/\bhow many\b/i.test(line) && /\b(units?|properties|listings|homes)\b/i.test(line)) return false;
   if (/\bto-?dos?\b|\bto do list\b/i.test(line)) return true;
   if (/\b(need|needs)\s+me\b/i.test(line)) return true;
+  // "What's waiting on me?", "What's still open from yesterday?", "What's on my plate?"
+  if (/\bwaiting (?:on|for) me\b|\bon my plate\b|\bwhat do i (?:need|have) to do\b/i.test(line)) return true;
+  if (/\b(still open|open items?|anything open|left open|still pending)\b/i.test(line) && !/\b(calendar|dates?|nights?|units? (?:open|free))\b/i.test(line)) return true;
   return /\boutstanding\b/i.test(line) && /\b(what|what's|whats|anything|list|today|still)\b/i.test(line);
 }
 
@@ -249,7 +252,8 @@ async function readStays(today: string, horizon: string): Promise<{ board: { arr
   }
 }
 
-async function buildingNotices(today: string): Promise<{ lines: Line[]; notes: string[] }> {
+/** Today's building notices (outages, shutdowns) by unit, from both mailboxes. */
+export async function buildingNotices(today: string): Promise<{ lines: Line[]; notes: string[] }> {
   const lines: Line[] = [];
   const notes: string[] = [];
   const after = addDays(today, -1).replace(/-/g, "/");

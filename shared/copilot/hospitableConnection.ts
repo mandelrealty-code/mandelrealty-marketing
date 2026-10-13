@@ -433,7 +433,8 @@ function photoOf(row: Record<string, unknown>): string {
 
 async function readLive(token: string, name: string, args: Record<string, unknown>): Promise<unknown> {
   if (name === "get-properties") {
-    return hospitableFetch(token, "/properties", { per_page: "100", include: "details" });
+    // listings carries each property's Airbnb listing id, for its specs and comps.
+    return hospitableFetch(token, "/properties", { per_page: "100", include: "details,listings" });
   }
   if (name === "get-reservation") {
     return hospitableFetch(token, `/reservations/${encodeURIComponent(String(args.identifier ?? ""))}`, {

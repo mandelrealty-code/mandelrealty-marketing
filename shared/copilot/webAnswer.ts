@@ -72,6 +72,20 @@ async function searchLive(question: string, today: string): Promise<string> {
   return (data.content ?? []).filter((block) => block.type === "text" && block.text).map((block) => block.text!.trim()).join(" ").replace(/\s+\n/g, "\n").trim();
 }
 
+/** The search's own narration ("Now let me search…", "Here is everything…") is not part of the answer. */
+const NARRATION = /^(?:now,?\s+|next,?\s+|first,?\s+|okay,?\s+|ok,?\s+)?(?:let me|i'?ll|i will|i'?m going to|i need to|i also need to|i should|i'?ve (?:searched|found|gathered)|i have (?:searched|found|gathered)|let'?s|here is|here'?s|here are|below is|based on (?:my|the) search)/i;
+
+export function cleanSearchText(text: string): string {
+  const kept = text
+    .replace(/\*\*/g, "")
+    .split("\n")
+    .map((line) => line.replace(/^\s*[*•-]\s+/, "• ").replace(/\s+$/, ""))
+    .filter((line) => !/^\s*-{3,}\s*$/.test(line))
+    .map((line) => line.split(/(?<=[.:!?])\s+/).filter((sentence) => !NARRATION.test(sentence.trim())).join(" "))
+    .filter((line, index, all) => line.trim() || (index > 0 && all[index - 1]!.trim()));
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function couldNotConfirm(question: string): string {
   return `I searched the web for “${question.trim().replace(/[?.!]+$/, "")}” and couldn't confirm it.`;
 }
@@ -85,7 +99,7 @@ export async function answerWebQuestion(question: string, now = new Date()): Pro
   } catch {
     said = "";
   }
-  said = said.replace(/\*\*/g, "").trim();
+  said = cleanSearchText(said);
   // A reply that denies the tool or hands the search back is not an answer.
   if (!said || DENIES_WEB.test(said)) return { body: couldNotConfirm(question), step: "Searched the web", searched: true };
   return { body: said, step: "Searched the web", searched: true };

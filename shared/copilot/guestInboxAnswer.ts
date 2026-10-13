@@ -7,6 +7,11 @@ import { readPropertyHub } from "./knowledgeHub.js";
 import { parityNow } from "./parity/clock.js";
 import { draftFromHub, guestDrafts, loadGuestQueue, needsGuestReply, openGuestAnswer, rememberGuestDraft } from "./guestMessaging.js";
 import { loadRecentStays, memoryFor, readStayThread, type RecentStay } from "./stayCheck.js";
+import { buildingNotices, type Line } from "./outstandingAnswer.js";
+import { dayWords } from "./guestBriefing.js";
+import { spokenProperty } from "./dayBoard.js";
+import { torontoToday } from "./time.js";
+import type { CopilotDraft } from "./types.js";
 
 const NAME_STOP = new Set(["the", "guest", "guests", "someone", "anyone", "they", "she", "he", "we", "i", "you", "hospitable", "our", "my"]);
 
@@ -53,7 +58,38 @@ function thankYouReply(name: string, request: string): string {
   return `Hi ${name},\n\n${oneLine(request)}`;
 }
 
-export async function answerNamedGuestDraft(question: string, now?: Date): Promise<string | null> {
+/** "Draft a message to Husson about the hot water" → "the hot water". */
+function draftTopic(text: string): string {
+  return (/\b(?:about|regarding|re:?|on)\s+(.+?)[.?!]*$/i.exec(text.trim())?.[1] ?? "").trim();
+}
+
+/** The draft text itself: from the building's notice when the topic is an outage, else a marked blank. */
+async function writeNamedDraft(guest: string, stay: RecentStay, question: string, clock: Date): Promise<string> {
+  const first = guest.trim().split(/\s+/)[0] || guest;
+  const topic = draftTopic(question);
+  if (!topic && /\bthank/i.test(question)) return thankYouReply(guest, question);
+  const today = torontoToday(clock);
+  const notices = await buildingNotices(today).catch(() => ({ lines: [] as Line[], notes: [] as string[] }));
+  const notice = notices.lines.find((line) => line.place === spokenProperty(stay.propertyName, stay.address) || stay.label.includes(line.place));
+  if (notice && (!topic || /hot water|heat|water|outage|shut\s?down|repair/i.test(topic))) {
+    const what = notice.text.replace(/,\s*notice .*$/i, "").replace(/^./, (char) => char.toLowerCase());
+    const upcoming = stay.stay.checkIn > today;
+    const when = upcoming ? ` before your stay on ${dayWords(stay.stay.checkIn, today)}` : "";
+    const noTime = /no restoration time/i.test(notice.text);
+    return [
+      `Hi ${first},`,
+      "",
+      `A heads-up${when}: the building at ${spokenProperty(stay.propertyName, stay.address)} has let us know that ${what} today${noTime ? ", and they haven't given a time for it to be restored yet" : ""}. We're following up with building management and will message you as soon as it's back on${upcoming ? ", well before you arrive if we can" : ""}.`,
+      "",
+      "We're sorry for the inconvenience.",
+    ].join("\n");
+  }
+  return `Hi ${first},\n\n[your message${topic ? ` about ${topic}` : ""}]`;
+}
+
+export type NamedDraft = { body: string; draft?: CopilotDraft };
+
+export async function answerNamedGuestDraft(question: string, now?: Date): Promise<NamedDraft | null> {
   const name = namedDraftGuest(question);
   if (!name) return null;
   const clock = now ?? parityNow() ?? new Date();
@@ -61,10 +97,10 @@ export async function answerNamedGuestDraft(question: string, now?: Date): Promi
   try {
     loaded = await loadRecentStays(clock);
   } catch {
-    return "Hospitable didn't return the reservations. I didn't draft a reply.";
+    return { body: "Hospitable didn't return the reservations. I didn't draft a reply." };
   }
   const matches = loaded.stays.filter((row) => sameGuest(row.stay.guest, name) && !/cancel/.test(row.stay.status));
-  if (!matches.length) return `I didn't find ${name} on a managed stay. Which guest should I draft for?`;
+  if (!matches.length) return { body: `I didn't find ${name} on a managed stay. Which guest should I draft for?` };
   const ranked: { row: RecentStay; at: string }[] = [];
   const unread: string[] = [];
   for (const row of matches) {
@@ -78,21 +114,26 @@ export async function answerNamedGuestDraft(question: string, now?: Date): Promi
   }
   if (!ranked.length) {
     const where = unread.length ? ` ${unread.join(" and ")} didn't return a thread.` : "";
-    return `I couldn't read ${name}'s messages.${where} I didn't draft a reply.`;
+    return { body: `I couldn't read ${name}'s messages.${where} I didn't draft a reply.` };
   }
   ranked.sort((a, b) => b.at.localeCompare(a.at) || a.row.stay.id.localeCompare(b.row.stay.id));
   const newest = ranked[0];
   const tied = ranked.filter((item) => item.at === newest?.at);
   if (tied.length > 1) {
     const choices = tied.map((item) => item.row.label).join(" or ");
-    return `I found ${name} on more than one stay, and the threads are equally recent. Which one should I draft for? ${choices}.`;
+    return { body: `I found ${name} on more than one stay, and the threads are equally recent. Which one should I draft for? ${choices}.` };
   }
   const stay = newest?.row;
-  if (!stay) return `I didn't find ${name} on a managed stay. Which guest should I draft for?`;
+  if (!stay) return { body: `I didn't find ${name} on a managed stay. Which guest should I draft for?` };
   const guest = stay.stay.guest || name;
-  const body = thankYouReply(guest, question);
-  rememberGuestDraft({ to: guest, body, reservationId: stay.stay.id });
-  return `The reply to ${guest} at ${stay.label} is in Guest messaging. Nothing is sent until you press Submit.`;
+  const text = await writeNamedDraft(guest, stay, question, clock);
+  // The draft is shown here, as exact text, and also put in the thread's reply box.
+  rememberGuestDraft({ to: guest, body: text, reservationId: stay.stay.id });
+  const blank = /\[[^\]\n]{1,60}\]/.test(text);
+  return {
+    body: `Here is the message to ${guest} at ${stay.label}${blank ? ". Fill in the part in brackets" : ""}. It's also in ${guest}'s Guest messaging reply box. Nothing is sent until you press Submit.\n\n${text}`,
+    draft: { subject: "", body: text, to: guest, status: "waiting", channel: "hospitable", hospitable: { tool: "send-reservation-message", args: { reservation_id: stay.stay.id, body: text } } },
+  };
 }
 
 export function asksGuestThreads(text: string): boolean {
@@ -186,6 +227,7 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
   } catch {
     return "Hospitable didn't return the reservations. I didn't guess.";
   }
+  if (who) return lastWordFrom(who, loaded, clock);
   const failed = new Set(loaded.failed);
   let disconnected = false;
   const open: OpenThread[] = [];
@@ -243,6 +285,49 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
   }
   if (who) return namedAnswer(who, open, answered, drafted, missed, failedLine);
   return inboxAnswer(open, drafted, missed, failedLine);
+}
+
+/**
+ * "What did Diane say last?": the latest guest message across all of that guest's threads, by time,
+ * quoted with its date, then what happened after it. An old inquiry is never "last" when a newer
+ * thread exists.
+ */
+async function lastWordFrom(who: string, loaded: Awaited<ReturnType<typeof loadRecentStays>>, clock: Date): Promise<string> {
+  const stays = loaded.stays.filter((row) => sameGuest(row.stay.guest, who));
+  const failed: string[] = [];
+  let best: { row: RecentStay; guestAt: string; body: string; hostAt: string; hostName: string } | null = null;
+  for (const row of stays) {
+    let messages: { at: string; role: string; name: string; body: string }[];
+    try {
+      messages = await readStayThread(row.stay.id, clock);
+    } catch {
+      failed.push(row.label);
+      continue;
+    }
+    const spoken = messages.filter((item) => item.role !== "system" && item.body.trim()).sort((a, b) => a.at.localeCompare(b.at));
+    const lastGuest = [...spoken].reverse().find((item) => item.role === "guest");
+    if (!lastGuest) continue;
+    const after = spoken.filter((item) => item.role === "host" && item.at > lastGuest.at).at(-1);
+    if (!best || lastGuest.at > best.guestAt) best = { row, guestAt: lastGuest.at, body: lastGuest.body.trim(), hostAt: after?.at ?? "", hostName: after?.name ?? "" };
+  }
+  const failedLine = failed.length ? `${failed.join(" and ")} didn't return a thread, so a later message there wasn't read.` : "";
+  if (!best) return [`I didn't find a message from ${who} on a Hospitable thread for a managed stay.`, failedLine].filter(Boolean).join("\n");
+  const guest = best.row.stay.guest || who;
+  const lines = [`${guest}'s last message, ${arrived(best.guestAt)} (${best.row.label}): "${oneLine(best.body)}"`];
+  if (best.hostAt) {
+    lines.push(`${best.hostName && !/^(unknown|host)$/i.test(best.hostName) ? best.hostName.split(" ")[0] : "The host"} already replied ${arrived(best.hostAt)}, so no draft is owed.`);
+  } else if (needsGuestReply(best.body)) {
+    const place = `${best.row.label} ${best.row.propertyName} ${best.row.address}`;
+    const hubRead = await readPropertyHub(best.row.stay.propertyId);
+    const memory = await memoryFor(place).catch(() => "");
+    const written = draftFromHub(guest, best.body, hubRead.ok ? hubRead.text : "", { place, memory });
+    if (written.mode === "hub" && written.draft) {
+      rememberGuestDraft({ to: guest, body: written.draft, reservationId: best.row.stay.id });
+      lines.push(`No one has replied yet. Here is the draft, also in ${guest}'s Guest messaging reply box (nothing is sent until you press Submit):`, written.draft);
+    } else lines.push("No one has replied yet, and the Knowledge Hub doesn't answer it, so this reply needs you.");
+  } else lines.push("No one has replied since, and it doesn't need a reply.");
+  if (failedLine) lines.push(failedLine);
+  return lines.join("\n");
 }
 
 function claimLines(drafted: string[], missed: string[]): string[] {

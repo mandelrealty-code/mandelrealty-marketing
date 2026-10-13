@@ -42,12 +42,17 @@ import { DENIES_WEB, answerWebQuestion, asksOutsideWorld } from "../copilot/webA
 import { saveHubEntry } from "../copilot/hubLearning.js";
 import { answerComps } from "../copilot/compsAnswer.js";
 import { answerOpenCalendar } from "../copilot/calendarAdvice.js";
+import { answerMoney, asksMoney } from "../copilot/moneyAnswer.js";
+import { answerGuestBriefing } from "../copilot/guestBriefing.js";
+import { answerMoneyMove } from "../copilot/moneyMove.js";
+import { answerAboutPrevious } from "../copilot/followOnAnswer.js";
+import { answerProductAdvice } from "../copilot/productAdvice.js";
 import { REPORT_CLIENTS, withClientUnits } from "../copilot/reportClients.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "../copilot/fileError.js";
 import { asksPropertyReport } from "../copilot/reportParse.js";
-import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../copilot/guestInboxAnswer.js";
+import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts, namedDraftGuest } from "../copilot/guestInboxAnswer.js";
 import { answerGuestStay } from "../copilot/guestStayAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
@@ -899,6 +904,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       // Comp pricing for one of our units: the unit from the records, AirROI first, never a permission question.
       if (!pictureMode && !skillMode) {
         const compHistory = (await listMessages(chatId)).slice(0, -1).map((row) => ({ role: row.role, body: row.body }));
+        // Purchasing questions are answered from current listings, never from email or a "no tool" line.
+        const purchasing = await answerProductAdvice(text, clock).catch(() => null);
+        if (purchasing) {
+          await addMessage({ chatId, role: "assistant", body: purchasing.body, steps: [{ text: purchasing.step }], thought: purchasing.thought });
+          return done();
+        }
+        // "Draft a message to Husson about…": the draft itself, here, before any stay summary claims it.
+        if (namedDraftGuest(text)) {
+          const early = await answerNamedGuestDraft(text, clock).catch(() => null);
+          if (early) {
+            await addMessage({
+              chatId,
+              role: "assistant",
+              body: early.body,
+              draft: early.draft ?? null,
+              steps: [{ text: early.draft ? "Drafted the guest reply" : "Asked which guest" }],
+              thought: early.draft ? "The draft is shown here and in the guest's reply box. Nothing is sent until Submit." : "Nothing was drafted.",
+            });
+            return done();
+          }
+        }
+        // "In a nutshell, bullet the dates": answered from the answer above, never "it wasn't stored".
+        const followOn = answerAboutPrevious(text, compHistory);
+        if (followOn) {
+          await addMessage({ chatId, role: "assistant", body: followOn.body, steps: [{ text: followOn.step }], thought: followOn.thought });
+          return done();
+        }
+        // "The one thing to make more money" is a revenue action from the unit figures, not a service task.
+        const moneyMove = await answerMoneyMove(text, clock).catch(() => null);
+        if (moneyMove) {
+          await addMessage({ chatId, role: "assistant", body: moneyMove.body, steps: [{ text: moneyMove.step }], thought: moneyMove.thought });
+          return done();
+        }
+        // Revenue, earnings and take-home come from the report figures, before web or Hub paths see them.
+        const money = await answerMoney(text, clock).catch(() => null);
+        if (money) {
+          await addMessage({ chatId, role: "assistant", body: money.body, steps: [{ text: money.step }], thought: money.thought });
+          return done();
+        }
+        // "Anything I should know before Husson checks in?": the guest from the reservations, never a question.
+        const briefing = await answerGuestBriefing(text, clock).catch(() => null);
+        if (briefing) {
+          await addMessage({ chatId, role: "assistant", body: briefing.body, steps: [{ text: briefing.step }], thought: briefing.thought });
+          return done();
+        }
         // "Should we open the calendar for February?" is a decision: calendar, nearby events, comps.
         const calendarAdvice = await answerOpenCalendar(text, compHistory, clock).catch(() => null);
         if (calendarAdvice) {
@@ -1374,13 +1424,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         }
         const namedDraft = await answerNamedGuestDraft(text, clock);
         if (namedDraft) {
-          const asked = /which guest|which one|couldn't read|was not saved/i.test(namedDraft);
+          const asked = !namedDraft.draft;
           await addMessage({
             chatId,
             role: "assistant",
-            body: namedDraft,
+            body: namedDraft.body,
+            draft: namedDraft.draft ?? null,
             steps: [{ text: asked ? "Asked which guest" : "Drafted the guest reply" }],
-            thought: asked ? "Nothing was drafted." : "The draft is in Checks. Nothing is sent until Submit.",
+            thought: asked ? "Nothing was drafted." : "The draft is shown here and in the guest's reply box. Nothing is sent until Submit.",
           });
           return done();
         }
@@ -1481,7 +1532,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           });
           return done();
         }
-        const fact = await answerPropertyFact(text);
+        // Money is never a Knowledge Hub fact; the money answer above owns it.
+        const fact = asksMoney(text) ? null : await answerPropertyFact(text);
         if (fact) {
           const fromMemory = /from saved memory/i.test(fact) && !/saved memory differs/i.test(fact);
           await addMessage({
@@ -1813,7 +1865,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           }
         }
         if (draft?.channel === "hospitable" && draft.hospitable?.tool) {
-          const blank = draft.followUp ? BLANK.exec(edited || draft.body) : null;
+          // Any guest draft with a part still in brackets waits for the partner to fill it.
+          const blank = BLANK.exec(edited || draft.body);
           if (blank) return res.status(400).json({ error: `Fill in ${blank[0]} in the draft first. Nothing was sent.` });
           try {
             const args = applyHospitableEdit(draft.hospitable.args, draft.body, edited || draft.body);
