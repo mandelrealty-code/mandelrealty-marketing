@@ -374,6 +374,8 @@ export type Conversation = RecentStay & {
   inquiry: boolean;
   /** An inquiry's messages come with the inquiry read. */
   turns?: { at: string; role: string; name: string; body: string }[];
+  /** The inquiry was listed but its messages could not be read. */
+  turnsFailed?: boolean;
 };
 
 const PAGE_CAP = 60;
@@ -457,7 +459,9 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
     }
     try {
       for (let page = 1; ; page += 1) {
-        const raw = await readWithRetry(() => callTool("get-inquiries", { properties: [id], include: "guest,messages", per_page: 100, page }));
+        // The list refuses include=messages ("You cannot include messages when fetching all inquiries").
+        // Messages are read one inquiry at a time below.
+        const raw = await readWithRetry(() => callTool("get-inquiries", { properties: [id], include: "guest", per_page: 100, page }));
         const rows = rowsOf(raw);
         for (const row of rows) {
           const stay = toStay(row, id);
@@ -472,8 +476,36 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
       failed.push(`${label} inquiries`);
     }
   }
+  await readInquiryMessages([...found.values()].filter((row) => row.inquiry && !row.turns?.length), today);
   const conversations = [...found.values()].sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt) || a.stay.id.localeCompare(b.stay.id));
   return { conversations, failed };
+}
+
+const INQUIRY_READ_DAYS = 45;
+
+/**
+ * An inquiry's messages come from reading that inquiry. Recent ones are read, two at a time;
+ * older ones keep the activity time the list reported. A failed read marks the row, never drops it.
+ */
+async function readInquiryMessages(rows: Conversation[], today: string): Promise<void> {
+  const since = addDays(today, -INQUIRY_READ_DAYS);
+  const queue = rows.filter((row) => !row.lastMessageAt || row.lastMessageAt.slice(0, 10) >= since);
+  const lane = async () => {
+    for (let row = queue.shift(); row; row = queue.shift()) {
+      try {
+        const raw = await readWithRetry(() => callTool("get-inquiry", { uuid: row.stay.id, identifier: row.stay.id, include: "guest,messages" }));
+        const record = isRow(raw) && isRow(raw.data) ? raw.data : isRow(raw) ? raw : {};
+        const turns = inquiryTurns(record);
+        row.turns = turns;
+        const latest = turns.map((turn) => turn.at).sort().at(-1) ?? "";
+        // Same rule as before the list stopped carrying messages: Hospitable's own activity time, then the latest message.
+        if (latest) row.lastMessageAt = activityOf(row.reservation ?? {}, latest);
+      } catch {
+        row.turnsFailed = true;
+      }
+    }
+  };
+  await Promise.all([lane(), lane()]);
 }
 
 function hubLines(hub: string, ask: string): string[] {

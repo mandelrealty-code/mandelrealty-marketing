@@ -11,7 +11,8 @@ import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { detectFollowUps, orderFollowUps, type FollowUpStay } from "./guestFollowUps.js";
 import { bookingRequestFollowUp, guestPhotoUrl, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
 import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, type InquiryVerify } from "./store.js";
-import { flushThreadCache, leaveDraft, loadConversations, memoryFor, readStayThread } from "./stayCheck.js";
+import { parityEnabled } from "./parity/flag.js";
+import { flushThreadCache, leaveDraft, loadConversations, memoryFor, readStayThread, type Conversation } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
 import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
@@ -413,8 +414,17 @@ export async function readSavedGuestQueue(): Promise<GuestQueue | null> {
 }
 
 /** Same stays and threads as Checks and the unanswered-messages report. Saves the pass for the next open. */
+let scanning: Promise<GuestQueue> | null = null;
+
+/** Requests that arrive while a scan is running share it instead of starting another. */
 export async function loadGuestQueue(now = parityNow() ?? new Date()): Promise<GuestQueue> {
-  if (!copilotScopeActive()) return withCopilotScope(() => loadGuestQueue(now));
+  if (parityEnabled()) return loadGuestQueueOnce(now);
+  if (!scanning) scanning = loadGuestQueueOnce(now).finally(() => { scanning = null; });
+  return scanning;
+}
+
+async function loadGuestQueueOnce(now: Date): Promise<GuestQueue> {
+  if (!copilotScopeActive()) return withCopilotScope(() => loadGuestQueueOnce(now));
   const queue = await scanGuestQueue(now);
   queue.answer = waitingSurfaceText(queue);
   if (queue.connected) {
@@ -493,6 +503,12 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       const chip = [...seenProperties.values()].find((row) => row.label === label);
       if (chip) chip.failed = true;
       else seenProperties.set(label, { id: label, label, failed: true });
+    }
+    for (const stay of loaded.stays) {
+      if (!stay.turnsFailed) continue;
+      messageFailed.add(stay.label);
+      const chip = seenProperties.get(stay.stay.propertyId);
+      if (chip) chip.failed = true;
     }
     const quiet: GuestRow[] = [];
     // Read threads newest first, a few at a time, until the time budget runs out.
@@ -593,7 +609,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     if (notRead) failed.push(notRead);
     const longest = waiting.slice().sort((a, b) => b.waitedMs - a.waitedMs)[0]?.wait || "";
     waiting.sort((a, b) => a.waitedMs - b.waitedMs || a.guest.localeCompare(b.guest));
-    await collectInquiries(seenProperties, followUps, scanned, handled, now);
+    collectInquiries(loaded.stays, seenProperties, followUps, scanned, handled, now);
     const previous = rememberedQueue?.followUps ?? [];
     const today = torontoToday(now);
     const activityById = new Map(loaded.stays.map((row) => [row.stay.id, row.lastMessageAt]));
@@ -680,12 +696,6 @@ function oneRecord(raw: unknown): Record<string, unknown> | null {
   return null;
 }
 
-function rowsOf(raw: unknown): Record<string, unknown>[] {
-  if (!raw || typeof raw !== "object") return [];
-  const data = (raw as { data?: unknown }).data;
-  return Array.isArray(data) ? data.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object" && !Array.isArray(row)) : [];
-}
-
 function turnsFrom(row: Record<string, unknown>): InquiryTurn[] {
   const messages = Array.isArray(row.messages) ? row.messages : [];
   return messages.flatMap((item) => {
@@ -701,30 +711,27 @@ function turnsFrom(row: Record<string, unknown>): InquiryTurn[] {
   });
 }
 
-async function collectInquiries(
+/**
+ * Booking requests waiting on an answer, from the inquiries the inbox already read.
+ * Hospitable's inquiry list refuses include=messages, so the messages come from each inquiry's own read.
+ */
+function collectInquiries(
+  conversations: Conversation[],
   properties: Map<string, { id: string; label: string; failed: boolean }>,
   followUps: GuestFollowUp[],
   scanned: Set<string>,
   handled: Set<string>,
   now: Date,
-): Promise<void> {
-  for (const property of properties.values()) {
-    if (property.failed) continue;
-    let raw: unknown;
-    try {
-      raw = await hospitableRead("get-inquiries", { properties: [property.id], include: "guest,messages" });
-    } catch {
-      continue;
-    }
-    for (const row of rowsOf(raw)) {
-      const record = recordFromRow(row, property.label, property.id);
-      if (!record?.pendingAt) continue;
-      scanned.add(record.id);
-      const turns = turnsFrom(row);
-      if (isOpenRequest(record.status)) {
-        const card = bookingRequestFollowUp(record, turns, now, phaseFor(record.id));
-        if (card && !handled.has(card.id) && !followUps.some((item) => item.id === card.id)) followUps.push(card);
-      }
+): void {
+  for (const stay of conversations) {
+    if (!stay.inquiry || properties.get(stay.stay.propertyId)?.failed && !stay.turns?.length) continue;
+    const record = recordFromRow(stay.reservation ?? {}, stay.label, stay.stay.propertyId);
+    if (!record?.pendingAt) continue;
+    scanned.add(record.id);
+    const turns: InquiryTurn[] = (stay.turns ?? []).map((turn) => ({ at: turn.at, role: turn.role, name: turn.name, body: turn.body }));
+    if (isOpenRequest(record.status)) {
+      const card = bookingRequestFollowUp(record, turns, now, phaseFor(record.id));
+      if (card && !handled.has(card.id) && !followUps.some((item) => item.id === card.id)) followUps.push(card);
     }
   }
 }

@@ -1145,13 +1145,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     return () => document.removeEventListener("click", down);
   }, [menuFor, plusOpen]);
 
+  // Only a chat follows its newest turn to the bottom. Lists (Overview, Guest messaging, Reviews,
+  // Settings) open at the top, newest first, and older rows are reached by scrolling down.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || screen === "brief") {
-      if (el && screen === "brief") el.scrollTop = 0;
-      return;
-    }
-    el.scrollTop = el.scrollHeight;
+    if (el && screen !== "chat") el.scrollTop = 0;
+  }, [screen]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && screen === "chat") el.scrollTop = el.scrollHeight;
   }, [messages, screen, busy]);
 
   function setThemeAndSave(next: "dark" | "light") {
@@ -1787,24 +1790,35 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     void openCard(card.text, label);
   }
 
+  // A full inbox scan can take most of a minute, so the next one starts only after the last one
+  // answers. Firing every few seconds stacked dozens of scans on Hospitable and the server.
   useEffect(() => {
     if (screen !== "guests") return;
-    const pull = () => {
-      void api<GuestQueue>("guests-refresh", {})
-        .then((queue) => {
-          if (!isGuestQueue(queue)) return;
-          setGuestQueue(queue);
-          setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
-        })
-        .catch(() => undefined);
+    let stopped = false;
+    let timer = 0;
+    const pull = async () => {
       const open = guestAnswer;
-      if (!open) return;
-      void api<GuestDraftView>("guests-open", { ...open })
-        .then((next) => setGuestAnswer((current) => (current && current.id === open.id ? next : current)))
-        .catch(() => undefined);
+      await Promise.all([
+        api<GuestQueue>("guests-refresh", {})
+          .then((queue) => {
+            if (stopped || !isGuestQueue(queue)) return;
+            setGuestQueue(queue);
+            setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+          })
+          .catch(() => undefined),
+        open
+          ? api<GuestDraftView>("guests-open", { ...open })
+            .then((next) => { if (!stopped) setGuestAnswer((current) => (current && current.id === open.id ? next : current)); })
+            .catch(() => undefined)
+          : Promise.resolve(),
+      ]);
+      if (!stopped) timer = window.setTimeout(() => { void pull(); }, 20000);
     };
-    const timer = window.setInterval(pull, 4000);
-    return () => window.clearInterval(timer);
+    timer = window.setTimeout(() => { void pull(); }, 20000);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
   }, [screen, guestAnswer?.id]);
 
   function showGuests() {

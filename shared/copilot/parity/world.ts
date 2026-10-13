@@ -841,9 +841,7 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
     return { handled: true, value: row ? { data: mcpInquiry(row) } : { data: null } };
   }
   if (name === "get-inquiries") {
-    const ids = Array.isArray(args.properties) ? args.properties.map(String) : [];
-    const rows = (current.inquiries ?? []).filter((row) => !ids.length || ids.includes(row.propertyId));
-    return { handled: true, value: { data: rows.map(mcpInquiry), meta: { last_page: 1 } } };
+    return { handled: true, value: inquiriesList(current, args) };
   }
   if (name === "get-reservations") {
     return { handled: true, value: reservationsPage(current, args) };
@@ -854,6 +852,16 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
     return { handled: true, value: hubDocument(row) };
   }
   return { handled: true, value: { data: [] } };
+}
+
+/** Like Hospitable: the inquiry list carries no messages, and asking for them is refused with a 400. */
+function inquiriesList(current: ParityWorld, args: Record<string, unknown>): unknown {
+  if (String(args.include ?? "").split(",").map((part) => part.trim()).includes("messages")) {
+    throw new Error("Hospitable API error (400): You cannot include messages when fetching all inquiries");
+  }
+  const ids = Array.isArray(args.properties) ? args.properties.map(String) : [];
+  const rows = (current.inquiries ?? []).filter((row) => !ids.length || ids.includes(row.propertyId));
+  return { data: rows.map((row) => { const { messages: _messages, ...rest } = mcpInquiry(row) as Record<string, unknown>; return rest; }), meta: { last_page: 1 } };
 }
 
 export function parityHttp(method: string, path: string, query: Record<string, unknown>): { handled: boolean; value: unknown } {
@@ -889,9 +897,7 @@ export function parityHttp(method: string, path: string, query: Record<string, u
     return { handled: true, value: row ? { data: mcpInquiry(row) } : { data: null } };
   }
   if (path === "/inquiries") {
-    const ids = Array.isArray(query.properties) ? query.properties.map(String) : [];
-    const rows = (current.inquiries ?? []).filter((row) => !ids.length || ids.includes(row.propertyId));
-    return { handled: true, value: { data: rows.map(mcpInquiry), meta: { last_page: 1 } } };
+    return { handled: true, value: inquiriesList(current, query) };
   }
   if (path === "/reservations") {
     return { handled: true, value: reservationsPage(current, query) };
