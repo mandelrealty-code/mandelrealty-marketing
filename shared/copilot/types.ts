@@ -129,7 +129,11 @@ export type CopilotMessage = {
   stayRows?: StayCard[] | null;
   /** The property resolved on this turn. A follow-up reads this same record. */
   property?: PropertyIdentity | null;
+  /** The one Checks item this answer is about, opened directly, never "the latest waiting". */
+  checksItem?: ChecksItemRef | null;
 };
+
+export type ChecksItemRef = { chatId: string; messageId: string; label: string };
 
 export type PropertyIdentity = {
   label: string;

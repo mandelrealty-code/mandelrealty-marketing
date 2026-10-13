@@ -4,6 +4,7 @@
  */
 
 import { PDFDocument, StandardFonts, type PDFPage } from "pdf-lib";
+import { proposalSender, proposalSubject } from "./processFacts.js";
 import { estimateByAddress } from "../airroi.js";
 import { createPmClient, getPmClient, listPmClients } from "../pm/clientStore.js";
 import {
@@ -508,7 +509,7 @@ export async function prepareProposalSend(proposalId?: string): Promise<Proposal
   const client = await getPmClient(proposal.client_id);
   if (!client?.email) return { body: "That client has no email in OPS. Nothing was sent.", proposal, draft: null, regenerated: [] };
   const draft: CopilotDraft = {
-    subject: `Unit proposal for ${proposal.address}`,
+    subject: proposalSubject(proposal.address),
     body: `Version ${proposal.version}. Full total ${money(proposal.total_cents)} CAD. ${proposal.estimate}`,
     to: client.email,
     status: "waiting",
@@ -535,12 +536,12 @@ export async function commitProposalSend(proposalId: string, now = new Date()): 
   }
   const apiKey = process.env.RESEND_API_KEY?.trim() || "";
   if (!apiKey) return "Email is not configured. Nothing was sent.";
-  const from = process.env.RESEND_FROM?.trim() || "Mandel Realty Group <info@mandelrealtygroup.com>";
+  const from = proposalSender();
   const result = await sendResendEmail({
     apiKey,
     from,
     to: [client.email],
-    subject: `Unit proposal for ${proposal.address}`,
+    subject: proposalSubject(proposal.address),
     text: `${proposal.estimate}\nFull total ${money(proposal.total_cents)} CAD.`,
     html: `<p>${proposal.estimate}</p><p>Full total ${money(proposal.total_cents)} CAD.</p>`,
     attachments: [{ filename: `proposal-v${proposal.version}.pdf`, content: proposal.pdf.toString("base64") }],

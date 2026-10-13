@@ -34,6 +34,8 @@ import {
   guestDrafts,
   guestTabText,
   improveGuestDraft,
+  improveGuestMessage,
+  setImproveModel,
 } from "./guestMessaging.js";
 import type { GuestFollowUp, GuestQueue, GuestRow } from "./guestTypes.js";
 import { guestQueueRows } from "./guestQueueRows.js";
@@ -210,7 +212,8 @@ const missed = await submitGuestReply({
   fact: "This fact must not be saved.",
 });
 if (missed.sent) fail("forced failure reported sent");
-if (!/not sent/i.test(missed.reason)) fail(`forced failure reason: ${missed.reason}`);
+// Hospitable acknowledged it but it never landed: not claimed sent, and not invited to be sent twice.
+if (!missed.pending || !/isn't showing on the thread yet\. Don't send it again/.test(missed.reason)) fail(`forced failure reason: ${missed.reason}`);
 const dropped = await callHospitableMcp("get-reservation-messages", { uuid: "stay-dropped" });
 if (JSON.stringify(dropped).includes("This reply must not count as sent.")) fail("forced failure landed on the thread");
 if (hub.get("prop-blue")?.includes("This fact must not be saved")) fail("hub saved after a failed send");
@@ -1092,6 +1095,19 @@ const commitsBeforeImprove = capturedCommits().length;
 const improved = improveGuestDraft(rough, "Maya");
 if (improved === rough || !/please/i.test(improved)) fail(`wording did not change: ${improved}`);
 if (!improved.includes("Oct 14") || !improved.includes("$50")) fail(`facts changed: ${improved}`);
+if (capturedCommits().length !== commitsBeforeImprove) fail("improve sent a message");
+// Improve with AI rewrites what the partner typed, keeping every fact; a rewrite that loses one is not used.
+const typed = "Hey Husson quick reminder if you plan on driving a vehicle to send us the make, model, and plate number so we can get you in the system. Thanks!";
+setImproveModel(async (input) => (input.guest === "Husson" ? "Hi Husson, a quick reminder: if you're planning to drive, please send us your vehicle's make, model and licence plate number so we can register it with the building. Thanks!" : ""));
+const polishedAi = await improveGuestMessage(typed, "Husson Ali", "20 Blue Jays Way Unit 318");
+if (!/^Hi Husson, a quick reminder: if you're planning to drive/.test(polishedAi)) fail(`ai improve: ${polishedAi}`);
+const withFacts = "pls confirm the bag drop on Oct 14 for $50";
+setImproveModel(async () => "Hi Maya, could you please confirm the bag drop for Oct 14?");
+const lost = await improveGuestMessage(withFacts, "Maya");
+if (!lost.includes("$50") || !lost.includes("Oct 14")) fail(`a rewrite that dropped $50 was used: ${lost}`);
+setImproveModel(async () => "Hi Maya, could you please confirm the bag drop on Oct 14 for $50?");
+if (await improveGuestMessage(withFacts, "Maya") !== "Hi Maya, could you please confirm the bag drop on Oct 14 for $50?") fail("a rewrite that kept every fact was not used");
+setImproveModel(null);
 if (capturedCommits().length !== commitsBeforeImprove) fail("improve sent a message");
 const sentBody = "The locker on Oct 14 is $50. I'll leave the side door unlatched.";
 const sent = await submitGuestReply({

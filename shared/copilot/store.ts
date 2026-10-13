@@ -419,7 +419,7 @@ function asReportFile(value: unknown): { filename: string; mime: string; data: s
 }
 
 function unpackMessage(row: CopilotMessage): CopilotMessage {
-  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean; memory_file?: { path: string; preview: string }; file?: { filename?: string; data?: string }; stay_rows?: CopilotMessage["stayRows"]; property?: CopilotMessage["property"] }) | null;
+  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean; memory_file?: { path: string; preview: string }; file?: { filename?: string; data?: string }; stay_rows?: CopilotMessage["stayRows"]; property?: CopilotMessage["property"]; checks_item?: CopilotMessage["checksItem"] }) | null;
   const choices = Array.isArray(raw?.choices) ? raw.choices : row.choices ?? null;
   const steps = Array.isArray(raw?.steps) ? raw.steps : row.steps ?? null;
   const thought = typeof raw?.thought === "string" ? raw.thought : row.thought ?? null;
@@ -431,9 +431,10 @@ function unpackMessage(row: CopilotMessage): CopilotMessage {
   const file = asReportFile(raw?.file) ?? row.file ?? null;
   const stayRows = Array.isArray(raw?.stay_rows) ? raw.stay_rows : row.stayRows ?? null;
   const property = raw?.property && typeof raw.property === "object" ? raw.property : row.property ?? null;
-  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property };
-  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, memory_file: _memoryFile, file: _file, stay_rows: _stays, property: _property, ...draft } = raw;
-  return { ...row, draft, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property };
+  const checksItem = raw?.checks_item && typeof raw.checks_item === "object" && raw.checks_item.messageId ? raw.checks_item : row.checksItem ?? null;
+  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property, checksItem };
+  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, memory_file: _memoryFile, file: _file, stay_rows: _stays, property: _property, checks_item: _checksItem, ...draft } = raw;
+  return { ...row, draft, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property, checksItem };
 }
 
 export async function ensureLegacyPurchase(message: CopilotMessage): Promise<CopilotMessage> {
@@ -556,6 +557,7 @@ export async function addMessage(input: {
   file?: { filename: string; mime: string; data: string } | null;
   stayRows?: CopilotMessage["stayRows"];
   property?: CopilotMessage["property"];
+  checksItem?: CopilotMessage["checksItem"];
 }): Promise<CopilotMessage> {
   const extra = {
     ...(input.choices?.length ? { choices: input.choices } : {}),
@@ -569,6 +571,7 @@ export async function addMessage(input: {
     ...(input.file ? { file: input.file } : {}),
     ...(input.stayRows?.length ? { stay_rows: input.stayRows } : {}),
     ...(input.property ? { property: input.property } : {}),
+    ...(input.checksItem ? { checks_item: input.checksItem } : {}),
   };
   const storedDraft = Object.keys(extra).length ? { ...(input.draft ?? {}), ...extra } : input.draft ?? null;
   const spoken = input.role === "assistant" ? applyCorrections(await composeChainAnswer(input.chatId, input.body)) : input.body;

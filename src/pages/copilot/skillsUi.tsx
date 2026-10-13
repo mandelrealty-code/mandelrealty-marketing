@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { emailCardLabel } from "../../../shared/copilot/checksLabel";
 import type { CopilotMessage, CopilotReport, CopilotTextSend, SkillRow } from "../../../shared/copilot/types";
 import { renderAnswer } from "../../../shared/copilot/answerMarkup";
 import { isUnattended, schedulePhrase } from "../../../shared/copilot/skillSchedule";
@@ -575,7 +576,7 @@ export function EmailDraftCard({
   return (
     <div className="cp-sk-prop">
       {message.run_id ? <span className="cp-sk-stamp">{runWhen(message.created_at, true)}</span> : null}
-      <p className="cp-sk-pre">{message.body}</p>
+      <p className="cp-sk-pre">{emailCardLabel(message.body, d)}</p>
       <div className="cp-sk-card">
         <div className="cp-sk-mailmeta">
           <div className="r">

@@ -18,6 +18,11 @@ import { installWorld, type ParityReservation } from "./parity/world.js";
 import { ensureUnitSetups, resetUnitSetups } from "./unitSetup.js";
 import { setWebAnswerer } from "./webAnswer.js";
 import type { PmReservationRow } from "../pm/reservationStore.js";
+import { answerBuildingRegistrationItem, asksBuildingRegistration } from "./buildingRegistration.js";
+import { emailCardLabel } from "./checksLabel.js";
+import { parityChecksMessages, paritySaveChecksMessage, resetParityChecksMessages } from "./parity/storeStub.js";
+import { BLUE_JAYS_PROCESS } from "./processFacts.js";
+import { buildingMail } from "./stayCheck.js";
 
 function fail(message: string): never {
   throw new Error(`Business harness failed: ${message}`);
@@ -205,6 +210,50 @@ if (!/on Amazon\.ca first/.test(searched) || !/42 x 48 inch contractor bags\) is
 if (!/^Garbage bags \(42\.5L\):/.test(amazon.body) || !/\$0\.19 per bag/.test(amazon.body) || /read failed|walmart\.ca\/en\/search\?q=/i.test(amazon.body)) fail(`amazon bags: ${amazon.body}`);
 if (amazon.steps?.[0]?.text !== "Searched current listings and read the unit's catalog") fail(`amazon route: ${JSON.stringify(amazon.steps)}`);
 if (capturedCommits().length) fail("a purchasing answer bought something");
+
+// How the business normally does something comes from the recorded process, never a pointer to a card.
+const asked = "for the 20 blue jays way parking emails, which email addresses do we normally send to? And what email do we normally use as the draft, and subject?";
+if (asksBuildingRegistration(asked)) fail("a process question started a registration draft");
+const processAnswer = await send("biz-process", asked);
+for (const fact of ["supervisorelement@gmail.com", "conciergetscc1851@gmail.com", "tscc1851office@gmail.com", "kshewnarain@rogers.com", "Send from: mandelrealtyteam@gmail.com", "Subject: AirBNB Rental for Unit 318 from [check-in date] - [check-out date]", "Shane, Co-Host", "P4-62"]) {
+  if (!processAnswer.body.includes(fact)) fail(`process answer is missing ${fact}: ${processAnswer.body}`);
+}
+if (/^The building email for/.test(processAnswer.body) || processAnswer.steps?.[0]?.text !== "Read the recorded registration process") fail(`process answer deflected: ${processAnswer.body}`);
+// The draft the workflow builds comes from those same facts.
+const built = buildingMail({ id: "husson", code: "HMHUSSON01", status: "accepted", checkIn: "2026-10-16", checkOut: "2026-10-19", guest: "Husson" } as Parameters<typeof buildingMail>[0], BLUE_JAYS_PROCESS);
+if (built.to !== "supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com") fail(`draft recipients: ${built.to}`);
+if (built.subject !== "AirBNB Rental for Unit 318 from Friday, October 16, 2026 - Monday, October 19, 2026" || !built.body.endsWith("Shane, Co-Host 647-822-0448") || !/P4-62/.test(built.body)) fail(`draft from the record: ${built.subject} / ${built.body}`);
+const proposalAnswer = await send("biz-process-proposal", "who does the unit proposal email normally go to, and what subject do we use?");
+if (!/client's email address on file in OPS/.test(proposalAnswer.body) || !/Subject: Unit proposal for \[unit address\]/.test(proposalAnswer.body) || !/info@mandelrealtygroup\.com/.test(proposalAnswer.body)) fail(`proposal process: ${proposalAnswer.body}`);
+
+// Item identity: a Manik reply and a Husson registration, both in Sent; the newer Manik reply mentions the building.
+{
+  const building = "supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com";
+  const registration = { id: "reg-sent", mailbox: "gmail" as const, folder: "sent" as const, from: "Mandel Realty", email: "mandelrealtyteam@gmail.com", to: building, date: "2026-10-06T15:00:00-04:00",
+    subject: "AirBNB Rental for Unit 318 from Thursday, October 8, 2026 - Saturday, October 10, 2026", snippet: "20 Blue Jays Way Unit 318",
+    body: "Hello,\n\nPlease register this vehicle with the building.\nGuest: Priya Shah\nThis stay is at 20 Blue Jays Way.\nMake: Honda\nModel: Civic\nPlate: ABCD123\nColour: Grey\n\nShane, Co-Host 647-822-0448", airbnb: false };
+  const manik = { id: "manik-sent", mailbox: "gmail" as const, folder: "sent" as const, from: "Mandel Realty", email: "mandelrealtyteam@gmail.com", to: "Manik K <mktorcan@gmail.com>", date: "2026-10-12T10:00:00-04:00",
+    subject: "Re: Business Growth Discussion - Requested Information and Supporting Documentation", snippet: "Booking.com permissions for 20 Blue Jays Way",
+    body: "Hi Manik,\n\nAttached are the Booking.com permissions for 20 Blue Jays Way and the other units.\n\nShane", airbnb: false };
+  const world = worldAt("2026-10-13T09:00:00-04:00", false, [registration, manik]);
+  world.reservations.push(stay("00000000-0000-4000-8000-0000000a5501", ID.blue, "Husson", "2026-10-16", "2026-10-19", [
+    { id: "husson-car", at: "2026-10-12T18:00:00-04:00", role: "guest", name: "Husson", body: "Make: Mazda. Model: CX-5. Plate: CKTR902. One car." },
+  ]));
+  installWorld(world);
+  resetCaptures();
+  resetParityChecksMessages();
+  paritySaveChecksMessage({ id: "manik-card", chat_id: "checks", created_at: "2026-10-13T08:00:00.000Z", role: "assistant", body: "Here is the building email. Nothing was sent.",
+    draft: { channel: "email", status: "waiting", to: manik.to, subject: manik.subject, body: "Hi Manik, here is the Booking.com permission summary." } });
+  const result = await answerBuildingRegistrationItem("read the emails I've been sending for 20 Blue Jays Way, I need to write another one for the next guest with their car info, same subject and body");
+  if (!result || !/Husson/.test(result.body) || !/20 Blue Jays Way/.test(result.body) || !/vehicle registration/.test(result.body)) fail(`registration claim: ${result?.body}`);
+  const opened = parityChecksMessages().find((row) => row.id === result.item?.messageId);
+  if (!opened?.draft || opened.draft.to !== building || !/^AirBNB Rental for Unit 318 from Friday, October 16, 2026/.test(opened.draft.subject) || !/Make: Mazda/.test(opened.draft.body)) fail(`opened card: ${JSON.stringify(opened?.draft)}`);
+  if (/Manik|Booking\.com/.test(opened.draft.body) || !/Husson/.test(emailCardLabel(opened.body, opened.draft))) fail(`registration card label: ${opened.body}`);
+  const manikCard = parityChecksMessages().find((row) => row.id === "manik-card");
+  const manikLabel = emailCardLabel(manikCard?.body ?? "", manikCard?.draft);
+  if (/building|registration/i.test(manikLabel) || !/mktorcan@gmail\.com/.test(manikLabel) || !/Business Growth Discussion/.test(manikLabel)) fail(`Manik card label: ${manikLabel}`);
+  if (capturedCommits().length) fail("an identity check sent something");
+}
 
 setWebAnswerer(null);
 setCompsSource(null);

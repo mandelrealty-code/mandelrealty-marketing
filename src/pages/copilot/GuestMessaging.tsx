@@ -4,12 +4,12 @@ import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestQueue,
 import type { StayCard } from "../../../shared/copilot/types";
 import type { HubProposal } from "../../../shared/copilot/hubLearning";
 
-type SubmitResult = { sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string; hubOffers?: HubProposal[] };
+type SubmitResult = { sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string; hubOffers?: HubProposal[]; pending?: boolean };
 type HubSave = (offer: { propertyId: string; property: string; title: string; content: string }) => Promise<{ saved: boolean; line: string }>;
 type HubOffer = HubProposal & { phase: "open" | "saving" | "saved" | "failed"; line: string };
 
 function submitProblem(result: SubmitResult): string {
-  if (!result.sent) return result.reason || "It is not sent.";
+  if (!result.sent && !result.pending) return result.reason || "It is not sent.";
   return result.failedLine || "";
 }
 
@@ -17,6 +17,7 @@ export function GuestMessaging({
   queue,
   answer,
   onOpen,
+  onPrefetch,
   onBack,
   onSubmit,
   onRefresh,
@@ -28,6 +29,7 @@ export function GuestMessaging({
   queue: GuestQueue | null;
   answer: GuestDraftView | null;
   onOpen: (row: GuestRow) => void;
+  onPrefetch?: (row: GuestRow) => void;
   onBack: () => void;
   onSubmit: (draft: string, fact: string, attachments: GuestFile[]) => Promise<SubmitResult>;
   onHold?: (id: string) => Promise<void>;
@@ -69,7 +71,7 @@ export function GuestMessaging({
       />
     );
   }
-  return <Queue queue={queue} filters={filters} onFilters={setFilters} onOpen={onOpen} onRefresh={onRefresh} />;
+  return <Queue queue={queue} filters={filters} onFilters={setFilters} onOpen={onOpen} onPrefetch={onPrefetch} onRefresh={onRefresh} />;
 }
 
 function torontoDay(): string {
@@ -89,12 +91,14 @@ function Queue({
   filters,
   onFilters,
   onOpen,
+  onPrefetch,
   onRefresh,
 }: {
   queue: GuestQueue;
   filters: GuestFilters;
   onFilters: (next: GuestFilters) => void;
   onOpen: (row: GuestRow) => void;
+  onPrefetch?: (row: GuestRow) => void;
   onRefresh?: () => void;
 }) {
   const [menu, setMenu] = useState<"" | "property" | "stay">("");
@@ -220,6 +224,8 @@ function Queue({
                 className={`cp-gq-row${needs ? " needs" : ""}`}
                 aria-label={`${row.guest}${needs ? `, needs reply${wait ? `, waiting ${wait}` : ""}` : ", answered"}. ${last}`}
                 onClick={() => onOpen(row)}
+                onMouseEnter={() => onPrefetch?.(row)}
+                onFocus={() => onPrefetch?.(row)}
               >
                 <i className="cp-gq-dot" aria-hidden />
                 <Face name={row.guest} photo={row.guestPhoto} initials={row.initials} size={36} />
@@ -319,12 +325,14 @@ function Thread({
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
   const [note, setNote] = useState("");
+  const [sent, setSent] = useState("");
   const [tick, setTick] = useState(() => Date.now());
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setText(answer.lane === "reply" ? answer.draft : "");
     setEdited(false);
     setFail("");
+    setSent("");
     setFiles([]);
     setOffers([]);
   }, [answer.id]);
@@ -346,7 +354,7 @@ function Thread({
   const empty = !text.trim();
   const nights = nightCount(answer.checkIn ?? "", answer.checkOut ?? "");
   const showDraft = needsReply && Boolean(answer.draft) && !edited && !empty;
-  const idle = !needsReply && empty;
+  const idle = !needsReply && empty && !answer.loading;
   const days = groupDays(answer.thread);
   return (
     <div className="cp-gt">
@@ -367,6 +375,7 @@ function Thread({
               {block.messages.map((message, index) => <Bubble key={`${message.at}-${index}`} message={message} guestPhoto={answer.guestPhoto} initials={answer.initials} />)}
             </div>
           ))}
+          {answer.loading ? <p className="cp-gt-idle" aria-live="polite">Loading the conversation.</p> : null}
         </div>
       </div>
       <div className="cp-gt-reply">
@@ -407,7 +416,7 @@ function Thread({
                 rows={4}
                 value={text}
                 placeholder={`Write a message to ${answer.first}`}
-                onChange={(event) => { setText(event.target.value); setEdited(true); setFail(""); }}
+                onChange={(event) => { setText(event.target.value); setEdited(true); setFail(""); setSent(""); }}
               />
             </div>
             <div className="cp-gt-actions">
@@ -439,6 +448,8 @@ function Thread({
                     const problem = submitProblem(result);
                     if (problem) setFail(problem);
                     else {
+                      // Accepted but not yet on the thread: the box clears so it isn't sent twice.
+                      if (result.pending || result.savedLine) setSent(result.pending ? result.reason : result.savedLine);
                       setText("");
                       setEdited(false);
                       setFiles([]);
@@ -453,6 +464,7 @@ function Thread({
           </div>
           {files.length ? <p className="cp-gt-files">{files.map((file) => file.name).join(", ")}</p> : null}
           {fail ? <p className="cp-gt-fail">{fail}</p> : null}
+          {sent && !fail ? <p className="cp-gt-idle" aria-live="polite">{sent}</p> : null}
         </div>
       </div>
     </div>

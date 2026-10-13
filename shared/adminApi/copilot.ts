@@ -25,7 +25,7 @@ import { answerMailChain, asksMailBreakdown } from "../copilot/mailChain.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
-import { answerBuildingRegistration, answerRegistrationStatus } from "../copilot/buildingRegistration.js";
+import { answerBuildingRegistrationItem, answerRegistrationStatus } from "../copilot/buildingRegistration.js";
 import { closeHandledAnswer, proveOutgoingMail } from "../copilot/partnerStandard.js";
 import { parityNow } from "../copilot/parity/clock.js";
 import { applyCorrections, takeCorrection } from "../copilot/corrections.js";
@@ -47,6 +47,7 @@ import { answerGuestBriefing } from "../copilot/guestBriefing.js";
 import { answerMoneyMove } from "../copilot/moneyMove.js";
 import { answerAboutPrevious } from "../copilot/followOnAnswer.js";
 import { answerProductAdvice } from "../copilot/productAdvice.js";
+import { answerProcess } from "../copilot/processAnswer.js";
 import { REPORT_CLIENTS, withClientUnits } from "../copilot/reportClients.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
@@ -65,7 +66,7 @@ import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMc
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
-import { beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestDraft, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
+import { beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestMessage, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, listStoredMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
@@ -467,7 +468,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     if (op === "guests-improve") {
-      const draft = improveGuestDraft(String(body.text ?? ""), String(body.guest ?? ""));
+      const draft = await improveGuestMessage(String(body.text ?? ""), String(body.guest ?? ""), String(body.property ?? ""));
       return res.status(200).json({ draft });
     }
 
@@ -904,6 +905,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       // Comp pricing for one of our units: the unit from the records, AirROI first, never a permission question.
       if (!pictureMode && !skillMode) {
         const compHistory = (await listMessages(chatId)).slice(0, -1).map((row) => ({ role: row.role, body: row.body }));
+        // "Who do we normally send the parking email to?": the recorded process, never a pointer to a card.
+        const processed = await answerProcess(text).catch(() => null);
+        if (processed) {
+          await addMessage({ chatId, role: "assistant", body: processed.body, steps: [{ text: processed.step }], thought: processed.thought });
+          return done();
+        }
         // Purchasing questions are answered from current listings, never from email or a "no tool" line.
         const purchasing = await answerProductAdvice(text, clock).catch(() => null);
         if (purchasing) {
@@ -1459,13 +1466,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           });
           return done();
         }
-        const registration = (await answerRegistrationStatus(text, clock)) ?? (await answerBuildingRegistration(text));
+        const registrationStatus = await answerRegistrationStatus(text, clock);
+        const registrationItem = registrationStatus == null ? await answerBuildingRegistrationItem(text) : null;
+        const registration = registrationStatus ?? registrationItem?.body ?? null;
         if (registration) {
           const already = /already sent/i.test(registration);
           await addMessage({
             chatId,
             role: "assistant",
             body: registration,
+            checksItem: registrationItem?.item?.messageId ? registrationItem.item : null,
             steps: [{ text: already ? "Read the sent building email" : /didn't find|didn't draft|couldn't read|didn't return|was not saved|Nothing was drafted/i.test(registration) ? "The building email was not drafted" : "Drafted the building email" }],
             thought: already
               ? "This came from Sent mail. Nothing was drafted."
@@ -1875,11 +1885,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
               const body = String(args.body ?? args.message ?? "");
               const images = Array.isArray(args.images) ? args.images.filter((item): item is string => typeof item === "string") : [];
               const proof = await sendReservationMessage({ reservationId, body, images });
+              // Accepted but not yet on the thread: not waiting to be sent again.
+              const pending = !proof.sent && proof.pending;
               const message = await updateDraft(messageId, {
-                status: proof.sent ? "sent" : "waiting",
+                status: proof.sent ? "sent" : pending ? "approved_unsent" : "waiting",
                 body: edited || undefined,
                 hospitable: { tool: draft.hospitable.tool, args },
-                bodyText: proof.sent ? "Done. It is in Hospitable." : proof.reason,
+                bodyText: proof.sent ? proof.note ?? "Done. It is in Hospitable." : proof.reason,
               });
               return res.status(200).json({ message });
             }

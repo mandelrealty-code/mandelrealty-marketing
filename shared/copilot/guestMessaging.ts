@@ -15,7 +15,7 @@ import { parityEnabled } from "./parity/flag.js";
 import { closeFollowUpEverywhere } from "./dueFollowUps.js";
 import { draftProblem, guestKey, looksLikeHeading, replyState } from "./guestReplyState.js";
 import { hubItems, proposeHubEntries, type HubItem, type HubProposal } from "./hubLearning.js";
-import { flushThreadCache, leaveDraft, loadConversations, memoryFor, readStayThread, type Conversation } from "./stayCheck.js";
+import { flushThreadCache, forgetThread, leaveDraft, loadConversations, memoryFor, readStayThread, type Conversation } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
 import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
@@ -339,6 +339,69 @@ export function improveGuestDraft(text: string, guest = ""): string {
   return polished === source ? source : polished;
 }
 
+type ImproveModel = (input: { text: string; guest: string; property: string }) => Promise<string>;
+let improveModel: ImproveModel | null = null;
+
+/** Test seam: the parity suite supplies the rewrite instead of calling Claude. */
+export function setImproveModel(next: ImproveModel | null): void {
+  improveModel = next;
+}
+
+const IMPROVE_SYSTEM = [
+  "You polish a short-term rental host's message to a guest before it is sent, the way Hospitable's and Airbnb's message assistants do.",
+  "Fix grammar, punctuation and flow. Make it warm, clear and professional, and keep it about as short as the original.",
+  "Keep every fact exactly as written: names, numbers, prices, dates, times, unit and spot numbers, links and codes. Do not add any new fact, promise, offer, apology or instruction.",
+  "Greet the guest by first name if a name is given and the message doesn't already greet them. Keep the host's meaning and voice; don't make it longer than it needs to be.",
+  "Reply with the message only: no quotes, no notes, no options.",
+].join(" ");
+
+async function claudeImprove(input: { text: string; guest: string; property: string }): Promise<string> {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) return "";
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 600,
+      temperature: 0.3,
+      system: IMPROVE_SYSTEM,
+      messages: [{ role: "user", content: `Guest first name: ${input.guest || "unknown"}${input.property ? `\nProperty: ${input.property}` : ""}\n\nHost's message:\n${input.text}` }],
+    }),
+  });
+  if (!res.ok) return "";
+  const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+  return (data.content ?? []).filter((block) => block.type === "text").map((block) => block.text ?? "").join("").trim();
+}
+
+/** Every fact the partner wrote that a rewrite must carry over unchanged: amounts, dates, times, links, numbers. */
+function factsIn(text: string): string[] {
+  const links = text.match(/https?:\/\/\S+/g) ?? [];
+  const numbers = text.replace(/https?:\/\/\S+/g, " ").match(/\$?\d[\d,.:]*(?:\s?(?:am|pm))?/gi) ?? [];
+  const named = text.match(KEPT_FACT) ?? [];
+  return [...new Set([...links, ...named, ...numbers].map((fact) => fact.replace(/[.,]+$/, "")))].filter(Boolean);
+}
+
+/**
+ * Improve with AI: Claude rewrites what the partner typed. The rewrite is used only when it keeps
+ * every fact; otherwise, or without a model, the plain wording pass runs. Nothing is sent.
+ */
+export async function improveGuestMessage(text: string, guest = "", property = ""): Promise<string> {
+  const source = text.trim();
+  if (!source) return "";
+  const first = guest.trim().split(/\s+/)[0] || "";
+  let rewritten = "";
+  try {
+    rewritten = improveModel ? await improveModel({ text: source, guest: first, property }) : parityEnabled() ? "" : await claudeImprove({ text: source, guest: first, property });
+  } catch {
+    rewritten = "";
+  }
+  rewritten = rewritten.replace(/^["“]|["”]$/g, "").trim();
+  const keeps = (candidate: string) => factsIn(source).every((fact) => candidate.includes(fact));
+  if (rewritten && keeps(rewritten) && rewritten.length <= source.length * 2 + 160) return rewritten;
+  return improveGuestDraft(source, guest);
+}
+
 function polishWording(text: string, guest: string): string {
   let spoken = text.trim().replace(/\s+/g, " ");
   spoken = spoken
@@ -367,6 +430,8 @@ export type GuestSubmitResult = {
   sentText: string;
   /** Knowledge Hub items the partner's reply taught, offered for approval. Nothing is saved yet. */
   hubOffers?: HubProposal[];
+  /** Hospitable accepted it but it isn't on the thread yet. Not to be sent again. */
+  pending?: boolean;
 };
 
 /**
@@ -424,7 +489,9 @@ export async function submitGuestReply(input: {
     body: sentText,
     images,
   });
-  if (!posted.sent) return { sent: false, reason: posted.reason, savedLine: "", failedLine: "", sentText };
+  forgetThread(input.reservationId);
+  if (!posted.sent) return { sent: false, reason: posted.reason, savedLine: "", failedLine: "", sentText, ...(posted.pending ? { pending: true } : {}) };
+  if (posted.note) return { sent: true, reason: "", savedLine: posted.note, failedLine: "", sentText };
   const hubOffers = gap
     ? proposeHubEntries({ ask: gap.ask, reply: input.english, guest: input.guest, propertyId: input.propertyId, property: input.property, items: gap.items })
     : [];
@@ -872,12 +939,18 @@ async function inquiryThread(id: string): Promise<{ at: string; role: string; na
 }
 
 export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<GuestDraftView> {
-  const messages = row.inquiry ? await inquiryThread(row.id) : await readStayThread(row.id, now);
+  // Every read at once: the thread (cached when its activity hasn't moved), the reservation, the
+  // Knowledge Hub, the saved inbox and memory. One after another took seconds.
+  const [messages, stayRaw, hubRead, saved, memory] = await Promise.all([
+    row.inquiry ? inquiryThread(row.id) : readStayThread(row.id, now),
+    hospitableRead("get-reservation", { identifier: row.id }).catch(() => null),
+    readPropertyHub(row.propertyId),
+    readSavedGuestQueue().catch(() => null),
+    memoryFor(row.property).catch(() => ""),
+  ]);
   const turns: ThreadTurn[] = messages
     .filter((item) => item.role !== "system")
     .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body, media: item.media ?? [] }));
-  const stayRaw = await hospitableRead("get-reservation", { identifier: row.id }).catch(() => null);
-  const hubRead = await readPropertyHub(row.propertyId);
   const hub = hubRead.ok ? hubRead.text : "";
   const threadRead = readThread(turns, row.guest);
   const spoken = turns.filter((item) => item.body.trim() || item.media.length);
@@ -885,7 +958,7 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
   const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
   const ask = pending.map((item) => item.body.trim()).join(" ") || row.asked;
   // The same rule as the inbox: a cancelled, superseded, closed, or passed thread gets no draft.
-  const listed = (await readSavedGuestQueue().catch(() => null))?.quiet?.find((item) => item.id === row.id);
+  const listed = saved?.quiet?.find((item) => item.id === row.id);
   const raw = oneRecord(stayRaw) ?? {};
   const state = listed?.quietReason
     ? { needs: false, reason: listed.quietReason }
@@ -899,7 +972,6 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
       guest: row.guest,
     });
   const read = threadRead.lane === "reply" && !state.needs ? { ...threadRead, lane: "none" as const, waitingLine: state.reason, status: state.reason } : threadRead;
-  const memory = await memoryFor(row.property).catch(() => "");
   const hubDraft = read.lane === "reply" ? draftFromHub(row.guest, ask, hub, { place: row.property, memory }) : { mode: "gap" as const, draft: "", facts: "", gap: "" };
   // A draft is a complete answer or nothing: never a heading, a stub, or a sentence cut off.
   const broken = hubDraft.mode === "hub" ? draftProblem(hubDraft.draft) : "";

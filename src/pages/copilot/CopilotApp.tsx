@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, HospitableCard, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
 import type { ReviewQueuePayload, ReviewQueueRow } from "../../../shared/copilot/reviewTypes";
-import type { GuestDraftView, GuestQueue } from "../../../shared/copilot/guestTypes";
+import type { GuestDraftView, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
 import { ConnectorStatusPage, ConnectorsList, HospitablePage } from "./HospitableConnection";
 import { ReviewsQueue } from "./ReviewsQueue";
 import type { HubProposal } from "../../../shared/copilot/hubLearning";
@@ -153,6 +153,36 @@ const SUGGESTIONS = [
   "Anything running low at the units?",
   "What's still open from yesterday?",
 ];
+
+/** A thread opened from its inbox row, shown at once while the full read lands. */
+function placeholderView(row: GuestRow): GuestDraftView {
+  return {
+    id: row.id, guest: row.guest, first: row.first, initials: row.initials, guestPhoto: row.guestPhoto,
+    property: row.property, propertyId: row.propertyId, propertyPhoto: row.propertyPhoto,
+    stay: "", wait: row.wait, asked: row.asked, language: row.language, statusLead: row.statusLead, statusRest: row.statusRest,
+    dates: row.dates, checkIn: row.checkIn, checkOut: row.checkOut, when: row.when, lane: "none", status: row.status,
+    thread: [], mode: "hub", draft: "", alternates: [], sendable: false, situation: "", waitingLine: "", watch: row.watch,
+    partnerNotes: [], basedOn: "", sourceLine: "", mediaSlot: "", sentVersion: "", facts: "", gap: "", savedLine: "", failedLine: "",
+    loading: true,
+  };
+}
+
+/** The inbox right after a reply: the row shows the message and moves to "on the guest". */
+function movedToGuest(queue: GuestQueue, id: string, text: string, at: string): GuestQueue {
+  const all = [...queue.waiting, ...queue.onGuest, ...queue.held, ...queue.thanks, ...(queue.quiet ?? [])];
+  const found = all.find((row) => row.id === id);
+  if (!found) return queue;
+  const row: GuestRow = { ...found, lane: "guest", activityAt: at, preview: text, lastBy: "You", wait: "", waitedMs: 0 };
+  const without = (rows: GuestRow[]) => rows.filter((item) => item.id !== id);
+  return {
+    ...queue,
+    waiting: without(queue.waiting),
+    held: without(queue.held),
+    thanks: without(queue.thanks),
+    quiet: queue.quiet ? without(queue.quiet) : queue.quiet,
+    onGuest: [row, ...without(queue.onGuest)],
+  };
+}
 
 function isGuestQueue(value: GuestQueue | null | undefined): value is GuestQueue {
   return Boolean(value && Array.isArray(value.waiting) && Array.isArray(value.thanks) && typeof value.connected === "boolean");
@@ -806,6 +836,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [reviewQueue, setReviewQueue] = useState<ReviewQueuePayload | null>(null);
   const [guestQueue, setGuestQueue] = useState<GuestQueue | null>(null);
   const [guestAnswer, setGuestAnswer] = useState<GuestDraftView | null>(null);
+  // Threads already opened, keyed by reservation with the activity they were read at, and reads in flight.
+  const openedViews = useRef(new Map<string, { activityAt: string; view: GuestDraftView }>());
+  const openingViews = useRef(new Map<string, Promise<GuestDraftView | null>>());
   const [screen, setScreen] = useState<Screen>("brief");
   const [boardSeed, setBoardSeed] = useState<Workflow>(BLANK);
   const [boardSkillId, setBoardSkillId] = useState<string | null>(null);
@@ -1843,6 +1876,22 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     };
   }, [screen, guestAnswer?.id]);
 
+  /** One read per thread at a time; the result is kept against the activity it was read at. */
+  function readGuestView(row: GuestRow): Promise<GuestDraftView | null> {
+    const key = `${row.id}|${row.activityAt ?? ""}`;
+    const inflight = openingViews.current.get(key);
+    if (inflight) return inflight;
+    const read = api<GuestDraftView>("guests-open", { ...row })
+      .then((view) => {
+        openedViews.current.set(row.id, { activityAt: row.activityAt ?? "", view });
+        return view;
+      })
+      .catch(() => null)
+      .finally(() => openingViews.current.delete(key));
+    openingViews.current.set(key, read);
+    return read;
+  }
+
   function showGuests() {
     setScreen("guests");
     setGuestAnswer(null);
@@ -2378,7 +2427,17 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     queue={guestQueue}
                     answer={guestAnswer}
                     onOpen={(row) => {
-                      void api<GuestDraftView>("guests-open", { ...row }).then(setGuestAnswer).catch(() => setGuestAnswer(null));
+                      // Open at once: the kept thread if nothing new happened, else the row while it loads.
+                      const kept = openedViews.current.get(row.id);
+                      setGuestAnswer(kept && kept.activityAt === (row.activityAt ?? "") ? kept.view : placeholderView(row));
+                      void readGuestView(row).then((view) => {
+                        if (view) setGuestAnswer((current) => (current && current.id === row.id ? view : current));
+                        else setGuestAnswer((current) => (current && current.id === row.id && current.loading ? null : current));
+                      });
+                    }}
+                    onPrefetch={(row) => {
+                      const kept = openedViews.current.get(row.id);
+                      if (!kept || kept.activityAt !== (row.activityAt ?? "")) void readGuestView(row);
                     }}
                     onBack={() => setGuestAnswer(null)}
                     onRefresh={() => {
@@ -2389,7 +2448,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       }).catch(() => undefined);
                     }}
                     onImprove={async (text) => {
-                      const result = await api<{ draft: string }>("guests-improve", { text, guest: guestAnswer?.first ?? "" });
+                      const result = await api<{ draft: string }>("guests-improve", { text, guest: guestAnswer?.first || guestAnswer?.guest || "", property: guestAnswer?.property ?? "" });
                       return result.draft ?? text;
                     }}
                     onHold={async (id) => {
@@ -2417,7 +2476,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     }}
                     onSubmit={async (draft, fact, attachments) => {
                       const row = guestAnswer;
-                      const result = await api<{ sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string; hubOffers?: HubProposal[] }>("guests-submit", {
+                      const result = await api<{ sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string; hubOffers?: HubProposal[]; pending?: boolean }>("guests-submit", {
                         id: row?.id,
                         propertyId: row?.propertyId,
                         property: row?.property,
@@ -2427,14 +2486,27 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         fact,
                         attachments,
                       });
-                      if (result.sent && row) {
-                        const queue = await api<GuestQueue>("guests-refresh", {}).catch(() => null);
-                        if (isGuestQueue(queue)) {
+                      if ((result.sent || result.pending) && row) {
+                        // Show it now: the message in the thread and the inbox row, then refresh quietly.
+                        const at = new Date().toISOString();
+                        const text = result.sentText || draft;
+                        const bubble = { role: "host" as const, who: "You", at, time: new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }), text, english: text, language: "", media: [], flag: "" };
+                        setGuestAnswer((current) => (current && current.id === row.id ? { ...current, thread: [...current.thread, bubble], lane: "none", draft: "", sendable: false } : current));
+                        setGuestQueue((current) => (isGuestQueue(current) ? movedToGuest(current, row.id, text, at) : current));
+                        openedViews.current.delete(row.id);
+                        void api<GuestQueue>("guests-refresh", {}).then((queue) => {
+                          if (!isGuestQueue(queue)) return;
                           setGuestQueue(queue);
                           setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
-                        }
-                        const opened = await api<GuestDraftView>("guests-open", { ...row }).catch(() => null);
-                        if (opened) setGuestAnswer(opened);
+                        }).catch(() => undefined);
+                        // Hospitable can take a few seconds to show it; the optimistic message stays until it does.
+                        const reread = (tries: number) => {
+                          void readGuestView({ ...row, activityAt: new Date(Date.parse(at) + tries).toISOString() } as unknown as GuestRow).then((view) => {
+                            if (view && view.thread.some((item) => item.text.trim() === text.trim())) setGuestAnswer((current) => (current && current.id === row.id ? view : current));
+                            else if (tries < 3) window.setTimeout(() => reread(tries + 1), 4000);
+                          });
+                        };
+                        reread(1);
                       }
                       return result;
                     }}
@@ -2648,6 +2720,19 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           ) : (
                             (() => {
                               const summary = reportMessageSummary(message.body);
+                              if (!summary && message.checksItem?.messageId) {
+                                const item = message.checksItem;
+                                return (
+                                  <>
+                                    <ChatText text={withoutFilesystemDetail(message.body, true)} />
+                                    <div className="cp-rv-viewrow">
+                                      <button type="button" className="cp-rv-openbtn" aria-label={`Open in Checks: ${item.label}`} onClick={() => void openChat(item.chatId, item.messageId)}>
+                                        {item.label} · Open in Checks
+                                      </button>
+                                    </div>
+                                  </>
+                                );
+                              }
                               if (!summary) return <ChatText text={withoutFilesystemDetail(message.body, true)} muted={message.draft?.status !== "waiting" && !!message.draft} />;
                               const openHere = Boolean(reportDock && reportDock.id === summary.id);
                               return (

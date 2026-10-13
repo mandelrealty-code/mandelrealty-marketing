@@ -1,4 +1,5 @@
-import { copilotHospitableToken, limitToSavedSelection } from "./hospitableConnection.js";
+import { copilotHospitableToken, hospitableRead, limitToSavedSelection } from "./hospitableConnection.js";
+import { parityEnabled } from "./parity/flag.js";
 import { LOOKBACK_DAYS } from "./occupancy.js";
 import {
   hospitableFetch,
@@ -58,11 +59,53 @@ export async function commitHospitable(name: string, args: Record<string, unknow
   throw new Error("That change needs the MCP token. Nothing was changed.");
 }
 
-export type GuestMessageSend = { sent: true } | { sent: false; reason: string };
+/**
+ * sent: on the thread. pending: Hospitable accepted it but it hasn't shown on the thread yet; it is
+ * not to be sent again. Otherwise it was not sent.
+ */
+export type GuestMessageSend = { sent: true; note?: string } | { sent: false; pending?: boolean; reason: string };
+
+/** Spacing, line breaks and curly quotes don't make a different message. */
+function sameText(value: string): string {
+  return value.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+type ThreadRow = { body: string; at: string };
+
+/** The thread through MCP, and through the Public API too, so a lagging read on one side doesn't hide the reply. */
+async function threadRows(reservationId: string): Promise<ThreadRow[] | null> {
+  const rows: ThreadRow[] = [];
+  let read = false;
+  for (const load of [
+    () => callHospitableMcp("get-reservation-messages", { uuid: reservationId, reservation_id: reservationId }),
+    () => hospitableRead("get-reservation-messages", { uuid: reservationId, reservation_id: reservationId }),
+  ]) {
+    try {
+      for (const item of messageRows(await load())) {
+        if (!item || typeof item !== "object") continue;
+        const row = item as Record<string, unknown>;
+        const body = String(row.body ?? row.message ?? row.text ?? "").trim();
+        if (body) rows.push({ body, at: String(row.created_at ?? row.sent_at ?? row.at ?? "") });
+      }
+      read = true;
+    } catch {
+      /* The other read may still answer. */
+    }
+  }
+  return read ? rows : null;
+}
+
+function countOf(rows: ThreadRow[], body: string): number {
+  const needle = sameText(body);
+  return rows.filter((row) => sameText(row.body).includes(needle)).length;
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * The only guest-message send. It commits through MCP, then reads the thread.
- * Success means the body is on the thread. A send that cannot be read back is not sent.
+ * The only guest-message send. It commits through MCP, then reads the thread back.
+ * Hospitable posts to Airbnb a few seconds after accepting, so the read-back is retried for about
+ * 20 seconds. An identical message posted in the last 15 minutes is not sent twice.
  */
 export async function sendReservationMessage(input: {
   reservationId: string;
@@ -73,13 +116,10 @@ export async function sendReservationMessage(input: {
   const body = input.body.trim();
   if (!reservationId) return { sent: false, reason: "That reply has no reservation. Nothing was sent." };
   if (!body) return { sent: false, reason: "The draft is empty. Nothing was sent." };
-  const readArgs = { uuid: reservationId, reservation_id: reservationId };
-  let before = 0;
-  try {
-    before = countMessageBody(await callHospitableMcp("get-reservation-messages", readArgs), body);
-  } catch {
-    before = 0;
-  }
+  const beforeRows = await threadRows(reservationId);
+  const before = beforeRows ? countOf(beforeRows, body) : 0;
+  const recent = (beforeRows ?? []).find((row) => sameText(row.body).includes(sameText(body)) && row.at && Date.now() - Date.parse(row.at) < 15 * 60_000);
+  if (recent) return { sent: true, note: "That exact message is already on the thread from a few minutes ago, so it wasn't sent again." };
   try {
     await commitHospitable("send-reservation-message", {
       uuid: reservationId,
@@ -94,31 +134,17 @@ export async function sendReservationMessage(input: {
       : `${message.replace(/\.$/, "")}. Nothing was sent.`;
     return { sent: false, reason };
   }
-  try {
-    const after = countMessageBody(await callHospitableMcp("get-reservation-messages", readArgs), body);
-    if (after > before) return { sent: true };
-    return { sent: false, reason: "The reply is not on the thread. It is not sent." };
-  } catch (err) {
-    const message = err instanceof Error && err.message ? err.message : "The thread could not be read.";
-    return { sent: false, reason: `${message.replace(/\.$/, "")}. The reply was not read back, so it is not sent.` };
+  const delays = parityEnabled() ? [0] : [1500, 2500, 4000, 6000, 6000];
+  for (const delay of delays) {
+    if (delay) await wait(delay);
+    const rows = await threadRows(reservationId);
+    if (rows && countOf(rows, body) > before) return { sent: true };
   }
-}
-
-function countMessageBody(raw: unknown, body: string): number {
-  const needle = body.trim();
-  if (!needle) return 0;
-  return messageBodies(raw).filter((item) => item.includes(needle)).length;
-}
-
-function messageBodies(raw: unknown): string[] {
-  const out: string[] = [];
-  for (const item of messageRows(raw)) {
-    if (!item || typeof item !== "object") continue;
-    const row = item as Record<string, unknown>;
-    const text = String(row.body ?? row.message ?? row.text ?? "").trim();
-    if (text) out.push(text);
-  }
-  return out;
+  return {
+    sent: false,
+    pending: true,
+    reason: "Hospitable accepted the message, but it isn't showing on the thread yet. Don't send it again; check the thread in a minute.",
+  };
 }
 
 function messageRows(raw: unknown): unknown[] {

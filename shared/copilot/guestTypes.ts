@@ -106,6 +106,8 @@ export type GuestDraftView = {
   gap: string;
   savedLine: string;
   failedLine: string;
+  /** Shown from the inbox row while the full thread loads. */
+  loading?: boolean;
 };
 
 /** An open loop inside a thread. Separate from who owes the next reply. */

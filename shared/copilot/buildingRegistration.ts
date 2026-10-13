@@ -13,6 +13,9 @@ import { leaveDraft, loadRecentStays, readStayThread, type RecentStay } from "./
 import { captureMailMatch } from "./parity/capture.js";
 import { namesMatch, platesFrom, registrationMatchesStay, sentProof } from "./partnerStandard.js";
 import { torontoToday } from "./time.js";
+import { asksProcess } from "./processAnswer.js";
+import { isRegistrationDraft } from "./checksLabel.js";
+import type { ChecksItemRef } from "./types.js";
 
 const DATE = /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}, \d{4}/g;
 
@@ -154,6 +157,8 @@ export async function answerRegistrationStatus(text: string, now?: Date): Promis
 
 export function asksBuildingRegistration(text: string): boolean {
   const asked = text.trim();
+  // "Which addresses do we normally send to?" asks about the process; it doesn't ask for a draft.
+  if (asksProcess(asked)) return false;
   if (!/\b(e-?mails?|sent)\b/i.test(asked)) return false;
   if (!/\b(write|draft|another)\b/i.test(asked)) return false;
   if (!/\b(guest|car|vehicle|registration|subject|body)\b/i.test(asked)) return false;
@@ -334,8 +339,10 @@ async function sentLetters(question: string): Promise<{ letters: MailLetter[]; n
   for (const hit of [...found.hits].sort((a, b) => b.date.localeCompare(a.date))) {
     try {
       const thread = await readMailThread({ mailbox: hit.mailbox, id: hit.threadId || hit.id });
-      const letter = thread.find((row) => row.id === hit.id) ?? thread.at(-1);
-      if (letter) letters.push(letter);
+      // Only the message that was found, and only when it is itself a registration: a reply that
+      // merely mentions the building (a business email to Manik) is never the template.
+      const letter = thread.find((row) => row.id === hit.id) ?? (thread.length === 1 ? thread[0] : undefined);
+      if (letter && isRegistrationDraft({ to: letter.to, subject: letter.subject, body: letter.body, channel: "email" })) letters.push(letter);
     } catch {
       // A message that will not open is skipped. A later one can still be the template.
     }
@@ -345,6 +352,21 @@ async function sentLetters(question: string): Promise<{ letters: MailLetter[]; n
 }
 
 export async function answerBuildingRegistration(text: string): Promise<string | null> {
+  return (await answerBuildingRegistrationItem(text))?.body ?? null;
+}
+
+function shortDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${iso.slice(0, 10)}T12:00:00Z`));
+}
+
+/** The answer and the one Checks item it is about, so chat opens that exact card. */
+export async function answerBuildingRegistrationItem(text: string): Promise<{ body: string; item: ChecksItemRef | null } | null> {
+  const body = await registrationBody(text);
+  if (body == null) return null;
+  return typeof body === "string" ? { body, item: null } : body;
+}
+
+async function registrationBody(text: string): Promise<string | { body: string; item: ChecksItemRef } | null> {
   if (!asksBuildingRegistration(text)) return null;
   const clock = parityNow() ?? new Date();
   const today = torontoToday(clock);
@@ -380,6 +402,7 @@ export async function answerBuildingRegistration(text: string): Promise<string |
   const found = vehiclesFromThread(messages, guest);
   const vehicles = found.length ? found : [{ guest, make: "", model: "", plate: "", colour: "", count: "" }];
   const filled = fillFromTemplate(template, next.stay.checkIn, next.stay.checkOut, vehicles);
+  const lead = `Here is the vehicle registration email for ${guest || "the next guest"} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}), to the building. Nothing was sent.${filled.warnings.length ? `\n\nCheck before approving:\n${filled.warnings.map((warning) => `• ${warning}`).join("\n")}` : ""}`;
   const saved = await leaveDraft({
     channel: "email",
     to: template.to,
@@ -387,10 +410,18 @@ export async function answerBuildingRegistration(text: string): Promise<string |
     body: filled.body,
     warnings: filled.warnings,
     needs_you: true,
+    lead,
   });
   const marks = vehicles.flatMap((item) => [item.make, item.model, item.plate].filter(Boolean));
   const stored = await confirmedChecksDraft(saved, { subject: filled.subject, includes: marks });
   if (!stored) return "The building email was not saved in Checks.";
+  // The claim is checked against the saved card's own To and Subject before it is made.
+  if (!isRegistrationDraft(stored)) return "The draft saved in Checks doesn't read as the building registration, so I'm not pointing you to it. Nothing was sent.";
   const who = guest || "the next guest";
-  return `The building email for ${who} at ${next.label} is in Checks. Nothing is sent until you press Submit.`;
+  const label = `Vehicle registration for ${who} at ${next.label}, ${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}`;
+  const count = stored.to.split(/[,;]+/).filter((item) => item.trim()).length;
+  return {
+    body: `The vehicle registration email for ${who} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}) is in Checks, to the building's ${count} registration address${count === 1 ? "" : "es"}, subject “${stored.subject}”. Nothing is sent until you press Submit.`,
+    item: { chatId: saved?.chat_id ?? "", messageId: saved?.id ?? "", label },
+  };
 }

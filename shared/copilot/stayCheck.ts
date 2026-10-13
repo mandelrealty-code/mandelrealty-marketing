@@ -12,7 +12,8 @@ import { parityChecksMessages, parityRetireGuestReplies, paritySaveChecksMessage
 import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats, listChecksMessages, listWaitingDrafts, readStayThreadCache, recordCancellation, recordDrafts, recordReport, refreshSupplyDrafts, reportRecorded, saveStayThreadCache, updateDraft } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft, CopilotMessage } from "./types.js";
-import { BLUE_JAYS_PROCESS } from "./processFacts.js";
+import { emailCardLabel, isRegistrationDraft } from "./checksLabel.js";
+import { BLUE_JAYS_PROCESS, registrationRecipients, registrationSignOff, registrationSubjectTemplate } from "./processFacts.js";
 import { syncBusinessTodos } from "./businessTodos.js";
 import { raiseDueFollowUps } from "./dueFollowUps.js";
 import { mediaFromMessage, type ThreadMedia } from "./guestMedia.js";
@@ -33,12 +34,6 @@ import {
 import type { MailLetter } from "./mailSearch.js";
 
 const AIRBNB_BLIND = "I cannot see replies sent inside the Airbnb app.";
-const CONTACTS = [
-  "supervisorelement@gmail.com",
-  "conciergetscc1851@gmail.com",
-  "tscc1851office@gmail.com",
-  "kshewnarain@rogers.com",
-];
 
 type Msg = { at: string; role: string; name: string; body: string; media?: ThreadMedia[] };
 export type Stay = {
@@ -120,6 +115,11 @@ function resetThreadCache(): void {
 }
 
 registerThreadReset(resetThreadCache);
+
+/** A reply was just posted: the next read of this thread goes to Hospitable, not the cache. */
+export function forgetThread(id: string): void {
+  threadMemory.delete(id);
+}
 
 function freshThread(id: string, nowMs: number): Msg[] | null {
   const hit = threadMemory.get(id);
@@ -291,7 +291,7 @@ export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise
     ...(hospitable ? { hospitable } : {}),
     ...(prepared.followUp ? { followUp: prepared.followUp } : {}),
   };
-  const body = prepared.lead ? `${prepared.lead}${warnings}` : `${prepared.cleanerAssign ? prepared.body : prepared.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : prepared.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : "Here is the building email. Nothing was sent."}${warnings}`;
+  const body = prepared.lead ? `${prepared.lead}${warnings}` : `${prepared.cleanerAssign ? prepared.body : prepared.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : prepared.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : emailCardLabel(isRegistrationDraft(prepared) ? "Here is the building email. Nothing was sent." : "", prepared)}${warnings}`;
   if (parityEnabled()) {
     try {
       return paritySaveChecksMessage({
@@ -534,17 +534,13 @@ function businessFacts(memory: string, hub: string): string {
 }
 
 function subjectFrom(memory: string, checkIn: string, checkOut: string): string {
-  const line = memory.split("\n").find((row) => /subject/i.test(row)) ?? "";
-  const template = line.replace(/^.*subject:\s*/i, "").trim() || "AirBNB Rental for Unit 318 from {check-in long date} - {check-out long date}";
-  return template
+  return registrationSubjectTemplate(memory)
     .replace(/\{check-in[^}]*\}/gi, longDate(checkIn))
     .replace(/\{check-out[^}]*\}/gi, longDate(checkOut));
 }
 
 function signOff(memory: string): string {
-  const line = memory.split("\n").find((row) => /sign-off/i.test(row));
-  if (!line) return "Shane, Co-Host 647-822-0448";
-  return line.replace(/^.*sign-off:\s*/i, "").trim() || "Shane, Co-Host 647-822-0448";
+  return registrationSignOff(memory);
 }
 
 export async function memoryFor(blob: string): Promise<string> {
@@ -1053,8 +1049,9 @@ export function placeLabel(place: string, name: string): string {
   return name;
 }
 
-function buildingMail(stay: Stay, memory: string): DraftCapture {
-  const to = CONTACTS.filter((email) => memory.toLowerCase().includes(email)).join(", ");
+/** The building registration draft, from the same process record the process answer reads. */
+export function buildingMail(stay: Stay, memory: string): DraftCapture {
+  const to = registrationRecipients(memory).join(", ");
   return {
     channel: "email",
     to,

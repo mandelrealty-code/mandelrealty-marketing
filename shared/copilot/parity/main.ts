@@ -564,7 +564,7 @@ async function fixtureBuildingRegistration(): Promise<void> {
   expect(/Shane, Co-Host 647-822-0448/.test(body), "the sign-off stays the one in the sent email", body);
   expect(!/Priya|Honda|Civic|ABCD123|Grey|archive@building|Omar|Registration notice/.test(body), "the previous guest and the older email are not reused", body);
   expect(draft?.needs_you === true, "the draft waits for Submit", String(draft?.needs_you));
-  const stored = (await listStoredWaitingDrafts()).find((row) => row.channel === "email" && row.subject === draft?.subject);
+  const stored = (await listStoredWaitingDrafts()).filter((row) => row.channel === "email" && row.subject === draft?.subject).at(-1);
   expect(Boolean(stored) && stored?.body === body, "Checks read-back has that subject and body", stored?.body ?? "no stored email");
   expectNothingSent();
 }
