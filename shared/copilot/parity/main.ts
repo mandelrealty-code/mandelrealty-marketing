@@ -41,7 +41,8 @@ import { failChecksDrafts, parityChecksMessages, paritySaveChecksMessage } from 
 import { parityNow, setParityClock } from "./clock.js";
 import { chooseBriefOpenItem } from "../openItems.js";
 import type { BriefCard, BriefPayload } from "../types.js";
-import { parityItems, parityMemory, installWorld, type ParityMail, type ParityReservation, type ParityWorld } from "./world.js";
+import { installOpsClients, installOpsContract, opsRecordSignature } from "./opsState.js";
+import { parityItems, parityMemory, installWorld, setParityCleanerSetup, type ParityCleanerSetup, type ParityMail, type ParityReservation, type ParityWorld } from "./world.js";
 import { runCopilotPass } from "../pass.js";
 import { answerAvailability } from "../availabilityAnswer.js";
 import { rememberHospitableSelection, resetHospitableConnection } from "../hospitableConnection.js";
@@ -1308,6 +1309,111 @@ async function fixtureUnselectedTurnover(): Promise<void> {
   }
 }
 
+function overviewText(brief: BriefPayload): string {
+  return [...(brief.overview?.today ?? []), ...(brief.overview?.coming ?? [])].map((row) => `${row.title} ${row.why}`).join("\n");
+}
+
+/** A contract waiting on a signature, a unit with 606's unfinished cleaner setup, and one unanswered request. */
+async function fixtureBusinessTodos(): Promise<void> {
+  const now = new Date("2026-10-13T16:00:00.000Z");
+  const setup: ParityCleanerSetup = {
+    id: ID.charlotte,
+    name: "8 Charlotte 606",
+    address: "606, 8 Charlotte Street, Toronto",
+    since: "2026-09-01T16:00:00.000Z",
+    unitCreated: true,
+    addressSet: true,
+    roster: false,
+    checklist: false,
+    photoPoints: false,
+    inventory: true,
+  };
+  const world = worldAt(now.toISOString());
+  world.gmail = [
+    {
+      id: "ask-jordan",
+      threadId: "thread-jordan",
+      mailbox: "gmail",
+      folder: "inbox",
+      from: "Jordan Lee",
+      email: "jordan@example.com",
+      to: "shane@mandelrealtygroup.com",
+      date: "2026-10-10T15:00:00-04:00",
+      subject: "Please send the insurance certificate",
+      snippet: "Can you send the insurance certificate for 8 Charlotte?",
+      body: "Can you send the insurance certificate for 8 Charlotte this week?",
+      airbnb: false,
+    },
+    {
+      id: "ask-sam",
+      threadId: "thread-sam",
+      mailbox: "gmail",
+      folder: "inbox",
+      from: "Sam Patel",
+      email: "sam@example.com",
+      to: "shane@mandelrealtygroup.com",
+      date: "2026-10-09T15:00:00-04:00",
+      subject: "Please confirm the cleaner schedule",
+      snippet: "Can you confirm the cleaner schedule for next week?",
+      body: "Can you confirm the cleaner schedule for next week?",
+      airbnb: false,
+    },
+    {
+      id: "ask-sam-sent",
+      threadId: "thread-sam",
+      mailbox: "gmail",
+      folder: "sent",
+      from: "Shane",
+      email: "shane@mandelrealtygroup.com",
+      to: "sam@example.com",
+      date: "2026-10-10T15:00:00-04:00",
+      subject: "Re: Please confirm the cleaner schedule",
+      snippet: "Confirmed.",
+      body: "Confirmed, the schedule is set.",
+      airbnb: false,
+    },
+  ];
+  world.cleaner = { setup: [setup] };
+  installWorld(world);
+  setParityClock(now);
+  const [client] = installOpsClients([{ name: "Precilla Daniel", email: "precilla@example.com" }]);
+  const contract = installOpsContract({
+    clientId: client.id,
+    title: "Management agreement",
+    filename: "agreement.pdf",
+    templateId: "tpl-precilla",
+    buffer: Buffer.from("agreement"),
+    source: Buffer.from("agreement"),
+    signFields: [],
+    status: "awaiting_signature",
+    createdAt: "2026-10-02T16:00:00.000Z",
+  });
+  resetCaptures();
+  const shown = await buildBrief(now);
+  const shownText = `${overviewText(shown)}\n${capturedReports().map((row) => `${row.headline} ${row.text}`).join("\n")}`;
+  expect(
+    /Precilla Daniel: contract sent Oct 2, still waiting on signature \(11 days\)/.test(shownText),
+    "an unsigned contract is a waiting-on-signature to-do with the days since it was sent",
+    shownText.slice(0, 1200),
+  );
+  expect(
+    /8 Charlotte 606: cleaner app onboarding not finished, no cleaner assigned, checklist not configured/.test(shownText),
+    "an unfinished cleaner-app unit names the missing steps",
+    shownText.slice(0, 1200),
+  );
+  expect(/Jordan Lee: Please send the insurance certificate \(Oct 10\)/.test(shownText), "an unanswered request is a to-do", shownText.slice(0, 1200));
+  expect(!/Sam Patel/.test(shownText), "a request with a reply in Sent is not a to-do", shownText.slice(0, 1200));
+  expect(/outside email/.test(shownText), "a reply outside email is named", shownText.slice(0, 1200));
+
+  opsRecordSignature(contract.id, "2026-10-13T16:00:00.000Z");
+  setParityCleanerSetup([{ ...setup, roster: true, checklist: true, photoPoints: true }]);
+  resetCaptures();
+  const cleared = await buildBrief(now);
+  const clearedText = `${overviewText(cleared)}\n${capturedReports().map((row) => row.text).join("\n")}`;
+  expect(!/waiting on signature/.test(clearedText), "recording the signature clears the to-do", clearedText.slice(0, 1200));
+  expect(!/8 Charlotte 606: cleaner app onboarding/.test(clearedText), "finishing the cleaner-app steps clears the to-do", clearedText.slice(0, 1200));
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -1343,6 +1449,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "34", title: "Monday's Overview is Monday's: Sunday's saved brief is not shown as today, and Checks turnovers are items", run: fixtureStaleOverview },
   { id: "30", title: "A 39-night stay blocks every all-empty night before it leaves, and no past date is offered", run: fixtureLongStayAvailability },
   { id: "31", title: "A stay that arrived before the asked window still blocks its nights inside it", run: fixtureStayBeforeWindow },
+  { id: "35", title: "OPS, cleaner-app onboarding, and unanswered mail are to-dos until the records show them done", run: fixtureBusinessTodos },
 ];
 
 function guard(): void {

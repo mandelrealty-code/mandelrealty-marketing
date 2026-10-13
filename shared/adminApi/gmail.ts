@@ -260,8 +260,10 @@ export async function searchGmail(input: {
   includeAirbnb: boolean;
   /** Gmail after: date, YYYY/MM/DD. Empty lists without a date. */
   after?: string;
+  limit?: number;
 }): Promise<GmailHit[]> {
   const keywords = mailKeywords(input.keywords);
+  const cap = input.limit && input.limit > 0 ? Math.min(input.limit, 40) : 8;
   const folders: MailFolder[] = input.where === "both" ? ["sent", "inbox"] : [input.where];
   for (const folder of folders) captureMailQuery("gmail", gmailQuery(folder, keywords, input.includeAirbnb, input.after ?? ""));
   const parity = paritySearchGmail({ ...input, keywords });
@@ -271,7 +273,7 @@ export async function searchGmail(input: {
   for (const folder of folders) {
     const q = gmailQuery(folder, keywords, input.includeAirbnb, input.after ?? "");
     const listRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=8&q=${encodeURIComponent(q)}`,
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${cap}&q=${encodeURIComponent(q)}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     const list = (await listRes.json().catch(() => ({}))) as { messages?: { id: string; threadId?: string }[]; error?: { message?: string } };
@@ -288,7 +290,7 @@ export async function searchGmail(input: {
       hits.push(hit);
     }
   }
-  return hits.slice(0, 16);
+  return hits.slice(0, input.limit && input.limit > 0 ? Math.min(input.limit, 40) : 16);
 }
 
 async function gmailThreadMessages(token: string, id: string): Promise<GmailMessage[]> {

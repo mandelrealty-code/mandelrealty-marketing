@@ -209,12 +209,27 @@ export type ParityCleanerSupply = {
   shipTo?: string;
 };
 
+/** One unit's cleaner-app setup, as the app itself records it. */
+export type ParityCleanerSetup = {
+  id: string;
+  name: string;
+  address: string;
+  since: string;
+  unitCreated: boolean;
+  addressSet: boolean;
+  roster: boolean;
+  checklist: boolean;
+  photoPoints: boolean;
+  inventory: boolean;
+};
+
 export type ParityCleaner = {
   error?: string;
   incomplete?: boolean;
   turnovers?: ParityCleanerTurnover[];
   supplies?: ParityCleanerSupply[];
   usual?: { propertyId: string; name: string }[];
+  setup?: ParityCleanerSetup[];
 };
 
 export type ParityWorld = {
@@ -279,6 +294,7 @@ export function installWorld(next: ParityWorld): void {
           incomplete: next.cleaner.incomplete,
           supplies: (next.cleaner.supplies ?? []).map((row) => ({ ...row })),
           usual: (next.cleaner.usual ?? []).map((row) => ({ ...row })),
+          setup: (next.cleaner.setup ?? []).map((row) => ({ ...row })),
         }
       : undefined,
   };
@@ -337,6 +353,16 @@ function live(): ParityWorld | null {
 
 export function parityCleaner(): ParityCleaner | null {
   return live()?.cleaner ?? null;
+}
+
+/** Replaces the cleaner-app setup rows on the installed world. */
+export function setParityCleanerSetup(rows: ParityCleanerSetup[]): void {
+  const current = live();
+  if (!current) return;
+  current.cleaner = {
+    ...(current.cleaner ?? {}),
+    setup: rows.map((row) => ({ ...row })),
+  };
 }
 
 /** Sets the cleaner on one fixture turnover. Nothing else on the row changes. */

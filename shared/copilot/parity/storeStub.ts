@@ -120,6 +120,18 @@ export function parityRetireGuestReplies(guest: string): void {
   }
 }
 
+export function parityDeleteChecksMessage(id: string): void {
+  const index = checksMessages.findIndex((row) => row.id === id);
+  if (index >= 0) checksMessages.splice(index, 1);
+}
+
+export function parityReplaceChecksMessage(id: string, body: string, report: CopilotMessage["report"]): void {
+  const message = checksMessages.find((row) => row.id === id);
+  if (!message) return;
+  message.body = body;
+  message.report = report ?? null;
+}
+
 export function paritySaveChecksMessage(message: CopilotMessage): CopilotMessage {
   if (checksSaveError) throw new Error(checksSaveError);
   const stored: CopilotMessage = { ...message, draft: message.draft ? { ...message.draft } : null };

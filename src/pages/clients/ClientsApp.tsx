@@ -16,6 +16,7 @@ import {
   type BillingTermsValue,
 } from "./BillingTermsForm";
 import { ClientMonthPanel } from "./ClientMonthPanel";
+import { ClientChecklist } from "./ClientChecklist";
 import { ContractsPanel } from "./ContractsPanel";
 import { ContractTemplatesPanel } from "./ContractTemplatesPanel";
 import { EmployeesPanel } from "./EmployeesPanel";
@@ -2602,6 +2603,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
                     </span>
                   </button>
                 </div>
+                <ClientChecklist clientId={clientSheet.id} />
                 <div className="-mx-4">
                   <ContractsPanel clientId={clientSheet.id} onError={setLoadError} />
                 </div>

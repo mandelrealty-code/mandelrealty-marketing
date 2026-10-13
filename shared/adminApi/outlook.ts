@@ -242,6 +242,7 @@ export async function searchOutlook(input: {
   keywords: string;
   where: MailFolder | "both";
   includeAirbnb: boolean;
+  limit?: number;
 }): Promise<OutlookHit[]> {
   const keywords = mailKeywords(input.keywords);
   const folders: MailFolder[] = input.where === "both" ? ["sent", "inbox"] : [input.where];
@@ -256,7 +257,8 @@ export async function searchOutlook(input: {
   for (const folder of folders) {
     const name = folder === "sent" ? "sentitems" : "inbox";
     const url = new URL(`https://graph.microsoft.com/v1.0/me/mailFolders/${name}/messages`);
-    url.searchParams.set("$top", keywords ? "8" : "12");
+    const cap = input.limit && input.limit > 0 ? Math.min(input.limit, 40) : (keywords ? 8 : 12);
+    url.searchParams.set("$top", String(cap));
     url.searchParams.set("$select", OUTLOOK_SELECT);
     if (keywords) url.searchParams.set("$search", `"${keywords}"`);
     else url.searchParams.set("$orderby", folder === "sent" ? "sentDateTime desc" : "receivedDateTime desc");
@@ -272,7 +274,7 @@ export async function searchOutlook(input: {
       hits.push(hit);
     }
   }
-  return hits.slice(0, 16);
+  return hits.slice(0, input.limit && input.limit > 0 ? Math.min(input.limit, 40) : 16);
 }
 
 function outlookBody(item: OutlookMessage): string {

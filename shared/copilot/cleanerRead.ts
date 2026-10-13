@@ -52,6 +52,25 @@ export type CleanerPicture =
   | { ok: true; turnovers: CleanerTurnover[]; supplies: CleanerSupply[]; orders: CleanerOrder[]; complete: boolean }
   | { ok: false; error: string };
 
+/** Setup flags from the cleaner app's own property, roster, checklist, and inventory rows. */
+export type CleanerSetupUnit = {
+  id: string;
+  name: string;
+  /** Service address from the cleaner-app property row, when the read returned one. */
+  address?: string;
+  since: string;
+  unitCreated: boolean;
+  addressSet: boolean;
+  roster: boolean;
+  checklist: boolean;
+  photoPoints: boolean;
+  inventory: boolean;
+};
+
+export type CleanerSetupRead =
+  | { ok: true; units: CleanerSetupUnit[] }
+  | { ok: false; error: string };
+
 function syncUrl(): string {
   const explicit = (process.env.CLEANER_HUB_SYNC_URL || "").trim();
   if (explicit) return explicit.replace(/\/$/, "");
@@ -116,6 +135,73 @@ export async function readCleanerUnit(input: {
   } catch (err) {
     return { ok: false, error: messageOf(err) };
   }
+}
+
+/** Every unit the cleaner app holds, with the setup steps its records show. */
+export async function readCleanerSetups(): Promise<CleanerSetupRead> {
+  if (parityEnabled()) {
+    const fixture = parityCleaner();
+    const units = (fixture?.setup ?? []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      since: row.since,
+      unitCreated: row.unitCreated,
+      addressSet: row.addressSet,
+      roster: row.roster,
+      checklist: row.checklist,
+      photoPoints: row.photoPoints,
+      inventory: row.inventory,
+    }));
+    return { ok: true, units };
+  }
+  const key = (process.env.CLEANER_HUB_SYNC_KEY || "").trim();
+  if (!key) return { ok: false, error: "Cleaner Hub is not connected, so onboarding was not read." };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-api-key": key,
+  };
+  const anon = (process.env.CLEANER_HUB_ANON_KEY || process.env.CLEANER_HUB_SUPABASE_ANON_KEY || "").trim();
+  if (anon) {
+    headers.Authorization = `Bearer ${anon}`;
+    headers.apikey = anon;
+  }
+  try {
+    const res = await fetch(syncUrl(), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ action: "list_onboarding" }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; units?: unknown };
+    if (!res.ok) return { ok: false, error: data.error || `Cleaner Hub onboarding read failed (${res.status}).` };
+    if (data.error) return { ok: false, error: data.error };
+    return { ok: true, units: asSetups(data.units) };
+  } catch (err) {
+    return { ok: false, error: messageOf(err) };
+  }
+}
+
+function asSetups(raw: unknown): CleanerSetupUnit[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const item = row as Record<string, unknown>;
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    if (!id || !name) return [];
+    const address = typeof item.address === "string" ? item.address.trim() : "";
+    return [{
+      id,
+      name,
+      ...(address ? { address } : {}),
+      since: typeof item.created_at === "string" ? item.created_at : "",
+      unitCreated: item.unit_created !== false,
+      addressSet: item.address_set === true,
+      roster: item.roster_assigned === true,
+      checklist: item.checklist_configured === true,
+      photoPoints: item.photo_points_configured === true,
+      inventory: item.inventory_started === true,
+    }];
+  });
 }
 
 function parityPicture(input: { propertyId: string; from: string; to: string }): CleanerPicture {

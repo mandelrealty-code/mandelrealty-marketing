@@ -7,7 +7,7 @@ import { captureReminder } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityItems, updateParityItem } from "./parity/world.js";
 import { applyCorrections } from "./corrections.js";
-import { parityCancellationRaised, parityChecksMessages, parityDeleteSkill, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReportIssued, paritySaveSkill, paritySkillList, parityUpdateChecksDraft } from "./parity/storeStub.js";
+import { parityCancellationRaised, parityChecksMessages, parityDeleteChecksMessage, parityDeleteSkill, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReplaceChecksMessage, parityReportIssued, paritySaveChecksMessage, paritySaveSkill, paritySkillList, parityUpdateChecksDraft } from "./parity/storeStub.js";
 import { normalizeSchedule } from "./skillSchedule.js";
 import type { Workflow } from "./workflow.js";
 import type { OpenItem } from "./openItems.js";
@@ -602,6 +602,97 @@ export async function addMessage(input: {
   if (chat) chat.updated_at = message.created_at;
   writeFileStore(data);
   return unpackMessage(message);
+}
+
+/** Writes one Checks to-do. A message id updates that row. A new id inserts it. */
+export async function saveChecksTodo(input: {
+  chatId: string;
+  messageId?: string;
+  body: string;
+  report: CopilotReport;
+}): Promise<string> {
+  const packed = { report: input.report };
+  if (parityEnabled()) {
+    if (input.messageId) {
+      parityReplaceChecksMessage(input.messageId, input.body, input.report);
+      return input.messageId;
+    }
+    const saved = paritySaveChecksMessage({
+      id: randomUUID(),
+      chat_id: input.chatId || "checks",
+      created_at: new Date().toISOString(),
+      role: "assistant",
+      body: input.body,
+      draft: null,
+      report: input.report,
+    });
+    return saved.id;
+  }
+  const client = sb();
+  if (!useFile && client) {
+    if (input.messageId) {
+      const { error } = await client.from("copilot_messages").update({ body: input.body, draft: packed as unknown as CopilotDraft }).eq("id", input.messageId);
+      if (!error) return input.messageId;
+      if (!useLocalFile(error)) throw new Error(error.message);
+    } else {
+      const message: CopilotMessage = {
+        id: randomUUID(),
+        chat_id: input.chatId,
+        created_at: new Date().toISOString(),
+        role: "assistant",
+        body: input.body,
+        draft: packed as unknown as CopilotDraft,
+      };
+      const { error } = await client.from("copilot_messages").insert(message);
+      if (!error) {
+        await touchChat(input.chatId);
+        return message.id;
+      }
+      if (!useLocalFile(error)) throw new Error(error.message);
+    }
+  }
+  const data = readFileStore();
+  if (input.messageId) {
+    const message = data.messages.find((row) => row.id === input.messageId);
+    if (message) {
+      message.body = input.body;
+      message.draft = packed as unknown as CopilotDraft;
+      message.report = input.report;
+      writeFileStore(data);
+      return message.id;
+    }
+  }
+  const created: CopilotMessage = {
+    id: randomUUID(),
+    chat_id: input.chatId,
+    created_at: new Date().toISOString(),
+    role: "assistant",
+    body: input.body,
+    draft: packed as unknown as CopilotDraft,
+    report: input.report,
+  };
+  data.messages.push(created);
+  const chat = data.chats.find((row) => row.id === input.chatId);
+  if (chat) chat.updated_at = created.created_at;
+  writeFileStore(data);
+  return created.id;
+}
+
+export async function deleteChecksMessage(id: string): Promise<void> {
+  if (!id) return;
+  if (parityEnabled()) {
+    parityDeleteChecksMessage(id);
+    return;
+  }
+  const client = sb();
+  if (!useFile && client) {
+    const { error } = await client.from("copilot_messages").delete().eq("id", id);
+    if (!error) return;
+    if (!useLocalFile(error)) throw new Error(error.message);
+  }
+  const data = readFileStore();
+  data.messages = data.messages.filter((row) => row.id !== id);
+  writeFileStore(data);
 }
 
 export async function updateDraft(

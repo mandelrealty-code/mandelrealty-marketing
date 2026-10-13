@@ -13,6 +13,7 @@ import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft, CopilotMessage } from "./types.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
+import { syncBusinessTodos } from "./businessTodos.js";
 import { raiseDueFollowUps } from "./dueFollowUps.js";
 import { mediaFromMessage, type ThreadMedia } from "./guestMedia.js";
 import { isThanksOnly, needsGuestReply } from "./guestTranslate.js";
@@ -642,6 +643,8 @@ export async function runUnattendedChecks(now = new Date()): Promise<void> {
   await revalidateWaitingReplies(now);
   // Promises to guests that come due today or tomorrow become a question in Checks. Nothing is sent.
   await raiseDueFollowUps(now);
+  // OPS, the cleaner app, and unanswered mail. Guest scope stays on the Hospitable selection above.
+  await syncBusinessTodos(await checksChat(), await checksOverviewMessages(), now);
 }
 
 async function preApproval(): Promise<void> {

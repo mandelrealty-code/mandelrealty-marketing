@@ -4,6 +4,7 @@ import {
   isAdminConfigured,
   verifyAdminSessionToken,
 } from "../adminAuth.js";
+import { loadClientChecklist } from "../pm/clientChecklist.js";
 import {
   createContract,
   deleteContract,
@@ -427,6 +428,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const url = await getPropertyCoverUrl(id);
         if (!url) return res.status(404).json({ error: "No cover photo." });
         return res.status(200).json({ url });
+      }
+      if (resource === "client_checklist") {
+        const clientId = typeof req.query.client_id === "string" ? req.query.client_id.trim() : "";
+        if (!clientId) return res.status(400).json({ error: "client_id is required." });
+        const checklist = await loadClientChecklist(clientId);
+        return res.status(200).json({ steps: checklist.steps, notes: checklist.notes });
       }
       if (resource === "contracts") {
         const clientId =

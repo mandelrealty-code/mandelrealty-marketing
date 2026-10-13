@@ -117,6 +117,39 @@ async function pdfFor(path: string): Promise<Buffer> {
   return Buffer.from(await data.arrayBuffer());
 }
 
+export type ProposalStatusRow = {
+  id: string;
+  client_id: string;
+  status: "draft" | "sent";
+  created_at: string;
+};
+
+/** Status only. The checklist does not download the PDF. */
+export async function listProposalStatus(clientId?: string): Promise<ProposalStatusRow[]> {
+  const parity = opsProposals(clientId);
+  if (parity) {
+    return parity.map((row) => ({
+      id: row.id,
+      client_id: row.client_id,
+      status: row.status,
+      created_at: row.created_at,
+    }));
+  }
+  let q = db().from("pm_proposals").select("id, client_id, status, created_at").order("created_at", { ascending: false });
+  if (clientId) q = q.eq("client_id", clientId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const item = row as { id: string; client_id: string; status?: string; created_at: string };
+    return {
+      id: item.id,
+      client_id: item.client_id,
+      status: item.status === "sent" ? "sent" as const : "draft" as const,
+      created_at: item.created_at,
+    };
+  });
+}
+
 export async function listProposals(clientId?: string): Promise<ProposalRecord[]> {
   const parity = opsProposals(clientId);
   if (parity) return parity.map(cloneProposal);

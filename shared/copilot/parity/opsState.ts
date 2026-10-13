@@ -117,11 +117,12 @@ export function installOpsContract(input: {
   source: Buffer;
   signFields: SignField[];
   status?: PmContractStatus;
+  createdAt?: string;
 }): PmContract {
   const id = randomUUID();
   const contract: PmContract = {
     id,
-    created_at: new Date().toISOString(),
+    created_at: input.createdAt || new Date().toISOString(),
     client_id: input.clientId,
     property_id: null,
     title: input.title,
@@ -198,6 +199,16 @@ export function opsCreateContract(input: {
     source: input.sourceBuffer?.length ? input.sourceBuffer : input.buffer,
   });
   return { ...contract, sign_fields: contract.sign_fields?.map((field) => ({ ...field })) };
+}
+
+/** The signature is on the contract row. The checklist reads this status. */
+export function opsRecordSignature(id: string, signedAt: string): boolean {
+  const row = contracts.find((item) => item.contract.id === id);
+  if (!row) return false;
+  row.contract.status = "signed";
+  row.contract.signed_at = signedAt;
+  row.contract.signed_on = signedAt.slice(0, 10);
+  return true;
 }
 
 export function opsCancelAwaiting(clientId: string, note: string): void {

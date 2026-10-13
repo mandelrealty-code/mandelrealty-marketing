@@ -6,6 +6,7 @@ import { latestOutlookOffer } from "../adminApi/outlook.js";
 import { chooseBriefOpenItem, listOpenItems, openItemChoice, verifiedLabel, type OpenItem } from "./openItems.js";
 import { turnoverLine, weekTurnovers, type TurnoverRow } from "./dayBoard.js";
 import { copilotKeepsProperty, copilotScopeActive, hospitableSelectionSaved, withCopilotScope } from "./hospitableConnection.js";
+import { todoIdFromMessage } from "./businessTodos.js";
 import { inputFromCard, noteSignal, rankOverview } from "./overviewRank.js";
 import { listConnectorFailures, type ConnectorFailure } from "./connectorFailures.js";
 import { dismissCard, listDismissed, listDueReminders, listRuns, listSkills, listStoredOpenItems, listSupplyDrafts, listWaitingDrafts, readBriefSnapshot, readGmailOffer, readRankSignals, saveBriefSnapshot, saveGmailOffer, writeRankSignals, type WaitingDraft } from "./store.js";
@@ -323,37 +324,6 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const sb = getSupabaseAdmin();
 
   if (sb) {
-    const { data: contracts } = await sb
-      .from("pm_contracts")
-      .select("id, title, status, client_id")
-      .eq("status", "awaiting_signature")
-      .order("created_at", { ascending: false })
-      .limit(3);
-    const clientIds = [
-      ...new Set((contracts ?? []).map((c) => c.client_id).filter(Boolean)),
-    ] as string[];
-    const names = new Map<string, string>();
-    if (clientIds.length) {
-      const { data: clients } = await sb.from("pm_clients").select("id, name").in("id", clientIds);
-      for (const client of clients ?? []) names.set(client.id as string, client.name as string);
-    }
-    for (const contract of contracts ?? []) {
-      const name = (contract.client_id && names.get(contract.client_id as string)) || "";
-      const title = String(contract.title || "").trim();
-      if (!name || !title) continue;
-      const headline = `${name} hasn't signed ${title}`;
-      const detail = "Drafting a message does not send it. Nothing has been sent.";
-      ship(focus, {
-        id: `contract:${contract.id}`,
-        group: "focus",
-        headline,
-        detail,
-        text: `${headline}. ${detail}`,
-        action: "Draft a message",
-        source: "Clients",
-      }, skipped);
-    }
-
     const { data: stays } = await sb
       .from("pm_reservations")
       .select("id, check_in, check_out, property_id")
@@ -446,9 +416,10 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
   const failed = [...focus, ...eating].filter((card) => card.id.startsWith("failed-read:"));
   const rest = [...focus, ...eating].filter((card) => !card.id.startsWith("failed-read:"));
   const turnovers = rest.filter((card) => card.id.startsWith("turnover:"));
-  const others = rest.filter((card) => !card.id.startsWith("turnover:"));
+  const todos = rest.filter((card) => card.id.startsWith("todo:"));
+  const others = rest.filter((card) => !card.id.startsWith("turnover:") && !card.id.startsWith("todo:"));
   const capped = others.slice(0, MAX_CARDS);
-  const all = [...capped, ...turnovers, ...failed.filter((card) => !capped.includes(card) && !turnovers.includes(card))];
+  const all = [...todos, ...capped, ...turnovers, ...failed.filter((card) => !capped.includes(card) && !turnovers.includes(card) && !todos.includes(card))];
   const keptFocus = all.filter((card) => card.group === "focus");
   const keptEating = all.filter((card) => card.group === "eating");
   const signals = await readRankSignals().catch(() => ({}));
@@ -707,6 +678,11 @@ function storedCheckCards(messages: CopilotMessage[], open: OpenItem[], failed: 
   const failedNames = new Set<string>();
   for (const message of messages) {
     if (message.role !== "assistant") continue;
+    const todo = todoCard(message);
+    if (todo) {
+      cards.push(todo);
+      continue;
+    }
     const draft = waitingFromMessage(message);
     const card = draft ? waitingDraftCard(draft) ?? plainWaitingCard(draft) : null;
     if (card) {
@@ -790,6 +766,26 @@ function plainWaitingCard(item: WaitingDraft): BriefCard | null {
   };
 }
 
+function todoCard(message: CopilotMessage): BriefCard | null {
+  const id = todoIdFromMessage(message);
+  if (!id) return null;
+  const headline = message.body.trim().split("\n").find((row) => row.trim()) || message.report?.title || "";
+  if (!headline) return null;
+  const source = message.report?.summary?.trim() || "Records";
+  return {
+    id: `todo:${id}`,
+    chatId: message.chat_id,
+    messageId: message.id,
+    group: "focus",
+    headline,
+    detail: "This is still open in the records it was read from.",
+    text: headline,
+    action: "Open",
+    source,
+    rank: { kind: "other", property: source, deadline: "", when: "Open", lead: headline },
+  };
+}
+
 function waitingFromMessage(message: CopilotMessage): WaitingDraft | null {
   const draft = message.draft;
   if (!draft || draft.status !== "waiting") return null;
@@ -848,6 +844,7 @@ async function dropUnselectedTurnovers(brief: BriefPayload): Promise<BriefPayloa
  */
 function mergeTurnoverCards(focus: BriefCard[], checks: BriefCard[], rows: TurnoverRow[] | null, skipped: Set<string>, now: Date): BriefCard[] {
   const kept = focus.filter((card) => !card.id.startsWith("turnover:"));
+  const todos = checks.filter((card) => card.id.startsWith("todo:") && !skipped.has(card.id) && !kept.some((row) => row.id === card.id));
   const board = (rows ?? []).map(boardTurnoverCard).filter((card) => !skipped.has(card.id));
   const keys = new Set(board.map(cleanerKey));
   const today = torontoToday(now);
@@ -862,7 +859,7 @@ function mergeTurnoverCards(focus: BriefCard[], checks: BriefCard[], rows: Turno
     keys.add(key);
     fromChecks.push(card);
   }
-  return [...kept, ...board, ...fromChecks];
+  return [...todos, ...kept, ...board, ...fromChecks];
 }
 
 async function turnoverCardInScope(id: string): Promise<boolean> {
