@@ -37,6 +37,7 @@ import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerPayout } from "../copilot/payoutAnswer.js";
 import { answerAvailability } from "../copilot/availabilityAnswer.js";
 import { answerFollowUpTurn } from "../copilot/followUpAnswer.js";
+import { DENIES_WEB, answerWebQuestion, asksOutsideWorld } from "../copilot/webAnswer.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "../copilot/fileError.js";
@@ -875,6 +876,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         return res.status(200).json({ chatId, messages, chats, pending });
       };
       const clock = parityNow() ?? new Date();
+      // The outside world (concerts, events, news, opening hours, weather) is answered from web
+      // search, before any mail or records path can claim it. Mail is for the business's own mail.
+      if (!pictureMode && !skillMode && asksOutsideWorld(text)) {
+        const web = await answerWebQuestion(text, clock);
+        await addMessage({
+          chatId,
+          role: "assistant",
+          body: web.body,
+          steps: [{ text: web.step }],
+          thought: "This came from web search. Mail and the business's records were not searched. Nothing was sent.",
+        });
+        return done();
+      }
       const corrected = takeCorrection(text);
       if (corrected && !pictureMode && !skillMode) {
         const items = await listOpenItems();
@@ -1508,7 +1522,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       }
       if (!skillMode && !webSearch) {
         const math = solveMath(text);
-        const spoken = math ?? (await answerGeneral(text));
+        let spoken = math ?? (await answerGeneral(text));
+        // Copilot has web search. An answer that denies it, or sends the partner to look it up, is replaced by the search.
+        if (spoken && DENIES_WEB.test(spoken)) spoken = (await answerWebQuestion(text, clock)).body;
         if (spoken) {
           await addMessage({
             chatId,

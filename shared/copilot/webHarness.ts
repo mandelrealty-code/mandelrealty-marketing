@@ -142,4 +142,65 @@ if (/lockbox|Hi /i.test(refused.body)) fail(refused.body);
 const managed = await answerOutsideRentals("Draft a guest message for 8 Charlotte 606.");
 if (managed) fail(managed.body);
 
+// Questions about the outside world are answered from web search, through the real chat path.
+{
+  const handleCopilot = (await import("../adminApi/copilot.js")).default;
+  const { createAdminSessionToken } = await import("../adminAuth.js");
+  const { worldAt } = await import("./parity/catalog.js");
+  const { installWorld } = await import("./parity/world.js");
+  const { setParityClock } = await import("./parity/clock.js");
+  const { setWebAnswerer } = await import("./webAnswer.js");
+  const { researchWeb } = await import("./skillResearch.js");
+  const previousPassword = process.env.ADMIN_PASSWORD;
+  const previousSecret = process.env.ADMIN_SESSION_SECRET;
+  process.env.ADMIN_PASSWORD = "parity-admin";
+  process.env.ADMIN_SESSION_SECRET = "parity-secret";
+  const token = createAdminSessionToken();
+  const world = worldAt("2026-10-13T12:00:00-04:00");
+  // A decoy in Gmail: a mail-first answer would find this and miss the residency.
+  world.gmail = [{ id: "bsb-mail", mailbox: "gmail", folder: "inbox", from: "Ticket Deals", email: "deals@example.com", to: "info@mandelrealtygroup.com", date: "2026-09-01T12:00:00Z", subject: "Backstreet Boys merch sale", snippet: "Merch sale", body: "Backstreet Boys merch sale, 20% off.", airbnb: false }];
+  installWorld(world);
+  setParityClock(new Date("2026-10-13T16:00:00Z"));
+  installResearch([
+    { title: "Backstreet Boys announce Into The Millennium residency at Rogers Centre", url: "https://www.livenation.com/news/backstreet-boys-rogers-centre", text: "Rogers and Live Nation announced on Oct 2, 2026 that the Backstreet Boys bring Into The Millennium to Rogers Centre, Toronto: nine shows on Feb 12, 13, 14, 19, 20, 21, 26, 27 and 28, 2027." },
+    { title: "No Frills Queen Street West store hours", url: "https://www.nofrills.ca/store-locator/queen-west", text: "No Frills Queen Street West. Store hours: Monday to Saturday 8 a.m. to 10 p.m. Sunday 8 a.m. to 9 p.m." },
+  ]);
+  const asked: string[] = [];
+  // The fixture's search: reads the installed page and answers first, source second.
+  setWebAnswerer(async (question) => {
+    asked.push(question);
+    const page = await researchWeb(/backstreet/i.test(question) ? "Backstreet Boys" : "No Frills");
+    if ("error" in page) return "";
+    if (/residency/i.test(page.title)) return "Yes: nine shows at Rogers Centre, Feb 12, 13, 14, 19, 20, 21, 26, 27 and 28, 2027, announced by Rogers and Live Nation on Oct 2, 2026.\nSource: Live Nation, Oct 2, 2026.";
+    return "On Sunday the No Frills on Queen Street West is open 8 a.m. to 9 p.m.\nSource: No Frills store page (nofrills.ca).";
+  });
+  const send = async (chatId: string, text: string) => {
+    let payload: { messages?: { role: string; body: string; steps?: { text: string }[] | null; thought?: string | null }[] } = {};
+    await handleCopilot(
+      { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "send", text, chatId, kind: "chat" }, query: {} } as never,
+      { status() { return this; }, json(body: typeof payload) { payload = body; return this; } } as never,
+    );
+    return [...(payload.messages ?? [])].reverse().find((row) => row.role === "assistant");
+  };
+  const bsb = await send("web-bsb", "are the backstreet boys coming into town in feb?");
+  const said = bsb?.body ?? "";
+  if (!said.startsWith("Yes: nine shows at Rogers Centre, Feb 12, 13, 14, 19, 20, 21, 26, 27 and 28, 2027, announced by Rogers and Live Nation on Oct 2, 2026")) fail(`residency answer: ${said}`);
+  if (!/Source: Live Nation/.test(said)) fail(`residency source: ${said}`);
+  if (/e-?mail|gmail|outlook|merch/i.test(said) || /don'?t have|official website|ticketing sites|you'?d need/i.test(said)) fail(`mail-first or tool denial: ${said}`);
+  if (bsb?.steps?.[0]?.text !== "Searched the web" || !/Mail and the business's records were not searched/.test(bsb?.thought ?? "")) fail(`route: ${JSON.stringify(bsb?.steps)} ${bsb?.thought}`);
+  const hours = await send("web-hours", "What time does the No Frills on Queen open on Sunday?");
+  if (!/8 a\.m\. to 9 p\.m\./.test(hours?.body ?? "") || !/Source: No Frills/.test(hours?.body ?? "") || /gmail|e-?mail/i.test(hours?.body ?? "")) fail(`hours: ${hours?.body}`);
+  if (asked.length !== 2) fail(`web search ran ${asked.length} times`);
+  // A search that comes back empty, or a reply that denies the tool, is said plainly instead.
+  setWebAnswerer(async () => "I don't have a web browser tool to check tour dates. You'd need to check their official website.");
+  const denied = await send("web-denied", "is the raptors game on tonight?");
+  if (denied?.body !== "I searched the web for “is the raptors game on tonight” and couldn't confirm it.") fail(`denial kept: ${denied?.body}`);
+  setWebAnswerer(null);
+  resetResearch();
+  if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
+  else process.env.ADMIN_PASSWORD = previousPassword;
+  if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
+  else process.env.ADMIN_SESSION_SECRET = previousSecret;
+}
+
 console.log("Web harness passed.");
