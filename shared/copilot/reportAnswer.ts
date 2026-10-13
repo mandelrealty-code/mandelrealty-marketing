@@ -29,21 +29,87 @@ import {
 import { writeReportProse, type Recommendation } from "./reportProse.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "./fileError.js";
 import { findStoredReport, nextReportSeq, rememberReport } from "./reportStore.js";
-import { clientNamed, clientProperties, ownerMismatch } from "./reportClients.js";
+import { REPORT_CLIENTS, clientNamed, clientProperties, ownerMismatch } from "./reportClients.js";
 
 export type ReportAnswer = {
   body: string;
   file: { filename: string; mime: string; data: string } | null;
   thought: string;
+  /** Buttons for a question. The partner can also type something else. */
+  choices?: string[];
 };
+
+/** Earlier chat turns, oldest first, without the message being answered. */
+export type ReportChatTurn = { role: string; body: string; thought?: string | null };
+
+/** Marks a report question, so the partner's answer continues the same request. */
+const INTAKE = "Report questions.";
+
+/**
+ * The request so far when the last assistant turn was a report question: the partner's original
+ * request and every answer since, oldest first. Null when no report conversation is under way.
+ */
+/** The last assistant turn asked a report question, so this message answers it. */
+export function continuesReport(history: ReportChatTurn[]): boolean {
+  return Boolean([...history].reverse().find((turn) => turn.role === "assistant")?.thought?.startsWith(INTAKE));
+}
+
+function intakeTurns(history: ReportChatTurn[], text: string): string[] | null {
+  const lastAssistant = [...history].reverse().find((turn) => turn.role === "assistant");
+  if (!lastAssistant?.thought?.startsWith(INTAKE)) return null;
+  const users: string[] = [];
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const turn = history[index]!;
+    if (turn.role === "user") {
+      users.unshift(turn.body.trim());
+      continue;
+    }
+    if (!turn.thought?.startsWith(INTAKE)) break;
+  }
+  // A property button carries its owner, "(Nance)", as a hint. Picking it does not ask for her owner report.
+  const tags = new RegExp(`\\s*\\((?:${REPORT_CLIENTS.map((client) => client.short).join("|")})\\)\\s*$`, "i");
+  return users.length ? [...users, text.trim()].map((turn) => turn.replace(tags, "")) : null;
+}
+
+const EVERYTHING = /\b(everything|all of it|the works|full report|all sections|whole thing|all the above|all of the above)\b/i;
+const CONTENT: [string, RegExp, string][] = [
+  ["revenue", /\b(revenue|money|payouts?|earnings|income|owner share|split|financials?)\b/i, "revenue and the owner/MRG split"],
+  ["occupancy", /\b(occupancy|adr|nightly rate|average rate|nights)\b/i, "occupancy and nightly rate"],
+  ["reviews", /\b(reviews?|ratings?)\b/i, "guest reviews"],
+  ["issues", /\b(issues?|complaints?|problems?)\b/i, "guest issues"],
+  ["recommendations", /\b(recommendations?|suggestions?|next steps)\b/i, "recommendations"],
+  ["outlook", /\b(upcoming|outlook|future bookings|bookings ahead|next 60 days|on the books)\b/i, "upcoming bookings"],
+  ["mrg", /\b(mrg revenue|our take|commission|mrg by month)\b/i, "MRG revenue by month"],
+];
+
+/** Sections asked for. null: everything. undefined: nothing said yet. */
+function contentsOf(text: string): string[] | null | undefined {
+  if (EVERYTHING.test(text)) return null;
+  const picked = CONTENT.filter(([, pattern]) => pattern.test(text)).map(([key]) => key);
+  return picked.length ? picked : undefined;
+}
+
+function contentsWords(include: string[] | null | undefined): string {
+  if (!include) return "everything";
+  const names = CONTENT.filter(([key]) => include.includes(key)).map(([, , label]) => label);
+  return names.length <= 1 ? names[0] ?? "everything" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+function ask(body: string, choices: string[]): ReportAnswer {
+  return { body, file: null, choices, thought: `${INTAKE} Nothing was made yet. Nothing was sent.` };
+}
 
 const MADE = "The figures were computed from the reservation records and the saved billing terms. Nothing was sent.";
 const HELD = "The figures did not reconcile, so no PDF was made. Nothing was sent.";
 
-export async function answerPropertyReport(text: string, prior = "", now = new Date()): Promise<ReportAnswer | null> {
-  if (!asksPropertyReport(text)) return null;
+export async function answerPropertyReport(text: string, prior = "", now = new Date(), history: ReportChatTurn[] = []): Promise<ReportAnswer | null> {
+  // After a report question, the message answers it, unless it is a new request in its own words
+  // ("generate a report for Shaw for September"). A picked button like "Owner report for Nance" answers.
+  const fresh = asksPropertyReport(text) && /\b(generate|create|make|build|prepare|run|want|need|give me|can you|could you|do)\b/i.test(text);
+  const turns = fresh ? null : intakeTurns(history, text);
+  if (!turns && !asksPropertyReport(text)) return null;
   try {
-    return await composePropertyReport(text, prior, now);
+    return await composePropertyReport(turns ? turns.join(" · ") : text, prior, now, Boolean(turns));
   } catch (err) {
     return {
       body: isFilesystemError(err) ? REPORT_FILE_FAILURE : "The report could not be generated because it could not be finished.",
@@ -53,13 +119,13 @@ export async function answerPropertyReport(text: string, prior = "", now = new D
   }
 }
 
-async function composePropertyReport(text: string, prior = "", now = new Date()): Promise<ReportAnswer | null> {
+async function composePropertyReport(text: string, prior = "", now = new Date(), guided = false): Promise<ReportAnswer | null> {
   if (unmanagedPropertyWork(text)) {
     return { body: UNMANAGED_REFUSAL, file: null, thought: "That listing is not one we manage. Nothing was drafted." };
   }
-  const parsed = parseReportRequest(text, now);
+  const parsed = parseReportRequest(text, now, guided);
   if (!parsed) return null;
-  if ("error" in parsed) return { body: parsed.error, file: null, thought: HELD };
+  if ("error" in parsed) return ask(periodQuestion(), periodChoices(now));
   if (parsed.again) {
     const saved = findStoredReport(text, prior);
     if (!saved) return { body: "I don't have that report to download again.", file: null, thought: "Nothing new was generated. Nothing was sent." };
@@ -70,7 +136,7 @@ async function composePropertyReport(text: string, prior = "", now = new Date())
     };
   }
   const period = parsed.period;
-  if (!period) return { body: "Which period should the report cover: last month, the last 3 months, last quarter, or year to date?", file: null, thought: HELD };
+  if (!period) return ask(periodQuestion(), periodChoices(now));
   let properties;
   try {
     properties = await managedReportProperties();
@@ -81,7 +147,7 @@ async function composePropertyReport(text: string, prior = "", now = new Date())
   const client = clientNamed(parsed.request);
   const named = properties.filter((property) => mentionsProperty(parsed.request, property));
   const owned = client && !named.length ? clientProperties(client, properties) : [];
-  const selected = /\ball properties\b|\bportfolio\b|\bevery property\b/i.test(parsed.request) || (named.length === 0 && !client && parsed.wantsAll)
+  const selected = /\ball properties\b|\bportfolio\b|\bevery property\b|\ball (?:four|4)\b|\ball of them\b/i.test(parsed.request) || (named.length === 0 && !client && parsed.wantsAll)
     ? properties
     : named.length ? named : owned;
   const choices = properties.map((property) => property.name);
@@ -103,13 +169,29 @@ async function composePropertyReport(text: string, prior = "", now = new Date())
     };
   }
   if (!selected.length) {
-    return {
-      body: `Which property should the report for ${periodWords(period).replace(/^(.+?): (.+)$/, "$1 ($2)")} cover: ${choices.join(", ")}, or all ${choices.length} together (internal)?`,
-      file: null,
-      thought: "Nothing was sent.",
-    };
+    return ask(
+      `Which properties should the report for ${periodWords(period).replace(/^(.+?): (.+)$/, "$1 ($2)")} cover?`,
+      [...properties.map((property) => withOwner(property.name)), `All ${properties.length} properties`],
+    );
   }
-  const blocks = blocksFor(parsed.request, parsed.audience, period, selected.length);
+  // One property and no audience said: owner-safe owner report, or the partners' internal one?
+  const audienceSaid = Boolean(client) || /\b(owner|client|internal|partners?)\b/i.test(parsed.request);
+  if (guided && selected.length === 1 && !audienceSaid) {
+    const owner = REPORT_CLIENTS.find((row) => row.match.test(`${selected[0]!.name} ${selected[0]!.address}`));
+    return ask(`Is this the owner report${owner ? ` for ${owner.short}` : ""} (owner-safe, no other property, no MRG detail), or an internal report for the partners?`, [
+      `Owner report${owner ? ` for ${owner.short}` : ""}`,
+      "Internal report",
+    ]);
+  }
+  // What goes in it. Asked once the conversation is under way; a complete one-line request gets everything.
+  const include = contentsOf(parsed.request);
+  if (guided && include === undefined) {
+    return ask(
+      `What should it include? It can have revenue and the owner/MRG split, occupancy and nightly rate, guest reviews, guest issues, recommendations${selected.length > 1 ? ", MRG revenue by month" : ""} and upcoming bookings.`,
+      ["Everything", "Revenue and occupancy only", "Revenue, reviews and guest issues"],
+    );
+  }
+  const blocks = withContents(blocksFor(parsed.request, parsed.audience, period, selected.length), include ?? null, selected.length);
   const { portfolio, failures } = await buildPortfolio({
     properties: selected,
     period,
@@ -156,6 +238,7 @@ async function composePropertyReport(text: string, prior = "", now = new Date())
     createdAt: new Date().toISOString(),
   });
   const body = [
+    guided ? `Made the ${portfolio.audience === "client" ? "owner" : "internal"} report for ${selected.length === properties.length && selected.length > 1 ? `all ${selected.length} properties` : joinAnd(selected.map((property) => property.name))}, ${periodWords(period)}, with ${contentsWords(include ?? null)}.` : "",
     `Asked: "${parsed.request}"`,
     client && selected.length === 1 ? `${portfolio.audience === "client" ? "Owner report" : "Internal report"} for ${client.full}, ${selected[0]!.name}.` : "",
     `Period: ${periodWords(period)} (${periodLine(period)}), Toronto time.`,
@@ -163,6 +246,7 @@ async function composePropertyReport(text: string, prior = "", now = new Date())
     totals,
     `Report ${visibleId}.`,
     "The PDF is ready to download.",
+    !guided && include === undefined ? "It has every section. Tell me what to leave out and I'll make it again." : "",
   ].filter(Boolean).join("\n");
   return { body, file, thought: MADE };
 }
@@ -214,6 +298,10 @@ function propertyLines(
   blocks: ReportBlocks,
 ): string[] {
   const client = portfolio.audience === "client";
+  // Only the sections the partner picked, numbered in order. No pick keeps every section.
+  const wants = (key: string) => !blocks.include || blocks.include.includes(key);
+  let number = 1;
+  const heading = (title: string) => `## ${String(++number).padStart(2, "0")} ${title}`;
   const lines: string[] = [
     "Mandel Realty Group",
     client ? "Owner report" : "Partners only",
@@ -228,47 +316,53 @@ function propertyLines(
     "",
     "## 01 Summary",
     `Total revenue ${hostMoney(property.gross)}`,
-    property.owner == null ? property.gap || "Billing terms are not saved, so owner and MRG shares are not shown." : `Owner share ${hostMoney(property.owner)}`,
-    property.mrg == null ? "" : `MRG share ${hostMoney(property.mrg)}`,
-    property.occupancy ? `Occupancy ${property.occupancy}` : "",
-    property.adr ? `Blended ADR ${property.adr}` : "",
+    !wants("revenue") ? "" : property.owner == null ? property.gap || "Billing terms are not saved, so owner and MRG shares are not shown." : `Owner share ${hostMoney(property.owner)}`,
+    !wants("revenue") || property.mrg == null ? "" : `MRG share ${hostMoney(property.mrg)}`,
+    wants("occupancy") && property.occupancy ? `Occupancy ${property.occupancy}` : "",
+    wants("occupancy") && property.adr ? `Blended ADR ${property.adr}` : "",
     `Stays ${property.stays}`,
-    property.rating ? `Guest rating ${property.rating}` : "Guest rating: no reviews in this period",
+    !wants("reviews") ? "" : property.rating ? `Guest rating ${property.rating}` : "Guest rating: no reviews in this period",
     summary,
     totalsLine(property.gross, property.mrg, property.owner, property.nights, property.stays),
   ];
   if (blocks.detail || client) {
-    lines.push("", "## 02 Revenue", "Month | Stays | Nights | Gross revenue | MRG share | Owner share");
-    for (const month of property.months) lines.push(monthLine(month));
-    lines.push(property.termsNote || property.gap || "");
-    if (property.workedExample) lines.push(property.workedExample);
-    lines.push("", "## 03 Reviews and ratings");
-    if (!property.reviews.length) lines.push("No reviews in this period.");
-    else {
-      lines.push(`Overall ${property.rating}`, `${property.reviewCount} reviews this period`);
-      if (property.replyMinutes != null) lines.push(`${property.replyMinutes} min median first reply`);
-      for (const category of property.categoryLines) lines.push(`${category.label} ${category.value}`);
-      for (const review of property.reviews) lines.push(`${review.guest} · ${review.platform} · ${review.stay} · ${review.rating}/5`, review.text);
+    if (wants("revenue") || wants("occupancy")) {
+      lines.push("", heading("Revenue"), "Month | Stays | Nights | Gross revenue | MRG share | Owner share");
+      for (const month of property.months) lines.push(monthLine(month));
+      lines.push(property.termsNote || property.gap || "");
+      if (property.workedExample) lines.push(property.workedExample);
     }
-    lines.push("", "## 04 Guest complaints and issues", issueIntro(property.issues));
-    for (const issue of property.issues) {
-      lines.push(`"${issue.quote}"`, `${issue.guest} · ${issue.stay} · ${issue.source}`, issue.also, issue.category, String(issue.guests), issue.status, issue.resolution);
+    if (wants("reviews")) {
+      lines.push("", heading("Reviews and ratings"));
+      if (!property.reviews.length) lines.push("No reviews in this period.");
+      else {
+        lines.push(`Overall ${property.rating}`, `${property.reviewCount} reviews this period`);
+        if (property.replyMinutes != null) lines.push(`${property.replyMinutes} min median first reply`);
+        for (const category of property.categoryLines) lines.push(`${category.label} ${category.value}`);
+        for (const review of property.reviews) lines.push(`${review.guest} · ${review.platform} · ${review.stay} · ${review.rating}/5`, review.text);
+      }
     }
-    lines.push("", "## 05 Recommendations");
-    if (!recommendations.length) lines.push("Nothing this period is backed by enough evidence to recommend.");
-    recommendations.forEach((item, index) => {
-      lines.push(`${index + 1}. ${item.action}`, `Evidence ${item.evidence}`, `Expected benefit ${item.benefit}`, `Estimated cost ${item.cost}`);
-    });
+    if (wants("issues")) {
+      lines.push("", heading("Guest complaints and issues"), issueIntro(property.issues));
+      for (const issue of property.issues) {
+        lines.push(`"${issue.quote}"`, `${issue.guest} · ${issue.stay} · ${issue.source}`, issue.also, issue.category, String(issue.guests), issue.status, issue.resolution);
+      }
+    }
+    if (wants("recommendations")) {
+      lines.push("", heading("Recommendations"));
+      if (!recommendations.length) lines.push("Nothing this period is backed by enough evidence to recommend.");
+      recommendations.forEach((item, index) => {
+        lines.push(`${index + 1}. ${item.action}`, `Evidence ${item.evidence}`, `Expected benefit ${item.benefit}`, `Estimated cost ${item.cost}`);
+      });
+    }
   }
-  let section = 6;
-  if (property.outlook) {
-    lines.push("", `## 0${section} Bookings and outlook`, `Next 60 days, ${property.outlook.start} to ${property.outlook.end}`, `Stays on the books ${property.outlook.stays}`, `Nights booked ${property.outlook.nights} of 60`, `Booked revenue ${hostMoney(property.outlook.gross)}`);
+  if (property.outlook && wants("outlook")) {
+    lines.push("", heading("Bookings and outlook"), `Next 60 days, ${property.outlook.start} to ${property.outlook.end}`, `Stays on the books ${property.outlook.stays}`, `Nights booked ${property.outlook.nights} of 60`, `Booked revenue ${hostMoney(property.outlook.gross)}`);
     if (property.outlook.owner != null) lines.push(`Owner share of booked revenue would be ${hostMoney(property.outlook.owner)} if every stay completes.`);
     if (property.outlook.arrivals) lines.push(`Arriving ${property.outlook.arrivals}`);
-    section += 1;
   }
   if (property.compliance.length) {
-    lines.push("", `## 0${section} Compliance and notes`);
+    lines.push("", heading("Compliance and notes"));
     for (const row of property.compliance) lines.push(`${row.label} ${row.value} Renews ${row.renews}`);
   }
   lines.push("", "## About this report", "Summary and revenue: Hospitable reservation financials for stays with nights in the period. Shares use the billing terms on file in OPS.");
@@ -401,8 +495,48 @@ function periodWords(period: { label: string; start: string; end: string; kind: 
   const span = period.start.slice(0, 4) === period.end.slice(0, 4)
     ? `${day(period.start, false)} to ${day(period.end, true)}`
     : `${day(period.start, true)} to ${day(period.end, true)}`;
-  const bare = !period.label || /^\d{4}-\d{2}/.test(period.label) || /^(january|february|march|april|may|june|july|august|september|october|november|december)( \d{4})?$/i.test(period.label);
+  const bare = !period.label || period.label === "explicit range" || /^\d{4}-\d{2}/.test(period.label) || /^(january|february|march|april|may|june|july|august|september|october|november|december)( \d{4})?$/i.test(period.label);
   return bare ? span : `${period.label}: ${span}`;
+}
+
+function periodQuestion(): string {
+  return "Which period should the report cover? Pick one, or type dates like “June 1 to today” or “Jul 1 – Sep 30”.";
+}
+
+function periodChoices(now: Date): string[] {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit" }).format(now).split("-").map(Number);
+  const year = parts[0] ?? 2026;
+  const month = parts[1] ?? 1;
+  const lastMonth = new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 2, 15)));
+  const quarter = Math.floor((month - 1) / 3) || 4;
+  return ["Last 30 days", `Last month (${lastMonth})`, `Last quarter (Q${quarter})`, "Year to date"];
+}
+
+/** "8 Charlotte 606 (Nance)" so a partner can pick by owner too. */
+function withOwner(name: string): string {
+  const owner = REPORT_CLIENTS.find((row) => row.match.test(name));
+  return owner ? `${name} (${owner.short})` : name;
+}
+
+/** The sections the partner picked. Unpicked sections are left out; null keeps the usual report. */
+function withContents(blocks: ReportBlocks, include: string[] | null, count: number): ReportBlocks {
+  if (!include) return blocks;
+  const has = (key: string) => include.includes(key);
+  return {
+    ...blocks,
+    byProperty: count > 1 && (has("revenue") || has("occupancy")),
+    detail: has("revenue") || has("occupancy") || has("reviews") || has("issues") || has("recommendations"),
+    mrg: has("mrg"),
+    issues: has("issues"),
+    reviews: has("reviews"),
+    recommendations: has("recommendations"),
+    include,
+  };
+}
+
+function joinAnd(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 function joinOr(items: string[]): string {

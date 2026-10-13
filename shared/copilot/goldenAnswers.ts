@@ -187,7 +187,7 @@ if (!pdfReport.body.includes("Total: $3,500.00 CAD") || !pdfReport.body.includes
 // A quarterly report is the report generator's, never a bare refusal: it names the quarter and asks the property.
 if (await answerPdfReport("Make me a PDF of the quarterly report", septemberWhen)) fail("quarterly pdf", "the revenue PDF path took a report request");
 const quarterly = await answerPropertyReport("Make me a PDF of the quarterly report", "", septemberWhen);
-if (!quarterly || quarterly.file || /can't/i.test(quarterly.body) || !/Q3 2026 \(July 1 to September 30, 2026\)/.test(quarterly.body) || !/Which property/.test(quarterly.body)) {
+if (!quarterly || quarterly.file || /can't/i.test(quarterly.body) || !/Q3 2026 \(July 1 to September 30, 2026\)/.test(quarterly.body) || !/Which properties/.test(quarterly.body) || !quarterly.choices?.some((label) => /^All \d properties$/.test(label))) {
   fail("quarterly pdf", quarterly?.body || "no answer");
 }
 failNextOpsPropertyRead(ID.blue);

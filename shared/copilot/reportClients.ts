@@ -6,6 +6,8 @@
 
 export type ReportClient = {
   full: string;
+  /** What the partners call them. */
+  short: string;
   /** Words that name the client in a request. */
   names: RegExp;
   /** The property, as a partner would name it. */
@@ -15,10 +17,10 @@ export type ReportClient = {
 };
 
 export const REPORT_CLIENTS: ReportClient[] = [
-  { full: "Khamraj Shewnarain", names: /\b(raj|khamraj|shewnarain)\b/i, property: "20 Blue Jays Way", match: /blue jays/i },
-  { full: "Nance Ta", names: /\b(nance)\b/i, property: "8 Charlotte 606", match: /charlotte/i },
-  { full: "Roya Ardakani", names: /\b(roya|ardakani)\b/i, property: "1065 Shaw Street", match: /\bshaw\b/i },
-  { full: "Precilla Daniel", names: /\b(precilla|priscilla|daniel)\b/i, property: "41 Roseglor Cres", match: /roseglor/i },
+  { full: "Khamraj Shewnarain", short: "Raj", names: /\b(raj|khamraj|shewnarain)\b/i, property: "20 Blue Jays Way", match: /blue jays/i },
+  { full: "Nance Ta", short: "Nance", names: /\b(nance)\b/i, property: "8 Charlotte 606", match: /charlotte/i },
+  { full: "Roya Ardakani", short: "Roya", names: /\b(roya|ardakani)\b/i, property: "1065 Shaw Street", match: /\bshaw\b/i },
+  { full: "Precilla Daniel", short: "Precilla", names: /\b(precilla|priscilla|daniel)\b/i, property: "41 Roseglor Cres", match: /roseglor/i },
 ];
 
 export function clientNamed(request: string): ReportClient | null {

@@ -37,7 +37,7 @@ import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerPayout } from "../copilot/payoutAnswer.js";
 import { answerAvailability } from "../copilot/availabilityAnswer.js";
 import { answerFollowUpTurn } from "../copilot/followUpAnswer.js";
-import { answerPropertyReport } from "../copilot/reportAnswer.js";
+import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "../copilot/fileError.js";
 import { asksPropertyReport } from "../copilot/reportParse.js";
@@ -961,6 +961,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             break;
           }
         }
+        // An answer to a report question goes back to that report, before anything else reads it.
+        const reportHistory = earlier.map((row) => ({ role: row.role, body: row.body, thought: row.thought ?? null }));
+        if (continuesReport(reportHistory)) {
+          const answered = await answerPropertyReport(text, priorBody, clock, reportHistory);
+          if (answered) {
+            await addMessage({
+              chatId,
+              role: "assistant",
+              body: answered.body,
+              file: answered.file,
+              choices: answered.choices ?? null,
+              steps: [{ text: answered.file ? "Made the PDF" : answered.choices ? "Asked about the report" : "Did not make a PDF" }],
+              thought: answered.thought,
+            });
+            return done();
+          }
+        }
         // A follow-up or commitment: answered from its stored record, confirmed against the thread,
         // and, while open, ending with the offer to draft and the one deciding question.
         const followUp = await answerFollowUpTurn(text, priorBody, clock).catch(() => null);
@@ -1001,14 +1018,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           });
           return done();
         }
-        const propertyReport = await answerPropertyReport(text, priorBody, clock);
+        const propertyReport = await answerPropertyReport(text, priorBody, clock, reportHistory);
         if (propertyReport) {
           await addMessage({
             chatId,
             role: "assistant",
             body: propertyReport.body,
             file: propertyReport.file,
-            steps: [{ text: propertyReport.file ? "Made the PDF" : "Did not make a PDF" }],
+            choices: propertyReport.choices ?? null,
+            steps: [{ text: propertyReport.file ? "Made the PDF" : propertyReport.choices ? "Asked about the report" : "Did not make a PDF" }],
             thought: propertyReport.thought,
           });
           return done();

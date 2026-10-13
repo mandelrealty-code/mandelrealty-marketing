@@ -25,6 +25,8 @@ export type ReportBlocks = {
   issues: boolean;
   reviews: boolean;
   recommendations: boolean;
+  /** Sections the partner picked. Absent keeps the usual report. */
+  include?: string[];
 };
 
 export type ParsedReport = {
@@ -58,9 +60,9 @@ export function asksPropertyReport(text: string): boolean {
   return false;
 }
 
-export function parseReportRequest(text: string, now: Date): ParsedReport | { error: string } | null {
+export function parseReportRequest(text: string, now: Date, guided = false): ParsedReport | { error: string } | null {
   const request = text.trim();
-  if (!asksPropertyReport(request)) return null;
+  if (!guided && !asksPropertyReport(request)) return null;
   if (asksReportAgain(request)) {
     return { again: true, audience: "internal", period: null, wantsAll: false, blocks: emptyBlocks(), request };
   }
@@ -219,16 +221,56 @@ function namedMonth(text: string, now: Date): ReportPeriod | null {
   return monthPeriod(year, named + 1, MONTHS[named] || "month");
 }
 
+/** "jun", "june", "sept" and "september" all name the month. */
+const MONTH_WORD = `(${MONTHS.map((name) => `${name.slice(0, 3)}(?:${name.slice(3)}|t)?`).join("|")})\\.?`;
+
+function monthNumber(word: string): number {
+  return MONTHS.findIndex((name) => name.startsWith(word.toLowerCase().replace(/\.$/, "").slice(0, 3))) + 1;
+}
+
+function isoDay(year: number, month: number, day: number): string {
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+function shiftDays(day: string, delta: number): string {
+  const at = new Date(`${day}T12:00:00Z`);
+  at.setUTCDate(at.getUTCDate() + delta);
+  return at.toISOString().slice(0, 10);
+}
+
+/** "last 30 days", "past week", "June 1 to today", "since June 1". Each ends today, Toronto time. */
+function rollingRange(text: string, now: Date): ReportPeriod | null {
+  const here = torontoParts(now);
+  const today = isoDay(here.year, here.month, here.day);
+  const days = /\b(?:last|past|previous)\s+(\d{1,3})\s+days?\b/i.exec(text);
+  if (days) {
+    const count = Number(days[1]);
+    if (count >= 1 && count <= 731) return { start: shiftDays(today, -(count - 1)), end: today, label: `last ${count} days`, kind: "range" };
+  }
+  if (/\b(?:last|past)\s+week\b/i.test(text)) return { start: shiftDays(today, -6), end: today, label: "last 7 days", kind: "range" };
+  const toToday = new RegExp(`(?:\\bsince\\s+|\\bfrom\\s+)?${MONTH_WORD}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(20\\d{2}))?\\s*(?:to|through|until|till|-|–)\\s*(?:today|now|date|present)\\b`, "i").exec(text)
+    ?? new RegExp(`\\bsince\\s+${MONTH_WORD}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(20\\d{2}))?`, "i").exec(text);
+  if (toToday) {
+    const month = monthNumber(toToday[1] || "");
+    const year = toToday[3] ? Number(toToday[3]) : here.year;
+    const start = isoDay(year, month, Number(toToday[2]));
+    if (month && start <= today) return { start, end: today, label: "explicit range", kind: "range" };
+  }
+  return null;
+}
+
 function explicitRange(text: string, now: Date): ReportPeriod | null {
   const iso = /(\d{4}-\d{2}-\d{2})\s*(?:to|through|-)\s*(\d{4}-\d{2}-\d{2})/i.exec(text);
   if (iso?.[1] && iso[2] && iso[1] <= iso[2]) {
     return { start: iso[1], end: iso[2], label: "explicit range", kind: "range" };
   }
-  const named = new RegExp(`(${MONTHS.join("|")})\\s+(\\d{1,2})(?:,?\\s*(20\\d{2}))?\\s*(?:to|through|-)\\s*(${MONTHS.join("|")})\\s+(\\d{1,2})(?:,?\\s*(20\\d{2}))?`, "i").exec(text);
+  const rolling = rollingRange(text, now);
+  if (rolling) return rolling;
+  const named = new RegExp(`${MONTH_WORD}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(20\\d{2}))?\\s*(?:to|through|-|–)\\s*${MONTH_WORD}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(20\\d{2}))?`, "i").exec(text);
   if (!named) return null;
   const here = torontoParts(now);
-  const startMonth = MONTHS.indexOf((named[1] || "").toLowerCase()) + 1;
-  const endMonth = MONTHS.indexOf((named[4] || "").toLowerCase()) + 1;
+  const startMonth = monthNumber(named[1] || "");
+  const endMonth = monthNumber(named[4] || "");
   const startYear = named[3] ? Number(named[3]) : here.year;
   const endYear = named[6] ? Number(named[6]) : startYear;
   if (!startMonth || !endMonth) return null;

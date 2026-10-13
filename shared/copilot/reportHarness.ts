@@ -298,11 +298,11 @@ process.env.ADMIN_SESSION_SECRET = "parity-secret";
 const token = createAdminSessionToken();
 
 type ChatPayload = {
-  messages?: { id?: string; role: string; body: string; file?: { filename: string; data: string } | null; thought?: string | null; steps?: { text: string }[] | null }[];
+  messages?: { id?: string; role: string; body: string; file?: { filename: string; data: string } | null; thought?: string | null; steps?: { text: string }[] | null; choices?: string[] | null }[];
   error?: string;
 };
 
-type ChatResult = { status: number; payload: ChatPayload; body: string; file: { filename: string; data: string } | null };
+type ChatResult = { status: number; payload: ChatPayload; body: string; file: { filename: string; data: string } | null; choices: string[] };
 
 const RAW_ERROR = /ENOENT|EROFS|EACCES|EPERM|ENOTDIR|ENOSPC|mkdir|\/var\/task|no such file or directory|syscall/i;
 
@@ -322,7 +322,7 @@ async function postChat(chatId: string, text: string): Promise<ChatResult> {
     } as never,
   );
   const message = [...(payload.messages ?? [])].reverse().find((row) => row.role === "assistant");
-  return { status, payload, body: message?.body ?? "", file: message?.file ?? null };
+  return { status, payload, body: message?.body ?? "", file: message?.file ?? null, choices: message?.choices ?? [] };
 }
 
 async function chat(chatId: string, text: string): Promise<ChatResult> {
@@ -597,7 +597,36 @@ if (RAW_ERROR.test(missing.line)) fail(missing.line);
   if (!internal.file?.data || !/Internal report for Nance Ta, 8 Charlotte 606\./.test(internal.body) || !/\| Internal/.test(internal.body)) fail(`internal for Nance: ${internal.body}`);
 
   const vague = await chat("client-vague", "Make me a PDF of the quarterly report");
-  if (vague.file || /can't/i.test(vague.body) || !/Which property/.test(vague.body) || !/8 Charlotte 606/.test(vague.body)) fail(`vague request: ${vague.body}`);
+  if (vague.file || /can't/i.test(vague.body) || !/Which properties/.test(vague.body) || !vague.choices.includes("8 Charlotte 606 (Nance)")) fail(`vague request: ${vague.body} ${vague.choices.join(" | ")}`);
+
+  // A bare request becomes a short conversation: period, properties, what to include. Then the report.
+  const start = await chat("guided-ytd", "i want to create a report");
+  if (start.file || !/Which period/.test(start.body) || !start.choices.includes("Year to date") || !start.choices.includes("Last 30 days") || !start.choices.includes("Last quarter (Q3)")) fail(`guided start: ${start.body} ${start.choices.join(" | ")}`);
+  const ytd = await chat("guided-ytd", "Year to date");
+  if (ytd.file || !/Which properties should the report for year to date \(January 1 to October 13, 2026\) cover\?/.test(ytd.body) || !ytd.choices.includes("20 Blue Jays Way Unit 318 (Raj)") || !ytd.choices.includes("All 4 properties")) fail(`guided scope: ${ytd.body} ${ytd.choices.join(" | ")}`);
+  if (/\$\d/.test(ytd.body)) fail(`an answer to a report question was answered with figures: ${ytd.body}`);
+  const all = await chat("guided-ytd", "All 4 properties");
+  if (all.file || !/What should it include\?/.test(all.body) || !all.choices.includes("Everything")) fail(`guided contents: ${all.body}`);
+  const made = await chat("guided-ytd", "Everything");
+  if (!made.file?.data || !/^Made the internal report for all 4 properties, year to date: January 1 to October 13, 2026, with everything\./.test(made.body) || !/\| Internal/.test(made.body)) fail(`guided report: ${made.body}`);
+
+  const rolling = await chat("guided-30", "I want a report for the last 30 days");
+  if (rolling.file || !/Which properties should the report for last 30 days \(September 14 to October 13, 2026\) cover\?/.test(rolling.body)) fail(`30 days: ${rolling.body}`);
+  const pickNance = await chat("guided-30", "8 Charlotte 606 (Nance)");
+  if (pickNance.file || !/owner report for Nance/.test(pickNance.body) || !pickNance.choices.includes("Internal report")) fail(`owner or internal: ${pickNance.body}`);
+  const owner = await chat("guided-30", "Owner report for Nance");
+  if (owner.file || !/What should it include\?/.test(owner.body)) fail(`owner contents: ${owner.body}`);
+  const lean = await chat("guided-30", "Revenue and occupancy only");
+  if (!lean.file?.data || !/^Made the owner report for 8 Charlotte 606, last 30 days: September 14 to October 13, 2026, with revenue and the owner\/MRG split and occupancy and nightly rate\./.test(lean.body)) fail(`lean report: ${lean.body}`);
+  const leanText = pdfText(lean.file);
+  if (!/Prepared for Nance Ta/.test(leanText) || !/Revenue/.test(leanText) || /Reviews and ratings|Recommendations|Guest complaints/.test(leanText)) fail(`lean PDF kept unpicked sections:\n${leanText.slice(0, 900)}`);
+
+  const custom = await chat("guided-june", "can you make a report with specific dates from june 1 to today");
+  if (custom.file || !/June 1 to October 13, 2026/.test(custom.body)) fail(`june to today: ${custom.body}`);
+  const quarter = await chat("guided-quarter", "I need a report for the last quarter");
+  if (quarter.file || !/Q3 2026 \(July 1 to September 30, 2026\)/.test(quarter.body)) fail(`last quarter: ${quarter.body}`);
+  const fresh = await chat("guided-quarter", "generate a client report for Shaw for September");
+  if (!fresh.file?.data || /What should it include/.test(fresh.body)) fail(`a complete new request mid-conversation: ${fresh.body}`);
 }
 
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
