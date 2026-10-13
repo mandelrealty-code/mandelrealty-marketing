@@ -41,7 +41,8 @@ import { answerFollowUpTurn } from "../copilot/followUpAnswer.js";
 import { DENIES_WEB, answerWebQuestion, asksOutsideWorld } from "../copilot/webAnswer.js";
 import { saveHubEntry } from "../copilot/hubLearning.js";
 import { answerComps } from "../copilot/compsAnswer.js";
-import { REPORT_CLIENTS } from "../copilot/reportClients.js";
+import { answerOpenCalendar } from "../copilot/calendarAdvice.js";
+import { REPORT_CLIENTS, withClientUnits } from "../copilot/reportClients.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "../copilot/fileError.js";
@@ -831,18 +832,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     if (op === "send") {
       const images = readImages(body.images);
-      const text = String(body.text ?? "").trim() || (images.length ? "Look at the attached photo." : "");
+      const typed = String(body.text ?? "").trim() || (images.length ? "Look at the attached photo." : "");
+      // "royas unit" is read as 1065 Shaw Street from the client records; the message is stored as typed.
+      const text = withClientUnits(typed);
       const kind = body.kind === "code" ? "code" : "chat";
       if (!text) return res.status(400).json({ error: "Write a message first." });
       sendText = text;
       let chatId = String(body.chatId ?? "");
       if (!chatId) {
-        const chat = await createChat(await nameChat(text), kind);
+        const chat = await createChat(await nameChat(typed), kind);
         chatId = chat.id;
       }
       sendChatId = chatId;
       if (chatId && /^(please\s+)?(stop|stop running|stop the browser|stop it|cancel)(\s+running)?[.!]*$/i.test(text) && (await browserIsLive(chatId))) {
-        await addMessage({ chatId, role: "user", body: text });
+        await addMessage({ chatId, role: "user", body: typed });
         await cancelBrowser(chatId);
         const messages = await listMessages(chatId);
         const chats = await listChats();
@@ -852,7 +855,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const skillMode = body.skillMode === true;
       const webSearch = !skipsWeb(text) && (body.webSearch === true || wantsWeb(text));
       const pictureChoice = pictureFor(text, images.length > 0);
-      const userMessage = await addMessage({ chatId, role: "user", body: text, images, picture: pictureMode });
+      const userMessage = await addMessage({ chatId, role: "user", body: typed, images, picture: pictureMode });
       const signIn = await answerSignIn(chatId);
       if (signIn) {
         await addMessage({
@@ -896,6 +899,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       // Comp pricing for one of our units: the unit from the records, AirROI first, never a permission question.
       if (!pictureMode && !skillMode) {
         const compHistory = (await listMessages(chatId)).slice(0, -1).map((row) => ({ role: row.role, body: row.body }));
+        // "Should we open the calendar for February?" is a decision: calendar, nearby events, comps.
+        const calendarAdvice = await answerOpenCalendar(text, compHistory, clock).catch(() => null);
+        if (calendarAdvice) {
+          await addMessage({ chatId, role: "assistant", body: calendarAdvice.body, choices: calendarAdvice.choices ?? null, steps: [{ text: calendarAdvice.step }], thought: calendarAdvice.thought });
+          return done();
+        }
         const comps = await answerComps(text, compHistory, clock).catch(() => null);
         if (comps) {
           await addMessage({ chatId, role: "assistant", body: comps.body, choices: comps.choices ?? null, steps: [{ text: comps.step }], thought: comps.thought });

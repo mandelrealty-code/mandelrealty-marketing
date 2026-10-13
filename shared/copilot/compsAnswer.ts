@@ -26,7 +26,7 @@ export function asksComps(text: string): boolean {
 export type CompsTurn = { role: string; body: string };
 export type CompsAnswer = { body: string; step: string; thought: string; choices?: string[] };
 
-type Size = { bedrooms: number; bathrooms: number; guests: number; known: boolean };
+export type Size = { bedrooms: number; bathrooms: number; guests: number; known: boolean };
 type Estimate = (input: { address: string; bedrooms: number; bathrooms: number; guests: number }) => Promise<RevenueAuditEstimateResult>;
 
 let source: Estimate | null = null;
@@ -66,7 +66,7 @@ function num(value: unknown): number | null {
 }
 
 /** Bedrooms, bathrooms and guests from Hospitable's property record. */
-async function sizeOf(hospitableId: string): Promise<Size> {
+export async function sizeOf(hospitableId: string): Promise<Size> {
   try {
     const raw = await hospitableRead("get-properties", {});
     const rows = Array.isArray((raw as { data?: unknown })?.data) ? (raw as { data: Record<string, unknown>[] }).data : [];
@@ -82,17 +82,17 @@ async function sizeOf(hospitableId: string): Promise<Size> {
   return { bedrooms: 2, bathrooms: 1, guests: 4, known: false };
 }
 
-function money(value: number): string {
+export function money(value: number): string {
   return `$${Math.round(value).toLocaleString("en-US")}`;
 }
 
-function median(values: number[]): number {
+export function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-async function airroi(input: { address: string; bedrooms: number; bathrooms: number; guests: number }): Promise<RevenueAuditEstimateResult | null> {
+export async function airroi(input: { address: string; bedrooms: number; bathrooms: number; guests: number }): Promise<RevenueAuditEstimateResult | null> {
   const run: Estimate = source ?? ((args) => estimateByAddress(args));
   if (!source && parityEnabled()) return null;
   // One retry: a single failed read is not the answer.

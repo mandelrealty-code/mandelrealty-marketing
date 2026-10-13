@@ -7,6 +7,7 @@
 import { scopedStayProperties, spokenProperty } from "./dayBoard.js";
 import { nightsBetween, occupiesDay, occupiesNight, overlappingStays, type OccupyingStay } from "./occupancy.js";
 import { addDays, torontoToday } from "./time.js";
+import { normalizeMonths } from "./monthWords.js";
 
 const DEFAULT_DAYS = 60;
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -46,7 +47,8 @@ const MONTH_RE = "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|ju
 
 /** The nights asked about, as [from, to) with `to` the morning after the last night. */
 export function askedWindow(question: string, today: string): { from: string; to: string } {
-  const text = question.toLowerCase();
+  // "feburary" is February.
+  const text = normalizeMonths(question).toLowerCase();
   const span = new RegExp(`\\b${MONTH_RE}\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:-|–|to|until|through|thru|and)\\s*(?:${MONTH_RE}\\.?\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\b`, "i").exec(text);
   if (span) {
     const m1 = monthOf(span[1] ?? "");

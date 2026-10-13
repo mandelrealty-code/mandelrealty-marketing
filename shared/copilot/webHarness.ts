@@ -232,6 +232,52 @@ if (managed) fail(managed.body);
   setWebAnswerer(async () => "Two-bedroom units at 20 Blue Jays Way list at about $650 to $900 a night for February weekends.\nSource: Airbnb listings search, Oct 13, 2026.");
   const searched = await send("web-comps-fail", "search the web");
   if (!/this is from web search: Two-bedroom units at 20 Blue Jays Way list at about \$650 to \$900/.test(searched?.body ?? "")) fail(`search the web: ${searched?.body}`);
+  // "Should we open Raj's calendar for feburary?" is a decision, not a list of open nights.
+  const febNights = Array.from({ length: 28 }, (_, index) => `2027-02-${String(index + 1).padStart(2, "0")}`);
+  installWorld({ ...world, calendar: febNights.map((date) => ({ propertyId: ID.blue, date, available: false, priceCents: 0 })) } as never);
+  setCompsSource(async () => ({
+    source: "airroi", annualRevenue: 91000, monthlyRevenue: 91000 / 12, adr: 608, occupancy: 0.71, latitude: null, longitude: null, leaks: [], ratings: null,
+    comps: [780, 850, 999, 520, 600].map((adr, index) => ({ listingId: `f${index}`, name: "", url: "", bedrooms: 2, bathrooms: 2, guests: 8, annualRevenue: adr * 120, monthlyRevenue: 1, adr, occupancy: 0.7, distanceMiles: 0.2, superhost: false, guestFavorite: false, ratingOverall: null, ratingCleanliness: null, ratingCommunication: null, ratingAccuracy: null, ratingCheckin: null, ratingValue: null, ratingLocation: null })) as never,
+  }));
+  setWebAnswerer(async (question) => (/February 2027/.test(question)
+    ? "The Backstreet Boys play nine shows at Rogers Centre on Feb 12, 13, 14, 19, 20, 21, 26, 27 and 28, 2027.\nSource: Live Nation, Oct 2, 2026."
+    : ""));
+  const calendarAsk = "Should we open raj's calendar (20 blue jays way), for feburary? are there any dates that are worth it to open for? in that area";
+  const advice = await send("web-calendar", calendarAsk);
+  const adviceSaid = advice?.body ?? "";
+  if (!adviceSaid.startsWith("February 2027 at 20 Blue Jays Way Unit 318 (Raj): 28 of 28 nights are closed on the calendar, 0 booked, 0 open.")) fail(`calendar month: ${adviceSaid}`);
+  if (!/What's on nearby: The Backstreet Boys play nine shows at Rogers Centre/.test(adviceSaid) || !/Source: Live Nation/.test(adviceSaid)) fail(`calendar events: ${adviceSaid}`);
+  if (!/Comps: about \$608 a night typical, \$780 to \$999 for the top performers/.test(adviceSaid)) fail(`calendar comps: ${adviceSaid}`);
+  if (!/Recommendation: open Feb 12–14, Feb 19–21 and Feb 26–28, the event nights, priced toward \$780–\$999\. The other 19 closed nights have no event I could find/.test(adviceSaid)) fail(`calendar recommendation: ${adviceSaid}`);
+  if (/Oct 13|Open nights from|\bDec\b/.test(adviceSaid) || !/Nothing on the calendar was changed\./.test(adviceSaid)) fail(`calendar scope: ${adviceSaid}`);
+  installWorld({ ...world, calendar: febNights.map((date) => ({ propertyId: ID.blue, date, available: true, priceCents: 0 })) } as never);
+  const alreadyOpen = await send("web-calendar-open", "should we open the calendar at 20 blue jays way for february?");
+  if (!/0 of 28 nights are closed on the calendar, 0 booked, 28 open\./.test(alreadyOpen?.body ?? "") || !/already open for February 2027/.test(alreadyOpen?.body ?? "")) fail(`calendar already open: ${alreadyOpen?.body}`);
+  // "a good brand to order for royas unit": Roya's unit from the records, advice instead of a refusal.
+  const { resetUnitSetups, ensureUnitSetups, setUnitCount } = await import("./unitSetup.js");
+  installWorld(world);
+  resetUnitSetups();
+  await ensureUnitSetups();
+  setUnitCount(ID.shaw, "sheets", 3);
+  setWebAnswerer(async (question) => (/laundry detergent/i.test(question)
+    ? "Good cheap picks: Arm & Hammer Clean Burst at $12.97 and Gain Original at $14.97 on Walmart.ca, or Kirkland Signature Ultra Clean at $24.99 for 146 loads on Costco.ca.\nSource: Walmart.ca and Costco.ca listings, Oct 13, 2026."
+    : ""));
+  const detergentAsk = "whats a good brand to order for royas unit for cheap laundry detergent?";
+  const detergent = await send("web-detergent", detergentAsk);
+  const detergentSaid = detergent?.body ?? "";
+  if (/not in the cleaner app|Nothing was ordered\.$/.test(detergentSaid)) fail(`detergent refused: ${detergentSaid}`);
+  if (!/^Laundry detergent for .*1065 Shaw Street.* \(Roya's unit\):/.test(detergentSaid)) fail(`detergent unit: ${detergentSaid}`);
+  if (!/Arm & Hammer Clean Burst at \$12\.97/.test(detergentSaid) || !/Source: Walmart\.ca/.test(detergentSaid)) fail(`detergent picks: ${detergentSaid}`);
+  if (!/The cleaner app stocks laundry detergent sheets for this unit, 3 on hand\./.test(detergentSaid) || !/nothing is ordered until you press Purchase item/.test(detergentSaid)) fail(`detergent catalog: ${detergentSaid}`);
+  const stored = await (async () => {
+    let payload: { messages?: { role: string; body: string }[] } = {};
+    await handleCopilot(
+      { method: "GET", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: {}, query: { op: "messages", chatId: "web-detergent" } } as never,
+      { status() { return this; }, json(body: typeof payload) { payload = body; return this; } } as never,
+    );
+    return (payload.messages ?? []).find((row) => row.role === "user")?.body ?? "";
+  })();
+  if (stored !== detergentAsk) fail(`the stored message was rewritten: ${stored}`);
   setCompsSource(null);
   setWebAnswerer(null);
   resetResearch();

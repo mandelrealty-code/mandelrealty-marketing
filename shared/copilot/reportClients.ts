@@ -41,3 +41,29 @@ export function ownerMismatch(client: ReportClient, propertyName: string, opsOwn
   if (client.names.test(owner)) return "";
   return `OPS lists ${owner} as the owner of ${propertyName}, not ${client.full}. I used ${propertyName} from the client list; check the OPS record.`;
 }
+
+const OWNED = "(?:unit|place|property|condo|apartment|house|listing|calendar|home|building|suite)";
+
+/** The words that name each client, for the expansion below. */
+const CLIENT_WORDS: Record<string, string[]> = {
+  "Khamraj Shewnarain": ["raj", "khamraj", "shewnarain"],
+  "Nance Ta": ["nance"],
+  "Roya Ardakani": ["roya", "ardakani"],
+  "Precilla Daniel": ["precilla", "priscilla", "daniel"],
+};
+
+/**
+ * "royas unit" → "royas (1065 Shaw Street) unit": a client's property named the way partners say it,
+ * so every property matcher reads it from the records. Only possessive or "X's unit" phrasing is
+ * expanded; a guest named Daniel in "message Daniel" is left alone.
+ */
+export function withClientUnits(text: string): string {
+  let out = text;
+  for (const client of REPORT_CLIENTS) {
+    if (client.match.test(out)) continue;
+    const words = (CLIENT_WORDS[client.full] ?? []).join("|");
+    const owned = new RegExp(`\\b(?:${words})(?:(?:'s|’s|s)?(?=\\s+${OWNED}\\b)|(?:'s|’s)(?=\\s))`, "i");
+    out = out.replace(owned, (match) => `${match} (${client.property})`);
+  }
+  return out;
+}

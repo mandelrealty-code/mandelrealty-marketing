@@ -6,6 +6,7 @@
 import { answerMarketingCopy } from "./marketingCopy.js";
 import { answerMailChain } from "./mailChain.js";
 import { answerCatalogPurchase } from "./catalogPurchase.js";
+import { answerProductAdvice } from "./productAdvice.js";
 import { answerUnitSetup } from "./unitSetup.js";
 import { answerStayDetail, asksDayCount, type StayCard } from "./stayAnswer.js";
 import type { PropertyIdentity } from "./types.js";
@@ -40,6 +41,9 @@ export async function pinnedCompanyAnswer(
       thought: "This came from the cleaner app setup. Nothing was guessed.",
     };
   }
+  // "What's a good brand to order…" is a recommendation; an order with a quantity is a purchase.
+  const advice = await answerProductAdvice(text);
+  if (advice) return advice;
   const buy = await answerCatalogPurchase(text);
   if (buy) {
     return {
