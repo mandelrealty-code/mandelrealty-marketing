@@ -40,6 +40,7 @@ import { guestQueueRows } from "./guestQueueRows.js";
 import { installWorld, parityThreadReads, pushParityMessage } from "./parity/world.js";
 import { saveGuestQueueSnapshot } from "./store.js";
 import { buildBrief } from "./brief.js";
+import { answerFollowUpTurn } from "./followUpAnswer.js";
 import { NO_GUEST_FILTERS, emptyInboxLine, filterInbox, stayPhase, waitedFor } from "./guestFilters.js";
 import { BLANK, closeFollowUpEverywhere } from "./dueFollowUps.js";
 import { runUnattendedChecks } from "./stayCheck.js";
@@ -1550,6 +1551,73 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   const emileNew = await openGuestAnswer(inbox.waiting.find((row) => row.id === "stay-emile-new") as GuestRow, now);
   if (emileNew.lane !== "reply" || !/P2 #14|garage/i.test(emileNew.draft)) fail(`rebooked thread draft ${JSON.stringify(emileNew.draft)}`);
   if (/Parking:/.test(emileNew.draft)) fail("the parking heading reached the draft");
+}
+
+// Chat answers about a follow-up come from its stored record and end with the next step while open.
+{
+  resetGuestMessaging();
+  await clearHandledFollowUps();
+  resetCaptures();
+  const now = new Date("2026-10-13T16:03:00Z");
+  const world = (resolved: boolean) => installWorld({
+    now,
+    properties: [{ id: "prop-charlotte-606", name: "8 Charlotte 606", address: "606, 8 Charlotte Street, Toronto", managed: true }],
+    reservations: [{
+      id: "stay-eloise-chat",
+      code: "HMJSMMMFSF",
+      propertyId: "prop-charlotte-606",
+      status: "accepted",
+      checkIn: "2026-09-29",
+      checkOut: "2026-11-07",
+      guest: "Eloise",
+      adults: 1,
+      children: 0,
+      messages: [
+        { id: "ec-0", at: "2026-10-02T12:30:39Z", role: "guest", name: "Eloise", body: "The windows are quite dirty, might it be possible for these to be cleaned?" },
+        { id: "ec-1", at: "2026-10-07T17:01:04Z", role: "host", name: "Unknown", body: LIVE_PROMISE },
+        { id: "ec-2", at: "2026-10-10T15:24:43Z", role: "guest", name: "Eloise", body: LIVE_AGREED },
+        { id: "ec-3", at: "2026-10-10T15:25:34Z", role: "host", name: "Unknown", body: "Okay I’ll see what I can do for windows." },
+        ...(resolved ? [
+          { id: "ec-4", at: "2026-10-13T14:00:00Z", role: "host" as const, name: "Unknown", body: "The windows were cleaned this morning." },
+          { id: "ec-5", at: "2026-10-13T15:00:00Z", role: "guest" as const, name: "Eloise", body: "They look great, thank you so much!" },
+        ] : []),
+      ],
+    }],
+    inquiries: [],
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+  });
+  world(false);
+  await loadGuestQueue(now);
+  const asked = await answerFollowUpTurn("Which stay had the window cleaning task?", "", now);
+  const said = asked?.body ?? "";
+  if (!said.includes("Eloise’s stay at 8 Charlotte 606, Sep 29 – Nov 7")) fail(`window answer stay ${said}`);
+  if (/Blue Jays|October 1\b|Oct 1\b/.test(said)) fail(`window answer invented a stay ${said}`);
+  if (!/Eloise asked on Oct 2/.test(said) || !/on or after October 14th/.test(said) || !/On or after 14th is fine/.test(said)) fail(`window answer record ${said}`);
+  if (!said.trim().endsWith("Do you want me to draft the message to Eloise? Have you picked the day you want to set up the window cleaning?")) fail(`window answer ending ${said}`);
+  if (asked?.draft) fail("the draft was made before the partner said yes");
+  if (await answerFollowUpTurn("When is checkout at Charlotte?", "", now)) fail("a plain checkout question was taken as a follow-up");
+
+  const yes = await answerFollowUpTurn("Yes", said, now);
+  const draft = yes?.draft;
+  if (!draft || draft.status !== "waiting" || draft.channel !== "hospitable" || !draft.followUp) fail("yes did not leave a draft for approval");
+  if (!draft.body.includes("[day and time]") || !/^Hi Eloise/.test(draft.body)) fail(`draft ${draft.body}`);
+  if (draft.hospitable?.args.reservation_id !== "stay-eloise-chat") fail("the draft is not on Eloise's reservation");
+  if (!/Nothing has been sent/.test(yes?.body ?? "")) fail(`yes body ${yes?.body}`);
+  const no = await answerFollowUpTurn("No", said, now);
+  if (no?.draft || !/Nothing was drafted/.test(no?.body ?? "")) fail("no still drafted");
+  if (capturedCommits().length) fail(`answering sent ${capturedCommits().map((row) => row.detail).join(" ")}`);
+
+  // Once the thread shows it done, the same question gets the facts and no next-step question.
+  world(true);
+  const closedQueue = await loadGuestQueue(now);
+  if (closedQueue.followUps.some((row) => row.reservationId === "stay-eloise-chat")) fail("the cleaned windows stayed open");
+  const closedAnswer = await answerFollowUpTurn("Which stay had the window cleaning task?", "", now);
+  const closedSaid = closedAnswer?.body ?? "";
+  if (!closedSaid.includes("8 Charlotte 606") || !/It is closed/.test(closedSaid)) fail(`closed answer ${closedSaid}`);
+  if (/Do you want me to draft|Have you picked|\?\s*$/.test(closedSaid)) fail(`closed answer asked a next step ${closedSaid}`);
 }
 
 console.log("Guest messaging harness passed.");

@@ -180,6 +180,8 @@ export type GuestFollowUpClose = {
   id: string;
   guest: string;
   closeText: string;
+  /** The follow-up as it stood before it closed, so later answers can cite it. */
+  record?: GuestFollowUp;
 };
 
 export type GuestQueue = {

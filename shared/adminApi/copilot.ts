@@ -36,6 +36,7 @@ import type { PropertyIdentity } from "../copilot/propertyIdentity.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerPayout } from "../copilot/payoutAnswer.js";
 import { answerAvailability } from "../copilot/availabilityAnswer.js";
+import { answerFollowUpTurn } from "../copilot/followUpAnswer.js";
 import { answerPropertyReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "../copilot/fileError.js";
@@ -959,6 +960,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             carriedProperty = earlier[i]?.property ?? null;
             break;
           }
+        }
+        // A follow-up or commitment: answered from its stored record, confirmed against the thread,
+        // and, while open, ending with the offer to draft and the one deciding question.
+        const followUp = await answerFollowUpTurn(text, priorBody, clock).catch(() => null);
+        if (followUp) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: followUp.body,
+            draft: followUp.draft ?? null,
+            steps: [{ text: followUp.step }],
+            thought: "This came from the follow-up's stored record and its thread. Nothing was sent.",
+          });
+          return done();
         }
         const availability = await answerAvailability(text, clock);
         if (availability) {

@@ -691,7 +691,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     const openIds = new Set(ordered.map((row) => row.id));
     const closedFollowUps = previous
       .filter((row) => scanned.has(row.reservationId) && !openIds.has(row.id) && !handled.has(row.id))
-      .map((row) => ({ id: row.id, guest: row.guest, closeText: settled.get(row.id) || "the thread shows it resolved" }));
+      .map((row) => ({ id: row.id, guest: row.guest, closeText: settled.get(row.id) || "the thread shows it resolved", record: row }));
     const summary = guestSummary(waiting.length, longest, unread);
     return {
       connected: true,
