@@ -4,6 +4,7 @@
  * same split is what the month rows, the summary, and the portfolio total use.
  */
 
+import { spokenProperty } from "./dayBoard.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityReportMaterial } from "./parity/world.js";
 import { hostMoney } from "./ops.js";
@@ -430,10 +431,11 @@ async function propertyFigures(
   const firstMonth = months.find((month) => month.gross > 0 && month.mrg != null && month.owner != null);
   return {
     id: property.id,
-    name: property.name,
+    // The partners' name for it ("41 Roseglor Cres"); the listing title is the subtitle.
+    name: spokenProperty(property.name, property.address),
     address: property.address,
     area: material?.neighbourhood || "",
-    publicName: material?.publicName || "",
+    publicName: material?.publicName || (spokenProperty(property.name, property.address) !== property.name ? property.name : ""),
     ownerName: material?.owner || property.client_name || "",
     termsLabel: terms ? `${(terms.rate_bps / 100).toFixed(0)}%` : null,
     termsNote: terms ? termsSentence(terms) : null,

@@ -533,7 +533,7 @@ function ChoiceCard({
   onElse: (value: string) => void;
 }) {
   const choices = (message.choices ?? []).filter((label) => !/^something else\.?$/i.test(label.trim()));
-  const letters = "ABCD";
+  const letters = "ABCDEFGH";
   const elseLetter = letters[choices.length] ?? "D";
   const signIn = choices[0] === "Keep me signed in";
   return (

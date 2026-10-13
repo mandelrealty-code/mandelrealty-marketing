@@ -333,7 +333,8 @@ async function chat(chatId: string, text: string): Promise<ChatResult> {
 
 function pdfText(file: { data: string } | null): string {
   if (!file) return "";
-  return linesInPdf(Buffer.from(file.data, "base64")).join("\n");
+  // Space-joined: the designed pages wrap quotes and put labels above their values.
+  return linesInPdf(Buffer.from(file.data, "base64")).join(" ");
 }
 
 function readTotals(text: string): { gross: number; mrg: number; owner: number; nights: number; stays: number } {
@@ -573,7 +574,7 @@ if (RAW_ERROR.test(missing.line)) fail(missing.line);
   if (!/Period: last 3 months: July 1 to September 30, 2026/.test(nance.body)) fail(`Nance period: ${nance.body}`);
   if (/OPS lists/.test(nance.body)) fail(`Nance mismatch claimed: ${nance.body}`);
   const nanceText = pdfText(nance.file);
-  if (!/Owner report/.test(nanceText) || !/Prepared for Nance Ta/.test(nanceText) || !/8 Charlotte 606/.test(nanceText)) fail(`Nance PDF:\n${nanceText.slice(0, 600)}`);
+  if (!/Owner report/.test(nanceText) || !/Prepared for (?:\S+ ){0,4}Nance Ta/.test(nanceText) || !/8 Charlotte 606/.test(nanceText)) fail(`Nance PDF:\n${nanceText.slice(0, 600)}`);
   if (/Shaw|Roseglor|Blue Jays/i.test(nanceText)) fail("Nance's owner report named another property");
   const nanceTotals = readTotals(nance.body);
   if (nanceTotals.stays !== 2 || nanceTotals.nights !== 7) fail(`Nance counted ${nanceTotals.stays} stays, ${nanceTotals.nights} nights (October must be outside)`);
@@ -585,13 +586,13 @@ if (RAW_ERROR.test(missing.line)) fail(missing.line);
 
   const roya = await chat("client-roya", "PDF report for Roya for the last 3 months");
   if (!roya.file?.data || !/Owner report for Roya Ardakani, 1065 Shaw Street\./.test(roya.body)) fail(`Roya: ${roya.body}`);
-  if (!/Prepared for Roya Ardakani/.test(pdfText(roya.file))) fail("Roya's PDF is not prepared for her");
+  if (!/Prepared for (?:\S+ ){0,4}Roya Ardakani/.test(pdfText(roya.file))) fail("Roya's PDF is not prepared for her");
 
   const daniel = await chat("client-daniel", "Can you make Daniel's report for last quarter?");
   if (!daniel.file?.data || !/Owner report for Precilla Daniel, 41 Roseglor Cres\./.test(daniel.body)) fail(`Daniel: ${daniel.body}`);
   if (!/Q3 2026: July 1 to September 30, 2026/.test(daniel.body)) fail(`Daniel period: ${daniel.body}`);
   if (!/OPS lists Owen Park as the owner of 41 Roseglor Cres, not Precilla Daniel\./.test(daniel.body)) fail(`Daniel mismatch not said: ${daniel.body}`);
-  if (!/Prepared for Precilla Daniel/.test(pdfText(daniel.file))) fail("Daniel's PDF is not prepared for her");
+  if (!/Prepared for (?:\S+ ){0,4}Precilla Daniel/.test(pdfText(daniel.file))) fail("Daniel's PDF is not prepared for her");
 
   const internal = await chat("client-internal", "internal report for Nance for the last 3 months");
   if (!internal.file?.data || !/Internal report for Nance Ta, 8 Charlotte 606\./.test(internal.body) || !/\| Internal/.test(internal.body)) fail(`internal for Nance: ${internal.body}`);
@@ -603,7 +604,7 @@ if (RAW_ERROR.test(missing.line)) fail(missing.line);
   const start = await chat("guided-ytd", "i want to create a report");
   if (start.file || !/Which period/.test(start.body) || !start.choices.includes("Year to date") || !start.choices.includes("Last 30 days") || !start.choices.includes("Last quarter (Q3)")) fail(`guided start: ${start.body} ${start.choices.join(" | ")}`);
   const ytd = await chat("guided-ytd", "Year to date");
-  if (ytd.file || !/Which properties should the report for year to date \(January 1 to October 13, 2026\) cover\?/.test(ytd.body) || !ytd.choices.includes("20 Blue Jays Way Unit 318 (Raj)") || !ytd.choices.includes("All 4 properties")) fail(`guided scope: ${ytd.body} ${ytd.choices.join(" | ")}`);
+  if (ytd.file || !/Which properties should the report for year to date \(January 1 to October 13, 2026\) cover\?/.test(ytd.body) || !ytd.choices.includes("20 Blue Jays Way (Raj)") || !ytd.choices.includes("All 4 properties")) fail(`guided scope: ${ytd.body} ${ytd.choices.join(" | ")}`);
   if (/\$\d/.test(ytd.body)) fail(`an answer to a report question was answered with figures: ${ytd.body}`);
   const all = await chat("guided-ytd", "All 4 properties");
   if (all.file || !/What should it include\?/.test(all.body) || !all.choices.includes("Everything")) fail(`guided contents: ${all.body}`);
@@ -612,14 +613,24 @@ if (RAW_ERROR.test(missing.line)) fail(missing.line);
 
   const rolling = await chat("guided-30", "I want a report for the last 30 days");
   if (rolling.file || !/Which properties should the report for last 30 days \(September 14 to October 13, 2026\) cover\?/.test(rolling.body)) fail(`30 days: ${rolling.body}`);
-  const pickNance = await chat("guided-30", "8 Charlotte 606 (Nance)");
+  const pickNance = await chat("guided-30", "A. 8 Charlotte 606 (Nance).");
   if (pickNance.file || !/owner report for Nance/.test(pickNance.body) || !pickNance.choices.includes("Internal report")) fail(`owner or internal: ${pickNance.body}`);
-  const owner = await chat("guided-30", "Owner report for Nance");
+  const owner = await chat("guided-30", "A. Owner report for Nance.");
   if (owner.file || !/What should it include\?/.test(owner.body)) fail(`owner contents: ${owner.body}`);
-  const lean = await chat("guided-30", "Revenue and occupancy only");
+  const lean = await chat("guided-30", "B. Revenue and occupancy only.");
   if (!lean.file?.data || !/^Made the owner report for 8 Charlotte 606, last 30 days: September 14 to October 13, 2026, with revenue and the owner\/MRG split and occupancy and nightly rate\./.test(lean.body)) fail(`lean report: ${lean.body}`);
   const leanText = pdfText(lean.file);
-  if (!/Prepared for Nance Ta/.test(leanText) || !/Revenue/.test(leanText) || /Reviews and ratings|Recommendations|Guest complaints/.test(leanText)) fail(`lean PDF kept unpicked sections:\n${leanText.slice(0, 900)}`);
+  if (!/Prepared for (?:\S+ ){0,4}Nance Ta/.test(leanText) || !/Revenue/.test(leanText) || /Reviews (?:and|&) ratings|Recommendations|Guest complaints/.test(leanText)) fail(`lean PDF kept unpicked sections:\n${leanText.slice(0, 900)}`);
+
+  // The live run: the client named the way partners say it, answers sent the way the buttons send them.
+  const daniels = await chat("guided-daniels", "i want to test a report for daniels unit");
+  if (daniels.file || !/Which period/.test(daniels.body)) fail(`daniels start: ${daniels.body}`);
+  const september = await chat("guided-daniels", "B. Last month (September).");
+  if (september.file || !/What should it include\?/.test(september.body)) fail(`daniels skips property and audience: ${september.body} ${september.choices.join(" | ")}`);
+  const danielsReport = await chat("guided-daniels", "A. Everything.");
+  if (!danielsReport.file?.data || !/^Made the owner report for 41 Roseglor Cres, last month: September 1 to September 30, 2026, with everything\./.test(danielsReport.body)) fail(`daniels report: ${danielsReport.body}`);
+  const danielsText = pdfText(danielsReport.file);
+  if (!/Property Report — 41 Roseglor Cres|Property Report .{1,3} 41 Roseglor Cres/.test(danielsText) || !/Owner report/.test(danielsText) || !/Page 1 of \d/.test(danielsText)) fail(`daniels PDF: ${danielsText.slice(0, 500)}`);
 
   const custom = await chat("guided-june", "can you make a report with specific dates from june 1 to today");
   if (custom.file || !/June 1 to October 13, 2026/.test(custom.body)) fail(`june to today: ${custom.body}`);
