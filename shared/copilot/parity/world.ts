@@ -101,6 +101,8 @@ export type ParityProperty = {
   /** Hospitable display title, when it differs from the internal name. */
   publicName?: string;
   address: string;
+  /** Hospitable capacity: bedrooms, bathrooms, and most guests. */
+  capacity?: { bedrooms: number; bathrooms: number; max: number };
   managed: boolean;
   /** Listing photo from Hospitable, when one is connected. */
   photo?: string;
@@ -1013,6 +1015,7 @@ function mcpProperty(row: ParityProperty) {
     public_name: row.publicName || row.name,
     address: { display: row.address },
     listed: true,
+    ...(row.capacity ? { capacity: row.capacity } : {}),
   };
 }
 

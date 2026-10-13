@@ -477,6 +477,8 @@ export function instructions(mcp: boolean, hasHospitable: boolean, facts: string
     "When they choose, call keep_way with that choice, then confirm it in a sentence. Do not call keep_way on a question that only asks what you see.",
     "A skill card comes only after they say they want the skill. An email card comes only after they ask for a draft. Neither is saved or sent until they press the card.",
     "Call finish when the answer is ready, with the sentences they should read. Do not mention tools, tokens, JSON, or MCP in that body.",
+    "The Client lines in the facts say which property each client owns. Never ask the partners which property their own client owns, even if a memory looks cut off.",
+    "When a tool you have can do what they asked, do it. Do not ask permission to use it, do not offer them the job instead, and do not stack questions: state your assumption and proceed. Ask at most one question, only when the answer would change materially.",
     "Follow the memory in the facts. When a file says which units we manage, that list is the count. Hospitable's other listings stay out of it, and you still say how many Hospitable lists.",
     "Spoken unit names do not match Hospitable's marketing titles. Use the listing directory in the facts. 8 Charlotte 606 is the Charlotte listing whose address contains 606. Roseglor is the Roseglor Crescent address.",
     "An empty month is an empty month. Do not call that an empty booking history unless a multi-year read also came back empty.",

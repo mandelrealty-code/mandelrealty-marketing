@@ -40,6 +40,8 @@ import { answerAvailability } from "../copilot/availabilityAnswer.js";
 import { answerFollowUpTurn } from "../copilot/followUpAnswer.js";
 import { DENIES_WEB, answerWebQuestion, asksOutsideWorld } from "../copilot/webAnswer.js";
 import { saveHubEntry } from "../copilot/hubLearning.js";
+import { answerComps } from "../copilot/compsAnswer.js";
+import { REPORT_CLIENTS } from "../copilot/reportClients.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "../copilot/fileError.js";
@@ -332,6 +334,8 @@ async function factsFor(): Promise<string> {
       `Skill ${skill.name} (${skill.enabled ? "on" : "off"}, ${skill.kind}, ${runsOnItsOwn(skill) ? schedulePhrase(skill.schedule) : "runs only when asked"}, last run ${skill.lastRun ? skill.lastRun.status : "never"}): when ${skill.when_text}. Reads ${skill.reads}. Writes ${skill.drafts}. Must not ${skill.must_not}. Phone ${skill.phone || "none"}.`,
     );
   }
+  // Who owns what is a record, never a question for the partners. A truncated memory doesn't change it.
+  for (const client of REPORT_CLIENTS) lines.push(`Client: ${client.full} (${client.short}) owns ${client.property}.`);
   for (const note of memory) lines.push(`Remembered: ${note}`);
   lines.push(...promptLines(memoryFiles));
   return lines.join("\n");
@@ -889,6 +893,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         return res.status(200).json({ chatId, messages, chats, pending });
       };
       const clock = parityNow() ?? new Date();
+      // Comp pricing for one of our units: the unit from the records, AirROI first, never a permission question.
+      if (!pictureMode && !skillMode) {
+        const compHistory = (await listMessages(chatId)).slice(0, -1).map((row) => ({ role: row.role, body: row.body }));
+        const comps = await answerComps(text, compHistory, clock).catch(() => null);
+        if (comps) {
+          await addMessage({ chatId, role: "assistant", body: comps.body, choices: comps.choices ?? null, steps: [{ text: comps.step }], thought: comps.thought });
+          return done();
+        }
+      }
       // The outside world (concerts, events, news, opening hours, weather) is answered from web
       // search, before any mail or records path can claim it. Mail is for the business's own mail.
       if (!pictureMode && !skillMode && asksOutsideWorld(text)) {
@@ -1569,7 +1582,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         return done();
       }
       if (webSearch && !needsLiveBrowser(text)) {
-        const said = await answerWebLookup(text);
+        let said = await answerWebLookup(text);
+        // A failed read is never the whole answer: search the web for what they actually asked.
+        if (said === "That read failed.") {
+          const earlier = (await listMessages(chatId)).slice(0, -1).filter((row) => row.role === "user").map((row) => row.body).reverse();
+          const subject = /^(?:please |can you |just )?(?:search|look)(?: it| this)?(?: up)?(?: on)?(?: the)? ?(?:web|online|internet)?[.!]?$/i.test(text.trim()) ? earlier.find((body) => body.trim().length > 12) ?? text : text;
+          said = (await answerWebQuestion(subject, clock)).body;
+        }
         await addMessage({
           chatId,
           role: "assistant",

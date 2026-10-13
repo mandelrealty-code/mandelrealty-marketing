@@ -195,6 +195,44 @@ if (managed) fail(managed.body);
   setWebAnswerer(async () => "I don't have a web browser tool to check tour dates. You'd need to check their official website.");
   const denied = await send("web-denied", "is the raptors game on tonight?");
   if (denied?.body !== "I searched the web for “is the raptors game on tonight” and couldn't confirm it.") fail(`denial kept: ${denied?.body}`);
+  // The live comps conversation, replayed: Raj's unit from the records, comps without permission questions.
+  const { setCompsSource } = await import("./compsAnswer.js");
+  const { ID } = await import("./parity/catalog.js");
+  world.properties = world.properties.map((row) => (row.id === ID.blue ? { ...row, capacity: { bedrooms: 2, bathrooms: 2, max: 8 } } : row));
+  installWorld(world);
+  setWebAnswerer(async (question) => (/backstreet/i.test(question) ? "Yes: nine shows at Rogers Centre, Feb 12, 13, 14, 19, 20, 21, 26, 27 and 28, 2027, announced by Rogers and Live Nation on Oct 2, 2026.\nSource: Live Nation, Oct 2, 2026." : ""));
+  const compRates = [455, 480, 520, 540, 560, 575, 590, 600, 605, 608, 610, 615, 620, 640, 660, 690, 720, 750, 780, 820, 850, 880, 920, 960, 999];
+  let airroiCalls = 0;
+  setCompsSource(async (input) => {
+    airroiCalls += 1;
+    if (input.bedrooms !== 2 || input.bathrooms !== 2 || input.guests !== 8 || !/20 Blue Jays Way/.test(input.address)) throw new Error(`wrong unit ${JSON.stringify(input)}`);
+    return {
+      source: "airroi", annualRevenue: 91000, monthlyRevenue: 91000 / 12, adr: 608, occupancy: 0.71, latitude: null, longitude: null, leaks: [], ratings: null,
+      comps: compRates.map((adr, index) => ({ listingId: `c${index}`, name: `Comp ${index}`, url: "", bedrooms: 2, bathrooms: 2, guests: 8, annualRevenue: adr >= 900 ? 116000 - (999 - adr) * 100 : 40000 + index * 1500, monthlyRevenue: 5000, adr, occupancy: 0.7, distanceMiles: 0.2, superhost: false, guestFavorite: false, ratingOverall: null, ratingCleanliness: null, ratingCommunication: null, ratingAccuracy: null, ratingCheckin: null, ratingValue: null, ratingLocation: null })) as never,
+    };
+  });
+  await send("web-comps", "are the backstreet boys coming into town in feb?");
+  const comps = await send("web-comps", "what are some comps pricing for units like rajs unit for those dates?");
+  const compsSaid = comps?.body ?? "";
+  if (!compsSaid.startsWith("Comps for Raj's unit, 20 Blue Jays Way Unit 318 (2 bed, 2 bath, sleeps 8): same building and neighbourhood, nightly rates.")) fail(`comps lead: ${compsSaid}`);
+  if (!/Typical nightly rate: about \$608 \(AirROI, trailing 12 months, 25 comparable listings\)/.test(compsSaid) || !/Source: AirROI market data/.test(compsSaid)) fail(`comps figures: ${compsSaid}`);
+  if (!/Feb 12, 13, 14, 19, 20, 21, 26, 27 and 28, 2027/.test(compsSaid)) fail(`comps dates: ${compsSaid}`);
+  if (/\?|would you like|check (?:it )?yourself|do you have access|which unit|which property/i.test(compsSaid)) fail(`comps asked or handed back: ${compsSaid}`);
+  // AirROI fails (twice) and web search finds nothing: still a partial answer naming what is unconfirmed.
+  airroiCalls = 0;
+  setCompsSource(async () => {
+    airroiCalls += 1;
+    throw new Error("AirROI timed out");
+  });
+  const failed = await send("web-comps-fail", "what are comps for raj's unit for the backstreet boys weekends?");
+  const failedSaid = failed?.body ?? "";
+  if (airroiCalls !== 2) fail(`AirROI was tried ${airroiCalls} times`);
+  if (failedSaid === "That read failed." || !/^Comps for Raj's unit, 20 Blue Jays Way Unit 318/.test(failedSaid) || !/AirROI didn't return comps \(tried twice\)/.test(failedSaid) || !/Not confirmed:/.test(failedSaid)) fail(`failed comps: ${failedSaid}`);
+  // "search the web" continues the same request, and the web's answer is used.
+  setWebAnswerer(async () => "Two-bedroom units at 20 Blue Jays Way list at about $650 to $900 a night for February weekends.\nSource: Airbnb listings search, Oct 13, 2026.");
+  const searched = await send("web-comps-fail", "search the web");
+  if (!/this is from web search: Two-bedroom units at 20 Blue Jays Way list at about \$650 to \$900/.test(searched?.body ?? "")) fail(`search the web: ${searched?.body}`);
+  setCompsSource(null);
   setWebAnswerer(null);
   resetResearch();
   if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
