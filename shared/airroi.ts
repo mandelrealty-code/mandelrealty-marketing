@@ -1061,6 +1061,50 @@ export async function lookupListingAudit(
   };
 }
 
+export type ComparableRate = {
+  listingId: string;
+  /** Average nightly rate over the last 12 months, in the listing's own currency. */
+  ttmRate: number | null;
+  /** Average nightly rate over the last 90 days. */
+  l90Rate: number | null;
+  ttmRevenue: number | null;
+  currency: string;
+};
+
+/**
+ * Comparable listings for a unit's own specs at its own location, in local currency (CAD in
+ * Toronto). Each row carries its 12-month and 90-day average nightly rate.
+ */
+export async function comparableRates(input: {
+  latitude: number;
+  longitude: number;
+  bedrooms: number;
+  baths: number;
+  guests: number;
+}): Promise<ComparableRate[]> {
+  const data = await airroiGet("/listings/comparables", {
+    latitude: input.latitude,
+    longitude: input.longitude,
+    bedrooms: input.bedrooms,
+    baths: input.baths,
+    guests: input.guests,
+    currency: "native",
+    room_type: "entire_home",
+  });
+  return extractCompsArray(data).map((raw) => {
+    const perf = (raw.performance_metrics ?? raw) as Record<string, unknown>;
+    const info = (raw.listing_info ?? raw) as Record<string, unknown>;
+    const pricing = (raw.pricing_info ?? {}) as Record<string, unknown>;
+    return {
+      listingId: str(info.listing_id ?? raw.listing_id, ""),
+      ttmRate: num(perf.ttm_avg_rate),
+      l90Rate: num(perf.l90d_avg_rate),
+      ttmRevenue: num(perf.ttm_revenue),
+      currency: str(pricing.currency, "") || "CAD",
+    };
+  });
+}
+
 export async function estimateByAddress(input: {
   address: string;
   bedrooms: number;

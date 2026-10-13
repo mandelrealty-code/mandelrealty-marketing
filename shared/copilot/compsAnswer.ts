@@ -8,7 +8,7 @@
  * is searched, and the answer says what was found and what could not be confirmed.
  */
 
-import { estimateByAddress, type RevenueAuditEstimateResult } from "../airroi.js";
+import { comparableRates, estimateByAddress, type ComparableRate } from "../airroi.js";
 import { spokenProperty } from "./dayBoard.js";
 import { hospitableRead } from "./hospitableConnection.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -26,13 +26,15 @@ export function asksComps(text: string): boolean {
 export type CompsTurn = { role: string; body: string };
 export type CompsAnswer = { body: string; step: string; thought: string; choices?: string[] };
 
-export type Size = { bedrooms: number; bathrooms: number; guests: number; known: boolean };
-type Estimate = (input: { address: string; bedrooms: number; bathrooms: number; guests: number }) => Promise<RevenueAuditEstimateResult>;
+/** The unit's own specs and location, from Hospitable's property record. */
+export type Size = { bedrooms: number; bathrooms: number; guests: number; known: boolean; latitude: number | null; longitude: number | null };
 
-let source: Estimate | null = null;
+type Comparables = (input: { latitude: number; longitude: number; bedrooms: number; baths: number; guests: number }) => Promise<ComparableRate[]>;
 
-/** Test seam: the parity suite supplies AirROI's answer, or makes it fail. */
-export function setCompsSource(next: Estimate | null): void {
+let source: Comparables | null = null;
+
+/** Test seam: the parity suite supplies AirROI's comparables, or makes the pull fail. */
+export function setCompsSource(next: Comparables | null): void {
   source = next;
 }
 
@@ -62,24 +64,32 @@ function datesFrom(history: CompsTurn[]): string {
 
 function num(value: unknown): number | null {
   const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : null;
+  return Number.isFinite(n) && n !== 0 ? n : null;
 }
 
-/** Bedrooms, bathrooms and guests from Hospitable's property record. */
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+/** Bedrooms, bathrooms, guests and coordinates from Hospitable's property record. */
 export async function sizeOf(hospitableId: string): Promise<Size> {
   try {
     const raw = await hospitableRead("get-properties", {});
     const rows = Array.isArray((raw as { data?: unknown })?.data) ? (raw as { data: Record<string, unknown>[] }).data : [];
     const row = rows.find((item) => String(item.id ?? "") === hospitableId) ?? null;
-    const capacity = (row?.capacity ?? row?.details ?? row ?? {}) as Record<string, unknown>;
+    const capacity = record(row?.capacity ?? row?.details ?? row);
+    const address = record(row?.address);
+    const coordinates = record(address.coordinates ?? row?.coordinates);
+    const latitude = num(coordinates.latitude ?? coordinates.lat ?? address.latitude ?? row?.latitude);
+    const longitude = num(coordinates.longitude ?? coordinates.lng ?? address.longitude ?? row?.longitude);
     const bedrooms = num(capacity.bedrooms ?? row?.bedrooms);
     const bathrooms = num(capacity.bathrooms ?? row?.bathrooms);
     const guests = num(capacity.max ?? capacity.max_guests ?? row?.max_guests ?? capacity.guests);
-    if (bedrooms) return { bedrooms, bathrooms: bathrooms ?? 1, guests: guests ?? bedrooms * 2, known: true };
+    if (bedrooms) return { bedrooms, bathrooms: bathrooms ?? 1, guests: guests ?? bedrooms * 2, known: true, latitude, longitude };
+    return { bedrooms: 2, bathrooms: 1, guests: 4, known: false, latitude, longitude };
   } catch {
-    /* The size is stated as assumed below. */
+    return { bedrooms: 2, bathrooms: 1, guests: 4, known: false, latitude: null, longitude: null };
   }
-  return { bedrooms: 2, bathrooms: 1, guests: 4, known: false };
 }
 
 export function money(value: number): string {
@@ -92,19 +102,74 @@ export function median(values: number[]): number {
   return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-export async function airroi(input: { address: string; bedrooms: number; bathrooms: number; guests: number }): Promise<RevenueAuditEstimateResult | null> {
-  const run: Estimate = source ?? ((args) => estimateByAddress(args));
+function quantile(values: number[], q: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (sorted.length - 1) * q;
+  const low = Math.floor(at);
+  const high = Math.ceil(at);
+  return sorted[low]! + (sorted[high]! - sorted[low]!) * (at - low);
+}
+
+/** What comparable units get: the 12-month median and middle range, the 90-day median, top earners. */
+export type CompSet = {
+  count: number;
+  currency: string;
+  median: number;
+  low: number;
+  high: number;
+  recent: number | null;
+  topLow: number;
+  topHigh: number;
+  specs: string;
+};
+
+/**
+ * The comparables pull for the unit's own specs at its own location, in local currency. One retry;
+ * null when AirROI does not answer. The unit's location comes from Hospitable, else AirROI geocodes
+ * the address.
+ */
+export async function compSet(address: string, size: Size): Promise<CompSet | null> {
   if (!source && parityEnabled()) return null;
-  // One retry: a single failed read is not the answer.
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const got = await run(input);
-      if (got.adr != null || got.comps.some((comp) => comp.adr != null)) return got;
+      let latitude = size.latitude;
+      let longitude = size.longitude;
+      if ((latitude == null || longitude == null) && !source) {
+        const placed = await estimateByAddress({ address, bedrooms: size.bedrooms, bathrooms: size.bathrooms, guests: size.guests });
+        latitude = placed.latitude;
+        longitude = placed.longitude;
+      }
+      const run: Comparables = source ?? comparableRates;
+      const rows = await run({ latitude: latitude ?? 0, longitude: longitude ?? 0, bedrooms: size.bedrooms, baths: size.bathrooms, guests: size.guests });
+      const rates = rows.map((row) => row.ttmRate).filter((value): value is number => value != null && value > 0);
+      if (rates.length < 3) continue;
+      const recent = rows.map((row) => row.l90Rate).filter((value): value is number => value != null && value > 0);
+      const top = [...rows].filter((row) => row.ttmRate != null).sort((a, b) => (b.ttmRevenue ?? 0) - (a.ttmRevenue ?? 0)).slice(0, 5).map((row) => row.ttmRate!);
+      return {
+        count: rates.length,
+        currency: rows.find((row) => row.currency)?.currency || "CAD",
+        median: median(rates),
+        low: quantile(rates, 0.25),
+        high: quantile(rates, 0.75),
+        recent: recent.length >= 3 ? median(recent) : null,
+        topLow: Math.min(...top),
+        topHigh: Math.max(...top),
+        specs: `${size.bedrooms} bed, ${size.bathrooms} bath, sleeps ${size.guests}`,
+      };
     } catch {
       /* Try again once. */
     }
   }
   return null;
+}
+
+/** "Median about $608 CAD a night over the last 12 months ($540 to $690 for the middle half)…" */
+export function compLines(set: CompSet): string[] {
+  const cur = set.currency;
+  return [
+    `Median about ${money(set.median)} ${cur} a night over the last 12 months (${money(set.low)} to ${money(set.high)} for the middle half of ${set.count} comparable listings)${set.recent != null ? `, about ${money(set.recent)} ${cur} over the last 90 days` : ""}.`,
+    `The top earners average ${money(set.topLow)} to ${money(set.topHigh)} ${cur} a night.`,
+  ];
 }
 
 export async function answerComps(text: string, history: CompsTurn[], now = new Date()): Promise<CompsAnswer | null> {
@@ -152,21 +217,13 @@ export async function answerComps(text: string, history: CompsTurn[], now = new 
   const lead = `Comps for ${whose}${name} (${sizeWords}): ${scope}${nightly ? `, ${nightly}` : ""}.`;
   const caveat = dates ? `These are trailing market figures, not quotes for ${dates}; price those nights from the top of the range.` : "";
 
-  const market = await airroi({ address: unit.address || name, bedrooms: size.bedrooms, bathrooms: size.bathrooms, guests: size.guests });
+  const market = await compSet(unit.address || name, size);
   if (market) {
-    const rates = market.comps.map((comp) => comp.adr).filter((value): value is number => value != null);
-    const typical = market.adr ?? (rates.length ? median(rates) : null);
-    const top = [...market.comps].filter((comp) => comp.adr != null).sort((a, b) => (b.annualRevenue ?? 0) - (a.annualRevenue ?? 0)).slice(0, 3);
-    const topRates = top.map((comp) => comp.adr!).sort((a, b) => a - b);
-    const topRevenue = top.map((comp) => comp.annualRevenue).filter((value): value is number => value != null);
     const lines = [
       lead,
-      typical != null ? `Typical nightly rate: about ${money(typical)} (AirROI, trailing 12 months${rates.length ? `, ${rates.length} comparable listings` : ""}).` : "",
-      rates.length >= 2 ? `Range across the comps: ${money(Math.min(...rates))} to ${money(Math.max(...rates))} a night.` : "",
-      topRates.length ? `Top performers: ${money(topRates[0]!)} to ${money(topRates[topRates.length - 1]!)} a night${topRevenue.length ? `, about ${money(median(topRevenue))} a year in revenue` : ""}.` : "",
-      market.occupancy != null ? `Occupancy around ${Math.round(market.occupancy > 1 ? market.occupancy : market.occupancy * 100)}%.` : "",
+      ...compLines(market),
       caveat,
-      `Source: AirROI market data, figures in US dollars, pulled ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Toronto" }).format(now)}.`,
+      `Source: AirROI comparables for ${market.specs} near the unit, pulled ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Toronto" }).format(now)}.`,
     ];
     return { body: lines.filter(Boolean).join("\n"), step: "Pulled AirROI comps", thought: "Read from AirROI for the unit in the records. Nothing was sent." };
   }

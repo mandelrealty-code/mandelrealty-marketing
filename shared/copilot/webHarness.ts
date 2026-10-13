@@ -198,24 +198,25 @@ if (managed) fail(managed.body);
   // The live comps conversation, replayed: Raj's unit from the records, comps without permission questions.
   const { setCompsSource } = await import("./compsAnswer.js");
   const { ID } = await import("./parity/catalog.js");
-  world.properties = world.properties.map((row) => (row.id === ID.blue ? { ...row, capacity: { bedrooms: 2, bathrooms: 2, max: 8 } } : row));
+  world.properties = world.properties.map((row) => (row.id === ID.blue ? { ...row, capacity: { bedrooms: 2, bathrooms: 2, max: 8 }, coordinates: { latitude: 43.6416, longitude: -79.3917 } } : row));
   installWorld(world);
   setWebAnswerer(async (question) => (/backstreet/i.test(question) ? "Yes: nine shows at Rogers Centre, Feb 12, 13, 14, 19, 20, 21, 26, 27 and 28, 2027, announced by Rogers and Live Nation on Oct 2, 2026.\nSource: Live Nation, Oct 2, 2026." : ""));
-  const compRates = [455, 480, 520, 540, 560, 575, 590, 600, 605, 608, 610, 615, 620, 640, 660, 690, 720, 750, 780, 820, 850, 880, 920, 960, 999];
+  // 25 comparables for 2 bed / 2 bath / sleeps 8 at the unit: median $608 CAD over 12 months, $816 over 90 days.
+  const ttm = [470, 495, 510, 525, 540, 552, 560, 575, 585, 590, 598, 604, 608, 612, 620, 640, 655, 680, 700, 720, 780, 820, 900, 950, 999];
+  const recent = ttm.map((rate) => rate + 208);
+  const comparables = ttm.map((rate, index) => ({ listingId: `c${index}`, ttmRate: rate, l90Rate: recent[index]!, ttmRevenue: rate >= 780 ? 100000 + rate : 40000 + index, currency: "CAD" }));
   let airroiCalls = 0;
   setCompsSource(async (input) => {
     airroiCalls += 1;
-    if (input.bedrooms !== 2 || input.bathrooms !== 2 || input.guests !== 8 || !/20 Blue Jays Way/.test(input.address)) throw new Error(`wrong unit ${JSON.stringify(input)}`);
-    return {
-      source: "airroi", annualRevenue: 91000, monthlyRevenue: 91000 / 12, adr: 608, occupancy: 0.71, latitude: null, longitude: null, leaks: [], ratings: null,
-      comps: compRates.map((adr, index) => ({ listingId: `c${index}`, name: `Comp ${index}`, url: "", bedrooms: 2, bathrooms: 2, guests: 8, annualRevenue: adr >= 900 ? 116000 - (999 - adr) * 100 : 40000 + index * 1500, monthlyRevenue: 5000, adr, occupancy: 0.7, distanceMiles: 0.2, superhost: false, guestFavorite: false, ratingOverall: null, ratingCleanliness: null, ratingCommunication: null, ratingAccuracy: null, ratingCheckin: null, ratingValue: null, ratingLocation: null })) as never,
-    };
+    if (input.bedrooms !== 2 || input.baths !== 2 || input.guests !== 8 || input.latitude !== 43.6416 || input.longitude !== -79.3917) throw new Error(`wrong unit ${JSON.stringify(input)}`);
+    return comparables;
   });
   await send("web-comps", "are the backstreet boys coming into town in feb?");
   const comps = await send("web-comps", "what are some comps pricing for units like rajs unit for those dates?");
   const compsSaid = comps?.body ?? "";
   if (!compsSaid.startsWith("Comps for Raj's unit, 20 Blue Jays Way Unit 318 (2 bed, 2 bath, sleeps 8): same building and neighbourhood, nightly rates.")) fail(`comps lead: ${compsSaid}`);
-  if (!/Typical nightly rate: about \$608 \(AirROI, trailing 12 months, 25 comparable listings\)/.test(compsSaid) || !/Source: AirROI market data/.test(compsSaid)) fail(`comps figures: ${compsSaid}`);
+  if (!/Median about \$608 CAD a night over the last 12 months \(\$560 to \$700 for the middle half of 25 comparable listings\), about \$816 CAD over the last 90 days\./.test(compsSaid)) fail(`comps figures: ${compsSaid}`);
+  if (!/The top earners average \$780 to \$999 CAD a night\./.test(compsSaid) || !/Source: AirROI comparables for 2 bed, 2 bath, sleeps 8 near the unit/.test(compsSaid) || /US\$|US dollars|\$224/.test(compsSaid)) fail(`comps source: ${compsSaid}`);
   if (!/Feb 12, 13, 14, 19, 20, 21, 26, 27 and 28, 2027/.test(compsSaid)) fail(`comps dates: ${compsSaid}`);
   if (/\?|would you like|check (?:it )?yourself|do you have access|which unit|which property/i.test(compsSaid)) fail(`comps asked or handed back: ${compsSaid}`);
   // AirROI fails (twice) and web search finds nothing: still a partial answer naming what is unconfirmed.
@@ -232,27 +233,37 @@ if (managed) fail(managed.body);
   setWebAnswerer(async () => "Two-bedroom units at 20 Blue Jays Way list at about $650 to $900 a night for February weekends.\nSource: Airbnb listings search, Oct 13, 2026.");
   const searched = await send("web-comps-fail", "search the web");
   if (!/this is from web search: Two-bedroom units at 20 Blue Jays Way list at about \$650 to \$900/.test(searched?.body ?? "")) fail(`search the web: ${searched?.body}`);
-  // "Should we open Raj's calendar for feburary?" is a decision, not a list of open nights.
+  // "Should we open Raj's calendar for feburary?": advice that knows the unit's 28-night minimum.
   const febNights = Array.from({ length: 28 }, (_, index) => `2027-02-${String(index + 1).padStart(2, "0")}`);
-  installWorld({ ...world, calendar: febNights.map((date) => ({ propertyId: ID.blue, date, available: false, priceCents: 0 })) } as never);
-  setCompsSource(async () => ({
-    source: "airroi", annualRevenue: 91000, monthlyRevenue: 91000 / 12, adr: 608, occupancy: 0.71, latitude: null, longitude: null, leaks: [], ratings: null,
-    comps: [780, 850, 999, 520, 600].map((adr, index) => ({ listingId: `f${index}`, name: "", url: "", bedrooms: 2, bathrooms: 2, guests: 8, annualRevenue: adr * 120, monthlyRevenue: 1, adr, occupancy: 0.7, distanceMiles: 0.2, superhost: false, guestFavorite: false, ratingOverall: null, ratingCleanliness: null, ratingCommunication: null, ratingAccuracy: null, ratingCheckin: null, ratingValue: null, ratingLocation: null })) as never,
-  }));
+  const calendarWorld = (minStay: number) => ({
+    ...world,
+    memory: [...(world.memory ?? []), { path: "memory/blue-jays-strategy.md", body: "20 Blue Jays Way: keep a 28-night minimum through the winter (Dec to Mar), monthly guests only." }],
+    calendar: febNights.map((date) => ({ propertyId: ID.blue, date, available: true, priceCents: 0, minStay })),
+  });
+  installWorld(calendarWorld(28) as never);
+  setCompsSource(async () => comparables);
   setWebAnswerer(async (question) => (/February 2027/.test(question)
-    ? "The Backstreet Boys play nine shows at Rogers Centre on Feb 12, 13, 14, 19, 20, 21, 26, 27 and 28, 2027.\nSource: Live Nation, Oct 2, 2026."
+    ? "Backstreet Boys at Rogers Centre: Feb 12, 13, 14, 19, 20, 21, 26, 27 and 28, 2027.\nCanadian International AutoShow at the Metro Toronto Convention Centre: Feb 12–21, 2027.\nSource: Live Nation, Oct 2, 2026; autoshow.ca."
     : ""));
   const calendarAsk = "Should we open raj's calendar (20 blue jays way), for feburary? are there any dates that are worth it to open for? in that area";
   const advice = await send("web-calendar", calendarAsk);
   const adviceSaid = advice?.body ?? "";
-  if (!adviceSaid.startsWith("February 2027 at 20 Blue Jays Way Unit 318 (Raj): 28 of 28 nights are closed on the calendar, 0 booked, 0 open.")) fail(`calendar month: ${adviceSaid}`);
-  if (!/What's on nearby: The Backstreet Boys play nine shows at Rogers Centre/.test(adviceSaid) || !/Source: Live Nation/.test(adviceSaid)) fail(`calendar events: ${adviceSaid}`);
-  if (!/Comps: about \$608 a night typical, \$780 to \$999 for the top performers/.test(adviceSaid)) fail(`calendar comps: ${adviceSaid}`);
-  if (!/Recommendation: open Feb 12–14, Feb 19–21 and Feb 26–28, the event nights, priced toward \$780–\$999\. The other 19 closed nights have no event I could find/.test(adviceSaid)) fail(`calendar recommendation: ${adviceSaid}`);
-  if (/Oct 13|Open nights from|\bDec\b/.test(adviceSaid) || !/Nothing on the calendar was changed\./.test(adviceSaid)) fail(`calendar scope: ${adviceSaid}`);
-  installWorld({ ...world, calendar: febNights.map((date) => ({ propertyId: ID.blue, date, available: true, priceCents: 0 })) } as never);
-  const alreadyOpen = await send("web-calendar-open", "should we open the calendar at 20 blue jays way for february?");
-  if (!/0 of 28 nights are closed on the calendar, 0 booked, 28 open\./.test(alreadyOpen?.body ?? "") || !/already open for February 2027/.test(alreadyOpen?.body ?? "")) fail(`calendar already open: ${alreadyOpen?.body}`);
+  const order = ["What I found:", "What's happening in the area:", "What you should do:"].map((part) => adviceSaid.indexOf(part));
+  if (order.some((at) => at < 0) || !(order[0]! < order[1]! && order[1]! < order[2]!)) fail(`advice shape: ${adviceSaid}`);
+  if (!/AirROI comps for units like Raj's \(2 bed, 2 bath, sleeps 8, same building and neighbourhood\): Median about \$608 CAD/.test(adviceSaid)) fail(`advice comps: ${adviceSaid}`);
+  if (!/Raj's February 2027 at 20 Blue Jays Way Unit 318: 28 of 28 nights open, 0 booked, 0 closed, with a 28-night minimum stay on the event nights\./.test(adviceSaid)) fail(`advice calendar: ${adviceSaid}`);
+  if (!/Your note for this unit: “20 Blue Jays Way: keep a 28-night minimum through the winter/.test(adviceSaid)) fail(`advice note: ${adviceSaid}`);
+  if (!/Backstreet Boys at Rogers Centre: Feb 12/.test(adviceSaid) || !/AutoShow/.test(adviceSaid)) fail(`advice events: ${adviceSaid}`);
+  if (!/Open Feb 12 to Mar 1 for short stays: lower the minimum from 28 nights to 2 or 3 for those dates and price the event nights \(Feb 12–21 and Feb 26–28\) at \$780 to \$999 CAD/.test(adviceSaid)) fail(`advice recommendation: ${adviceSaid}`);
+  if (!/with a 28-night minimum, the calendar being open only lets one monthly booking land/.test(adviceSaid) || !/Keep the 28-night minimum for the rest of February, as your note says/.test(adviceSaid)) fail(`advice reasoning: ${adviceSaid}`);
+  if (!/stays under 28 nights count toward Toronto's 180-night cap for this unit and 28\+ night stays don't, and Raj's unit already has 0 short-stay nights booked in 2027/.test(adviceSaid)) fail(`advice cap: ${adviceSaid}`);
+  if (/already open|nothing to unblock|US\$/.test(adviceSaid) || !/Your call and Raj's\. Nothing on the calendar was changed\./.test(adviceSaid)) fail(`advice wrong conclusion: ${adviceSaid}`);
+  // A unit with no minimum-stay conflict gets a straight recommendation, no invented caveats.
+  installWorld({ ...calendarWorld(2), memory: world.memory } as never);
+  const straight = await send("web-calendar-straight", "should we open the calendar at 20 blue jays way for february?");
+  const straightSaid = straight?.body ?? "";
+  if (!/What you should do:\nKeep it open and price the event nights \(Feb 12–21 and Feb 26–28\) at \$780 to \$999 CAD; the 2-night minimum already lets them sell one by one\./.test(straightSaid)) fail(`straight advice: ${straightSaid}`);
+  if (/180-night|lower the minimum|Your note/.test(straightSaid)) fail(`straight advice invented a caveat: ${straightSaid}`);
   // "a good brand to order for royas unit": Roya's unit from the records, advice instead of a refusal.
   const { resetUnitSetups, ensureUnitSetups, setUnitCount } = await import("./unitSetup.js");
   installWorld(world);

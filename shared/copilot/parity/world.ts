@@ -84,6 +84,8 @@ export type ParityCalendarDay = {
   date: string;
   available: boolean;
   priceCents: number;
+  /** Minimum stay for an arrival on this night, as Hospitable's calendar reports it. */
+  minStay?: number;
 };
 
 export type ParityPayment = {
@@ -103,6 +105,8 @@ export type ParityProperty = {
   address: string;
   /** Hospitable capacity: bedrooms, bathrooms, and most guests. */
   capacity?: { bedrooms: number; bathrooms: number; max: number };
+  /** Hospitable's map coordinates for the address. */
+  coordinates?: { latitude: number; longitude: number };
   managed: boolean;
   /** Listing photo from Hospitable, when one is connected. */
   photo?: string;
@@ -809,6 +813,7 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
         available: row.available,
         status: row.available ? "available" : "unavailable",
         price: { amount: row.priceCents, formatted: "" },
+        min_stay: row.minStay ?? 1,
       }));
     return { handled: true, value: { data: { days } } };
   }
@@ -1013,7 +1018,7 @@ function mcpProperty(row: ParityProperty) {
     id: row.id,
     name: row.name,
     public_name: row.publicName || row.name,
-    address: { display: row.address },
+    address: { display: row.address, ...(row.coordinates ? { coordinates: row.coordinates } : {}) },
     listed: true,
     ...(row.capacity ? { capacity: row.capacity } : {}),
   };
