@@ -55,3 +55,8 @@ export async function listStoredWaitingDrafts(): Promise<CopilotDraft[]> {
   }
   return drafts;
 }
+
+/** Waiting Checks messages, with their ids, so a newer draft can replace an older one. */
+export async function waitingChecksMessages(): Promise<CopilotMessage[]> {
+  return (await checksMessages()).filter((row) => row.draft?.status === "waiting");
+}

@@ -8,16 +8,17 @@
 import { findPlanArrival, loadDayBoard, type StayMove } from "./dayBoard.js";
 import { readMailThread, searchMail, type MailLetter } from "./mailSearch.js";
 import { parityNow } from "./parity/clock.js";
-import { confirmedChecksDraft } from "./checksClaim.js";
+import { confirmedChecksDraft, waitingChecksMessages } from "./checksClaim.js";
+import { updateDraft } from "./store.js";
 import { leaveDraft, loadRecentStays, readStayThread, type RecentStay } from "./stayCheck.js";
 import { captureMailMatch } from "./parity/capture.js";
 import { namesMatch, platesFrom, registrationMatchesStay, sentProof } from "./partnerStandard.js";
 import { torontoToday } from "./time.js";
 import { asksProcess } from "./processAnswer.js";
 import { isRegistrationDraft } from "./checksLabel.js";
+import { registrationSubjectTemplate } from "./processFacts.js";
 import type { ChecksItemRef } from "./types.js";
 
-const DATE = /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}, \d{4}/g;
 
 type Vehicle = { guest: string; make: string; model: string; plate: string; colour: string; count: string };
 
@@ -155,15 +156,25 @@ export async function answerRegistrationStatus(text: string, now?: Date): Promis
   return sentProof(closed, platesFrom(`${closed.subject}\n${closed.body}`));
 }
 
-export function asksBuildingRegistration(text: string): boolean {
+const PLACE = /\b(blue jays|\b318\b|charlotte|\b606\b|shaw|roseglor|scarborough)\b/i;
+const ABOUT_REGISTRATION = /\b(registration|register|parking e-?mails?|parking|building e-?mails?|airbnb rental for unit|vehicles?|cars?|plates?)\b/i;
+/** "Draft it exactly like the other emails", "make sure the spacing is correct": a redo of the registration in this chat. */
+const REDO = /\b(exactly like|same (?:as|format|way)|like the (?:other|last|previous|sent)|spacing|spaced|format(?:ting)?|layout|re-?do|re-?draft|draft it|write it|try again|copy the (?:last|sent))\b/i;
+
+/**
+ * A request to write the registration email. `context` is the recent chat, so a follow-up such as
+ * "draft it exactly like the other emails" is understood without naming the building again.
+ */
+export function asksBuildingRegistration(text: string, context = ""): boolean {
   const asked = text.trim();
   // "Which addresses do we normally send to?" asks about the process; it doesn't ask for a draft.
   if (asksProcess(asked)) return false;
-  if (!/\b(e-?mails?|sent)\b/i.test(asked)) return false;
-  if (!/\b(write|draft|another)\b/i.test(asked)) return false;
-  if (!/\b(guest|car|vehicle|registration|subject|body)\b/i.test(asked)) return false;
-  if (!/\b(blue jays|\b318\b|charlotte|\b606\b|shaw|roseglor|scarborough)\b/i.test(asked)) return false;
-  return true;
+  // "Is there a draft?" or "has it been sent?" is a status question unless they also ask for one written.
+  if (asksRegistrationStatus(asked) && !/\b(write|another|re-?do|re-?draft)\b/i.test(asked)) return false;
+  const writes = /\b(write|draft|another|re-?do|re-?draft)\b/i.test(asked);
+  if (writes && /\b(e-?mails?|sent)\b/i.test(asked) && /\b(guest|car|vehicle|registration|subject|body|parking)\b/i.test(asked) && PLACE.test(asked)) return true;
+  if (writes && /\b(registration|parking|building)\s+e-?mail\b/i.test(asked) && PLACE.test(`${asked} ${context}`)) return true;
+  return REDO.test(asked) && ABOUT_REGISTRATION.test(context) && PLACE.test(context) && /\b(registration|parking|building|airbnb rental for unit)\b/i.test(context);
 }
 
 function searchTerms(question: string): string {
@@ -290,31 +301,75 @@ function vehicleBlock(vehicle: Vehicle, warnings: string[]): string {
   }).join("\n");
 }
 
+const MONTH_WORDS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+/** A written date in any of the forms a sent email uses: "Friday, October 9, 2026", "October 9, 2026", "Oct 9". */
+const ANY_DATE = /\b(?:(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday),?\s+)?(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?/g;
+
+type WrittenDate = { text: string; month: number; day: number; year: number | null; weekday: boolean; longMonth: boolean; comma: boolean };
+
+function writtenDates(text: string): WrittenDate[] {
+  return [...text.matchAll(ANY_DATE)].map((match) => ({
+    text: match[0],
+    month: MONTH_WORDS.findIndex((name) => name.toLowerCase().startsWith(match[2]!.toLowerCase().slice(0, 3))),
+    day: Number(match[3]),
+    year: match[4] ? Number(match[4]) : null,
+    weekday: Boolean(match[1]),
+    longMonth: match[2]!.length > 3 && !/^Sept$/.test(match[2]!) || match[2] === "May",
+    comma: /,\s+\d{4}$/.test(match[0]),
+  }));
+}
+
+/** The new date written exactly the way the template wrote the old one; the weekday is computed. */
+function sameStyle(old: WrittenDate, iso: string): string {
+  const [year, month, day] = iso.slice(0, 10).split("-").map(Number) as [number, number, number];
+  const at = new Date(Date.UTC(year, month - 1, day, 12));
+  const weekday = old.weekday ? `${new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(at)}, ` : "";
+  const monthWord = old.longMonth ? MONTH_WORDS[month - 1]! : MONTH_WORDS[month - 1]!.slice(0, 3);
+  return `${weekday}${monthWord} ${day}${old.year != null ? `${old.comma ? "," : ""} ${year}` : ""}`;
+}
+
+/** Old check-in and check-out, as the template's subject (or body) wrote them. */
+function templateStay(letter: MailLetter): [WrittenDate | null, WrittenDate | null] {
+  const fromSubject = writtenDates(letter.subject);
+  const dates = fromSubject.length >= 2 ? fromSubject : writtenDates(letter.body);
+  return [dates[0] ?? null, dates[1] ?? null];
+}
+
+function swapDates(text: string, oldIn: WrittenDate | null, oldOut: WrittenDate | null, checkIn: string, checkOut: string): string {
+  return text.replace(ANY_DATE, (whole) => {
+    const found = writtenDates(whole)[0];
+    if (!found) return whole;
+    if (oldIn && found.month === oldIn.month && found.day === oldIn.day) return sameStyle(found, checkIn);
+    if (oldOut && found.month === oldOut.month && found.day === oldOut.day) return sameStyle(found, checkOut);
+    return whole;
+  });
+}
+
 function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string, vehicles: Vehicle[]): { subject: string; body: string; warnings: string[] } {
   const vehicle = vehicles[0] ?? { guest: "", make: "", model: "", plate: "", colour: "", count: "" };
-  const dates = letter.subject.match(DATE) ?? [];
-  const checkInDate = longDate(checkIn);
-  const checkOutDate = longDate(checkOut);
-  let subject = letter.subject;
-  let body = letter.body;
-  if (dates[0]) {
-    subject = subject.replaceAll(dates[0], checkInDate);
-    body = body.replaceAll(dates[0], checkInDate);
-  }
-  if (dates[1]) {
-    subject = subject.replaceAll(dates[1], checkOutDate);
-    body = body.replaceAll(dates[1], checkOutDate);
-  }
+  const known = vehicles.some((item) => item.make || item.model || item.plate);
+  const [oldIn, oldOut] = templateStay(letter);
+  // Only the new stay's facts change; every other line, blank line and the sign-off stay as sent.
+  const subject = swapDates(letter.subject, oldIn, oldOut, checkIn, checkOut);
+  let body = swapDates(letter.body, oldIn, oldOut, checkIn, checkOut);
   const oldGuest = /^Guest:\s*(.+)$/im.exec(letter.body)?.[1]?.trim() ?? "";
   if (oldGuest && vehicle.guest && oldGuest !== vehicle.guest) body = body.replaceAll(oldGuest, vehicle.guest);
   const warnings: string[] = [];
   body = body.split("\n").map((line) => {
-    const match = /^(Guest|Make|Model|Plate|Colour|Color|Vehicle count):\s*(.*)$/i.exec(line.trim());
-    if (!match) return line;
+    const match = /^(Guest|Make|Model|Plate|Licence plate|License plate|Colour|Color|Vehicle count|Number of vehicles):\s*(.*)$/i.exec(line.trim());
+    if (!match) {
+      // A vehicle count written in prose is the old guest's; an unknown stays an explicit blank.
+      return line.replace(/\b(\d+|one|two|three|four)\s+(vehicles?|cars?)\b/gi, (_whole, _count: string, noun: string) => {
+        const count = vehicle.count || (known ? String(vehicles.length) : "");
+        if (!count) warnings.push("The vehicle count is still a blank: [count].");
+        return `${count || "[count]"} ${noun}`;
+      });
+    }
     const label = match[1] ?? "";
-    const next = valueFor(label, vehicle);
+    const key = /plate/i.test(label) ? "Plate" : /number of vehicles/i.test(label) ? "Vehicle count" : label;
+    const next = valueFor(key, vehicle);
     if (next) return line.replace(match[0], `${label}: ${next}`);
-    const blank = blankFor(label);
+    const blank = blankFor(key);
     warnings.push(`${label} is still a blank: ${blank}.`);
     return line.replace(match[0], `${label}: ${blank}`);
   }).join("\n");
@@ -322,7 +377,11 @@ function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string,
     const extra = vehicles.slice(1).map((item) => vehicleBlock(item, warnings)).join("\n\n");
     body = body.replace(/^(Colour|Color):\s*.+$/m, (line) => `${line}\n\n${extra}`);
   }
-  return { subject, body, warnings };
+  // The previous guest's plates never carry over.
+  for (const plate of platesFrom(letter.body)) {
+    if (!vehicles.some((item) => item.plate.toUpperCase() === plate)) body = body.replaceAll(plate, "[plate]");
+  }
+  return { subject, body, warnings: [...new Set(warnings)] };
 }
 
 function alreadySent(stay: RecentStay["stay"], letters: MailLetter[]): boolean {
@@ -330,7 +389,10 @@ function alreadySent(stay: RecentStay["stay"], letters: MailLetter[]): boolean {
 }
 
 async function sentLetters(question: string): Promise<{ letters: MailLetter[]; note: string }> {
-  const found = await searchMail({ keywords: searchTerms(question), where: "sent", includeAirbnb: false });
+  // The building's name, and the recorded subject stem: a real registration may only say "Unit 318".
+  const terms = [searchTerms(question), ...(/blue jays|\b318\b/i.test(question) ? [registrationSubjectTemplate("").replace(/\s*from\s*\{.*$/i, "")] : [])];
+  const reads = await Promise.all(terms.map((keywords) => searchMail({ keywords, where: "sent", includeAirbnb: false })));
+  const found = { hits: [...new Map(reads.flatMap((read) => read.hits).map((hit) => [`${hit.mailbox}:${hit.id}`, hit])).values()], notes: reads.flatMap((read) => read.notes) };
   if (!found.hits.length) {
     const note = found.notes.find((line) => /isn't connected|didn't return/i.test(line));
     return { letters: [], note: note ?? "I didn't find a sent building email for that property. I didn't draft one." };
@@ -351,8 +413,8 @@ async function sentLetters(question: string): Promise<{ letters: MailLetter[]; n
   return { letters, note: "" };
 }
 
-export async function answerBuildingRegistration(text: string): Promise<string | null> {
-  return (await answerBuildingRegistrationItem(text))?.body ?? null;
+export async function answerBuildingRegistration(text: string, context = ""): Promise<string | null> {
+  return (await answerBuildingRegistrationItem(text, context))?.body ?? null;
 }
 
 function shortDate(iso: string): string {
@@ -360,16 +422,19 @@ function shortDate(iso: string): string {
 }
 
 /** The answer and the one Checks item it is about, so chat opens that exact card. */
-export async function answerBuildingRegistrationItem(text: string): Promise<{ body: string; item: ChecksItemRef | null } | null> {
-  const body = await registrationBody(text);
+export async function answerBuildingRegistrationItem(text: string, context = ""): Promise<{ body: string; item: ChecksItemRef | null } | null> {
+  const body = await registrationBody(text, context);
   if (body == null) return null;
   return typeof body === "string" ? { body, item: null } : body;
 }
 
-async function registrationBody(text: string): Promise<string | { body: string; item: ChecksItemRef } | null> {
-  if (!asksBuildingRegistration(text)) return null;
+async function registrationBody(asked: string, context: string): Promise<string | { body: string; item: ChecksItemRef } | null> {
+  if (!asksBuildingRegistration(asked, context)) return null;
+  // The building comes from the question, or from the chat when the question is a follow-up.
+  const text = PLACE.test(asked) ? asked : `${asked}\n${context}`;
   const clock = parityNow() ?? new Date();
   const today = torontoToday(clock);
+  // The template is the most recent sent registration, read from the mailbox now; never asked for.
   const sent = await sentLetters(text);
   if (!sent.letters.length) return sent.note;
   const template = sent.letters[0];
@@ -384,7 +449,12 @@ async function registrationBody(text: string): Promise<string | { body: string; 
     .filter((row) => samePlace(text, row) && row.stay.checkIn >= today && !/cancel/.test(row.stay.status))
     .filter((row) => !alreadySent(row.stay, sent.letters))
     .sort((a, b) => a.stay.checkIn.localeCompare(b.stay.checkIn) || a.stay.id.localeCompare(b.stay.id));
-  const next = upcoming[0];
+  // A guest named in the question (or earlier in the chat) is the one drafted for; else the next arrival.
+  const named = (blob: string) => upcoming.find((row) => {
+    const first = (row.stay.guest || "").trim().split(/\s+/)[0] ?? "";
+    return first.length >= 2 && new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(blob);
+  });
+  const next = named(asked) ?? named(context) ?? upcoming[0];
   if (!next) {
     // Proof is only for a sent message that matches one of this property's stays.
     const stays = loaded.stays.filter((row) => samePlace(text, row) && !/cancel/.test(row.stay.status));
@@ -417,6 +487,12 @@ async function registrationBody(text: string): Promise<string | { body: string; 
   if (!stored) return "The building email was not saved in Checks.";
   // The claim is checked against the saved card's own To and Subject before it is made.
   if (!isRegistrationDraft(stored)) return "The draft saved in Checks doesn't read as the building registration, so I'm not pointing you to it. Nothing was sent.";
+  // A redo replaces the earlier waiting draft for the same stay, once the new one is read back.
+  for (const older of await waitingChecksMessages().catch(() => [])) {
+    if (older.id !== saved?.id && older.draft?.channel === "email" && older.draft.subject === stored.subject) {
+      await updateDraft(older.id, { status: "held", bodyText: "Replaced by a newer draft of this registration. Nothing was sent." }).catch(() => null);
+    }
+  }
   const who = guest || "the next guest";
   const label = `Vehicle registration for ${who} at ${next.label}, ${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}`;
   const count = stored.to.split(/[,;]+/).filter((item) => item.trim()).length;

@@ -7,6 +7,8 @@ import { captureReminder } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { parityItems, updateParityItem } from "./parity/world.js";
 import { applyCorrections } from "./corrections.js";
+import { correctWeekdays } from "./weekdays.js";
+import { parityNow } from "./parity/clock.js";
 import { parityCancellationRaised, parityChecksMessages, parityDeleteChecksMessage, parityDeleteSkill, parityDraftsIssued, parityMarkCancellation, parityMarkDrafts, parityMarkReport, parityReplaceChecksMessage, parityReportIssued, paritySaveChecksMessage, paritySaveSkill, paritySkillList, parityUpdateChecksDraft } from "./parity/storeStub.js";
 import { normalizeSchedule } from "./skillSchedule.js";
 import type { Workflow } from "./workflow.js";
@@ -573,8 +575,13 @@ export async function addMessage(input: {
     ...(input.property ? { property: input.property } : {}),
     ...(input.checksItem ? { checks_item: input.checksItem } : {}),
   };
-  const storedDraft = Object.keys(extra).length ? { ...(input.draft ?? {}), ...extra } : input.draft ?? null;
-  const spoken = input.role === "assistant" ? applyCorrections(await composeChainAnswer(input.chatId, input.body)) : input.body;
+  // A weekday beside a date is computed from the date, in the answer, the subject and the draft.
+  const clock = parityNow() ?? new Date();
+  const draftIn = input.role === "assistant" && input.draft && input.draft.channel !== "skill"
+    ? { ...input.draft, subject: correctWeekdays(input.draft.subject ?? "", clock), body: correctWeekdays(input.draft.body ?? "", clock) }
+    : input.draft;
+  const storedDraft = Object.keys(extra).length ? { ...(draftIn ?? {}), ...extra } : draftIn ?? null;
+  const spoken = input.role === "assistant" ? correctWeekdays(applyCorrections(await composeChainAnswer(input.chatId, input.body)), clock) : input.body;
   const message: CopilotMessage = {
     id: randomUUID(),
     chat_id: input.chatId,

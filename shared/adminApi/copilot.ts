@@ -25,7 +25,7 @@ import { answerMailChain, asksMailBreakdown } from "../copilot/mailChain.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
-import { answerBuildingRegistrationItem, answerRegistrationStatus } from "../copilot/buildingRegistration.js";
+import { answerBuildingRegistrationItem, answerRegistrationStatus, asksBuildingRegistration } from "../copilot/buildingRegistration.js";
 import { closeHandledAnswer, proveOutgoingMail } from "../copilot/partnerStandard.js";
 import { parityNow } from "../copilot/parity/clock.js";
 import { applyCorrections, takeCorrection } from "../copilot/corrections.js";
@@ -910,6 +910,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         if (processed) {
           await addMessage({ chatId, role: "assistant", body: processed.body, steps: [{ text: processed.step }], thought: processed.thought });
           return done();
+        }
+        // The registration email, including "draft it exactly like the other emails" later in the chat:
+        // filled from the last sent registration, never written freehand by the agent.
+        const recentTurns = compHistory.slice(-6).map((row) => row.body).join("\n");
+        if (asksBuildingRegistration(text, recentTurns)) {
+          const drafted = await answerBuildingRegistrationItem(text, recentTurns).catch(() => null);
+          if (drafted) {
+            const ok = /is in Checks/.test(drafted.body);
+            await addMessage({
+              chatId,
+              role: "assistant",
+              body: drafted.body,
+              checksItem: drafted.item?.messageId ? drafted.item : null,
+              steps: [{ text: ok ? "Copied the last sent registration email" : "The building email was not drafted" }],
+              thought: ok ? "The draft is in Checks. Nothing was sent. Submit is what sends it." : "Nothing was drafted or sent.",
+            });
+            return done();
+          }
         }
         // Purchasing questions are answered from current listings, never from email or a "no tool" line.
         const purchasing = await answerProductAdvice(text, clock).catch(() => null);

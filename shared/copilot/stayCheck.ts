@@ -13,6 +13,8 @@ import { addMessage, cancellationRecorded, createChat, draftsRecorded, listChats
 import { addDays, torontoToday } from "./time.js";
 import type { CopilotDraft, CopilotMessage } from "./types.js";
 import { emailCardLabel, isRegistrationDraft } from "./checksLabel.js";
+import { correctWeekdays } from "./weekdays.js";
+import { parityNow } from "./parity/clock.js";
 import { BLUE_JAYS_PROCESS, registrationRecipients, registrationSignOff, registrationSubjectTemplate } from "./processFacts.js";
 import { syncBusinessTodos } from "./businessTodos.js";
 import { raiseDueFollowUps } from "./dueFollowUps.js";
@@ -272,7 +274,9 @@ function datedDraft(row: DraftCapture): DraftCapture {
 }
 
 export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise<CopilotMessage | null> {
-  const prepared = datedDraft(row);
+  const clock = parityNow() ?? new Date();
+  const dated = datedDraft(row);
+  const prepared = { ...dated, subject: correctWeekdays(dated.subject, clock), body: correctWeekdays(dated.body, clock), ...(dated.lead ? { lead: correctWeekdays(dated.lead, clock) } : {}) };
   const hospitable =
     prepared.hospitable ??
     (prepared.channel === "hospitable" && reservationId && !prepared.cleanerAssign

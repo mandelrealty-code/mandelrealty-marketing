@@ -10,7 +10,8 @@ import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
 import { setCompsSource, setListingSource } from "./compsAnswer.js";
 import { clearHandledFollowUps, resetGuestMessaging } from "./guestMessaging.js";
-import { capturedCommits, resetCaptures } from "./parity/capture.js";
+import { capturedCommits, capturedDrafts, resetCaptures } from "./parity/capture.js";
+import { correctWeekdays } from "./weekdays.js";
 import { ID, worldAt } from "./parity/catalog.js";
 import { setParityClock } from "./parity/clock.js";
 import { installOpsReservations } from "./parity/opsState.js";
@@ -253,6 +254,69 @@ if (!/client's email address on file in OPS/.test(proposalAnswer.body) || !/Subj
   const manikLabel = emailCardLabel(manikCard?.body ?? "", manikCard?.draft);
   if (/building|registration/i.test(manikLabel) || !/mktorcan@gmail\.com/.test(manikLabel) || !/Business Growth Discussion/.test(manikLabel)) fail(`Manik card label: ${manikLabel}`);
   if (capturedCommits().length) fail("an identity check sent something");
+}
+
+// Draft fidelity: the Husson registration copies the last sent one, dates in its style, unknowns kept.
+{
+  if (correctWeekdays("AirBNB Rental for Unit 318 from Saturday, October 15, 2026 - Wednesday, October 19, 2026") !== "AirBNB Rental for Unit 318 from Thursday, October 15, 2026 - Monday, October 19, 2026") fail("weekdays are not computed from the date");
+  const building = "supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com";
+  const sentBody = [
+    "Hello,",
+    "",
+    "Please see below the details for our AirBNB guest in Unit 318.",
+    "",
+    "Guest: Diane",
+    "Check-in: October 9, 2026",
+    "Check-out: October 12, 2026",
+    "",
+    "They have 1 vehicle and will be parking in P4-62.",
+    "",
+    "Make: Toyota",
+    "Model: Corolla",
+    "Colour: White",
+    "Plate: BKRP441",
+    "",
+    "Thank you,",
+    "",
+    "Shane, Co-Host 647-822-0448",
+  ];
+  const sentRegistration = { id: "diane-reg", mailbox: "gmail" as const, folder: "sent" as const, from: "Mandel Realty", email: "mandelrealtyteam@gmail.com", to: building, date: "2026-10-08T11:24:00-04:00",
+    subject: "AirBNB Rental for Unit 318 from October 9, 2026 - October 12, 2026", snippet: "AirBNB Rental for Unit 318", body: sentBody.join("\n"), airbnb: false };
+  const world = worldAt("2026-10-13T09:00:00-04:00", false, [sentRegistration]);
+  world.reservations.push(stay("00000000-0000-4000-8000-0000000a5502", ID.blue, "Husson Ali", "2026-10-15", "2026-10-19", [
+    { id: "husson-hello", at: "2026-10-12T18:00:00-04:00", role: "guest", name: "Husson", body: "Hi! Looking forward to the stay." },
+  ]));
+  installWorld(world);
+  resetCaptures();
+  resetParityChecksMessages();
+  const expectedBody = sentBody.map((line) => line
+    .replace("Guest: Diane", "Guest: Husson Ali")
+    .replace("October 9, 2026", "October 15, 2026")
+    .replace("October 12, 2026", "October 19, 2026")
+    .replace("They have 1 vehicle", "They have [count] vehicle")
+    .replace(/^(Make|Model|Colour|Plate): .*$/, (_line, label: string) => `${label}: [${label.toLowerCase()}]`)).join("\n");
+  const check = (label: string) => {
+    const draft = capturedDrafts().filter((row) => row.channel === "email").at(-1);
+    if (!draft) fail(`${label}: no draft`);
+    if (draft.subject !== "AirBNB Rental for Unit 318 from October 15, 2026 - October 19, 2026") fail(`${label} subject: ${draft.subject}`);
+    if (draft.to !== building) fail(`${label} recipients: ${draft.to}`);
+    if (draft.body !== expectedBody) fail(`${label} body is not the sent one line for line:\n${draft.body}\n--- expected ---\n${expectedBody}`);
+    if (/Saturday|Wednesday|\b1 vehicle|Toyota|BKRP441|Diane/.test(`${draft.subject}\n${draft.body}`)) fail(`${label}: an invented or carried-over fact: ${draft.body}`);
+  };
+  const first = await send("biz-husson", "draft the parking email for Husson at 20 Blue Jays Way");
+  if (!/Husson/.test(first.body) || !/is in Checks/.test(first.body) || /show me|paste|forward/i.test(first.body)) fail(`first draft: ${first.body}`);
+  if (/Saturday|Wednesday/.test(first.body) || (/October 15/.test(first.body) && !/Oct 15|October 15, 2026|Thu/.test(first.body))) fail(`answer weekdays: ${first.body}`);
+  check("first draft");
+  const again = await send("biz-husson", "draft it exactly like the other emails, and make sure the spacing is correct");
+  if (!/is in Checks/.test(again.body) || /show me|paste|forward|last email/i.test(again.body)) fail(`follow-up handed back: ${again.body}`);
+  if (again.steps?.[0]?.text !== "Copied the last sent registration email" || capturedDrafts().filter((row) => row.channel === "email").length !== 2) fail(`redo did not re-read the sent email: ${JSON.stringify(again.steps)}`);
+  check("redo");
+  const waitingRegs = parityChecksMessages().filter((row) => row.draft?.status === "waiting" && row.draft.subject === "AirBNB Rental for Unit 318 from October 15, 2026 - October 19, 2026");
+  if (waitingRegs.length !== 1) fail(`redo left ${waitingRegs.length} waiting drafts`);
+  // A weekday that has to appear is the computed one.
+  const leadCard = parityChecksMessages().at(-1);
+  if (leadCard && /Saturday|Wednesday/.test(leadCard.body)) fail(`card label weekday: ${leadCard.body}`);
+  if (capturedCommits().length) fail("drafting sent something");
 }
 
 setWebAnswerer(null);
