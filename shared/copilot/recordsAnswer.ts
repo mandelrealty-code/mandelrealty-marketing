@@ -9,6 +9,7 @@ import { listPmProperties } from "../pm/propertyStore.js";
 import { getSupabaseAdmin } from "../supabase.js";
 import { findPinnedStay } from "./stayAnswer.js";
 import { unitsAnswer } from "./memoryFiles.js";
+import { asksOutstanding } from "./outstandingAnswer.js";
 import { asksUnitSetup } from "./unitSetup.js";
 import { addDays, torontoToday } from "./time.js";
 
@@ -23,7 +24,7 @@ const CHANNELS = /\b(booking\.com|vrbo)\b/i;
 
 /** The question is asking for the managed-unit roster, not a fact about those units. */
 export function asksUnitRoster(text: string): boolean {
-  if (asksUnitSetup(text)) return false;
+  if (asksUnitSetup(text) || asksOutstanding(text)) return false;
   return COUNT.test(text) || NAMED.test(text) || MANAGE.test(text);
 }
 

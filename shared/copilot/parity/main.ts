@@ -10,6 +10,7 @@ import { latestInboxOffer } from "../../adminApi/gmail.js";
 import { buildBrief, quietBrief, readSavedBrief, readStoredBrief } from "../brief.js";
 import { saveBriefSnapshot } from "../store.js";
 import { answerDayPlan, answerWeekCleans, findPlanArrival, loadDayBoard, planText, cleansText, turnoverLine } from "../dayBoard.js";
+import { answerOutstanding, asksOutstanding } from "../outstandingAnswer.js";
 import { readGuestInbox } from "../guestInbox.js";
 import { answerRecords } from "../recordsAnswer.js";
 import { answerBuildingRegistration, answerRegistrationStatus, missingGuestLine } from "../buildingRegistration.js";
@@ -37,10 +38,11 @@ import {
 } from "./capture.js";
 import { BUILDING_MEMORY, CODE, ID, OPEN_ITEM, ryanMail, worldAt } from "./catalog.js";
 import { parityEnabled } from "./flag.js";
-import { failChecksDrafts, parityChecksMessages, paritySaveChecksMessage } from "./storeStub.js";
+import { failChecksDrafts, parityChecksMessages, paritySaveChecksMessage, resetParityChecksMessages } from "./storeStub.js";
 import { parityNow, setParityClock } from "./clock.js";
 import { chooseBriefOpenItem } from "../openItems.js";
 import type { BriefCard, BriefPayload } from "../types.js";
+import { saveChecksTodo } from "../store.js";
 import { installOpsClients, installOpsContract, opsRecordSignature } from "./opsState.js";
 import { parityItems, parityMemory, installWorld, setParityCleanerSetup, type ParityCleanerSetup, type ParityMail, type ParityReservation, type ParityWorld } from "./world.js";
 import { runCopilotPass } from "../pass.js";
@@ -1414,6 +1416,95 @@ async function fixtureBusinessTodos(): Promise<void> {
   expect(!/8 Charlotte 606: cleaner app onboarding/.test(clearedText), "finishing the cleaner-app steps clears the to-do", clearedText.slice(0, 1200));
 }
 
+const LIVE_TODO = "anything on the to do list today? for rajs unit or anyone else?";
+
+/** Oct 13: Raj's building notice, Husson's arrival, Diane's unassigned turnover, and Eloise's window. */
+async function fixtureOutstanding(): Promise<void> {
+  const now = new Date("2026-10-13T16:00:00-04:00");
+  const world = worldAt(now.toISOString());
+  world.items = [];
+  world.reservations = world.reservations.filter((row) => row.guest === "Diane" || row.guest === "Eloise");
+  const eloise = world.reservations.find((row) => row.guest === "Eloise");
+  if (!eloise) throw new Gap("Eloise is in the fixture", "Eloise was missing");
+  eloise.messages = [
+    { id: "eloise-windows", at: "2026-10-06T22:40:00Z", role: "guest", name: "Eloise", body: "Loving the loft! Only thing, the windows are pretty grimy, hard to see the view." },
+    { id: "eloise-promise", at: "2026-10-07T17:01:00Z", role: "host", name: "Sam", body: "Sorry about that, Eloise. We'll have the windows cleaned for you. Our cleaner can come any day from Oct 14. Would that work?" },
+    { id: "eloise-agreed", at: "2026-10-07T17:20:00Z", role: "guest", name: "Eloise", body: "Yes, any day on or after the 14th is fine. Mornings are best." },
+    { id: "eloise-confirm", at: "2026-10-07T17:24:00Z", role: "host", name: "Sam", body: "Perfect, I'll confirm the day closer to then." },
+  ];
+  world.reservations.push({
+    id: "00000000-0000-4000-8000-000000000h01",
+    code: "HMHUSSON01",
+    propertyId: ID.blue,
+    status: "accepted",
+    checkIn: "2026-10-15",
+    checkOut: "2026-10-18",
+    guest: "Husson",
+    adults: 2,
+    children: 0,
+    messages: [],
+  });
+  world.gmail = [
+    {
+      id: "blue-outage",
+      threadId: "blue-outage",
+      mailbox: "gmail",
+      folder: "inbox",
+      from: "Building management",
+      email: "desk@20bluejays.example",
+      to: "shane@mandelrealtygroup.com",
+      date: "2026-10-13T08:15:00-04:00",
+      subject: "Hot water and heating out at 20 Blue Jays Way",
+      snippet: "Hot water and heating are out. No restoration time has been given.",
+      body: "Hot water and heating are out at 20 Blue Jays Way Unit 318. No restoration time has been given.",
+      airbnb: false,
+    },
+  ];
+  installWorld(world);
+  setParityClock(now);
+  resetGuestMessaging();
+  resetParityChecksMessages();
+
+  expect(asksOutstanding(LIVE_TODO), "the live to-do question is a to-do question", LIVE_TODO);
+  expect(!(await answerRecords(LIVE_TODO)), "a to-do question is not answered with the property list", "records answered it");
+
+  const everyone = (await answerOutstanding(LIVE_TODO, now)) ?? "";
+  expect(/20 Blue Jays Way/.test(everyone) && /8 Charlotte 606/.test(everyone), "the answer is grouped by property", everyone);
+  expect(/Hot water and heating are out/.test(everyone) && /no restoration time given/.test(everyone), "Raj's unit includes this morning's building notice", everyone);
+  expect(/Husson arrives Thu Oct 15/.test(everyone), "Husson's arrival is on the list", everyone);
+  expect(/Unassigned turnover after Diane's Oct 12 checkout/.test(everyone), "Diane's checkout turnover is still unassigned", everyone);
+  expect(/Eloise's window cleaning, due tomorrow/.test(everyone), "Eloise's window cleaning opens tomorrow", everyone);
+  expect(/Most urgent: hot water and heating are out at 20 Blue Jays Way/.test(everyone), "the answer ends on the most urgent item", everyone.split("\n").at(-1) ?? "");
+  expect(!/We manage|Hospitable lists/.test(everyone), "the answer is the outstanding work", everyone.slice(0, 400));
+
+  const raj = (await answerOutstanding("what's outstanding for Raj's unit?", now)) ?? "";
+  expect(/Husson arrives Thu Oct 15/.test(raj) && /Diane's Oct 12 checkout/.test(raj) && /no restoration time given/.test(raj), "one client is that client's unit", raj);
+  expect(!/Eloise|Charlotte|window cleaning/.test(raj), "one client does not include the other units", raj);
+
+  await saveChecksTodo({
+    chatId: "checks",
+    body: "Precilla Daniel: contract sent Oct 2, still waiting on signature (11 days)",
+    report: {
+      title: "Precilla Daniel: contract sent Oct 2, still waiting on signature (11 days)",
+      summary: "OPS",
+      sections: [{ title: "OPS", rows: [{ who: "Precilla Daniel", meta: "OPS", details: ["todo:ops:precilla-signature"] }] }],
+    },
+  });
+  const withStore = (await answerOutstanding(LIVE_TODO, now)) ?? "";
+  expect(/Precilla Daniel: contract sent Oct 2, still waiting on signature \(11 days\)/.test(withStore), "a Checks to-do already in the item store is included", withStore);
+
+  const quiet = worldAt("2026-10-13T16:00:00-04:00");
+  quiet.items = [];
+  quiet.reservations = [];
+  quiet.gmail = [];
+  installWorld(quiet);
+  setParityClock(now);
+  resetGuestMessaging();
+  resetParityChecksMessages();
+  const empty = (await answerOutstanding("what's on the to-do list today?", now)) ?? "";
+  expect(empty === "Nothing needs you today", "a clear day says nothing needs you and nothing else", empty);
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -1450,6 +1541,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "30", title: "A 39-night stay blocks every all-empty night before it leaves, and no past date is offered", run: fixtureLongStayAvailability },
   { id: "31", title: "A stay that arrived before the asked window still blocks its nights inside it", run: fixtureStayBeforeWindow },
   { id: "35", title: "OPS, cleaner-app onboarding, and unanswered mail are to-dos until the records show them done", run: fixtureBusinessTodos },
+  { id: "36", title: "A to-do question is the outstanding work, grouped by property", run: fixtureOutstanding },
 ];
 
 function guard(): void {

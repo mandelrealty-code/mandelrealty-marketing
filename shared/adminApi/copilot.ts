@@ -31,6 +31,7 @@ import { parityNow } from "../copilot/parity/clock.js";
 import { applyCorrections, takeCorrection } from "../copilot/corrections.js";
 import { refuseCatalogPurchase } from "../copilot/catalogPurchase.js";
 import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
+import { answerOutstanding } from "../copilot/outstandingAnswer.js";
 import { answerStayDetail, openDaySheet, type StayCard } from "../copilot/stayAnswer.js";
 import type { PropertyIdentity } from "../copilot/propertyIdentity.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
@@ -1386,6 +1387,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
               : /is in Checks/.test(registration)
                 ? "The draft is in Checks. Nothing was sent. Submit is what sends it."
                 : "The building email was not saved.",
+          });
+          return done();
+        }
+        const outstanding = await answerOutstanding(text, clock);
+        if (outstanding) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: outstanding,
+            steps: [{ text: outstanding === "Nothing needs you today" ? "Nothing is outstanding" : "Read today's outstanding work" }],
+            thought: "This is the same work Checks and Overview read. Nothing was sent.",
           });
           return done();
         }
