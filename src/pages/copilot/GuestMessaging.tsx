@@ -1,4 +1,4 @@
-import { guestQueueRows } from "../../../shared/copilot/guestQueueRows";
+import { NO_GUEST_FILTERS, STAY_LABELS, emptyInboxLine, emptyInboxSub, filterInbox, waitedFor, type GuestFilters, type GuestStatusFilter, type GuestStayFilter } from "../../../shared/copilot/guestFilters";
 import { useEffect, useRef, useState } from "react";
 import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
 import type { StayCard } from "../../../shared/copilot/types";
@@ -34,6 +34,8 @@ export function GuestMessaging({
   onInquiry?: (id: string, action: "approve" | "decline") => Promise<string>;
   onImprove?: (text: string) => Promise<string>;
 }) {
+  // Kept while a thread is open, so Back returns to the same filtered list. A reload clears them.
+  const [filters, setFilters] = useState<GuestFilters>(NO_GUEST_FILTERS);
   if (!queue) {
     return <div className="cp-gq"><h1>Guest messaging</h1><p className="cp-gq-quiet">Loading guests.</p></div>;
   }
@@ -61,12 +63,63 @@ export function GuestMessaging({
       />
     );
   }
-  return <Queue queue={queue} onOpen={onOpen} onRefresh={onRefresh} />;
+  return <Queue queue={queue} filters={filters} onFilters={setFilters} onOpen={onOpen} onRefresh={onRefresh} />;
 }
 
-function Queue({ queue, onOpen, onRefresh }: { queue: GuestQueue; onOpen: (row: GuestRow) => void; onRefresh?: () => void }) {
-  const rows = guestQueueRows(queue);
-  const followUps = queue.followUps ?? [];
+function torontoDay(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+const STATUS_CHIPS: { key: GuestStatusFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "needs", label: "Needs reply" },
+  { key: "fu", label: "Follow-ups" },
+  { key: "inq", label: "Inquiries" },
+];
+const STAYS: GuestStayFilter[] = ["all", "upcoming", "now", "past"];
+
+function Queue({
+  queue,
+  filters,
+  onFilters,
+  onOpen,
+  onRefresh,
+}: {
+  queue: GuestQueue;
+  filters: GuestFilters;
+  onFilters: (next: GuestFilters) => void;
+  onOpen: (row: GuestRow) => void;
+  onRefresh?: () => void;
+}) {
+  const [menu, setMenu] = useState<"" | "property" | "stay">("");
+  const [sheet, setSheet] = useState(false);
+  const inbox = filterInbox(queue, filters, torontoDay());
+  const now = Date.now();
+  const set = (patch: Partial<GuestFilters>) => { onFilters({ ...filters, ...patch }); setMenu(""); };
+  const clear = () => { onFilters(NO_GUEST_FILTERS); setMenu(""); };
+  const any = filters.status !== "all" || filters.property !== "all" || filters.stay !== "all" || Boolean(filters.q.trim());
+  const propertyLabel = inbox.properties.find((row) => row.id === filters.property)?.label ?? "";
+  const sheetCount = (filters.property !== "all" ? 1 : 0) + (filters.stay !== "all" ? 1 : 0);
+  const shown = inbox.rows.length + inbox.followUps.length;
+  const chips = STATUS_CHIPS.map((chip) => (
+    <button key={chip.key} type="button" aria-pressed={filters.status === chip.key} className={`cp-gq-chip${filters.status === chip.key ? " on" : ""}`} onClick={() => set({ status: chip.key })}>
+      {chip.label}
+      <span className={chip.key === "needs" && inbox.counts.needs ? "needs" : ""}>{inbox.counts[chip.key]}</span>
+    </button>
+  ));
+  const search = (
+    <label className="cp-gq-search">
+      <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden><circle cx="5.5" cy="5.5" r="4.25" stroke="currentColor" strokeWidth="1.5" fill="none" /><path d="M8.7 8.7L12 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+      <input type="search" aria-label="Search guest name or message" placeholder="Search guest or message" value={filters.q} onChange={(e) => onFilters({ ...filters, q: e.target.value })} />
+      {filters.q ? (
+        <button type="button" aria-label="Clear search" onClick={() => onFilters({ ...filters, q: "" })}>
+          <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden><path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+        </button>
+      ) : null}
+    </label>
+  );
+  const caret = <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden><path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  const propertyOptions = [{ id: "all", label: "All properties" }, ...inbox.properties];
   return (
     <div className="cp-gq">
       <h1>Guest messaging</h1>
@@ -76,10 +129,68 @@ function Queue({ queue, onOpen, onRefresh }: { queue: GuestQueue; onOpen: (row: 
           {onRefresh ? <button type="button" onClick={onRefresh}>Try again</button> : null}
         </p>
       ))}
-      {followUps.length ? (
+      <div className="cp-gq-bar">
+        <div className="cp-gq-desk">
+          <div className="cp-gq-chips">
+            {chips}
+            <span className="cp-gq-grow" />
+            {any ? <button type="button" className="cp-gq-clear" onClick={clear}>Clear filters</button> : null}
+          </div>
+          <div className="cp-gq-pick">
+            <div className="cp-gq-menuwrap">
+              <button type="button" aria-haspopup="listbox" aria-expanded={menu === "property"} className={`cp-gq-select${filters.property !== "all" ? " on" : ""}`} onClick={() => setMenu(menu === "property" ? "" : "property")}>
+                {filters.property === "all" ? "All properties" : propertyLabel}{caret}
+              </button>
+              {menu === "property" ? (
+                <div role="listbox" aria-label="Property" className="cp-gq-menu wide">
+                  {propertyOptions.map((row) => (
+                    <button key={row.id} type="button" role="option" aria-selected={filters.property === row.id} className={filters.property === row.id ? "on" : ""} onClick={() => set({ property: row.id })}>
+                      <span>{row.label}</span><em>{inbox.propertyCounts.get(row.id) ?? 0}</em>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div className="cp-gq-menuwrap">
+              <button type="button" aria-haspopup="listbox" aria-expanded={menu === "stay"} className={`cp-gq-select${filters.stay !== "all" ? " on" : ""}`} onClick={() => setMenu(menu === "stay" ? "" : "stay")}>
+                {STAY_LABELS[filters.stay]}{caret}
+              </button>
+              {menu === "stay" ? (
+                <div role="listbox" aria-label="Stay" className="cp-gq-menu">
+                  {STAYS.map((key) => (
+                    <button key={key} type="button" role="option" aria-selected={filters.stay === key} className={filters.stay === key ? "on" : ""} onClick={() => set({ stay: key })}>
+                      <span>{key === "all" ? "All" : STAY_LABELS[key]}</span><em>{inbox.stayCounts[key]}</em>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            {search}
+          </div>
+        </div>
+        <div className="cp-gq-mob">
+          <div className="cp-gq-chips scroll">{chips}</div>
+          <div className="cp-gq-pick">
+            {search}
+            <button type="button" aria-haspopup="dialog" className={`cp-gq-select tall${sheetCount ? " on" : ""}`} onClick={() => setSheet(true)}>
+              <svg width="14" height="12" viewBox="0 0 14 12" aria-hidden><path d="M1 2h12M3 6h8M5 10h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+              {sheetCount ? `Filters · ${sheetCount}` : "Filters"}
+            </button>
+          </div>
+          {sheetCount ? (
+            <div className="cp-gq-pills">
+              {filters.property !== "all" ? <button type="button" aria-label={`Remove filter ${propertyLabel}`} onClick={() => set({ property: "all" })}>{propertyLabel}<Cross /></button> : null}
+              {filters.stay !== "all" ? <button type="button" aria-label={`Remove filter ${STAY_LABELS[filters.stay]}`} onClick={() => set({ stay: "all" })}>{STAY_LABELS[filters.stay]}<Cross /></button> : null}
+              <button type="button" className="cp-gq-clear" onClick={clear}>Clear filters</button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {menu ? <div className="cp-gq-scrim" onClick={() => setMenu("")} /> : null}
+      {inbox.followUps.length ? (
         <div className="cp-gq-fus">
           <span className="cp-gq-label">Follow-ups</span>
-          {followUps.map((row) => (
+          {inbox.followUps.map((row) => (
             <button key={row.id} type="button" className="cp-gq-fu" onClick={() => onOpen(rowFromFollowUp(row))}>
               <Face name={row.guest} photo={row.guestPhoto} initials={row.initials} size={28} />
               {row.kind === "inquiry" ? <span className="cp-gq-tag">INQUIRY</span> : null}
@@ -90,26 +201,85 @@ function Queue({ queue, onOpen, onRefresh }: { queue: GuestQueue; onOpen: (row: 
           ))}
         </div>
       ) : null}
-      <div className="cp-gq-list">
-        {rows.map((row) => (
-          <button key={row.id} type="button" className="cp-gq-row" onClick={() => onOpen(row)}>
-            <Face name={row.guest} photo={row.guestPhoto} initials={row.initials} size={36} />
-            <span className="cp-gq-copy">
-              <span className="cp-gq-title"><strong>{row.guest}</strong><em> · {row.property}{row.dates ? ` · ${row.dates}` : ""}</em></span>
-              <span className="cp-gq-last">{lastLine(row)}</span>
-            </span>
-            <span className="cp-gq-time">{activityTime(row.activityAt)}</span>
-          </button>
-        ))}
-        {rows.length === 0 && !queue.failed.length ? (
-          <div className="cp-gq-empty">
-            <span>No conversations need you right now.</span>
-            <em>New guest messages appear here as they arrive.</em>
+      {inbox.rows.length ? (
+        <div className="cp-gq-list">
+          {inbox.rows.map((row) => {
+            const needs = inbox.needs.has(row.id);
+            const wait = needs ? waitedFor(row.activityAt, now) : "";
+            const last = lastLine(row);
+            return (
+              <button
+                key={row.id}
+                type="button"
+                className={`cp-gq-row${needs ? " needs" : ""}`}
+                aria-label={`${row.guest}${needs ? `, needs reply${wait ? `, waiting ${wait}` : ""}` : ", answered"}. ${last}`}
+                onClick={() => onOpen(row)}
+              >
+                <i className="cp-gq-dot" aria-hidden />
+                <Face name={row.guest} photo={row.guestPhoto} initials={row.initials} size={36} />
+                <span className="cp-gq-copy">
+                  <span className="cp-gq-title">
+                    {row.inquiry ? <span className="cp-gq-tag">INQUIRY</span> : null}
+                    <strong>{row.guest}</strong><em> · {row.property}{row.dates ? ` · ${row.dates}` : ""}</em>
+                  </span>
+                  <span className="cp-gq-last">{!needs && row.lastBy ? `${row.lastBy}: ` : ""}{last}</span>
+                </span>
+                <span className="cp-gq-side">
+                  <span className="cp-gq-time">{activityTime(row.activityAt)}</span>
+                  {wait ? <span className="cp-gq-wait"><span className="long">Waiting </span>{wait}</span> : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+      {!shown && !queue.failed.length && !any ? (
+        <div className="cp-gq-empty">
+          <span>No conversations need you right now.</span>
+          <em>New guest messages appear here as they arrive.</em>
+        </div>
+      ) : null}
+      {!shown && any ? (
+        <div className="cp-gq-empty" aria-live="polite">
+          <span>{emptyInboxLine(filters, propertyLabel)}</span>
+          <em>{emptyInboxSub(filters, inbox.statusTotal)} <button type="button" className="cp-gq-clear ink" onClick={clear}>Clear filters</button></em>
+        </div>
+      ) : null}
+      {sheet ? (
+        <div className="cp-gq-sheet">
+          <div className="cp-gq-sheet-scrim" onClick={() => setSheet(false)} />
+          <div role="dialog" aria-label="Filters" className="cp-gq-sheet-card">
+            <span className="grip" />
+            <div className="head"><strong>Filters</strong><button type="button" onClick={() => setSheet(false)}>Done</button></div>
+            <span className="sub">Property</span>
+            <div className="radios">
+              {propertyOptions.map((row) => (
+                <button key={row.id} type="button" role="radio" aria-checked={filters.property === row.id} className={filters.property === row.id ? "on" : ""} onClick={() => onFilters({ ...filters, property: row.id })}>
+                  <i /><span>{row.label}</span><em>{inbox.propertyCounts.get(row.id) ?? 0}</em>
+                </button>
+              ))}
+            </div>
+            <span className="sub">Stay</span>
+            <div className="stays">
+              {STAYS.map((key) => (
+                <button key={key} type="button" aria-pressed={filters.stay === key} className={filters.stay === key ? "on" : ""} onClick={() => onFilters({ ...filters, stay: key })}>
+                  <span>{key === "all" ? "All" : STAY_LABELS[key]}</span><em>{inbox.stayCounts[key]}</em>
+                </button>
+              ))}
+            </div>
+            <div className="foot">
+              <button type="button" className="cp-gq-clear" onClick={() => onFilters({ ...filters, property: "all", stay: "all" })}>Clear filters</button>
+              <button type="button" className="show" onClick={() => setSheet(false)}>{shown === 0 ? "No matches" : `Show ${shown} ${shown === 1 ? "result" : "results"}`}</button>
+            </div>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function Cross() {
+  return <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden><path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
 }
 
 function Thread({

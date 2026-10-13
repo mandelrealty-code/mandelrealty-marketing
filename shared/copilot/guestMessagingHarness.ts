@@ -35,11 +35,12 @@ import {
   guestTabText,
   improveGuestDraft,
 } from "./guestMessaging.js";
-import type { GuestFollowUp } from "./guestTypes.js";
+import type { GuestFollowUp, GuestQueue, GuestRow } from "./guestTypes.js";
 import { guestQueueRows } from "./guestQueueRows.js";
 import { installWorld, parityThreadReads, pushParityMessage } from "./parity/world.js";
 import { saveGuestQueueSnapshot } from "./store.js";
 import { buildBrief } from "./brief.js";
+import { NO_GUEST_FILTERS, emptyInboxLine, filterInbox, stayPhase, waitedFor } from "./guestFilters.js";
 import { BLANK, closeFollowUpEverywhere } from "./dueFollowUps.js";
 import { runUnattendedChecks } from "./stayCheck.js";
 import { parityChecksMessages, resetParityChecksMessages } from "./parity/storeStub.js";
@@ -1405,6 +1406,45 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   if (capturedCommits().length) fail(`the checks sent ${capturedCommits().map((row) => row.detail).join(" ")}`);
   await clearHandledFollowUps();
   resetParityChecksMessages();
+}
+
+// Inbox filters: Needs reply is the waiting set the sidebar counts; property, stay and search narrow it.
+{
+  const row = (id: string, propertyId: string, property: string, checkIn: string, checkOut: string, preview: string, activityAt: string, extra: Partial<GuestRow> = {}): GuestRow => ({
+    id, guest: id[0]!.toUpperCase() + id.slice(1), first: id, initials: id.slice(0, 1).toUpperCase(), guestPhoto: "", property, propertyId, propertyPhoto: "",
+    asked: "", askedEn: "", language: "", wait: "", waitedMs: 0, thanks: false, lane: "reply", status: "", statusLead: "", statusRest: "", watch: "", when: "",
+    urgent: false, dates: "", checkIn, checkOut, mediaLabel: "", lastNote: "", activityAt, preview, ...extra,
+  });
+  const imani = row("imani", "p318", "20 Blue Jays Way Unit 318", "2026-10-12", "2026-10-17", "What’s the wifi password again?", "2026-10-13T18:31:00Z");
+  const diane = row("diane", "pros", "41 Roseglor Cres", "2026-10-11", "2026-10-15", "The smoke detector keeps chirping.", "2026-10-13T18:18:00Z");
+  const jules = row("jules", "pros", "41 Roseglor Cres", "2026-10-16", "2026-10-19", "Is parking included?", "2026-10-12T20:12:00Z", { inquiry: true });
+  const michael = row("michael", "p606", "8 Charlotte 606", "2026-10-24", "2026-10-31", "You’re all set for the 24th.", "2026-10-13T16:30:00Z", { lastBy: "Sam" });
+  const lee = row("lee", "pshaw", "1065 Shaw Street", "2026-09-25", "2026-10-01", "Safe travels.", "2026-10-02T12:15:00Z");
+  const queue = {
+    connected: true, line: "", summaryLead: "", summaryRest: "", answer: "", failed: [], closedFollowUps: [],
+    waiting: [imani, diane, jules], onGuest: [michael], held: [], thanks: [], quiet: [lee],
+    properties: [{ id: "p318", label: "20 Blue Jays Way Unit 318", failed: false }, { id: "pros", label: "41 Roseglor Cres", failed: false }, { id: "p606", label: "8 Charlotte 606", failed: false }, { id: "pshaw", label: "1065 Shaw Street", failed: false }],
+    followUps: [{ ...(fuQueue.followUps[0] as GuestFollowUp), id: "fu-diane", reservationId: "diane", guest: "Diane", propertyId: "pros", property: "41 Roseglor Cres", checkIn: "2026-10-11", checkOut: "2026-10-15", line: "Battery promised" }],
+  } as GuestQueue;
+  const today = "2026-10-13";
+  const all = filterInbox(queue, NO_GUEST_FILTERS, today);
+  if (all.rows.map((item) => item.id).join(",") !== "imani,diane,michael,jules,lee") fail(`inbox order ${all.rows.map((item) => item.id).join(",")}`);
+  if (all.counts.all !== 5 || all.counts.needs !== 3 || all.counts.fu !== 1 || all.counts.inq !== 1) fail(`chip counts ${JSON.stringify(all.counts)}`);
+  if (all.counts.needs !== queue.waiting.length) fail("Needs reply does not match the sidebar count");
+  if (all.needs.has("michael") || !all.needs.has("imani")) fail("answered and waiting rows are not told apart");
+  const needsRos = filterInbox(queue, { ...NO_GUEST_FILTERS, status: "needs", property: "pros" }, today);
+  if (needsRos.rows.map((item) => item.id).join(",") !== "diane,jules" || needsRos.followUps.length) fail(`needs at Roseglor ${needsRos.rows.map((item) => item.id).join(",")}`);
+  if (needsRos.propertyCounts.get("p318") !== 1 || needsRos.propertyCounts.get("all") !== 3) fail("property counts do not follow the status chip");
+  const now = filterInbox(queue, { ...NO_GUEST_FILTERS, stay: "now" }, today);
+  if (now.rows.map((item) => item.id).join(",") !== "imani,diane") fail(`staying now ${now.rows.map((item) => item.id).join(",")}`);
+  if (stayPhase("2026-10-16", "2026-10-19", today) !== "upcoming" || stayPhase("2026-09-25", "2026-10-13", today) !== "past") fail("stay phases");
+  const fuOnly = filterInbox(queue, { ...NO_GUEST_FILTERS, status: "fu" }, today);
+  if (fuOnly.rows.length || fuOnly.followUps.length !== 1) fail("the Follow-ups chip did not show only that group");
+  const searched = filterInbox(queue, { ...NO_GUEST_FILTERS, q: "smoke" }, today);
+  if (searched.rows.map((item) => item.id).join(",") !== "diane") fail("search");
+  const empty = filterInbox(queue, { ...NO_GUEST_FILTERS, status: "needs", property: "pshaw" }, today);
+  if (empty.rows.length || emptyInboxLine({ ...NO_GUEST_FILTERS, status: "needs", property: "pshaw" }, "1065 Shaw Street") !== "No conversations need a reply at 1065 Shaw Street.") fail("empty line");
+  if (waitedFor("2026-10-13T18:22:00Z", Date.parse("2026-10-13T18:31:00Z")) !== "9m" || waitedFor("2026-10-12T18:00:00Z", Date.parse("2026-10-13T19:00:00Z")) !== "1d") fail("wait labels");
 }
 
 console.log("Guest messaging harness passed.");

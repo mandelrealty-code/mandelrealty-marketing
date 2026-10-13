@@ -50,6 +50,8 @@ export type GuestRow = {
   preview?: string;
   /** An inquiry conversation: its messages come from the inquiry, not a reservation. */
   inquiry?: boolean;
+  /** The host who sent the latest message, when a host sent it. The inbox shows "Sam: …". */
+  lastBy?: string;
 };
 
 export type GuestBubble = {

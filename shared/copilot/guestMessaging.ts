@@ -599,6 +599,8 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       const list = (row: GuestRow, bucket: GuestRow[]) => {
         row.activityAt = activity;
         row.preview = last ? clip(last.body.trim() || (last.media.length ? "Sent a photo" : ""), 140) : "";
+        row.lastBy = last?.role === "host" ? (last.name.trim().split(/\s+/)[0] || "") : "";
+        if (/^(unknown|host)$/i.test(row.lastBy)) row.lastBy = "";
         row.inquiry = stay.inquiry || undefined;
         bucket.push(row);
       };
