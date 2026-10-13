@@ -7,6 +7,7 @@ import { PDFDocument, StandardFonts } from "pdf-lib";
 import { limitToSavedSelection } from "./hospitableConnection.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { hostMoney, loadHostRevenue } from "./ops.js";
+import { asksPropertyReport } from "./reportParse.js";
 
 export type ReportFile = { filename: string; mime: string; data: string };
 
@@ -63,12 +64,19 @@ async function revenuePdf(lines: string[], filename: string): Promise<ReportFile
 
 export async function answerPdfReport(question: string, now = new Date()): Promise<PdfReport | null> {
   if (!asksPdfReport(question)) return null;
-  if (/quarter/i.test(question)) return refused("I can't make a quarterly report as a PDF.");
-  if (/owner statement|\bstatement\b/i.test(question)) return refused("I can't make an owner statement as a PDF.");
-  if (/\bproposal\b/i.test(question)) return refused("I can't make a proposal as a PDF.");
-  if (!/\brevenue\b/i.test(question)) return refused("I can't make that report as a PDF.");
+  // Property, owner, client, and period reports are made by the report generator, not here.
+  if (asksPropertyReport(question)) return null;
+  if (/owner statement|\bstatement\b/i.test(question)) {
+    return refused("Owner statements come from OPS billing, not from chat. I can make the owner report PDF for that property and period instead. Which property and period?");
+  }
+  if (/\bproposal\b/i.test(question)) {
+    return refused("Proposals are drafted in the proposal flow, not as a chat PDF. Say “draft a proposal for” and the client, and I'll start it there.");
+  }
+  if (/quarter/i.test(question) || !/\brevenue\b/i.test(question)) {
+    return refused("I make that as a report PDF. Which property is it for (or all of them, internal), and which period?");
+  }
   const when = monthParts(question, now);
-  if (!when) return refused("I can't make that PDF. Say which month the revenue report should cover.");
+  if (!when) return refused("Which month should the revenue PDF cover? For example, last month or September 2026.");
   let properties;
   try {
     properties = await limitToSavedSelection(await listPmProperties());

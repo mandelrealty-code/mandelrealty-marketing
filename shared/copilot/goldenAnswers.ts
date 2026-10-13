@@ -13,6 +13,7 @@ import { isDemoted, noteSignal, rankOverview, signalKey, type OverviewInput, typ
 import { answerOps } from "./ops.js";
 import { linesInPdf } from "./contractPdf.js";
 import { answerPdfReport } from "./revenueReport.js";
+import { answerPropertyReport } from "./reportAnswer.js";
 import { ID, reservations, worldAt } from "./parity/catalog.js";
 import { failNextOpsPropertyRead, installOpsClients, installOpsReservations } from "./parity/opsState.js";
 import { installWorld } from "./parity/world.js";
@@ -183,9 +184,11 @@ const summed = propertyFigures.reduce((sum, figure) => sum + Number(figure.repla
 if (summed !== 350000) fail("september pdf", `figures summed to ${summed}`);
 if (!pdfText.includes("Total: $3,500.00 CAD") || !pdfText.includes("Generated October 7, 2026")) fail("september pdf", pdfText);
 if (!pdfReport.body.includes("Total: $3,500.00 CAD") || !pdfReport.body.includes("Generated October 7, 2026")) fail("september pdf", pdfReport.body);
-const quarterly = await answerPdfReport("Make me a PDF of the quarterly report", septemberWhen);
-if (!quarterly || quarterly.file || /\$3,500|\$1,000|\$2,500/.test(quarterly.body) || !/can't make a quarterly report as a PDF/.test(quarterly.body)) {
-  fail("quarterly pdf", quarterly?.body || "no refusal");
+// A quarterly report is the report generator's, never a bare refusal: it names the quarter and asks the property.
+if (await answerPdfReport("Make me a PDF of the quarterly report", septemberWhen)) fail("quarterly pdf", "the revenue PDF path took a report request");
+const quarterly = await answerPropertyReport("Make me a PDF of the quarterly report", "", septemberWhen);
+if (!quarterly || quarterly.file || /can't/i.test(quarterly.body) || !/Q3 2026 \(July 1 to September 30, 2026\)/.test(quarterly.body) || !/Which property/.test(quarterly.body)) {
+  fail("quarterly pdf", quarterly?.body || "no answer");
 }
 failNextOpsPropertyRead(ID.blue);
 try {

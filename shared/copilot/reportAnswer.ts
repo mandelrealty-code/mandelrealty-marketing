@@ -29,6 +29,7 @@ import {
 import { writeReportProse, type Recommendation } from "./reportProse.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "./fileError.js";
 import { findStoredReport, nextReportSeq, rememberReport } from "./reportStore.js";
+import { clientNamed, clientProperties, ownerMismatch } from "./reportClients.js";
 
 export type ReportAnswer = {
   body: string;
@@ -69,27 +70,45 @@ async function composePropertyReport(text: string, prior = "", now = new Date())
     };
   }
   const period = parsed.period;
-  if (!period) return { body: "Which period should the report cover?", file: null, thought: HELD };
+  if (!period) return { body: "Which period should the report cover: last month, the last 3 months, last quarter, or year to date?", file: null, thought: HELD };
   let properties;
   try {
     properties = await managedReportProperties();
   } catch {
     return { body: "The report was not made. OPS didn't return the properties.", file: null, thought: HELD };
   }
+  // A named client resolves to their property. Their report is the owner report unless "internal" is asked.
+  const client = clientNamed(parsed.request);
   const named = properties.filter((property) => mentionsProperty(parsed.request, property));
-  const selected = /\ball properties\b|\bportfolio\b|\bevery property\b/i.test(parsed.request) || (named.length === 0 && parsed.wantsAll)
+  const owned = client && !named.length ? clientProperties(client, properties) : [];
+  const selected = /\ball properties\b|\bportfolio\b|\bevery property\b/i.test(parsed.request) || (named.length === 0 && !client && parsed.wantsAll)
     ? properties
-    : named;
+    : named.length ? named : owned;
+  const choices = properties.map((property) => property.name);
+  if (client && !named.length && !owned.length) {
+    return {
+      body: `${client.full}'s property, ${client.property}, is not in the Hospitable selection, so I can't report on it. I can make the report for ${joinOr(choices)} instead. Which one?`,
+      file: null,
+      thought: "Reports cover the properties selected in the Hospitable connection. Nothing was sent.",
+    };
+  }
   if (parsed.audience === "client" && selected.length !== 1) {
+    const who = client ? `for ${client.full.split(" ")[0]} ` : "";
     return {
       body: selected.length > 1
-        ? `A client report covers one property. I found ${selected.map((property) => property.name).join(" and ")}.`
-        : "A client report covers one property. Which property should I use?",
+        ? `Owner report ${who}for ${joinOr(selected.map((property) => property.name))}, or an internal report covering ${selected.length === properties.length ? "all of them" : "them together"}?`
+        : `Which property is the owner report for: ${joinOr(choices)}?`,
+      file: null,
+      thought: "An owner report covers one property. Nothing was sent.",
+    };
+  }
+  if (!selected.length) {
+    return {
+      body: `Which property should the report for ${periodWords(period).replace(/^(.+?): (.+)$/, "$1 ($2)")} cover: ${choices.join(", ")}, or all ${choices.length} together (internal)?`,
       file: null,
       thought: "Nothing was sent.",
     };
   }
-  if (!selected.length) return { body: "Which property should the report cover?", file: null, thought: "Nothing was sent." };
   const blocks = blocksFor(parsed.request, parsed.audience, period, selected.length);
   const { portfolio, failures } = await buildPortfolio({
     properties: selected,
@@ -100,6 +119,9 @@ async function composePropertyReport(text: string, prior = "", now = new Date())
     now,
   });
   if (failures.length) return { body: reconcileMessage(failures), file: null, thought: HELD };
+  // The client list is the ground truth for who owns what. A different OPS owner is said, not hidden.
+  const mismatch = client && selected.length === 1 ? ownerMismatch(client, selected[0]!.name, portfolio.properties[0]?.ownerName || "") : "";
+  if (client && portfolio.properties[0]) portfolio.properties[0].ownerName = client.full;
   const prose = await writeReportProse(portfolio, blocks);
   const owner = portfolio.properties[0]?.ownerName || "";
   const seq = String(nextReportSeq()).padStart(3, "0");
@@ -135,11 +157,13 @@ async function composePropertyReport(text: string, prior = "", now = new Date())
   });
   const body = [
     `Asked: "${parsed.request}"`,
-    `Period: ${periodLine(period)}, Toronto time.`,
+    client && selected.length === 1 ? `${portfolio.audience === "client" ? "Owner report" : "Internal report"} for ${client.full}, ${selected[0]!.name}.` : "",
+    `Period: ${periodWords(period)} (${periodLine(period)}), Toronto time.`,
+    mismatch,
     totals,
     `Report ${visibleId}.`,
     "The PDF is ready to download.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
   return { body, file, thought: MADE };
 }
 
@@ -369,6 +393,21 @@ function leakedName(text: string, portfolio: PortfolioFigures, all: { name: stri
     }
   }
   return null;
+}
+
+/** "last 3 months: July 1 to September 30, 2026" */
+function periodWords(period: { label: string; start: string; end: string; kind: string }): string {
+  const day = (iso: string, year: boolean) => new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", ...(year ? { year: "numeric" } : {}), timeZone: "UTC" }).format(new Date(`${iso}T12:00:00Z`));
+  const span = period.start.slice(0, 4) === period.end.slice(0, 4)
+    ? `${day(period.start, false)} to ${day(period.end, true)}`
+    : `${day(period.start, true)} to ${day(period.end, true)}`;
+  const bare = !period.label || /^\d{4}-\d{2}/.test(period.label) || /^(january|february|march|april|may|june|july|august|september|october|november|december)( \d{4})?$/i.test(period.label);
+  return bare ? span : `${period.label}: ${span}`;
+}
+
+function joinOr(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
 }
 
 function initials(name: string): string {

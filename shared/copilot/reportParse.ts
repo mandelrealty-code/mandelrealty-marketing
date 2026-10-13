@@ -3,6 +3,8 @@
  * and which blocks belong in it are decided here, before any figure is computed.
  */
 
+import { clientNamed } from "./reportClients.js";
+
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 const MONTH_SHORT = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
@@ -45,7 +47,9 @@ export function asksReportAgain(text: string): boolean {
 export function asksPropertyReport(text: string): boolean {
   const asked = text.trim();
   if (!asked) return false;
-  if (/\bpdf\b/i.test(asked)) return false;
+  // The plain monthly revenue-by-property PDF has its own path. Every other PDF report comes here.
+  if (/\bpdf\b/i.test(asked) && /\brevenue\b/i.test(asked) && !clientNamed(asked) && !/\b(owner|client|internal|quarter|quarterly|last|past|year)\b/i.test(asked)) return false;
+  if (clientNamed(asked) && /\b(report|statement)\b/i.test(asked)) return true;
   if (asksReportAgain(asked)) return true;
   if (/\breport\b/i.test(asked) && /\b(generate|create|prepare|make|build|owner|client|internal|property|properties|for)\b/i.test(asked)) return true;
   if (/\bour revenue\b/i.test(asked)) return true;
@@ -61,7 +65,7 @@ export function parseReportRequest(text: string, now: Date): ParsedReport | { er
     return { again: true, audience: "internal", period: null, wantsAll: false, blocks: emptyBlocks(), request };
   }
   const period = periodOf(request, now);
-  if (!period) return { error: "Which period should the report cover?" };
+  if (!period) return { error: "Which period should the report cover: last month, the last 3 months, last quarter, or year to date?" };
   const audience = audienceOf(request);
   const wantsAll = /\ball properties\b|\bportfolio\b|\bour revenue\b|\bevery property\b/i.test(request);
   const propertyCountHint = wantsAll ? 4 : 1;
@@ -109,6 +113,8 @@ function emptyBlocks(): ReportBlocks {
 }
 
 export function audienceOf(text: string): ReportAudience {
+  // A report for a named client is their owner report unless "internal" is asked for.
+  if (clientNamed(text)) return /\binternal\b/i.test(text) ? "internal" : "client";
   if (/\b(client report|owner report|owner'?s report|client version|owner version)\b/i.test(text)) return "client";
   if (/\bfor the (owner|client)\b/i.test(text)) return "client";
   if (/\b(client|owner)\b/i.test(text) && /\breport\b/i.test(text)) return "client";
@@ -123,10 +129,12 @@ export function periodOf(text: string, now: Date): ReportPeriod | null {
   if (past) {
     const count = Number(past[1]);
     if (count === 1) return lastMonth(now, "past month");
-    if (count > 1 && count <= 24) return pastMonths(count, now, `past ${count} months`);
+    if (count > 1 && count <= 24) return pastMonths(count, now, `${/^last/i.test(past[0]) ? "last" : "past"} ${count} months`);
   }
   if (/\b(?:last|past)\s+month\b/i.test(text)) return lastMonth(now, "last month");
   if (/\b(?:last|past)\s+year\b/i.test(text)) return lastYear(now);
+  const quarter = quarterOf(text, now);
+  if (quarter) return quarter;
   return namedMonth(text, now);
 }
 
@@ -162,6 +170,28 @@ function pastMonths(count: number, now: Date, label: string): ReportPeriod {
     label,
     kind: "months",
   };
+}
+
+/** "Q3", "Q3 2026", "last quarter", or "quarterly report" (the last completed quarter). */
+function quarterOf(text: string, now: Date): ReportPeriod | null {
+  const here = torontoParts(now);
+  const current = Math.floor((here.month - 1) / 3) + 1;
+  let quarter = 0;
+  let year = here.year;
+  const named = /\bq([1-4])\b(?:\s*(20\d{2}))?/i.exec(text);
+  if (named) {
+    quarter = Number(named[1]);
+    year = named[2] ? Number(named[2]) : quarter > current ? here.year - 1 : here.year;
+  } else if (/\b(?:last|previous|past)\s+quarter\b|\bquarterly\b/i.test(text)) {
+    quarter = current === 1 ? 4 : current - 1;
+    year = current === 1 ? here.year - 1 : here.year;
+  } else if (/\bthis quarter\b/i.test(text)) {
+    quarter = current;
+  }
+  if (!quarter) return null;
+  const startMonth = (quarter - 1) * 3 + 1;
+  const end = new Date(Date.UTC(year, startMonth + 2, 0)).toISOString().slice(0, 10);
+  return { start: `${year}-${String(startMonth).padStart(2, "0")}-01`, end, label: `Q${quarter} ${year}`, kind: "months" };
 }
 
 function lastYear(now: Date): ReportPeriod {

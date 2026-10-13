@@ -541,6 +541,65 @@ const missing = (await getOp({ op: "report-view", id: freshId, messageId: freshM
 if (missing.status !== "missing" || missing.line !== REPORT_GONE) fail(`deleted file ${missing.status}`);
 if (RAW_ERROR.test(missing.line)) fail(missing.line);
 
+// Reports by client: the live request naming Nance ends in her owner report, opened in the viewer.
+{
+  const julyStay = (id: string, propertyId: string, checkIn: string, checkOut: string, nights: number, room: number): StayInput => ({
+    id, propertyId, code: `HM${id.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8)}`, status: "accepted", checkIn, checkOut, nights, room, fee: 3000, cleaning: 8000, guestPaid: room + 12000, guest: "Sam Guest",
+  });
+  const clientStays = [
+    julyStay("cl-nance-jul", CHARLOTTE, "2026-07-10", "2026-07-14", 4, 80000),
+    julyStay("cl-nance-sep", CHARLOTTE, "2026-09-02", "2026-09-05", 3, 60000),
+    julyStay("cl-nance-oct", CHARLOTTE, "2026-10-02", "2026-10-04", 2, 40000),
+    julyStay("cl-roya-aug", SHAW, "2026-08-08", "2026-08-12", 4, 90000),
+    julyStay("cl-daniel-aug", ROSE, "2026-08-20", "2026-08-25", 5, 150000),
+  ];
+  const clientWorld = worldAt("2026-10-13T12:05:00-04:00");
+  clientWorld.properties = [
+    { id: CHARLOTTE, name: "8 Charlotte 606", address: "606, 8 Charlotte Street, Toronto", neighbourhood: "King West", owner: "Nance Ta", managed: true, billing: { ...terms, rateBps: 2000 } },
+    { id: BLUE, name: "20 Blue Jays Way Unit 318", address: "20 Blue Jays Way, Toronto", neighbourhood: "Entertainment District", owner: "Khamraj Shewnarain", managed: true, billing: { ...terms, rateBps: 2000 } },
+    { id: SHAW, name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", neighbourhood: "Dovercourt Park", owner: "Roya Ardakani", managed: true, billing: { ...terms, rateBps: 2500 } },
+    { id: ROSE, name: "41 Roseglor Cres", address: "41 Roseglor Cres, Scarborough, ON", neighbourhood: "Scarborough", owner: "Owen Park", managed: true, billing: { ...terms, rateBps: 2000 } },
+  ];
+  clientWorld.reservations = clientStays.map(parityStay);
+  clientWorld.reviews = [];
+  installWorld(clientWorld);
+  installOpsReservations(clientStays.map(opsStay));
+  resetReportStore();
+
+  const nance = await chat("client-nance", "I want to create a PDF report for Nance for the last 3 months");
+  if (/can't|cannot|unable/i.test(nance.body)) fail(`Nance refused: ${nance.body}`);
+  if (!nance.file?.data) fail(`no report for Nance: ${nance.body}`);
+  if (!/Owner report for Nance Ta, 8 Charlotte 606\./.test(nance.body)) fail(`Nance scope: ${nance.body}`);
+  if (!/Period: last 3 months: July 1 to September 30, 2026/.test(nance.body)) fail(`Nance period: ${nance.body}`);
+  if (/OPS lists/.test(nance.body)) fail(`Nance mismatch claimed: ${nance.body}`);
+  const nanceText = pdfText(nance.file);
+  if (!/Owner report/.test(nanceText) || !/Prepared for Nance Ta/.test(nanceText) || !/8 Charlotte 606/.test(nanceText)) fail(`Nance PDF:\n${nanceText.slice(0, 600)}`);
+  if (/Shaw|Roseglor|Blue Jays/i.test(nanceText)) fail("Nance's owner report named another property");
+  const nanceTotals = readTotals(nance.body);
+  if (nanceTotals.stays !== 2 || nanceTotals.nights !== 7) fail(`Nance counted ${nanceTotals.stays} stays, ${nanceTotals.nights} nights (October must be outside)`);
+  const nanceId = reportIdIn(nance.body) || "";
+  const nanceRows = (await getOp({ op: "messages", chatId: "client-nance" })).body as ChatPayload;
+  const nanceMessage = (nanceRows.messages ?? []).find((row) => row.role === "assistant" && reportIdIn(row.body) === nanceId);
+  const nancePanel = (await getOp({ op: "report-view", id: nanceId, messageId: nanceMessage?.id ?? "" })).body as ReportView;
+  if (!nanceId || nancePanel.status !== "open" || nancePanel.data !== nance.file.data) fail(`Nance's report did not open in the viewer: ${nancePanel.status}`);
+
+  const roya = await chat("client-roya", "PDF report for Roya for the last 3 months");
+  if (!roya.file?.data || !/Owner report for Roya Ardakani, 1065 Shaw Street\./.test(roya.body)) fail(`Roya: ${roya.body}`);
+  if (!/Prepared for Roya Ardakani/.test(pdfText(roya.file))) fail("Roya's PDF is not prepared for her");
+
+  const daniel = await chat("client-daniel", "Can you make Daniel's report for last quarter?");
+  if (!daniel.file?.data || !/Owner report for Precilla Daniel, 41 Roseglor Cres\./.test(daniel.body)) fail(`Daniel: ${daniel.body}`);
+  if (!/Q3 2026: July 1 to September 30, 2026/.test(daniel.body)) fail(`Daniel period: ${daniel.body}`);
+  if (!/OPS lists Owen Park as the owner of 41 Roseglor Cres, not Precilla Daniel\./.test(daniel.body)) fail(`Daniel mismatch not said: ${daniel.body}`);
+  if (!/Prepared for Precilla Daniel/.test(pdfText(daniel.file))) fail("Daniel's PDF is not prepared for her");
+
+  const internal = await chat("client-internal", "internal report for Nance for the last 3 months");
+  if (!internal.file?.data || !/Internal report for Nance Ta, 8 Charlotte 606\./.test(internal.body) || !/\| Internal/.test(internal.body)) fail(`internal for Nance: ${internal.body}`);
+
+  const vague = await chat("client-vague", "Make me a PDF of the quarterly report");
+  if (vague.file || /can't/i.test(vague.body) || !/Which property/.test(vague.body) || !/8 Charlotte 606/.test(vague.body)) fail(`vague request: ${vague.body}`);
+}
+
 if (previousPassword === undefined) delete process.env.ADMIN_PASSWORD;
 else process.env.ADMIN_PASSWORD = previousPassword;
 if (previousSecret === undefined) delete process.env.ADMIN_SESSION_SECRET;
