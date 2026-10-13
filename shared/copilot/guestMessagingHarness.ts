@@ -1447,4 +1447,109 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   if (waitedFor("2026-10-13T18:22:00Z", Date.parse("2026-10-13T18:31:00Z")) !== "9m" || waitedFor("2026-10-12T18:00:00Z", Date.parse("2026-10-13T19:00:00Z")) !== "1d") fail("wait labels");
 }
 
+// Needs reply is judged from the whole thread state. Shaped like the live Oct 13 inbox.
+{
+  resetGuestMessaging();
+  await clearHandledFollowUps();
+  const now = new Date("2026-10-13T15:46:00Z");
+  const HUB = [
+    "Building Access:",
+    "If entry fails, press the intercom button at the gate, call concierge, and state you are staying at unit 318.",
+    "Extra Towels & Supplies:",
+    "Extra towels are in the hallway closet, top shelf.",
+    "Parking:",
+    "Parking is in the underground garage, spot P2 #14. The garage door opens with the grey fob on your key ring.",
+  ].join("\n");
+  const BJ = { id: "prop-bj", name: "20 Blue Jays Way Unit 318", address: "20 Blue Jays Way, Toronto", managed: true };
+  const SHAW = { id: "prop-shaw-nr", name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true };
+  const ROSE = { id: "prop-rose-nr", name: "41 Roseglor Cres", address: "41 Roseglor Crescent, Toronto", managed: true };
+  const turn = (id: string, at: string, role: "guest" | "host", name: string, body: string) => ({ id, at, role, name, body });
+  installWorld({
+    now,
+    properties: [BJ, SHAW, ROSE],
+    reservations: [
+      {
+        id: "stay-yingjia", code: "HMYJ01", propertyId: BJ.id, status: "cancelled", checkIn: "2026-10-06", checkOut: "2026-10-09", guest: "盈佳", adults: 2, children: 0,
+        messages: [
+          turn("yj-0", "2026-09-28T15:00:00Z", "host", "Shane Mosoff", "Thanks for booking! We’re excited to host you — Mandel Realty Group"),
+          turn("yj-1", "2026-09-30T17:40:00Z", "host", "Shane Mosoff", "Hey may I ask why you cancelled anything we can do?"),
+          turn("yj-2", "2026-09-30T19:44:00Z", "guest", "盈佳", "Hi, I’m really sorry, but we need to cancel our stay because our travel plans have changed. Apologies for any inconvenience, and thank you for your understanding."),
+        ],
+      },
+      {
+        id: "stay-emile-old", code: "HMEM01", propertyId: SHAW.id, status: "cancelled", checkIn: "2026-10-02", checkOut: "2026-10-04", guest: "Emile", guestEmail: "emile@example.com", adults: 1, children: 0, bookedAt: "2026-09-10T12:00:00Z",
+        messages: [
+          turn("em-0", "2026-09-19T04:54:00Z", "host", "Shane Mosoff", "Hey there, may I now why you cancelled? Anything we can do?"),
+          turn("em-1", "2026-09-19T14:15:00Z", "guest", "Emile", "Hey Ryan! Sorry about the false start. Still working out whether it will be a group or just me that weekend. I may rebook if the place is still available once I hear from my friends. Have a great weekend!"),
+          turn("em-2", "2026-09-19T14:37:00Z", "guest", "Emile", "Update, just got confirmation so I’ll be rebooking!"),
+          turn("em-3", "2026-09-19T14:38:00Z", "guest", "Emile", "+ adding an extra night!"),
+        ],
+      },
+      {
+        id: "stay-emile-new", code: "HMEM02", propertyId: SHAW.id, status: "accepted", checkIn: "2026-10-16", checkOut: "2026-10-19", guest: "Emile", guestEmail: "emile@example.com", adults: 3, children: 0, bookedAt: "2026-09-19T15:00:00Z",
+        messages: [
+          turn("en-0", "2026-10-13T13:00:00Z", "guest", "Emile", "Hi! Where do we park when we arrive on Friday?"),
+        ],
+      },
+      {
+        id: "stay-imani-nr", code: "HMIM01", propertyId: BJ.id, status: "accepted", checkIn: "2026-10-12", checkOut: "2026-10-17", guest: "Imani", adults: 2, children: 0,
+        messages: [
+          turn("im-0", "2026-10-12T20:00:00Z", "host", "Shane Mosoff", "Welcome! Let us know if you need anything."),
+          turn("im-1", "2026-10-13T15:30:00Z", "guest", "Imani", "Hi! Could we get a few extra towels? We only found two in the bathroom."),
+        ],
+      },
+    ],
+    inquiries: [
+      {
+        id: "inq-elizabeth", propertyId: ROSE.id, status: "inquiry", guest: "Elizabeth", checkIn: "2026-11-20", checkOut: "2026-11-23", adults: 2, children: 0,
+        messages: [
+          turn("el-q", "2026-08-08T14:00:00Z", "guest", "Elizabeth", "Hi, is the place available for these dates and do you allow early check-in?"),
+          turn("el-a", "2026-08-08T15:00:00Z", "host", "Ryan", "Hi Elizabeth, those dates are open and early check-in depends on the clean that morning."),
+          turn("el-c", "2026-08-09T14:00:00Z", "guest", "Elizabeth", "Thanks Ryan for your speedy response! And no problem, perhaps another time."),
+        ],
+      },
+      {
+        id: "inq-ira", propertyId: SHAW.id, status: "inquiry", guest: "Ira", checkIn: "2026-09-25", checkOut: "2026-09-27", adults: 3, children: 0,
+        messages: [
+          turn("ira-0", "2026-08-25T14:00:00Z", "guest", "Ira", "Hi Ryan: As it turns out we ended up adding another person to our travel party, so could we fit a third guest?"),
+        ],
+      },
+    ],
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+    hub: [{ propertyId: BJ.id, body: HUB }, { propertyId: SHAW.id, body: HUB }],
+  });
+  const inbox = await loadGuestQueue(now);
+  const waitingNames = inbox.waiting.map((row) => row.id).sort().join(",");
+  if (waitingNames !== "stay-emile-new,stay-imani-nr") fail(`needs reply ${waitingNames}`);
+  const quietRow = (id: string) => (inbox.quiet ?? []).find((row) => row.id === id);
+  for (const id of ["stay-yingjia", "stay-emile-old", "inq-elizabeth", "inq-ira"]) {
+    const row = quietRow(id);
+    if (!row) fail(`${id} left the inbox`);
+    if (row.wait || row.waitedMs) fail(`${id} shows a waiting time`);
+    if (!row.quietReason) fail(`${id} has no reason`);
+  }
+  if (!/cancelled/.test(quietRow("stay-yingjia")?.quietReason ?? "")) fail(`yingjia reason ${quietRow("stay-yingjia")?.quietReason}`);
+  if (!/newer booking/.test(quietRow("stay-emile-old")?.quietReason ?? "")) fail(`emile reason ${quietRow("stay-emile-old")?.quietReason}`);
+  if (!/closed the inquiry/.test(quietRow("inq-elizabeth")?.quietReason ?? "")) fail(`elizabeth reason ${quietRow("inq-elizabeth")?.quietReason}`);
+  if (!/have passed/.test(quietRow("inq-ira")?.quietReason ?? "")) fail(`ira reason ${quietRow("inq-ira")?.quietReason}`);
+
+  const yingjia = await openGuestAnswer(quietRow("stay-yingjia") as GuestRow, now);
+  if (yingjia.draft || yingjia.sendable || yingjia.lane !== "none") fail(`cancelled thread drafted ${yingjia.draft}`);
+  if (/intercom|concierge/i.test(yingjia.draft)) fail("entry instructions for a cancelled stay");
+  const emileOld = await openGuestAnswer(quietRow("stay-emile-old") as GuestRow, now);
+  if (emileOld.draft || emileOld.lane !== "none") fail(`superseded thread drafted ${emileOld.draft}`);
+
+  const imaniRow = inbox.waiting.find((row) => row.id === "stay-imani-nr") as GuestRow;
+  if (!imaniRow.wait) fail("a live question shows no waiting time");
+  const imani = await openGuestAnswer(imaniRow, now);
+  if (imani.lane !== "reply" || !imani.sendable) fail(`live question has no draft (${imani.gap})`);
+  if (!/hallway closet/i.test(imani.draft) || /Supplies:|:\s*\.?$/m.test(imani.draft)) fail(`towel draft ${JSON.stringify(imani.draft)}`);
+  const emileNew = await openGuestAnswer(inbox.waiting.find((row) => row.id === "stay-emile-new") as GuestRow, now);
+  if (emileNew.lane !== "reply" || !/P2 #14|garage/i.test(emileNew.draft)) fail(`rebooked thread draft ${JSON.stringify(emileNew.draft)}`);
+  if (/Parking:/.test(emileNew.draft)) fail("the parking heading reached the draft");
+}
+
 console.log("Guest messaging harness passed.");

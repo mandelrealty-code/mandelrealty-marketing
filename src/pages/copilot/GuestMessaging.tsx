@@ -370,7 +370,8 @@ function Thread({
           {follow?.kind === "inquiry" ? <InquiryCard item={follow} now={tick} busy={busy} onInquiry={onInquiry} onBusy={setBusy} onFail={setFail} /> : null}
           {note ? <p className="cp-gt-closed" aria-live="polite"><strong>Follow-up closed</strong> · {note}</p> : null}
           {showDraft ? <p className="cp-gt-src">Copilot draft · from the {answer.property} Knowledge Hub and the full conversation</p> : null}
-          {idle ? <p className="cp-gt-idle" aria-live="polite">Nothing to send. Copilot is watching this thread.</p> : null}
+          {idle ? <p className="cp-gt-idle" aria-live="polite">{answer.waitingLine && answer.lane === "none" ? `Nothing to send. ${answer.waitingLine}` : "Nothing to send. Copilot is watching this thread."}</p> : null}
+          {needsReply && !answer.draft && empty ? <p className="cp-gt-idle" aria-live="polite">No draft. The {answer.property} Knowledge Hub and the thread don’t give {answer.gap || "a complete answer to this"}, so write this reply yourself.</p> : null}
           <div className="cp-gt-compose">
             <div className="cp-gt-field">
               <button type="button" className="plus" aria-label="Add files, photos or context" title="Add files, photos or context" onClick={() => input.current?.click()}>+</button>

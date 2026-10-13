@@ -52,6 +52,8 @@ export type GuestRow = {
   inquiry?: boolean;
   /** The host who sent the latest message, when a host sent it. The inbox shows "Sam: …". */
   lastBy?: string;
+  /** Why a thread whose guest wrote last does not need a reply: cancelled, superseded, closed, passed. */
+  quietReason?: string;
 };
 
 export type GuestBubble = {

@@ -42,6 +42,8 @@ export type ParityReservation = {
   guest: string;
   /** Present only when the reservation actually has one. */
   phone?: string;
+  /** The guest record's email, which ties one guest's bookings together. */
+  guestEmail?: string;
   adults: number;
   children: number;
   messages: ParityMessage[];
@@ -1038,6 +1040,7 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     guest: {
       first_name: row.guest,
       ...(row.phone ? { phone: row.phone } : {}),
+      ...(row.guestEmail ? { email: row.guestEmail } : {}),
       ...(row.guestPhoto ? { picture: row.guestPhoto, profile_picture: row.guestPhoto } : {}),
       ...(row.reviews == null ? {} : { reviews_count: row.reviews }),
       ...(row.guestSince ? { created_at: row.guestSince } : {}),

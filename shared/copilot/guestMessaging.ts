@@ -13,6 +13,7 @@ import { bookingRequestFollowUp, guestPhotoUrl, inquiryCloseText, isOpenRequest,
 import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, type InquiryVerify } from "./store.js";
 import { parityEnabled } from "./parity/flag.js";
 import { closeFollowUpEverywhere } from "./dueFollowUps.js";
+import { draftProblem, guestKey, looksLikeHeading, replyState } from "./guestReplyState.js";
 import { flushThreadCache, leaveDraft, loadConversations, memoryFor, readStayThread, type Conversation } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
@@ -228,7 +229,8 @@ function hubSentences(hub: string): string[] {
     .split(/\n+/)
     .flatMap((line) => line.split(/(?<=[.!?])\s+/))
     .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 0 && sentence.length <= 500);
+    // Section titles ("Extra Towels & Supplies:") are not answers.
+    .filter((sentence) => sentence.length > 0 && sentence.length <= 500 && !looksLikeHeading(sentence));
 }
 
 function relevantHubSentence(ask: string, hub: string): string {
@@ -566,6 +568,8 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     };
     await Promise.all(Array.from({ length: 2 }, lane));
     await flushThreadCache();
+    const todayOf = torontoToday(now);
+    const supersededIds = supersededConversations(loaded.stays);
     for (const stay of loaded.stays) {
       const photo = photos.get(stay.stay.propertyId) || "";
       const messages = stay.inquiry
@@ -624,9 +628,25 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       const at = pending[pending.length - 1]?.at || last.at;
       const language = messageLanguage(ask);
       const row = rowFrom(stay, ask, at, language, photo, now, read);
+      // Needs reply is judged from the whole thread state: status, dates, who decided what.
+      const state = replyState({
+        status: stay.stay.status,
+        inquiry: stay.inquiry,
+        checkIn: stay.stay.checkIn,
+        checkOut: stay.stay.checkOut,
+        today: todayOf,
+        turns: spoken.map((item) => ({ at: item.at, role: item.role, body: item.body })),
+        guest: stay.stay.guest || row.guest,
+        superseded: supersededIds.has(stay.stay.id),
+      });
       if (read.lane === "guest") {
         row.thanks = false;
         list(row, onGuest);
+      } else if (read.lane === "reply" && !state.needs) {
+        row.quietReason = state.reason;
+        row.wait = "";
+        row.waitedMs = 0;
+        list(row, quiet);
       } else if (read.lane === "reply") {
         list(row, heldIds.has(stay.stay.id) ? held : waiting);
       } else if (isThanksOnly(ask)) list(row, thanks);
@@ -827,13 +847,31 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
   const stayRaw = await hospitableRead("get-reservation", { identifier: row.id }).catch(() => null);
   const hubRead = await readPropertyHub(row.propertyId);
   const hub = hubRead.ok ? hubRead.text : "";
-  const read = readThread(turns, row.guest);
+  const threadRead = readThread(turns, row.guest);
   const spoken = turns.filter((item) => item.body.trim() || item.media.length);
   const lastHost = spoken.filter((item) => item.role === "host").map((item) => item.at).sort().at(-1) ?? "";
   const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
   const ask = pending.map((item) => item.body.trim()).join(" ") || row.asked;
+  // The same rule as the inbox: a cancelled, superseded, closed, or passed thread gets no draft.
+  const listed = (await readSavedGuestQueue().catch(() => null))?.quiet?.find((item) => item.id === row.id);
+  const raw = oneRecord(stayRaw) ?? {};
+  const state = listed?.quietReason
+    ? { needs: false, reason: listed.quietReason }
+    : replyState({
+      status: String(raw.status ?? row.status ?? ""),
+      inquiry: Boolean(row.inquiry),
+      checkIn: row.checkIn,
+      checkOut: row.checkOut,
+      today: torontoToday(now),
+      turns: spoken.map((item) => ({ at: item.at, role: item.role, body: item.body })),
+      guest: row.guest,
+    });
+  const read = threadRead.lane === "reply" && !state.needs ? { ...threadRead, lane: "none" as const, waitingLine: state.reason, status: state.reason } : threadRead;
   const memory = await memoryFor(row.property).catch(() => "");
-  const fromHub = read.lane === "reply" ? draftFromHub(row.guest, ask, hub, { place: row.property, memory }) : { mode: "gap" as const, draft: "", facts: "", gap: "" };
+  const hubDraft = read.lane === "reply" ? draftFromHub(row.guest, ask, hub, { place: row.property, memory }) : { mode: "gap" as const, draft: "", facts: "", gap: "" };
+  // A draft is a complete answer or nothing: never a heading, a stub, or a sentence cut off.
+  const broken = hubDraft.mode === "hub" ? draftProblem(hubDraft.draft) : "";
+  const fromHub = broken ? { mode: "gap" as const, draft: "", facts: "", gap: "a complete answer to this" } : hubDraft;
   const outside = read.situation ? await outsideDraft(read, row.guest, turns) : { draft: "", alternates: [], basedOn: "", pageTitle: "" };
   const stood = read.situation ? standing.get(read.situation) ?? "" : "";
   const held = read.lane === "guest";
@@ -872,6 +910,32 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
 function joinPlaces(names: string[]): string {
   if (names.length <= 1) return names[0] ?? "";
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * Cancelled bookings and inquiries whose guest now holds a newer live booking. The newer thread is
+ * the live one; the old one never counts toward Needs reply.
+ */
+function supersededConversations(conversations: Conversation[]): Set<string> {
+  const stamp = (row: Conversation) => {
+    const raw = row.reservation ?? {};
+    return String(raw.booked_at ?? raw.created_at ?? "") || row.stay.checkIn;
+  };
+  const live = new Map<string, Conversation[]>();
+  for (const row of conversations) {
+    const key = guestKey(row.reservation);
+    if (!key || row.inquiry || /cancel|declin|denied|expired|withdrawn|inquiry|request|pending/i.test(row.stay.status)) continue;
+    live.set(key, [...(live.get(key) ?? []), row]);
+  }
+  const out = new Set<string>();
+  for (const row of conversations) {
+    const dead = row.inquiry || /cancel|declin|denied|expired|withdrawn/i.test(row.stay.status);
+    if (!dead) continue;
+    const key = guestKey(row.reservation);
+    const newer = (key ? live.get(key) ?? [] : []).some((other) => other.stay.id !== row.stay.id && (stamp(other) > stamp(row) || other.stay.checkIn >= row.stay.checkIn));
+    if (newer) out.add(row.stay.id);
+  }
+  return out;
 }
 
 /** Every failed read named in one sentence: conversations, inquiries, and latest messages. */
