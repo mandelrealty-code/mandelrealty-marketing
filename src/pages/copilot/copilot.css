@@ -8811,6 +8811,22 @@ html.cp-app[data-cp-theme="dark"] #root {
 .cp-gt-video b { position: absolute; right: 10px; bottom: 8px; font-size: 11px; font-weight: 500; color: var(--ink2); }
 .cp-gt-reply { flex-shrink: 0; border-top: 1px solid var(--line); }
 .cp-gt-box { max-width: 760px; margin: 0 auto; box-sizing: border-box; padding: 12px 48px 20px; display: flex; flex-direction: column; gap: 10px; }
+/* Knowledge Hub item a partner's reply taught: approve, edit, or dismiss. */
+.cp-gt-hub { max-width: 664px; margin: 0 auto 10px; box-sizing: border-box; width: 100%; border: 1px solid var(--line2); border-radius: 8px; background: var(--surface); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--ink); }
+.cp-gt-hub-head { display: flex; align-items: baseline; gap: 8px; }
+.cp-gt-hub-head strong { font-size: 13px; font-weight: 600; }
+.cp-gt-hub-head span { font-size: 12px; color: var(--muted); }
+.cp-gt-hub label { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px; align-items: start; }
+.cp-gt-hub label span { padding-top: 6px; font-size: 12px; color: var(--muted); }
+.cp-gt-hub input, .cp-gt-hub textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line2); border-radius: 8px; background: var(--canvas); color: var(--ink); font: inherit; font-size: 13px; line-height: 20px; padding: 5px 8px; resize: vertical; }
+.cp-gt-hub input:focus, .cp-gt-hub textarea:focus { outline: none; border-color: var(--accent); }
+.cp-gt-hub-note { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted); }
+.cp-gt-hub-actions { display: flex; gap: 8px; }
+.cp-gt-hub-actions button { height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line2); background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.cp-gt-hub-actions button.send { border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.cp-gt-hub-actions button:disabled { opacity: 0.55; cursor: default; }
+.cp-gt-hub-done { max-width: 664px; margin: 0 auto 10px; width: 100%; box-sizing: border-box; font-size: 13px; color: var(--ink2); }
+@media (max-width: 720px) { .cp-gt-hub, .cp-gt-hub-done { margin-left: 16px; margin-right: 16px; width: auto; } }
 .cp-gt-fu { display: flex; align-items: center; gap: 10px; height: 28px; font-size: 13px; }
 .cp-gt-fu i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .cp-gt-fu span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink2); }

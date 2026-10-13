@@ -41,6 +41,9 @@ import { installWorld, parityThreadReads, pushParityMessage } from "./parity/wor
 import { saveGuestQueueSnapshot } from "./store.js";
 import { buildBrief } from "./brief.js";
 import { answerFollowUpTurn } from "./followUpAnswer.js";
+import { saveHubEntry } from "./hubLearning.js";
+import { parityHubItems } from "./parity/world.js";
+import { setParityClock } from "./parity/clock.js";
 import { NO_GUEST_FILTERS, emptyInboxLine, filterInbox, stayPhase, waitedFor } from "./guestFilters.js";
 import { BLANK, closeFollowUpEverywhere } from "./dueFollowUps.js";
 import { runUnattendedChecks } from "./stayCheck.js";
@@ -1618,6 +1621,76 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   const closedSaid = closedAnswer?.body ?? "";
   if (!closedSaid.includes("8 Charlotte 606") || !/It is closed/.test(closedSaid)) fail(`closed answer ${closedSaid}`);
   if (/Do you want me to draft|Have you picked|\?\s*$/.test(closedSaid)) fail(`closed answer asked a next step ${closedSaid}`);
+}
+
+// The Knowledge Hub learns what a partner answers once.
+{
+  resetGuestMessaging();
+  await clearHandledFollowUps();
+  resetCaptures();
+  const now = new Date("2026-10-13T18:00:00Z");
+  const UNIT = { id: "prop-hub-606", name: "8 Charlotte 606", address: "606, 8 Charlotte Street, Toronto", managed: true };
+  const stay = (id: string, guest: string, ask: string, at: string) => ({
+    id, code: id.toUpperCase(), propertyId: UNIT.id, status: "accepted", checkIn: "2026-10-12", checkOut: "2026-10-18", guest, adults: 2, children: 0,
+    messages: [{ id: `${id}-q`, at, role: "guest" as const, name: guest, body: ask }],
+  });
+  const hubBody = "Extra towels are in the hallway closet, top shelf.\nThe Wi-Fi network is MRG-606.";
+  const world = {
+    now,
+    properties: [UNIT],
+    reservations: [
+      stay("stay-rack-1", "Maya", "Hi! Where is the dish drying rack?", "2026-10-13T16:00:00Z"),
+      stay("stay-coffee", "Tom", "Where is the coffee maker?", "2026-10-13T16:10:00Z"),
+    ],
+    inquiries: [],
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+    hub: [{ propertyId: UNIT.id, body: hubBody, items: [] }],
+  };
+  installWorld(world as never);
+  setParityClock(now);
+  await loadGuestQueue(now);
+
+  // (1) The Hub has no answer; the partner's reply teaches it.
+  const rackRow = (await loadGuestQueue(now)).waiting.find((row) => row.id === "stay-rack-1") as GuestRow;
+  if (!rackRow) fail("the dish rack question is not waiting");
+  const rackView = await openGuestAnswer(rackRow, now);
+  if (rackView.mode !== "gap" || rackView.draft) fail(`the Hub answered the dish rack already: ${rackView.draft}`);
+  const sent = await submitGuestReply({ reservationId: rackRow.id, propertyId: UNIT.id, property: UNIT.name, guest: "Maya", english: "It's in the cabinet under the sink.", language: "", fact: "" });
+  if (!sent.sent) fail(`the reply did not send: ${sent.reason}`);
+  const offers = sent.hubOffers ?? [];
+  if (offers.length !== 1) fail(`hub offers ${JSON.stringify(offers)}`);
+  const offer = offers[0]!;
+  if (offer.title !== "Dish drying rack" || offer.content !== "The dish drying rack is in the cabinet under the sink.") fail(`offer ${offer.title} / ${offer.content}`);
+  if (/maya|oct|2026/i.test(`${offer.title} ${offer.content}`) || offer.itemId) fail(`offer carries the guest, a date, or an update: ${JSON.stringify(offer)}`);
+  if (capturedCommits().some((row) => /knowledge-hub/.test(row.detail))) fail("the Hub was written before approval");
+  const saved = await saveHubEntry({ propertyId: offer.propertyId, property: offer.property, title: offer.title, content: offer.content });
+  if (!saved.saved || saved.line !== "Saved to the 8 Charlotte 606 Knowledge Hub as “Dish drying rack”.") fail(`save ${saved.line}`);
+  const items = parityHubItems(UNIT.id);
+  if (items.length !== 1 || items[0]?.content !== "The dish drying rack is in the cabinet under the sink.") fail(`hub after save ${JSON.stringify(items)}`);
+  if (!capturedCommits().some((row) => row.detail === "create-knowledge-hub-item")) fail("create was not the path for a new topic");
+
+  // The same question from the next guest is drafted from the new item, and teaches nothing new.
+  world.reservations.push(stay("stay-rack-2", "Ben", "Where is the dish drying rack?", "2026-10-13T17:30:00Z"));
+  installWorld({ ...world, hub: [{ propertyId: UNIT.id, body: hubBody, items }] } as never);
+  const nextRow = (await loadGuestQueue(now)).waiting.find((row) => row.id === "stay-rack-2") as GuestRow;
+  const nextView = await openGuestAnswer(nextRow, now);
+  if (nextView.mode !== "hub" || !/The dish drying rack is in the cabinet under the sink\./.test(nextView.draft)) fail(`second draft ${JSON.stringify(nextView.draft)}`);
+  const resend = await submitGuestReply({ reservationId: nextRow.id, propertyId: UNIT.id, property: UNIT.name, guest: "Ben", english: nextView.draft, language: "", fact: "" });
+  if (!resend.sent || resend.hubOffers?.length) fail(`second answer offered again: ${JSON.stringify(resend.hubOffers)}`);
+
+  // (2) A one-off answer teaches nothing and says nothing.
+  const coffee = await submitGuestReply({ reservationId: "stay-coffee", propertyId: UNIT.id, property: UNIT.name, guest: "Tom", english: "I'll refund you $20 this once.", language: "", fact: "" });
+  if (!coffee.sent || coffee.hubOffers?.length) fail(`one-off offered: ${JSON.stringify(coffee.hubOffers)}`);
+
+  // (3) An item on the same topic exists: approving updates it, never a duplicate.
+  const updated = await saveHubEntry({ propertyId: UNIT.id, property: UNIT.name, title: "Dish drying rack", content: "The dish drying rack is in the cabinet left of the sink." });
+  if (!updated.saved || updated.line !== "Updated “Dish drying rack” in the 8 Charlotte 606 Knowledge Hub.") fail(`update ${updated.line}`);
+  const after = parityHubItems(UNIT.id).filter((item) => /drying rack/i.test(`${item.title} ${item.content}`));
+  if (after.length !== 1 || after[0]?.content !== "The dish drying rack is in the cabinet left of the sink.") fail(`same-topic items ${JSON.stringify(after)}`);
+  if (!capturedCommits().some((row) => row.detail === "update-knowledge-hub-item")) fail("the update path was not taken");
 }
 
 console.log("Guest messaging harness passed.");

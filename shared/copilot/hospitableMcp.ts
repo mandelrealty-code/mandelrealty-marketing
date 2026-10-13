@@ -57,6 +57,24 @@ export async function callHospitableMcp(name: string, args: Record<string, unkno
   return callWith(token, name, args);
 }
 
+let toolArgs: Map<string, string[]> | null = null;
+
+/**
+ * A tool's argument names from the server's own schema, so a write uses the names Hospitable
+ * expects. Null in parity, or when the list cannot be read; the caller then uses plain defaults.
+ */
+export async function hospitableMcpToolArgs(name: string): Promise<string[] | null> {
+  if (parityMcp("get-user", {}).handled) return null;
+  if (!toolArgs) {
+    const token = await getHospitableMcpToken();
+    if (!token) return null;
+    await ensureSession(token);
+    const listed = (await rpc(token, "tools/list", {})) as { tools?: { name?: string; inputSchema?: { properties?: Record<string, unknown> } }[] } | null;
+    toolArgs = new Map((listed?.tools ?? []).map((tool) => [String(tool.name ?? ""), Object.keys(tool.inputSchema?.properties ?? {})]));
+  }
+  return toolArgs.get(name) ?? null;
+}
+
 async function callWith(token: string, name: string, args: Record<string, unknown>, retried = false): Promise<unknown> {
   await ensureSession(token);
   try {

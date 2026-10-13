@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { copilotHospitableToken, copilotScopeActive, hospitableRead, HOSPITABLE_NOT_CONNECTED, withCopilotScope } from "./hospitableConnection.js";
+import { copilotHospitableToken, copilotKeepsProperty, copilotScopeActive, hospitableRead, HOSPITABLE_NOT_CONNECTED, withCopilotScope } from "./hospitableConnection.js";
 import { sendReservationMessage } from "./hospitableAgent.js";
 import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIntelligence.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
@@ -14,6 +14,7 @@ import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, sav
 import { parityEnabled } from "./parity/flag.js";
 import { closeFollowUpEverywhere } from "./dueFollowUps.js";
 import { draftProblem, guestKey, looksLikeHeading, replyState } from "./guestReplyState.js";
+import { hubItems, proposeHubEntries, type HubItem, type HubProposal } from "./hubLearning.js";
 import { flushThreadCache, leaveDraft, loadConversations, memoryFor, readStayThread, type Conversation } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
@@ -230,7 +231,8 @@ function hubSentences(hub: string): string[] {
     .flatMap((line) => line.split(/(?<=[.!?])\s+/))
     .map((sentence) => sentence.trim())
     // Section titles ("Extra Towels & Supplies:") are not answers.
-    .filter((sentence) => sentence.length > 0 && sentence.length <= 500 && !looksLikeHeading(sentence));
+    // Section titles ("Extra Towels & Supplies:") and item titles ("Dish drying rack") are not answers.
+    .filter((sentence) => sentence.length > 0 && sentence.length <= 500 && !looksLikeHeading(sentence) && sentence.split(/\s+/).length >= 4);
 }
 
 function relevantHubSentence(ask: string, hub: string): string {
@@ -363,7 +365,30 @@ export type GuestSubmitResult = {
   savedLine: string;
   failedLine: string;
   sentText: string;
+  /** Knowledge Hub items the partner's reply taught, offered for approval. Nothing is saved yet. */
+  hubOffers?: HubProposal[];
 };
+
+/**
+ * What the guest is waiting on, and whether the property's Hub could answer it, read before the
+ * partner's reply goes out. A gap means the partner is answering something the Hub doesn't know.
+ */
+async function hubGapBeforeReply(reservationId: string, propertyId: string, guest: string): Promise<{ ask: string; items: HubItem[] } | null> {
+  try {
+    const thread = await readStayThread(reservationId, new Date());
+    const spoken = thread.filter((turn) => (turn.role === "guest" || turn.role === "host") && turn.body.trim()).sort((a, b) => a.at.localeCompare(b.at));
+    const lastHost = spoken.filter((turn) => turn.role === "host").map((turn) => turn.at).at(-1) ?? "";
+    const ask = spoken.filter((turn) => turn.role === "guest" && turn.at > lastHost).map((turn) => turn.body.trim()).join(" ");
+    if (!ask || !needsGuestReply(ask)) return null;
+    const hub = await readPropertyHub(propertyId);
+    if (!hub.ok) return null;
+    if (draftFromHub(guest, ask, hub.text).mode === "hub") return null;
+    const items = hubItems(await hospitableRead("get-property-knowledge-hub", { property_id: propertyId }));
+    return { ask, items };
+  } catch {
+    return null;
+  }
+}
 
 export async function submitGuestReply(input: {
   reservationId: string;
@@ -390,13 +415,20 @@ export async function submitGuestReply(input: {
     }
   }
   if (!sentText.trim()) throw new Error("The draft is empty. Nothing was sent.");
+  // Read before sending: once the reply is on the thread, the guest's question looks answered.
+  const gap = input.propertyId && (await copilotKeepsProperty({ id: input.propertyId, name: input.property }).catch(() => false))
+    ? await hubGapBeforeReply(input.reservationId, input.propertyId, input.guest)
+    : null;
   const posted = await sendReservationMessage({
     reservationId: input.reservationId,
     body: sentText,
     images,
   });
   if (!posted.sent) return { sent: false, reason: posted.reason, savedLine: "", failedLine: "", sentText };
-  if (!input.fact.trim()) return { sent: true, reason: "", savedLine: "", failedLine: "", sentText };
+  const hubOffers = gap
+    ? proposeHubEntries({ ask: gap.ask, reply: input.english, guest: input.guest, propertyId: input.propertyId, property: input.property, items: gap.items })
+    : [];
+  if (!input.fact.trim()) return { sent: true, reason: "", savedLine: "", failedLine: "", sentText, ...(hubOffers.length ? { hubOffers } : {}) };
   const saved = await writeAndConfirm(input.propertyId, input.fact.trim());
   if (saved) return { sent: true, reason: "", savedLine: `Saved to the ${input.property} Knowledge Hub`, failedLine: "", sentText };
   await leaveDraft({

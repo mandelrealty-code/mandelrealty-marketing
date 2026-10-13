@@ -171,7 +171,13 @@ export type ParityItem = {
   askedOn?: string;
 };
 
-export type ParityHub = { propertyId: string; body: string; unreadable?: boolean };
+export type ParityHub = {
+  propertyId: string;
+  body: string;
+  unreadable?: boolean;
+  /** Items with an id and a title, as create-knowledge-hub-item makes them. */
+  items?: { id: string; title: string; content: string }[];
+};
 
 export type ParityCleanerTurnover = {
   propertyId: string;
@@ -281,7 +287,7 @@ export function installWorld(next: ParityWorld): void {
     memory: next.memory.map((row) => ({ ...row })),
     claims: (next.claims ?? []).map((row) => ({ ...row })),
     items: next.items.map((row) => ({ ...row })),
-    hub: (next.hub ?? []).map((row) => ({ ...row })),
+    hub: (next.hub ?? []).map((row) => ({ ...row, ...(row.items ? { items: row.items.map((item) => ({ ...item })) } : {}) })),
     reviews: (next.reviews ?? []).map((row) => ({ ...row, categories: row.categories?.map((item) => ({ ...item })) })),
     followUps: (next.followUps ?? []).map((row) => ({ ...row })),
     calendar: (next.calendar ?? []).map((row) => ({ ...row })),
@@ -817,6 +823,29 @@ export function parityMcp(name: string, args: Record<string, unknown>): { handle
       }));
     return { handled: true, value: { data: rows, meta: { last_page: 1, total: rows.length } } };
   }
+  if (name === "create-knowledge-hub-item" || name === "update-knowledge-hub-item") {
+    const propertyId = String(args.property_id ?? args.uuid ?? "");
+    const title = String(args.title ?? "");
+    const content = String(args.content ?? "");
+    if (!propertyId || !content) throw new Error("A Knowledge Hub item needs a property and content.");
+    current.hub = current.hub ?? [];
+    let row = current.hub.find((item) => item.propertyId === propertyId);
+    if (!row) {
+      row = { propertyId, body: "" };
+      current.hub.push(row);
+    }
+    row.items = row.items ?? [];
+    if (name === "update-knowledge-hub-item") {
+      const target = row.items.find((item) => item.id === String(args.item_id ?? ""));
+      if (!target) throw new Error("That Knowledge Hub item does not exist.");
+      target.title = title || target.title;
+      target.content = content;
+    } else {
+      row.items.push({ id: `kh-${++hubItemSeq}`, title, content });
+    }
+    captureCommit("hospitable-mcp", name);
+    return { handled: true, value: { data: { committed: true } } };
+  }
   if (name === "send-reservation-message") {
     const id = String(args.uuid ?? args.reservation_id ?? "");
     const body = String(args.body ?? "");
@@ -958,14 +987,23 @@ export function parityHttp(method: string, path: string, query: Record<string, u
   return { handled: true, value: { data: [] } };
 }
 
-function hubDocument(row: ParityHub | undefined): { data: { topics: { name: string; aggregate_items: { content: string }[] }[] } } {
+function hubDocument(row: ParityHub | undefined): { data: { topics: { name: string; aggregate_items: { id?: string; title?: string; content: string }[] }[] } } {
   if (row?.unreadable) throw new Error("The Knowledge Hub didn't return.");
-  const items = (row?.body ?? "")
+  const lines = (row?.body ?? "")
     .split("\n")
     .map((content) => content.trim())
     .filter(Boolean)
     .map((content) => ({ content }));
-  return { data: { topics: [{ name: "Hub", aggregate_items: items }] } };
+  const topics = [{ name: "Hub", aggregate_items: lines as { id?: string; title?: string; content: string }[] }];
+  for (const item of row?.items ?? []) topics.push({ name: item.title, aggregate_items: [{ id: item.id, title: item.title, content: item.content }] });
+  return { data: { topics } };
+}
+
+let hubItemSeq = 0;
+
+/** The Hub items in this world for one property. */
+export function parityHubItems(propertyId: string): { id: string; title: string; content: string }[] {
+  return (live()?.hub ?? []).find((row) => row.propertyId === propertyId)?.items?.map((item) => ({ ...item })) ?? [];
 }
 
 function mcpProperty(row: ParityProperty) {

@@ -2,8 +2,11 @@ import { NO_GUEST_FILTERS, STAY_LABELS, emptyInboxLine, emptyInboxSub, filterInb
 import { useEffect, useRef, useState } from "react";
 import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
 import type { StayCard } from "../../../shared/copilot/types";
+import type { HubProposal } from "../../../shared/copilot/hubLearning";
 
-type SubmitResult = { sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string };
+type SubmitResult = { sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string; hubOffers?: HubProposal[] };
+type HubSave = (offer: { propertyId: string; property: string; title: string; content: string }) => Promise<{ saved: boolean; line: string }>;
+type HubOffer = HubProposal & { phase: "open" | "saving" | "saved" | "failed"; line: string };
 
 function submitProblem(result: SubmitResult): string {
   if (!result.sent) return result.reason || "It is not sent.";
@@ -20,6 +23,7 @@ export function GuestMessaging({
   onHandleFollowUp,
   onInquiry,
   onImprove,
+  onHubSave,
 }: {
   queue: GuestQueue | null;
   answer: GuestDraftView | null;
@@ -33,6 +37,7 @@ export function GuestMessaging({
   onHandleFollowUp?: (id: string) => Promise<void>;
   onInquiry?: (id: string, action: "approve" | "decline") => Promise<string>;
   onImprove?: (text: string) => Promise<string>;
+  onHubSave?: HubSave;
 }) {
   // Kept while a thread is open, so Back returns to the same filtered list. A reload clears them.
   const [filters, setFilters] = useState<GuestFilters>(NO_GUEST_FILTERS);
@@ -60,6 +65,7 @@ export function GuestMessaging({
           return url;
         }}
         onImprove={onImprove}
+        onHubSave={onHubSave}
       />
     );
   }
@@ -291,6 +297,7 @@ function Thread({
   onHandle,
   onInquiry,
   onImprove,
+  onHubSave,
 }: {
   answer: GuestDraftView;
   follow: GuestFollowUp | null;
@@ -300,8 +307,11 @@ function Thread({
   onHandle: () => Promise<void>;
   onInquiry: (action: "approve" | "decline") => Promise<string>;
   onImprove?: (text: string) => Promise<string>;
+  onHubSave?: HubSave;
 }) {
   const needsReply = answer.lane === "reply";
+  // Hub items the partner's last reply taught. Nothing is written until Approve.
+  const [offers, setOffers] = useState<HubOffer[]>([]);
   const [text, setText] = useState(needsReply ? answer.draft : "");
   const [edited, setEdited] = useState(false);
   const [improving, setImproving] = useState(false);
@@ -316,6 +326,7 @@ function Thread({
     setEdited(false);
     setFail("");
     setFiles([]);
+    setOffers([]);
   }, [answer.id]);
   useEffect(() => {
     if (edited) return;
@@ -359,6 +370,21 @@ function Thread({
         </div>
       </div>
       <div className="cp-gt-reply">
+        {offers.map((offer) => (
+          <HubOfferCard
+            key={offer.id}
+            offer={offer}
+            onChange={(next) => setOffers((rows) => rows.map((row) => (row.id === offer.id ? { ...row, ...next } : row)))}
+            onDismiss={() => setOffers((rows) => rows.filter((row) => row.id !== offer.id))}
+            onApprove={async () => {
+              if (!onHubSave) return;
+              setOffers((rows) => rows.map((row) => (row.id === offer.id ? { ...row, phase: "saving", line: "" } : row)));
+              const saved = await onHubSave({ propertyId: offer.propertyId, property: offer.property, title: offer.title, content: offer.content })
+                .catch((err: unknown) => ({ saved: false, line: err instanceof Error ? err.message : "Couldn't reach Hospitable. Nothing was saved." }));
+              setOffers((rows) => rows.map((row) => (row.id === offer.id ? { ...row, phase: saved.saved ? "saved" : "failed", line: saved.line } : row)));
+            }}
+          />
+        ))}
         <div className="cp-gt-box">
           {follow && follow.kind !== "inquiry" ? (
             <div className="cp-gt-fu">
@@ -416,6 +442,7 @@ function Thread({
                       setText("");
                       setEdited(false);
                       setFiles([]);
+                      setOffers((result.hubOffers ?? []).map((offer) => ({ ...offer, phase: "open", line: "" })));
                     }
                   }).catch((err: unknown) => {
                     setFail(err instanceof Error ? err.message : "Nothing was sent.");
@@ -427,6 +454,39 @@ function Thread({
           {files.length ? <p className="cp-gt-files">{files.map((file) => file.name).join(", ")}</p> : null}
           {fail ? <p className="cp-gt-fail">{fail}</p> : null}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** One Hub item a partner's reply taught. Approve writes it to Hospitable; nothing is saved before. */
+function HubOfferCard({
+  offer,
+  onChange,
+  onApprove,
+  onDismiss,
+}: {
+  offer: HubOffer;
+  onChange: (next: Partial<HubOffer>) => void;
+  onApprove: () => Promise<void>;
+  onDismiss: () => void;
+}) {
+  if (offer.phase === "saved") return <p className="cp-gt-hub-done" aria-live="polite">{offer.line}</p>;
+  const busy = offer.phase === "saving";
+  return (
+    <div className="cp-gt-hub" role="group" aria-label="Knowledge Hub item">
+      <div className="cp-gt-hub-head"><strong>Add to the Knowledge Hub?</strong><span>{offer.property}</span></div>
+      <label><span>Title</span><input value={offer.title} disabled={busy} onChange={(event) => onChange({ title: event.target.value })} /></label>
+      <label><span>Fact</span><textarea rows={2} value={offer.content} disabled={busy} onChange={(event) => onChange({ content: event.target.value })} /></label>
+      <p className="cp-gt-hub-note">
+        {offer.itemId
+          ? `Approving updates “${offer.existingTitle}” in the Hospitable Knowledge Hub for ${offer.property}.`
+          : `Approving writes this to the Hospitable Knowledge Hub for ${offer.property}.`} Nothing is saved until you approve.
+      </p>
+      {offer.phase === "failed" ? <p className="cp-gt-fail">{offer.line}</p> : null}
+      <div className="cp-gt-hub-actions">
+        <button type="button" className="send" disabled={busy || !offer.title.trim() || !offer.content.trim()} onClick={() => { void onApprove(); }}>{busy ? "Saving…" : "Approve"}</button>
+        <button type="button" disabled={busy} onClick={onDismiss}>Dismiss</button>
       </div>
     </div>
   );

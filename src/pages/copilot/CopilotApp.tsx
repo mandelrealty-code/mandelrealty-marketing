@@ -5,6 +5,7 @@ import type { ReviewQueuePayload, ReviewQueueRow } from "../../../shared/copilot
 import type { GuestDraftView, GuestQueue } from "../../../shared/copilot/guestTypes";
 import { ConnectorStatusPage, ConnectorsList, HospitablePage } from "./HospitableConnection";
 import { ReviewsQueue } from "./ReviewsQueue";
+import type { HubProposal } from "../../../shared/copilot/hubLearning";
 import { GuestMessaging, StayCards } from "./GuestMessaging";
 import "./copilot.css";
 import { MemoryFileDetail, MemoryFileList, MemoryWrote } from "./memoryUi";
@@ -2416,7 +2417,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     }}
                     onSubmit={async (draft, fact, attachments) => {
                       const row = guestAnswer;
-                      const result = await api<{ sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string }>("guests-submit", {
+                      const result = await api<{ sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string; hubOffers?: HubProposal[] }>("guests-submit", {
                         id: row?.id,
                         propertyId: row?.propertyId,
                         property: row?.property,
@@ -2437,6 +2438,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       }
                       return result;
                     }}
+                    onHubSave={(offer) => api<{ saved: boolean; line: string }>("guests-hub-save", offer)}
                   />
                 ) : null}
                 {screen === "reviews" ? (

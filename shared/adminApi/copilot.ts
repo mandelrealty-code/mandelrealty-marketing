@@ -39,6 +39,7 @@ import { answerPayout } from "../copilot/payoutAnswer.js";
 import { answerAvailability } from "../copilot/availabilityAnswer.js";
 import { answerFollowUpTurn } from "../copilot/followUpAnswer.js";
 import { DENIES_WEB, answerWebQuestion, asksOutsideWorld } from "../copilot/webAnswer.js";
+import { saveHubEntry } from "../copilot/hubLearning.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
 import { isFilesystemError, REPORT_FILE_FAILURE } from "../copilot/fileError.js";
@@ -458,6 +459,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     if (op === "guests-improve") {
       const draft = improveGuestDraft(String(body.text ?? ""), String(body.guest ?? ""));
       return res.status(200).json({ draft });
+    }
+
+    if (op === "guests-hub-save") {
+      // Only on the partner's approval: writes one Knowledge Hub item, then reads the Hub back.
+      const result = await saveHubEntry({
+        propertyId: String(body.propertyId ?? ""),
+        property: String(body.property ?? ""),
+        title: String(body.title ?? ""),
+        content: String(body.content ?? ""),
+      });
+      return res.status(200).json(result);
     }
 
     if (op === "guests-submit") {
