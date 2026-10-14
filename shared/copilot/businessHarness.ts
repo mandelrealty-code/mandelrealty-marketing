@@ -21,6 +21,7 @@ import { setWebAnswerer } from "./webAnswer.js";
 import type { PmReservationRow } from "../pm/reservationStore.js";
 import { answerBuildingRegistrationItem, asksBuildingRegistration } from "./buildingRegistration.js";
 import { emailCardLabel } from "./checksLabel.js";
+import { torontoWhen } from "./mailSearch.js";
 import { parityChecksMessages, paritySaveChecksMessage, resetParityChecksMessages } from "./parity/storeStub.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
 import { buildingMail } from "./stayCheck.js";
@@ -352,6 +353,41 @@ if (!/client's email address on file in OPS/.test(proposalAnswer.body) || !/Subj
   );
   if (status !== 200 || !opened.thread?.some((item) => /Sophie's mom/.test(item.text))) fail(`inquiry did not open: ${status} ${JSON.stringify(opened).slice(0, 300)}`);
 }
+
+// "Did we send…" is a Sent-mail question: the live case, answered from Sent with Toronto time, unprompted.
+{
+  const building = "supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com";
+  // Gmail's instant in UTC: 01:58 UTC on Oct 14 is 9:58 PM on Oct 13 in Toronto.
+  const sent = { id: "husson-sent", mailbox: "gmail" as const, folder: "sent" as const, from: "MandelRealty", email: "mandelrealtyteam@gmail.com", to: building, date: "2026-10-14T01:58:00.000Z",
+    subject: "AirBNB Rental for Unit 318 from October 15, 2026 - October 19, 2026", snippet: "AirBNB Rental for Unit 318",
+    body: "Hello,\nI have a new AirBNB tenant arriving from Thursday October 15, 2026 and staying until Monday October 19, 2026 for 4 nights. Their name is: Husson They will be residing in unit 318.\n\nThey will not be bringing any vehicles.\n\nThanks,\nShane, Cohost 6478220448", airbnb: false };
+  const world = worldAt("2026-10-14T10:00:00-04:00", false, [sent]);
+  world.reservations.push(stay("00000000-0000-4000-8000-0000000a5504", ID.blue, "Husson", "2026-10-15", "2026-10-19"));
+  installWorld(world);
+  const asked = await send("biz-did-we-send", "Did we send out the parking email for 20 blue jays way for the next guest?");
+  const lines = asked.body.split("\n");
+  if (!/^Yes, it's already sent/.test(lines[0] ?? "")) fail(`not led by the verdict: ${asked.body}`);
+  if (!/on October 13, 2026 at 9:58 PM/.test(asked.body)) fail(`not Toronto time: ${asked.body}`);
+  for (const address of building.split(", ")) if (!asked.body.includes(address)) fail(`recipient ${address} missing: ${asked.body}`);
+  if (!/mandelrealtyteam@gmail\.com/.test(asked.body) || !/arriving from Thursday October 15, 2026 and staying until Monday October 19, 2026/.test(asked.body) || !/not be bringing any vehicles/.test(asked.body)) fail(`account or facts missing: ${asked.body}`);
+  if (/HM[A-Z0-9]{6,}|reservation code|Spacious|Modern 1\+Den/i.test(asked.body)) fail(`a reservation readout answered a sent question: ${asked.body}`);
+
+  // Nothing in Sent: "not sent" first, what was searched, then the draft's state.
+  const quiet = worldAt("2026-10-14T10:00:00-04:00", false, []);
+  quiet.reservations.push(stay("00000000-0000-4000-8000-0000000a5505", ID.blue, "Marta", "2026-10-20", "2026-10-23"));
+  installWorld(quiet);
+  resetParityChecksMessages();
+  const none = await send("biz-not-sent", "Did we send out the parking email for 20 blue jays way for the next guest?");
+  if (!/^Not sent\. No building registration for Marta's stay/.test(none.body) || !/AirBNB Rental for Unit 318 from October 20, 2026 - October 23, 2026/.test(none.body) || !/No draft has been made for it yet\./.test(none.body)) fail(`not sent: ${none.body}`);
+  paritySaveChecksMessage({ id: "marta-draft", chat_id: "checks", created_at: "2026-10-14T13:00:00.000Z", role: "assistant", body: "Here is the vehicle registration email for Marta.",
+    draft: { channel: "email", status: "waiting", to: building, subject: "AirBNB Rental for Unit 318 from October 20, 2026 - October 23, 2026", body: "Hello, Marta arriving October 20, 2026 until October 23, 2026." } });
+  const waiting = await send("biz-not-sent-2", "did we send the parking email for blue jays yet?");
+  if (!/^Not sent\./.test(waiting.body) || !/A draft is waiting in Checks: “AirBNB Rental for Unit 318 from October 20, 2026 - October 23, 2026”/.test(waiting.body)) fail(`waiting draft state: ${waiting.body}`);
+  if (capturedCommits().length) fail("a sent question sent something");
+}
+
+// Every mail time is Toronto time, whatever zone the timestamp came in.
+if (torontoWhen("2026-10-14T01:58:00Z") !== "Tuesday, October 13, 2026 at 9:58 PM" || torontoWhen("Tue, 13 Oct 2026 18:58:00 -0700") !== "Tuesday, October 13, 2026 at 9:58 PM") fail(`Toronto time ${torontoWhen("2026-10-14T01:58:00Z")}`);
 
 setWebAnswerer(null);
 setCompsSource(null);

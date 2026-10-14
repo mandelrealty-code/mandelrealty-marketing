@@ -239,11 +239,16 @@ async function gmailGet(token: string, id: string, format: "metadata" | "full"):
   return (await res.json().catch(() => null)) as GmailMessage | null;
 }
 
+/**
+ * When Gmail has the message, as an exact instant. The Date header carries the sender's own clock
+ * ("18:58 -0700" for a 9:58 PM Toronto send), so Gmail's internal timestamp comes first.
+ */
 function gmailWhen(msg: GmailMessage): string {
-  const dated = header(msg.payload?.headers, "Date");
-  if (dated) return dated;
   const ms = Number(msg.internalDate);
-  return Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : "";
+  if (Number.isFinite(ms) && ms > 0) return new Date(ms).toISOString();
+  const dated = header(msg.payload?.headers, "Date");
+  const parsed = dated ? new Date(dated) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : dated;
 }
 
 function gmailHit(msg: GmailMessage, folder: MailFolder): GmailHit | null {

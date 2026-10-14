@@ -238,7 +238,7 @@ function when(iso: string) {
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return date.toLocaleDateString(undefined, { weekday: "short" });
+  return date.toLocaleDateString("en-US", { weekday: "short", timeZone: "America/Toronto" });
 }
 
 function OverviewHome({

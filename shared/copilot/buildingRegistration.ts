@@ -28,9 +28,12 @@ const NAME_STOP = new Set(["has", "the", "building", "been", "about", "for", "he
 export function asksRegistrationStatus(text: string): boolean {
   const asked = text.trim();
   if (!asked) return false;
-  const aboutBuilding = /\b(building|registration|register)\b/i.test(asked) || (/\b(cars?|vehicles?)\b/i.test(asked) && /\b(emailed|e-?mailed|sent|draft)\b/i.test(asked));
+  // "Did we send out the parking email for 20 Blue Jays Way?" is a Sent-mail question, not a reservation one.
+  const aboutBuilding = /\b(building|registration|register|parking)\b/i.test(asked)
+    || (/\b(cars?|vehicles?)\b/i.test(asked) && /\b(emailed|e-?mailed|sent|draft)\b/i.test(asked))
+    || (/\be-?mail\b/i.test(asked) && /\b(blue jays|318)\b/i.test(asked));
   if (!aboutBuilding) return false;
-  const sent = /\b(has|have|was|were|been)\b/i.test(asked) && /\b(sent|emailed|e-?mailed)\b/i.test(asked);
+  const sent = /\b(did|has|have|was|were|been|when)\b/i.test(asked) && /\b(send|sent|emailed|e-?mailed|went out|go out)\b/i.test(asked);
   const draft = /\bdraft\b/i.test(asked) && /\b(is there|there a|do we have|any|waiting)\b/i.test(asked);
   return sent || draft;
 }
@@ -141,19 +144,71 @@ export async function registrationState(arrival: StayMove): Promise<string> {
 export async function answerRegistrationStatus(text: string, now?: Date): Promise<string | null> {
   if (!asksRegistrationStatus(text)) return null;
   const name = guestInQuestion(text);
-  if (!name) return "Which guest should I check? I didn't draft an email.";
   const clock = now ?? parityNow() ?? new Date();
-  const arrival = await arrivalFor(name, clock);
+  let arrival: Pick<StayMove, "guest" | "property" | "date" | "checkOut"> | "unread" | null;
+  if (name) arrival = await arrivalFor(name, clock);
+  else {
+    // "for the next guest": the reservations only say which stay is meant; the answer comes from Sent.
+    arrival = await nextStayAt(/blue jays|\b318\b|parking/i.test(text) || !PLACE.test(text) ? "20 Blue Jays Way 318" : text, clock);
+    if (!arrival) return "There's no upcoming guest at 20 Blue Jays Way, so there's no building registration to check. Nothing was drafted.";
+  }
   if (arrival === "unread") return "I can't read today's plan, so I didn't say the guest is missing. I didn't draft an email.";
   if (!arrival) return missingGuestLine(name);
   const sent = await sentRegistrationLetters(arrival.guest, arrival.property, arrival.date, arrival.checkOut ?? "");
   const closed = sent.letters[0];
   if (!closed) {
     if (/isn't connected|didn't return/i.test(sent.note)) return `${sent.note} I didn't draft an email.`;
-    return `I didn't find a sent building registration for ${arrival.guest} at ${arrival.property}. Nothing was drafted.`;
+    const searched = [arrival.checkOut ? `“${registrationSubject(arrival.date, arrival.checkOut)}”` : "", `“${arrival.guest}”`].filter(Boolean).join(" and ");
+    return [
+      `Not sent. No building registration for ${arrival.guest}'s stay at ${arrival.property}${arrival.checkOut ? ` (${plainDate(arrival.date)} to ${plainDate(arrival.checkOut)})` : ""} is in Sent in Gmail or Outlook; I searched for ${searched}.`,
+      await draftStateLine(arrival.date, arrival.checkOut ?? ""),
+    ].join("\n");
   }
   captureMailMatch({ keywords: sent.keywords, id: closed.id, subject: closed.subject, date: closed.date, mailbox: closed.mailbox });
-  return sentProof(closed, platesFrom(`${closed.subject}\n${closed.body}`));
+  return sentAnswer(closed, arrival.guest, arrival.property);
+}
+
+/** The next arrival at a property, from the reservations: which stay the question means. */
+async function nextStayAt(place: string, now: Date): Promise<Pick<StayMove, "guest" | "property" | "date" | "checkOut"> | null> {
+  try {
+    const loaded = await loadRecentStays(now);
+    const today = torontoToday(now);
+    const next = loaded.stays
+      .filter((row) => samePlace(place, row) && row.stay.checkIn >= today && !/cancel/.test(row.stay.status))
+      .sort((a, b) => a.stay.checkIn.localeCompare(b.stay.checkIn))[0];
+    return next ? { guest: next.stay.guest || "the next guest", property: next.label, date: next.stay.checkIn, checkOut: next.stay.checkOut } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Waiting in Checks, or never drafted: the one line after "not sent". */
+async function draftStateLine(checkIn: string, checkOut: string): Promise<string> {
+  const waiting = await waitingChecksMessages().catch(() => []);
+  const draft = waiting.find((row) => row.draft?.channel === "email" && (row.draft.subject === registrationSubject(checkIn, checkOut) || registrationMatchesStay({ subject: row.draft.subject, body: row.draft.body, to: row.draft.to }, checkIn, checkOut)));
+  return draft?.draft ? `A draft is waiting in Checks: “${draft.draft.subject}”. Nothing goes out until you press Submit.` : "No draft has been made for it yet.";
+}
+
+/** The verdict and the proof: when (Toronto), from which account, to whom, and what it said. */
+export function sentAnswer(letter: Pick<MailLetter, "date" | "from" | "email" | "mailbox" | "to" | "body" | "subject">, guest: string, property: string): string {
+  const at = new Date(letter.date);
+  const when = Number.isNaN(at.getTime())
+    ? letter.date
+    : `${new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/Toronto" }).format(at)} at ${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }).format(at)}`;
+  const account = [letter.from, letter.email && letter.email !== letter.from ? `<${letter.email}>` : ""].filter(Boolean).join(" ") || "Mandel Realty";
+  const to = letter.to.split(/[,;]+/).map((item) => item.trim()).filter(Boolean).join(", ") || "recipients the message doesn't list";
+  const said = letter.body
+    .split(/\n+|(?<=[.!?])\s+/)
+    .map((line) => line.trim())
+    .filter((line) => /\b(arriv|staying|check-?in|check-?out|until|nights?|vehicles?|cars?|plates?|make:|model:|parking)\b/i.test(line))
+    .slice(0, 4)
+    .join(" ");
+  return [
+    `Yes, it's already sent: the building registration for ${guest}'s stay at ${property}.`,
+    `${account} sent it by ${letter.mailbox === "outlook" ? "Outlook" : "Gmail"} on ${when} to ${to}.`,
+    `Subject: “${letter.subject.trim()}”.`,
+    said ? `It says: ${said}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 const PLACE = /\b(blue jays|\b318\b|charlotte|\b606\b|shaw|roseglor|scarborough)\b/i;

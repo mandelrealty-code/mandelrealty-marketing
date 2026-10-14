@@ -25,7 +25,7 @@ import { answerMailChain, asksMailBreakdown } from "../copilot/mailChain.js";
 import type { WorkModelId } from "../copilot/models.js";
 import { answerGeneral, answerPhoto, solveMath } from "../copilot/plainAnswer.js";
 import { answerRecords, missingSourceAnswer } from "../copilot/recordsAnswer.js";
-import { answerBuildingRegistrationItem, answerRegistrationStatus, asksBuildingRegistration } from "../copilot/buildingRegistration.js";
+import { answerBuildingRegistrationItem, answerRegistrationStatus, asksBuildingRegistration, asksRegistrationStatus } from "../copilot/buildingRegistration.js";
 import { closeHandledAnswer, proveOutgoingMail } from "../copilot/partnerStandard.js";
 import { parityNow } from "../copilot/parity/clock.js";
 import { applyCorrections, takeCorrection } from "../copilot/corrections.js";
@@ -1004,6 +1004,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         if (processed) {
           await addMessage({ chatId, role: "assistant", body: processed.body, steps: [{ text: processed.step }], thought: processed.thought });
           return done();
+        }
+        // "Did we send the parking email…?" is a Sent-mail question: answered from Sent before any reservation readout.
+        if (asksRegistrationStatus(text)) {
+          const status = await answerRegistrationStatus(text, clock).catch(() => null);
+          if (status) {
+            await addMessage({ chatId, role: "assistant", body: status, steps: [{ text: /^Yes, it's already sent/.test(status) ? "Found it in Sent" : "Searched Sent in Gmail and Outlook" }], thought: "Answered from Sent mail. Nothing was drafted or sent." });
+            return done();
+          }
         }
         // The registration email, including "draft it exactly like the other emails" later in the chat:
         // filled from the last sent registration, never written freehand by the agent.

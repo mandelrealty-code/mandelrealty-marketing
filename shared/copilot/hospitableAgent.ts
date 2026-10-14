@@ -502,6 +502,8 @@ export function instructions(mcp: boolean, hasHospitable: boolean, facts: string
     "If a memory already says how this job works, follow it. Do not ask again. Offer to handle the next one that way.",
     "When they choose, call keep_way with that choice, then confirm it in a sentence. Do not call keep_way on a question that only asks what you see.",
     "Reminders are Copilot's own records, kept in Copilot. Never say a reminder was set in a phone, calendar or another app, or that you can't change one.",
+    "Every time you write is Toronto time. For mail, use the `when` field exactly as given; never convert a date or Date header yourself. Hospitable times are UTC: say them in Toronto time.",
+    "A question about whether, when, or to whom an email was sent is answered from Sent mail: lead with sent or not sent, then when, from which account, to whom, and what it said. A reservation only tells you which stay is meant; it is never the answer.",
     "You can read Sent yourself. Never ask them to show, paste or forward an email; search Sent and read it.",
     "A recurring email (a building registration, a turnover note) copies the most recent sent one of that type: same subject construction, same lines, blank lines and sign-off, with only the new stay's facts swapped in. Write dates the way that sent email wrote them. Do not add weekday names it didn't have.",
     "Reformatting or respacing a draft never changes a fact. Every fact stays, and every unknown stays the same placeholder, such as [make] or [plate]. Never turn an unknown into a detail, such as a vehicle count the guest hasn't given.",
