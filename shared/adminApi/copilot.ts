@@ -58,6 +58,7 @@ import { asksPropertyReport } from "../copilot/reportParse.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts, namedDraftGuest } from "../copilot/guestInboxAnswer.js";
 import { answerGuestStay } from "../copilot/guestStayAnswer.js";
 import { answerPropertyFact } from "../copilot/propertyFact.js";
+import { answerStockedKind } from "../copilot/stockedKind.js";
 import { answerOps, asksCleanerAssignment, asksContractRevision, asksSop, cleanerFromWords, commitCleanerAssignment, commitContractResend, createOpsSop, prepareCleanerAssignment, prepareContractAmendment, sopFromWords } from "../copilot/ops.js";
 import { answerPdfReport } from "../copilot/revenueReport.js";
 import { answerOwnStore, asksClientList, CLIENT_STORE_EMPTY } from "../copilot/storeQuestions.js";
@@ -1609,6 +1610,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             property: stay.property,
             steps: [{ text: "Read the reservation" }],
             thought: "This came from Hospitable. Nothing was sent.",
+          });
+          return done();
+        }
+        // A stocked product is the cleaner app's item name, before the Knowledge Hub.
+        const stocked = await answerStockedKind(text);
+        if (stocked) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: stocked,
+            steps: [{ text: "Read the inventory" }],
+            thought: "This came from the cleaner app inventory. Nothing was guessed.",
           });
           return done();
         }

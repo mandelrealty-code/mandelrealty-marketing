@@ -7,6 +7,7 @@ import { answerMarketingCopy } from "./marketingCopy.js";
 import { answerMailChain } from "./mailChain.js";
 import { answerCatalogPurchase } from "./catalogPurchase.js";
 import { answerProductAdvice } from "./productAdvice.js";
+import { answerStockedKind } from "./stockedKind.js";
 import { answerUnitSetup } from "./unitSetup.js";
 import { answerStayDetail, asksDayCount, type StayCard } from "./stayAnswer.js";
 import type { PropertyIdentity } from "./types.js";
@@ -15,6 +16,14 @@ export async function pinnedCompanyAnswer(
   text: string,
   context: { prior?: string; carried?: StayCard[]; property?: PropertyIdentity | null } = {},
 ): Promise<{ body: string; step: string; thought: string; property?: PropertyIdentity | null; stays?: StayCard[] } | null> {
+  const stocked = await answerStockedKind(text);
+  if (stocked) {
+    return {
+      body: stocked,
+      step: "Read the inventory",
+      thought: "This came from the cleaner app inventory. Nothing was guessed.",
+    };
+  }
   const chain = await answerMailChain(text);
   if (chain) {
     const missed = /didn't find|didn't return|isn't connected/.test(chain);

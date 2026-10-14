@@ -18,6 +18,7 @@ import { closeHandledAnswer, correctRelativeWording, presentApprovals } from "..
 import { listStoredWaitingDrafts } from "../checksClaim.js";
 import { answerStay } from "../stayAnswer.js";
 import { answerPropertyFact } from "../propertyFact.js";
+import { answerStockedKind, asksStockedKind } from "../stockedKind.js";
 import { answerGuestThreads, answerNamedGuestDraft, answerWaitingDrafts } from "../guestInboxAnswer.js";
 import { guestDrafts, loadGuestQueue, openGuestAnswer, resetGuestMessaging } from "../guestMessaging.js";
 import {
@@ -1505,6 +1506,43 @@ async function fixtureOutstanding(): Promise<void> {
   expect(empty === "Nothing needs you today", "a clear day says nothing needs you and nothing else", empty);
 }
 
+async function fixtureStockedKind(): Promise<void> {
+  const world = worldAt("2026-10-13T16:00:00-04:00");
+  world.cleaner = {
+    supplies: [
+      { propertyId: ID.shaw, item: "Tide Pods", left: 4, low: false, product: "" },
+      { propertyId: ID.shaw, item: "blue jug", left: 1, low: false, product: "" },
+      { propertyId: ID.charlotte, item: "Cascade Complete", left: 3, low: false, product: "" },
+      { propertyId: ID.blue, item: "paper towels", left: 2, low: false, product: "Bounty", threshold: 1 },
+    ],
+  };
+  installWorld(world);
+  const shawAsk = "what kind of laundry detergent do we use at 1065 Shaw?";
+  expect(asksStockedKind(shawAsk), "a kind question reads the inventory", shawAsk);
+  expect(!asksStockedKind("where is the laundry detergent at Shaw?"), "where the detergent is stays a Hub question", "where was treated as inventory");
+  expect(!asksStockedKind("what's a good brand to order for royas unit for cheap laundry detergent?"), "a buying question stays a purchase recommendation", "the order question was treated as inventory");
+  const shaw = (await answerStockedKind(shawAsk)) ?? "";
+  expect(shaw === "1065 Shaw Street stocks Tide Pods.", "Shaw's caught name is the laundry detergent", shaw);
+  expect(!/blue jug|Cascade|Knowledge Hub/i.test(shaw), "a vague name and another product are not the detergent", shaw);
+  const which = (await answerStockedKind("which type of laundry detergent do we have at 1065 Shaw St?")) ?? "";
+  expect(which === "1065 Shaw Street stocks Tide Pods.", "which type we have is the same saved name", which);
+  expect(await answerPropertyFact(shawAsk) === null, "the Knowledge Hub does not answer a stocked product", "the Hub answered");
+  const everyone = (await answerStockedKind("what kind of laundry detergent do we use?")) ?? "";
+  expect(everyone === "1065 Shaw Street stocks Tide Pods.", "without a unit, only the unit that stocks it is named", everyone);
+  const pods = (await answerStockedKind("what kind of dishwasher detergent do we use at Charlotte?")) ?? "";
+  expect(pods === "8 Charlotte 606 stocks Cascade Complete.", "Cascade is the dishwasher detergent, from its name", pods);
+
+  world.cleaner = { supplies: [{ propertyId: ID.shaw, item: "blue jug", left: 1, low: false, product: "" }] };
+  installWorld(world);
+  const vague = (await answerStockedKind(shawAsk)) ?? "";
+  expect(vague === "The inventory for 1065 Shaw Street was read. It does not name a laundry detergent.", "a name that does not say the kind is not guessed", vague);
+
+  world.cleaner = { error: "Cleaner Hub timed out" };
+  installWorld(world);
+  const failed = (await answerStockedKind(shawAsk)) ?? "";
+  expect(failed === "The inventory for 1065 Shaw Street didn't return. Cleaner Hub timed out", "a failed inventory read is named", failed);
+}
+
 const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "1", title: "Open item with a yes/no close", run: fixtureOpenItem },
   { id: "2", title: "Two-approval stay", run: fixtureTwoApprovals },
@@ -1542,6 +1580,7 @@ const FIXTURES: { id: string; title: string; run: () => Promise<void> }[] = [
   { id: "31", title: "A stay that arrived before the asked window still blocks its nights inside it", run: fixtureStayBeforeWindow },
   { id: "35", title: "OPS, cleaner-app onboarding, and unanswered mail are to-dos until the records show them done", run: fixtureBusinessTodos },
   { id: "36", title: "A to-do question is the outstanding work, grouped by property", run: fixtureOutstanding },
+  { id: "37", title: "A stocked-product question quotes the cleaner app's saved item name", run: fixtureStockedKind },
 ];
 
 function guard(): void {
