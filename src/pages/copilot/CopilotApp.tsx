@@ -2628,6 +2628,28 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       return result;
                     }}
                     onHubSave={(offer) => api<{ saved: boolean; line: string }>("guests-hub-save", offer)}
+                    onMarkHandled={async (handled) => {
+                      const row = guestAnswer;
+                      if (!row) return;
+                      const latest = row.thread.map((item) => item.at).sort().at(-1) ?? "";
+                      await api(handled ? "guests-mark-handled" : "guests-unmark-handled", { id: row.id, activityAt: latest, viewer });
+                      // Shown at once: the thread says it's handled and the row leaves Needs reply; then a quiet refresh.
+                      const line = `Marked handled by ${viewer} · nothing was sent`;
+                      setGuestAnswer((current) => (current && current.id === row.id ? { ...current, lane: handled ? "none" : "reply", waitingLine: handled ? line : "", draft: handled ? "" : current.draft, sendable: !handled && current.sendable } : current));
+                      if (handled) {
+                        setGuestQueue((current) => {
+                          if (!isGuestQueue(current)) return current;
+                          const moved = current.waiting.find((item) => item.id === row.id);
+                          return moved ? { ...current, waiting: current.waiting.filter((item) => item.id !== row.id), quiet: [{ ...moved, quietReason: line, wait: "", waitedMs: 0 }, ...(current.quiet ?? [])] } : current;
+                        });
+                      }
+                      openedViews.current.delete(row.id);
+                      void api<GuestQueue>("guests-refresh", {}).then((queue) => {
+                        if (!isGuestQueue(queue)) return;
+                        setGuestQueue(queue);
+                        setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+                      }).catch(() => undefined);
+                    }}
                   />
                 ) : null}
                 {screen === "reviews" ? (

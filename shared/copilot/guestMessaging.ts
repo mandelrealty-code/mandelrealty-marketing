@@ -10,7 +10,7 @@ import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIn
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { detectFollowUps, orderFollowUps, repaintFollowUp, type FollowUpStay } from "./guestFollowUps.js";
 import { bookingRequestFollowUp, guestPhotoUrl, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
-import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, type InquiryVerify } from "./store.js";
+import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, readPrefixedRow, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, writePrefixedRow, type InquiryVerify } from "./store.js";
 import { parityEnabled } from "./parity/flag.js";
 import { closeFollowUpEverywhere } from "./dueFollowUps.js";
 import { draftProblem, guestKey, looksLikeHeading, replyState } from "./guestReplyState.js";
@@ -44,6 +44,7 @@ export function resetGuestMessaging(): void {
   standing.clear();
   heldIds.clear();
   handledFollowUps.clear();
+  handledThreads = null;
   verifyingInquiries.clear();
   stagedInquiries = [];
   rememberedQueue = null;
@@ -92,6 +93,59 @@ export async function beginInquiryVerify(id: string, action: "approve" | "declin
   const queue = await loadGuestQueue(now);
   const card = queue.followUps.find((row) => row.id === trimmed);
   return { queue, airbnbUrl: card?.airbnbUrl || "" };
+}
+
+// ---------- Handled without a reply ----------
+
+const HANDLED_THREADS = "guest-thread-handled|";
+let handledThreads: Map<string, { at: string; by: string }> | null = null;
+
+async function readHandledThreads(): Promise<Map<string, { at: string; by: string }>> {
+  if (handledThreads) return handledThreads;
+  handledThreads = new Map();
+  if (!parityEnabled()) {
+    try {
+      const raw = await readPrefixedRow(HANDLED_THREADS);
+      for (const [id, row] of Object.entries(raw ? (JSON.parse(raw) as Record<string, { at: string; by: string }>) : {})) handledThreads.set(id, row);
+    } catch {
+      /* Marks made in this process still hold. */
+    }
+  }
+  return handledThreads;
+}
+
+async function saveHandledThreads(): Promise<void> {
+  if (parityEnabled() || !handledThreads) return;
+  await writePrefixedRow(HANDLED_THREADS, JSON.stringify(Object.fromEntries(handledThreads)));
+}
+
+/**
+ * A partner marks a conversation handled: no reply is owed and nothing is sent. It leaves Needs reply
+ * until the guest writes again (a message after `latestAt` brings it back).
+ */
+export async function markThreadHandled(id: string, latestAt: string, by: string): Promise<void> {
+  const map = await readHandledThreads();
+  map.set(id, { at: latestAt || new Date().toISOString(), by: by || "a partner" });
+  await saveHandledThreads();
+  forgetRememberedQueue();
+}
+
+export async function unmarkThreadHandled(id: string): Promise<void> {
+  const map = await readHandledThreads();
+  map.delete(id);
+  await saveHandledThreads();
+  forgetRememberedQueue();
+}
+
+/** The quiet reason for a thread marked handled, while no newer guest message has come in. */
+export function handledReason(id: string, latestAt: string): string {
+  const mark = handledThreads?.get(id);
+  if (!mark) return "";
+  return !latestAt || latestAt <= mark.at ? `Marked handled by ${mark.by} · nothing was sent` : "";
+}
+
+function forgetRememberedQueue(): void {
+  rememberedQueue = null;
 }
 
 /** Records a follow-up as handled. A later read of the same thread will not bring it back. */
@@ -205,7 +259,15 @@ function disconnectedQueue(): GuestQueue {
   };
 }
 
-const TOPIC_STOP = new Set([
+/** Words that say nothing about what the guest needs; a Hub line sharing only these isn't an answer. */
+const GENERIC_ASK = ["available", "availability", "listed", "listing", "still", "longer", "confirm", "property", "place", "unit", "please", "thanks", "thank", "could", "would", "there", "know", "able", "wondering", "question", "hello", "shane", "roya", "ryan"];
+
+/** Availability, booking and price questions are the partners' to answer; the Hub never drafts them. */
+export function partnersOnlyAsk(ask: string): boolean {
+  return /\b(available|availability|still listed|book(?:ed|ing)?|reserv\w*|calendar|blocked|price|pricing|rate|discount|cheaper|minimum|min(?:imum)? stay|extend|extra night|cancel\w*|refund)\b/i.test(ask);
+}
+
+const TOPIC_STOP = new Set([...GENERIC_ASK,
   "where", "what", "when", "which", "could", "would", "should", "please", "there", "have", "with",
   "from", "your", "this", "that", "they", "them", "does", "dont", "about", "instead", "looking",
   "looked", "everywhere", "start", "just", "also", "very", "really", "some", "want", "need",
@@ -282,6 +344,8 @@ export function draftFromHub(
   context?: { place?: string; memory?: string },
 ): { mode: "hub" | "gap"; draft: string; facts: string; gap: string } {
   if (!needsGuestReply(ask)) return { mode: "gap", draft: "", facts: "", gap: "" };
+  // "Is it still available on Oct 30?" is yours to answer, not a Hub line that mentions "available".
+  if (partnersOnlyAsk(ask)) return { mode: "gap", draft: "", facts: "", gap: "an answer about availability, booking or price" };
   const name = guest.trim().split(/\s+/)[0] || "there";
   const place = context?.place ?? "";
   const blue = /blue jays|\b318\b/i.test(place);
@@ -551,6 +615,7 @@ export async function loadGuestQueue(now = parityNow() ?? new Date()): Promise<G
 
 async function loadGuestQueueOnce(now: Date): Promise<GuestQueue> {
   if (!copilotScopeActive()) return withCopilotScope(() => loadGuestQueueOnce(now));
+  await readHandledThreads();
   const queue = await scanGuestQueue(now);
   queue.answer = waitingSurfaceText(queue);
   if (queue.connected) {
@@ -741,6 +806,12 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       if (read.lane === "guest") {
         row.thanks = false;
         list(row, onGuest);
+      } else if (read.lane === "reply" && handledReason(stay.stay.id, row.activityAt ?? "")) {
+        // A partner marked it handled; it stays out of Needs reply until the guest writes again.
+        row.quietReason = handledReason(stay.stay.id, row.activityAt ?? "");
+        row.wait = "";
+        row.waitedMs = 0;
+        list(row, quiet);
       } else if (read.lane === "reply" && !state.needs) {
         row.quietReason = state.reason;
         row.wait = "";
@@ -962,7 +1033,12 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
   // The same rule as the inbox: a cancelled, superseded, closed, or passed thread gets no draft.
   const listed = saved?.quiet?.find((item) => item.id === row.id);
   const raw = oneRecord(stayRaw) ?? {};
-  const state = listed?.quietReason
+  await readHandledThreads();
+  const latestGuest = spoken.filter((item) => item.role === "guest").map((item) => item.at).sort().at(-1) ?? "";
+  const handled = handledReason(row.id, latestGuest || row.activityAt || "");
+  const state = handled
+    ? { needs: false, reason: handled }
+    : listed?.quietReason
     ? { needs: false, reason: listed.quietReason }
     : replyState({
       status: String(raw.status ?? row.status ?? ""),

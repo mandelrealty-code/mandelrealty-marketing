@@ -24,6 +24,7 @@ export function GuestMessaging({
   onHandleFollowUp,
   onInquiry,
   onImprove,
+  onMarkHandled,
   onHubSave,
 }: {
   queue: GuestQueue | null;
@@ -39,6 +40,7 @@ export function GuestMessaging({
   onHandleFollowUp?: (id: string) => Promise<void>;
   onInquiry?: (id: string, action: "approve" | "decline") => Promise<string>;
   onImprove?: (text: string) => Promise<string>;
+  onMarkHandled?: (handled: boolean) => Promise<void>;
   onHubSave?: HubSave;
 }) {
   // Kept while a thread is open, so Back returns to the same filtered list. A reload clears them.
@@ -67,6 +69,7 @@ export function GuestMessaging({
           return url;
         }}
         onImprove={onImprove}
+        onMarkHandled={onMarkHandled}
         onHubSave={onHubSave}
       />
     );
@@ -303,6 +306,7 @@ function Thread({
   onHandle,
   onInquiry,
   onImprove,
+  onMarkHandled,
   onHubSave,
 }: {
   answer: GuestDraftView;
@@ -313,6 +317,7 @@ function Thread({
   onHandle: () => Promise<void>;
   onInquiry: (action: "approve" | "decline") => Promise<string>;
   onImprove?: (text: string) => Promise<string>;
+  onMarkHandled?: (handled: boolean) => Promise<void>;
   onHubSave?: HubSave;
 }) {
   const needsReply = answer.lane === "reply";
@@ -405,7 +410,12 @@ function Thread({
           {follow?.kind === "inquiry" ? <InquiryCard item={follow} now={tick} busy={busy} onInquiry={onInquiry} onBusy={setBusy} onFail={setFail} /> : null}
           {note ? <p className="cp-gt-closed" aria-live="polite"><strong>Follow-up closed</strong> · {note}</p> : null}
           {showDraft ? <p className="cp-gt-src">Copilot draft · from the {answer.property} Knowledge Hub and the full conversation</p> : null}
-          {idle ? <p className="cp-gt-idle" aria-live="polite">{answer.waitingLine && answer.lane === "none" ? `Nothing to send. ${answer.waitingLine}` : "Nothing to send. Copilot is watching this thread."}</p> : null}
+          {idle ? (
+            <p className="cp-gt-idle" aria-live="polite">
+              {answer.waitingLine && answer.lane === "none" ? `Nothing to send. ${answer.waitingLine}` : "Nothing to send. Copilot is watching this thread."}
+              {/^Marked handled/.test(answer.waitingLine) && onMarkHandled ? <> <button type="button" className="cp-gt-undo" onClick={() => void onMarkHandled(false)}>Undo</button></> : null}
+            </p>
+          ) : null}
           {needsReply && !answer.draft && empty ? <p className="cp-gt-idle" aria-live="polite">No draft. The {answer.property} Knowledge Hub and the thread don’t give {answer.gap || "a complete answer to this"}, so write this reply yourself.</p> : null}
           <div className="cp-gt-compose">
             <div className="cp-gt-field">
@@ -420,6 +430,10 @@ function Thread({
               />
             </div>
             <div className="cp-gt-actions">
+              {needsReply && onMarkHandled ? (
+                // No reply owed: leaves Needs reply, sends nothing.
+                <button type="button" className="quiet" disabled={busy} onClick={() => { setBusy(true); setFail(""); void onMarkHandled(true).catch((err: unknown) => setFail(err instanceof Error ? err.message : "It wasn’t marked.")).finally(() => setBusy(false)); }}>Mark handled</button>
+              ) : null}
               <button
                 type="button"
                 disabled={empty || improving}

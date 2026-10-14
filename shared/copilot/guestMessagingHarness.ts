@@ -16,6 +16,9 @@ import {
   clearHandledFollowUps,
   clearInquiryVerifying,
   draftFromHub,
+  handledReason,
+  markThreadHandled,
+  unmarkThreadHandled,
   isThanksOnly,
   loadGuestQueue,
   markFollowUpHandled,
@@ -1707,6 +1710,26 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   const after = parityHubItems(UNIT.id).filter((item) => /drying rack/i.test(`${item.title} ${item.content}`));
   if (after.length !== 1 || after[0]?.content !== "The dish drying rack is in the cabinet left of the sink.") fail(`same-topic items ${JSON.stringify(after)}`);
   if (!capturedCommits().some((row) => row.detail === "update-knowledge-hub-item")) fail("the update path was not taken");
+}
+
+// An inquiry asking about availability gets no Hub draft (the live case: "Laundry rack available…").
+{
+  const lee = "Hi Shane/Roya. This property is still listed as available on Oct 30. Could you confirm it is no longer available?";
+  const hub = "Laundry rack available for drying clothes.\nThe dish drying rack is in the cabinet left of the sink.";
+  const drafted = draftFromHub("Lee", lee, hub, { place: "1065 Shaw Street" });
+  if (drafted.mode !== "gap" || drafted.draft) fail(`availability inquiry drafted: ${drafted.draft}`);
+  if (draftFromHub("Lee", "Is there a laundry rack for drying clothes?", hub, { place: "1065 Shaw Street" }).mode !== "hub") fail("a real Hub question lost its draft");
+}
+
+// Mark handled: out of Needs reply with nothing sent, back in when the guest writes again; Undo restores it.
+{
+  const commits = capturedCommits().length;
+  await markThreadHandled("res-lee", "2026-10-14T16:35:00.000Z", "Shane");
+  if (!handledReason("res-lee", "2026-10-14T16:35:00.000Z").startsWith("Marked handled by Shane")) fail("handled thread still owes a reply");
+  if (handledReason("res-lee", "2026-10-14T18:00:00.000Z")) fail("a new guest message didn't bring the thread back");
+  await unmarkThreadHandled("res-lee");
+  if (handledReason("res-lee", "2026-10-14T16:35:00.000Z")) fail("Undo didn't restore the thread");
+  if (capturedCommits().length !== commits) fail("marking handled sent something");
 }
 
 console.log("Guest messaging harness passed.");

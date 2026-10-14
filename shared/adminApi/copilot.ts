@@ -73,7 +73,7 @@ import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMc
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
-import { beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestMessage, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
+import { markThreadHandled, unmarkThreadHandled, beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestMessage, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, listStoredMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
@@ -573,6 +573,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     if (op === "guests-hold") {
       holdGuestThread(String(body.id ?? ""));
       return res.status(200).json({ held: true });
+    }
+
+    if (op === "guests-mark-handled" || op === "guests-unmark-handled") {
+      // No reply owed: the conversation leaves Needs reply and nothing is sent. Undo puts it back.
+      const id = String(body.id ?? "").trim();
+      if (!id) return res.status(400).json({ error: "Missing conversation." });
+      if (op === "guests-mark-handled") await markThreadHandled(id, String(body.activityAt ?? ""), String(body.viewer ?? "").trim() || "Shane");
+      else await unmarkThreadHandled(id);
+      return res.status(200).json({ ok: true });
     }
 
     if (op === "guests-handle") {
