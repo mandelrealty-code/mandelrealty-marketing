@@ -46,7 +46,11 @@ export type BoardPayload = {
 export async function boardPayload(viewer: BoardViewer, opts: { includeArchived?: boolean } = {}): Promise<BoardPayload> {
   try {
     const [tasks, roster, calendar] = await Promise.all([listTasks(), readTeamRoster(), calendarStatus()]);
-    const mine = visibleTo(tasks, viewer);
+    // Reminders are their own list: a partner's "remind me" stays in Reminders, off the board.
+    // A reminder set for an employee is their task, so it stays on their board.
+    const partnerNames = roster.filter((row) => row.partner).map((row) => row.name.toLowerCase());
+    const onBoard = tasks.filter((task) => task.source.kind !== "chat" || (task.assignee && !partnerNames.includes(task.assignee.toLowerCase())));
+    const mine = visibleTo(onBoard, viewer);
     const units = [...new Set([...UNITS, ...tasks.map((task) => task.unit).filter(Boolean)])];
     const archived = viewer.partner && opts.includeArchived ? await readArchivedTasks() : undefined;
     return { ready: true, line: "", tasks: mine, roster, units, viewer, calendar, ...(archived ? { archived } : {}) };

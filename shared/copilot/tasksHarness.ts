@@ -17,7 +17,7 @@ import { insertTask, resetParityTasks } from "./taskDb.js";
 import handleSession, { setStaffAccounts } from "../adminApi/session.js";
 import { hashPassword } from "../portalAuth.js";
 import { OPS_NAV, opsPathOpensCopilotTasks } from "../opsNav.js";
-import { setParityStaff, syncCalendar } from "./tasks.js";
+import { getTask, setParityStaff, syncCalendar } from "./tasks.js";
 import { createReminder, listReminders } from "./reminders.js";
 import { overviewReminders, reminderRow } from "./reminderView.js";
 import { fromToronto, shiftDay, torontoParts } from "./reminderTime.js";
@@ -73,7 +73,15 @@ if (!furnace) fail("board create");
 if ((await listReminders()).some((row) => row.id === furnace.id) || overviewReminders(await listReminders(), now).rows.some((row) => row.id === furnace.id)) fail("a board task showed up in Reminders");
 const chatReminder = await createReminder({ text: "Call the locksmith about the side gate", assignee: "Shane", dueAt: at(0, 1140), createdBy: "Shane" });
 if (!(await listReminders()).some((row) => row.id === chatReminder.id) || !overviewReminders(await listReminders(), now).rows.some((row) => row.id === chatReminder.id)) fail("a chat reminder isn't in Reminders and Overview");
-if (!find(await boardPayload(shane), "Call the locksmith about the side gate")) fail("a chat reminder isn't on the board");
+if (find(await boardPayload(shane), "Call the locksmith about the side gate")) fail("a partner's chat reminder is on the board");
+// A reminder set for an employee is their task: it stays on their board.
+const forMaya = await createReminder({ text: "Restock the coffee pods", assignee: "Maya", dueAt: at(1, 600), createdBy: "Shane" });
+if (!(await boardPayload(maya)).tasks.some((row) => row.id === forMaya.id)) fail("an employee's reminder isn't on their board");
+// From Copilot, board actions travel as `action` (Copilot's request helper owns `op`).
+const viaCopilot = await copilot<BoardPayload>({ op: "tasks-action", action: "update", id: furnace.id, patch: { status: "doing", assignee: "Ryan" }, viewer: "Shane" });
+const moved = viaCopilot.tasks.find((row) => row.id === furnace.id);
+if (moved?.status !== "doing" || moved.assignee !== "Ryan") fail(`Copilot board action ${moved?.status} ${moved?.assignee}`);
+await copilot({ op: "tasks-action", action: "update", id: furnace.id, patch: { status: "todo", assignee: "Shane" }, viewer: "Shane" });
 
 // Calendar: the event is made with the chosen reminder, moves with the due, gains ✓ when done, goes when deleted.
 board = await boardAction({ op: "update", id: furnace.id, patch: { reminder: "1 hour before" } }, shane);
@@ -189,8 +197,9 @@ setParityClock(now);
 const top = overviewReminders(await listReminders(), now).rows[0]!;
 if (top.id !== permit.id || reminderRow(top, now).outText !== "2 days outstanding") fail(`overview top ${top.text} ${reminderRow(top, now).outText}`);
 await copilot({ op: "reminders-done", id: permit.id, viewer: "Shane" });
-const cleared = (await boardPayload(shane)).tasks.find((row) => row.id === permit.id) as Task;
-if (cleared.status !== "done" || cleared.doneBy !== "Shane") fail("done in chat didn't clear it on the board");
+// The same record everywhere: done in chat is done (the board leaves partners' reminders to the Reminders view).
+const cleared = (await getTask(permit.id)) as Task;
+if (cleared.status !== "done" || cleared.doneBy !== "Shane" || overviewReminders(await listReminders(), now).open !== 0 && overviewReminders(await listReminders(), now).rows.some((row) => row.id === permit.id && row.status !== "done")) fail("done in chat didn't clear it");
 
 // Not connected: tasks still save; the calendar block says so.
 setCalendarApi(null);

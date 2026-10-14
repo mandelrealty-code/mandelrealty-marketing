@@ -65,7 +65,13 @@ export async function readTeamRoster(): Promise<RosterPerson[]> {
     }
   }
   const people: RosterPerson[] = partners.map((name) => ({ name, role: "Partner", partner: true }));
-  for (const name of staff) if (!people.some((row) => row.name.toLowerCase() === name.toLowerCase())) people.push({ name, role: "Team", partner: false });
+  // A staff account in a partner's name (a partner's own test login) isn't a second person.
+  const partnerFirst = partners.map((name) => name.split(" ")[0]!.toLowerCase());
+  for (const name of staff) {
+    if (people.some((row) => row.name.toLowerCase() === name.toLowerCase())) continue;
+    if (partnerFirst.includes(name.split(" ")[0]!.toLowerCase())) continue;
+    people.push({ name, role: "Team", partner: false });
+  }
   return people;
 }
 

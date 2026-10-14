@@ -2004,7 +2004,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   // The Tasks board, for a partner: the same records as Reminders, the calendar and Copilot's own tasks.
   const tasksApi = useMemo<BoardApi>(() => ({
     load: (open, opts) => api<BoardPayload>("tasks-board", { open, viewer, includeArchived: opts?.includeArchived === true }),
-    act: (body) => api<BoardPayload>("tasks-action", { ...body, viewer }),
+    // The board's own action travels as `action`: Copilot's request helper owns `op`.
+    act: ({ op, ...rest }) => api<BoardPayload>("tasks-action", { ...rest, action: op, viewer }),
     connectCalendar: () => { window.location.href = "/api/admin/gmail/start"; },
   }), [viewer]);
 

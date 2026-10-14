@@ -439,7 +439,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const opts = { includeArchived: body.includeArchived === true };
       if (op === "tasks-board") return res.status(200).json(body.open === true ? await boardOpen(viewer, opts) : await boardPayload(viewer, opts));
       try {
-        return res.status(200).json(await boardAction(body, viewer));
+        return res.status(200).json(await boardAction({ ...body, op: String(body.action ?? "") }, viewer));
       } catch (err) {
         if (err instanceof TasksNotReady) return res.status(200).json(await boardPayload(viewer, opts));
         return res.status(400).json({ error: err instanceof Error ? err.message : "That didn't save. Try again." });

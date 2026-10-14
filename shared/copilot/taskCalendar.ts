@@ -87,15 +87,23 @@ const BASE = "https://www.googleapis.com/calendar/v3";
 /** Google Calendar over its REST API with the business account's token. */
 function googleCalendar(token: () => Promise<string>): CalendarApi {
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+    let bearer = "";
+    try {
+      bearer = await token();
+    } catch (err) {
+      // No usable Google sign-in is "not connected", not a pause.
+      throw new CalendarNotAuthorized(err instanceof Error ? err.message : "Google isn't connected.");
+    }
     const res = await fetch(`${BASE}${path}`, {
       ...init,
-      headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json", ...(init.headers ?? {}) },
+      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json", ...(init.headers ?? {}) },
     });
     if (res.status === 204) return undefined as T;
     const body = (await res.json().catch(() => ({}))) as T & { error?: { message?: string; status?: string; errors?: { reason?: string }[] } };
     if (!res.ok) {
       const reason = `${body.error?.status ?? ""} ${body.error?.errors?.map((item) => item.reason).join(" ") ?? ""} ${body.error?.message ?? ""}`;
-      if (res.status === 403 && /scope|insufficient|PERMISSION_DENIED|accessNotConfigured|has not been used/i.test(reason)) throw new CalendarNotAuthorized(reason.trim());
+      // A refusal (missing Calendar permission, the API not enabled) is "not connected"; only outages pause.
+      if (res.status === 403) throw new CalendarNotAuthorized(reason.trim());
       if (res.status === 401) throw new CalendarNotAuthorized("The Google sign-in was not accepted.");
       const error = new Error(`Google Calendar ${res.status}: ${body.error?.message ?? "no answer"}`) as Error & { status?: number };
       error.status = res.status;

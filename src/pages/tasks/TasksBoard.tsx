@@ -424,12 +424,12 @@ function TaskPanel({
         <span>{task.cal.fromCal ? "Task · from the team calendar" : task.source.kind === "copilot" ? "Task · created by Copilot" : "Task"}</span>
         <button type="button" className="tk-x" title="Close" onClick={onClose}><svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" /></svg></button>
       </div>
-      <div className="tk-panel-body">
-        <div className="tk-titlebox">
+        <div className="tk-titlebox tk-pinned">
           <textarea className={isDone ? "done" : ""} rows={2} value={title} onChange={(event) => setTitle(event.target.value)} onBlur={() => { if (title.trim() && title.trim() !== task.title) void update({ title }); }} aria-label="Title" />
           {statusNote ? <div className={overdue ? "tk-late" : "tk-mu"}>{statusNote}</div> : null}
         </div>
 
+      <div className="tk-panel-body">
         <div className="tk-actions">
           {!isDone ? <button type="button" className="tk-primary" onClick={() => void act({ op: "done" })}>Mark done</button> : <button type="button" className="tk-btn" onClick={() => void act({ op: "reopen" })}>Reopen</button>}
           {!isDone ? (
