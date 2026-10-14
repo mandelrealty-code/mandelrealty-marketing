@@ -126,3 +126,6 @@
 .tk-panel-foot { padding: 12px 14px; border-top: 1px solid var(--ln); }
 .tk-compose { display: flex; align-items: center; gap: 8px; border: 1px solid var(--ln); border-radius: 14px; padding: 6px; background: var(--bg); }
 .tk-compose input { flex: 1; min-width: 0; font-size: 14px; border: none; background: transparent; color: var(--ink); padding: 3px 0; }
+.tk-archive { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px; border-top: 1px solid var(--ln); }
+.tk-archive-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 14px; font-size: 13px; color: var(--mu); }
+.tk-card.archived { cursor: default; opacity: .92; }

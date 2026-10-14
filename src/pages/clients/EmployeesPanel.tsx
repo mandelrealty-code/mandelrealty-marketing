@@ -28,6 +28,32 @@ function fmtHours(n: number): string {
   return n % 1 === 0 ? String(n) : n.toFixed(1);
 }
 
+type BoardTask = { id: string; title: string; assignee: string; status: "todo" | "doing" | "waiting" | "done"; dueAt: string; dueDay: string; priority: "normal" | "arrival"; createdAt: string; updatedAt: string };
+
+const BOARD_STATUS: Record<BoardTask["status"], TaskRow["status"]> = { todo: "open", doing: "in_progress", waiting: "blocked", done: "done" };
+
+function asTaskRow(task: BoardTask): TaskRow {
+  return {
+    id: task.id,
+    created_at: task.createdAt,
+    updated_at: task.updatedAt,
+    title: task.title,
+    detail: "",
+    status: BOARD_STATUS[task.status],
+    priority: task.priority === "arrival" ? "high" : "normal",
+    assignee: task.assignee,
+    assignees: task.assignee ? [task.assignee] : [],
+    due_on: task.dueAt ? new Date(task.dueAt).toLocaleDateString("en-CA", { timeZone: "America/Toronto" }) : task.dueDay || null,
+    property_id: null,
+    client_id: null,
+    year_month: "",
+    // The board has no task types; nothing to show.
+    task_type: "" as TaskRow["task_type"],
+    created_by: "",
+    repeat_rule: "off",
+  };
+}
+
 function taskAssignees(t: TaskRow): string[] {
   if (Array.isArray(t.assignees) && t.assignees.length) {
     return [...new Set(t.assignees.map((n) => n.trim()).filter(Boolean))];
@@ -154,10 +180,10 @@ export function EmployeesPanel({
         staff_user_id: staff.id,
         since: daysAgoIso(90),
       }),
-      pmGet<{ tasks: TaskRow[] }>("tasks", {
-        status: "all",
-        assignee: staff.display_name,
-      }),
+      // The Tasks board's records (archived legacy tasks excluded), as rows for this list.
+      pmGet<{ tasks?: BoardTask[] }>("board", {}).then((board) => ({
+        tasks: (board.tasks ?? []).map(asTaskRow),
+      })),
     ]);
     setDetailEntries(hours.entries ?? []);
     setDetailTotal(hours.total_hours ?? 0);
@@ -318,7 +344,7 @@ export function EmployeesPanel({
       <div className="relative z-10 w-full max-w-md border border-white/10 bg-[#141414] p-5 sm:rounded-lg">
         <h3 className="text-lg font-semibold text-[#f5f5f5]">Invite employee</h3>
         <p className="mt-1 text-[13px] text-[#9a9590]">
-          Display name must match how you assign tasks in OPS.
+          This name appears as an assignee on the Tasks board in Copilot.
         </p>
         <div className="mt-5 flex flex-col gap-4">
           <label className="flex flex-col gap-1.5">
@@ -450,8 +476,8 @@ export function EmployeesPanel({
           </div>
           {detailTasks.length === 0 ? (
             <p className="border-t border-white/8 py-8 text-[14px] text-[#6f6a65]">
-              No tasks assigned to this name yet. In OPS → Tasks, set Assignees to{" "}
-              <span className="text-[#9a9590]">{selected.display_name}</span> exactly.
+              No tasks assigned to this name yet. On the Tasks board in Copilot, assign them to{" "}
+              <span className="text-[#9a9590]">{selected.display_name}</span>.
             </p>
           ) : (
             <ul className="divide-y divide-white/8 border-t border-white/8">
@@ -519,7 +545,7 @@ export function EmployeesPanel({
             Employees
           </h1>
           <p className="mt-1 text-[13px] text-[#9a9590]">
-            Invite VAs · assign tasks in OPS · review logged hours
+            Invite VAs · assign tasks in Copilot · review logged hours
             {weekSince ? ` · week of ${weekSince}` : ""}
           </p>
         </div>

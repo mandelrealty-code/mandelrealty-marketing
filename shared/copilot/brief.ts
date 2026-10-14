@@ -359,34 +359,7 @@ export async function buildBrief(now = new Date()): Promise<BriefPayload> {
       }, skipped);
     }
 
-    const { data: tasks } = await sb
-      .from("pm_tasks")
-      .select("id, title, due_on, status, priority, task_type")
-      .eq("due_on", today)
-      .in("status", ["open", "in_progress"])
-      .limit(8);
-    for (const task of tasks ?? []) {
-      if (focus.length + eating.length >= MAX_CARDS) break;
-      const urgent =
-        task.priority === "high" ||
-        task.task_type === "cleaning" ||
-        task.task_type === "maintenance";
-      if (!urgent) continue;
-      const title = String(task.title ?? "").trim();
-      const when = spokenWhen(String(task.due_on ?? today));
-      if (!title || !when) continue;
-      const headline = `${title} is due ${when}`;
-      const detail = "Drafting the next step does not assign anyone. Nothing has been sent.";
-      ship(eating, {
-        id: `task:${task.id}`,
-        group: "eating",
-        headline,
-        detail,
-        text: `${headline}. ${detail}`,
-        action: "Draft the next step",
-        source: "Today only",
-      }, skipped);
-    }
+    // The old OPS task list is archived; Overview reads tasks through the Reminders group instead.
   }
 
   const reminders = await listDueReminders(today).catch(() => []);

@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { getSupabaseAdmin } from "../supabase.js";
 import { parityEnabled } from "./parity/flag.js";
-import { blankCalendar, type Task, type TaskCalendar, type TaskPriority, type TaskStatus } from "./taskTypes.js";
+import { blankCalendar, isArchived, type ArchivedTask, type Task, type TaskCalendar, type TaskPriority, type TaskStatus } from "./taskTypes.js";
 
 export const TASKS_NOT_READY = "Tasks need one database update: run supabase/pm_tasks_v2.sql in the Supabase SQL editor. Nothing was changed.";
 
@@ -115,7 +115,33 @@ export function toRow(task: Task): Record<string, unknown> {
   };
 }
 
+/** Live tasks only: the archived legacy list never reaches a board, count or surface. */
 export async function readTasks(): Promise<Task[]> {
+  return (await readAllTasks()).filter((task) => !isArchived(task));
+}
+
+const legacyRaw = new Map<string, Record<string, unknown>>();
+
+/** The archive list for the partners: every legacy record as it was. */
+export async function readArchivedTasks(): Promise<ArchivedTask[]> {
+  const all = await readAllTasks();
+  return all.filter(isArchived).map((task) => {
+    const raw = legacyRaw.get(task.id) ?? {};
+    return {
+      id: task.id,
+      title: task.title,
+      assignee: text(raw.assignee) || task.assignee,
+      status: text(raw.status) || task.status,
+      createdAt: task.createdAt,
+      dueOn: text(raw.due_on).slice(0, 10) || task.dueDay || (task.dueAt ? task.dueAt.slice(0, 10) : ""),
+      detail: text(raw.detail),
+      type: text(raw.task_type),
+      property: task.unit,
+    };
+  }).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function readAllTasks(): Promise<Task[]> {
   if (parityEnabled()) return [...memory.values()].map((task) => structuredClone(task));
   const { data, error } = await db().from("pm_tasks").select("*").order("created_at", { ascending: true }).limit(5000);
   if (error) {
@@ -125,7 +151,17 @@ export async function readTasks(): Promise<Task[]> {
   const rows = (data ?? []) as Record<string, unknown>[];
   // A v1 table answers the select but has no v2 columns: fail closed rather than drop fields on write.
   if (rows.length && !("activity" in rows[0]!)) throw new TasksNotReady();
-  return rows.map(fromRow);
+  const tasks = rows.map(fromRow);
+  rows.forEach((row) => legacyRaw.set(String(row.id), row));
+  // Mark the legacy list archived in the data, once; never deleted.
+  const unmarked = tasks.filter((task) => isArchived(task) && task.extra.archived !== true).map((task) => task.id);
+  if (unmarked.length) {
+    for (const task of tasks.filter((row) => unmarked.includes(row.id))) {
+      task.extra = { ...task.extra, archived: true };
+      await db().from("pm_tasks").update({ extra: task.extra }).eq("id", task.id);
+    }
+  }
+  return tasks;
 }
 
 export async function readTask(id: string): Promise<Task | null> {

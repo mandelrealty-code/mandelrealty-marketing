@@ -10,6 +10,37 @@ import {
   passwordMatches,
   verifyAdminSessionToken,
 } from "../adminAuth.js";
+import { clearStaffSessionCookie, createStaffSessionToken, getStaffSessionFromRequest, staffSessionCookie, verifyStaffSessionToken } from "../staffAuth.js";
+import { verifyPassword } from "../portalAuth.js";
+
+export type StaffAccount = { id: string; email: string; display_name: string; password_hash: string; active: boolean };
+
+let staffSeam: { byEmail(email: string): Promise<StaffAccount | null>; byId(id: string): Promise<StaffAccount | null> } | null = null;
+
+/** Tests install staff accounts; null restores the staff table. */
+export function setStaffAccounts(seam: typeof staffSeam): void {
+  staffSeam = seam;
+}
+
+async function staffByEmail(email: string): Promise<StaffAccount | null> {
+  if (staffSeam) return staffSeam.byEmail(email);
+  const { listStaffUsers } = await import("../pm/staffUserStore.js");
+  return (await listStaffUsers()).find((row) => row.email.toLowerCase() === email) ?? null;
+}
+
+async function staffById(id: string): Promise<StaffAccount | null> {
+  if (staffSeam) return staffSeam.byId(id);
+  const { getStaffUserById } = await import("../pm/staffUserStore.js");
+  return getStaffUserById(id);
+}
+
+/** The employee signed in on this browser (their OPS account), or null. */
+export async function staffFromRequest(req: VercelRequest): Promise<{ id: string; name: string } | null> {
+  const session = verifyStaffSessionToken(getStaffSessionFromRequest(req.headers.cookie));
+  if (!session) return null;
+  const user = await staffById(session.userId).catch(() => null);
+  return user && user.active ? { id: user.id, name: user.display_name.trim() } : null;
+}
 
 function readBody(req: VercelRequest): Record<string, unknown> {
   const raw = req.body;
@@ -52,6 +83,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = readBody(req);
   const op = opFromReq(req, body);
 
+  if (op === "whoami") {
+    // A partner (the admin password) sees the whole app; an employee sees only their Tasks board.
+    const admin = verifyAdminSessionToken(getSessionFromRequest(req.headers.cookie));
+    const staff = admin ? null : await staffFromRequest(req);
+    return res.status(200).json({ admin, staff });
+  }
+
   if (op === "check") {
     const token = getSessionFromRequest(req.headers.cookie);
     if (!verifyAdminSessionToken(token)) return res.status(401).json({ ok: false });
@@ -59,15 +97,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (op === "logout") {
-    res.setHeader(
-      "Set-Cookie",
+    res.setHeader("Set-Cookie", [
       clearAdminSessionCookie({ secure: cookieShouldBeSecure(req) }),
-    );
+      clearStaffSessionCookie({ secure: cookieShouldBeSecure(req) }),
+    ]);
     return res.status(200).json({ ok: true });
   }
 
   if (op !== "login") {
     return res.status(400).json({ error: "Use op=login, op=logout, or op=check" });
+  }
+
+  // An employee signs in with their OPS account's email and password.
+  const email = String(body.email ?? "").trim().toLowerCase();
+  if (email) {
+    const password = String(body.password ?? "").trim();
+    const user = await staffByEmail(email).catch(() => null);
+    if (!user || !user.active || !password || !verifyPassword(password, user.password_hash)) {
+      return res.status(401).json({ error: "Wrong email or password." });
+    }
+    res.setHeader("Set-Cookie", staffSessionCookie(createStaffSessionToken(user.id), { secure: cookieShouldBeSecure(req) }));
+    return res.status(200).json({ ok: true, staff: { id: user.id, name: user.display_name.trim() } });
   }
 
   if (!isAdminConfigured()) {

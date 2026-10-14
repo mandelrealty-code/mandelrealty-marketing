@@ -13,13 +13,16 @@ import { installWorld } from "./parity/world.js";
 import { boardAction, boardPayload, type BoardPayload } from "./taskBoardApi.js";
 import { FakeCalendar, resetParityCalendarState, setCalendarApi } from "./taskCalendar.js";
 import { closeResolvedTasks, createAutoTasks, setAutoSources } from "./taskAutomation.js";
-import { resetParityTasks } from "./taskDb.js";
+import { insertTask, resetParityTasks } from "./taskDb.js";
+import handleSession, { setStaffAccounts } from "../adminApi/session.js";
+import { hashPassword } from "../portalAuth.js";
+import { OPS_NAV, opsPathOpensCopilotTasks } from "../opsNav.js";
 import { setParityStaff, syncCalendar } from "./tasks.js";
 import { listReminders } from "./reminders.js";
 import { overviewReminders, reminderRow } from "./reminderView.js";
 import { fromToronto, shiftDay, torontoParts } from "./reminderTime.js";
 import type { GuestFollowUp } from "./guestTypes.js";
-import type { Task } from "./taskTypes.js";
+import { blankCalendar, digestLine, type Task } from "./taskTypes.js";
 
 function fail(message: string): never {
   throw new Error(`Tasks harness failed: ${message}`);
@@ -191,9 +194,73 @@ setCalendarApi(null);
 board = await boardAction({ op: "create", title: "Order a second set of queen linens", assignee: "Maya" }, shane);
 if (board.calendar.mode !== "off" || !find(board, "Order a second set of queen linens")) fail("not connected blocked a save");
 
+// The VA-era OPS list is archived in place: on no board, count, reminder or Overview; exportable; un-archivable.
+setCalendarApi(calendar);
+const beforeLegacy = await boardPayload(shane);
+const legacy: { title: string; assignee: string; due: string; created: string }[] = [
+  { title: "Update the Airbnb listing photos for Charlotte", assignee: "Maya", due: "2026-07-01", created: "2026-06-20T14:00:00Z" },
+  { title: "Call the HVAC company about the Shaw filter", assignee: "Luis", due: "2026-08-02", created: "2026-07-28T15:00:00Z" },
+  { title: "Reconcile the September owner statement", assignee: "Shane", due: "", created: "2026-09-01T12:00:00Z" },
+];
+for (const row of legacy) {
+  await insertTask({ ...blankLegacy(), title: row.title, assignee: row.assignee, dueDay: row.due, createdAt: row.created, updatedAt: row.created });
+}
+const withLegacy = await boardPayload(shane);
+if (withLegacy.tasks.length !== beforeLegacy.tasks.length || legacy.some((row) => withLegacy.tasks.some((task) => task.title === row.title))) fail("legacy tasks reached the board");
+if (digestLine(withLegacy.tasks, now, "anyone") !== digestLine(beforeLegacy.tasks, now, "anyone")) fail("legacy tasks changed the digest");
+if ((await listReminders()).some((row) => legacy.some((old) => old.title === row.text))) fail("legacy tasks reached Reminders or Overview");
+if ((await boardPayload(maya)).tasks.some((task) => legacy.some((old) => old.title === task.title))) fail("legacy tasks reached an employee board");
+const archive = (await boardAction({ op: "archive" }, shane)).archived ?? [];
+for (const row of legacy) {
+  const found = archive.find((item) => item.title === row.title);
+  if (!found || found.assignee !== row.assignee || found.dueOn !== row.due || Date.parse(found.createdAt) !== Date.parse(row.created)) fail(`archive lost ${row.title}: ${JSON.stringify(found)}`);
+}
+refused = "";
+await boardAction({ op: "archive" }, maya).catch((err) => { refused = err instanceof Error ? err.message : ""; });
+if (!refused) fail("an employee read the archive");
+const hvac = archive.find((item) => item.title.startsWith("Call the HVAC"))!;
+board = await boardAction({ op: "unarchive", id: hvac.id }, shane);
+const back = find(board, "Call the HVAC company about the Shaw filter");
+if (!back || back.activity.at(-1)?.text !== "Un-archived by Shane from the old OPS list" || (board.archived ?? []).some((item) => item.id === hvac.id)) fail("un-archive");
+
+// OPS: no Tasks entry; the old route lands on the Copilot board.
+if (OPS_NAV.some(([key, label]) => (key as string) === "tasks" || /tasks/i.test(label))) fail("OPS still lists Tasks");
+if (!opsPathOpensCopilotTasks("/ops/tasks") || !opsPathOpensCopilotTasks("/ops/tasks/123") || opsPathOpensCopilotTasks("/ops/reviews")) fail("the old OPS tasks route didn't land on Copilot");
+
+// An employee signs in to the admin app with their OPS account and sees only their own board.
+const mayaAccount = { id: "staff-maya", email: "maya@mandelrealtygroup.com", display_name: "Maya", password_hash: hashPassword("linen-closet-42"), active: true };
+setStaffAccounts({ byEmail: async (email) => (email === mayaAccount.email ? mayaAccount : null), byId: async (id) => (id === mayaAccount.id ? mayaAccount : null) });
+const session = async (op: string, body: Record<string, unknown>, cookie = "") => {
+  let payload: Record<string, unknown> = {};
+  let status = 200;
+  let setCookie: string | string[] = "";
+  await handleSession(
+    { method: "POST", headers: { cookie }, body, query: { op }, url: `/api/admin/session?op=${op}` } as never,
+    { setHeader(_name: string, value: string | string[]) { setCookie = value; }, status(code: number) { status = code; return this; }, json(value: Record<string, unknown>) { payload = value; return this; } } as never,
+  );
+  return { payload, status, cookie: (Array.isArray(setCookie) ? setCookie[0] : setCookie).split(";")[0] ?? "" };
+};
+const wrong = await session("login", { email: mayaAccount.email, password: "nope" });
+if (wrong.status !== 401) fail("a wrong employee password signed in");
+const signed = await session("login", { email: mayaAccount.email, password: "linen-closet-42" });
+if (signed.status !== 200 || !/^mrg_staff_session=/.test(signed.cookie)) fail(`employee sign-in ${signed.status} ${signed.cookie}`);
+const who = await session("whoami", {}, signed.cookie);
+if (who.payload.admin !== false || (who.payload.staff as { name?: string } | null)?.name !== "Maya") fail(`whoami ${JSON.stringify(who.payload)}`);
+let copilotStatus = 200;
+await handleCopilot(
+  { method: "POST", headers: { cookie: signed.cookie }, body: { op: "tasks-board" }, query: {} } as never,
+  { status(code: number) { copilotStatus = code; return this; }, json() { return this; } } as never,
+);
+if (copilotStatus !== 401) fail(`an employee reached the rest of Copilot (${copilotStatus})`);
+setStaffAccounts(null);
+
 if (capturedCommits().length) fail("a task sent something");
 setParityClock(null);
 console.log("Tasks harness passed.");
+
+function blankLegacy(): Omit<Task, "id" | "createdAt"> {
+  return { title: "", assignee: "", status: "todo", dueAt: "", dueDay: "", priority: "normal", waitingOn: "", unit: "", propertyId: "", link: { kind: "", name: "", note: "" }, source: { kind: "partner", label: "", quote: "", meta: "", ref: "" }, sourceKey: "", cal: { ...blankCalendar(), on: false }, activity: [], doneBy: "", doneAt: "", closedBy: "", snoozeCount: 0, createdBy: "", updatedAt: "", deletedAt: "", extra: {} };
+}
 
 function shiftDayKey(days: number): string {
   const d = shiftDay(today, days);

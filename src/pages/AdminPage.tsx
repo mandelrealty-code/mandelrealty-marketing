@@ -26,6 +26,7 @@ import { setCurrentPlaybookStep, type PlaybookStep } from "../../shared/playbook
 
 const ClientsApp = lazy(() => import("./clients/ClientsApp"));
 const CopilotApp = lazy(() => import("./copilot/CopilotApp"));
+const EmployeeTasksApp = lazy(() => import("./tasks/EmployeeTasksApp"));
 
 type Lead = {
   id: string;
@@ -269,6 +270,9 @@ export function AdminPage() {
   const [route, setRoute] = useAdminRoute();
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
+  // Who is signed in: a partner sees the whole app; an employee (OPS account) sees only their Tasks board.
+  const [staffName, setStaffName] = useState<string | null | undefined>(undefined);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
   const [productMode, setProductMode] = useState<AdminProductMode>(() => route.mode);
@@ -1331,6 +1335,13 @@ export function AdminPage() {
     }
   };
 
+  useEffect(() => {
+    fetch("/api/admin/session?op=whoami", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" })
+      .then((res) => res.json())
+      .then((data: { admin?: boolean; staff?: { name: string } | null }) => setStaffName(!data.admin && data.staff ? data.staff.name : null))
+      .catch(() => setStaffName(null));
+  }, []);
+
   const login = async (e: FormEvent) => {
     e.preventDefault();
     setLoggingIn(true);
@@ -1340,13 +1351,18 @@ export function AdminPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ password }),
+        body: JSON.stringify(email.trim() ? { email: email.trim(), password } : { password }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error || "Login failed");
       }
+      const signedIn = (await res.json().catch(() => ({}))) as { staff?: { name: string } };
       setPassword("");
+      if (signedIn.staff) {
+        setStaffName(signedIn.staff.name);
+        return;
+      }
       await loadLeads();
       await loadSettings();
     } catch (err) {
@@ -1600,6 +1616,26 @@ export function AdminPage() {
     }
   };
 
+  if (staffName === undefined) {
+    return <div className="flex min-h-dvh items-center justify-center bg-[#0a0a0a] text-[#9a9590]">Loading…</div>;
+  }
+
+  if (staffName) {
+    return (
+      <Suspense fallback={<div className="flex min-h-dvh items-center justify-center bg-[#0a0a0a] text-[#9a9590]">Loading tasks…</div>}>
+        <EmployeeTasksApp
+          name={staffName}
+          onSignOut={() => {
+            void fetch("/api/admin/session?op=logout", { method: "POST", credentials: "include" }).finally(() => {
+              setStaffName(null);
+              setAuthed(false);
+            });
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   if (authed !== false && productMode === "copilot") {
     return (
       <Suspense
@@ -1648,6 +1684,14 @@ export function AdminPage() {
             </div>
           </div>
           <div className="flex w-full flex-col gap-3">
+            <input
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email (team members only)"
+              className="h-[50px] w-full rounded-[14px] border border-white/10 bg-[#1a1a1a] px-4 text-base text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+            />
             <input
               type="password"
               autoFocus

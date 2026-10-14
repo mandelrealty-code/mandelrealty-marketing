@@ -76,8 +76,21 @@ export type Task = {
   updatedAt: string;
   deletedAt: string;
   /** Surfacing and undo bookkeeping. */
-  extra: { surfacedFor?: string; stillOpenOn?: string; prevDueAt?: string; prevStatus?: TaskStatus };
+  extra: { surfacedFor?: string; stillOpenOn?: string; prevDueAt?: string; prevStatus?: TaskStatus; archived?: boolean };
 };
+
+/**
+ * The VA-era OPS list is archived in place: a task the new system never touched (no activity trail)
+ * is archived unless a partner un-archived it. Archived tasks are on no board, count, or surface.
+ */
+export function isArchived(task: Pick<Task, "activity" | "extra">): boolean {
+  if (task.extra?.archived === true) return true;
+  if (task.extra?.archived === false) return false;
+  return !task.activity?.length;
+}
+
+/** A legacy record as it was: original title, assignees, dates and status, for the archive list. */
+export type ArchivedTask = { id: string; title: string; assignee: string; status: string; createdAt: string; dueOn: string; detail: string; type: string; property: string };
 
 export type RosterPerson = { name: string; role: string; partner: boolean };
 

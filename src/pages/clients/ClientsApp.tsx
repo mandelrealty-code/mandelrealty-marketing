@@ -24,7 +24,6 @@ import { PortalInviteControls } from "./PortalInviteControls";
 import { EarningsPanel } from "./EarningsPanel";
 import { MonthClosePanel } from "./MonthClosePanel";
 import { OwnerStatementPanel } from "./OwnerStatementPanel";
-import { TasksBoard, type BoardApi, type BoardPayload } from "../tasks/TasksBoard";
 import { ReviewsPanel } from "./ReviewsPanel";
 import { SopsPanel } from "./SopsPanel";
 import { VideoSopStudioModal } from "../../components/sop/VideoSopStudioModal";
@@ -41,7 +40,7 @@ import {
   type AdminProductMode,
   writeStoredAdminMode,
 } from "./mode";
-import { adminPath, emptyAdminRoute, type AdminRoute } from "../../lib/adminRoute";
+import { OPS_NAV, adminPath, emptyAdminRoute, openCopilotTasks, type AdminRoute } from "../../lib/adminRoute";
 import {
   FieldLabel,
   GoldButton,
@@ -54,21 +53,14 @@ import {
   TextInput,
 } from "./ui";
 
-/** The partner signed in on this device ("Shane" unless Copilot was opened with ?as=Ryan). */
-function opsViewer(): string {
-  try {
-    return window.localStorage.getItem("cp-viewer") || "Shane";
-  } catch {
-    return "Shane";
-  }
+/** The old OPS Tasks route: send it to the Tasks board in Copilot. */
+function TasksMoved() {
+  useEffect(() => {
+    openCopilotTasks();
+    window.location.replace("/copilot");
+  }, []);
+  return <p className="p-6 text-sm text-[#9a9590]">Tasks moved to Copilot. Opening the board…</p>;
 }
-
-const opsBoardApi: BoardApi = {
-  load: (open) => pmGet<BoardPayload>("board", { viewer: opsViewer(), ...(open ? { open: "1" } : {}) }),
-  act: (body) => pmPost<BoardPayload>("board", { ...body, viewer: opsViewer() }),
-  // Re-consent the business Google account with the Calendar permission.
-  connectCalendar: () => { window.location.href = "/api/admin/gmail/start"; },
-};
 
 type Tab = "tasks" | "reviews" | "clients" | "properties" | "month" | "sops" | "employees" | "settings";
 
@@ -302,7 +294,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
       setRoute(
         {
           ...emptyAdminRoute("ops"),
-          opsTab: patch.opsTab ?? "tasks",
+          opsTab: patch.opsTab ?? "reviews",
           propertyId: patch.propertyId ?? null,
           clientId: patch.clientId ?? null,
           clientEdit: Boolean(patch.clientEdit),
@@ -1202,16 +1194,8 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     </header>
   );
 
-  const navItems = [
-    ["tasks", "Tasks"],
-    ["reviews", "Reviews"],
-    ["sops", "SOPs"],
-    ["employees", "Employees"],
-    ["clients", "Clients"],
-    ["properties", "Properties"],
-    ["month", "Revenue"],
-    ["settings", "Settings"],
-  ] as const;
+  // Tasks moved to Copilot; OPS no longer lists or links to it.
+  const navItems = OPS_NAV;
 
   const goTab = (id: Tab) => {
     navOps({ opsTab: id });
@@ -2329,12 +2313,8 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
       />
     );
   } else if (tab === "tasks") {
-    // The shared Tasks board (Claude Design "Ops Tasks v2"): the same records as Copilot's reminders.
-    main = (
-      <div className="relative flex h-full min-h-[calc(100dvh-120px)] flex-col lg:min-h-[calc(100dvh-56px)]">
-        <TasksBoard api={opsBoardApi} theme="dark" />
-      </div>
-    );
+    // An old OPS Tasks link: the board lives in Copilot now.
+    main = <TasksMoved />;
   } else if (tab === "reviews") {
     main = (
       <div className="flex h-full min-h-[calc(100dvh-120px)] flex-col lg:min-h-[calc(100dvh-56px)]">

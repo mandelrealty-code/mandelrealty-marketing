@@ -39,6 +39,7 @@ import {
 } from "../../../shared/copilot/browserSession";
 import BrowserSurface, { SessionLine } from "./BrowserSurface";
 import { DueReminder, OverviewReminders, ReminderCard, RemindersView, type ReminderActions } from "./RemindersUi";
+import { TasksBoard, type BoardApi, type BoardPayload } from "../tasks/TasksBoard";
 import { overviewReminderLine, sidebarCount, type Reminder, type ReminderCardDraft } from "../../../shared/copilot/reminderView";
 
 function pageTitle(url: string): string {
@@ -56,7 +57,7 @@ function signInSite(body: string): string {
   return named?.[1]?.trim() || "This site";
 }
 
-type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "guests" | "reminders" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
+type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "guests" | "reminders" | "tasks" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
 
 type Boot = {
   brief: BriefPayload;
@@ -865,7 +866,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   // Threads already opened, keyed by reservation with the activity they were read at, and reads in flight.
   const openedViews = useRef(new Map<string, { activityAt: string; view: GuestDraftView }>());
   const openingViews = useRef(new Map<string, Promise<GuestDraftView | null>>());
-  const [screen, setScreen] = useState<Screen>("brief");
+  // The old OPS Tasks links (and ?view=tasks) open straight onto the Tasks board.
+  const [screen, setScreen] = useState<Screen>(() => {
+    try {
+      const asked = window.sessionStorage.getItem("cp-open") || new URLSearchParams(window.location.search).get("view") || "";
+      window.sessionStorage.removeItem("cp-open");
+      return asked === "tasks" ? "tasks" : "brief";
+    } catch {
+      return "brief";
+    }
+  });
   const [boardSeed, setBoardSeed] = useState<Workflow>(BLANK);
   const [boardSkillId, setBoardSkillId] = useState<string | null>(null);
   const [boardTick, setBoardTick] = useState(0);
@@ -1625,6 +1635,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     if (screen === "reviews") return "Reviews";
     if (screen === "guests") return "Guest messaging";
     if (screen === "reminders") return "Reminders";
+    if (screen === "tasks") return "Tasks";
     if (screen === "empty") return "New chat";
     return boot?.chats.find((c) => c.id === chatId)?.title || "New chat";
   }, [boot, chatId, screen]);
@@ -1990,6 +2001,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     return { line: data.line, id: data.reminder?.id ?? "" };
   }
 
+  // The Tasks board, for a partner: the same records as Reminders, the calendar and Copilot's own tasks.
+  const tasksApi = useMemo<BoardApi>(() => ({
+    load: (open, opts) => api<BoardPayload>("tasks-board", { open, viewer, includeArchived: opts?.includeArchived === true }),
+    act: (body) => api<BoardPayload>("tasks-action", { ...body, viewer }),
+    connectCalendar: () => { window.location.href = "/api/admin/gmail/start"; },
+  }), [viewer]);
+
   function showReminders() {
     setScreen("reminders");
     setSheet(false);
@@ -2016,6 +2034,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       <button type="button" className={`cp-row${screen === "reviews" ? " on" : ""}`} onClick={() => { setScreen("reviews"); setSheet(false); void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch((err) => setReviewQueue({ connected: false, line: err instanceof Error ? err.message : "Hospitable is not connected.", reviews: [], postedToday: [] })); }}>
         <span>Reviews</span>
         {reviewQueue?.connected && reviewQueue.reviews.length ? <span className="cp-ov-count">{reviewQueue.reviews.length}</span> : null}
+      </button>
+      <button type="button" className={`cp-row${screen === "tasks" ? " on" : ""}`} onClick={() => { setScreen("tasks"); setSheet(false); }}>
+        <span>Tasks</span>
       </button>
       <button type="button" className={`cp-row${screen === "reminders" ? " on" : ""}`} onClick={showReminders}>
         <span>Reminders</span>
@@ -2155,7 +2176,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           }}
         />
       ) : (
-      <div className={`cp-body${stage && !inSettings && screen !== "reviews" && screen !== "guests" && screen !== "reminders" ? " work" : ""}`}>
+      <div className={`cp-body${stage && !inSettings && screen !== "reviews" && screen !== "guests" && screen !== "reminders" && screen !== "tasks" ? " work" : ""}`}>
         <aside className="cp-side">{sideList()}</aside>
         <main className={`cp-main${reportDock && screen === "chat" ? " rv-open" : ""}`}>
           <div className="cp-chatpane">
@@ -2651,6 +2672,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     }}
                   />
                 ) : null}
+                {screen === "tasks" ? (
+                  <div className="cp-tasks"><TasksBoard api={tasksApi} theme={theme} /></div>
+                ) : null}
                 {screen === "reminders" ? (
                   <RemindersView reminders={reminders ?? []} roster={roster} partners={roster.slice(0, 2)} viewer={viewer} now={remNow} actions={reminderActions} loading={!reminders} notReady={remindersLine} />
                 ) : null}
@@ -2964,7 +2988,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   </div>
                 ) : null}
               </div>
-              {inSettings || screen === "reviews" || screen === "guests" || screen === "reminders" ? null : (
+              {inSettings || screen === "reviews" || screen === "guests" || screen === "reminders" || screen === "tasks" ? null : (
               <div className="cp-composer-wrap">
                 <div className="cp-confirm">Nothing goes out until you confirm.</div>
                 <div className="cp-pluswrap" data-plus="1">

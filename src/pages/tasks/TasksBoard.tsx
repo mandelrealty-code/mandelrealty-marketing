@@ -18,6 +18,7 @@ import {
   outstandingText,
   stampWords,
   type ReminderOffset,
+  type ArchivedTask,
   type RosterPerson,
   type Task,
   type TaskStatus,
@@ -33,10 +34,11 @@ export type BoardPayload = {
   units: string[];
   viewer: { name: string; partner: boolean };
   calendar: { mode: "ok" | "off" | "paused"; calendar: string; reason: string };
+  archived?: ArchivedTask[];
 };
 
 export type BoardApi = {
-  load: (open: boolean) => Promise<BoardPayload>;
+  load: (open: boolean, opts?: { includeArchived?: boolean }) => Promise<BoardPayload>;
   act: (body: Record<string, unknown>) => Promise<BoardPayload>;
   /** Partners re-consent the Google connection to add the calendar. */
   connectCalendar?: () => void;
@@ -91,6 +93,8 @@ export function TasksBoard({ api, theme = "dark" }: { api: BoardApi; theme?: "li
   const [draft, setDraft] = useState({ title: "", who: "", due: "0|1080", cal: true });
   const [flash, setFlash] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
+  // Partners only: the archived VA-era list joins search results while this is on.
+  const [withArchived, setWithArchived] = useState(false);
   const [width, setWidth] = useState(1200);
   const ref = useRef<HTMLDivElement>(null);
   const previous = useRef<Task[]>([]);
@@ -110,15 +114,15 @@ export function TasksBoard({ api, theme = "dark" }: { api: BoardApi; theme?: "li
 
   useEffect(() => {
     let alive = true;
-    api.load(true).then((next) => alive && take(next)).catch((err) => alive && setFail(err instanceof Error ? err.message : "The board didn't load."));
+    api.load(true, { includeArchived: withArchived }).then((next) => alive && take(next)).catch((err) => alive && setFail(err instanceof Error ? err.message : "The board didn't load."));
     const timer = window.setInterval(() => {
-      api.load(false).then((next) => alive && take(next)).catch(() => undefined);
+      api.load(false, { includeArchived: withArchived }).then((next) => alive && take(next)).catch(() => undefined);
     }, 60_000);
     return () => {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [api, take]);
+  }, [api, take, withArchived]);
 
   useEffect(() => {
     const el = ref.current;
@@ -135,11 +139,11 @@ export function TasksBoard({ api, theme = "dark" }: { api: BoardApi; theme?: "li
 
   const act = useCallback(async (body: Record<string, unknown>) => {
     try {
-      take(await api.act(body));
+      take(await api.act({ ...body, includeArchived: withArchived }));
     } catch (err) {
       setFail(err instanceof Error ? err.message : "That didn’t save. Try again.");
     }
-  }, [api, take]);
+  }, [api, take, withArchived]);
 
   const viewer = board?.viewer ?? { name: "", partner: true };
   const partner = viewer.partner;
@@ -153,6 +157,10 @@ export function TasksBoard({ api, theme = "dark" }: { api: BoardApi; theme?: "li
   const shown = byWho.filter((task) => (unit === "all" || task.unit === unit)
     && (!needle || [task.title, task.unit, task.link.name, task.assignee].filter(Boolean).join(" ").toLowerCase().includes(needle)));
   const hasTasks = scope.length > 0;
+  // Partners always get search, so the archive is reachable even from an empty board.
+  const showFilters = hasTasks || (partner && Boolean(board?.ready));
+  const archived = partner && withArchived ? board?.archived ?? [] : [];
+  const archivedShown = needle ? archived.filter((row) => [row.title, row.assignee, row.property, row.detail].join(" ").toLowerCase().includes(needle)) : [];
   const digest = digestLine(byWho, now, partner && who === "all" ? "anyone" : "you");
 
   const open = scope.find((task) => task.id === openId) ?? null;
@@ -272,7 +280,7 @@ export function TasksBoard({ api, theme = "dark" }: { api: BoardApi; theme?: "li
           <div className="tk-digest">{board ? digest : fail || "Loading tasks."}</div>
           {mode === "paused" ? <div className="tk-paused">Calendar sync paused · couldn’t reach Google · tasks are saved here and will sync when it reconnects</div> : null}
           {fail && board ? <div className="tk-paused">{fail}</div> : null}
-          {hasTasks ? (
+          {showFilters ? (
             <div className="tk-filters">
               {partner ? (
                 <div className="tk-pills">
@@ -289,6 +297,30 @@ export function TasksBoard({ api, theme = "dark" }: { api: BoardApi; theme?: "li
                 <span className="tk-ring sm"><Plus /></span>
                 <input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search tasks" />
               </div>
+              {partner ? (
+                <button type="button" className="tk-toggle" onClick={() => setWithArchived((on) => !on)}><Toggle on={withArchived} small />Include archived</button>
+              ) : null}
+            </div>
+          ) : null}
+          {partner && withArchived ? (
+            <div className="tk-archive">
+              <div className="tk-archive-head">
+                <span>{archived.length} archived from the old OPS list{needle ? ` · ${archivedShown.length} match “${q.trim()}”` : " · search to find one"}</span>
+                <button type="button" className="tk-link" onClick={() => exportArchive(archived)}>Export archive list</button>
+              </div>
+              {archivedShown.slice(0, 50).map((row) => (
+                <div key={row.id} className="tk-card archived">
+                  <div className="tk-card-title">{row.title}</div>
+                  <div className="tk-card-meta">
+                    {row.assignee ? <span className="tk-who">{row.assignee}</span> : null}
+                    <span>{row.status.replace("_", " ")}</span>
+                    {row.dueOn ? <span>Due {row.dueOn}</span> : null}
+                    <span>Created {row.createdAt.slice(0, 10)}</span>
+                    {row.property ? <span>{row.property}</span> : null}
+                  </div>
+                  <div><button type="button" className="tk-btn sm" onClick={() => void act({ op: "unarchive", id: row.id })}>Un-archive</button></div>
+                </div>
+              ))}
             </div>
           ) : null}
           <div className="tk-grid" style={{ gridTemplateColumns: view === "board" && wide && hasTasks ? "repeat(4, minmax(0, 1fr))" : "minmax(0, 1fr)", gap: view === "board" && wide ? 16 : 22 }}>
@@ -579,4 +611,17 @@ export function taskTime(task: Task): string {
 
 export function useBoardApi(load: BoardApi["load"], act: BoardApi["act"], connectCalendar?: () => void): BoardApi {
   return useMemo(() => ({ load, act, connectCalendar }), [load, act, connectCalendar]);
+}
+
+/** The archive as one CSV file, original fields intact. */
+function exportArchive(rows: ArchivedTask[]): void {
+  const cell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+  const lines = [["Title", "Assignee", "Status", "Created", "Due", "Type", "Property", "Detail"].join(","), ...rows.map((row) => [row.title, row.assignee, row.status, row.createdAt.slice(0, 10), row.dueOn, row.type, row.property, row.detail].map(cell).join(","))];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "ops-tasks-archive.csv";
+  link.click();
+  URL.revokeObjectURL(url);
 }

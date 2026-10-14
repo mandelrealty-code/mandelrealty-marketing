@@ -53,6 +53,7 @@ import type { ReminderCardDraft } from "../copilot/reminderView.js";
 import { syncCalendar } from "../copilot/tasks.js";
 import { closeResolvedTasks } from "../copilot/taskAutomation.js";
 import { TASKS_NOT_READY, TasksNotReady } from "../copilot/taskDb.js";
+import { boardAction, boardOpen, boardPayload } from "../copilot/taskBoardApi.js";
 import { REPORT_CLIENTS, withClientUnits } from "../copilot/reportClients.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
@@ -430,6 +431,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const run = await startSkillRun(id, "manual");
       const skills = await skillRows();
       return res.status(200).json({ run, skills, connectors: await connectors(skills), chats: await listChats() });
+    }
+
+    if (op === "tasks-board" || op === "tasks-action") {
+      // The Tasks board in Copilot, for a partner: the same records as Reminders, the calendar and Copilot's tasks.
+      const viewer = { name: String(body.viewer ?? "").trim() || "Shane", partner: true };
+      const opts = { includeArchived: body.includeArchived === true };
+      if (op === "tasks-board") return res.status(200).json(body.open === true ? await boardOpen(viewer, opts) : await boardPayload(viewer, opts));
+      try {
+        return res.status(200).json(await boardAction(body, viewer));
+      } catch (err) {
+        if (err instanceof TasksNotReady) return res.status(200).json(await boardPayload(viewer, opts));
+        return res.status(400).json({ error: err instanceof Error ? err.message : "That didn't save. Try again." });
+      }
     }
 
     if (op.startsWith("reminders-")) {

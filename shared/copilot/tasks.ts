@@ -268,6 +268,14 @@ export async function deleteTask(id: string, by: string): Promise<Task> {
   return reconcile(await writeTask(task), before, by);
 }
 
+/** A partner brings one legacy task onto the new board. */
+export async function unarchiveTask(id: string, by: string): Promise<Task> {
+  const before = await readTask(id);
+  if (!before) throw new Error("That task isn't in the archive any more.");
+  const task = log({ ...before, extra: { ...before.extra, archived: false }, updatedAt: clock().toISOString() }, `Un-archived by ${by} from the old OPS list`);
+  return writeTask(task);
+}
+
 export async function restoreTask(id: string, by: string): Promise<Task> {
   const before = await readTask(id);
   if (!before) throw new Error("That task isn't in Copilot any more.");

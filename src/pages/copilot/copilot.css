@@ -9193,3 +9193,6 @@ html.cp-app[data-cp-theme="dark"] #root {
 .cp-rm-k, .cp-rm-savebar > span, .cp-rm-note, .cp-rm-unit { font-family: "Instrument Sans", system-ui, sans-serif; }
 .cp-rm-muted.wrap { white-space: normal; font-size: 13px; }
 .cp-rm-deleted { padding-bottom: 12px; }
+
+/* The Tasks board fills the main pane; its detail panel floats inside it. */
+.cp-tasks { flex: 1; min-height: 100%; width: 100%; display: flex; position: relative; }

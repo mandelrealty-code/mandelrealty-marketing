@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { OPS_NAV, opsPathOpensCopilotTasks } from "../../shared/opsNav";
+
+export { OPS_NAV };
 import {
   readStoredAdminMode,
   writeStoredAdminMode,
@@ -52,12 +55,22 @@ function isOpsTab(v: string | undefined): v is OpsTab {
   return !!v && (OPS_TABS as string[]).includes(v);
 }
 
+/** Copilot opens on its Tasks board once (the old /ops/tasks links, ?view=tasks). */
+export function openCopilotTasks(): void {
+  try {
+    window.sessionStorage.setItem("cp-open", "tasks");
+  } catch {
+    /* The board is one click away in the sidebar. */
+  }
+}
+
+
 export function emptyAdminRoute(mode: AdminProductMode = readStoredAdminMode()): AdminRoute {
   return {
     mode,
     crmTab: "contacts",
     leadId: null,
-    opsTab: "tasks",
+    opsTab: "reviews",
     propertyId: null,
     clientId: null,
     clientEdit: false,
@@ -110,8 +123,10 @@ export function parseAdminRoute(
     if (parts[1] === "month" && parts[2] === "hst" && parts[3]) {
       return { ...base, opsTab: "month", hstClientId: parts[3] };
     }
-    if (parts[1] === "tasks" && parts[2]) {
-      return { ...base, opsTab: "tasks", taskId: parts[2] };
+    if (opsPathOpensCopilotTasks(pathname)) {
+      // The old OPS Tasks tab is gone: its links land on the Tasks board in Copilot.
+      openCopilotTasks();
+      return emptyAdminRoute("copilot");
     }
     if (parts[1] === "reviews" && parts[2]) {
       return { ...base, opsTab: "reviews", reviewJobId: parts[2] };
@@ -146,10 +161,10 @@ export function adminPath(route: AdminRoute): string {
     return route.clientEdit ? `${base}/edit` : base;
   }
   if (route.hstClientId) return `/ops/month/hst/${encodeURIComponent(route.hstClientId)}`;
-  if (route.taskId) return `/ops/tasks/${encodeURIComponent(route.taskId)}`;
+
   if (route.reviewJobId) return `/ops/reviews/${encodeURIComponent(route.reviewJobId)}`;
   if (route.employeeId) return `/ops/employees/${encodeURIComponent(route.employeeId)}`;
-  if (route.opsTab === "tasks") return "/ops";
+  if (route.opsTab === "reviews") return "/ops";
   return `/ops/${route.opsTab}`;
 }
 

@@ -5,7 +5,7 @@
  * from the same records.
  */
 
-import { TasksNotReady, TASKS_NOT_READY } from "./taskDb.js";
+import { readArchivedTasks, TasksNotReady, TASKS_NOT_READY } from "./taskDb.js";
 import {
   calendarStatus,
   comment,
@@ -19,6 +19,7 @@ import {
   restoreTask,
   snooze,
   syncCalendar,
+  unarchiveTask,
   unsnooze,
   updateTask,
   visibleTo,
@@ -26,7 +27,7 @@ import {
 } from "./tasks.js";
 import { closeResolvedTasks } from "./taskAutomation.js";
 import { UNITS } from "./reminderView.js";
-import { REMINDER_OFFSETS, type ReminderOffset, type RosterPerson, type Task, type TaskPriority, type TaskStatus } from "./taskTypes.js";
+import { REMINDER_OFFSETS, type ArchivedTask, type ReminderOffset, type RosterPerson, type Task, type TaskPriority, type TaskStatus } from "./taskTypes.js";
 
 export type BoardViewer = { name: string; partner: boolean };
 
@@ -38,14 +39,17 @@ export type BoardPayload = {
   units: string[];
   viewer: BoardViewer;
   calendar: { mode: "ok" | "off" | "paused"; calendar: string; reason: string };
+  /** The archived legacy list, for partners who turned on "Include archived". */
+  archived?: ArchivedTask[];
 };
 
-export async function boardPayload(viewer: BoardViewer): Promise<BoardPayload> {
+export async function boardPayload(viewer: BoardViewer, opts: { includeArchived?: boolean } = {}): Promise<BoardPayload> {
   try {
     const [tasks, roster, calendar] = await Promise.all([listTasks(), readTeamRoster(), calendarStatus()]);
     const mine = visibleTo(tasks, viewer);
     const units = [...new Set([...UNITS, ...tasks.map((task) => task.unit).filter(Boolean)])];
-    return { ready: true, line: "", tasks: mine, roster, units, viewer, calendar };
+    const archived = viewer.partner && opts.includeArchived ? await readArchivedTasks() : undefined;
+    return { ready: true, line: "", tasks: mine, roster, units, viewer, calendar, ...(archived ? { archived } : {}) };
   } catch (err) {
     if (err instanceof TasksNotReady) return { ready: false, line: TASKS_NOT_READY, tasks: [], roster: [], units: [], viewer, calendar: { mode: "off", calendar: "Mandel Tasks", reason: "" } };
     throw err;
@@ -53,7 +57,7 @@ export async function boardPayload(viewer: BoardViewer): Promise<BoardPayload> {
 }
 
 /** At app open: queued calendar changes go out, calendar changes come in, resolved tasks close. */
-export async function boardOpen(viewer: BoardViewer): Promise<BoardPayload> {
+export async function boardOpen(viewer: BoardViewer, opts: { includeArchived?: boolean } = {}): Promise<BoardPayload> {
   try {
     await syncCalendar();
     await closeResolvedTasks();
@@ -62,7 +66,7 @@ export async function boardOpen(viewer: BoardViewer): Promise<BoardPayload> {
       /* A failed sync never blocks the board; the calendar state says paused. */
     }
   }
-  return boardPayload(viewer);
+  return boardPayload(viewer, opts);
 }
 
 function text(value: unknown): string {
@@ -76,6 +80,7 @@ export async function boardAction(body: Record<string, unknown>, viewer: BoardVi
   const op = text(body.op);
   const id = text(body.id);
   const by = viewer.name;
+  const opts = { includeArchived: body.includeArchived === true };
   const own = async () => {
     const task = await getTask(id);
     if (!task || task.deletedAt) throw new Error("That task isn't on the board any more.");
@@ -131,12 +136,18 @@ export async function boardAction(body: Record<string, unknown>, viewer: BoardVi
     if (!viewer.partner) throw new Error("Only Shane or Ryan can delete a task.");
     if (op === "delete") await deleteTask(id, by);
     else await restoreTask(id, by);
+  } else if (op === "unarchive") {
+    if (!viewer.partner) throw new Error("Only Shane or Ryan can bring back an archived task.");
+    await unarchiveTask(id, by);
+  } else if (op === "archive") {
+    if (!viewer.partner) throw new Error("The archive is for Shane and Ryan.");
+    return boardPayload(viewer, { includeArchived: true });
   } else if (op === "sync") {
-    return boardOpen(viewer);
+    return boardOpen(viewer, opts);
   } else {
     throw new Error("Unknown task action.");
   }
-  return boardPayload(viewer);
+  return boardPayload(viewer, opts);
 }
 
 export { TASKS_NOT_READY, TasksNotReady };
