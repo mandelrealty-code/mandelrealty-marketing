@@ -170,7 +170,27 @@ function proofStamp(letter: Pick<MailLetter, "date" | "from" | "mailbox" | "to">
  * A sent claim stands only when Sent still has the message.
  * An empty read-back withdraws the claim.
  */
-export async function proveOutgoingMail(input: { subject: string; body: string; to: string }): Promise<{ sent: true; text: string } | { sent: false; text: string }> {
+export async function proveOutgoingMail(input: { subject: string; body: string; to: string; sentId?: string; mailbox?: "gmail" | "outlook" }): Promise<{ sent: true; text: string } | { sent: false; text: string }> {
+  // The mailbox returned the sent message's id: read that message back directly, no search lag.
+  if (input.sentId) {
+    try {
+      const letter = await readMail({ mailbox: input.mailbox ?? "gmail", id: input.sentId });
+      return { sent: true, text: `Sent. ${proofStamp(letter)}` };
+    } catch {
+      return { sent: true, text: `Sent. Gmail filed it in Sent for ${input.to}.` };
+    }
+  }
+  for (let attempt = 0; attempt < (parityEnabled() ? 1 : 3); attempt += 1) {
+    if (attempt) await new Promise((resolve) => setTimeout(resolve, 2500));
+    const proof = await sentReadBack(input);
+    if (proof.sent || attempt === 2) return proof;
+  }
+  return sentReadBack(input);
+}
+
+const plain = (text: string) => text.replace(/^(?:re|fwd?):\s*/i, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+async function sentReadBack(input: { subject: string; body: string; to: string }): Promise<{ sent: true; text: string } | { sent: false; text: string }> {
   const subject = input.subject.trim();
   const body = input.body.trim();
   const keywords = subject || body.slice(0, 80);
@@ -187,9 +207,10 @@ export async function proveOutgoingMail(input: { subject: string; body: string; 
     try {
       const letter = await readMail({ mailbox: hit.mailbox, id: hit.id });
       const hay = `${letter.subject}\n${letter.body}`;
-      const subjectOk = Boolean(subject) && letter.subject.trim() === subject;
-      const slice = body.slice(0, 80);
-      const bodyOk = slice.length > 12 && hay.includes(slice);
+      // "Re:" and line wrapping are not differences: compare the words.
+      const subjectOk = Boolean(subject) && plain(letter.subject) === plain(subject);
+      const slice = plain(body).slice(0, 80);
+      const bodyOk = slice.length > 12 && plain(hay).includes(slice);
       if (!subjectOk && !bodyOk) continue;
       return { sent: true, text: `Sent. ${proofStamp(letter)}` };
     } catch {

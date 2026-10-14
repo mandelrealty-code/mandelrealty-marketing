@@ -97,6 +97,21 @@ for (const [said, task] of [["remind me today to call Bob", "Call Bob"], ["remin
   if (reply.reply.reminder?.card?.text !== task) fail(`"${said}" task: ${reply.reply.reminder?.card?.text}`);
 }
 
+// Changing it from chat: "cancel that one" deletes the reminder just above; undo, move and done work the same way.
+const cancelled = await say(six.chatId, "cancel that one");
+if (!/^Deleted the reminder: Call the plumber about the Shaw sink, Shane, Tuesday Oct 13 at 6:00 PM\./.test(cancelled.reply.body) || /phone|calendar|another app|don't have a tool/i.test(cancelled.reply.body)) fail(`cancel: ${cancelled.reply.body}`);
+if (groupReminders(await listReminders(), NOW).today.some((row) => row.id === sixSaved.reminder.id)) fail("a deleted reminder is still listed");
+const undone = await say(six.chatId, "undo");
+if (!/^It's back: Call the plumber/.test(undone.reply.body) || !groupReminders(await listReminders(), NOW).today.some((row) => row.id === sixSaved.reminder.id)) fail(`undo: ${undone.reply.body}`);
+const moved = await say(six.chatId, "move it to Friday at 3pm");
+if (moved.reply.body !== "Moved: Call the plumber about the Shaw sink, Shane, now Friday Oct 16 at 3:00 PM.") fail(`move: ${moved.reply.body}`);
+const doneChat = await say(six.chatId, "mark it done");
+if (!/^Marked done/.test(doneChat.reply.body) || (await listReminders()).find((row) => row.id === sixSaved.reminder.id)?.status !== "done") fail(`done from chat: ${doneChat.reply.body}`);
+const viaView = await call<{ reminders: Reminder[] }>({ op: "reminders-delete", id: sixSaved.reminder.id });
+if (viaView.reminders.find((row) => row.id === sixSaved.reminder.id)?.status !== "deleted" || groupReminders(viaView.reminders, NOW).done.some((row) => row.id === sixSaved.reminder.id)) fail("delete from the view");
+const restored = await call<{ reminders: Reminder[] }>({ op: "reminders-restore", id: sixSaved.reminder.id });
+if (restored.reminders.find((row) => row.id === sixSaved.reminder.id)?.status !== "done") fail("restore returns the status it had");
+
 // "tomorrow evening" is 6:00 PM tomorrow; whose and when given, so the card needs one tap.
 const evening = await say("", "remind Ryan to check the smoke detectors tomorrow evening");
 const eveningCard = evening.reply.reminder?.card;

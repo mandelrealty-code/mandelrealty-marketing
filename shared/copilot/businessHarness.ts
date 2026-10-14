@@ -319,6 +319,24 @@ if (!/client's email address on file in OPS/.test(proposalAnswer.body) || !/Subj
   if (capturedCommits().length) fail("drafting sent something");
 }
 
+// A sent template whose subject and body disagreed: both come out with this stay's dates and nights.
+{
+  const building = "supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com";
+  const odd = { id: "odd-reg", mailbox: "gmail" as const, folder: "sent" as const, from: "Mandel Realty", email: "mandelrealtyteam@gmail.com", to: building, date: "2026-10-12T21:58:00-04:00",
+    subject: "AirBNB Rental for Unit 318 from October 1, 2026 - October 3, 2026", snippet: "AirBNB Rental for Unit 318",
+    body: "Hello,\nI have a new AirBNB tenant arriving from Thursday October 1, 2026 and staying until Monday October 5, 2026 for 4 nights. Their name is: Priya They will be residing in unit 318.\n\nThey will not be bringing any vehicles.\n\nThanks,\nShane, Cohost 6478220448", airbnb: false };
+  const world = worldAt("2026-10-13T09:00:00-04:00", false, [odd]);
+  world.reservations.push(stay("00000000-0000-4000-8000-0000000a5503", ID.blue, "Husson Ali", "2026-10-15", "2026-10-17"));
+  installWorld(world);
+  resetCaptures();
+  resetParityChecksMessages();
+  await send("biz-odd", "draft the parking email for Husson at 20 Blue Jays Way");
+  const draft = capturedDrafts().filter((row) => row.channel === "email").at(-1);
+  if (draft?.subject !== "AirBNB Rental for Unit 318 from October 15, 2026 - October 17, 2026") fail(`odd subject: ${draft?.subject}`);
+  if (!/arriving from Thursday October 15, 2026 and staying until Saturday October 17, 2026 for 2 nights/.test(draft?.body ?? "")) fail(`odd body: ${draft?.body}`);
+  if (/October 5|October 19|4 nights|Priya/.test(draft?.body ?? "") || !/Their name is: Husson They/.test(draft?.body ?? "")) fail(`old stay carried over: ${draft?.body}`);
+}
+
 setWebAnswerer(null);
 setCompsSource(null);
 setListingSource(null);

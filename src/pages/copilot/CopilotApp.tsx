@@ -1445,6 +1445,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       });
       activeId = data.chatId;
       setChatId(data.chatId);
+      // A chat turn can create, change or delete a reminder: every surface reads the fresh list.
+      void api<{ reminders: Reminder[]; roster: string[] }>("reminders-list", { viewer }).then(takeReminders).catch(() => undefined);
       chatIdRef.current = data.chatId;
       if (data.memoryFiles) setBoot((prev) => (prev ? { ...prev, memoryFiles: data.memoryFiles } : prev));
       if (searching && needsLiveBrowser(typed)) {
@@ -1973,13 +1975,15 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     undo: (id) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-undo", { id, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
     snooze: (id, dueAt) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-snooze", { id, dueAt, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
     unsnooze: (id) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-unsnooze", { id, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
+    remove: (id) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-delete", { id, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
+    restore: (id) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-restore", { id, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
     update: (id, patch) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-update", { id, patch, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
   };
 
-  async function saveReminderCard(messageId: string, card: ReminderCardDraft): Promise<string> {
-    const data = await api<{ line: string; reminders: Reminder[]; roster: string[] }>("reminders-save", { messageId, card, viewer });
+  async function saveReminderCard(messageId: string, card: ReminderCardDraft): Promise<{ line: string; id: string }> {
+    const data = await api<{ line: string; reminder: Reminder; reminders: Reminder[]; roster: string[] }>("reminders-save", { messageId, card, viewer });
     takeReminders(data);
-    return data.line;
+    return { line: data.line, id: data.reminder?.id ?? "" };
   }
 
   function showReminders() {
@@ -2715,7 +2719,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       ) : message.reminder?.card || message.reminder?.ref ? (
                         <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
                           {message.reminder.card ? (
-                            <ReminderCard card={message.reminder.card} lead={message.body} roster={roster} now={remNow} onSave={(card) => saveReminderCard(message.id, card)} />
+                            <ReminderCard card={message.reminder.card} lead={message.body} roster={roster} now={remNow} onSave={(card) => saveReminderCard(message.id, card)} onDelete={reminderActions.remove} onRestore={reminderActions.restore} />
+                          ) : message.reminder.changed ? (
+                            <p className="cp-rm-lead">{message.body}</p>
                           ) : (
                             <DueReminder reminder={(reminders ?? []).find((row) => row.id === message.reminder?.ref?.id) ?? null} fallback={message.body} viewer={viewer} now={remNow} actions={reminderActions} />
                           )}

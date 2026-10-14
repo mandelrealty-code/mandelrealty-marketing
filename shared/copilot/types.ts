@@ -138,6 +138,8 @@ export type CopilotMessage = {
 export type ReminderMessage = {
   card?: import("./reminderView.js").ReminderCardDraft & { superseded?: boolean };
   ref?: { id: string; kind: "due" | "still" };
+  /** A chat change ("cancel that one"): the body says what happened; no due-now buttons. */
+  changed?: boolean;
 };
 
 export type ChecksItemRef = { chatId: string; messageId: string; label: string };

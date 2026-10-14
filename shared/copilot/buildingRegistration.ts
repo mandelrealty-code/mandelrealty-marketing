@@ -305,7 +305,7 @@ const MONTH_WORDS = ["January", "February", "March", "April", "May", "June", "Ju
 /** A written date in any of the forms a sent email uses: "Friday, October 9, 2026", "October 9, 2026", "Oct 9". */
 const ANY_DATE = /\b(?:(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday),?\s+)?(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?/g;
 
-type WrittenDate = { text: string; month: number; day: number; year: number | null; weekday: boolean; longMonth: boolean; comma: boolean };
+type WrittenDate = { text: string; month: number; day: number; year: number | null; weekday: boolean; weekdayComma: boolean; longMonth: boolean; comma: boolean };
 
 function writtenDates(text: string): WrittenDate[] {
   return [...text.matchAll(ANY_DATE)].map((match) => ({
@@ -314,6 +314,7 @@ function writtenDates(text: string): WrittenDate[] {
     day: Number(match[3]),
     year: match[4] ? Number(match[4]) : null,
     weekday: Boolean(match[1]),
+    weekdayComma: Boolean(match[1]) && /^[A-Za-z]+,/.test(match[0]),
     longMonth: match[2]!.length > 3 && !/^Sept$/.test(match[2]!) || match[2] === "May",
     comma: /,\s+\d{4}$/.test(match[0]),
   }));
@@ -323,7 +324,7 @@ function writtenDates(text: string): WrittenDate[] {
 function sameStyle(old: WrittenDate, iso: string): string {
   const [year, month, day] = iso.slice(0, 10).split("-").map(Number) as [number, number, number];
   const at = new Date(Date.UTC(year, month - 1, day, 12));
-  const weekday = old.weekday ? `${new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(at)}, ` : "";
+  const weekday = old.weekday ? `${new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(at)}${old.weekdayComma ? "," : ""} ` : "";
   const monthWord = old.longMonth ? MONTH_WORDS[month - 1]! : MONTH_WORDS[month - 1]!.slice(0, 3);
   return `${weekday}${monthWord} ${day}${old.year != null ? `${old.comma ? "," : ""} ${year}` : ""}`;
 }
@@ -349,11 +350,24 @@ function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string,
   const vehicle = vehicles[0] ?? { guest: "", make: "", model: "", plate: "", colour: "", count: "" };
   const known = vehicles.some((item) => item.make || item.model || item.plate);
   const [oldIn, oldOut] = templateStay(letter);
+  // The body is swapped by its own dates: a sent email whose body and subject disagreed must not
+  // carry the old stay into either one.
+  const bodyDates = writtenDates(letter.body);
+  const [bodyIn, bodyOut] = bodyDates.length >= 2 ? [bodyDates[0]!, bodyDates[1]!] : [oldIn, oldOut];
   // Only the new stay's facts change; every other line, blank line and the sign-off stay as sent.
   const subject = swapDates(letter.subject, oldIn, oldOut, checkIn, checkOut);
-  let body = swapDates(letter.body, oldIn, oldOut, checkIn, checkOut);
+  let body = swapDates(swapDates(letter.body, bodyIn, bodyOut, checkIn, checkOut), oldIn, oldOut, checkIn, checkOut);
+  const nights = Math.round((Date.parse(`${checkOut.slice(0, 10)}T12:00:00Z`) - Date.parse(`${checkIn.slice(0, 10)}T12:00:00Z`)) / 86_400_000);
+  if (nights > 0) body = body.replace(/\b(\d+)\s+nights?\b/gi, `${nights} night${nights === 1 ? "" : "s"}`);
   const oldGuest = /^Guest:\s*(.+)$/im.exec(letter.body)?.[1]?.trim() ?? "";
   if (oldGuest && vehicle.guest && oldGuest !== vehicle.guest) body = body.replaceAll(oldGuest, vehicle.guest);
+  // "Their name is: Priya": the old guest's name, written the way the sent email wrote it (first name if it used one).
+  const named = /\b(?:name is|guest is|guest name is|guest's name is)\s*:?\s*([A-Z][\w'-]+(?:\s+[A-Z][\w'-]+)?)/.exec(letter.body);
+  if (named && vehicle.guest) {
+    const old = named[1]!.split(/\s+/).filter((word) => !/^(They|He|She|The|Will)$/.test(word));
+    const next = old.length > 1 ? vehicle.guest : vehicle.guest.split(/\s+/)[0]!;
+    if (old.length && old.join(" ") !== next) body = body.replace(named[0], named[0].replace(old.join(" "), next));
+  }
   const warnings: string[] = [];
   body = body.split("\n").map((line) => {
     const match = /^(Guest|Make|Model|Plate|Licence plate|License plate|Colour|Color|Vehicle count|Number of vehicles):\s*(.*)$/i.exec(line.trim());
@@ -380,6 +394,14 @@ function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string,
   // The previous guest's plates never carry over.
   for (const plate of platesFrom(letter.body)) {
     if (!vehicles.some((item) => item.plate.toUpperCase() === plate)) body = body.replaceAll(plate, "[plate]");
+  }
+  // Every date left in the subject and body must be this stay's; one that isn't is named before Submit.
+  const stayDays = [checkIn, checkOut].map((iso) => iso.slice(5, 10));
+  for (const [where, text] of [["subject", subject], ["body", body]] as const) {
+    for (const date of writtenDates(text)) {
+      const key = `${String(date.month + 1).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
+      if (!stayDays.includes(key)) warnings.push(`The ${where} still says ${date.text}, which isn't this stay's check-in or check-out.`);
+    }
   }
   return { subject, body, warnings: [...new Set(warnings)] };
 }

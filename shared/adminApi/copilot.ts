@@ -48,7 +48,7 @@ import { answerMoneyMove } from "../copilot/moneyMove.js";
 import { answerAboutPrevious } from "../copilot/followOnAnswer.js";
 import { answerProductAdvice } from "../copilot/productAdvice.js";
 import { answerProcess } from "../copilot/processAnswer.js";
-import { addToRoster, asksReminder, leadFor, listReminders, markReminderDone, openCardIn, readRoster, reminderCard, saveCard, snoozeReminder, surfaceDueReminders, undoReminderDone, undoSnooze, updateReminder, whoAnswer } from "../copilot/reminders.js";
+import { addToRoster, asksReminder, changeFromChat, deleteReminder, restoreReminder, leadFor, listReminders, markReminderDone, openCardIn, readRoster, reminderCard, saveCard, snoozeReminder, surfaceDueReminders, undoReminderDone, undoSnooze, updateReminder, whoAnswer } from "../copilot/reminders.js";
 import type { ReminderCardDraft } from "../copilot/reminderView.js";
 import { REPORT_CLIENTS, withClientUnits } from "../copilot/reportClients.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
@@ -442,6 +442,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       else if (op === "reminders-undo") await undoReminderDone(id);
       else if (op === "reminders-snooze") await snoozeReminder(id, String(body.dueAt ?? ""));
       else if (op === "reminders-unsnooze") await undoSnooze(id);
+      else if (op === "reminders-delete") await deleteReminder(id);
+      else if (op === "reminders-restore") await restoreReminder(id);
       else if (op === "reminders-roster-add") await addToRoster(String(body.name ?? ""));
       else if (op === "reminders-surface") {
         const surfaced = await surfaceDueReminders();
@@ -940,6 +942,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           await updateDraft(waitingCard.id, { reminder: { card: { ...waitingCard.reminder.card, superseded: true } } } as never).catch(() => null);
           const next = await addMessage({ chatId, role: "assistant", body: leadFor(card, viewer), reminder: { card }, steps: [{ text: "Noted whose it is" }], thought: "Nothing is sent to anyone." });
           if (card.dueAt) await saveCard(next.id, card, viewer);
+          return done();
+        }
+        // "cancel that one", "mark it done", "move it to Friday at 3": the reminder this chat is about.
+        const changed = await changeFromChat(typed, priorMessages, viewer).catch(() => null);
+        if (changed) {
+          await addMessage({ chatId, role: "assistant", body: changed.body, reminder: changed.id ? { ref: { id: changed.id, kind: "due" }, changed: true } : null, steps: [{ text: "Changed the reminder" }], thought: "Reminders are Copilot's own. Nothing was sent to anyone." });
           return done();
         }
         if (asksReminder(text, roster)) {
@@ -1983,7 +1991,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         }
         if (!note && draft?.channel === "email" && draft.to) {
           try {
-            await deliverReply({
+            const delivered = await deliverReply({
               to: draft.to,
               subject: draft.subject,
               body: edited || draft.body,
@@ -1995,11 +2003,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
               subject: draft.subject,
               body: edited || draft.body,
               to: draft.to,
+              sentId: delivered.id,
+              mailbox: delivered.mailbox,
             });
+            // Proven by the mailbox's own record (Gmail's SENT label, or a Sent read-back): Sent.
+            // Otherwise not "waiting" either, where Submit would send it twice.
             const message = await updateDraft(messageId, {
-              status: proof.sent ? "sent" : "waiting",
+              status: proof.sent ? "sent" : "approved_unsent",
               body: edited || undefined,
-              bodyText: proof.text,
+              bodyText: proof.sent ? proof.text : `${proof.text} The mailbox took it, so don't send it again; check Sent in a minute.`,
             });
             return res.status(200).json({ message });
           } catch (err) {

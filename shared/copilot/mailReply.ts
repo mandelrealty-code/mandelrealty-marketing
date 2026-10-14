@@ -174,11 +174,11 @@ export async function deliverReply(input: {
   threadId?: string;
   rfcId?: string;
   mailbox?: "gmail" | "outlook";
-}): Promise<void> {
+}): Promise<{ mailbox: "gmail" | "outlook"; id: string }> {
   if (input.mailbox === "outlook") {
     if (input.rfcId) await sendOutlookReply({ messageId: input.rfcId, body: input.body });
     else await sendOutlookMail({ to: input.to, subject: input.subject, body: input.body });
-    return;
+    return { mailbox: "outlook", id: "" };
   }
-  await sendGmailReply(input);
+  return { mailbox: "gmail", id: await sendGmailReply(input) };
 }

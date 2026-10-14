@@ -20,6 +20,8 @@ export type ReminderActions = {
   snooze: (id: string, dueAt: string) => void;
   unsnooze: (id: string) => void;
   update: (id: string, patch: { text?: string; assignee?: string; dueAt?: string; unit?: string }) => void;
+  remove: (id: string) => void;
+  restore: (id: string) => void;
 };
 
 const PICK_DAYS = [0, 1, 2, 3, 4, 6];
@@ -91,12 +93,16 @@ export function ReminderCard({
   roster,
   now,
   onSave,
+  onDelete,
+  onRestore,
 }: {
   card: ReminderCardDraft & { superseded?: boolean };
   lead: string;
   roster: string[];
   now: Date;
-  onSave: (card: ReminderCardDraft) => Promise<string>;
+  onSave: (card: ReminderCardDraft) => Promise<{ line: string; id: string }>;
+  onDelete: (id: string) => void;
+  onRestore: (id: string) => void;
 }) {
   const [text, setText] = useState(card.text);
   const [who, setWho] = useState(card.assignee);
@@ -106,16 +112,27 @@ export function ReminderCard({
   const [unitOpen, setUnitOpen] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
   const [saved, setSaved] = useState(card.savedId ? lead : "");
+  const [savedId, setSavedId] = useState(card.savedId && card.savedId !== "superseded" ? card.savedId : "");
+  const [deleted, setDeleted] = useState(false);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
   if (card.superseded) return <p className="cp-rm-lead quiet">{lead}</p>;
+  if (saved && !editing && deleted) {
+    return (
+      <div role="status" className="cp-rm-saved">
+        <span className="cp-rm-muted wrap">Deleted. It won’t come back.</span>
+        <button type="button" className="cp-rm-link" onClick={() => { setDeleted(false); onRestore(savedId); }}>Undo</button>
+      </div>
+    );
+  }
   if (saved && !editing) {
     return (
       <div role="status" className="cp-rm-saved">
         <Check />
         <span>{saved}</span>
         <button type="button" className="cp-rm-link" onClick={() => setEditing(true)}>Edit</button>
+        {savedId ? <button type="button" className="cp-rm-link" onClick={() => { setDeleted(true); onDelete(savedId); }}>Delete</button> : null}
       </div>
     );
   }
@@ -184,8 +201,9 @@ export function ReminderCard({
             setBusy(true);
             setFail("");
             try {
-              const line = await onSave({ ...card, text, assignee: who, dueAt, unit });
-              setSaved(line || savedLine({ text, assignee: who, dueAt, unit }));
+              const result = await onSave({ ...card, savedId: savedId || card.savedId, text, assignee: who, dueAt, unit });
+              setSaved(result.line || savedLine({ text, assignee: who, dueAt, unit }));
+              if (result.id) setSavedId(result.id);
               setEditing(false);
               setPicking(false);
               setUnitOpen(false);
@@ -274,7 +292,7 @@ function DoneSide({ row, onUndo }: { row: ReminderRow; onUndo: () => void }) {
   );
 }
 
-function ListRow({ reminder, now, roster, actions, alwaysShow }: { reminder: Reminder; now: Date; roster: string[]; actions: ReminderActions; alwaysShow: boolean }) {
+function ListRow({ reminder, now, roster, actions, alwaysShow, onDeleted }: { reminder: Reminder; now: Date; roster: string[]; actions: ReminderActions; alwaysShow: boolean; onDeleted: (row: Reminder) => void }) {
   const row = reminderRow(reminder, now);
   const [menu, setMenu] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -308,6 +326,7 @@ function ListRow({ reminder, now, roster, actions, alwaysShow }: { reminder: Rem
             <button type="button" className="cp-rm-btn" onClick={() => actions.done(reminder.id)}>Mark done</button>
             <button type="button" className={`cp-rm-btn${menu ? " on" : ""}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => { setMenu((open) => !open); setPicking(false); }}>Snooze</button>
             <button type="button" className="cp-rm-btn" onClick={() => { setEditing(true); setMenu(false); setText(reminder.text); setWho(reminder.assignee); }}>Edit</button>
+            <button type="button" className="cp-rm-btn" onClick={() => { setMenu(false); onDeleted(reminder); actions.remove(reminder.id); }}>Delete</button>
           </div>
         ) : null}
         {row.open && !editing ? <RowSide row={row} /> : null}
@@ -327,19 +346,20 @@ export function RemindersView({ reminders, roster, viewer, now, actions, loading
   const other = roster.find((name) => name !== viewer) ?? "";
   const [filter, setFilter] = useState<"mine" | "other" | "every">("every");
   const [doneOpen, setDoneOpen] = useState(false);
+  const [lastDeleted, setLastDeleted] = useState<Reminder | null>(null);
   const mine = (row: Reminder) => row.assignee === viewer;
   const theirs = (row: Reminder) => row.assignee === other;
   const inFilter = (row: Reminder) => filter === "every" || (filter === "mine" ? mine(row) : theirs(row));
   const shown = reminders.filter(inFilter);
   const groups = groupReminders(shown, now);
   const open = [...groups.overdue, ...groups.today, ...groups.upcoming];
-  const allOpen = reminders.filter((row) => !isDone(row));
+  const allOpen = reminders.filter((row) => !isDone(row) && row.status !== "deleted");
   const counts = { mine: allOpen.filter(mine).length, other: allOpen.filter(theirs).length, every: allOpen.length };
   const whom = filter === "mine" ? " for you" : filter === "other" ? ` for ${other}` : "";
   const section = (name: string, rows: Reminder[], note: string) => rows.length ? (
     <div className="cp-rm-group" key={name}>
       <div className="cp-rm-ghead"><span>{name} <em>· {rows.length}</em></span><span>{note}</span></div>
-      {rows.map((row) => <ListRow key={row.id} reminder={row} now={now} roster={roster} actions={actions} alwaysShow={false} />)}
+      {rows.map((row) => <ListRow key={row.id} reminder={row} now={now} roster={roster} actions={actions} alwaysShow={false} onDeleted={setLastDeleted} />)}
       <div className="cp-rm-rule" />
     </div>
   ) : null;
@@ -351,9 +371,15 @@ export function RemindersView({ reminders, roster, viewer, now, actions, loading
           <p>{open.length} open{whom}. {groups.overdue.length ? <span className="cp-rm-hl">{groups.overdue.length} outstanding</span> : null}{groups.overdue.length ? (groups.today.length ? `, ${groups.today.length} due today.` : ".") : groups.today.length ? `${groups.today.length} due today.` : "Nothing due today."}</p>
         ) : null}
       </div>
+      {lastDeleted ? (
+        <div role="status" className="cp-rm-saved cp-rm-deleted">
+          <span>Deleted “{lastDeleted.text}”.</span>
+          <button type="button" className="cp-rm-link" onClick={() => { actions.restore(lastDeleted.id); setLastDeleted(null); }}>Undo</button>
+        </div>
+      ) : null}
       {loading && !reminders.length ? <span className="cp-rm-empty">Loading reminders.</span> : null}
-      {!loading && !reminders.length ? <span className="cp-rm-empty">No reminders. Say “remind me…” in any chat and I will keep track of it.</span> : null}
-      {reminders.length ? (
+      {!loading && !reminders.some((row) => row.status !== "deleted") ? <span className="cp-rm-empty">No reminders. Say “remind me…” in any chat and I will keep track of it.</span> : null}
+      {reminders.some((row) => row.status !== "deleted") ? (
         <>
           <div role="radiogroup" aria-label="Whose reminders" className="cp-rm-chips cp-rm-filters">
             {([["mine", "Mine"], ...(other ? [["other", `${other}’s`]] : []), ["every", "Everyone"]] as [typeof filter, string][]).map(([key, label]) => (
@@ -371,7 +397,7 @@ export function RemindersView({ reminders, roster, viewer, now, actions, loading
               <button type="button" className="cp-rm-ghead fold" aria-expanded={doneOpen} onClick={() => setDoneOpen((value) => !value)}>
                 <span>Done <em>· {groups.done.length}</em></span><span className="cp-rm-linkish">{doneOpen ? "Hide" : "Show"}</span>
               </button>
-              {doneOpen ? groups.done.map((row) => <ListRow key={row.id} reminder={row} now={now} roster={roster} actions={actions} alwaysShow={false} />) : null}
+              {doneOpen ? groups.done.map((row) => <ListRow key={row.id} reminder={row} now={now} roster={roster} actions={actions} alwaysShow={false} onDeleted={setLastDeleted} />) : null}
               <div className="cp-rm-rule" />
             </div>
           ) : null}

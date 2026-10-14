@@ -12,7 +12,7 @@ import { parityEnabled } from "./parity/flag.js";
 import { parityNow } from "./parity/clock.js";
 import { addMessage, createChat, flagChatNeedsYou, listChats, listMessages, listPrefixedRows, readPrefixedRow, updateDraft, writePrefixedRow } from "./store.js";
 import { dayKey, exactLabel, resolveReminderTime, torontoParts, withoutTimeWords } from "./reminderTime.js";
-import { daysOutstanding, dueMessage, isDone, savedLine, unitIn, type Reminder, type ReminderCardDraft, type ReminderSource } from "./reminderView.js";
+import { daysOutstanding, dueMessage, isDone, isLive, savedLine, unitIn, type Reminder, type ReminderCardDraft, type ReminderSource } from "./reminderView.js";
 import type { CopilotMessage } from "./types.js";
 
 const ROW = "reminder|";
@@ -146,6 +146,15 @@ export function markReminderDone(id: string, by: string): Promise<Reminder> {
 
 export function undoReminderDone(id: string): Promise<Reminder> {
   return change(id, (row) => ({ ...row, status: row.snoozeCount > 0 ? "snoozed" : "open", doneBy: "", doneAt: "" }));
+}
+
+/** Deleted by a partner: hidden everywhere, kept so Undo can bring it back. */
+export function deleteReminder(id: string): Promise<Reminder> {
+  return change(id, (row) => ({ ...row, prevStatus: row.status === "deleted" ? row.prevStatus : row.status, status: "deleted" }));
+}
+
+export function restoreReminder(id: string): Promise<Reminder> {
+  return change(id, (row) => ({ ...row, status: row.prevStatus && row.prevStatus !== "deleted" ? row.prevStatus : "open" }));
 }
 
 export function snoozeReminder(id: string, dueAt: string): Promise<Reminder> {
@@ -312,7 +321,7 @@ async function remindersChat(): Promise<string> {
  * every scheduled check. Nobody outside Copilot is contacted.
  */
 export async function surfaceDueReminders(now = clock()): Promise<{ chatId: string; posted: number }> {
-  const rows = (await listReminders()).filter((row) => !isDone(row) && new Date(row.dueAt).getTime() <= now.getTime());
+  const rows = (await listReminders()).filter((row) => !isDone(row) && isLive(row) && new Date(row.dueAt).getTime() <= now.getTime());
   const today = dayKey(torontoParts(now));
   let chatId = "";
   let posted = 0;
@@ -334,4 +343,75 @@ export async function surfaceDueReminders(now = clock()): Promise<{ chatId: stri
 /** Recent messages of a chat, for "remind me about this" and the whose-answer. */
 export async function chatHistory(chatId: string): Promise<CopilotMessage[]> {
   return chatId ? (await listMessages(chatId).catch(() => [])).slice(-12) : [];
+}
+
+// ---------- Changing a reminder from chat ----------
+
+export type ReminderChange = { kind: "delete" | "done" | "move" | "undo"; dueAt: string };
+
+/**
+ * "cancel that one", "delete the towels reminder", "mark it done", "move it to Friday at 3".
+ * Only when the chat is about a reminder (the last Copilot message is one) or the words say "reminder".
+ */
+export function reminderChange(text: string, history: CopilotMessage[], now = clock()): ReminderChange | null {
+  const t = text.trim();
+  const last = [...history].reverse().find((row) => row.role === "assistant");
+  const aboutReminder = Boolean(last?.reminder) || /\breminders?\b/i.test(t);
+  if (!aboutReminder || t.length > 160) return null;
+  // "set a reminder…", "remind me to…" make a new one; they never change an old one.
+  if (asksReminder(t) && !/^(?:cancel|delete|remove|scrap|drop|undo)\b/i.test(t)) return null;
+  if (/^(?:undo|undo (?:that|it)|bring it back|restore it|put it back)[.!]*$/i.test(t)) return { kind: "undo", dueAt: "" };
+  if (/\b(?:cancel|delete|remove|scrap|drop|get rid of|forget|never ?mind|kill|clear)\b/i.test(t) && !/\bremind (?:me|us|\w+) to\b/i.test(t)) return { kind: "delete", dueAt: "" };
+  if (/\b(?:mark(?:ed)? (?:it|that|this|the \w+(?: \w+)? reminder)? ?(?:as )?(?:done|complete)|it'?s done|that'?s done|i did it|done with (?:it|that)|completed?)\b/i.test(t)) return { kind: "done", dueAt: "" };
+  if (/\b(?:move|push|change|reschedule|snooze|make|set)\b/i.test(t)) {
+    const resolved = resolveReminderTime(t, now);
+    if (resolved) return { kind: "move", dueAt: resolved.at.toISOString() };
+  }
+  return null;
+}
+
+const STOP = new Set(["the", "a", "an", "to", "for", "of", "and", "that", "this", "one", "reminder", "reminders", "cancel", "delete", "remove", "it", "my", "me", "about", "please", "move", "mark", "done", "change"]);
+
+/** The reminder meant: one named by its words, else the last one in this chat. */
+export async function reminderMeant(text: string, history: CopilotMessage[]): Promise<Reminder | null> {
+  const all = (await listReminders()).filter((row) => row.status !== "deleted" || /^undo|bring it back|restore|put it back/i.test(text.trim()));
+  const words = text.toLowerCase().match(/[a-z0-9']+/g)?.filter((word) => word.length > 2 && !STOP.has(word)) ?? [];
+  if (words.length) {
+    const scored = all
+      .map((row) => ({ row, hits: words.filter((word) => row.text.toLowerCase().includes(word)).length }))
+      .filter((item) => item.hits >= Math.min(2, words.length))
+      .sort((a, b) => b.hits - a.hits);
+    if (scored[0] && (scored.length === 1 || scored[0].hits > scored[1]!.hits)) return scored[0].row;
+  }
+  for (const row of [...history].reverse()) {
+    const id = row.reminder?.card?.savedId || row.reminder?.ref?.id;
+    if (id && id !== "superseded") return all.find((item) => item.id === id) ?? (await readReminder(id));
+  }
+  return null;
+}
+
+/** Applies a chat change to the reminder meant and says exactly what happened. */
+export async function changeFromChat(text: string, history: CopilotMessage[], viewer: string): Promise<{ body: string; id: string } | null> {
+  const change = reminderChange(text, history);
+  if (!change) return null;
+  const target = await reminderMeant(text, history);
+  if (!target) {
+    const open = (await listReminders()).filter((row) => isLive(row) && !isDone(row)).slice(0, 5);
+    return { body: open.length ? `Which reminder? Open ones: ${open.map((row) => `${row.text} (${row.assignee}, ${exactLabel(new Date(row.dueAt))})`).join("; ")}.` : "There are no open reminders.", id: "" };
+  }
+  const what = `${target.text}, ${target.assignee}, ${exactLabel(new Date(target.dueAt))}`;
+  if (change.kind === "delete") {
+    await deleteReminder(target.id);
+    return { body: `Deleted the reminder: ${what}. Say “undo” to bring it back.`, id: target.id };
+  }
+  if (change.kind === "undo") {
+    const back = target.status === "deleted" ? await restoreReminder(target.id) : target.status === "done" ? await undoReminderDone(target.id) : target;
+    return { body: `It's back: ${back.text}, ${back.assignee}, ${exactLabel(new Date(back.dueAt))}.`, id: back.id };
+  }
+  if (change.kind === "done") {
+    await markReminderDone(target.id, viewer);
+    return { body: `Marked done: ${target.text}.`, id: target.id };
+  }
+  const moved = await updateReminder(target.id, { dueAt: change.dueAt });
+  return { body: `Moved: ${moved.text}, ${moved.assignee}, now ${exactLabel(new Date(moved.dueAt))}.`, id: moved.id };
 }

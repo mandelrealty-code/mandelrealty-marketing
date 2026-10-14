@@ -391,13 +391,15 @@ export async function sendGmailReply(input: {
   body: string;
   threadId?: string;
   rfcId?: string;
-}): Promise<void> {
+}): Promise<string> {
   if (parityEnabled()) {
     captureCommit("gmail", input.to);
-    return;
+    return "";
   }
   const token = await accessToken();
-  const subject = /^re:/i.test(input.subject) ? input.subject : `Re: ${input.subject}`;
+  // "Re:" only on a real reply; a new email keeps its own subject.
+  const replying = Boolean(input.threadId || input.rfcId);
+  const subject = !replying || /^re:/i.test(input.subject) ? input.subject : `Re: ${input.subject}`;
   const headers = [
     `To: ${input.to}`,
     `Subject: ${subject}`,
@@ -420,6 +422,9 @@ export async function sendGmailReply(input: {
     }
     throw new Error("Gmail didn't send it. Nothing went out.");
   }
+  // Gmail's answer is the sent message itself; with the SENT label it is the record that it went out.
+  const sent = (await res.json().catch(() => ({}))) as { id?: string; labelIds?: string[] };
+  return sent.id && (sent.labelIds ?? []).includes("SENT") ? sent.id : "";
 }
 
 /** A new message to a partner, with an optional PDF. Parity delivery does not call this. */

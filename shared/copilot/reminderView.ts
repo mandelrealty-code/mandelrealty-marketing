@@ -6,7 +6,7 @@
 
 import { clockLabel, daysBetween, dueWords, exactLabel, torontoParts } from "./reminderTime.js";
 
-export type ReminderStatus = "open" | "snoozed" | "done";
+export type ReminderStatus = "open" | "snoozed" | "done" | "deleted";
 export type ReminderSource = "chat" | "checks" | "follow-up";
 
 export type Reminder = {
@@ -28,6 +28,8 @@ export type Reminder = {
   snoozeCount: number;
   /** Where Undo on a snooze returns it. */
   prevDueAt: string;
+  /** The status before a delete, so Undo restores it. */
+  prevStatus?: ReminderStatus;
   doneBy: string;
   doneAt: string;
   updatedAt: string;
@@ -55,6 +57,11 @@ export const UNITS = ["Charlotte 606", "41 Roseglor", "Blue Jays Way 318", "1065
 
 export function isDone(row: Reminder): boolean {
   return row.status === "done";
+}
+
+/** A deleted reminder is kept (Undo brings it back) but no surface lists it. */
+export function isLive(row: Reminder): boolean {
+  return row.status !== "deleted";
 }
 
 /** Calendar days past due, Toronto days; 0 when due today or later. */
@@ -128,7 +135,8 @@ export type ReminderGroups = {
 };
 
 /** Overdue, Today, Upcoming, Done; each sorted by due. Nothing leaves on its own. */
-export function groupReminders(rows: Reminder[], now: Date): ReminderGroups {
+export function groupReminders(all: Reminder[], now: Date): ReminderGroups {
+  const rows = all.filter(isLive);
   const today = torontoParts(now);
   const open = rows.filter((row) => !isDone(row)).sort(byDue);
   const dayGap = (row: Reminder) => daysBetween(today, torontoParts(new Date(row.dueAt)));

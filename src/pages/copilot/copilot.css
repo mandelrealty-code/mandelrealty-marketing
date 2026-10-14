@@ -9191,3 +9191,5 @@ html.cp-app[data-cp-theme="dark"] #root {
 /* The card's fields, hints and actions are sans; only the lead sentence is serif, as in the design. */
 .cp-rm-fields, .cp-rm-fields input, .cp-rm-savebar, .cp-rm-saved, .cp-rm-dueacts, .cp-rm-pick, .cp-rm-pickwrap, .cp-rm-menu { font-family: "Instrument Sans", system-ui, sans-serif; }
 .cp-rm-k, .cp-rm-savebar > span, .cp-rm-note, .cp-rm-unit { font-family: "Instrument Sans", system-ui, sans-serif; }
+.cp-rm-muted.wrap { white-space: normal; font-size: 13px; }
+.cp-rm-deleted { padding-bottom: 12px; }
