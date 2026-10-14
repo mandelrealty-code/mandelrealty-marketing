@@ -65,8 +65,17 @@ function sourceOf(task: Task): ReminderSource {
   return "chat";
 }
 
-/** A task as a reminder. Tasks with no due at all live on the board only. */
+/**
+ * A reminder is what a partner set with "remind me…" in chat. Board tasks, Copilot's own tasks and
+ * calendar events stay on the Tasks board, even with a due date; Reminders is only the personal list.
+ */
+export function isReminder(task: Task): boolean {
+  return task.source.kind === "chat";
+}
+
+/** A task as a reminder, or null when it isn't one (or has no due). */
 export function reminderOf(task: Task): Reminder | null {
+  if (!isReminder(task)) return null;
   let dueAt = task.dueAt;
   if (!dueAt && task.dueDay) {
     const [y, m, d] = task.dueDay.split("-").map(Number);

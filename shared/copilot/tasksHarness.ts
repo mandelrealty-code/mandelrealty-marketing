@@ -18,7 +18,7 @@ import handleSession, { setStaffAccounts } from "../adminApi/session.js";
 import { hashPassword } from "../portalAuth.js";
 import { OPS_NAV, opsPathOpensCopilotTasks } from "../opsNav.js";
 import { setParityStaff, syncCalendar } from "./tasks.js";
-import { listReminders } from "./reminders.js";
+import { createReminder, listReminders } from "./reminders.js";
 import { overviewReminders, reminderRow } from "./reminderView.js";
 import { fromToronto, shiftDay, torontoParts } from "./reminderTime.js";
 import type { GuestFollowUp } from "./guestTypes.js";
@@ -65,13 +65,15 @@ const first = await boardPayload(shane);
 if (first.roster.map((row) => row.name).join(",") !== "Shane,Ryan,Maya,Luis") fail(`roster ${first.roster.map((row) => row.name).join(",")}`);
 if (first.calendar.mode !== "ok") fail(`calendar mode ${first.calendar.mode}`);
 
-// Created on the board, it is a reminder too: the Reminders view and Overview read the same record.
+// Reminders and tasks are separate: a board task stays off Reminders and Overview's Reminders group, even with a due time;
+// a "remind me" from chat is a reminder (and the board, the full picture, still lists it).
 let board = await boardAction({ op: "create", title: "Book the furnace service", assignee: "Shane", dueAt: at(0, 1080) }, shane);
 const furnace = find(board, "Book the furnace service");
 if (!furnace) fail("board create");
-const asReminder = (await listReminders()).find((row) => row.id === furnace.id);
-if (!asReminder || asReminder.text !== "Book the furnace service" || asReminder.assignee !== "Shane") fail("the board task isn't in the Reminders view");
-if (!overviewReminders(await listReminders(), now).rows.some((row) => row.id === furnace.id)) fail("the board task isn't in the Overview group");
+if ((await listReminders()).some((row) => row.id === furnace.id) || overviewReminders(await listReminders(), now).rows.some((row) => row.id === furnace.id)) fail("a board task showed up in Reminders");
+const chatReminder = await createReminder({ text: "Call the locksmith about the side gate", assignee: "Shane", dueAt: at(0, 1140), createdBy: "Shane" });
+if (!(await listReminders()).some((row) => row.id === chatReminder.id) || !overviewReminders(await listReminders(), now).rows.some((row) => row.id === chatReminder.id)) fail("a chat reminder isn't in Reminders and Overview");
+if (!find(await boardPayload(shane), "Call the locksmith about the side gate")) fail("a chat reminder isn't on the board");
 
 // Calendar: the event is made with the chosen reminder, moves with the due, gains ✓ when done, goes when deleted.
 board = await boardAction({ op: "update", id: furnace.id, patch: { reminder: "1 hour before" } }, shane);
@@ -181,8 +183,9 @@ await boardAction({ op: "done", id: others.id }, maya).catch((err) => { refused 
 if (refused !== "That task isn't yours.") fail("an employee changed someone else's task");
 
 // Marked done in chat (the due-now message's button) clears it on the board.
-board = await boardAction({ op: "create", title: "Renew the Charlotte 606 parking permit", assignee: "Shane", dueAt: at(-2, 540) }, shane);
-const permit = find(board, "Renew the Charlotte 606 parking permit")!;
+setParityClock(new Date(Date.parse(at(-2, 480))));
+const permit = await createReminder({ text: "Renew the Charlotte 606 parking permit", assignee: "Shane", dueAt: at(-2, 540), createdBy: "Shane" });
+setParityClock(now);
 const top = overviewReminders(await listReminders(), now).rows[0]!;
 if (top.id !== permit.id || reminderRow(top, now).outText !== "2 days outstanding") fail(`overview top ${top.text} ${reminderRow(top, now).outText}`);
 await copilot({ op: "reminders-done", id: permit.id, viewer: "Shane" });
