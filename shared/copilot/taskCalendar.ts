@@ -103,7 +103,11 @@ function googleCalendar(token: () => Promise<string>): CalendarApi {
     if (!res.ok) {
       const reason = `${body.error?.status ?? ""} ${body.error?.errors?.map((item) => item.reason).join(" ") ?? ""} ${body.error?.message ?? ""}`;
       // A refusal (missing Calendar permission, the API not enabled) is "not connected"; only outages pause.
-      if (res.status === 403) throw new CalendarNotAuthorized(reason.trim());
+      if (res.status === 403) {
+        if (/insufficient|scope/i.test(reason)) throw new CalendarNotAuthorized("The Google sign-in doesn't include the Calendar permission. Press Connect calendar, sign in as mandelrealtyteam@gmail.com, and on Google's screen tick the box for Mandel Copilot to make and manage its own calendars. If no such box appears, add the calendar.app.created scope to the app's OAuth consent screen in Google Cloud first.");
+        if (/accessNotConfigured|has not been used|disabled/i.test(reason)) throw new CalendarNotAuthorized("The Google Calendar API is turned off for this Google Cloud project. In Google Cloud Console, APIs & Services, Library, enable Google Calendar API, then open the board again.");
+        throw new CalendarNotAuthorized(reason.trim());
+      }
       if (res.status === 401) throw new CalendarNotAuthorized("The Google sign-in was not accepted.");
       const error = new Error(`Google Calendar ${res.status}: ${body.error?.message ?? "no answer"}`) as Error & { status?: number };
       error.status = res.status;
@@ -121,9 +125,15 @@ function googleCalendar(token: () => Promise<string>): CalendarApi {
           if (err instanceof CalendarNotAuthorized) throw err;
         }
       }
-      const list = await call<{ items?: { id: string; summary?: string }[] }>("/users/me/calendarList?minAccessRole=owner");
-      const found = list.items?.find((item) => item.summary === CALENDAR_NAME);
-      if (found) return found.id;
+      // The narrow permission (calendars this app creates) may not allow listing the account's calendars;
+      // then Copilot makes its own Mandel Tasks calendar, which is the one it may manage anyway.
+      try {
+        const list = await call<{ items?: { id: string; summary?: string }[] }>("/users/me/calendarList?minAccessRole=owner");
+        const found = list.items?.find((item) => item.summary === CALENDAR_NAME);
+        if (found) return found.id;
+      } catch (err) {
+        if (!(err instanceof CalendarNotAuthorized)) throw err;
+      }
       const made = await call<{ id: string }>("/calendars", { method: "POST", body: JSON.stringify({ summary: CALENDAR_NAME, timeZone: "America/Toronto" }) });
       return made.id;
     },
