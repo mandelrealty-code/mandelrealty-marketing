@@ -337,6 +337,22 @@ if (!/client's email address on file in OPS/.test(proposalAnswer.body) || !/Subj
   if (/October 5|October 19|4 nights|Priya/.test(draft?.body ?? "") || !/Their name is: Husson They/.test(draft?.body ?? "")) fail(`old stay carried over: ${draft?.body}`);
 }
 
+// An inquiry opens from the inbox: its messages come from the inquiry, through the real endpoint.
+{
+  const world = worldAt("2026-10-13T23:15:00-04:00");
+  world.inquiries = [{ id: "inq-lee", propertyId: ID.shaw, status: "open", guest: "Lee", checkIn: "2026-10-29", checkOut: "2026-10-31", adults: 2, children: 0,
+    messages: [{ id: "lee-1", at: "2026-10-14T03:15:00Z", role: "guest", name: "Lee", body: "Hi Roya, this is Lee, Sophie's mom. I know you require a 2-night minimum, but I wanted to ask about one night." }],
+    financials: { guest: { total_price: { formatted: "CA$320.00" } } }, airbnbThread: "4801", bookedAt: "2026-10-14T03:15:00Z", reviews: 3, guestSince: "2021-01-01T00:00:00Z" }] as never;
+  installWorld(world);
+  let opened: { thread?: { text: string }[]; waitingLine?: string } = {};
+  let status = 200;
+  await handleCopilot(
+    { method: "POST", headers: { cookie: `mrg_admin_session=${encodeURIComponent(token)}` }, body: { op: "guests-open", id: "inq-lee", inquiry: true, guest: "Lee", first: "Lee", property: "1065 Shaw Street", propertyId: ID.shaw, checkIn: "2026-10-29", checkOut: "2026-10-31", activityAt: "2026-10-14T03:15:00Z" }, query: {} } as never,
+    { status(code: number) { status = code; return this; }, json(body: typeof opened) { opened = body; return this; } } as never,
+  );
+  if (status !== 200 || !opened.thread?.some((item) => /Sophie's mom/.test(item.text))) fail(`inquiry did not open: ${status} ${JSON.stringify(opened).slice(0, 300)}`);
+}
+
 setWebAnswerer(null);
 setCompsSource(null);
 setListingSource(null);

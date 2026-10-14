@@ -2522,7 +2522,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       setGuestAnswer(kept && kept.activityAt === (row.activityAt ?? "") ? kept.view : placeholderView(row));
                       void readGuestView(row).then((view) => {
                         if (view) setGuestAnswer((current) => (current && current.id === row.id ? view : current));
-                        else setGuestAnswer((current) => (current && current.id === row.id && current.loading ? null : current));
+                        // A failed read stays open on the row and says so, rather than snapping back to the list.
+                        else setGuestAnswer((current) => (current && current.id === row.id && current.loading ? { ...current, loading: false, lane: "none", waitingLine: "Hospitable didn't return this conversation. Go back and open it again in a moment." } : current));
                       });
                     }}
                     onPrefetch={(row) => {

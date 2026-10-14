@@ -942,13 +942,15 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
   // Every read at once: the thread (cached when its activity hasn't moved), the reservation, the
   // Knowledge Hub, the saved inbox and memory. One after another took seconds.
   const [messages, stayRaw, hubRead, saved, memory] = await Promise.all([
-    row.inquiry ? inquiryThread(row.id) : readStayThread(row.id, now),
+    // A thread that won't read still opens, from the row, with the failure said in the thread view.
+    (row.inquiry ? inquiryThread(row.id) : readStayThread(row.id, now)).catch(() => null),
     hospitableRead("get-reservation", { identifier: row.id }).catch(() => null),
     readPropertyHub(row.propertyId),
     readSavedGuestQueue().catch(() => null),
     memoryFor(row.property).catch(() => ""),
   ]);
-  const turns: ThreadTurn[] = messages
+  const unread = messages === null;
+  const turns: ThreadTurn[] = (messages ?? [])
     .filter((item) => item.role !== "system")
     .map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body, media: item.media ?? [] }));
   const hub = hubRead.ok ? hubRead.text : "";
@@ -981,7 +983,7 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
   const held = read.lane === "guest";
   const draft = held ? (stood || outside.draft) : stood || (fromHub.mode === "hub" ? fromHub.draft : outside.draft);
   const mode = held ? "held" as const : draft ? "hub" as const : "gap" as const;
-  const thread = presentGuestThread(messages, row.guest, hostNameFrom(stayRaw), now, read.copied);
+  const thread = presentGuestThread(messages ?? [], row.guest, hostNameFrom(stayRaw), now, read.copied);
   if (!held && mode === "hub" && draft) rememberGuestDraft({ to: row.guest, body: draft, reservationId: row.id, language: row.language });
   const reservation = reservationSpan(stayRaw);
   return {
@@ -998,7 +1000,7 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
     alternates: outside.alternates,
     sendable: !held && Boolean(draft),
     situation: read.situation,
-    waitingLine: read.waitingLine,
+    waitingLine: unread ? "Hospitable didn't return the messages for this conversation. Go back and open it again in a moment." : read.waitingLine,
     partnerNotes: read.partnerNotes,
     basedOn: outside.basedOn || (fromHub.facts ? `the Knowledge Hub · ${fromHub.facts}` : ""),
     sourceLine: sourceLine(read, reservation, outside.pageTitle),

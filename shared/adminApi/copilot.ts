@@ -490,6 +490,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         checkOut: String(body.checkOut ?? ""),
         mediaLabel: String(body.mediaLabel ?? ""),
         lastNote: String(body.lastNote ?? ""),
+        // An inquiry's messages live on the inquiry: without this flag it was read as a reservation and never opened.
+        inquiry: body.inquiry === true,
+        activityAt: typeof body.activityAt === "string" ? body.activityAt : undefined,
+        preview: typeof body.preview === "string" ? body.preview : undefined,
+        lastBy: typeof body.lastBy === "string" ? body.lastBy : undefined,
+        quietReason: typeof body.quietReason === "string" ? body.quietReason : undefined,
       });
       return res.status(200).json(row);
     }
