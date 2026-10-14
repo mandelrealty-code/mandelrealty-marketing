@@ -944,7 +944,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         }
         if (asksReminder(text, roster)) {
           const chatTitle = (await listChats().catch(() => [])).find((chat) => chat.id === chatId)?.title ?? "";
-          const reply = await reminderCard(text, { viewer, history: priorMessages, chatTitle });
+          // The task is kept in the partner's own words, not the routing text with units spelled out.
+          const reply = await reminderCard(typed, { viewer, history: priorMessages, chatTitle });
           await addMessage({ chatId, role: "assistant", body: reply.body, reminder: { card: reply.card }, steps: [{ text: "Read the reminder" }], thought: "Nothing is sent to anyone. It comes back here until someone marks it done." });
           return done();
         }

@@ -199,11 +199,11 @@ export function taskFrom(text: string, phrases: string[], roster: string[]): str
   const names = roster.map((name) => name.split(" ")[0]!).join("|");
   let task = text
     .replace(/^\s*(?:hey\s+)?(?:copilot[,:]?\s+)?(?:can you\s+|could you\s+|please\s+|pls\s+)?/i, "")
-    .replace(new RegExp(`^.*?\\bremind\\s+(?:me|us|him|her|them|everyone|every one|the team|both of us|${names})\\b\\s*(?:to|about|that|of)?\\s*`, "i"), "")
-    .replace(/^.*?\b(?:set|add|create|make|put in|need)\s+(?:a\s+|me\s+a\s+)?reminder\b\s*(?:for\s+(?:me|us)\s+)?(?:to|about|for|that)?\s*/i, "")
+    .replace(new RegExp(`^.*?\\bremind\\s+(?:me|us|him|her|them|everyone|every one|the team|both of us|${names})\\b\\s*(?:(?:to|about|that|of)\\b)?\\s*`, "i"), "")
+    .replace(/^.*?\b(?:set|add|create|make|put in|need)\s+(?:a\s+|me\s+a\s+)?reminder\b\s*(?:for\s+(?:me|us)\s+)?(?:(?:to|about|for|that)\b)?\s*/i, "")
     .replace(/^reminder\s*[:\-–]\s*/i, "");
   task = task.replace(new RegExp(`\\s*\\b(?:for|it'?s|its)\\s+(?:${names})(?:'s)?\\b`, "i"), " ");
-  task = withoutTimeWords(task, phrases).replace(/^(?:to|about|that|of)\s+/i, "");
+  task = withoutTimeWords(task, phrases).replace(/^(?:to|about|that|of)\b\s*/i, "");
   return capital(task.replace(/\s*(?:please|pls|thanks|thank you)\s*$/i, "").replace(/\s+(?:to|for)$/i, ""));
 }
 

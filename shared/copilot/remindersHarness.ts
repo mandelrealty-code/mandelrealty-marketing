@@ -88,6 +88,15 @@ if (!sixCard || sixCard.assignee !== "Shane" || exactLabel(new Date(sixCard.dueA
 const sixSaved = await saveFrom(six.reply);
 if (sixSaved.line !== "Reminder set: call the plumber about the Shaw sink, Shane, Tuesday Oct 13 at 6:00 PM, 1065 Shaw St.") fail(`6 PM line: ${sixSaved.line}`);
 
+// "tomorrow morning to order…": the task keeps the partner's words; "to" inside "tomorrow" is not a connective.
+const morning = await say("", "remind me tomorrow morning to order supplies for royas unit");
+const morningCard = morning.reply.reminder?.card;
+if (!morningCard || morningCard.text !== "Order supplies for royas unit" || morningCard.unit !== "1065 Shaw St" || exactLabel(new Date(morningCard.dueAt)) !== "Wednesday Oct 14 at 9:00 AM") fail(`morning card: ${JSON.stringify(morningCard)}`);
+for (const [said, task] of [["remind me today to call Bob", "Call Bob"], ["remind me tonight to lock up", "Lock up"], ["set a reminder tomorrow to book the cleaner", "Book the cleaner"], ["remind Ryan tomorrow at 4pm to tour 41 Roseglor", "Tour 41 Roseglor"]] as const) {
+  const reply = await say("", said);
+  if (reply.reply.reminder?.card?.text !== task) fail(`"${said}" task: ${reply.reply.reminder?.card?.text}`);
+}
+
 // "tomorrow evening" is 6:00 PM tomorrow; whose and when given, so the card needs one tap.
 const evening = await say("", "remind Ryan to check the smoke detectors tomorrow evening");
 const eveningCard = evening.reply.reminder?.card;
