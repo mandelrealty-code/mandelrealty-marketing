@@ -38,6 +38,8 @@ import {
   type BrowserSession,
 } from "../../../shared/copilot/browserSession";
 import BrowserSurface, { SessionLine } from "./BrowserSurface";
+import { DueReminder, OverviewReminders, ReminderCard, RemindersView, type ReminderActions } from "./RemindersUi";
+import { overviewReminderLine, sidebarCount, type Reminder, type ReminderCardDraft } from "../../../shared/copilot/reminderView";
 
 function pageTitle(url: string): string {
   try {
@@ -54,7 +56,7 @@ function signInSite(body: string): string {
   return named?.[1]?.trim() || "This site";
 }
 
-type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "guests" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
+type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "guests" | "reminders" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
 
 type Boot = {
   brief: BriefPayload;
@@ -239,6 +241,10 @@ function when(iso: string) {
 }
 
 function OverviewHome({
+  reminders,
+  remNow,
+  reminderActions,
+  onOpenReminders,
   brief,
   busy,
   comingOpen,
@@ -248,6 +254,10 @@ function OverviewHome({
   onDismiss,
   error,
 }: {
+  reminders: Reminder[];
+  remNow: Date;
+  reminderActions: ReminderActions;
+  onOpenReminders: () => void;
   brief: BriefPayload;
   busy: boolean;
   comingOpen: boolean;
@@ -275,7 +285,7 @@ function OverviewHome({
           <h1>{overview.dateLabel}</h1>
           <span>{overview.checkedAt}</span>
         </div>
-        <p>{overview.summary}</p>
+        <p>{[overview.summary, overviewReminderLine(reminders, remNow)].filter(Boolean).join(" ")}</p>
       </header>
       {overview.empty ? (
         <section className="cp-ov-sec">
@@ -320,6 +330,7 @@ function OverviewHome({
           ))}
         </section>
       )}
+      <OverviewReminders reminders={reminders} now={remNow} actions={reminderActions} onOpenAll={onOpenReminders} />
       <section className="cp-ov-sec">
         <button type="button" className="cp-ov-fold" onClick={onToggleComing}>
           <span>Coming up <span>· {coming.length}</span></span>
@@ -834,6 +845,20 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [hospitableError, setHospitableError] = useState("");
   const [connectorId, setConnectorId] = useState("");
   const [reviewQueue, setReviewQueue] = useState<ReviewQueuePayload | null>(null);
+  // Reminders: one shared list every surface renders from; any action replaces it with the server's.
+  const [reminders, setReminders] = useState<Reminder[] | null>(null);
+  const [roster, setRoster] = useState<string[]>(["Shane", "Ryan"]);
+  const [remNow, setRemNow] = useState(() => new Date());
+  const viewer = useMemo(() => {
+    let asked = "";
+    try {
+      asked = new URLSearchParams(window.location.search).get("as")?.trim() ?? "";
+      if (asked) window.localStorage.setItem("cp-viewer", asked);
+      return asked || window.localStorage.getItem("cp-viewer") || "Shane";
+    } catch {
+      return asked || "Shane";
+    }
+  }, []);
   const [guestQueue, setGuestQueue] = useState<GuestQueue | null>(null);
   const [guestAnswer, setGuestAnswer] = useState<GuestDraftView | null>(null);
   // Threads already opened, keyed by reservation with the activity they were read at, and reads in flight.
@@ -1017,6 +1042,35 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   useEffect(() => {
     document.documentElement.dataset.cpTheme = theme;
   }, [theme]);
+
+  // Reminders whose time has come are waiting in chat when Copilot opens; the minute tick keeps
+  // "N days outstanding" and due words current, and a quiet pass every five minutes posts new ones.
+  useEffect(() => {
+    let alive = true;
+    let ticks = 0;
+    const surface = (openIt: boolean) =>
+      api<{ chatId: string; posted: number; reminders: Reminder[]; roster: string[] }>("reminders-surface", { viewer })
+        .then((data) => {
+          if (!alive) return;
+          takeReminders(data);
+          if (data.posted && data.chatId) {
+            if (openIt) void openChat(data.chatId);
+            else void load().catch(() => undefined);
+          }
+        })
+        .catch(() => undefined);
+    void surface(true);
+    const timer = window.setInterval(() => {
+      setRemNow(new Date());
+      ticks += 1;
+      if (ticks % 5 === 0) void surface(false);
+    }, 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function load() {
     const data = await api<Boot>("boot");
@@ -1382,6 +1436,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         pictureMode: makingPicture,
         webSearch: searching,
         images,
+        viewer,
       }, ctrl.signal);
       delivered = true;
       if (ctrl.signal.aborted) return;
@@ -1566,6 +1621,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     if (screen === "brief") return "Overview";
     if (screen === "reviews") return "Reviews";
     if (screen === "guests") return "Guest messaging";
+    if (screen === "reminders") return "Reminders";
     if (screen === "empty") return "New chat";
     return boot?.chats.find((c) => c.id === chatId)?.title || "New chat";
   }, [boot, chatId, screen]);
@@ -1906,6 +1962,32 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       .catch(() => undefined);
   }
 
+  function takeReminders(data: { reminders?: Reminder[]; roster?: string[] } | null) {
+    if (data?.reminders) setReminders(data.reminders);
+    if (data?.roster?.length) setRoster(data.roster);
+    setRemNow(new Date());
+  }
+
+  const reminderActions: ReminderActions = {
+    done: (id) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-done", { id, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
+    undo: (id) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-undo", { id, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
+    snooze: (id, dueAt) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-snooze", { id, dueAt, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
+    unsnooze: (id) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-unsnooze", { id, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
+    update: (id, patch) => void api<{ reminders: Reminder[]; roster: string[] }>("reminders-update", { id, patch, viewer }).then(takeReminders).catch((err) => setError(err instanceof Error ? err.message : "That didn’t save. Try again.")),
+  };
+
+  async function saveReminderCard(messageId: string, card: ReminderCardDraft): Promise<string> {
+    const data = await api<{ line: string; reminders: Reminder[]; roster: string[] }>("reminders-save", { messageId, card, viewer });
+    takeReminders(data);
+    return data.line;
+  }
+
+  function showReminders() {
+    setScreen("reminders");
+    setSheet(false);
+    void api<{ reminders: Reminder[]; roster: string[] }>("reminders-list", { viewer }).then(takeReminders).catch(() => undefined);
+  }
+
   function sideList() {
     return (
     <>
@@ -1926,6 +2008,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       <button type="button" className={`cp-row${screen === "reviews" ? " on" : ""}`} onClick={() => { setScreen("reviews"); setSheet(false); void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch((err) => setReviewQueue({ connected: false, line: err instanceof Error ? err.message : "Hospitable is not connected.", reviews: [], postedToday: [] })); }}>
         <span>Reviews</span>
         {reviewQueue?.connected && reviewQueue.reviews.length ? <span className="cp-ov-count">{reviewQueue.reviews.length}</span> : null}
+      </button>
+      <button type="button" className={`cp-row${screen === "reminders" ? " on" : ""}`} onClick={showReminders}>
+        <span>Reminders</span>
+        {reminders && sidebarCount(reminders, remNow) ? <span className="cp-rm-count">{sidebarCount(reminders, remNow)}</span> : null}
       </button>
       <button type="button" className={`cp-row${screen === "browser" ? " on" : ""}`} onClick={() => { setScreen("browser"); setSheet(false); }}>
         <span>Browser</span>
@@ -2061,7 +2147,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           }}
         />
       ) : (
-      <div className={`cp-body${stage && !inSettings && screen !== "reviews" && screen !== "guests" ? " work" : ""}`}>
+      <div className={`cp-body${stage && !inSettings && screen !== "reviews" && screen !== "guests" && screen !== "reminders" ? " work" : ""}`}>
         <aside className="cp-side">{sideList()}</aside>
         <main className={`cp-main${reportDock && screen === "chat" ? " rv-open" : ""}`}>
           <div className="cp-chatpane">
@@ -2556,6 +2642,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     }}
                   />
                 ) : null}
+                {screen === "reminders" ? (
+                  <RemindersView reminders={reminders ?? []} roster={roster} viewer={viewer} now={remNow} actions={reminderActions} loading={!reminders} />
+                ) : null}
                 {screen === "browser" ? (
                   <BrowserSurface
                     session={browserSession}
@@ -2581,6 +2670,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                 ) : null}
                 {screen === "brief" && boot ? (
                   <OverviewHome
+                    reminders={reminders ?? []}
+                    remNow={remNow}
+                    reminderActions={reminderActions}
+                    onOpenReminders={showReminders}
                     brief={boot.brief}
                     busy={busy}
                     comingOpen={comingOpen}
@@ -2618,6 +2711,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             ))}
                             {message.body ? <span>{withoutFilesystemDetail(message.body, true)}</span> : null}
                           </div>
+                        </div>
+                      ) : message.reminder?.card || message.reminder?.ref ? (
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
+                          {message.reminder.card ? (
+                            <ReminderCard card={message.reminder.card} lead={message.body} roster={roster} now={remNow} onSave={(card) => saveReminderCard(message.id, card)} />
+                          ) : (
+                            <DueReminder reminder={(reminders ?? []).find((row) => row.id === message.reminder?.ref?.id) ?? null} fallback={message.body} viewer={viewer} now={remNow} actions={reminderActions} />
+                          )}
                         </div>
                       ) : message.draft?.channel === "skill" ? (
                         <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
@@ -2852,7 +2953,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   </div>
                 ) : null}
               </div>
-              {inSettings || screen === "reviews" || screen === "guests" ? null : (
+              {inSettings || screen === "reviews" || screen === "guests" || screen === "reminders" ? null : (
               <div className="cp-composer-wrap">
                 <div className="cp-confirm">Nothing goes out until you confirm.</div>
                 <div className="cp-pluswrap" data-plus="1">

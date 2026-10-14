@@ -48,6 +48,8 @@ import { answerMoneyMove } from "../copilot/moneyMove.js";
 import { answerAboutPrevious } from "../copilot/followOnAnswer.js";
 import { answerProductAdvice } from "../copilot/productAdvice.js";
 import { answerProcess } from "../copilot/processAnswer.js";
+import { addToRoster, asksReminder, leadFor, listReminders, markReminderDone, openCardIn, readRoster, reminderCard, saveCard, snoozeReminder, surfaceDueReminders, undoReminderDone, undoSnooze, updateReminder, whoAnswer } from "../copilot/reminders.js";
+import type { ReminderCardDraft } from "../copilot/reminderView.js";
 import { REPORT_CLIENTS, withClientUnits } from "../copilot/reportClients.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
@@ -424,6 +426,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const run = await startSkillRun(id, "manual");
       const skills = await skillRows();
       return res.status(200).json({ run, skills, connectors: await connectors(skills), chats: await listChats() });
+    }
+
+    if (op.startsWith("reminders-")) {
+      // Reminders: one record each, read and written the same way from every surface. Nothing is sent.
+      const viewer = String(body.viewer ?? "").trim() || (await readRoster())[0]!;
+      const id = String(body.id ?? "");
+      if (op === "reminders-save") {
+        const card = body.card as ReminderCardDraft;
+        const saved = await saveCard(String(body.messageId ?? ""), card, viewer);
+        return res.status(200).json({ line: saved.line, reminder: saved.reminder, reminders: await listReminders(), roster: await readRoster() });
+      }
+      if (op === "reminders-update") await updateReminder(id, (body.patch ?? {}) as Parameters<typeof updateReminder>[1]);
+      else if (op === "reminders-done") await markReminderDone(id, viewer);
+      else if (op === "reminders-undo") await undoReminderDone(id);
+      else if (op === "reminders-snooze") await snoozeReminder(id, String(body.dueAt ?? ""));
+      else if (op === "reminders-unsnooze") await undoSnooze(id);
+      else if (op === "reminders-roster-add") await addToRoster(String(body.name ?? ""));
+      else if (op === "reminders-surface") {
+        const surfaced = await surfaceDueReminders();
+        return res.status(200).json({ ...surfaced, reminders: await listReminders(), roster: await readRoster(), chats: await listChats() });
+      } else if (op !== "reminders-list") return res.status(400).json({ error: "Unknown reminders action." });
+      return res.status(200).json({ reminders: await listReminders(), roster: await readRoster() });
     }
 
     if (op === "guests-queue") {
@@ -904,7 +928,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const clock = parityNow() ?? new Date();
       // Comp pricing for one of our units: the unit from the records, AirROI first, never a permission question.
       if (!pictureMode && !skillMode) {
-        const compHistory = (await listMessages(chatId)).slice(0, -1).map((row) => ({ role: row.role, body: row.body }));
+        const priorMessages = (await listMessages(chatId)).slice(0, -1);
+        const compHistory = priorMessages.map((row) => ({ role: row.role, body: row.body }));
+        // Reminders: "remind me…" opens the card; an answer to "Whose task is this?" fills it, asked once.
+        const roster = await readRoster();
+        const viewer = String(body.viewer ?? "").trim() || roster[0]!;
+        const waitingCard = openCardIn(priorMessages);
+        const answeredWho = waitingCard ? whoAnswer(text, viewer, roster) : "";
+        if (waitingCard?.reminder?.card && answeredWho) {
+          const card = { ...waitingCard.reminder.card, assignee: answeredWho };
+          await updateDraft(waitingCard.id, { reminder: { card: { ...waitingCard.reminder.card, superseded: true } } } as never).catch(() => null);
+          const next = await addMessage({ chatId, role: "assistant", body: leadFor(card, viewer), reminder: { card }, steps: [{ text: "Noted whose it is" }], thought: "Nothing is sent to anyone." });
+          if (card.dueAt) await saveCard(next.id, card, viewer);
+          return done();
+        }
+        if (asksReminder(text, roster)) {
+          const chatTitle = (await listChats().catch(() => [])).find((chat) => chat.id === chatId)?.title ?? "";
+          const reply = await reminderCard(text, { viewer, history: priorMessages, chatTitle });
+          await addMessage({ chatId, role: "assistant", body: reply.body, reminder: { card: reply.card }, steps: [{ text: "Read the reminder" }], thought: "Nothing is sent to anyone. It comes back here until someone marks it done." });
+          return done();
+        }
         // "Who do we normally send the parking email to?": the recorded process, never a pointer to a card.
         const processed = await answerProcess(text).catch(() => null);
         if (processed) {

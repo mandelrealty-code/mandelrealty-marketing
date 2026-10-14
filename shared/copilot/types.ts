@@ -131,6 +131,13 @@ export type CopilotMessage = {
   property?: PropertyIdentity | null;
   /** The one Checks item this answer is about, opened directly, never "the latest waiting". */
   checksItem?: ChecksItemRef | null;
+  /** A reminder card in chat, or a due-now message pointing at one reminder record. */
+  reminder?: ReminderMessage | null;
+};
+
+export type ReminderMessage = {
+  card?: import("./reminderView.js").ReminderCardDraft & { superseded?: boolean };
+  ref?: { id: string; kind: "due" | "still" };
 };
 
 export type ChecksItemRef = { chatId: string; messageId: string; label: string };

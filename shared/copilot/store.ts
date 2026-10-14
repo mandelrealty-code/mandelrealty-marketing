@@ -420,8 +420,8 @@ function asReportFile(value: unknown): { filename: string; mime: string; data: s
   return { filename: row.filename, mime: typeof row.mime === "string" && row.mime ? row.mime : "application/pdf", data: row.data };
 }
 
-function unpackMessage(row: CopilotMessage): CopilotMessage {
-  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean; memory_file?: { path: string; preview: string }; file?: { filename?: string; data?: string }; stay_rows?: CopilotMessage["stayRows"]; property?: CopilotMessage["property"]; checks_item?: CopilotMessage["checksItem"] }) | null;
+export function unpackMessage(row: CopilotMessage): CopilotMessage {
+  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean; memory_file?: { path: string; preview: string }; file?: { filename?: string; data?: string }; stay_rows?: CopilotMessage["stayRows"]; property?: CopilotMessage["property"]; checks_item?: CopilotMessage["checksItem"]; reminder?: CopilotMessage["reminder"] }) | null;
   const choices = Array.isArray(raw?.choices) ? raw.choices : row.choices ?? null;
   const steps = Array.isArray(raw?.steps) ? raw.steps : row.steps ?? null;
   const thought = typeof raw?.thought === "string" ? raw.thought : row.thought ?? null;
@@ -434,9 +434,10 @@ function unpackMessage(row: CopilotMessage): CopilotMessage {
   const stayRows = Array.isArray(raw?.stay_rows) ? raw.stay_rows : row.stayRows ?? null;
   const property = raw?.property && typeof raw.property === "object" ? raw.property : row.property ?? null;
   const checksItem = raw?.checks_item && typeof raw.checks_item === "object" && raw.checks_item.messageId ? raw.checks_item : row.checksItem ?? null;
-  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property, checksItem };
-  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, memory_file: _memoryFile, file: _file, stay_rows: _stays, property: _property, checks_item: _checksItem, ...draft } = raw;
-  return { ...row, draft, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property, checksItem };
+  const reminder = raw?.reminder && typeof raw.reminder === "object" ? raw.reminder : row.reminder ?? null;
+  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property, checksItem, reminder };
+  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, memory_file: _memoryFile, file: _file, stay_rows: _stays, property: _property, checks_item: _checksItem, reminder: _reminder, ...draft } = raw;
+  return { ...row, draft, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property, checksItem, reminder };
 }
 
 export async function ensureLegacyPurchase(message: CopilotMessage): Promise<CopilotMessage> {
@@ -560,6 +561,7 @@ export async function addMessage(input: {
   stayRows?: CopilotMessage["stayRows"];
   property?: CopilotMessage["property"];
   checksItem?: CopilotMessage["checksItem"];
+  reminder?: CopilotMessage["reminder"];
 }): Promise<CopilotMessage> {
   const extra = {
     ...(input.choices?.length ? { choices: input.choices } : {}),
@@ -574,6 +576,7 @@ export async function addMessage(input: {
     ...(input.stayRows?.length ? { stay_rows: input.stayRows } : {}),
     ...(input.property ? { property: input.property } : {}),
     ...(input.checksItem ? { checks_item: input.checksItem } : {}),
+    ...(input.reminder ? { reminder: input.reminder } : {}),
   };
   // A weekday beside a date is computed from the date, in the answer, the subject and the draft.
   const clock = parityNow() ?? new Date();
@@ -977,6 +980,7 @@ export async function listMemory(): Promise<string[]> {
     const { data, error } = await client
       .from("copilot_memory")
       .select("note")
+      .not("note", "like", "reminder|%")
       .order("created_at", { ascending: false })
       .limit(40);
     if (!error) {
@@ -1007,7 +1011,9 @@ function hiddenMemoryNote(note: string): boolean {
     || note.startsWith("outlook|")
     || note.startsWith("failed-read|")
     || note.startsWith("brief|")
-    || note.startsWith("rank-signal|");
+    || note.startsWith("rank-signal|")
+    || note.startsWith("reminder|")
+    || note.startsWith("team-roster|");
 }
 
 function parseCursorNote(note: string, chatId: string): { agentId: string; runId: string } | null {
@@ -1426,6 +1432,26 @@ async function writePrefixed(prefix: string, body: string): Promise<void> {
   if (existing) existing.note = note;
   else data.memory.push({ id: randomUUID(), created_at: new Date().toISOString(), note });
   writeFileStore(data);
+}
+
+/** Every stored row under a prefix, as its body after the prefix. Reminders keep one row each. */
+export async function listPrefixedRows(prefix: string): Promise<string[]> {
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("note").like("note", `${prefix}%`).limit(2000);
+    if (!error) return (data ?? []).map((row) => String((row as { note?: string }).note ?? "").slice(prefix.length));
+    if (!useLocalFile(error)) throw new Error(error.message);
+  }
+  return readFileStore().memory.filter((row) => row.note.startsWith(prefix)).map((row) => row.note.slice(prefix.length));
+}
+
+/** One stored row, found by its key (a prefix unique to it), replaced in place. */
+export async function writePrefixedRow(key: string, body: string): Promise<void> {
+  await writePrefixed(key, body);
+}
+
+export async function readPrefixedRow(key: string): Promise<string> {
+  return readPrefixed(key);
 }
 
 async function deletePrefixed(prefix: string): Promise<void> {
