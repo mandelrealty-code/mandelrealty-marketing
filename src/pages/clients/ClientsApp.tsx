@@ -24,7 +24,7 @@ import { PortalInviteControls } from "./PortalInviteControls";
 import { EarningsPanel } from "./EarningsPanel";
 import { MonthClosePanel } from "./MonthClosePanel";
 import { OwnerStatementPanel } from "./OwnerStatementPanel";
-import { TasksPanel } from "./TasksPanel";
+import { TasksBoard, type BoardApi, type BoardPayload } from "../tasks/TasksBoard";
 import { ReviewsPanel } from "./ReviewsPanel";
 import { SopsPanel } from "./SopsPanel";
 import { VideoSopStudioModal } from "../../components/sop/VideoSopStudioModal";
@@ -53,6 +53,22 @@ import {
   TextArea,
   TextInput,
 } from "./ui";
+
+/** The partner signed in on this device ("Shane" unless Copilot was opened with ?as=Ryan). */
+function opsViewer(): string {
+  try {
+    return window.localStorage.getItem("cp-viewer") || "Shane";
+  } catch {
+    return "Shane";
+  }
+}
+
+const opsBoardApi: BoardApi = {
+  load: (open) => pmGet<BoardPayload>("board", { viewer: opsViewer(), ...(open ? { open: "1" } : {}) }),
+  act: (body) => pmPost<BoardPayload>("board", { ...body, viewer: opsViewer() }),
+  // Re-consent the business Google account with the Calendar permission.
+  connectCalendar: () => { window.location.href = "/api/admin/gmail/start"; },
+};
 
 type Tab = "tasks" | "reviews" | "clients" | "properties" | "month" | "sops" | "employees" | "settings";
 
@@ -2313,25 +2329,11 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
       />
     );
   } else if (tab === "tasks") {
+    // The shared Tasks board (Claude Design "Ops Tasks v2"): the same records as Copilot's reminders.
     main = (
-      <TasksPanel
-        clients={clients}
-        properties={properties}
-        desktop={desktop}
-        onOpenProperty={(id) => {
-          navOps({ opsTab: "properties", propertyId: id });
-        }}
-        onOpenProperties={() => {
-          navOps({ opsTab: "properties" });
-        }}
-        onToast={setToast}
-        onError={setLoadError}
-        restoreTaskId={route.taskId}
-        onTaskIdChange={(id) => {
-          if (id === route.taskId) return;
-          navOps({ opsTab: "tasks", taskId: id || null });
-        }}
-      />
+      <div className="relative flex h-full min-h-[calc(100dvh-120px)] flex-col lg:min-h-[calc(100dvh-56px)]">
+        <TasksBoard api={opsBoardApi} theme="dark" />
+      </div>
     );
   } else if (tab === "reviews") {
     main = (

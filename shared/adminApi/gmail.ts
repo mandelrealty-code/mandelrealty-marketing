@@ -8,7 +8,9 @@ import { parityEnabled } from "../copilot/parity/flag.js";
 import { parityGmailOffer, parityReadMailThread, paritySearchGmail } from "../copilot/parity/world.js";
 
 const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/gmail/callback";
-const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
+// Calendar: calendar.app.created lets Copilot make the "Mandel Tasks" calendar and manage only the
+// calendars it created; it can't read or change any other calendar in the account.
+const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.app.created";
 const BACK = "https://admin.mandelrealtygroup.com/copilot";
 
 function clientId(): string {
@@ -77,6 +79,7 @@ export default async function handleGmail(req: VercelRequest, res: VercelRespons
     url.searchParams.set("scope", SCOPE);
     url.searchParams.set("access_type", "offline");
     url.searchParams.set("prompt", "consent");
+    url.searchParams.set("include_granted_scopes", "true");
     url.searchParams.set("state", signState());
     return go(res, url.toString());
   }
@@ -129,6 +132,11 @@ export type InboxOffer = {
   rfcId: string;
   body: string;
 };
+
+/** The business Google account's access token, for Calendar as well as Gmail. */
+export function googleAccessToken(): Promise<string> {
+  return accessToken();
+}
 
 async function accessToken(): Promise<string> {
   const login = await readGmailLogin();

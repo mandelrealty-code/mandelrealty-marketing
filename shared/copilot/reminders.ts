@@ -7,25 +7,27 @@
  * Nothing here contacts anyone: a reminder only ever comes back to the partners inside Copilot.
  */
 
-import { randomUUID } from "node:crypto";
 import { parityEnabled } from "./parity/flag.js";
 import { parityNow } from "./parity/clock.js";
-import { addMessage, createChat, flagChatNeedsYou, listChats, listMessages, listPrefixedRows, readPrefixedRow, updateDraft, writePrefixedRow } from "./store.js";
-import { dayKey, exactLabel, resolveReminderTime, torontoParts, withoutTimeWords } from "./reminderTime.js";
+import { addMessage, createChat, flagChatNeedsYou, listChats, listMessages, listPrefixedRows, updateDraft, writePrefixedRow } from "./store.js";
+import { createTask, deleteTask, getTask, markDone, readTeamRoster, reopen, restoreTask, snooze, unsnooze, updateTask } from "./tasks.js";
+import { readTasks, resetParityTasks, writeTask } from "./taskDb.js";
+import { DEFAULT_ROSTER } from "./rosterDefaults.js";
+import type { Task } from "./taskTypes.js";
+import { dayKey, exactLabel, fromToronto, resolveReminderTime, torontoParts, withoutTimeWords } from "./reminderTime.js";
 import { daysOutstanding, dueMessage, isDone, isLive, savedLine, unitIn, type Reminder, type ReminderCardDraft, type ReminderSource } from "./reminderView.js";
 import type { CopilotMessage } from "./types.js";
 
 const ROW = "reminder|";
 const ROSTER = "team-roster|";
-export const DEFAULT_ROSTER = ["Shane", "Ryan"];
+export { DEFAULT_ROSTER };
 export const REMINDERS_CHAT = "Reminders";
 
-const parityRows = new Map<string, Reminder>();
 let parityRoster: string[] | null = null;
 
 export function resetParityReminders(): void {
-  parityRows.clear();
   parityRoster = null;
+  resetParityTasks();
 }
 
 function clock(): Date {
@@ -34,59 +36,109 @@ function clock(): Date {
 
 // ---------- Roster ----------
 
-/** The team roster, partners first. Settings › Team adds to it; every chip reads it. */
+/** Everyone a task can be for: the partners first, then the employees with OPS accounts. */
 export async function readRoster(): Promise<string[]> {
-  if (parityEnabled()) return parityRoster ?? DEFAULT_ROSTER;
-  try {
-    const raw = await readPrefixedRow(ROSTER);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    const names = Array.isArray(parsed) ? parsed.map((name) => String(name).trim()).filter(Boolean) : [];
-    return names.length ? [...new Set(names)] : DEFAULT_ROSTER;
-  } catch {
-    return DEFAULT_ROSTER;
-  }
+  const people = await readTeamRoster().catch(() => DEFAULT_ROSTER.map((name) => ({ name, role: "Partner", partner: true })));
+  const names = people.map((row) => row.name);
+  if (parityEnabled() && parityRoster) for (const name of parityRoster) if (!names.includes(name)) names.push(name);
+  return names.length ? names : DEFAULT_ROSTER;
 }
 
 export async function addToRoster(name: string): Promise<string[]> {
   const clean = name.trim().replace(/\s+/g, " ");
   const roster = await readRoster();
   if (!clean || roster.some((row) => row.toLowerCase() === clean.toLowerCase())) return roster;
-  const next = [...roster, clean];
-  if (parityEnabled()) parityRoster = next;
-  else await writePrefixedRow(ROSTER, JSON.stringify(next));
-  return next;
+  if (parityEnabled()) {
+    parityRoster = [...(parityRoster ?? []), clean];
+    return readRoster();
+  }
+  const partners = (await readTeamRoster()).filter((row) => row.partner).map((row) => row.name);
+  await writePrefixedRow(ROSTER, JSON.stringify([...partners, clean]));
+  return readRoster();
 }
 
-// ---------- Records ----------
+// ---------- Records: a reminder is a task ----------
 
-function parse(raw: string): Reminder | null {
-  const bar = raw.indexOf("|");
-  if (bar < 0) return null;
-  try {
-    const row = JSON.parse(raw.slice(bar + 1)) as Reminder;
-    return row && row.id && row.text ? row : null;
-  } catch {
-    return null;
+function sourceOf(task: Task): ReminderSource {
+  if (/^followup:/.test(task.source.ref) || /follow-up/i.test(task.source.label)) return "follow-up";
+  if (/checks/i.test(task.source.label)) return "checks";
+  return "chat";
+}
+
+/** A task as a reminder. Tasks with no due at all live on the board only. */
+export function reminderOf(task: Task): Reminder | null {
+  let dueAt = task.dueAt;
+  if (!dueAt && task.dueDay) {
+    const [y, m, d] = task.dueDay.split("-").map(Number);
+    if (y && m && d) dueAt = fromToronto({ y, m, d }, 540).toISOString();
+  }
+  if (!dueAt) return null;
+  return {
+    id: task.id,
+    text: task.title,
+    assignee: task.assignee || "Needs an assignee",
+    dueAt,
+    unit: task.unit,
+    createdBy: task.createdBy,
+    createdAt: task.createdAt,
+    source: sourceOf(task),
+    sourceRef: task.source.ref,
+    status: task.deletedAt ? "deleted" : task.status === "done" ? "done" : task.snoozeCount > 0 ? "snoozed" : "open",
+    snoozeCount: task.snoozeCount,
+    prevDueAt: task.extra.prevDueAt ?? "",
+    prevStatus: task.extra.prevStatus === "done" ? "done" : undefined,
+    doneBy: task.doneBy,
+    doneAt: task.doneAt,
+    updatedAt: task.updatedAt,
+    surfacedFor: task.extra.surfacedFor ?? "",
+    stillOpenOn: task.extra.stillOpenOn ?? "",
+  };
+}
+
+/** Reminders saved before tasks existed move into the task table once. */
+async function migrateOldReminders(): Promise<void> {
+  if (parityEnabled()) return;
+  const rows = await listPrefixedRows(ROW).catch(() => [] as string[]);
+  for (const raw of rows) {
+    const bar = raw.indexOf("|");
+    let old: (Reminder & { migrated?: boolean }) | null = null;
+    try {
+      old = JSON.parse(raw.slice(bar + 1)) as Reminder & { migrated?: boolean };
+    } catch {
+      continue;
+    }
+    if (!old?.id || old.migrated) continue;
+    if (old.status !== "deleted") {
+      try {
+        const made = await createTask({ title: old.text, assignee: old.assignee, dueAt: old.dueAt, unit: old.unit, by: old.createdBy || old.assignee, sourceKey: `reminder:${old.id}`, source: { kind: "chat", label: old.source === "checks" ? "From Checks" : old.source === "follow-up" ? "From a follow-up" : "Created in chat", quote: "", meta: "", ref: old.sourceRef }, createdLine: `Created by ${old.createdBy || old.assignee} in chat` });
+        if (old.status === "done") await markDone(made.id, old.doneBy || old.assignee);
+      } catch (err) {
+        if (!/already exists|duplicate|unique/i.test(err instanceof Error ? err.message : "")) throw err;
+      }
+    }
+    await writePrefixedRow(`${ROW}${old.id}|`, JSON.stringify({ ...old, migrated: true }));
   }
 }
 
+let migrated = false;
+
 export async function listReminders(): Promise<Reminder[]> {
-  if (parityEnabled()) return [...parityRows.values()].map((row) => ({ ...row }));
-  const rows = await listPrefixedRows(ROW);
-  return rows.map(parse).filter((row): row is Reminder => Boolean(row));
+  if (!migrated) {
+    await migrateOldReminders();
+    migrated = true;
+  }
+  return (await readTasks()).map(reminderOf).filter((row): row is Reminder => Boolean(row));
 }
 
 export async function readReminder(id: string): Promise<Reminder | null> {
-  if (parityEnabled()) return parityRows.has(id) ? { ...parityRows.get(id)! } : null;
-  const raw = await readPrefixedRow(`${ROW}${id}|`);
-  return raw ? parse(`${id}|${raw}`) : null;
+  const task = await getTask(id);
+  return task ? reminderOf(task) : null;
 }
 
-async function save(row: Reminder): Promise<Reminder> {
-  const next = { ...row, updatedAt: clock().toISOString() };
-  if (parityEnabled()) parityRows.set(next.id, next);
-  else await writePrefixedRow(`${ROW}${next.id}|`, JSON.stringify(next));
-  return next;
+async function asReminder(task: Task): Promise<Reminder> {
+  const row = reminderOf(task);
+  if (!row) throw new Error("That task has no due time, so it isn't a reminder.");
+  return row;
 }
 
 function capital(text: string): string {
@@ -101,76 +153,61 @@ export async function createReminder(input: { text: string; assignee: string; du
   if (!input.assignee) throw new Error("Pick whose it is.");
   const due = new Date(input.dueAt);
   if (Number.isNaN(due.getTime())) throw new Error("Pick a time.");
-  return save({
-    id: randomUUID(),
-    text,
+  // Never in the past: a time already gone is the same time tomorrow.
+  const dueAt = (due.getTime() < now.getTime() - 60_000 ? new Date(due.getTime() + 86_400_000) : due).toISOString();
+  const source = input.source ?? "chat";
+  const task = await createTask({
+    title: text,
     assignee: input.assignee,
-    // Never in the past: a time already gone is the same time tomorrow.
-    dueAt: (due.getTime() < now.getTime() - 60_000 ? new Date(due.getTime() + 86_400_000) : due).toISOString(),
+    dueAt,
     unit: input.unit ?? unitIn(text),
-    createdBy: input.createdBy || input.assignee,
-    createdAt: now.toISOString(),
-    source: input.source ?? "chat",
-    sourceRef: input.sourceRef ?? "",
-    status: "open",
-    snoozeCount: 0,
-    prevDueAt: "",
-    doneBy: "",
-    doneAt: "",
-    updatedAt: now.toISOString(),
-    surfacedFor: "",
-    stillOpenOn: "",
+    by: input.createdBy || input.assignee,
+    source: { kind: "chat", label: source === "checks" ? "From Checks" : source === "follow-up" ? "From a follow-up" : "Created in chat", quote: "", meta: "", ref: input.sourceRef ?? "" },
+    createdLine: `Created by ${input.createdBy || input.assignee} in chat`,
   });
+  return asReminder(task);
 }
 
-async function change(id: string, edit: (row: Reminder) => Reminder): Promise<Reminder> {
-  const row = await readReminder(id);
-  if (!row) throw new Error("That reminder isn't in Copilot any more.");
-  return save(edit(row));
-}
-
-export function updateReminder(id: string, patch: { text?: string; assignee?: string; dueAt?: string; unit?: string }): Promise<Reminder> {
-  return change(id, (row) => ({
-    ...row,
-    ...(patch.text != null && capital(patch.text) ? { text: capital(patch.text) } : {}),
+export async function updateReminder(id: string, patch: { text?: string; assignee?: string; dueAt?: string; unit?: string }, by = "Copilot"): Promise<Reminder> {
+  const task = await updateTask(id, {
+    ...(patch.text != null && capital(patch.text) ? { title: capital(patch.text) } : {}),
     ...(patch.assignee ? { assignee: patch.assignee } : {}),
     ...(patch.unit != null ? { unit: patch.unit } : {}),
-    // A new time is a fresh due: it will be surfaced again when it comes.
-    ...(patch.dueAt && !Number.isNaN(new Date(patch.dueAt).getTime()) ? { dueAt: new Date(patch.dueAt).toISOString(), surfacedFor: "", stillOpenOn: "" } : {}),
-  }));
+    ...(patch.dueAt && !Number.isNaN(new Date(patch.dueAt).getTime()) ? { dueAt: new Date(patch.dueAt).toISOString() } : {}),
+  }, by);
+  // A new time is a fresh due: it will be surfaced again when it comes.
+  if (patch.dueAt) await writeTask({ ...task, extra: { ...task.extra, surfacedFor: "", stillOpenOn: "" } });
+  return asReminder((await getTask(id))!);
 }
 
-export function markReminderDone(id: string, by: string): Promise<Reminder> {
-  return change(id, (row) => ({ ...row, status: "done", doneBy: by || row.assignee, doneAt: clock().toISOString() }));
+export async function markReminderDone(id: string, by: string): Promise<Reminder> {
+  return asReminder(await markDone(id, by || "Copilot"));
 }
 
-export function undoReminderDone(id: string): Promise<Reminder> {
-  return change(id, (row) => ({ ...row, status: row.snoozeCount > 0 ? "snoozed" : "open", doneBy: "", doneAt: "" }));
+export async function undoReminderDone(id: string, by = "Copilot"): Promise<Reminder> {
+  return asReminder(await reopen(id, by));
 }
 
-/** Deleted by a partner: hidden everywhere, kept so Undo can bring it back. */
-export function deleteReminder(id: string): Promise<Reminder> {
-  return change(id, (row) => ({ ...row, prevStatus: row.status === "deleted" ? row.prevStatus : row.status, status: "deleted" }));
+export async function deleteReminder(id: string, by = "Copilot"): Promise<Reminder> {
+  return asReminder(await deleteTask(id, by));
 }
 
-export function restoreReminder(id: string): Promise<Reminder> {
-  return change(id, (row) => ({ ...row, status: row.prevStatus && row.prevStatus !== "deleted" ? row.prevStatus : "open" }));
+export async function restoreReminder(id: string, by = "Copilot"): Promise<Reminder> {
+  return asReminder(await restoreTask(id, by));
 }
 
-export function snoozeReminder(id: string, dueAt: string): Promise<Reminder> {
-  return change(id, (row) => {
-    const next = new Date(dueAt);
-    if (Number.isNaN(next.getTime())) throw new Error("Pick a time to snooze to.");
-    return { ...row, status: "snoozed", prevDueAt: row.dueAt, dueAt: next.toISOString(), snoozeCount: row.snoozeCount + 1, surfacedFor: "", stillOpenOn: "" };
-  });
+export async function snoozeReminder(id: string, dueAt: string, by = "Copilot"): Promise<Reminder> {
+  return asReminder(await snooze(id, dueAt, by));
 }
 
-export function undoSnooze(id: string): Promise<Reminder> {
-  return change(id, (row) => {
-    if (!row.prevDueAt) return row;
-    const count = Math.max(0, row.snoozeCount - 1);
-    return { ...row, dueAt: row.prevDueAt, prevDueAt: "", snoozeCount: count, status: count > 0 ? "snoozed" : "open" };
-  });
+export async function undoSnooze(id: string, by = "Copilot"): Promise<Reminder> {
+  return asReminder(await unsnooze(id, by));
+}
+
+/** Surfacing bookkeeping, stored on the task. */
+async function save(row: Reminder): Promise<void> {
+  const task = await getTask(row.id);
+  if (task) await writeTask({ ...task, extra: { ...task.extra, surfacedFor: row.surfacedFor, stillOpenOn: row.stillOpenOn } });
 }
 
 // ---------- Chat ----------
@@ -296,7 +333,7 @@ export function whoAnswer(text: string, viewer: string, roster: string[]): strin
 /** Saves a card: creates the record and folds the card into the saved line. */
 export async function saveCard(messageId: string, card: ReminderCardDraft, viewer: string): Promise<{ reminder: Reminder; line: string }> {
   const reminder = card.savedId && card.savedId !== "superseded"
-    ? await updateReminder(card.savedId, { text: card.text, assignee: card.assignee, dueAt: card.dueAt, unit: card.unit })
+    ? await updateReminder(card.savedId, { text: card.text, assignee: card.assignee, dueAt: card.dueAt, unit: card.unit }, viewer)
     : await createReminder({ text: card.text, assignee: card.assignee, dueAt: card.dueAt, unit: card.unit, createdBy: viewer, source: card.source, sourceRef: card.sourceRef });
   // Saved later than it was written and the time has gone by: it moved to tomorrow, and the line says so.
   const rolled = reminder.dueAt !== new Date(card.dueAt).toISOString()
@@ -401,17 +438,17 @@ export async function changeFromChat(text: string, history: CopilotMessage[], vi
   }
   const what = `${target.text}, ${target.assignee}, ${exactLabel(new Date(target.dueAt))}`;
   if (change.kind === "delete") {
-    await deleteReminder(target.id);
+    await deleteReminder(target.id, viewer);
     return { body: `Deleted the reminder: ${what}. Say “undo” to bring it back.`, id: target.id };
   }
   if (change.kind === "undo") {
-    const back = target.status === "deleted" ? await restoreReminder(target.id) : target.status === "done" ? await undoReminderDone(target.id) : target;
+    const back = target.status === "deleted" ? await restoreReminder(target.id, viewer) : target.status === "done" ? await undoReminderDone(target.id, viewer) : target;
     return { body: `It's back: ${back.text}, ${back.assignee}, ${exactLabel(new Date(back.dueAt))}.`, id: back.id };
   }
   if (change.kind === "done") {
     await markReminderDone(target.id, viewer);
     return { body: `Marked done: ${target.text}.`, id: target.id };
   }
-  const moved = await updateReminder(target.id, { dueAt: change.dueAt });
+  const moved = await updateReminder(target.id, { dueAt: change.dueAt }, viewer);
   return { body: `Moved: ${moved.text}, ${moved.assignee}, now ${exactLabel(new Date(moved.dueAt))}.`, id: moved.id };
 }

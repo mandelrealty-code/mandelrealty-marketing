@@ -50,6 +50,9 @@ import { answerProductAdvice } from "../copilot/productAdvice.js";
 import { answerProcess } from "../copilot/processAnswer.js";
 import { addToRoster, asksReminder, changeFromChat, deleteReminder, restoreReminder, leadFor, listReminders, markReminderDone, openCardIn, readRoster, reminderCard, saveCard, snoozeReminder, surfaceDueReminders, undoReminderDone, undoSnooze, updateReminder, whoAnswer } from "../copilot/reminders.js";
 import type { ReminderCardDraft } from "../copilot/reminderView.js";
+import { syncCalendar } from "../copilot/tasks.js";
+import { closeResolvedTasks } from "../copilot/taskAutomation.js";
+import { TASKS_NOT_READY, TasksNotReady } from "../copilot/taskDb.js";
 import { REPORT_CLIENTS, withClientUnits } from "../copilot/reportClients.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
 import { readReportView } from "../copilot/reportRead.js";
@@ -430,7 +433,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     if (op.startsWith("reminders-")) {
-      // Reminders: one record each, read and written the same way from every surface. Nothing is sent.
+     try {
+      // Reminders are tasks: one record each, read and written the same way from every surface. Nothing is sent.
       const viewer = String(body.viewer ?? "").trim() || (await readRoster())[0]!;
       const id = String(body.id ?? "");
       if (op === "reminders-save") {
@@ -438,19 +442,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         const saved = await saveCard(String(body.messageId ?? ""), card, viewer);
         return res.status(200).json({ line: saved.line, reminder: saved.reminder, reminders: await listReminders(), roster: await readRoster() });
       }
-      if (op === "reminders-update") await updateReminder(id, (body.patch ?? {}) as Parameters<typeof updateReminder>[1]);
+      if (op === "reminders-update") await updateReminder(id, (body.patch ?? {}) as Parameters<typeof updateReminder>[1], viewer);
       else if (op === "reminders-done") await markReminderDone(id, viewer);
-      else if (op === "reminders-undo") await undoReminderDone(id);
-      else if (op === "reminders-snooze") await snoozeReminder(id, String(body.dueAt ?? ""));
-      else if (op === "reminders-unsnooze") await undoSnooze(id);
-      else if (op === "reminders-delete") await deleteReminder(id);
-      else if (op === "reminders-restore") await restoreReminder(id);
+      else if (op === "reminders-undo") await undoReminderDone(id, viewer);
+      else if (op === "reminders-snooze") await snoozeReminder(id, String(body.dueAt ?? ""), viewer);
+      else if (op === "reminders-unsnooze") await undoSnooze(id, viewer);
+      else if (op === "reminders-delete") await deleteReminder(id, viewer);
+      else if (op === "reminders-restore") await restoreReminder(id, viewer);
       else if (op === "reminders-roster-add") await addToRoster(String(body.name ?? ""));
       else if (op === "reminders-surface") {
+        // App open: the calendar both ways, resolved tasks closed with proof, then due ones into chat.
+        await syncCalendar().catch(() => null);
+        await closeResolvedTasks().catch(() => null);
         const surfaced = await surfaceDueReminders();
         return res.status(200).json({ ...surfaced, reminders: await listReminders(), roster: await readRoster(), chats: await listChats() });
       } else if (op !== "reminders-list") return res.status(400).json({ error: "Unknown reminders action." });
       return res.status(200).json({ reminders: await listReminders(), roster: await readRoster() });
+     } catch (err) {
+      // Until supabase/pm_tasks_v2.sql is run, every reminder surface shows one plain line.
+      if (err instanceof TasksNotReady) return res.status(200).json({ notReady: TASKS_NOT_READY, reminders: [], roster: await readRoster().catch(() => []), chatId: "", posted: 0 });
+      throw err;
+     }
     }
 
     if (op === "guests-queue") {

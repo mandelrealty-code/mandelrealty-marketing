@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { TasksBoard, type BoardApi, type BoardPayload } from "../tasks/TasksBoard";
 import {
   extractAirbnbRoomId,
   sameAirbnbListing,
@@ -18,17 +19,6 @@ type StaffPublic = {
 type Bootstrap = {
   user: StaffPublic;
   session: { authenticated: boolean; must_change_password: boolean };
-};
-
-type TaskRow = {
-  id: string;
-  title: string;
-  detail: string;
-  status: "open" | "in_progress" | "blocked" | "done";
-  priority: "normal" | "high";
-  due_on: string | null;
-  task_type: string;
-  property_name: string;
 };
 
 type TimeEntry = {
@@ -241,6 +231,11 @@ function fmtEntryRange(e: TimeEntry): string {
   return `${e.work_date} · ${hrs} hrs`;
 }
 
+const employeeBoardApi: BoardApi = {
+  load: (open) => teamApi<BoardPayload>("board", { body: open ? { open: "1" } : {} }),
+  act: (body) => teamApi<BoardPayload>("board_action", { method: "POST", body }),
+};
+
 async function teamApi<T>(
   op: string,
   opts?: { method?: "GET" | "POST"; body?: Record<string, unknown>; slug?: string },
@@ -317,18 +312,6 @@ function BrandedDateTimeInput(props: React.InputHTMLAttributes<HTMLInputElement>
   );
 }
 
-function statusColor(status: TaskRow["status"]): string {
-  if (status === "done") return "text-[#4ea882]";
-  if (status === "blocked") return "text-[#cf7f7b]";
-  if (status === "in_progress") return "text-[#c4a35a]";
-  return "text-[#9a9590]";
-}
-
-function statusLabel(status: TaskRow["status"]): string {
-  if (status === "in_progress") return "in progress";
-  return status;
-}
-
 function WorkAtmosphere() {
   return (
     <div className="relative h-full min-h-full w-full overflow-hidden bg-[#14110c]" aria-hidden>
@@ -382,11 +365,6 @@ export function TeamApp() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [tasks, setTasks] = useState<TaskRow[]>([]);
-  const [showDone, setShowDone] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<TaskRow | null>(null);
-  const [taskStatus, setTaskStatus] = useState<TaskRow["status"]>("open");
-  const [taskNote, setTaskNote] = useState("");
 
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [weekHours, setWeekHours] = useState(0);
@@ -451,12 +429,6 @@ export function TeamApp() {
     return data;
   }, [slug, email]);
 
-  const loadTasks = useCallback(async () => {
-    const data = await teamApi<{ tasks: TaskRow[] }>("tasks", {
-      body: { status: showDone ? "all" : "openish" },
-    });
-    setTasks(data.tasks ?? []);
-  }, [showDone]);
 
   const loadHours = useCallback(async () => {
     const data = await teamApi<{
@@ -641,16 +613,12 @@ export function TeamApp() {
 
   useEffect(() => {
     if (screen !== "app") return;
-    if (tab === "tasks") {
-      loadTasks().catch((e) =>
-        setError(e instanceof Error ? e.message : "Could not load tasks."),
-      );
-    } else if (tab === "hours") {
+    if (tab === "hours") {
       loadHours().catch((e) =>
         setError(e instanceof Error ? e.message : "Could not load hours."),
       );
     }
-  }, [screen, tab, loadTasks, loadHours]);
+  }, [screen, tab, loadHours]);
 
   if (!slug) {
     return (
@@ -731,36 +699,7 @@ export function TeamApp() {
     await teamApi("logout", { method: "POST", body: {} }).catch(() => null);
     setScreen("login");
     setPassword("");
-    setTasks([]);
     setEntries([]);
-  };
-
-  const openTask = (t: TaskRow) => {
-    setSelectedTask(t);
-    setTaskStatus(t.status);
-    setTaskNote("");
-  };
-
-  const saveTask = async () => {
-    if (!selectedTask) return;
-    setBusy(true);
-    setError("");
-    try {
-      await teamApi("update_task", {
-        method: "POST",
-        body: {
-          id: selectedTask.id,
-          status: taskStatus,
-          note: taskNote.trim() || undefined,
-        },
-      });
-      setSelectedTask(null);
-      await loadTasks();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update task.");
-    } finally {
-      setBusy(false);
-    }
   };
 
   const logHours = async () => {
@@ -1109,55 +1048,10 @@ export function TeamApp() {
         {error ? <p className="mb-4 text-sm text-[#cf7f7b]">{error}</p> : null}
 
         {tab === "tasks" ? (
-          <div>
-            <div className="mb-4 flex items-center justify-between">
-              <h1 className="text-xl font-semibold tracking-tight">My work</h1>
-              <button
-                type="button"
-                onClick={() => setShowDone((v) => !v)}
-                className="text-[13px] font-semibold text-[#c4a35a]"
-              >
-                {showDone ? "Hide done" : "Show done"}
-              </button>
-            </div>
-            {tasks.length === 0 ? (
-              <p className="border-t border-white/8 py-10 text-[14px] text-[#6f6a65]">
-                No open tasks yet — check back when your manager assigns work.
-              </p>
-            ) : (
-              <ul className="divide-y divide-white/8 border-t border-white/8">
-                {tasks.map((t) => (
-                  <li key={t.id}>
-                    <button
-                      type="button"
-                      onClick={() => openTask(t)}
-                      className="flex w-full flex-col gap-1 py-4 text-left transition hover:bg-white/[0.02]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-[15px] font-semibold leading-snug">
-                          {t.title}
-                        </span>
-                        <span
-                          className={`shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] ${statusColor(t.status)}`}
-                        >
-                          {statusLabel(t.status)}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-[#6f6a65]">
-                        {t.priority === "high" ? (
-                          <span className="text-[#c4a35a]">High</span>
-                        ) : null}
-                        {t.due_on ? <span>Due {t.due_on}</span> : null}
-                        {t.task_type ? <span className="capitalize">{t.task_type}</span> : null}
-                        {t.property_name ? <span>{t.property_name}</span> : null}
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ) : tab === "hours" ? (
+          // The shared Tasks board, employee view: only your own tasks; assignee and priority read-only.
+          <div className="relative -mx-4 min-h-[70vh] overflow-hidden rounded-2xl lg:mx-0">
+            <TasksBoard api={employeeBoardApi} theme="dark" />
+          </div>        ) : tab === "hours" ? (
           <div>
             <div className="mb-6 flex items-end justify-between gap-4">
               <div>
@@ -1674,59 +1568,6 @@ export function TeamApp() {
         ) : null}
       </main>
 
-      {selectedTask ? (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center">
-          <button
-            type="button"
-            className="absolute inset-0 cursor-default"
-            aria-label="Close"
-            onClick={() => setSelectedTask(null)}
-          />
-          <div className="relative z-10 max-h-[85vh] w-full max-w-lg overflow-y-auto border border-white/10 bg-[#141414] p-5 sm:rounded-lg">
-            <h2 className="text-lg font-semibold leading-snug">{selectedTask.title}</h2>
-            {selectedTask.detail ? (
-              <p className="mt-3 whitespace-pre-wrap text-[14px] leading-relaxed text-[#9a9590]">
-                {selectedTask.detail}
-              </p>
-            ) : null}
-            <div className="mt-6 flex flex-col gap-4">
-              <Field label="Status">
-                <select
-                  value={taskStatus}
-                  onChange={(e) =>
-                    setTaskStatus(e.target.value as TaskRow["status"])
-                  }
-                  className="w-full border-0 border-b border-white/16 bg-[#141414] py-2.5 text-base text-[#f5f5f5] outline-none focus:border-[#c4a35a]"
-                >
-                  <option value="open">Open</option>
-                  <option value="in_progress">In progress</option>
-                  <option value="blocked">Blocked</option>
-                  <option value="done">Done</option>
-                </select>
-              </Field>
-              <Field label="Note (optional)">
-                <UnderlineInput
-                  type="text"
-                  value={taskNote}
-                  onChange={(e) => setTaskNote(e.target.value)}
-                  placeholder="Short update for your manager"
-                />
-              </Field>
-              {error ? <p className="text-sm text-[#cf7f7b]">{error}</p> : null}
-              <GoldButton disabled={busy} onClick={() => void saveTask()}>
-                {busy ? "Updating…" : "Update"}
-              </GoldButton>
-              <button
-                type="button"
-                onClick={() => setSelectedTask(null)}
-                className="text-center text-[13px] text-[#9a9590]"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

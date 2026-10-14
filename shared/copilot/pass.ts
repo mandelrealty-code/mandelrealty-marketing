@@ -12,10 +12,20 @@ import { refreshSavedBrief } from "./brief.js";
 import { copilotScopeActive, withCopilotScope } from "./hospitableConnection.js";
 import { parityEnabled } from "./parity/flag.js";
 import { publishCheckReport, runUnattendedChecks } from "./stayCheck.js";
+import { closeResolvedTasks, createAutoTasks } from "./taskAutomation.js";
+import { syncCalendar } from "./tasks.js";
 
 export async function runCopilotPass(now = new Date()): Promise<void> {
   if (!copilotScopeActive()) return withCopilotScope(() => runCopilotPass(now));
   await runUnattendedChecks(now);
+  // Tasks: Copilot's own tasks for open items, closes with proof, then the team calendar both ways.
+  try {
+    await createAutoTasks(now);
+    await closeResolvedTasks(now);
+    await syncCalendar();
+  } catch {
+    /* Tasks wait for supabase/pm_tasks_v2.sql, or a source didn't read; the next check tries again. */
+  }
   let rows: Awaited<ReturnType<typeof connectorHealthReport>>;
   try {
     rows = await connectorHealthReport(now);

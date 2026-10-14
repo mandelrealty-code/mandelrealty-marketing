@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { boardAction, boardOpen, boardPayload, TasksNotReady } from "./copilot/taskBoardApi.js";
 import {
   clearStaffSessionCookie,
   cookieShouldBeSecure,
@@ -174,6 +175,14 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
         });
       }
 
+      if (op === "board") {
+        // The employee's own tasks on the shared board; opening it syncs and closes resolved tasks.
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        const viewer = { name: user.display_name.trim(), partner: false };
+        return res.status(200).json(str(req.query.open) === "1" ? await boardOpen(viewer) : await boardPayload(viewer));
+      }
+
       if (op === "tasks") {
         const user = await requireStaff(req, res);
         if (!user) return;
@@ -245,6 +254,18 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
       }
       const updated = await setStaffPassword(user.id, password);
       return res.status(200).json({ ok: true, user: staffUserForEmployee(updated) });
+    }
+
+    if (op === "board_action") {
+      const user = await requireStaff(req, res);
+      if (!user) return;
+      const viewer = { name: user.display_name.trim(), partner: false };
+      try {
+        return res.status(200).json(await boardAction(body, viewer));
+      } catch (err) {
+        if (err instanceof TasksNotReady) return res.status(200).json(await boardPayload(viewer));
+        return res.status(400).json({ error: err instanceof Error ? err.message : "That didn't save. Try again." });
+      }
     }
 
     if (op === "update_task") {

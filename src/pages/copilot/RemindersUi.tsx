@@ -342,9 +342,10 @@ function ListRow({ reminder, now, roster, actions, alwaysShow, onDeleted }: { re
 
 const LONG = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "America/Toronto" });
 
-export function RemindersView({ reminders, roster, viewer, now, actions, loading }: { reminders: Reminder[]; roster: string[]; viewer: string; now: Date; actions: ReminderActions; loading: boolean }) {
-  const other = roster.find((name) => name !== viewer) ?? "";
-  const [filter, setFilter] = useState<"mine" | "other" | "every">("every");
+export function RemindersView({ reminders, roster, partners, viewer, now, actions, loading, notReady }: { reminders: Reminder[]; roster: string[]; partners: string[]; viewer: string; now: Date; actions: ReminderActions; loading: boolean; notReady: string }) {
+  const other = partners.find((name) => name !== viewer) ?? roster.find((name) => name !== viewer) ?? "";
+  // Reminders open on the signed-in partner's own.
+  const [filter, setFilter] = useState<"mine" | "other" | "every">("mine");
   const [doneOpen, setDoneOpen] = useState(false);
   const [lastDeleted, setLastDeleted] = useState<Reminder | null>(null);
   const mine = (row: Reminder) => row.assignee === viewer;
@@ -377,8 +378,9 @@ export function RemindersView({ reminders, roster, viewer, now, actions, loading
           <button type="button" className="cp-rm-link" onClick={() => { actions.restore(lastDeleted.id); setLastDeleted(null); }}>Undo</button>
         </div>
       ) : null}
-      {loading && !reminders.length ? <span className="cp-rm-empty">Loading reminders.</span> : null}
-      {!loading && !reminders.some((row) => row.status !== "deleted") ? <span className="cp-rm-empty">No reminders. Say “remind me…” in any chat and I will keep track of it.</span> : null}
+      {notReady ? <span className="cp-rm-empty">{notReady}</span> : null}
+      {loading && !reminders.length && !notReady ? <span className="cp-rm-empty">Loading reminders.</span> : null}
+      {!loading && !notReady && !reminders.some((row) => row.status !== "deleted") ? <span className="cp-rm-empty">No reminders. Say “remind me…” in any chat and I will keep track of it.</span> : null}
       {reminders.some((row) => row.status !== "deleted") ? (
         <>
           <div role="radiogroup" aria-label="Whose reminders" className="cp-rm-chips cp-rm-filters">

@@ -848,6 +848,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   // Reminders: one shared list every surface renders from; any action replaces it with the server's.
   const [reminders, setReminders] = useState<Reminder[] | null>(null);
   const [roster, setRoster] = useState<string[]>(["Shane", "Ryan"]);
+  const [remindersLine, setRemindersLine] = useState("");
   const [remNow, setRemNow] = useState(() => new Date());
   const viewer = useMemo(() => {
     let asked = "";
@@ -1964,7 +1965,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       .catch(() => undefined);
   }
 
-  function takeReminders(data: { reminders?: Reminder[]; roster?: string[] } | null) {
+  function takeReminders(data: { reminders?: Reminder[]; roster?: string[]; notReady?: string } | null) {
+    // Until the task table update is run, the reminder surfaces say so in one line.
+    setRemindersLine(data?.notReady ?? "");
     if (data?.reminders) setReminders(data.reminders);
     if (data?.roster?.length) setRoster(data.roster);
     setRemNow(new Date());
@@ -1981,8 +1984,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   };
 
   async function saveReminderCard(messageId: string, card: ReminderCardDraft): Promise<{ line: string; id: string }> {
-    const data = await api<{ line: string; reminder: Reminder; reminders: Reminder[]; roster: string[] }>("reminders-save", { messageId, card, viewer });
+    const data = await api<{ line: string; reminder: Reminder; reminders: Reminder[]; roster: string[]; notReady?: string }>("reminders-save", { messageId, card, viewer });
     takeReminders(data);
+    if (data.notReady) throw new Error(data.notReady);
     return { line: data.line, id: data.reminder?.id ?? "" };
   }
 
@@ -2648,7 +2652,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   />
                 ) : null}
                 {screen === "reminders" ? (
-                  <RemindersView reminders={reminders ?? []} roster={roster} viewer={viewer} now={remNow} actions={reminderActions} loading={!reminders} />
+                  <RemindersView reminders={reminders ?? []} roster={roster} partners={roster.slice(0, 2)} viewer={viewer} now={remNow} actions={reminderActions} loading={!reminders} notReady={remindersLine} />
                 ) : null}
                 {screen === "browser" ? (
                   <BrowserSurface

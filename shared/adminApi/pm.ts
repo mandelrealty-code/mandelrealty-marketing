@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { boardAction, boardOpen, boardPayload, TasksNotReady } from "../copilot/taskBoardApi.js";
 import {
   getSessionFromRequest,
   isAdminConfigured,
@@ -515,6 +516,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             status: c.status,
           })),
         });
+      }
+      if (resource === "board") {
+        // The Tasks board for a partner; opening it syncs the calendar and closes resolved tasks.
+        const viewer = { name: (typeof req.query.viewer === "string" && req.query.viewer.trim()) || "Shane", partner: true };
+        return res.status(200).json(req.query.open === "1" ? await boardOpen(viewer) : await boardPayload(viewer));
       }
       if (resource === "tasks") {
         const id = typeof req.query.id === "string" ? req.query.id.trim() : "";
@@ -1429,6 +1435,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             hospitable_connected: await isHospitableConfigured(),
             hospitable_mcp: await isHospitableMcpConfigured(),
           });
+        }
+      }
+
+      if (resource === "board") {
+        const viewer = { name: (typeof body.viewer === "string" && body.viewer.trim()) || "Shane", partner: true };
+        try {
+          return res.status(200).json(await boardAction(body as Record<string, unknown>, viewer));
+        } catch (err) {
+          if (err instanceof TasksNotReady) return res.status(200).json(await boardPayload(viewer));
+          return res.status(400).json({ error: err instanceof Error ? err.message : "That didn't save. Try again." });
         }
       }
 
