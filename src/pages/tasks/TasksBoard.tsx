@@ -546,10 +546,14 @@ function TaskPanel({
         <div className="tk-block">
           <div className="tk-bh">Calendar</div>
           {mode === "off" ? (
-            <div className="tk-calrow">
-              <span className="tk-mu">The team calendar isn’t connected yet</span>
-              {partner && connectCalendar ? <button type="button" className="tk-btn sm" onClick={connectCalendar}>Connect calendar</button> : null}
-            </div>
+            <>
+              <div className="tk-calrow">
+                <span className="tk-mu">The team calendar isn’t connected yet</span>
+                {partner && connectCalendar ? <button type="button" className="tk-btn sm" onClick={connectCalendar}>Connect calendar</button> : null}
+              </div>
+              {/* Google's own reason, so the fix is visible: a missing permission or the Calendar API turned off. */}
+              {partner && board.calendar.reason ? <div className="tk-small tk-mu">Google said: {board.calendar.reason}</div> : null}
+            </>
           ) : (
             <>
               <button type="button" className="tk-toggle big" style={{ opacity: ready ? 1 : 0.5, cursor: ready ? "pointer" : "default" }} onClick={() => { if (ready) void update({ calOn: !calOn }); }}>

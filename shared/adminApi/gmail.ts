@@ -100,7 +100,7 @@ export default async function handleGmail(req: VercelRequest, res: VercelRespons
           grant_type: "authorization_code",
         }),
       });
-      const token = (await tokenRes.json()) as { refresh_token?: string; access_token?: string };
+      const token = (await tokenRes.json()) as { refresh_token?: string; access_token?: string; scope?: string };
       const previous = await readGmailLogin();
       const refresh = token.refresh_token?.trim() || previous?.refreshToken || "";
       if (!tokenRes.ok || !refresh) return go(res, `${BACK}?gmail=failed`);
@@ -113,6 +113,15 @@ export default async function handleGmail(req: VercelRequest, res: VercelRespons
         if (profile.emailAddress) email = profile.emailAddress;
       }
       await saveGmailLogin(refresh, email);
+      // A fresh connect retries the team calendar now; if Google left Calendar out, say exactly that.
+      try {
+        const { readCalendarState, writeCalendarState } = await import("../copilot/taskCalendar.js");
+        const state = await readCalendarState();
+        const granted = /calendar\.app\.created|auth\/calendar(\s|$)/.test(token.scope ?? "");
+        await writeCalendarState({ ...state, mode: granted ? "ok" : "off", reason: granted ? "" : `Google signed in ${email || "the account"} without the Calendar permission. On Google's consent screen, tick the box to let Mandel Copilot make and manage its own calendars.` });
+      } catch {
+        /* The next board open retries either way. */
+      }
       return go(res, `${BACK}?gmail=connected`);
     } catch {
       return go(res, `${BACK}?gmail=failed`);
