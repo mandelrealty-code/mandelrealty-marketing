@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0}
+*{box-sizing:border-box}
+[data-cp]{--canvas:#f7f4ee;--side:#f0ece4;--surface:#fffdf9;--tint:#eae5dc;--ink:#211f1b;--ink2:#3b3731;--muted:#6f685e;--line:#e4ded4;--line2:#d3cbbe;--accent:#b5562a;--accent-hover:#a04b23;--accent-ink:#a04b23;--on-accent:#fffdf9;--needs:#8a620e;--info:#56656d;--failed:#9a4450;--wash:#efdfd2;--desk:#e6e1d8;--ok:oklch(0.55 0.13 155)}
+[data-cp][data-theme="dark"]{--canvas:#1e1c19;--side:#191815;--surface:#282521;--tint:#302c27;--ink:#ede8e0;--ink2:#d3cdc3;--muted:#a29b90;--line:#34302a;--line2:#47423a;--accent:#d57a4a;--accent-hover:#e08a5b;--accent-ink:#e2895a;--on-accent:#1e1c19;--needs:#d4a65a;--info:#9aaab1;--failed:#d78c95;--wash:#3b2a1f;--desk:#141311;--ok:oklch(0.74 0.13 155)}
+[data-cp] a{color:var(--muted)}
+[data-cp] a:hover{color:var(--ink)}
+[data-cp] button:focus-visible,[data-cp] a:focus-visible,[data-cp] input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[data-cp] input:focus{outline:none}
+[data-cp] input::placeholder{color:var(--muted)}
+@keyframes cpPulse{0%,100%{opacity:1}50%{opacity:.3}}
+</style>
+</helmet>
+<div data-cp="" data-theme="{{ theme }}" style="width:100%;height:{{ frameH }};background:var(--canvas);color:var(--ink);font-family:'Instrument Sans',system-ui,sans-serif;font-size:14px;line-height:22px;font-variant-numeric:tabular-nums;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden;color-scheme:{{ theme }}">
+
+  <div style="height:56px;flex:none;display:flex;align-items:center;gap:16px;padding:0 12px 0 20px;background:var(--side);border-bottom:1px solid var(--line)">
+    <sc-if value="{{ isPhone }}" hint-placeholder-val="{{ false }}">
+      <button aria-label="Menu" style="width:44px;height:44px;margin-left:-14px;margin-right:-10px;border:none;background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 5h12M3 9h12M3 13h12"></path></svg></button>
+    </sc-if>
+    <div style="font-size:15px;font-weight:600;white-space:nowrap">{{ brand }}</div>
+    <div style="display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:13px;line-height:20px;font-weight:500">
+      <span style="padding:3px 12px;border-radius:999px;color:var(--muted);cursor:pointer">CRM</span>
+      <span style="padding:3px 12px;border-radius:999px;color:var(--muted);cursor:pointer">OPS</span>
+      <span style="padding:3px 12px;border-radius:999px;background:var(--tint);color:var(--ink);font-weight:600">Copilot</span>
+    </div>
+    <div style="flex:1"></div>
+    <button onClick="{{ toggleTheme }}" title="Switch theme" style="width:{{ btnH }};height:{{ btnH }};border-radius:50%;border:1px solid var(--line2);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0">
+      <sc-if value="{{ isDark }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg></sc-if>
+      <sc-if value="{{ isLight }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path></svg></sc-if>
+    </button>
+  </div>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+      <div style="width:330px;flex:none;background:var(--side);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:2px">
+        <button style="height:36px;margin-bottom:12px;padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--ink);font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer;display:flex;align-items:center;gap:8px" style-hover="background:var(--tint)"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 1.5v9M1.5 6h9"></path></svg>New chat</button>
+        <sc-for list="{{ nav }}" as="n" hint-placeholder-count="6">
+          <div style="height:36px;padding:0 12px;border-radius:8px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:{{ n.bg }};font-weight:{{ n.weight }}">
+            <span>{{ n.label }}</span>
+            <sc-if value="{{ n.hasBadge }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;line-height:18px;font-weight:600;padding:0 7px;border-radius:999px;background:var(--wash);color:var(--accent-ink);font-family:'JetBrains Mono',monospace">{{ n.badge }}</span></sc-if>
+          </div>
+        </sc-for>
+        <div style="font-size:12px;line-height:16px;font-weight:500;color:var(--muted);padding:24px 12px 8px">Recent</div>
+        <sc-for list="{{ recents }}" as="r" hint-placeholder-count="5">
+          <div style="min-height:36px;padding:7px 12px;border-radius:8px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;cursor:pointer" style-hover="background:var(--tint)">
+            <span style="color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.title }}</span>
+            <span style="font-size:12px;line-height:16px;font-weight:500;color:var(--muted);flex:none">{{ r.when }}</span>
+          </div>
+        </sc-for>
+        <div style="flex:1;min-height:24px"></div>
+        <div style="height:36px;padding:0 12px;border-radius:8px;display:flex;align-items:center;cursor:pointer;color:var(--ink2)">Settings</div>
+        <div style="height:36px;padding:0 12px;border-radius:8px;display:flex;align-items:center;cursor:pointer;color:var(--ink2)">Install Copilot</div>
+      </div>
+    </sc-if>
+
+    <div style="flex:1;min-width:0;display:flex;position:relative">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0">
+        <div style="flex:1;min-height:0;overflow:{{ centerOverflow }};padding:{{ centerPad }};display:flex;flex-direction:column;gap:16px">
+
+          <sc-if value="{{ isBroken }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:6px 6px 6px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface)">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--failed);flex:none"></span>
+              <span style="flex:1 1 220px;font-size:13px;line-height:20px;color:var(--ink2)"><span style="font-weight:600;color:var(--failed)">Hospitable stopped answering at 8:55 AM.</span> Guest messages may be stale.</span>
+              <button style="height:{{ btnH }};padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--ink);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="background:var(--tint)">Reconnect</button>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-family:'Source Serif 4',Georgia,serif;font-size:28px;line-height:36px;font-weight:500;letter-spacing:-0.01em">{{ greeting }}</div>
+            <p style="margin:0;max-width:720px;font-family:'Source Serif 4',Georgia,serif;font-size:17px;line-height:28px;color:var(--ink2);text-wrap:pretty">{{ brief.pre }}<strong style="font-weight:600;color:var(--ink)">{{ brief.strong }}</strong>{{ brief.post }}</p>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;font-size:12px;line-height:16px;font-weight:500;color:var(--muted)">
+              <span style="display:inline-flex;align-items:center;gap:6px;color:{{ watchColor }};font-weight:600"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;animation:cpPulse 2.4s ease-in-out infinite"></span>{{ watchLabel }}</span>
+              <span>Last check {{ lastCheck }}</span>
+              <span>Next {{ nextCheck }}</span>
+              <span>Thu Oct 15, Toronto</span>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;min-width:0">
+                <span style="font-size:13px;line-height:20px;font-weight:600">Decisions</span>
+                <span style="font-size:12px;line-height:16px;font-weight:500;color:var(--muted)">Nothing goes out until a partner presses the button.</span>
+              </div>
+              <sc-if value="{{ hasMore }}" hint-placeholder-val="{{ true }}"><a onClick="{{ openQueue }}" style="flex:none;font-size:12px;line-height:16px;font-weight:500;text-decoration:underline;text-underline-offset:3px;cursor:pointer">{{ moreLabel }}</a></sc-if>
+            </div>
+            <sc-if value="{{ hasCards }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:{{ cardsDir }};gap:8px;overflow-x:{{ cardsOverflow }};scroll-snap-type:x mandatory;margin:{{ cardsMargin }};padding:{{ cardsPadX }}">
+                <sc-for list="{{ cards }}" as="c" hint-placeholder-count="3">
+                  <sc-if value="{{ c.isOpen }}" hint-placeholder-val="{{ true }}">
+                    <div style="flex:{{ cardFlex }};display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface);scroll-snap-align:start;min-width:0">
+                      <div style="flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:2px">
+                        <div style="display:flex;align-items:center;gap:10px;font-size:12px;line-height:16px;font-weight:500">
+                          <span style="color:var(--ink2);font-weight:600">{{ c.tag }}</span>
+                          <span style="display:inline-flex;align-items:center;gap:6px;font-weight:600;color:{{ c.color }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ c.time }}</span>
+                        </div>
+                        <div style="font-size:15px;line-height:22px;font-weight:600;white-space:{{ textWS }};overflow:hidden;text-overflow:ellipsis">{{ c.title }}</div>
+                        <div style="font-size:13px;line-height:20px;color:var(--ink2);white-space:{{ textWS }};overflow:hidden;text-overflow:ellipsis">{{ c.prop }}</div>
+                      </div>
+                      <div style="display:flex;flex-wrap:wrap;gap:8px">
+                        <sc-if value="{{ c.hasPrimary }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onPrimary }}" style="height:{{ btnH }};padding:0 14px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--on-accent);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="background:var(--accent-hover);border-color:var(--accent-hover)">{{ c.primary }}</button></sc-if>
+                        <sc-if value="{{ c.hasDone }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onPrimary }}" style="height:{{ btnH }};padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--ink);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="background:var(--tint)">Mark done</button></sc-if>
+                        <sc-if value="{{ c.hasEdit }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onEdit }}" style="height:{{ btnH }};padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--ink);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="background:var(--tint)">Edit</button></sc-if>
+                        <button onClick="{{ c.onLater }}" style="height:{{ btnH }};padding:0 10px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="color:var(--ink)">Not now</button>
+                      </div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ c.isResolved }}" hint-placeholder-val="{{ false }}">
+                    <div style="flex:{{ cardFlex }};display:flex;align-items:center;gap:8px;min-height:40px;padding:8px 16px;border:1px dashed var(--line2);border-radius:12px;font-size:13px;line-height:20px;color:var(--ink2);scroll-snap-align:start;min-width:0">
+                      <span style="width:6px;height:6px;flex:none;border-radius:50%;background:{{ c.resColor }}"></span>
+                      <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.resText }}</span>
+                      <a onClick="{{ c.onUndo }}" style="flex:none;font-size:12px;line-height:16px;font-weight:500;text-decoration:underline;text-underline-offset:3px;cursor:pointer">Undo</a>
+                    </div>
+                  </sc-if>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ noCards }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface)">
+                <span style="width:6px;height:6px;flex:none;border-radius:50%;background:var(--ok)"></span>
+                <div style="flex:1 1 260px;min-width:0"><span style="font-weight:600">Nothing to decide.</span> <span style="color:var(--ink2)">{{ emptyLine }}</span></div>
+                <button onClick="{{ openReviews }}" style="height:{{ btnH }};padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--ink);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="background:var(--tint)">Review drafts</button>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">
+            <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="8">
+              <button onClick="{{ t.onOpen }}" title="{{ t.title }}" style="min-width:0;min-height:96px;text-align:left;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;cursor:pointer" style-hover="border-color:var(--line2)">
+                <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:16px;font-weight:500;width:100%">
+                  <span style="color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.label }}</span>
+                  <span style="flex:none;font-weight:600;color:{{ t.stateColor }}">{{ t.state }}</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:32px;width:100%">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:24px;line-height:32px;font-weight:500;color:{{ t.numColor }}">{{ t.n }}</span>
+                  <sc-if value="{{ t.isBar }}" hint-placeholder-val="{{ false }}"><span style="flex:1;max-width:88px;height:4px;border-radius:999px;background:var(--tint);overflow:hidden;display:flex"><span style="width:{{ t.pct }};background:{{ t.vizColor }};border-radius:999px"></span></span></sc-if>
+                  <sc-if value="{{ t.isDots }}" hint-placeholder-val="{{ false }}"><span style="display:flex;gap:8px"><sc-for list="{{ t.dots }}" as="d" hint-placeholder-count="3"><span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;line-height:16px;font-weight:500;color:var(--muted)"><span style="width:6px;height:6px;border-radius:50%;background:{{ d.color }}"></span>{{ d.label }}</span></sc-for></span></sc-if>
+                  <sc-if value="{{ t.isStack }}" hint-placeholder-val="{{ false }}"><span style="flex:1;max-width:88px;height:6px;border-radius:999px;overflow:hidden;display:flex;gap:2px"><sc-for list="{{ t.segs }}" as="s" hint-placeholder-count="3"><span style="flex:{{ s.f }};background:{{ s.color }}"></span></sc-for></span></sc-if>
+                  <sc-if value="{{ t.isRuns }}" hint-placeholder-val="{{ false }}"><span style="display:flex;gap:3px"><sc-for list="{{ t.runs }}" as="r" hint-placeholder-count="7"><span style="width:8px;height:8px;background:{{ r.color }}"></span></sc-for></span></sc-if>
+                </div>
+                <div style="width:100%;font-size:12px;line-height:16px;font-weight:500;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.line }}</div>
+              </button>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ isPhone }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--line);border-radius:12px;background:var(--surface)">
+              <button onClick="{{ toggleAct }}" style="width:100%;min-height:52px;padding:0 16px;display:flex;align-items:center;gap:10px;font:inherit;color:var(--ink);background:transparent;border:none;cursor:pointer;text-align:left">
+                <span style="width:6px;height:6px;border-radius:50%;background:{{ watchColor }};animation:cpPulse 2.4s ease-in-out infinite"></span>
+                <span style="font-size:13px;font-weight:600">Activity</span>
+                <span style="flex:1;font-size:12px;line-height:16px;font-weight:500;color:var(--muted)">{{ actSummary }}</span>
+                <span style="font-size:12px;font-weight:600;color:var(--muted)">{{ actToggle }}</span>
+              </button>
+              <sc-if value="{{ actOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:0 16px 12px;display:flex;flex-direction:column">
+                  <sc-for list="{{ activity }}" as="e" hint-placeholder-count="6">
+                    <div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:13px;line-height:20px">
+                      <span style="width:40px;flex:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">{{ e.t }}</span>
+                      <span style="flex:1;color:{{ e.color }}">{{ e.text }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="flex:none;padding:{{ composerPad }};display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;flex-wrap:{{ chipsWrap }};align-items:center;justify-content:space-between;gap:8px 16px">
+            <div style="display:flex;gap:6px;min-width:0;overflow-x:auto;max-width:100%">
+              <sc-for list="{{ asks }}" as="q" hint-placeholder-count="3">
+                <button onClick="{{ q.onClick }}" style="flex:none;height:{{ chipH }};padding:0 12px;border-radius:999px;border:1px solid var(--line2);background:transparent;color:var(--ink2);font:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap" style-hover="background:var(--tint);color:var(--ink)">{{ q.label }}</button>
+              </sc-for>
+            </div>
+            <span style="flex:none;font-size:12px;line-height:16px;font-weight:500;color:var(--muted)">Nothing goes out until you confirm.</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:6px;border:1px solid var(--line2);border-radius:12px;background:var(--surface)">
+            <button aria-label="Add" style="width:{{ btnH }};height:{{ btnH }};flex:none;border-radius:8px;border:none;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 1.5v9M1.5 6h9"></path></svg></button>
+            <input value="{{ ask }}" onChange="{{ onAsk }}" placeholder="Ask MRG" style="flex:1;min-width:0;font:inherit;font-size:14px;border:none;background:transparent;color:var(--ink);padding:6px 0">
+            <button aria-label="Send" style="width:{{ btnH }};height:{{ btnH }};flex:none;border-radius:50%;border:none;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;cursor:pointer;padding:0"><svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10V2M2.5 5.5L6 2l3.5 3.5"></path></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+        <div style="width:300px;flex:none;border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0">
+          <div style="padding:20px 20px 12px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid var(--line)">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:13px;line-height:20px;font-weight:600">Activity</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:16px;font-weight:600;color:{{ watchColor }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;animation:cpPulse 2.4s ease-in-out infinite"></span>{{ watchShort }}</span>
+            </div>
+            <span style="font-size:12px;line-height:16px;font-weight:500;color:var(--muted)">Copilot reads and prepares on its own. Sending waits for a partner.</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:hidden;padding:0 20px">
+            <sc-for list="{{ activity }}" as="e" hint-placeholder-count="10">
+              <div style="display:flex;gap:10px;padding:10px 8px;margin:0 -8px;border-bottom:1px solid var(--line);font-size:13px;line-height:20px;background:{{ e.bg }};border-radius:8px;transition:background 1.4s ease">
+                <span style="width:36px;flex:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">{{ e.t }}</span>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;align-items:flex-start">
+                  <span style="color:{{ e.color }};text-wrap:pretty"><span style="font-weight:600">{{ e.lead }}</span>{{ e.text }}</span>
+                  <sc-if value="{{ e.hasRetry }}" hint-placeholder-val="{{ false }}"><button onClick="{{ e.onRetry }}" style="height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--ink);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer" style-hover="background:var(--tint)">{{ e.retryLabel }}</button></sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeDrawer }}" style="position:absolute;inset:0;background:rgba(20,19,17,0.32)"></div>
+        <div style="position:absolute;top:0;right:0;bottom:0;width:{{ drawerW }};max-width:100%;background:var(--surface);border-left:1px solid var(--line);display:flex;flex-direction:column">
+          <div style="flex:none;padding:16px 16px 16px 24px;display:flex;align-items:flex-start;gap:12px;border-bottom:1px solid var(--line)">
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+              <span style="font-family:'Source Serif 4',Georgia,serif;font-size:22px;line-height:30px;font-weight:500">{{ dr.title }}</span>
+              <span style="font-size:12px;line-height:16px;font-weight:500;color:var(--muted)">{{ dr.sub }}</span>
+            </div>
+            <button onClick="{{ closeDrawer }}" aria-label="Close" title="Close (Esc)" style="width:{{ btnH }};height:{{ btnH }};flex:none;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0" style-hover="background:var(--tint)"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"></path></svg></button>
+          </div>
+          <sc-if value="{{ dr.hasFilters }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:none;display:flex;gap:4px;padding:12px 24px 0">
+              <sc-for list="{{ dr.filters }}" as="f" hint-placeholder-count="3">
+                <button onClick="{{ f.onClick }}" style="height:{{ chipH }};padding:0 12px;border-radius:999px;border:1px solid {{ f.border }};background:{{ f.bg }};color:var(--ink);font:inherit;font-size:12px;font-weight:600;cursor:pointer">{{ f.label }}</button>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ dr.isDraft }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;min-height:0;overflow:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+              <sc-if value="{{ dr.hasIncoming }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--muted)">They wrote</span>
+                  <div style="padding:12px 14px;border-radius:12px;background:var(--tint);color:var(--ink2);text-wrap:pretty">{{ dr.incoming }}</div>
+                </div>
+              </sc-if>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <span style="font-size:12px;line-height:16px;font-weight:600;color:var(--muted)">Copilot's draft, exactly as it will be sent</span>
+                <textarea value="{{ pvText }}" onChange="{{ onPvText }}" rows="7" style="width:100%;resize:vertical;font:inherit;font-size:14px;line-height:22px;color:var(--ink);background:var(--canvas);border:1px solid var(--line2);border-radius:8px;padding:12px 14px"></textarea>
+                <sc-if value="{{ showImprove }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:4px">
+                    <span style="font-size:12px;line-height:16px;font-weight:500;color:var(--muted)">Copilot can tidy tone and grammar. You still review it before it sends.</span>
+                    <button onClick="{{ improve }}" style="flex:none;height:{{ btnH }};padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--ink);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="background:var(--tint)">{{ improveLabel }}</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ dr.hasTranslation }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;line-height:16px;font-weight:500;color:var(--muted);text-wrap:pretty">{{ dr.translation }}</span></sc-if>
+              </div>
+              <span style="font-size:12px;line-height:16px;font-weight:500;color:var(--muted)">{{ dr.source }}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ dr.notDraft }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:1;min-height:0;overflow:auto;padding:0 24px 20px">
+            <sc-for list="{{ dr.groups }}" as="g" hint-placeholder-count="2">
+              <div style="padding:20px 0 4px;font-size:12px;line-height:16px;font-weight:600;color:var(--muted)">{{ g.label }}</div>
+              <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="3">
+                <sc-if value="{{ r.isOpen }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px;padding:16px 0;border-bottom:1px solid var(--line)">
+                    <div style="flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:2px">
+                      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:12px;line-height:16px;font-weight:500;color:var(--muted)">
+                        <span>{{ r.meta }}</span>
+                        <sc-if value="{{ r.hasBadge }}" hint-placeholder-val="{{ false }}"><span style="font-weight:600;color:{{ r.badgeColor }};border:1px solid currentColor;border-radius:999px;padding:0 8px">{{ r.badge }}</span></sc-if>
+                      </div>
+                      <div style="font-size:15px;line-height:22px;font-weight:600;text-wrap:pretty">{{ r.title }}</div>
+                      <div style="color:var(--ink2);text-wrap:pretty">{{ r.ctx }}</div>
+                      <span style="margin-top:4px;display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:16px;font-weight:600;color:{{ r.color }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ r.time }}</span>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                      <sc-if value="{{ r.hasSecondary }}" hint-placeholder-val="{{ true }}"><button onClick="{{ r.onSecondary }}" style="height:{{ btnH }};padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--ink);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="background:var(--tint)">{{ r.secondary }}</button></sc-if>
+                      <sc-if value="{{ r.hasPrimary }}" hint-placeholder-val="{{ true }}"><button onClick="{{ r.onPrimary }}" style="height:{{ btnH }};padding:0 14px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--on-accent);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="background:var(--accent-hover);border-color:var(--accent-hover)">{{ r.primary }}</button></sc-if>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ r.isResolved }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:8px;padding:12px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:20px;color:var(--ink2)">
+                    <span style="width:6px;height:6px;flex:none;border-radius:50%;background:{{ r.resColor }}"></span>
+                    <span style="flex:1;min-width:0">{{ r.resText }}</span>
+                    <a onClick="{{ r.onUndo }}" style="font-size:12px;line-height:16px;font-weight:500;text-decoration:underline;text-underline-offset:3px;cursor:pointer">Undo</a>
+                  </div>
+                </sc-if>
+              </sc-for>
+            </sc-for>
+          </div>
+          </sc-if>
+          <div style="flex:none;padding:14px 24px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px">
+            <span style="flex:1 1 200px;font-size:12px;line-height:16px;font-weight:500;color:var(--muted)">{{ dr.foot }}</span>
+            <sc-if value="{{ dr.isDraft }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:8px">
+                <button onClick="{{ cancelPreview }}" style="height:{{ btnH }};padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--ink);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="background:var(--tint)">Cancel</button>
+                <button onClick="{{ sendPreview }}" style="height:{{ btnH }};padding:0 14px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--on-accent);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap" style-hover="background:var(--accent-hover);border-color:var(--accent-hover)">{{ dr.sendLabel }}</button>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;busy&quot;,&quot;quiet&quot;,&quot;broken&quot;],&quot;default&quot;:&quot;busy&quot;,&quot;tsType&quot;:&quot;'busy'|'quiet'|'broken'&quot;},&quot;drawer&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;reviews&quot;,&quot;queue&quot;,&quot;guests&quot;,&quot;turnovers&quot;,&quot;tasks&quot;,&quot;reminders&quot;,&quot;automations&quot;,&quot;connections&quot;],&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;phone&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;liveDemo&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const C={needs:'var(--needs)',failed:'var(--failed)',ok:'var(--ok)',muted:'var(--muted)',info:'var(--info)',ink:'var(--ink)',ink2:'var(--ink2)',accent:'var(--accent-ink)'};
+const P={bj:'20 Blue Jays Way (Unit 318)',rc:'Rogers/Convention Centre unit',u606:'Unit #606 (8 Charlotte)',shaw:'1065 Shaw St',ros:'41 Roseglor Cres'};
+const noop=()=>{};
+const QUEUE=[
+  {id:'lee',tag:'Inquiry',hosp:1,mod:'guests',title:"Lee's inquiry for Nov 5–8 at 20 Blue Jays Way",prop:'I drafted a reply from the Knowledge Hub: underground parking, an 8 minute walk to the convention centre.',time:'expires in 3h',color:C.failed,primary:'Review and send',draft:1,did:'Reply sent to Lee',urgent:"Lee's inquiry, which expires in 3h"},
+  {id:'ros',tag:'Turnover',mod:'turnovers',title:'41 Roseglor Cres needs a cleaner by 11:00 AM',prop:'Joana P. is free 11:30 AM to 2:30 PM. Alyssa arrives at 4:00 PM.',time:'due 11:00 AM',color:C.needs,primary:'Assign Joana P.',did:'Joana P. assigned to Roseglor',urgent:'the Roseglor turnover at 11:00 AM'},
+  {id:'alyssa',tag:'Guest',hosp:1,mod:'guests',title:'Alyssa asked for the wifi password',prop:'I drafted a reply from the Knowledge Hub: wifi is in the welcome book, page 2.',time:'waiting 12 min',color:C.needs,primary:'Review and send',draft:1,did:'Reply sent to Alyssa',urgent:"Alyssa's wifi question"},
+  {id:'don',tag:'Review',hosp:1,mod:'reviews',title:'Don left 3 stars at the Rogers/Convention Centre unit',prop:'I drafted a calm reply about the construction noise. No retaliation indicators.',time:'12 days left',color:C.muted,primary:'Review and submit',draft:1,did:'Reply to Don submitted',urgent:"Don's review"},
+  {id:'park',tag:'Draft',mod:'queue',title:'Parking registration email to 20 Blue Jays Way concierge',prop:'Ready to send from Outlook. I took the plate number from the guest file.',time:'prepared yesterday',color:C.muted,primary:'Review and send',draft:1,did:'Parking email sent to the concierge',urgent:'the parking email'},
+  {id:'roya',tag:'Reminder',mod:'reminders',title:'Purchase supplies for roya unit',prop:'Shane, 1065 Shaw St. No draft, this one needs a person.',time:'1 day outstanding',color:C.needs,primary:null,did:'Done: roya unit supplies',urgent:'the roya unit supplies'}
+];
+
+const DRAFTS={
+  lee:{to:'Lee',via:'Airbnb inquiry, Nov 5–8',incoming:'"Is there parking in the building, and how far is the convention centre on foot?"',body:'Hi Lee, thanks for reaching out. The building has underground parking and one spot is included with your stay. The Metro Toronto Convention Centre is about an 8 minute walk. Happy to answer anything else before you book.',source:'From the Knowledge Hub: Parking, 20 Blue Jays Way',send:'Send to Lee'},
+  alyssa:{to:'Alyssa',via:'Airbnb message, 41 Roseglor Cres',incoming:'"Hi! What\'s the wifi password?"',body:'Hi Alyssa, welcome! The wifi network is RoseglorHome and the password is on page 2 of the welcome book on the kitchen counter. Let us know if anything else comes up.',source:'From the Knowledge Hub: Wifi, 41 Roseglor Cres',send:'Send to Alyssa'},
+  edith:{to:'Edith',via:'Airbnb message, Unit #606, in French',incoming:'"Could we leave our bags with you after checkout? Our train is at 3 PM." Translated from French.',body:'Bonjour Edith, oui, vous pouvez laisser vos bagages dans l\'unité jusqu\'à 14 h 30. La personne du ménage arrive à 11 h 30 et ne les déplacera pas. Bon voyage !',translation:'In English: Hi Edith, yes, you can leave your bags in the unit until 2:30 PM. The cleaner arrives at 11:30 AM and will leave them where they are. Safe travels!',source:'From the Knowledge Hub: Late checkout and luggage',send:'Send to Edith'},
+  don:{to:'Don, public reply on Airbnb',via:'3-star review, Rogers/Convention Centre unit',incoming:'"Noisy construction next door from 7 AM, and I would not call it luxury."',body:'Thank you for staying with us, Don. We are sorry the construction next door started so early during your visit. We have updated the listing to mention it, and we would have been glad to help had we known during your stay.',source:'Tone: calm, no argument. No retaliation indicators.',send:'Submit reply'},
+  greg:{to:'Greg, public reply on Airbnb',via:'2-star review, 1065 Shaw St',incoming:'"The house was not clean when we arrived."',body:'Thanks for your feedback, Greg. Our check-in photos show the home cleaned and ready on arrival. We hope future guests enjoy the quiet street as much as our neighbours do.',source:'Likely retaliatory: quiet-hours warning on Oct 9.',send:'Submit reply'},
+  park:{to:'Concierge, 20 Blue Jays Way',via:'Email from Outlook, subject: Parking registration, Unit 318',incoming:'',body:'Hello, please register the following vehicle for Unit 318 from Oct 14 to Oct 17: grey Honda Civic, plate CKRT 482, guest Priya. Thank you, Mandel Realty Group.',source:'Plate number from the guest file.',send:'Send email'}
+};
+[['marty','"Perfect for our family, the yard was a hit with the kids."','Thank you, Marty. So glad the yard worked for the kids. You are welcome back anytime.'],['jenny','"Spotless unit and an easy walk to everything."','Thanks, Jenny. We are happy the location worked so well. Come back for TIFF next year.'],['sam','"Smooth check-in and a great view of the dome."','Thank you, Sam. Happy the early check-in helped. Hope to host you again.'],['olivia','"Loved the parking spot and the quiet street."','Thanks, Olivia. The parking spot is yours anytime you are back in Toronto.']].forEach(([n,inc,body])=>{DRAFTS['rv-'+n]={to:n[0].toUpperCase()+n.slice(1)+', public reply on Airbnb',via:'5-star review',incoming:inc,body,source:'Drafted by Review reply drafts at 5:00 AM. It posts publicly on Airbnb.',send:'Submit reply'};});
+
+class Component extends DCLogic {
+  state={theme:this.props.theme||'light',drawer:(this.props.drawer&&this.props.drawer!=='none')?this.props.drawer:null,res:{},last:null,pv:null,pvBack:null,pvText:'',pvEdited:false,pvImproving:false,who:'Everyone',actOpen:false,ask:'',live:false,fresh:false,retry:false};
+  componentDidMount(){
+    this.onKey=e=>{ if(e.key==='Escape'&&this.state.drawer) this.setState({drawer:null}); };
+    document.addEventListener('keydown',this.onKey);
+    if((this.props.mode??'busy')!=='quiet'&&(this.props.liveDemo??true)) this.loop();
+  }
+  componentDidUpdate(pp){
+    if(pp.theme!==this.props.theme) this.setState({theme:this.props.theme||'light'});
+    if(pp.drawer!==this.props.drawer) this.setState({drawer:(this.props.drawer&&this.props.drawer!=='none')?this.props.drawer:null});
+  }
+  componentWillUnmount(){ document.removeEventListener('keydown',this.onKey); [this.t1,this.t2,this.t3].forEach(clearTimeout); }
+  loop(){
+    this.t1=setTimeout(()=>{ this.setState({live:true,fresh:true});
+      this.t2=setTimeout(()=>{ this.setState({fresh:false});
+        this.t3=setTimeout(()=>{ this.setState({live:false}); this.loop(); },14000); },5000); },4000);
+  }
+  resolve(id,kind){ this.setState(s=>({res:{...s.res,[id]:kind},last:id})); }
+  undo(id){ this.setState(s=>{const r={...s.res};delete r[id];return {res:r,last:s.last===id?null:s.last};}); }
+  open(k){ this.setState({drawer:k}); }
+  preview(id,body){ const d=DRAFTS[id]; this.setState(s=>({pv:id,pvBack:s.drawer&&s.drawer!=='draft'?s.drawer:null,drawer:'draft',pvEdited:false,pvImproving:false,pvText:(d&&d.body)||body||''})); }
+  sendPreview(){ const id=this.state.pv; this.setState(s=>({res:{...s.res,[id]:'done'},last:id,drawer:s.pvBack,pv:null})); }
+
+  resolvedRow(id,did){
+    const k=this.state.res[id];
+    return {isOpen:false,isResolved:true,resColor:k==='later'?C.muted:C.ok,resText:k==='later'?'Moved to later, back at 1:00 PM':`${did}, 9:14 AM`,onUndo:()=>this.undo(id)};
+  }
+
+  drawerData(key,ctx){
+    const s=this.state, R=s.res, {busy,broken}=ctx;
+    const row=(id,o)=>{ if(R[id]) return {...this.resolvedRow(id,o.did||'Done')}; const isD=!!DRAFTS[id]&&!!o.primary; const r={isOpen:true,isResolved:false,hasBadge:!!o.badge,hasSecondary:!!o.secondary,color:C.muted,onPrimary:()=>this.resolve(id,'done'),onSecondary:noop,...o}; if(isD){ const body=(o.ctx||'').replace(/^Draft: "|"$/g,''); r.primary=/Submit/.test(o.primary)?'Review and submit':'Review and send'; r.onPrimary=()=>this.preview(id,body); r.onSecondary=()=>this.preview(id,body); } r.hasPrimary=!!r.primary; return r; };
+    const stale=broken?{time:'paused, as of 8:55 AM',color:C.info}:{};
+    if(key==='reviews'){
+      const flagged=busy?[
+        row('don',{meta:'3 stars · '+P.rc,title:'Don',ctx:'Construction noise and the "luxury" label. Not reported during the stay. No retaliation indicators.',time:'12 days left to reply',primary:broken?null:'Submit reply',secondary:'Edit',did:'Reply to Don submitted',...stale}),
+        row('greg',{meta:'2 stars · '+P.shaw,title:'Greg',ctx:'Calls the house unclean after a quiet-hours warning on Oct 9. Check-in photos show no issues.',badge:'Likely retaliatory',badgeColor:C.failed,time:'13 days left to reply',primary:broken?null:'Submit reply',secondary:'Edit',did:'Reply to Greg submitted',...stale})
+      ]:[];
+      const five=(busy?[['marty','Marty',P.ros,'"Thank you, Marty. So glad the yard worked for the kids."'],['jenny','Jenny',P.u606,'"Thanks, Jenny. Come back for TIFF next year."'],['sam','Sam',P.bj,'"Thank you, Sam. Happy the early check-in helped."'],['olivia','Olivia',P.shaw,'"Thanks, Olivia. The parking spot is yours anytime."']]:[['marty','Marty',P.ros,'"Thank you, Marty. So glad the yard worked for the kids."'],['jenny','Jenny',P.u606,'"Thanks, Jenny. Come back for TIFF next year."']])
+        .map(([id,n,p,q])=>row('rv-'+id,{meta:'5 stars · '+p,title:n,ctx:'Draft: '+q,time:'drafted 5:00 AM',primary:broken?null:'Submit reply',secondary:'Edit',did:'Reply to '+n+' submitted',...stale}));
+      const groups=[];
+      if(flagged.length) groups.push({label:'Flagged, 3 stars or less',rows:flagged});
+      groups.push({label:`${five.length} five-star replies drafted and ready`,rows:five});
+      return {title:'Reviews',sub:busy?'6 waiting, 2 flagged':'2 waiting, none flagged',groups,foot:'Nothing posts until someone presses Submit.'};
+    }
+    if(key==='queue'){
+      return {title:'Decisions',sub:'Everything waiting on a partner, most urgent first',groups:[{label:'Waiting on a partner',rows:QUEUE.map(q=>row(q.id,{meta:q.tag,title:q.title,ctx:q.prop,time:q.time,color:q.color,primary:(broken&&q.hosp)?null:q.primary,secondary:q.primary?'Edit':'Mark done',onSecondary:q.primary?noop:()=>this.resolve(q.id,'done'),did:q.did,...(q.hosp?stale:{})}))}],foot:'Nothing is sent, posted or booked until a partner approves it.'};
+    }
+    if(key==='guests'){
+      return {title:'Guest messages',sub:busy?'1 inquiry, 3 waiting, 2 on the guest':'All answered',groups:busy?[
+        {label:'Inquiries',rows:[row('lee',{meta:'Nov 5–8 · '+P.bj,title:'Lee',ctx:'"Is there parking in the building, and how far is the convention centre on foot?"',time:'expires in 3h',color:C.failed,primary:broken?null:'Send reply',secondary:'Edit',did:'Reply sent to Lee',...stale})]},
+        {label:'Waiting on us',rows:[
+          row('edith',{meta:'Oct 13–16 · '+P.u606,title:'Edith',ctx:'"Could we leave our bags with you after checkout?" Translated from French.',time:'waiting 42 min',color:C.needs,primary:broken?null:'Send reply',secondary:'Edit',did:'Reply sent to Edith',...stale}),
+          row('tomas',{meta:'Oct 15–19 · '+P.shaw,title:'Tomás',ctx:'"Is it possible to check in at 1 PM instead of 3?"',time:'waiting 25 min',color:C.needs,secondary:'Reply',...stale}),
+          row('alyssa',{meta:'Oct 15–18 · '+P.ros,title:'Alyssa',ctx:'"Hi! What\'s the wifi password?"',time:'waiting 12 min',color:C.needs,primary:broken?null:'Send reply',secondary:'Edit',did:'Reply sent to Alyssa',...stale})]},
+        {label:'On the guest',rows:[row('g-h',{meta:P.shaw,title:'Hannah',ctx:'We replied at 8:10 AM about late checkout.',time:'waiting on guest'}),row('g-k',{meta:P.u606,title:'Kenji',ctx:'We sent arrival details at 7:45 AM.',time:'waiting on guest'})]}
+      ]:[{label:'On the guest',rows:[row('g-k',{meta:P.u606,title:'Kenji',ctx:'We sent arrival details at 7:45 AM.',time:'waiting on guest'})]}],foot:'Replies go out only when a partner presses Send.'};
+    }
+    if(key==='turnovers'){
+      const rosDone=!!R.ros;
+      return {title:'Turnovers and cleaners',sub:'Today and the next 2 days',groups:busy?[
+        {label:'Today, Thu Oct 15',rows:[
+          rosDone?{isOpen:true,isResolved:false,meta:'Out 11:00 AM Daniel · In 4:00 PM Alyssa',title:P.ros,ctx:'Joana P. at 11:30 AM.',time:'Cleaner assigned',color:C.ok}
+                 :{isOpen:true,isResolved:false,meta:'Out 11:00 AM Daniel · In 4:00 PM Alyssa',title:P.ros,ctx:'Joana P. is free 11:30 AM to 2:30 PM.',time:'Needs a cleaner',color:C.needs,hasPrimary:true,primary:'Assign Joana P.',onPrimary:()=>this.resolve('ros','done'),hasSecondary:true,secondary:'Pick cleaner',onSecondary:noop},
+          {isOpen:true,meta:'Out 10:00 AM Hannah · In 3:00 PM Tomás',title:P.shaw,ctx:'Joana P. at 10:30 AM.',time:'Cleaner assigned',color:C.ok}]},
+        {label:'Tomorrow, Fri Oct 16',rows:[{isOpen:true,meta:'Out 11:00 AM Edith · In 4:00 PM Kenji',title:P.u606,ctx:'Rita O. at 11:30 AM.',time:'Cleaner assigned',color:C.ok}]},
+        {label:'Sat Oct 17',rows:[{isOpen:true,meta:'Out 11:00 AM Priya',title:P.bj,ctx:'Joana P. at noon.',time:'Cleaner assigned',color:C.ok}]}
+      ]:[
+        {label:'Today, Thu Oct 15',rows:[{isOpen:true,meta:'Out 11:00 AM Sofia · In 4:00 PM Kenji',title:P.u606,ctx:'Rita O. at 11:30 AM.',time:'Cleaner assigned',color:C.ok}]},
+        {label:'Sat Oct 17',rows:[{isOpen:true,meta:'Out 11:00 AM Priya',title:P.bj,ctx:'Joana P. at noon.',time:'Cleaner assigned',color:C.ok}]}
+      ],foot:'Cleaning in progress and Cleaned will appear once cleaner check-ins are connected.'};
+    }
+    if(key==='tasks'){
+      const all=busy?[
+        {id:'latch',g:'Overdue',title:'Fix balcony door latch',who:'Ryan',unit:P.shaw,time:'was due Tue Oct 13',color:C.failed},
+        {id:'towels',g:'Today',title:'Leave extra towels for Alyssa',who:'Rita O.',unit:P.ros,time:'due 3:30 PM',color:C.needs,src:' · Copilot, from a guest follow-up'},
+        {id:'clean',g:'Today',title:'Assign cleaner, Roseglor',who:'Shane',unit:P.ros,time:'due 11:00 AM',color:C.needs,src:' · Copilot, from turnovers'},
+        {id:'groc',g:'This week',title:'Finish groceries flow',who:'Shane',unit:'All units',time:'due Sat Oct 17',color:C.muted}
+      ]:[{id:'groc',g:'This week',title:'Finish groceries flow',who:'Shane',unit:'All units',time:'due Sat Oct 17',color:C.muted}];
+      const list=all.filter(t=>s.who==='Everyone'||t.who===s.who);
+      const groups=[];
+      list.forEach(t=>{let g=groups.find(x=>x.label===t.g);if(!g){g={label:t.g,rows:[]};groups.push(g);} g.rows.push(row('t-'+t.id,{meta:`${t.who} · ${t.unit}${t.src||''}`,title:t.title,ctx:'',time:t.time,color:t.color,secondary:'Mark done',onSecondary:()=>this.resolve('t-'+t.id,'done'),did:'Marked done: '+t.title}));});
+      if(!groups.length) groups.push({label:`Nothing due for ${s.who}`,rows:[]});
+      return {title:'Tasks',sub:'6 to do, 3 doing, 2 waiting',hasFilters:true,filters:['Everyone','Shane','Ryan'].map(w=>({label:w,bg:s.who===w?'var(--tint)':'transparent',border:s.who===w?'var(--tint)':'var(--line2)',onClick:()=>this.setState({who:w})})),groups,foot:'Tasks sync to Google Calendar, Mandel Tasks.'};
+    }
+    if(key==='reminders'){
+      const mk=(id,o)=>row('r-'+id,{...o,secondary:'Mark done',onSecondary:()=>this.resolve('r-'+id,'done'),did:'Marked done: '+o.title});
+      return {title:'Reminders',sub:busy?'2 overdue, 1 today':'Next on Mon Oct 19',groups:busy?[
+        {label:'Overdue',rows:[mk('roya',{meta:'Shane · '+P.shaw,title:'Purchase supplies for roya unit',ctx:'Wed Oct 14, 9:00 AM',time:'1 day outstanding',color:C.needs}),mk('raj',{meta:'Shane · '+P.bj,title:'Call city for raj unit',ctx:'Wed Oct 14, 2:00 PM',time:'1 day outstanding',color:C.needs})]},
+        {label:'Today',rows:[mk('lic',{meta:'Ryan · '+P.ros,title:'Renew STR licence for Roseglor',ctx:'Thu Oct 15, 5:00 PM',time:'due 5:00 PM',color:C.info})]},
+        {label:'Upcoming',rows:[mk('hst',{meta:'Shane · All units',title:'File quarterly HST',ctx:'Mon Oct 19, 10:00 AM',time:'in 4 days',color:C.muted})]}
+      ]:[{label:'Upcoming',rows:[mk('hst',{meta:'Shane · All units',title:'File quarterly HST',ctx:'Mon Oct 19, 10:00 AM',time:'in 4 days',color:C.muted})]}],foot:'Reminders sync to Google Calendar, Mandel Tasks.'};
+    }
+    if(key==='automations'){
+      const failed=busy&&!broken&&!s.retry;
+      return {title:'Automations',sub:failed?'1 failed, 3 healthy':'All healthy',groups:[{label:'Scheduled skills',rows:[
+        failed?{isOpen:true,meta:'Mondays, 9:00 AM · retried 5:00 AM',title:'Weekly guest check-in texts',ctx:'Gmail is not connected. 0 of 6 texts prepared.',time:'Failed 5:00 AM',color:C.failed,hasPrimary:true,primary:'Retry',onPrimary:()=>this.setState({retry:true})}
+              :{isOpen:true,meta:'Mondays, 9:00 AM',title:'Weekly guest check-in texts',ctx:'Prepared 6 texts for approval.',time:s.retry?'OK 9:14 AM':'OK Mon Oct 12',color:C.ok},
+        {isOpen:true,meta:'Daily, 5:00 AM',title:'Review reply drafts',ctx:busy?'Drafted 4 replies.':'Drafted 2 replies.',time:'OK 5:00 AM, next Fri 5:00 AM',color:C.ok},
+        {isOpen:true,meta:'Daily, 6:00 AM',title:'Owner statement drafts',ctx:'Prepared 5 statements for approval.',time:'OK 6:00 AM',color:C.ok},
+        {isOpen:true,meta:'Every hour',title:'Turnover cleaner check',ctx:busy?'Flagged Roseglor.':'All turnovers have a cleaner.',time:'OK 9:00 AM, next 10:00 AM',color:C.ok}]}],foot:'Skills only read and prepare. Anything outbound waits for approval.'};
+    }
+    if(key==='draft'){
+      const d=DRAFTS[s.pv]||{to:'',via:'',incoming:'',body:'',source:'',send:'Send'};
+      return {isDraft:true,title:'Review before it goes out',sub:'To '+d.to+' · '+d.via,groups:[],hasIncoming:!!d.incoming,incoming:d.incoming,source:d.source,hasTranslation:!!d.translation,translation:d.translation||'',sendLabel:d.send,foot:'Nothing goes out until you press '+d.send+'. You can edit the text first.'};
+    }
+    if(key==='connections'){
+      return {title:'Connections',sub:"Copilot's last check ran 9:12 AM",groups:[{label:'Services',rows:ctx.conns.map(c=>({isOpen:true,meta:c.meta,title:c.name,ctx:c.ctx,time:c.state,color:c.color,hasSecondary:c.color!==C.ok,secondary:'Reconnect',onSecondary:noop}))}],foot:'Copilot checks every 5 minutes.'};
+    }
+    return {title:'',sub:'',groups:[],foot:''};
+  }
+
+  renderVals(){
+    const s=this.state, mode=this.props.mode??'busy', busy=mode!=='quiet', broken=mode==='broken', phone=!!this.props.phone;
+    const R=s.res, btnH=phone?'44px':'32px';
+    const live=s.live&&busy;
+
+    const queue=busy?QUEUE:[];
+    const open=queue.filter(q=>!R[q.id]);
+    const vis=phone?open.length:(broken?2:3);
+    const cards=[];
+    if(s.last&&R[s.last]&&queue.find(q=>q.id===s.last)) cards.push(this.resolvedRow(s.last,queue.find(q=>q.id===s.last).did));
+    open.slice(0,vis).forEach(q=>{
+      const stale=broken&&q.hosp;
+      cards.push({isOpen:true,isResolved:false,tag:q.tag,title:q.title,prop:q.prop,time:stale?'paused, as of 8:55 AM':q.time,color:stale?C.info:q.color,
+        primary:q.primary,hasPrimary:!!q.primary&&!stale,hasDone:!q.primary,hasEdit:!!q.primary,
+        onPrimary:q.draft?()=>this.preview(q.id):()=>this.resolve(q.id,'done'),onEdit:q.draft?()=>this.preview(q.id):()=>this.open(q.mod),onLater:()=>this.resolve(q.id,'later')});
+    });
+    const more=open.length-Math.min(vis,open.length);
+
+    const n=open.length;
+    const strong=n?`${n} ${n===1?'thing needs':'things need'} a partner`:'Everything on the list is handled';
+    const post=n?`, the most urgent is ${open[0].urgent}.`:'.';
+    const brief=!busy?{pre:'All clear. I checked guests, reviews, turnovers, tasks and 4 automations at 9:12 AM. ',strong:'Nothing needs you.',post:''}
+      :broken?{pre:'Hospitable stopped answering at 8:55 AM, so guest messages, inquiries and reviews may be stale. Everything else is current. ',strong,post}
+      :{pre:'Since 6 AM I read 34 guest conversations, drafted 4 review replies and created 2 tasks. ',strong,post};
+
+    const conns=[
+      {name:'Hospitable',meta:'Guest messages, reservations, reviews',ctx:broken?'Stopped answering at 8:55 AM.':'Synced 9:12 AM.',state:broken?'Not connected':'Connected',color:broken?C.failed:C.ok},
+      {name:'Gmail',meta:'Guest texts and email',ctx:(busy&&!broken)?'Token expired overnight.':'Synced 9:12 AM.',state:(busy&&!broken)?'Not connected':'Connected',color:(busy&&!broken)?C.failed:C.ok},
+      {name:'Outlook',meta:'Building and owner email',ctx:'Synced 9:12 AM.',state:'Connected',color:C.ok},
+      {name:'Google Calendar',meta:'Mandel Tasks',ctx:'Synced 9:10 AM.',state:'Connected',color:C.ok}
+    ];
+    const connOk=conns.filter(c=>c.color===C.ok).length;
+
+    const paused={state:'Paused',stateColor:C.info,line:'As of 8:55 AM'};
+    const guestsN=busy?(R.alyssa?2:3)+(live?1:0):0;
+    const autoFailed=busy&&!broken&&!s.retry;
+    let tiles=busy?[
+      {key:'guests',label:'Guests waiting',n:guestsN,state:'Needs you',stateColor:C.needs,line:live?'Priya, just now, late checkout':'Edith, 42 min, translated from French',isBar:true,pct:'70%',vizColor:C.needs,...(broken?paused:{})},
+      {key:'guests',label:'Inquiries',n:R.lee?0:1,state:R.lee?'OK':'Needs you',stateColor:R.lee?C.ok:C.failed,line:R.lee?'Lee answered 9:14 AM':'Lee, Nov 5–8, expires in 3h',isBar:!R.lee,pct:'12%',vizColor:C.failed,...(broken?paused:{})},
+      {key:'turnovers',label:'Turnovers today',n:2,state:R.ros?'OK':'Needs you',stateColor:R.ros?C.ok:C.needs,line:R.ros?'Joana P. has Roseglor at 11:30 AM':'Roseglor 11:00 AM needs a cleaner',isDots:true,dots:[{label:'Thu',color:R.ros?C.ok:C.needs},{label:'Fri',color:C.ok},{label:'Sat',color:C.ok}]},
+      {key:'reviews',label:'Reviews',n:R.don?5:6,state:'Needs you',stateColor:C.needs,line:R.don?'4 five-star replies drafted':'Don, 3 stars, flagged. 4 drafted',...(broken?paused:{})},
+      {key:'tasks',label:'Tasks',n:11,state:'1 overdue',stateColor:C.failed,line:'Finish groceries flow, Shane, Sat',isStack:true,segs:[{f:6,color:'var(--line2)'},{f:3,color:'var(--accent)'},{f:2,color:'var(--needs)'}]},
+      {key:'reminders',label:'Reminders',n:R.roya?1:2,state:'Overdue',stateColor:C.needs,line:R.roya?'Call city for raj unit, 1 day':'Purchase supplies for roya unit, 1 day'},
+      {key:'automations',label:'Automations',n:4,state:autoFailed?'Failed':'OK',stateColor:autoFailed?C.failed:C.ok,line:autoFailed?'Check-in texts, Gmail not connected':'All 4 ran on schedule',isRuns:true,runs:[1,1,1,1,1,1,autoFailed?0:1].map(v=>({color:v?C.ok:C.failed}))},
+      {key:'connections',label:'Connections',n:`${connOk}/4`,state:connOk===4?'OK':'Failed',stateColor:connOk===4?C.ok:C.failed,line:broken?'Hospitable stopped at 8:55 AM':(connOk===4?'All connected':'Gmail not connected'),isDots:true,dots:conns.map(c=>({label:'',color:c.color}))}
+    ]:[
+      {key:'guests',label:'Guests waiting',n:0,state:'OK',stateColor:C.ok,line:'All answered, last at 8:40 AM'},
+      {key:'guests',label:'Inquiries',n:0,state:'OK',stateColor:C.ok,line:'None open'},
+      {key:'turnovers',label:'Turnovers today',n:1,state:'OK',stateColor:C.ok,line:'Unit #606, Rita O. at 11:30 AM',isDots:true,dots:[{label:'Thu',color:C.ok},{label:'Fri',color:'var(--line2)'},{label:'Sat',color:C.ok}]},
+      {key:'reviews',label:'Reviews',n:2,state:'OK',stateColor:C.ok,line:'2 five-star replies drafted'},
+      {key:'tasks',label:'Tasks',n:7,state:'OK',stateColor:C.ok,line:'Nothing due today',isStack:true,segs:[{f:4,color:'var(--line2)'},{f:2,color:'var(--accent)'},{f:1,color:'var(--needs)'}]},
+      {key:'reminders',label:'Reminders',n:0,state:'OK',stateColor:C.ok,line:'Next Mon Oct 19'},
+      {key:'automations',label:'Automations',n:4,state:'OK',stateColor:C.ok,line:'All 4 ran on schedule',isRuns:true,runs:[1,1,1,1,1,1,1].map(()=>({color:C.ok}))},
+      {key:'connections',label:'Connections',n:'4/4',state:'OK',stateColor:C.ok,line:'All connected',isDots:true,dots:conns.map(()=>({label:'',color:C.ok}))}
+    ];
+    tiles=tiles.map(t=>({isBar:false,isDots:false,isStack:false,isRuns:false,...t,numColor:(t.n===0)?C.muted:C.ink,title:'Open '+t.label,onOpen:()=>this.open(t.key)}));
+
+    const did=Object.keys(R).filter(id=>R[id]==='done').map(id=>{const q=QUEUE.find(x=>x.id===id);return q?{t:'9:14',lead:'Approved. ',text:q.did+(q.draft?' after review':''),color:C.accent}:null;}).filter(Boolean);
+    let act=busy?[
+      ...(broken?[{t:'9:12',text:'Could not reach Hospitable, retrying every 5 min',color:C.failed},{t:'8:55',text:'Hospitable stopped answering',color:C.failed}]:[{t:'9:12',text:'Read 12 guest threads, nothing new'}]),
+      {t:'9:02',text:'Prepared owner statements for approval'},
+      {t:'8:51',text:'Drafted reply to Alyssa from the Knowledge Hub'},
+      {t:'8:40',text:'Drafted 5-star reply for Marty'},
+      {t:'8:38',text:'Drafted 5-star reply for Jenny'},
+      {t:'8:20',text:"Flagged Don's 3-star review, no retaliation indicators"},
+      {t:'8:02',text:'Created task: Assign cleaner, Roseglor'},
+      {t:'7:45',text:"Drafted reply to Lee's inquiry"},
+      {t:'6:00',text:'Read 34 guest conversations'},
+      {t:'5:00',lead:'Skill ',text:'Review reply drafts ran, drafted 4'},
+      ...(broken?[{t:'5:00',lead:'Skill ',text:'Weekly check-in texts ran, prepared 6'}]:[{t:'5:00',lead:'Skill ',text:s.retry?'Weekly check-in texts retried 9:14, prepared 6':'Weekly check-in texts failed: Gmail not connected',color:s.retry?C.ink2:C.failed,hasRetry:!s.retry,retryLabel:'Retry',onRetry:()=>this.setState({retry:true})}])
+    ]:[
+      {t:'9:12',text:'Read 8 guest threads, nothing new'},
+      {t:'8:40',text:'Drafted 5-star reply for Marty'},
+      {t:'8:38',text:'Drafted 5-star reply for Jenny'},
+      {t:'7:30',text:'Checked turnovers for the next 3 days, all assigned'},
+      {t:'6:00',text:'Read 21 guest conversations'},
+      {t:'6:00',lead:'Skill ',text:'Owner statement drafts ran, prepared 5'},
+      {t:'5:00',lead:'Skill ',text:'Review reply drafts ran, drafted 2'}
+    ];
+    if(live) act.unshift({t:'9:17',text:'Read 3 guest threads, 1 new from Priya',fresh:s.fresh});
+    act=[...did,...act].map(e=>({lead:'',color:C.ink2,hasRetry:false,...e,bg:e.fresh?'var(--wash)':'transparent'}));
+
+    const asks=(broken?["What did Hospitable miss since 8:55?",'Who still needs a cleaner this week?',"Summarize Don's review"]
+      :busy?['Who still needs a cleaner this week?',"Summarize Don's review","What's due before Saturday?"]
+      :["What's coming up next week?","Draft a welcome note for Kenji","What's due before Saturday?"]).map(l=>({label:l,onClick:()=>this.setState({ask:l})}));
+
+    const dr=s.drawer?this.drawerData(s.drawer,{busy,broken,conns}):{title:'',sub:'',groups:[],foot:'',hasFilters:false,filters:[]};
+    dr.hasFilters=!!dr.hasFilters; dr.filters=dr.filters||[]; dr.isDraft=!!dr.isDraft; dr.notDraft=!dr.isDraft;
+
+    const nav=[{label:'Overview',sel:true},{label:'Guest messaging',badge:busy?guestsN+(R.lee?0:1):0},{label:'Reviews',badge:busy?(R.don?5:6):2},{label:'Tasks'},{label:'Reminders',badge:busy?3:0},{label:'Browser'}]
+      .map(x=>({...x,bg:x.sel?'var(--tint)':'transparent',weight:x.sel?600:400,hasBadge:!!x.badge}));
+
+    return {
+      theme:s.theme,isDark:s.theme==='dark',isLight:s.theme!=='dark',toggleTheme:()=>this.setState({theme:s.theme==='dark'?'light':'dark'}),
+      isPhone:phone,isDesktop:!phone,isBroken:broken,btnH,chipH:phone?'40px':'28px',
+      brand:phone?'MRG':'Mandel Realty Group',frameH:phone?'auto':'900px',
+      centerPad:phone?'20px 16px 8px':'20px 32px 0',centerOverflow:phone?'visible':'auto',composerPad:phone?'12px 16px 16px':'12px 32px 16px',chipsWrap:phone?'wrap':'nowrap',
+      cardsDir:phone?'row':'column',cardsOverflow:phone?'auto':'visible',cardsMargin:phone?'0 -16px':'0',cardsPadX:phone?'0 16px 4px':'0',cardFlex:phone?'0 0 300px':'0 0 auto',textWS:phone?'normal':'nowrap',
+      greeting:(()=>{const h=+new Intl.DateTimeFormat('en-CA',{hour:'numeric',hourCycle:'h23',timeZone:'America/Toronto'}).format(new Date());return `Good ${h<12?'morning':h<17?'afternoon':'evening'}, Team.`;})(),
+      brief,watchColor:broken?C.needs:C.ok,watchLabel:broken?'Copilot is watching, Hospitable paused':'Copilot is watching',watchShort:broken?'Partial':'Watching',
+      lastCheck:live?'9:17 AM':'9:12 AM',nextCheck:live?'9:22':'9:17',
+      cards,hasCards:busy,noCards:!busy,emptyLine:'2 five-star replies are drafted for whenever there is a minute.',
+      hasMore:busy&&more>0,moreLabel:`${more} more`,openQueue:()=>this.open('queue'),openReviews:()=>this.open('reviews'),
+      tiles,activity:act,actOpen:s.actOpen,actToggle:s.actOpen?'Hide':'Show',toggleAct:()=>this.setState({actOpen:!s.actOpen}),
+      actSummary:`${act.length} today, last ${act[0].t} AM`,
+      asks,ask:s.ask,onAsk:e=>this.setState({ask:e.target.value}),
+      drawerOpen:!!s.drawer,dr,pvText:s.pvText,onPvText:e=>this.setState({pvText:e.target.value,pvEdited:true}),
+      showImprove:s.pvEdited&&!!(DRAFTS[s.pv]&&!/review/i.test(DRAFTS[s.pv].via)),improveLabel:s.pvImproving?'Improving…':'Improve with AI',
+      improve:()=>{ if(this.state.pvImproving) return; this.setState({pvImproving:true}); clearTimeout(this.ti); this.ti=setTimeout(()=>{ const t=this.state.pvText.trim().replace(/\s+/g,' '); const fixed=t.charAt(0).toUpperCase()+t.slice(1); this.setState({pvText:/[.!?]$/.test(fixed)?fixed:fixed+'.',pvImproving:false,pvEdited:false}); },900); },sendPreview:()=>this.sendPreview(),cancelPreview:()=>this.setState(st=>({drawer:st.pvBack,pv:null})),closeDrawer:()=>this.setState({drawer:null}),drawerW:phone?'100%':'480px',
+      nav,recents:[{title:'when are all units available',when:'Today'},{title:'Parking Email for 20 Blue Jays Way',when:'Yesterday'},{title:'Owner statements for September',when:'Oct 12'},{title:'Roseglor licence renewal',when:'Oct 9'},{title:'Cleaner schedule for TIFF week',when:'Sep 28'}]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -300,3 +300,178 @@ function checkedLabel(now: Date): string {
   }).format(now);
   return `Checked ${time}`;
 }
+
+/**
+ * The Overview decision queue. Kinds are fixed, most urgent first:
+ * an expiring inquiry, then the guest who has waited longest, then a flagged
+ * review, then an unassigned turnover today, then an overdue reminder, then a
+ * draft that is waiting. An assigned turnover is not a decision.
+ */
+
+export type DecisionKind = "inquiry" | "guest" | "review" | "turnover" | "reminder" | "draft";
+
+export type DecisionItem = {
+  id: string;
+  kind: DecisionKind;
+  title: string;
+  detail: string;
+  property: string;
+  when: string;
+  /** Lower sorts first inside a kind. */
+  sort: number;
+  hasDraft: boolean;
+};
+
+const DECISION_ORDER: Record<DecisionKind, number> = {
+  inquiry: 0,
+  guest: 1,
+  review: 2,
+  turnover: 3,
+  reminder: 4,
+  draft: 5,
+};
+
+export function rankDecisions<T extends Pick<DecisionItem, "kind" | "sort" | "id">>(items: T[]): T[] {
+  return [...items].sort((a, b) => DECISION_ORDER[a.kind] - DECISION_ORDER[b.kind] || a.sort - b.sort || a.id.localeCompare(b.id));
+}
+
+export type DecisionSources = {
+  now: Date;
+  today: string;
+  inquiries: { id: string; guest: string; property: string; dates: string; line: string; draft: string; expiresAt: string }[];
+  guests: { id: string; guest: string; property: string; asked: string; wait: string; waitedMs: number; draft: string }[];
+  reviews: { id: string; guest: string; property: string; stars: number; flagged: boolean; draft: string; when: string; note: string }[];
+  turnovers: { id: string; property: string; date: string; when: string; guest: string; assigned: boolean }[];
+  reminders: { id: string; text: string; assignee: string; unit: string; dueAt: string; overdue: boolean; when: string }[];
+  drafts: { id: string; title: string; detail: string; at: string; sendable?: boolean }[];
+};
+
+export function assembleDecisions(sources: DecisionSources): DecisionItem[] {
+  const items: DecisionItem[] = [];
+  const seen = new Set<string>();
+  const push = (item: DecisionItem) => {
+    if (seen.has(item.id)) return;
+    seen.add(item.id);
+    items.push(item);
+  };
+  for (const row of sources.inquiries) {
+    if (!row.expiresAt) continue;
+    const guest = row.guest.trim() || "A guest";
+    const where = row.property.trim();
+    const stay = row.dates.trim();
+    push({
+      id: row.id,
+      kind: "inquiry",
+      title: stay ? `${guest}'s inquiry for ${stay}${where ? ` at ${where}` : ""}` : `${guest}'s inquiry${where ? ` at ${where}` : ""}`,
+      detail: clip(row.draft.trim() ? `Draft ready: ${row.draft.trim()}` : row.line.trim()),
+      property: where,
+      when: expiryWhen(row.expiresAt, sources.now),
+      sort: Date.parse(row.expiresAt) || 0,
+      hasDraft: Boolean(row.draft.trim()),
+    });
+  }
+  const waiting = [...sources.guests].sort((a, b) => b.waitedMs - a.waitedMs);
+  for (const row of waiting) {
+    const guest = row.guest.trim() || "A guest";
+    push({
+      id: row.id,
+      kind: "guest",
+      title: `${guest} is waiting${row.property.trim() ? ` at ${row.property.trim()}` : ""}`,
+      detail: clip(row.draft.trim() ? `Draft ready: ${row.draft.trim()}` : row.asked.trim()),
+      property: row.property.trim(),
+      when: row.wait.trim() || waitWhen(row.waitedMs),
+      sort: -row.waitedMs,
+      hasDraft: Boolean(row.draft.trim()),
+    });
+  }
+  for (const row of sources.reviews) {
+    if (!row.flagged) continue;
+    const guest = row.guest.trim() || "A guest";
+    push({
+      id: row.id,
+      kind: "review",
+      title: `${guest} left ${row.stars} ${row.stars === 1 ? "star" : "stars"}${row.property.trim() ? ` at ${row.property.trim()}` : ""}`,
+      detail: clip(row.note.trim() || row.draft.trim()),
+      property: row.property.trim(),
+      when: row.when.trim(),
+      sort: row.stars,
+      hasDraft: Boolean(row.draft.trim()),
+    });
+  }
+  for (const row of sources.turnovers) {
+    if (row.assigned || row.date !== sources.today) continue;
+    push({
+      id: row.id,
+      kind: "turnover",
+      title: `${row.property.trim() || "A unit"} needs a cleaner`,
+      detail: clip([row.when.trim(), row.guest.trim() ? `${row.guest.trim()} checks out` : ""].filter(Boolean).join(". ")),
+      property: row.property.trim(),
+      when: row.when.trim() || row.date,
+      sort: 0,
+      hasDraft: false,
+    });
+  }
+  for (const row of sources.reminders) {
+    if (!row.overdue) continue;
+    const who = row.assignee.trim();
+    push({
+      id: row.id,
+      kind: "reminder",
+      title: row.text.trim(),
+      detail: [who, row.unit.trim()].filter(Boolean).join(", "),
+      property: row.unit.trim(),
+      when: row.when.trim(),
+      sort: Date.parse(row.dueAt) || 0,
+      hasDraft: false,
+    });
+  }
+  for (const row of sources.reviews) {
+    if (row.flagged || !row.draft.trim()) continue;
+    const guest = row.guest.trim() || "A guest";
+    push({
+      id: `draft:${row.id}`,
+      kind: "draft",
+      title: `Reply to ${guest} is drafted`,
+      detail: clip(row.draft.trim()),
+      property: row.property.trim(),
+      when: row.when.trim(),
+      sort: 0,
+      hasDraft: true,
+    });
+  }
+  for (const row of sources.drafts) {
+    push({
+      id: row.id,
+      kind: "draft",
+      title: row.title.trim(),
+      detail: clip(row.detail.trim()),
+      property: "",
+      when: row.at.trim(),
+      sort: Date.parse(row.at) || 0,
+      hasDraft: row.sendable !== false,
+    });
+  }
+  return rankDecisions(items);
+}
+
+function clip(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > 180 ? `${flat.slice(0, 177).trim()}...` : flat;
+}
+
+function expiryWhen(iso: string, now: Date): string {
+  const hours = (new Date(iso).getTime() - now.getTime()) / 36e5;
+  if (!Number.isFinite(hours)) return "";
+  if (hours < 0) return "expired";
+  if (hours < 1) return `expires in ${Math.max(1, Math.round(hours * 60))} min`;
+  if (hours < 48) return `expires in ${Math.max(1, Math.round(hours))}h`;
+  return `expires ${iso.slice(0, 10)}`;
+}
+
+function waitWhen(ms: number): string {
+  if (!ms || ms < 0) return "";
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `waiting ${Math.max(1, min)} min`;
+  const hours = Math.round(min / 60);
+  return `waiting ${hours}h`;
+}

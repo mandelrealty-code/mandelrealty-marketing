@@ -5,7 +5,6 @@ import {
   dueMessage,
   groupReminders,
   isDone,
-  overviewReminders,
   reminderRow,
   savedLine,
   type Reminder,
@@ -406,38 +405,5 @@ export function RemindersView({ reminders, roster, partners, viewer, now, action
         </>
       ) : null}
     </div>
-  );
-}
-
-// ---------- Overview group ----------
-
-export function OverviewReminders({ reminders, now, actions, onOpenAll }: { reminders: Reminder[]; now: Date; actions: ReminderActions; onOpenAll: () => void }) {
-  const group = overviewReminders(reminders, now);
-  if (!group.rows.length && !group.upcoming) return null;
-  return (
-    <section className="cp-ov-sec">
-      <div className="cp-ov-label"><span>Reminders <span className="cp-rm-n">· {group.open}</span></span><span>Outstanding first, then today</span></div>
-      {group.rows.map((reminder) => {
-        const row = reminderRow(reminder, now);
-        return (
-          <div key={reminder.id} className="cp-rm-ovrow">
-            <div className="cp-rm-copy">
-              <span className={`cp-rm-text${row.done ? " done" : ""}`}>{row.text}</span>
-              <RowMeta row={row} />
-            </div>
-            {row.open ? (
-              <>
-                <button type="button" className="cp-rm-btn" onClick={() => actions.done(reminder.id)}>Mark done</button>
-                <RowSide row={row} />
-              </>
-            ) : <DoneSide row={row} onUndo={() => actions.undo(reminder.id)} />}
-          </div>
-        );
-      })}
-      <div className="cp-rm-ovmore">
-        <span>{group.upcoming ? `${group.upcoming} more coming up` : "Nothing else coming up."}</span>
-        <button type="button" className="cp-rm-linkish" onClick={onOpenAll}>Open Reminders</button>
-      </div>
-    </section>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
-import type { BriefCard, BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, HospitableCard, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
+import type { BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, HospitableCard, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
 import type { ReviewQueuePayload, ReviewQueueRow } from "../../../shared/copilot/reviewTypes";
 import type { GuestDraftView, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
 import { ConnectorStatusPage, ConnectorsList, HospitablePage } from "./HospitableConnection";
@@ -14,7 +14,6 @@ import { PurchaseCard } from "./PurchaseCard";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { ACCOUNT_LINKS, wantsWeb } from "../../../shared/copilot/models";
 import { needsLiveBrowser, PAGE_UNREAD } from "../../../shared/copilot/browserTier";
-import { inputFromCard, rankOverview, type OverviewRow } from "../../../shared/copilot/overviewRank";
 import { skipsWeb } from "../../../shared/copilot/route";
 import { asksPropertyReport } from "../../../shared/copilot/reportParse";
 import { REPORT_GONE, reportMessageSummary, type ReportView } from "../../../shared/copilot/reportView";
@@ -38,10 +37,11 @@ import {
   type BrowserSession,
 } from "../../../shared/copilot/browserSession";
 import BrowserSurface, { SessionLine } from "./BrowserSurface";
-import { DueReminder, OverviewReminders, ReminderCard, RemindersView, type ReminderActions } from "./RemindersUi";
+import { DueReminder, ReminderCard, RemindersView, type ReminderActions } from "./RemindersUi";
+import { OverviewV2 } from "./OverviewV2";
 import { TasksBoard, type BoardApi, type BoardPayload } from "../tasks/TasksBoard";
 import { withoutEmDashes } from "../../../shared/copilot/guestTranslate";
-import { overviewReminderLine, sidebarCount, type Reminder, type ReminderCardDraft } from "../../../shared/copilot/reminderView";
+import { sidebarCount, type Reminder, type ReminderCardDraft } from "../../../shared/copilot/reminderView";
 
 function pageTitle(url: string): string {
   try {
@@ -259,137 +259,6 @@ function when(iso: string) {
   return date.toLocaleDateString("en-US", { weekday: "short", timeZone: "America/Toronto" });
 }
 
-function OverviewHome({
-  reminders,
-  remNow,
-  reminderActions,
-  onOpenReminders,
-  brief,
-  busy,
-  comingOpen,
-  hidden,
-  onToggleComing,
-  onPress,
-  onDismiss,
-  error,
-}: {
-  reminders: Reminder[];
-  remNow: Date;
-  reminderActions: ReminderActions;
-  onOpenReminders: () => void;
-  brief: BriefPayload;
-  busy: boolean;
-  comingOpen: boolean;
-  hidden: string[];
-  onToggleComing: () => void;
-  onPress: (row: OverviewRow, label: string) => void;
-  onDismiss: (id: string) => void;
-  error: string | null;
-}) {
-  const overview = brief.overview ?? rankOverview(
-    [...brief.focus, ...brief.eating].filter((card) => !hidden.includes(card.id)).map((card) => inputFromCard(card)),
-  );
-  const today = overview.today.filter((row) => !hidden.includes(row.id));
-  const coming = overview.coming.filter((row) => !hidden.includes(row.id));
-  const ranked = today.filter((row) => !row.failed);
-  const failed = today.filter((row) => row.failed);
-  const checks = overview.checked.length
-    ? overview.checked
-    : [{ what: "Last pass", result: "Nothing was waiting.", src: "Saved brief" }];
-  return (
-    <div className="cp-ov">
-      {error ? <p className="cp-err">{withoutFilesystemDetail(error, true)}</p> : null}
-      <header className="cp-ov-head">
-        <div className="cp-ov-date">
-          <h1>{overview.dateLabel}</h1>
-          <span>{overview.checkedAt}</span>
-        </div>
-        <p>{[overview.summary, overviewReminderLine(reminders, remNow)].filter(Boolean).join(" ")}</p>
-      </header>
-      {overview.empty ? (
-        <section className="cp-ov-sec">
-          <div className="cp-ov-label"><span>What Copilot checked</span><span>This morning</span></div>
-          {checks.map((row) => (
-            <div key={row.what} className="cp-ov-check">
-              <span>{row.what}</span>
-              <span>{row.result}</span>
-              <span>{row.src}</span>
-            </div>
-          ))}
-        </section>
-      ) : (
-        <section className="cp-ov-sec">
-          <div className="cp-ov-label"><span>Needs you today</span><span>Most important first</span></div>
-          {ranked.map((row) => (
-            <div key={row.id} className="cp-ov-row">
-              <span className="cp-ov-rank">{row.rank}</span>
-              <div className="cp-ov-copy">
-                <div className="cp-ov-kind"><span>{kindLabel(row.kind)}</span><span>·</span><span>{row.property}</span></div>
-                <span className="cp-ov-title">{row.title}</span>
-                <span className="cp-ov-why">{row.why}</span>
-              </div>
-              <div className="cp-ov-side">
-                <span className={row.soon ? "cp-ov-soon" : "cp-ov-when"}>{row.soon ? <i /> : null}{row.when}</span>
-                <div className="cp-ov-actions">
-                  {(row.actions?.length ? row.actions : [row.action]).map((label) => (
-                    <button key={label} type="button" disabled={busy} onClick={() => onPress(row, label)}>{label}</button>
-                  ))}
-                </div>
-                <button type="button" className="cp-ov-aside" disabled={busy} onClick={() => onDismiss(row.id)}>Not important</button>
-              </div>
-            </div>
-          ))}
-          {ranked.length === 0 ? <p className="cp-ov-clear">Everything for today is handled. It’s listed under Done below.</p> : null}
-          {failed.map((row) => (
-            <div key={row.id} className="cp-ov-fail">
-              <span />
-              <span>{row.why}</span>
-              <button type="button" disabled={busy} onClick={() => onPress(row, row.action)}>{row.action}</button>
-            </div>
-          ))}
-        </section>
-      )}
-      <OverviewReminders reminders={reminders} now={remNow} actions={reminderActions} onOpenAll={onOpenReminders} />
-      <section className="cp-ov-sec">
-        <button type="button" className="cp-ov-fold" onClick={onToggleComing}>
-          <span>Coming up <span>· {coming.length}</span></span>
-          <span>{comingOpen ? "Hide" : "Show"}</span>
-        </button>
-        {comingOpen ? coming.map((row) => (
-          <div key={row.id} className="cp-ov-soonrow">
-            <span>{row.when}</span>
-            <div>
-              <span className="cp-ov-title">{row.title}</span>
-              <span className="cp-ov-why">{kindLabel(row.kind)} · {row.why}</span>
-            </div>
-            <button type="button" disabled={busy} onClick={() => onPress(row, row.action)}>{row.action}</button>
-          </div>
-        )) : <p className="cp-ov-peek">{overview.comingPeek}</p>}
-      </section>
-      <section className="cp-ov-sec">
-        <div className="cp-ov-label"><span className="cp-ov-donehead">Done today <span>· {overview.done.length}</span></span><span>By Copilot and partners, since midnight</span></div>
-        {overview.done.length ? overview.done.map((row) => (
-          <div key={row.id} className="cp-ov-done">
-            <span>{row.at}</span>
-            <span>{row.who}</span>
-            <span>{row.text}</span>
-          </div>
-        )) : <p className="cp-ov-peek">Nothing has been handled yet today.</p>}
-      </section>
-    </div>
-  );
-}
-
-function kindLabel(kind: OverviewRow["kind"]): string {
-  if (kind === "registration") return "Registration";
-  if (kind === "guest") return "Guest";
-  if (kind === "cleaner") return "Cleaner";
-  if (kind === "expiring") return "Expiring";
-  if (kind === "stock") return "Low stock";
-  if (kind === "draft") return "Draft";
-  if (kind === "failed") return "Failed read";
-  return "Item";
-}
 
 function ThemeIcon({ theme }: { theme: "dark" | "light" }) {
   if (theme === "dark") {
@@ -909,8 +778,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [copied, setCopied] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<PendingFile[]>([]);
-  const [hidden, setHidden] = useState<string[]>([]);
-  const [comingOpen, setComingOpen] = useState(false);
+  const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
+  const [railEl, setRailEl] = useState<HTMLElement | null>(null);
   const [trail, setTrail] = useState<Record<string, boolean>>({});
   const [report, setReport] = useState(false);
   const [reportDock, setReportDock] = useState<ReportView | { status: "loading"; id: string } | null>(null);
@@ -1357,53 +1226,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
     await api("seen", { chatId: id }).catch(() => undefined);
     await load();
-  }
-
-  async function openCard(cardText: string, action: string) {
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    setPending(cardText);
-    setLiveSteps([{ text: action === "Reply" ? "Reading the email" : "Opening that" }]);
-    setLiveThought(undefined);
-    setThinking(false);
-    setRunOpen(false);
-    setStopped(false);
-    setBusy(true);
-    setError(null);
-    setSheet(false);
-    setScreen("chat");
-    let activeId = "";
-    let handed = false;
-    try {
-      const data = await api<{ chat: CopilotChat; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[] }>("card", {
-        text: cardText,
-        action,
-      }, ctrl.signal);
-      if (ctrl.signal.aborted) return;
-      activeId = data.chat.id;
-      setChatId(data.chat.id);
-      setMessages(data.messages);
-      if (data.chats) setBoot((prev) => (prev ? { ...prev, chats: data.chats ?? prev.chats } : prev));
-      setPending(null);
-      setScreen("chat");
-      if (data.pending) {
-        handed = true;
-        setThinking(true);
-        rememberRun(data.chat.id);
-      }
-      await api("seen", { chatId: data.chat.id }).catch(() => undefined);
-      await load();
-    } catch (e) {
-      if (ctrl.signal.aborted) {
-        setStopped(true);
-        if (activeId) void api("cancel-think", { chatId: activeId }).catch(() => undefined);
-      } else setError(e instanceof Error ? e.message : "Could not open the draft.");
-    } finally {
-      if (abortRef.current === ctrl) abortRef.current = null;
-      setPending(null);
-      if (!handed) setThinking(false);
-      setBusy(false);
-    }
   }
 
   async function send(preset?: string, keepChat = false) {
@@ -1877,72 +1699,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
-  async function dismissCard(id: string) {
-    setHidden((ids) => (ids.includes(id) ? ids : [...ids, id]));
-    try {
-      const data = await api<{ brief: BriefPayload }>("dismiss", { cardId: id });
-      setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev));
-    } catch (e) {
-      setHidden((ids) => ids.filter((item) => item !== id));
-      setError(e instanceof Error ? e.message : "Could not remove that card.");
-    }
-  }
-
-  async function closeFollowUpCard(item: BriefCard) {
-    setBusy(true);
-    setError(null);
-    try {
-      const data = await api<{ brief: BriefPayload }>("followup-handled", { followUpId: item.followUpId, cardId: item.id });
-      setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not close that follow-up.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function pickOpenItem(item: BriefCard, choice: string) {
-    setBusy(true);
-    setError(null);
-    try {
-      const data = await api<{ brief: BriefPayload }>("open-item", { cardId: item.id, choice });
-      setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update that item.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function pressRow(row: OverviewRow, label: string) {
-    const card = [...(boot?.brief.focus ?? []), ...(boot?.brief.eating ?? [])].find((item) => item.id === row.id);
-    void api<{ brief: BriefPayload }>("rank-pass", { cardId: row.id })
-      .then((data) => setBoot((prev) => (prev ? { ...prev, brief: data.brief } : prev)))
-      .catch(() => undefined);
-    if (!card) return;
-    if (card.followUpId && label === "Already handled") {
-      void closeFollowUpCard(card);
-      return;
-    }
-    if (card.followUpId && card.chatId) {
-      void openChat(card.chatId, card.messageId);
-      return;
-    }
-    if (card.actions?.includes(label)) {
-      void pickOpenItem(card, label);
-      return;
-    }
-    if (row.trackingUrl && /track/i.test(label)) {
-      window.open(row.trackingUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
-    if (card.chatId) {
-      void openChat(card.chatId, card.messageId);
-      return;
-    }
-    void openCard(card.text, label);
-  }
-
   // The inbox is checked all the time Copilot is open (so the sidebar count is live on every screen):
   // the next check starts a few seconds after the last one answers, never stacking checks on Hospitable.
   // A hidden tab checks every half minute.
@@ -2236,7 +1992,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       ) : (
       <div className={`cp-body${stage && !inSettings && screen !== "reviews" && screen !== "guests" && screen !== "reminders" && screen !== "tasks" ? " work" : ""}`}>
         <aside className="cp-side">{sideList()}</aside>
-        <main className={`cp-main${reportDock && screen === "chat" ? " rv-open" : ""}`}>
+        <main ref={setMainEl} className={`cp-main${reportDock && screen === "chat" ? " rv-open" : ""}`}>
           <div className="cp-chatpane">
           <header className="cp-mobilebar">
             <Mark size={22} />
@@ -2805,19 +2561,49 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   </div>
                 ) : null}
                 {screen === "brief" && boot ? (
-                  <OverviewHome
-                    reminders={reminders ?? []}
-                    remNow={remNow}
-                    reminderActions={reminderActions}
-                    onOpenReminders={showReminders}
+                  <OverviewV2
                     brief={boot.brief}
-                    busy={busy}
-                    comingOpen={comingOpen}
-                    onToggleComing={() => setComingOpen((open) => !open)}
-                    hidden={hidden}
-                    onPress={pressRow}
-                    onDismiss={(id) => void dismissCard(id)}
+                    guestQueue={guestQueue}
+                    reminders={reminders ?? []}
+                    now={remNow}
+                    skills={boot.skills}
+                    connectors={boot.connectors}
+                    hospitable={boot.hospitable}
+                    chats={boot.chats}
+                    runningChatIds={[...new Set([...(boot.runningChatIds ?? []), ...liveRuns])]}
+                    viewer={viewer}
                     error={error}
+                    railEl={railEl}
+                    mainEl={mainEl}
+                    api={api}
+                    onAsk={(text) => void send(text)}
+                    onOpenChat={(id) => void openChat(id)}
+                    onOpenThread={(row) => {
+                      setScreen("guests");
+                      setSheet(false);
+                      setGuestAnswer(placeholderView(row));
+                      void readGuestView(row).then((view) => {
+                        if (view) setGuestAnswer((current) => (current && current.id === row.id ? mergeGuestView(current, view) : current));
+                      });
+                    }}
+                    onReconnect={(id) => {
+                      setConnectorId(id);
+                      setScreen("connectors");
+                      setSheet(false);
+                      if (id === "hospitable") {
+                        setHospitableBusy(true);
+                        void api<{ hospitable: HospitableCard; connectors: ConnectorRow[] }>("hospitable-connection", { action: "open" })
+                          .then((data) => setBoot((prev) => (prev ? { ...prev, hospitable: data.hospitable, connectors: data.connectors } : prev)))
+                          .catch((err) => setHospitableError(err instanceof Error ? err.message : "Hospitable is not connected."))
+                          .finally(() => setHospitableBusy(false));
+                      }
+                    }}
+                    onGuestQueue={(queue) => {
+                      setGuestQueue(queue);
+                      setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+                    }}
+                    onReminders={(rows) => takeReminders({ reminders: rows })}
+                    onSkills={(nextSkills, nextConnectors) => setBoot((prev) => (prev ? { ...prev, skills: nextSkills, connectors: nextConnectors } : prev))}
                   />
                 ) : null}
                 {screen === "empty" ? (
@@ -3210,6 +2996,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
             </>
           </div>
           {reportDock && screen === "chat" ? <ReportViewer view={reportDock} onClose={() => setReportDock(null)} /> : null}
+          {screen === "brief" && boot ? <div className="cp-ov2-railhost" ref={setRailEl} /> : null}
         </main>
         {stage && !inSettings && screen !== "reviews" && screen !== "guests" ? (
           <aside className={`cp-stage${stage.control ? " control" : ""}`}>

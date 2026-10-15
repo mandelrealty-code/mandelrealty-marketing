@@ -1434,6 +1434,31 @@ async function writePrefixed(prefix: string, body: string): Promise<void> {
   writeFileStore(data);
 }
 
+/** Stored rows under a prefix, with the row id and the time the row was written. Read only. */
+export async function listPrefixedStamps(prefix: string): Promise<{ id: string; createdAt: string; body: string }[]> {
+  const client = sb();
+  if (!useFile && client) {
+    const { data, error } = await client.from("copilot_memory").select("id, created_at, note").like("note", `${prefix}%`).limit(200);
+    if (!error) {
+      return (data ?? []).flatMap((row) => {
+        const note = String((row as { note?: string }).note ?? "");
+        if (!note.startsWith(prefix)) return [];
+        return [{
+          id: String((row as { id?: string }).id ?? ""),
+          createdAt: String((row as { created_at?: string }).created_at ?? ""),
+          body: note.slice(prefix.length),
+        }];
+      });
+    }
+    if (!useLocalFile(error)) throw new Error(error.message);
+  }
+  return readFileStore().memory.filter((row) => row.note.startsWith(prefix)).map((row) => ({
+    id: row.id,
+    createdAt: row.created_at,
+    body: row.note.slice(prefix.length),
+  }));
+}
+
 /** Every stored row under a prefix, as its body after the prefix. Reminders keep one row each. */
 export async function listPrefixedRows(prefix: string): Promise<string[]> {
   const client = sb();

@@ -30,7 +30,8 @@ import { closeHandledAnswer, proveOutgoingMail } from "../copilot/partnerStandar
 import { parityNow } from "../copilot/parity/clock.js";
 import { applyCorrections, takeCorrection } from "../copilot/corrections.js";
 import { refuseCatalogPurchase } from "../copilot/catalogPurchase.js";
-import { answerDayPlan, answerWeekCleans } from "../copilot/dayBoard.js";
+import { answerDayPlan, answerWeekCleans, loadDayBoard } from "../copilot/dayBoard.js";
+import { loadOverviewActivity } from "../copilot/overviewActivity.js";
 import { answerOutstanding } from "../copilot/outstandingAnswer.js";
 import { answerStayDetail, openDaySheet, type StayCard } from "../copilot/stayAnswer.js";
 import type { PropertyIdentity } from "../copilot/propertyIdentity.js";
@@ -431,6 +432,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const run = await startSkillRun(id, "manual");
       const skills = await skillRows();
       return res.status(200).json({ run, skills, connectors: await connectors(skills), chats: await listChats() });
+    }
+
+    if (op === "overview-day") {
+      const loaded = await loadDayBoard(parityNow() ?? new Date());
+      if (!loaded.ok) return res.status(200).json({ ok: false, error: loaded.error });
+      return res.status(200).json({ ok: true, board: loaded.board });
+    }
+
+    if (op === "overview-activity") {
+      return res.status(200).json({ entries: await loadOverviewActivity() });
     }
 
     if (op === "tasks-board" || op === "tasks-action") {
