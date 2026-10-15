@@ -427,6 +427,7 @@ const don = q.reviews.find((row) => row.id === "don");
 if (don?.reservationId !== "res-don-old") fail(`review not matched to its stay: ${don?.reservationId}`);
 if (don.when !== "Stay ended May 4") fail(`a months-old review with no link said ${don.when}`);
 if (posts.length) fail(`loading reviews posted ${posts.length} replies`);
+if (!prompts.some((text) => text.includes("Openings already used"))) fail("later reviews were not told which openings were already used");
 setReviewModel(null);
 
 // "Thank you Kahina for…": no commas around the name after the thanks.

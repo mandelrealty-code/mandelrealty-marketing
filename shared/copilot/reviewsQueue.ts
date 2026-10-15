@@ -7,7 +7,7 @@ import { listHospitableReviews, respondToHospitableReview } from "../pm/hospitab
 import { scopedStayProperties } from "./dayBoard.js";
 import { loadConversations, type Conversation } from "./stayCheck.js";
 import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
-import { flagLine, thanksByName, keepReviewAi, keptReviewAi, reviewAiAvailable, reviewIsFlagged, writeReviewAi, type ReviewAiResult, type ReviewAssessment } from "./reviewAi.js";
+import { flagLine, openingOf, thanksByName, keepReviewAi, keptReviewAi, reviewAiAvailable, reviewIsFlagged, writeReviewAi, type ReviewAiResult, type ReviewAssessment } from "./reviewAi.js";
 import { guestPhotoUrl } from "./guestInquiries.js";
 import { hubPlain } from "./knowledgeHub.js";
 import { addDays, torontoToday } from "./time.js";
@@ -195,7 +195,7 @@ export async function regenerateFromConnection(input: {
   }
   // Regenerate with AI writes afresh from the whole stay; the kept version is replaced.
   if (input.stars && reviewAiAvailable()) {
-    const ai = await writeReviewAi({ guest: input.guest, stars: input.stars, review: input.review, privateFeedback: input.privateFeedback ?? "", property: input.property ?? "", messages: stay.messages, reservation: stay.reservation, hub: stay.hub });
+    const ai = await writeReviewAi({ guest: input.guest, stars: input.stars, review: input.review, privateFeedback: input.privateFeedback ?? "", property: input.property ?? "", messages: stay.messages, reservation: stay.reservation, hub: stay.hub, avoidOpenings: input.current ? [openingOf(input.current)] : [] });
     if (ai) {
       if (input.id) await keepReviewAi(input.id, { review: input.review, stars: input.stars, reservationId: input.reservationId }, ai);
       return { ...fromAi(ai, input.stars), previous: input.current, sourceLine: aiSourceLine(stay), unchanged: false };
@@ -409,10 +409,14 @@ async function writeDrafts(rows: ReviewQueueRow[], now: Date): Promise<void> {
   const started = Date.now();
   const apply = (row: ReviewQueueRow, ai: ReviewAiResult) => Object.assign(row, fromAi(ai, row.stars), { needsCare: row.flagged || row.needsCare });
   const pending: ReviewQueueRow[] = [];
+  // Openings already used on this page, so each new reply starts differently.
+  const openings: string[] = [];
   for (const row of rows) {
     const kept = await keptReviewAi(row.id, { review: row.review, stars: row.stars, reservationId: row.reservationId });
-    if (kept) apply(row, kept);
-    else pending.push(row);
+    if (kept) {
+      apply(row, kept);
+      openings.push(openingOf(row.draft));
+    } else pending.push(row);
   }
   if (!reviewAiAvailable()) return;
   // Newest first, flagged first: the ones the team will read first are written first.
@@ -422,8 +426,9 @@ async function writeDrafts(rows: ReviewQueueRow[], now: Date): Promise<void> {
       if (Date.now() - started > WRITE_BUDGET_MS) return;
       try {
         const stay = await readStay(row.reservationId, row.propertyId);
-        const ai = await writeReviewAi({ guest: row.guest, stars: row.stars, review: row.review, privateFeedback: row.privateFeedback ?? "", property: row.property, messages: stay.messages, reservation: stay.reservation, hub: stay.hub });
+        const ai = await writeReviewAi({ guest: row.guest, stars: row.stars, review: row.review, privateFeedback: row.privateFeedback ?? "", property: row.property, messages: stay.messages, reservation: stay.reservation, hub: stay.hub, avoidOpenings: [...openings] });
         if (!ai) continue;
+        openings.push(openingOf(ai.kind === "reply" ? ai.reply : ai.assessment.reply));
         await keepReviewAi(row.id, { review: row.review, stars: row.stars, reservationId: row.reservationId }, ai);
         apply(row, ai);
         row.sourceLine = aiSourceLine(stay);

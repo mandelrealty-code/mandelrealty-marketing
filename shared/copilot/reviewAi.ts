@@ -23,6 +23,8 @@ export type ReviewAiInput = {
   messages: { role: "guest" | "host" | "system"; body: string }[];
   reservation: string;
   hub: string;
+  /** The first words of replies already drafted, so this one opens differently. */
+  avoidOpenings?: string[];
 };
 
 export type ReviewAssessment = {
@@ -44,6 +46,11 @@ export type ReviewAiResult = { kind: "reply"; reply: string } | { kind: "flag"; 
  * "Thank you, Kahina, for the review" reads "Thank you Kahina for the review": no commas around the
  * guest's name after the thanks. Names joined by "and" or "&" are kept together.
  */
+/** The first few words of a reply, to keep later replies from opening the same way. */
+export function openingOf(text: string): string {
+  return text.trim().split(/\s+/).slice(0, 5).join(" ");
+}
+
 export function thanksByName(text: string): string {
   return text.replace(
     /^(\s*(?:Thank you(?: so much)?|Thanks(?: so much)?|Merci(?: beaucoup)?)),\s+((?:\p{Lu}[\p{L}'\u2019-]*)(?:\s+(?:and|&|et)\s+\p{Lu}[\p{L}'\u2019-]*)?)(,\s*|(?=[.!?\s]))/u,
@@ -86,7 +93,7 @@ const live: Model = async (system, user, maxTokens) => {
 
 const REPLY_SYSTEM = [
   "You write a short-term-rental host's public reply to an Airbnb guest review, for the host (Mandel Realty Group) to edit before posting.",
-  "Open with \"Thank you\" followed directly by the guest's first name, with no commas around the name (\"Thank you Kahina for...\"). Mention one or two specific things they wrote about, in your own words; never copy their sentences.",
+  "Vary the opening so replies don't all sound the same: e.g. \"Thanks for the kind words, Kahina!\", \"Kahina, we're so glad...\", \"What a lovely review, Kahina.\", \"So happy the check-in was easy, Kahina!\". Use the guest's first name once. If you open with thanks and the name, write \"Thank you Kahina for...\" with no commas around the name. Never start the same way as any opening listed under \"Openings already used\". Mention one or two specific things they wrote about, in your own words; never copy their sentences.",
   "If the review mentions a small issue, acknowledge it briefly and say what was done, but only if the conversation or the host notes show it was done; never invent fixes, refunds, upgrades or promises.",
   "Never mention private feedback, money, refunds, or anything from the private messages that the guest would not want public.",
   "Two to four sentences. Warm, plain, professional. Invite them back. No sign-off name, no hashtags, no exclamation overload.",
@@ -121,6 +128,7 @@ function promptOf(input: ReviewAiInput): string {
     input.reservation ? `Reservation:\n${input.reservation.slice(0, 1500)}` : "",
     input.hub ? `Host notes (Knowledge Hub):\n${input.hub.slice(0, 4000)}` : "",
     `Conversation, oldest first:\n${thread || "(no messages found)"}`,
+    input.avoidOpenings?.length ? `Openings already used (start differently):\n${input.avoidOpenings.slice(-12).map((line) => `- ${line}`).join("\n")}` : "",
   ].filter(Boolean).join("\n\n");
 }
 
@@ -195,7 +203,7 @@ type KeptKey = Pick<ReviewAiInput, "review" | "stars"> & { reservationId?: strin
 
 /** Written against one stay: a review matched to its stay later is written again, with the conversation. */
 function keyOf(id: string, input: KeptKey): string {
-  return `${STORE}${id}|${createHash("sha1").update(`v2|${input.stars}|${input.review}|${input.reservationId ?? ""}`).digest("base64url").slice(0, 10)}`;
+  return `${STORE}${id}|${createHash("sha1").update(`v3|${input.stars}|${input.review}|${input.reservationId ?? ""}`).digest("base64url").slice(0, 10)}`;
 }
 
 export async function keptReviewAi(id: string, input: KeptKey): Promise<ReviewAiResult | null> {
