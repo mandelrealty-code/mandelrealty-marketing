@@ -386,6 +386,20 @@ if (!/client's email address on file in OPS/.test(proposalAnswer.body) || !/Subj
   if (capturedCommits().length) fail("a sent question sent something");
 }
 
+// An availability follow-up naming units narrows the same check; booked nights are never "empty every night".
+{
+  const world = worldAt("2026-10-15T12:00:00-04:00");
+  world.reservations.push(stay("00000000-0000-4000-8000-0000000a5601", ID.shaw, "Amir", "2026-10-20", "2026-10-25"));
+  world.reservations.push(stay("00000000-0000-4000-8000-0000000a5602", ID.blue, "Husson", "2026-10-15", "2026-10-19"));
+  world.reservations.push(stay("00000000-0000-4000-8000-0000000a5603", ID.rose, "Alyssa", "2026-10-22", "2026-11-02"));
+  installWorld(world);
+  const first = await send("biz-avail", "when are all units available to go in next?");
+  if (!/all four units are empty on the nights of/.test(first.body)) fail(`all units: ${first.body}`);
+  const narrowed = await send("biz-avail", "what about only 1065 shaw, blue jays way, andd roseglor");
+  // Shaw is booked Oct 20–24, Blue Jays Oct 15–18, Roseglor Oct 22–Nov 1: the three are empty together only on Oct 19 and from Nov 2.
+  if (!/^From Thu, Oct 15 to Sun, Dec 13, 41 Roseglor Cres, 20 Blue Jays Way and 1065 Shaw Street are all empty on the nights of Oct 19, Nov 2–Dec 13\./.test(narrowed.body) || /every night/i.test(narrowed.body)) fail(`follow-up: ${narrowed.body}`);
+}
+
 // Every mail time is Toronto time, whatever zone the timestamp came in.
 if (torontoWhen("2026-10-14T01:58:00Z") !== "Tuesday, October 13, 2026 at 9:58 PM" || torontoWhen("Tue, 13 Oct 2026 18:58:00 -0700") !== "Tuesday, October 13, 2026 at 9:58 PM") fail(`Toronto time ${torontoWhen("2026-10-14T01:58:00Z")}`);
 

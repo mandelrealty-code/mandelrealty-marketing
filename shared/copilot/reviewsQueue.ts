@@ -223,7 +223,8 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
     if (!propertyId) continue;
     let rows: Awaited<ReturnType<typeof listHospitableReviews>> = [];
     try {
-      rows = await listHospitableReviews({ pat: token, propertyId, responded: false, maxPages: 2 });
+      // Every page: two pages cut a property's newest reviews off when Hospitable lists oldest first.
+      rows = await listHospitableReviews({ pat: token, propertyId, responded: false, maxPages: 30 });
     } catch (err) {
       if (err instanceof Error && err.message === HOSPITABLE_NOT_CONNECTED) {
         return { connected: false, line: "Hospitable is not connected.", reviews: [], postedToday: [...posted.values()] };

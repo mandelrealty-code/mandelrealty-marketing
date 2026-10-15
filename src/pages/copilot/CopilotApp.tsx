@@ -191,6 +191,11 @@ function isGuestQueue(value: GuestQueue | null | undefined): value is GuestQueue
   return Boolean(value && Array.isArray(value.waiting) && Array.isArray(value.thanks) && typeof value.connected === "boolean");
 }
 
+/** Checks and Reminders have their own tabs; their system chats stay out of the chat list. */
+function listedChat(chat: CopilotChat): boolean {
+  return chat.title !== "Checks" && chat.title !== "Reminders";
+}
+
 async function api<T>(op: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
   const res = await fetch(body ? "/api/admin/copilot" : `/api/admin/copilot?op=${op}`, {
     method: body ? "POST" : "GET",
@@ -1065,7 +1070,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           if (!alive) return;
           takeReminders(data);
           if (data.posted && data.chatId) {
-            if (openIt) void openChat(data.chatId);
+            // Due reminders open the Reminders tab; the system chat behind it isn't listed.
+            if (openIt) showReminders();
             else void load().catch(() => undefined);
           }
         })
@@ -2048,7 +2054,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         {sidebarMark(browserSession) ? <span className={`cp-br-nav${browserSession?.status === "stuck" ? " needs" : ""}`}>{sidebarMark(browserSession)}</span> : null}
       </button>
       <div className="cp-chats">
-        {(boot?.chats ?? []).map((chat) => {
+        {(boot?.chats ?? []).filter(listedChat).map((chat) => {
           const active = chat.id === chatId && screen === "chat";
           const menuOpen = menuFor === chat.id;
           const working = liveRuns.includes(chat.id) || skills.some((skill) => skill.chat_id === chat.id && skill.lastRun?.status === "running");
@@ -2202,11 +2208,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
             </header>
           ) : (
             <header className="cp-mhead">
-              <button type="button" className="cp-icon44" aria-label={(boot?.chats ?? []).some((chat) => chat.unread) ? "Chats, needs you" : "Chats"} onClick={() => setSheet(true)}>
+              <button type="button" className="cp-icon44" aria-label={(boot?.chats ?? []).filter(listedChat).some((chat) => chat.unread) ? "Chats, needs you" : "Chats"} onClick={() => setSheet(true)}>
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
                   <path d="M3 6h14M3 10h14M3 14h9" />
                 </svg>
-                {(boot?.chats ?? []).some((chat) => chat.unread) ? <span className="cp-navdot" /> : null}
+                {(boot?.chats ?? []).filter(listedChat).some((chat) => chat.unread) ? <span className="cp-navdot" /> : null}
               </button>
               <div className="cp-mtitle">
                 {screen === "brief" ? null : <span>{title}</span>}

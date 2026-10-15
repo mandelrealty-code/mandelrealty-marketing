@@ -91,7 +91,7 @@ export function ReportViewer({
   const pages = open?.pages || sheets.length || 1;
 
   return (
-    <aside className="cp-rv" role="complementary" aria-label={title}>
+    <aside className="cp-rv cp-rv-dock" role="complementary" aria-label={title}>
       <div className="cp-rv-bar">
         <button type="button" className="cp-rv-back" aria-label="Back to chat" title="Back to chat" onClick={onClose}>
           <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">

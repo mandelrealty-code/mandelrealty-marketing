@@ -120,7 +120,21 @@ function listNames(names: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-export async function answerAvailability(question: string, now = new Date()): Promise<string | null> {
+/** Names at least one of the units: "what about only 1065 shaw, blue jays way, and roseglor". */
+export function namesUnits(text: string): boolean {
+  return /\b(charlotte|606|roseglor|scarborough|blue jays|318|shaw|1065)\b/i.test(text);
+}
+
+/**
+ * A follow-up to an availability question that names units ("what about only Shaw, Blue Jays and
+ * Roseglor?") asks the same question of just those units; answered by the same reservation read.
+ */
+export async function answerAvailabilityFollowUp(text: string, previousQuestion: string, now = new Date()): Promise<string | null> {
+  if (asksAvailability(text) || !previousQuestion || !asksAvailability(previousQuestion) || !namesUnits(text) || text.length > 200) return null;
+  return answerAvailability(previousQuestion, now, { only: text });
+}
+
+export async function answerAvailability(question: string, now = new Date(), opts: { only?: string } = {}): Promise<string | null> {
   if (!asksAvailability(question)) return null;
   const today = torontoToday(now);
   const asked = askedWindow(question, today);
@@ -139,12 +153,16 @@ export async function answerAvailability(question: string, now = new Date()): Pr
   if (!properties.length) return "No properties are selected in the Hospitable connection, so there are no nights to check.";
 
   const text = question.toLowerCase();
+  const naming = (opts.only ?? question).toLowerCase();
   const named = properties.filter((row) => {
-    const label = spokenProperty(row.name, row.address).toLowerCase();
-    return label.split(/\s+/).some((word) => word.length >= 4 && !/^(street|way|cres)$/.test(word) && text.includes(word));
+    const label = `${spokenProperty(row.name, row.address)} ${row.address}`.toLowerCase();
+    return label.split(/[\s,]+/).some((word) => word.length >= 3 && !/^(street|way|cres|crescent|unit|the|and|toronto|road|ave)$/.test(word) && new RegExp(`\\b${word.replace(/[^a-z0-9]/g, "")}\\b`).test(naming));
   });
-  const all = wantsAll(question) || !named.length;
+  // A follow-up naming units narrows the same question to them: "all four" becomes "all three of these".
+  if (opts.only && !named.length) return null;
+  const all = (wantsAll(question) && !opts.only) || !named.length;
   const scope = all ? properties : named;
+  const together = wantsAll(question) && (all || Boolean(opts.only));
 
   const booked = new Map<string, OccupyingStay[]>();
   const failed: string[] = [];
@@ -165,18 +183,19 @@ export async function answerAvailability(question: string, now = new Date()): Pr
   const lines: string[] = [];
   if (startsToday) lines.push(startsToday);
 
-  if (all && wantsAll(question)) {
+  if (together) {
     if (failed.length) {
       lines.push(`I couldn't read ${listNames(failed)}, so I can't say which nights all ${scope.length} units are empty.`);
       return lines.join("\n");
     }
     const empty = nights.filter((day) => scope.every((row) => !busy(booked.get(row.id) ?? [], day)));
-    const who = scope.length === 4 ? "all four units" : `all ${scope.length} units`;
+    const who = opts.only ? listNames(scope.map((row) => spokenProperty(row.name, row.address))) : scope.length === 4 ? "all four units" : `all ${scope.length} units`;
+    const allOf = opts.only ? "all " : "";
     lines.push(empty.length
       ? byDay
-        ? `From ${window}, ${who} have no guest at all on ${nightRanges(empty)}.`
-        : `From ${window}, ${who} are empty on the nights of ${nightRanges(empty)}.`
-      : `From ${window}, there is no ${byDay ? "day" : "night"} when ${who} are empty.`);
+        ? `From ${window}, ${who} ${opts.only ? "all " : ""}have no guest at all on ${nightRanges(empty)}.`
+        : `From ${window}, ${who} are ${allOf}empty on the nights of ${nightRanges(empty)}.`
+      : `From ${window}, there is no ${byDay ? "day" : "night"} when ${who} are ${allOf}empty.`);
     lines.push(byDay
       ? `Checked ${listNames(scope.map((row) => spokenProperty(row.name, row.address)))}. A unit counts as booked from a guest's arrival day through their departure day.`
       : `Checked ${listNames(scope.map((row) => spokenProperty(row.name, row.address)))}, counting each stay from its arrival night up to its departure day.`);

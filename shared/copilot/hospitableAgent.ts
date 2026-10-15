@@ -378,9 +378,14 @@ async function patTools(): Promise<ToolDef[]> {
       },
       run: async (args) => {
         const properties = await limitToSavedSelection(await listAllHospitableProperties(pat));
-        const ids = text(args.property_id)
-          ? properties.filter((row) => row.id === text(args.property_id)).map((row) => row.id)
+        const asked = text(args.property_id).toLowerCase();
+        // An id, or a name or address word ("roseglor", "shaw"); a property that matches nothing is an error, never "no stays".
+        const ids = asked
+          ? properties.filter((row) => row.id.toLowerCase() === asked || `${row.name} ${(row as { address?: string }).address ?? ""}`.toLowerCase().includes(asked)).map((row) => row.id)
           : properties.map((row) => row.id);
+        if (asked && !ids.length) {
+          return { error: `No selected property matches "${text(args.property_id)}". Use one of these ids: ${properties.map((row) => `${row.id} (${row.name})`).join("; ")}. An empty result is not the same as empty nights.` };
+        }
         const today = torontoToday();
         const start = text(args.start_date).slice(0, 10) || addDays(today, -21);
         const end = text(args.end_date).slice(0, 10) || addDays(today, 45);
@@ -504,6 +509,7 @@ export function instructions(mcp: boolean, hasHospitable: boolean, facts: string
     "Reminders are Copilot's own records, kept in Copilot. Never say a reminder was set in a phone, calendar or another app, or that you can't change one.",
     "Every time you write is Toronto time. For mail, use the `when` field exactly as given; never convert a date or Date header yourself. Hospitable times are UTC: say them in Toronto time.",
     "A question about whether, when, or to whom an email was sent is answered from Sent mail: lead with sent or not sent, then when, from which account, to whom, and what it said. A reservation only tells you which stay is meant; it is never the answer.",
+    "Never say a unit is empty, open or available because a reservations read came back empty: that can mean a wrong property id or a failed read. Say what you read and that availability needs the calendar check.",
     "You can read Sent yourself. Never ask them to show, paste or forward an email; search Sent and read it.",
     "A recurring email (a building registration, a turnover note) copies the most recent sent one of that type: same subject construction, same lines, blank lines and sign-off, with only the new stay's facts swapped in. Write dates the way that sent email wrote them. Do not add weekday names it didn't have.",
     "Reformatting or respacing a draft never changes a fact. Every fact stays, and every unknown stays the same placeholder, such as [make] or [plate]. Never turn an unknown into a detail, such as a vehicle count the guest hasn't given.",

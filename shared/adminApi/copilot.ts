@@ -36,7 +36,7 @@ import { answerStayDetail, openDaySheet, type StayCard } from "../copilot/stayAn
 import type { PropertyIdentity } from "../copilot/propertyIdentity.js";
 import { pinnedCompanyAnswer } from "../copilot/pinnedAnswer.js";
 import { answerPayout } from "../copilot/payoutAnswer.js";
-import { answerAvailability } from "../copilot/availabilityAnswer.js";
+import { answerAvailability, answerAvailabilityFollowUp } from "../copilot/availabilityAnswer.js";
 import { answerFollowUpTurn } from "../copilot/followUpAnswer.js";
 import { DENIES_WEB, answerWebQuestion, asksOutsideWorld } from "../copilot/webAnswer.js";
 import { saveHubEntry } from "../copilot/hubLearning.js";
@@ -1218,7 +1218,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           });
           return done();
         }
-        const availability = await answerAvailability(text, clock);
+        // "what about only Shaw, Blue Jays and Roseglor?" after an availability question: the same read, narrowed.
+        const lastAsked = [...(await listMessages(chatId)).slice(0, -1)].reverse().find((row) => row.role === "user")?.body ?? "";
+        const availability = (await answerAvailability(text, clock)) ?? (await answerAvailabilityFollowUp(text, lastAsked, clock));
         if (availability) {
           const unread = /couldn't read|didn't guess/.test(availability);
           await addMessage({
