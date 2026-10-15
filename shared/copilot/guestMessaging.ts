@@ -670,7 +670,6 @@ async function touchGuestQueue(base: GuestQueue, now: Date): Promise<GuestQueue>
     if (!id || !activity) continue;
     const lists = [queue.waiting, queue.onGuest, queue.held, queue.thanks, queue.quiet ?? []];
     const current = lists.flat().find((row) => row.id === id);
-    if (current?.activityAt && Date.parse(current.activityAt) >= Date.parse(activity)) continue;
     const messages = await readStayThread(id, now, activity).catch(() => null);
     if (!messages) continue;
     const seeded = current ?? seedGuestRow(reservation, base);
@@ -1148,6 +1147,27 @@ export async function suggestReply(
   });
   if (!draft) throw new Error("The AI didn't answer. Nothing was changed; try again.");
   return draft;
+}
+
+const liveProbed = new Map<string, number>();
+
+/**
+ * The open conversation, re-read only when Hospitable's last message is newer than what is on screen.
+ * Returns null when nothing new arrived, so the page can keep polling without replacing the thread.
+ */
+export async function liveGuestUpdate(row: GuestRow, knownAt: string, now = new Date()): Promise<GuestDraftView | null> {
+  if (!row.id) return null;
+  if (row.inquiry) return openGuestAnswer(row, now, { live: true });
+  const probed = await hospitableRead("get-reservation", { identifier: row.id }).catch(() => null);
+  const record = oneRecord(probed);
+  const stamp = record ? String(record.last_message_at ?? "") : "";
+  const stampMs = Date.parse(stamp);
+  const knownMs = Date.parse(knownAt);
+  if (stamp && Number.isFinite(stampMs) && Number.isFinite(knownMs) && stampMs <= knownMs + 1500) return null;
+  const prev = liveProbed.get(row.id) ?? 0;
+  if ((!stamp || !Number.isFinite(stampMs)) && Date.now() - prev < 15_000) return null;
+  liveProbed.set(row.id, Date.now());
+  return openGuestAnswer(row, now, { live: true });
 }
 
 export async function openGuestAnswer(row: GuestRow, now = new Date(), options: { live?: boolean } = {}): Promise<GuestDraftView> {

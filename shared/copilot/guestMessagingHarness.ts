@@ -52,7 +52,7 @@ import { parityHubItems } from "./parity/world.js";
 import { setParityClock } from "./parity/clock.js";
 import { NO_GUEST_FILTERS, emptyInboxLine, filterInbox, stayPhase, waitedFor } from "./guestFilters.js";
 import { BLANK, closeFollowUpEverywhere } from "./dueFollowUps.js";
-import { runUnattendedChecks } from "./stayCheck.js";
+import { forgetThread, readStayThread, runUnattendedChecks } from "./stayCheck.js";
 import { parityChecksMessages, resetParityChecksMessages } from "./parity/storeStub.js";
 import { resetCaptures } from "./parity/capture.js";
 
@@ -1829,6 +1829,13 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   if (!ryanHosts.some((line) => line.startsWith("Ryan Mandel:"))) fail(`co-host name\n${ryanHosts.join("\n")}`);
   if (!ryanHosts.some((line) => line.startsWith("Shane Mosoff:"))) fail(`listing host name\n${ryanHosts.join("\n")}`);
   if (ryanHosts.filter((line) => line.startsWith("Shane Mosoff:")).length !== 1) fail(`ryan reply labeled as shane\n${ryanHosts.join("\n")}`);
+  // A thread cached before Hospitable's activity time included the new message still picks it up on the next check.
+  const later = new Date("2026-10-15T20:12:00.000Z");
+  forgetThread("stay-ryan");
+  await readStayThread("stay-ryan", later, "2026-10-15T20:11:00.000Z");
+  if (!pushParityMessage("stay-ryan", { id: "eloise-3pm", at: "2026-10-15T20:11:00.000Z", role: "guest", name: "Eloise", body: "3pm works." })) fail("could not add the new message");
+  const caught = await readStayThread("stay-ryan", later, "2026-10-15T20:11:00.000Z");
+  if (!caught.some((row) => row.body === "3pm works.")) fail(`new message stayed cached out\n${caught.map((row) => row.body).join(" | ")}`);
 }
 
 console.log("Guest messaging harness passed.");

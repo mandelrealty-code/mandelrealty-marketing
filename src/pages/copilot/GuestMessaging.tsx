@@ -337,7 +337,15 @@ function Thread({
   const [note, setNote] = useState("");
   const [sent, setSent] = useState("");
   const [tick, setTick] = useState(() => Date.now());
+  const scroll = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const node = scroll.current;
+    if (!node) return;
+    // column-reverse keeps the newest messages at scrollTop 0. Stay there when a message arrives
+    // unless the partner has scrolled up into older ones.
+    if (node.scrollTop < 80) node.scrollTop = 0;
+  }, [answer.id, answer.thread.length]);
   useEffect(() => {
     setText(answer.lane === "reply" ? answer.draft : "");
     setEdited(false);
@@ -377,7 +385,7 @@ function Thread({
         <em>{answer.property}</em>
         <span className="stay">{answer.dates}{nights ? ` · ${nights}` : ""}</span>
       </header>
-      <div className="cp-gt-scroll">
+      <div className="cp-gt-scroll" ref={scroll}>
         <div className="cp-gt-flow">
           {days.map((block) => (
             <div key={block.day} className="cp-gt-day">

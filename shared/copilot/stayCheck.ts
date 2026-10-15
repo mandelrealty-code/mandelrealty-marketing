@@ -161,8 +161,12 @@ function instant(value: string): number {
 }
 
 function rememberThread(id: string, messages: Msg[], watermark = ""): void {
-  const latest = Math.max(instant(watermark), ...messages.map((row) => instant(row.at)));
-  threadMemory.set(id, { at: Date.now(), watermark: latest ? new Date(latest).toISOString() : "", messages });
+  const newest = Math.max(0, ...messages.map((row) => instant(row.at)));
+  const asked = instant(watermark);
+  // Hospitable can move last_message_at before the message list includes that message.
+  // Stamping the cache with the later time would hide the message until a full reload.
+  const mark = newest && asked > newest + 2000 ? newest : Math.max(asked, newest);
+  threadMemory.set(id, { at: Date.now(), watermark: mark ? new Date(mark).toISOString() : "", messages });
   threadCacheDirty = true;
 }
 
@@ -202,17 +206,19 @@ export async function readWithRetry<T>(read: () => Promise<T>): Promise<T> {
 export async function readStayThread(reservationId: string, now: Date, watermark = ""): Promise<Msg[]> {
   await loadThreadCache();
   const hit = threadMemory.get(reservationId);
-  const reuse = hit && watermark
+  let reuse = hit && watermark
     ? (hit.watermark && instant(hit.watermark) >= instant(watermark) ? hit.messages : null)
     : (parityEnabled() ? null : freshThread(reservationId, Date.now()));
-  {
-    const cached = reuse;
-    if (cached) {
-      return cached.filter((row) => {
-        const at = new Date(row.at);
-        return !row.at || Number.isNaN(at.getTime()) || at <= now;
-      });
-    }
+  const asked = instant(watermark);
+  const newestCached = reuse ? Math.max(0, ...reuse.map((row) => instant(row.at))) : 0;
+  // The cache says it is current, but the messages stop before the activity time. Read again,
+  // and not more than once every 15 seconds, so a lagging list does not burn the rate limit.
+  if (reuse && asked > newestCached + 2000 && (!hit || Date.now() - hit.at >= 15_000)) reuse = null;
+  if (reuse) {
+    return reuse.filter((row) => {
+      const at = new Date(row.at);
+      return !row.at || Number.isNaN(at.getTime()) || at <= now;
+    });
   }
   const raw = await readWithRetry(() => hospitableRead("get-reservation-messages", { uuid: reservationId, include: "user" }));
   const messages = rowsOf(raw)

@@ -171,6 +171,30 @@ function mergeGuestView(current: GuestDraftView, next: GuestDraftView): GuestDra
   return pending.length ? { ...next, thread: [...next.thread, ...pending], lane: "none", draft: "", sendable: false } : next;
 }
 
+/** A live check sends the stay, not the whole thread, plus the newest bubble already on screen. */
+function liveOpenBody(open: GuestDraftView): Record<string, unknown> {
+  const knownAt = open.thread.map((item) => item.at).filter(Boolean).sort().at(-1) ?? "";
+  return {
+    id: open.id,
+    guest: open.guest,
+    first: open.first,
+    initials: open.initials,
+    guestPhoto: open.guestPhoto,
+    property: open.property,
+    propertyId: open.propertyId,
+    propertyPhoto: open.propertyPhoto,
+    asked: open.asked,
+    language: open.language,
+    lane: open.lane,
+    dates: open.dates,
+    checkIn: open.checkIn ?? "",
+    checkOut: open.checkOut ?? "",
+    inquiry: Boolean((open as GuestDraftView & { inquiry?: boolean }).inquiry),
+    live: true,
+    knownAt,
+  };
+}
+
 function placeholderView(row: GuestRow): GuestDraftView {
   return {
     id: row.id, guest: row.guest, first: row.first, initials: row.initials, guestPhoto: row.guestPhoto,
@@ -1699,23 +1723,48 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }
 
-  // The inbox is checked all the time Copilot is open (so the sidebar count is live on every screen):
-  // a fast pass reads only stays Hospitable says have a new message. A hidden tab checks every half minute.
+  // The inbox and the open conversation update on their own. A refresh is not required.
   useEffect(() => {
     if (!guestQueue?.connected) return;
     let stopped = false;
     let timer = 0;
-    const pull = async () => {
+    let inboxFlight = false;
+    let threadFlight = false;
+    const applyQueue = (queue: GuestQueue) => {
+      setGuestQueue(queue);
+      setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+      const open = guestAnswerRef.current;
+      if (!open || screenRef.current !== "guests" || threadFlight) return;
+      const row = [...queue.waiting, ...queue.onGuest, ...queue.held, ...queue.thanks, ...(queue.quiet ?? [])].find((item) => item.id === open.id);
+      const knownAt = open.thread.map((item) => item.at).filter(Boolean).sort().at(-1) ?? "";
+      if (row?.activityAt && Date.parse(row.activityAt) > Date.parse(knownAt) + 1500) void pullThread();
+    };
+    const pullInbox = async () => {
+      if (inboxFlight) return;
+      inboxFlight = true;
       await api<GuestQueue>("guests-refresh", {})
-        .then((queue) => {
-          if (stopped || !isGuestQueue(queue)) return;
-          setGuestQueue(queue);
-          setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+        .then((queue) => { if (!stopped && isGuestQueue(queue)) applyQueue(queue); })
+        .catch(() => undefined);
+      inboxFlight = false;
+    };
+    const pullThread = async () => {
+      const open = guestAnswerRef.current;
+      if (!open || open.loading || screenRef.current !== "guests" || threadFlight) return;
+      threadFlight = true;
+      await api<GuestDraftView & { unchanged?: boolean }>("guests-open", liveOpenBody(open))
+        .then((next) => {
+          if (stopped || next.unchanged || !next.thread?.length) return;
+          setGuestAnswer((current) => (current && current.id === open.id ? mergeGuestView(current, next) : current));
         })
         .catch(() => undefined);
-      if (!stopped) timer = window.setTimeout(() => { void pull(); }, document.hidden ? 30000 : 2000);
+      threadFlight = false;
     };
-    timer = window.setTimeout(() => { void pull(); }, 1000);
+    const pull = () => {
+      void pullInbox();
+      void pullThread();
+      if (!stopped) timer = window.setTimeout(pull, document.hidden ? 30000 : 2000);
+    };
+    timer = window.setTimeout(pull, 1000);
     return () => {
       stopped = true;
       window.clearTimeout(timer);
@@ -1735,27 +1784,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       /* Not every browser has app badges. */
     }
   }, [guestsWaiting]);
-
-  // The open conversation asks whether Hospitable has a newer message, then reads that thread.
-  useEffect(() => {
-    if (screen !== "guests" || !guestAnswer?.id) return;
-    let stopped = false;
-    let timer = 0;
-    const pull = async () => {
-      const open = guestAnswerRef.current;
-      if (open && !open.loading) {
-        await api<GuestDraftView>("guests-open", { ...open, thread: undefined, live: true })
-          .then((next) => { if (!stopped) setGuestAnswer((current) => (current && current.id === open.id ? mergeGuestView(current, next) : current)); })
-          .catch(() => undefined);
-      }
-      if (!stopped) timer = window.setTimeout(() => { void pull(); }, document.hidden ? 30000 : 2000);
-    };
-    timer = window.setTimeout(() => { void pull(); }, 1500);
-    return () => {
-      stopped = true;
-      window.clearTimeout(timer);
-    };
-  }, [screen, guestAnswer?.id]);
 
   /** One read per thread at a time; the result is kept against the activity it was read at. */
   function readGuestView(row: GuestRow): Promise<GuestDraftView | null> {

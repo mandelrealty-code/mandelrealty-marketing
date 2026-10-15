@@ -74,7 +74,7 @@ import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMc
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
-import { suggestReply, markThreadHandled, unmarkThreadHandled, beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestMessage, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
+import { suggestReply, markThreadHandled, unmarkThreadHandled, beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestMessage, liveGuestUpdate, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, listStoredMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
@@ -499,8 +499,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     if (op === "guests-open") {
-      const lane = body.lane === "guest" || body.lane === "none" ? body.lane : "reply";
-      const row = await openGuestAnswer({
+      const lane: "guest" | "none" | "reply" = body.lane === "guest" || body.lane === "none" ? body.lane : "reply";
+      const guestRow = {
         id: String(body.id ?? ""),
         guest: String(body.guest ?? ""),
         first: String(body.first ?? ""),
@@ -533,7 +533,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         preview: typeof body.preview === "string" ? body.preview : undefined,
         lastBy: typeof body.lastBy === "string" ? body.lastBy : undefined,
         quietReason: typeof body.quietReason === "string" ? body.quietReason : undefined,
-      }, new Date(), { live: body.live === true });
+      };
+      if (body.live === true && typeof body.knownAt === "string" && body.knownAt) {
+        const view = await liveGuestUpdate(guestRow, body.knownAt, new Date());
+        if (!view) return res.status(200).json({ unchanged: true, id: guestRow.id });
+        return res.status(200).json(view);
+      }
+      const row = await openGuestAnswer(guestRow, new Date(), { live: body.live === true });
       return res.status(200).json(row);
     }
 
