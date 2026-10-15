@@ -1650,7 +1650,7 @@ function hostNameFrom(raw: unknown): string {
 
 /** Oldest message first. Guest, co-host, or Automated message. The word Unknown is never a sender. */
 export function presentGuestThread(
-  messages: { at: string; role: string; name: string; body: string; media?: GuestMedia[] }[],
+  messages: { at: string; role: string; name: string; body: string; media?: GuestMedia[]; photo?: string }[],
   guest: string,
   hostName: string,
   now: Date,
@@ -1670,9 +1670,10 @@ export function presentGuestThread(
       : fromGuest
         ? realPerson(item.name) || guestName
         : realPerson(item.name) || knownHost;
+    const shown = /^unknown$/i.test(who) ? (automated ? "Automated message" : fromGuest ? guestName : knownHost) : who;
     return {
       role: automated ? "automated" as const : fromGuest ? "guest" as const : "host" as const,
-      who: /^unknown$/i.test(who) ? (automated ? "Automated message" : fromGuest ? guestName : knownHost) : who,
+      who: shown,
       at: item.at,
       time: messageTime(item.at, now),
       text: item.body,
@@ -1680,6 +1681,8 @@ export function presentGuestThread(
       language: messageLanguage(item.body),
       media: item.media ?? [],
       flag: !fromGuest && !automated && copied && /\b(he|his|him|she|her)\b/i.test(item.body) ? `Copied text: says “${copied}” for ${guestName}` : "",
+      // Only this sender's photo. A co-traveler with no photo must not inherit the booker's face.
+      photo: fromGuest && http(item.photo) ? item.photo : "",
     };
   });
 }

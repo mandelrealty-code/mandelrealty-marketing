@@ -1859,4 +1859,45 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   if (!caught.some((row) => row.body === "3pm works.")) fail(`new message stayed cached out\n${caught.map((row) => row.body).join(" | ")}`);
 }
 
+// Co-travelers keep their own photo (or none). They never inherit the booker's face.
+{
+  resetGuestMessaging();
+  const groupNow = new Date("2026-10-15T20:45:00Z");
+  const hussonPhoto = "https://photos.example/husson.jpg";
+  const jordanPhoto = "https://photos.example/jordan.jpg";
+  installWorld({
+    now: groupNow,
+    properties: [{ id: "prop-group", name: "20 Blue Jays Way Unit 318", address: "318, 20 Blue Jays Way, Toronto", managed: true }],
+    reservations: [{
+      id: "stay-husson-group",
+      code: "HMRA5WSAN9",
+      propertyId: "prop-group",
+      status: "accepted",
+      checkIn: "2026-10-15",
+      checkOut: "2026-10-19",
+      guest: "Husson",
+      guestPhoto: hussonPhoto,
+      adults: 4,
+      children: 0,
+      messages: [
+        { id: "h1", at: "2026-10-14T00:40:00Z", role: "guest" as const, name: "Husson", photo: hussonPhoto, body: "We won’t be bringing any vehicles." },
+        { id: "j1", at: "2026-10-15T20:37:00Z", role: "guest" as const, name: "Jordan", photo: jordanPhoto, body: "Is there a way to get the keys?" },
+        { id: "r1", at: "2026-10-15T20:39:00Z", role: "guest" as const, name: "Raymond", body: "Hey Jordan I'm already in Toronto and will have the keys on me." },
+      ],
+    }],
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+  });
+  const groupQueue = await loadGuestQueue(groupNow);
+  const groupRow = [...groupQueue.waiting, ...groupQueue.onGuest, ...(groupQueue.quiet ?? [])].find((row) => row.id === "stay-husson-group");
+  if (!groupRow) fail("husson group stay missing");
+  const groupView = await openGuestAnswer(groupRow, groupNow);
+  const byWho = Object.fromEntries(groupView.thread.filter((row) => row.role === "guest").map((row) => [row.who, row.photo || ""]));
+  if (byWho.Husson !== hussonPhoto) fail(`husson photo ${byWho.Husson}`);
+  if (byWho.Jordan !== jordanPhoto) fail(`jordan photo ${byWho.Jordan}`);
+  if (byWho.Raymond) fail(`raymond inherited a photo: ${byWho.Raymond}`);
+}
+
 console.log("Guest messaging harness passed.");

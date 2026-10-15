@@ -390,7 +390,15 @@ function Thread({
           {days.map((block) => (
             <div key={block.day} className="cp-gt-day">
               <div className="day"><span /><em>{block.day}</em><span /></div>
-              {block.messages.map((message, index) => <Bubble key={`${message.at}-${index}`} message={message} guestPhoto={answer.guestPhoto} initials={answer.initials} />)}
+              {block.messages.map((message, index) => (
+                <Bubble
+                  key={`${message.at}-${index}`}
+                  message={message}
+                  guestPhoto={answer.guestPhoto}
+                  guestName={answer.guest}
+                  initials={answer.initials}
+                />
+              ))}
             </div>
           ))}
           {answer.loading ? <p className="cp-gt-idle" aria-live="polite">Loading the conversation.</p> : null}
@@ -602,7 +610,7 @@ function InquiryCard({
   );
 }
 
-function Bubble({ message, guestPhoto, initials }: { message: GuestBubble; guestPhoto: string; initials: string }) {
+function Bubble({ message, guestPhoto, guestName, initials }: { message: GuestBubble; guestPhoto: string; guestName: string; initials: string }) {
   if (message.role === "automated") {
     return (
       <div className="cp-gt-auto">
@@ -621,9 +629,12 @@ function Bubble({ message, guestPhoto, initials }: { message: GuestBubble; guest
       </div>
     );
   }
+  const booker = sameGuest(message.who, guestName);
+  const photo = message.photo || (booker ? guestPhoto : "");
+  const faceInitials = booker ? initials : initialsOf(message.who);
   return (
     <div className="cp-gt-guest">
-      <Face name={message.who} photo={guestPhoto} initials={initials} size={32} />
+      <Face name={message.who} photo={photo} initials={faceInitials} size={32} />
       <div>
         <span><strong>{message.who}</strong> · {message.time}</span>
         {message.text ? <p>{message.text}{message.english && message.english !== message.text ? <em>{message.english}</em> : null}</p> : null}
@@ -631,6 +642,22 @@ function Bubble({ message, guestPhoto, initials }: { message: GuestBubble; guest
       </div>
     </div>
   );
+}
+
+function sameGuest(who: string, guest: string): boolean {
+  const a = who.trim().toLowerCase();
+  const b = guest.trim().toLowerCase();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const first = b.split(/\s+/)[0] || "";
+  return Boolean(first) && a === first;
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
 }
 
 function Media({ message }: { message: GuestBubble }) {

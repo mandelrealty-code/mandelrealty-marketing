@@ -31,6 +31,8 @@ export type ParityMessage = {
   senderName?: string;
   /** Hospitable channel user. Used when the platform sender is blank. */
   userName?: string;
+  /** Sender profile photo URL when the message carries one. */
+  photo?: string;
   body: string;
   /** What the photo or video shows, when the message carried one. */
   media?: { kind: "photo" | "video"; url?: string; duration?: string; shows?: string }[];
@@ -1154,8 +1156,8 @@ function mcpMessage(row: ParityMessage) {
     sender_type: row.role,
     author: platformSender ? null : { name: row.name },
     sender: platformSender
-      ? { first_name: platformSender, full_name: platformSender }
-      : { name: row.name, full_name: row.name, first_name: row.name },
+      ? { first_name: platformSender, full_name: platformSender, ...(row.photo ? { picture_url: row.photo, thumbnail_url: row.photo } : {}) }
+      : { name: row.name, full_name: row.name, first_name: row.name, ...(row.photo ? { picture_url: row.photo, thumbnail_url: row.photo } : {}) },
     ...(row.userName ? { user: { name: row.userName } } : {}),
     ...(attachments.length ? { attachments } : {}),
   };

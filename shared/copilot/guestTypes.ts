@@ -68,6 +68,8 @@ export type GuestBubble = {
   language: string;
   media: GuestMedia[];
   flag: string;
+  /** This sender's profile photo when Hospitable returned one. Empty for co-travelers without a photo. */
+  photo?: string;
 };
 
 export type GuestDraftView = {

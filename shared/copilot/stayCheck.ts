@@ -37,7 +37,7 @@ import type { MailLetter } from "./mailSearch.js";
 
 const AIRBNB_BLIND = "I cannot see replies sent inside the Airbnb app.";
 
-type Msg = { at: string; role: string; name: string; body: string; media?: ThreadMedia[] };
+type Msg = { at: string; role: string; name: string; body: string; media?: ThreadMedia[]; photo?: string };
 export type Stay = {
   id: string;
   code: string;
@@ -67,6 +67,10 @@ function spokenName(value: unknown): string {
   const name = text(value).trim();
   if (!name || /^(unknown|airbnb|system)$/i.test(name)) return "";
   return name;
+}
+
+function httpUrl(value: unknown): string {
+  return typeof value === "string" && /^https?:\/\//i.test(value) ? value : "";
 }
 
 function day(value: string): string {
@@ -235,12 +239,14 @@ export async function readStayThread(reservationId: string, now: Date, watermark
       // The platform profile wins (Shane on an automated message, Eloise on a guest message).
       // A co-host reply from Airbnb often has sender "Unknown" and the real name on `user`.
       const platformName = spokenName(author.name) || spokenName(sender.full_name) || spokenName(sender.first_name) || spokenName(sender.name);
+      const photo = httpUrl(sender.picture_url) || httpUrl(sender.thumbnail_url) || httpUrl(author.picture_url) || httpUrl(author.profile_picture) || "";
       return {
         at: text(row.created_at) || text(row.sent_at) || text(row.timestamp),
         role,
         name: platformName || spokenName(channel.name),
         body: text(row.body) || text(row.message) || text(row.content) || text(row.text),
         media,
+        ...(photo ? { photo } : {}),
       };
     })
     .filter((row) => {
