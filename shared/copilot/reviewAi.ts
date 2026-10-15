@@ -180,11 +180,14 @@ export function resetReviewAi(): void {
   seam = null;
 }
 
-function keyOf(id: string, input: Pick<ReviewAiInput, "review" | "stars">): string {
-  return `${STORE}${id}|${createHash("sha1").update(`${input.stars}|${input.review}`).digest("base64url").slice(0, 10)}`;
+type KeptKey = Pick<ReviewAiInput, "review" | "stars"> & { reservationId?: string };
+
+/** Written against one stay: a review matched to its stay later is written again, with the conversation. */
+function keyOf(id: string, input: KeptKey): string {
+  return `${STORE}${id}|${createHash("sha1").update(`v2|${input.stars}|${input.review}|${input.reservationId ?? ""}`).digest("base64url").slice(0, 10)}`;
 }
 
-export async function keptReviewAi(id: string, input: Pick<ReviewAiInput, "review" | "stars">): Promise<ReviewAiResult | null> {
+export async function keptReviewAi(id: string, input: KeptKey): Promise<ReviewAiResult | null> {
   const key = keyOf(id, input);
   const hit = memory.get(key);
   if (hit) return hit;
@@ -200,7 +203,7 @@ export async function keptReviewAi(id: string, input: Pick<ReviewAiInput, "revie
   }
 }
 
-export async function keepReviewAi(id: string, input: Pick<ReviewAiInput, "review" | "stars">, result: ReviewAiResult): Promise<void> {
+export async function keepReviewAi(id: string, input: KeptKey, result: ReviewAiResult): Promise<void> {
   const key = keyOf(id, input);
   memory.set(key, result);
   if (parityEnabled()) return;

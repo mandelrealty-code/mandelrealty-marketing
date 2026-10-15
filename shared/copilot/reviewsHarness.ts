@@ -381,6 +381,8 @@ if (one?.kind !== "flag" || one.assessment.retaliation.level !== "likely" || !on
 if (!prompts.some((text) => text.includes("Give me a 50% refund"))) fail("the assessment did not read the conversation");
 
 // The queue: every selected property, flagged first then newest, closed reviews counted, nothing posted.
+// The queue reads the fake world itself, not the stub reader used above.
+setHospitableProbe(null);
 const MAIN = { id: "prop-main-q", name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true };
 const BLUE2 = { id: "prop-blue-q", name: "20 Blue Jays Way", address: "20 Blue Jays Way, Toronto", managed: true };
 const qNow = new Date("2026-10-15T15:00:00-04:00");
@@ -390,12 +392,16 @@ const rv = (id: string, propertyId: string, reviewedAt: string, rating: number, 
 installWorld({
   now: qNow,
   properties: [MAIN, BLUE2],
-  reservations: [],
+  reservations: [
+    { id: "res-don-old", code: "HMDON1", propertyId: MAIN.id, status: "accepted", checkIn: "2026-05-01", checkOut: "2026-05-04", guest: "Don", adults: 2, children: 0, messages: [] },
+    { id: "res-don-cxl", code: "HMDON2", propertyId: MAIN.id, status: "cancelled", checkIn: "2026-09-01", checkOut: "2026-09-04", guest: "Don", adults: 2, children: 0, messages: [] },
+  ],
   gmail: [],
   outlook: [],
   memory: [],
   items: [],
   reviews: [
+    rv("don", MAIN.id, "2026-10-14T09:00:00Z", 5, { guest: "Don", reservationId: "" }),
     rv("older5", BLUE2.id, "2026-09-20T18:00:00Z", 5),
     rv("newer5", MAIN.id, "2026-10-12T18:00:00Z", 5),
     rv("low2", MAIN.id, "2026-08-01T18:00:00Z", 2, { privateFeedback: "Heat was off." }),
@@ -416,6 +422,10 @@ if (low.privateFeedback !== "Heat was off.") fail("private feedback was not carr
 const staleRow = q.reviews.find((row) => row.id === "stale");
 if (staleRow?.when !== "Stay ended Mar 2") fail(`a months-old review said ${staleRow?.when}`);
 if (new Set(q.reviews.map((row) => row.propertyId)).size !== 2) fail("reviews from only one property");
+// A review with no reservation link is matched to the guest's stay: the real date, and the conversation to read.
+const don = q.reviews.find((row) => row.id === "don");
+if (don?.reservationId !== "res-don-old") fail(`review not matched to its stay: ${don?.reservationId}`);
+if (don.when !== "Stay ended May 4") fail(`a months-old review with no link said ${don.when}`);
 if (posts.length) fail(`loading reviews posted ${posts.length} replies`);
 setReviewModel(null);
 

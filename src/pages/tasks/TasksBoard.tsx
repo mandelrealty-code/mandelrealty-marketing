@@ -214,10 +214,10 @@ export function TasksBoard({ api, theme = "dark" }: { api: BoardApi; theme?: "li
       <div className="tk-add-opts">
         {partner ? (
           <select value={draft.who || viewer.name} onChange={(event) => setDraft((d) => ({ ...d, who: event.target.value }))}>
-            {(board?.roster ?? []).map((row) => <option key={row.name} value={row.name}>For {row.name === viewer.name ? "me" : row.name}</option>)}
+            {(board?.roster ?? []).map((row) => <option key={row.name} value={row.name}>For {row.name}</option>)}
             <option value="">For no one yet</option>
           </select>
-        ) : <span>For you</span>}
+        ) : <span>For {viewer.name}</span>}
         <select value={draft.due} onChange={(event) => setDraft((d) => ({ ...d, due: event.target.value }))}>
           <option value="0|1080">Due today evening</option>
           <option value="1|540">Due tomorrow morning</option>

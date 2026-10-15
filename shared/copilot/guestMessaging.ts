@@ -1003,7 +1003,7 @@ async function reconcileInquiryCloses(
   }
 }
 
-async function propertyPhotos(): Promise<Map<string, string>> {
+export async function propertyPhotos(): Promise<Map<string, string>> {
   const photos = new Map<string, string>();
   try {
     for (const row of propertiesOf(await hospitableRead("get-properties", {}))) {

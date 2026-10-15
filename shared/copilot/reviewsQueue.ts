@@ -5,6 +5,7 @@
 
 import { listHospitableReviews, respondToHospitableReview } from "../pm/hospitableClient.js";
 import { scopedStayProperties } from "./dayBoard.js";
+import { loadConversations, type Conversation } from "./stayCheck.js";
 import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
 import { flagLine, keepReviewAi, keptReviewAi, reviewAiAvailable, reviewIsFlagged, writeReviewAi, type ReviewAiResult, type ReviewAssessment } from "./reviewAi.js";
 import { guestPhotoUrl } from "./guestInquiries.js";
@@ -196,7 +197,7 @@ export async function regenerateFromConnection(input: {
   if (input.stars && reviewAiAvailable()) {
     const ai = await writeReviewAi({ guest: input.guest, stars: input.stars, review: input.review, privateFeedback: input.privateFeedback ?? "", property: input.property ?? "", messages: stay.messages, reservation: stay.reservation, hub: stay.hub });
     if (ai) {
-      if (input.id) await keepReviewAi(input.id, { review: input.review, stars: input.stars }, ai);
+      if (input.id) await keepReviewAi(input.id, { review: input.review, stars: input.stars, reservationId: input.reservationId }, ai);
       return { ...fromAi(ai, input.stars), previous: input.current, sourceLine: aiSourceLine(stay), unchanged: false };
     }
   }
@@ -265,6 +266,7 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
   const unreadable: string[] = [];
   let closed = 0;
   let disconnected = false;
+  const stayOf = new Map<string, string>();
   const today = torontoToday(now);
   const readProperty = async (property: (typeof properties)[number], index: number) => {
     const propertyId = property.id.trim();
@@ -292,9 +294,6 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
       if (review.public_response.trim()) continue;
       if (review.platform && !/airbnb/i.test(review.platform)) continue;
       if (posted.has(review.id)) continue;
-      const when = reviewDate(review.reviewed_at || "", review.check_out || "");
-      // Only the last 12 months. Older reviews stay in Hospitable, unanswered and untouched.
-      if (!inReviewWindow(when.at, now)) continue;
       // Airbnb takes a reply only for a while after a review posts; past that, Submit could only fail.
       if (review.raw.can_respond === false || review.raw.canRespond === false) {
         closed += 1;
@@ -319,8 +318,8 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
         property: property.name,
         propertyPhoto: "",
         stars,
-        when: reviewedLabel(when.at, now, when.fromStay),
-        reviewedAt: when.at,
+        when: "",
+        reviewedAt: review.reviewed_at || "",
         review: text,
         draft: seedDraft(guest, text),
         dispute: flagged ? `${stars} star${stars === 1 ? "" : "s"}. Flagged for the team.${flag.reason ? ` ${flag.reason}` : ""}` : flag.reason,
@@ -330,6 +329,7 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
         flagged,
         privateFeedback: review.private_feedback || "",
       });
+      stayOf.set(review.id, review.check_out || "");
     }
   };
   const queue = properties.map((property, index) => ({ property, index }));
@@ -338,6 +338,18 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
   };
   await Promise.all([lane(), lane(), lane()]);
   if (disconnected) return { connected: false, line: "Hospitable is not connected.", reviews: [], postedToday: [...posted.values()] };
+  await matchStays(reviews, stayOf, now);
+  // Only the last 12 months, by when the review was really left. Older reviews stay in Hospitable, untouched.
+  for (let i = reviews.length - 1; i >= 0; i -= 1) {
+    const row = reviews[i]!;
+    const when = reviewDate(row.reviewedAt, stayOf.get(row.id) ?? "");
+    if (!inReviewWindow(when.at, now)) {
+      reviews.splice(i, 1);
+      continue;
+    }
+    row.reviewedAt = when.at;
+    row.when = reviewedLabel(when.at, now, when.fromStay);
+  }
   await writeDrafts(reviews, now);
   const notes = [
     unreadable.length ? `Couldn't read reviews for ${unreadable.join(", ")}. Open Reviews again in a moment.` : "",
@@ -353,13 +365,52 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
   };
 }
 
+/**
+ * Each review's stay, from the reservations the guest inbox reads: by its reservation id when Hospitable
+ * gave one, else by property, guest first name and the latest checkout before the review. The stay gives
+ * the real dates, the conversation to read, and the guest's photo; the listing photo comes from Hospitable.
+ */
+async function matchStays(rows: ReviewQueueRow[], stayOf: Map<string, string>, now: Date): Promise<void> {
+  if (!rows.length) return;
+  const [listed, photos] = await Promise.all([
+    loadConversations(now).then((result) => result.conversations).catch(() => [] as Conversation[]),
+    import("./guestMessaging.js").then((mod) => mod.propertyPhotos()).catch(() => new Map<string, string>()),
+  ]);
+  const byId = new Map<string, Conversation>();
+  const byProperty = new Map<string, Conversation[]>();
+  for (const row of listed) {
+    if (row.inquiry) continue;
+    byId.set(row.stay.id, row);
+    const list = byProperty.get(row.stay.propertyId) ?? [];
+    list.push(row);
+    byProperty.set(row.stay.propertyId, list);
+  }
+  const first = (name: string) => name.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  for (const row of rows) {
+    row.propertyPhoto ||= photos.get(row.propertyId) ?? "";
+    const direct = row.reservationId ? byId.get(row.reservationId) : undefined;
+    let stay = direct;
+    if (!stay) {
+      const latest = row.reviewedAt ? addDays(row.reviewedAt.slice(0, 10), 1) : "9999-12-31";
+      stay = (byProperty.get(row.propertyId) ?? [])
+        .filter((item) => first(item.stay.guest) === first(row.guest) && item.stay.checkOut && item.stay.checkOut <= latest && !/cancel|declin|denied|expired/i.test(item.stay.status))
+        .sort((a, b) => b.stay.checkOut.localeCompare(a.stay.checkOut))[0];
+    }
+    if (!stay) continue;
+    // A reservation id Hospitable gave that matches no stay is not the stay: the matched one is used.
+    if (!direct) row.reservationId = stay.stay.id;
+    if (!stayOf.get(row.id)) stayOf.set(row.id, stay.stay.checkOut);
+    if (!row.guestPhoto && stay.reservation) row.guestPhoto = guestPhotoUrl(stay.reservation);
+  }
+}
+
 /** Each review's AI draft or assessment: kept ones at once, new ones written (three at a time) within the budget. */
 async function writeDrafts(rows: ReviewQueueRow[], now: Date): Promise<void> {
   const started = Date.now();
   const apply = (row: ReviewQueueRow, ai: ReviewAiResult) => Object.assign(row, fromAi(ai, row.stars), { needsCare: row.flagged || row.needsCare });
   const pending: ReviewQueueRow[] = [];
   for (const row of rows) {
-    const kept = await keptReviewAi(row.id, { review: row.review, stars: row.stars });
+    const kept = await keptReviewAi(row.id, { review: row.review, stars: row.stars, reservationId: row.reservationId });
     if (kept) apply(row, kept);
     else pending.push(row);
   }
@@ -373,7 +424,7 @@ async function writeDrafts(rows: ReviewQueueRow[], now: Date): Promise<void> {
         const stay = await readStay(row.reservationId, row.propertyId);
         const ai = await writeReviewAi({ guest: row.guest, stars: row.stars, review: row.review, privateFeedback: row.privateFeedback ?? "", property: row.property, messages: stay.messages, reservation: stay.reservation, hub: stay.hub });
         if (!ai) continue;
-        await keepReviewAi(row.id, { review: row.review, stars: row.stars }, ai);
+        await keepReviewAi(row.id, { review: row.review, stars: row.stars, reservationId: row.reservationId }, ai);
         apply(row, ai);
         row.sourceLine = aiSourceLine(stay);
       } catch {
