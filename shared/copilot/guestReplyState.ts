@@ -54,6 +54,16 @@ const SOFT_CLOSER = new RegExp([
 
 const MONEY_ASK = /\b(refund|refunded|charge|charged|money back|deposit|reimburse|cancellation fee|partial)\b/i;
 
+/** The guest is cancelling, apologizing for a cancel, or saying the trip moved. Not a live ask. */
+const CANCEL_NOTICE = new RegExp([
+  String.raw`\b(?:need|have|had|must|going) to cancel\b`,
+  String.raw`\bcancel(?:led|lation)?\b`,
+  String.raw`\bapologi(?:z|s)e for the cancellation\b`,
+  String.raw`\btrip\b.{0,40}\bmoved\b`,
+  String.raw`\bwon'?t be (?:coming|able to (?:make it|come))\b`,
+  String.raw`\bno longer (?:need|coming|travell?ing)\b`,
+].join("|"), "i");
+
 function first(name: string): string {
   return name.trim().split(/\s+/)[0] || "The guest";
 }
@@ -81,6 +91,13 @@ export function guestClosedIt(ask: string): boolean {
   return !needsGuestReply(rest);
 }
 
+/** True when the guest is cancelling or explaining a cancel, and is not asking about money. */
+export function guestCancelledIt(ask: string): boolean {
+  if (!CANCEL_NOTICE.test(ask)) return false;
+  if (MONEY_ASK.test(ask) && /\?|\b(when|how|will)\b/i.test(ask)) return false;
+  return true;
+}
+
 export function replyState(input: ReplyInput): ReplyState {
   const who = first(input.guest);
   const { pending, lastHost } = pendingGuestTurns(input.turns);
@@ -101,6 +118,11 @@ export function replyState(input: ReplyInput): ReplyState {
       };
     }
     return { needs: false, reason: `The ${input.inquiry ? "inquiry" : "booking"} is ${status.replace(/_/g, " ")}.` };
+  }
+
+  // Cancellation language closes Needs reply even when Hospitable still shows the booking as accepted.
+  if (guestCancelledIt(ask)) {
+    return { needs: false, reason: `${who} cancelled or said the trip is not going ahead.` };
   }
 
   if (input.inquiry || REQUEST.test(status)) {

@@ -91,10 +91,13 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
 
 function toStay(row: Record<string, unknown>, propertyId: string): Stay {
   const guest = isRow(row.guest) ? row.guest : {};
+  const bag = isRow(row.reservation_status) ? row.reservation_status : {};
+  const current = isRow(bag.current) ? bag.current : {};
+  const status = text(row.status).toLowerCase() || text(current.category).toLowerCase() || text(current.status).toLowerCase();
   return {
     id: text(row.id),
     code: text(row.code) || text(row.platform_id),
-    status: text(row.status).toLowerCase(),
+    status,
     checkIn: day(text(row.arrival_date) || text(row.check_in)),
     checkOut: day(text(row.departure_date) || text(row.check_out)),
     guest: text(guest.first_name),

@@ -1523,6 +1523,24 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
           turn("im-1", "2026-10-13T15:30:00Z", "guest", "Imani", "Hi! Could we get a few extra towels? We only found two in the bathroom."),
         ],
       },
+      {
+        id: "stay-mario-cxl", code: "HMMARIO1", propertyId: BJ.id, status: "cancelled", checkIn: "2026-09-30", checkOut: "2026-10-04", guest: "Mario", adults: 1, children: 0,
+        messages: [
+          turn("mario-1", "2026-07-31T18:00:00Z", "guest", "Mario", "Good afternoon, I booked Sept 30th - Oct 4th and already have setup payment arrangements. People booked before me."),
+        ],
+      },
+      {
+        id: "stay-edward-cxl", code: "HMEDWARD1", propertyId: ROSE.id, status: "accepted", checkIn: "2026-08-21", checkOut: "2026-08-24", guest: "Edward", adults: 2, children: 0,
+        messages: [
+          turn("edward-1", "2026-08-11T12:00:00Z", "guest", "Edward", "Hello Precilla, I apologize for the cancellation. Because of the location, many members of our group would rather stay elsewhere."),
+        ],
+      },
+      {
+        id: "stay-ivy-moved", code: "HMIVY1", propertyId: ROSE.id, status: "accepted", checkIn: "2026-08-20", checkOut: "2026-08-23", guest: "Ivy", adults: 2, children: 0,
+        messages: [
+          turn("ivy-1", "2026-08-16T12:00:00Z", "guest", "Ivy", "Hi Ryan, my trip to toronto go moved, we will definitely choose your place when we are in the area."),
+        ],
+      },
     ],
     inquiries: [
       {
@@ -1550,12 +1568,15 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   const waitingNames = inbox.waiting.map((row) => row.id).sort().join(",");
   if (waitingNames !== "stay-emile-new,stay-imani-nr") fail(`needs reply ${waitingNames}`);
   const quietRow = (id: string) => (inbox.quiet ?? []).find((row) => row.id === id);
-  for (const id of ["stay-yingjia", "stay-emile-old", "inq-elizabeth", "inq-ira"]) {
+  for (const id of ["stay-yingjia", "stay-emile-old", "inq-elizabeth", "inq-ira", "stay-mario-cxl", "stay-edward-cxl", "stay-ivy-moved"]) {
     const row = quietRow(id);
     if (!row) fail(`${id} left the inbox`);
     if (row.wait || row.waitedMs) fail(`${id} shows a waiting time`);
     if (!row.quietReason) fail(`${id} has no reason`);
   }
+  if (!/cancelled/.test(quietRow("stay-mario-cxl")?.quietReason ?? "")) fail(`mario reason ${quietRow("stay-mario-cxl")?.quietReason}`);
+  if (!/ended|cancel/i.test(quietRow("stay-edward-cxl")?.quietReason ?? "")) fail(`edward reason ${quietRow("stay-edward-cxl")?.quietReason}`);
+  if (!/cancel|not going ahead|ended/i.test(quietRow("stay-ivy-moved")?.quietReason ?? "")) fail(`ivy reason ${quietRow("stay-ivy-moved")?.quietReason}`);
   if (!/cancelled/.test(quietRow("stay-yingjia")?.quietReason ?? "")) fail(`yingjia reason ${quietRow("stay-yingjia")?.quietReason}`);
   if (!/newer booking/.test(quietRow("stay-emile-old")?.quietReason ?? "")) fail(`emile reason ${quietRow("stay-emile-old")?.quietReason}`);
   if (!/closed the inquiry/.test(quietRow("inq-elizabeth")?.quietReason ?? "")) fail(`elizabeth reason ${quietRow("inq-elizabeth")?.quietReason}`);

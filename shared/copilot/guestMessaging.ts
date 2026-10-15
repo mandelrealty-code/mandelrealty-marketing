@@ -618,13 +618,68 @@ export async function loadGuestQueue(now = parityNow() ?? new Date()): Promise<G
   if (parityEnabled()) return loadGuestQueueOnce(now);
   if (!copilotScopeActive()) return withCopilotScope(() => loadGuestQueue(now));
   const saved = await readSavedGuestQueue();
-  if (saved?.connected) {
-    if (!lastFullAt) lastFullAt = now.getTime();
-    if (scanning || now.getTime() - lastFullAt < FULL_SCAN_MS) return touchGuestQueue(saved, now);
+  const scannedAt = lastFullAt || Date.parse(saved?.scannedAt ?? "") || 0;
+  const scanIsFresh = scannedAt > 0 && now.getTime() - scannedAt < FULL_SCAN_MS;
+  // A cold server must not pretend a full scan just ran. Without scannedAt, start one.
+  if (saved?.connected && (scanning || scanIsFresh)) return touchGuestQueue(pruneWaiting(saved, now), now);
+  if (!scanning) {
+    scanning = loadGuestQueueOnce(now).finally(() => {
+      lastFullAt = Date.now();
+      scanning = null;
+    });
   }
-  if (!scanning) scanning = loadGuestQueueOnce(now).finally(() => { lastFullAt = Date.now(); scanning = null; });
-  if (saved?.connected) return touchGuestQueue(saved, now);
+  if (saved?.connected) return touchGuestQueue(pruneWaiting(saved, now), now);
   return scanning;
+}
+
+/**
+ * Drop cancelled, long-past, and closed cancellation threads from Needs reply using what the
+ * saved row already knows. Used on every fast refresh so a stale snapshot cannot keep them listed.
+ */
+function pruneWaiting(queue: GuestQueue, now: Date): GuestQueue {
+  if (!queue.waiting.length) return queue;
+  const today = torontoToday(now);
+  const waiting: GuestRow[] = [];
+  const quiet = [...(queue.quiet ?? [])];
+  let changed = false;
+  for (const row of queue.waiting) {
+    const ask = (row.asked || row.preview || "").trim();
+    const booking = (row.bookingStatus || "").toLowerCase();
+    let state = ask
+      ? replyState({
+        status: booking || row.status || "",
+        inquiry: Boolean(row.inquiry),
+        checkIn: row.checkIn,
+        checkOut: row.checkOut,
+        today,
+        turns: [{ at: row.activityAt || now.toISOString(), role: "guest", body: ask }],
+        guest: row.guest,
+      })
+      : { needs: true, reason: "" };
+    if (state.needs && /cancel|declin|denied|expired|withdrawn|rejected/i.test(booking)) {
+      state = { needs: false, reason: `The stay is cancelled. ${row.first || "The guest"}’s last message needs no answer.` };
+    } else if (state.needs && row.checkOut && row.checkOut < addDays(today, -14)) {
+      state = { needs: false, reason: `The stay ended ${row.checkOut}.` };
+    }
+    if (state.needs) {
+      waiting.push(row);
+      continue;
+    }
+    changed = true;
+    quiet.push({ ...row, quietReason: state.reason, wait: "", waitedMs: 0, lane: "none" });
+  }
+  if (!changed) return queue;
+  const longest = waiting.slice().sort((a, b) => b.waitedMs - a.waitedMs)[0]?.wait || "";
+  const summary = guestSummary(waiting.length, longest, queue.failed);
+  const next = {
+    ...queue,
+    waiting: waiting.sort((a, b) => a.waitedMs - b.waitedMs || a.guest.localeCompare(b.guest)),
+    quiet,
+    summaryLead: summary.lead,
+    summaryRest: summary.rest,
+  };
+  next.answer = waitingSurfaceText(next);
+  return next;
 }
 
 /**
@@ -633,6 +688,22 @@ export async function loadGuestQueue(now = parityNow() ?? new Date()): Promise<G
  * The list covers the last two hours, so a message that arrived while Copilot was closed is still picked up.
  */
 async function touchGuestQueue(base: GuestQueue, now: Date): Promise<GuestQueue> {
+  // Needs-reply rows from an older snapshot may lack bookingStatus. Read each once so a
+  // cancelled stay drops out without waiting for the next full inbox scan.
+  for (const row of base.waiting) {
+    if (row.bookingStatus || row.inquiry) continue;
+    const probed = await hospitableRead("get-reservation", { identifier: row.id }).catch(() => null);
+    const record = oneRecord(probed);
+    if (!record) continue;
+    const bag = record.reservation_status && typeof record.reservation_status === "object"
+      ? record.reservation_status as Record<string, unknown>
+      : {};
+    const current = bag.current && typeof bag.current === "object" ? bag.current as Record<string, unknown> : {};
+    row.bookingStatus = String(record.status ?? current.category ?? "").toLowerCase();
+    if (!row.checkIn) row.checkIn = String(record.arrival_date ?? record.check_in ?? "").slice(0, 10);
+    if (!row.checkOut) row.checkOut = String(record.departure_date ?? record.check_out ?? "").slice(0, 10);
+  }
+  base = pruneWaiting(base, now);
   const propertyIds = base.properties.map((row) => row.id).filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id));
   if (!propertyIds.length) return base;
   const since = new Date(now.getTime() - 2 * 60 * 60_000);
@@ -683,16 +754,17 @@ async function touchGuestQueue(base: GuestQueue, now: Date): Promise<GuestQueue>
     placed.list(queue).push(placed.row);
     changed = true;
   }
-  if (!changed) return base;
-  const longest = queue.waiting.slice().sort((a, b) => b.waitedMs - a.waitedMs)[0]?.wait || "";
-  queue.waiting.sort((a, b) => a.waitedMs - b.waitedMs || a.guest.localeCompare(b.guest));
-  const summary = guestSummary(queue.waiting.length, longest, queue.failed);
-  queue.summaryLead = summary.lead;
-  queue.summaryRest = summary.rest;
-  queue.answer = waitingSurfaceText(queue);
-  rememberedQueue = queue;
-  await saveGuestQueueSnapshot(queue).catch(() => undefined);
-  return queue;
+  const pruned = pruneWaiting(queue, now);
+  if (!changed && pruned === queue) return base;
+  const longest = pruned.waiting.slice().sort((a, b) => b.waitedMs - a.waitedMs)[0]?.wait || "";
+  pruned.waiting.sort((a, b) => a.waitedMs - b.waitedMs || a.guest.localeCompare(b.guest));
+  const summary = guestSummary(pruned.waiting.length, longest, pruned.failed);
+  pruned.summaryLead = summary.lead;
+  pruned.summaryRest = summary.rest;
+  pruned.answer = waitingSurfaceText(pruned);
+  rememberedQueue = pruned;
+  await saveGuestQueueSnapshot(pruned).catch(() => undefined);
+  return pruned;
 }
 
 async function loadGuestQueueOnce(now: Date): Promise<GuestQueue> {
@@ -715,6 +787,7 @@ async function loadGuestQueueOnce(now: Date): Promise<GuestQueue> {
   }
   queue.answer = waitingSurfaceText(queue);
   if (queue.connected) {
+    queue.scannedAt = now.toISOString();
     rememberedQueue = queue;
     if (parityEnabled()) paritySavedQueue = queue;
     await saveGuestQueueSnapshot(queue).catch(() => undefined);
@@ -869,7 +942,16 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
         bucket.push(row);
       };
       if (!last) {
-        list(rowFrom(stay, "", activity, "", photo, now, readThread([], stay.stay.guest || "Guest")), quiet);
+        const empty = rowFrom(stay, "", activity, "", photo, now, readThread([], stay.stay.guest || "Guest"));
+        empty.bookingStatus = stay.stay.status;
+        empty.wait = "";
+        empty.waitedMs = 0;
+        empty.lane = "none";
+        // Threads skipped as too old still need a plain reason when the booking is already closed.
+        if (/cancel/i.test(stay.stay.status)) empty.quietReason = `The stay is cancelled. ${empty.first}'s last message needs no answer.`;
+        else if (stay.stay.checkOut && stay.stay.checkOut < addDays(todayOf, -14)) empty.quietReason = `The stay ended ${stay.stay.checkOut}.`;
+        else empty.quietReason = "No recent messages on this conversation.";
+        list(empty, quiet);
         continue;
       }
       if (last.role !== "guest" || !pending.length) {
@@ -889,6 +971,7 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
       const language = messageLanguage(ask);
       const row = rowFrom(stay, ask, at, language, photo, now, read);
       // Needs reply is judged from the whole thread state: status, dates, who decided what.
+      row.bookingStatus = stay.stay.status;
       const state = replyState({
         status: stay.stay.status,
         inquiry: stay.inquiry,
@@ -899,24 +982,26 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
         guest: stay.stay.guest || row.guest,
         superseded: supersededIds.has(stay.stay.id),
       });
+      const parkQuiet = (reason: string) => {
+        row.quietReason = reason;
+        row.wait = "";
+        row.waitedMs = 0;
+        row.lane = "none";
+        list(row, quiet);
+      };
       if (read.lane === "guest") {
         row.thanks = false;
         list(row, onGuest);
-      } else if (read.lane === "reply" && handledReason(stay.stay.id, row.activityAt ?? "")) {
+      } else if (handledReason(stay.stay.id, row.activityAt ?? "")) {
         // A partner marked it handled; it stays out of Needs reply until the guest writes again.
-        row.quietReason = handledReason(stay.stay.id, row.activityAt ?? "");
-        row.wait = "";
-        row.waitedMs = 0;
-        list(row, quiet);
-      } else if (read.lane === "reply" && !state.needs) {
-        row.quietReason = state.reason;
-        row.wait = "";
-        row.waitedMs = 0;
-        list(row, quiet);
+        parkQuiet(handledReason(stay.stay.id, row.activityAt ?? "") || "");
+      } else if (isThanksOnly(ask)) {
+        list(row, thanks);
+      } else if (!state.needs) {
+        parkQuiet(state.reason);
       } else if (read.lane === "reply") {
         list(row, heldIds.has(stay.stay.id) ? held : waiting);
-      } else if (isThanksOnly(ask)) list(row, thanks);
-      else list(row, quiet);
+      } else list(row, quiet);
     }
     // One line for everything that could not be read, however many properties and read types failed.
     const notRead = failedReadsLine(loaded.failed, [...messageFailed]);
@@ -1324,6 +1409,11 @@ function seedGuestRow(reservation: Record<string, unknown>, base: GuestQueue): G
   const chip = base.properties.find((row) => row.id === propertyId);
   const checkIn = String(reservation.arrival_date ?? reservation.check_in ?? "").slice(0, 10);
   const checkOut = String(reservation.departure_date ?? reservation.check_out ?? "").slice(0, 10);
+  const bag = reservation.reservation_status && typeof reservation.reservation_status === "object"
+    ? reservation.reservation_status as Record<string, unknown>
+    : {};
+  const current = bag.current && typeof bag.current === "object" ? bag.current as Record<string, unknown> : {};
+  const bookingStatus = String(reservation.status ?? current.category ?? "").toLowerCase();
   return {
     id,
     guest,
@@ -1340,7 +1430,8 @@ function seedGuestRow(reservation: Record<string, unknown>, base: GuestQueue): G
     waitedMs: 0,
     thanks: false,
     lane: "reply",
-    status: typeof reservation.status === "string" ? reservation.status : "",
+    status: bookingStatus,
+    bookingStatus,
     statusLead: "",
     statusRest: "",
     watch: "",
@@ -1374,6 +1465,7 @@ function placeByThread(
     activityAt: last.at,
     preview: clip(last.body.trim() || (last.media.length ? "Sent a photo" : ""), 140),
     lastBy: /^(unknown|host)$/i.test(hostName) ? "" : hostName,
+    bookingStatus: seed.bookingStatus || seed.status,
   };
   if (last.role !== "guest" || !pending.length) {
     return {
@@ -1394,14 +1486,29 @@ function placeByThread(
     lane: read.lane,
     thanks: read.lane === "none",
   };
+  const state = replyState({
+    status: waiting.bookingStatus || waiting.status || "",
+    inquiry: Boolean(waiting.inquiry),
+    checkIn: waiting.checkIn,
+    checkOut: waiting.checkOut,
+    today: torontoToday(now),
+    turns: spoken.map((item) => ({ at: item.at, role: item.role, body: item.body })),
+    guest: waiting.guest,
+  });
   if (read.lane === "guest") return { row: { ...waiting, thanks: false }, list: (queue) => queue.onGuest };
+  if (read.lane === "reply" && !state.needs) {
+    return {
+      row: { ...waiting, quietReason: state.reason, wait: "", waitedMs: 0, lane: "none" },
+      list: (queue) => queue.quiet ?? queue.waiting,
+    };
+  }
   if (read.lane === "reply") return { row: waiting, list: (queue) => (heldIds.has(seed.id) ? queue.held : queue.waiting) };
   if (isThanksOnly(ask)) return { row: waiting, list: (queue) => queue.thanks };
   return { row: waiting, list: (queue) => queue.quiet ?? queue.waiting };
 }
 
 function rowFrom(
-  stay: { stay: { id: string; guest: string; propertyId: string; checkIn: string; checkOut: string }; label: string; reservation?: Record<string, unknown> | null },
+  stay: { stay: { id: string; guest: string; propertyId: string; checkIn: string; checkOut: string; status?: string }; label: string; reservation?: Record<string, unknown> | null },
   ask: string,
   at: string,
   language: string,
@@ -1431,6 +1538,7 @@ function rowFrom(
     thanks: read.lane === "none",
     lane: read.lane,
     status: read.status,
+    bookingStatus: stay.stay.status || "",
     statusLead: read.statusLead,
     statusRest: read.statusRest,
     watch: read.watch,

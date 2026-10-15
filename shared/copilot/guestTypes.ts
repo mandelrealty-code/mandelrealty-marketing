@@ -54,6 +54,8 @@ export type GuestRow = {
   lastBy?: string;
   /** Why a thread whose guest wrote last does not need a reply: cancelled, superseded, closed, passed. */
   quietReason?: string;
+  /** Hospitable reservation or inquiry status when it was last known (accepted, cancelled, …). */
+  bookingStatus?: string;
 };
 
 export type GuestBubble = {
@@ -203,4 +205,6 @@ export type GuestQueue = {
   closedFollowUps: GuestFollowUpClose[];
   /** The same sentence Chat uses for who is waiting. */
   answer: string;
+  /** When the last full Hospitable inbox scan finished. Fast refreshes use this instead of re-scanning. */
+  scannedAt?: string;
 };
