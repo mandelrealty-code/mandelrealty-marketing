@@ -182,6 +182,7 @@ export function HospitablePage({
                 </span>
               ))}
               <p>{card.cant}</p>
+              {card.sendAs ? <p>{card.sendAs}</p> : null}
             </div>
           ) : null}
           <div className="cp-cn-token">

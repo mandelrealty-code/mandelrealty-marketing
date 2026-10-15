@@ -1753,6 +1753,16 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   setTranslator(null);
 }
 
+// No em dashes ever go to a guest: not from a suggestion, not from what the partner typed.
+{
+  setSuggestModel(async () => "Hi Diane — thank you so much! Safe travels — we'd love to host you again.");
+  const clean = await suggestGuestReply({ guest: "Diane", property: "20 Blue Jays Way", stay: "", thread: [{ who: "guest", name: "Diane", text: "Thanks!" }], hub: "", memory: "" });
+  if (/—/.test(clean) || clean !== "Hi Diane, thank you so much! Safe travels, we'd love to host you again.") fail(`suggestion kept an em dash: ${clean}`);
+  setSuggestModel(null);
+  const typed = await submitGuestReply({ reservationId: "stay-daniel", propertyId: "prop-blue", property: "Blue Jays Way", guest: "Daniel Okafor", english: "Thanks Daniel — the rack is in the cabinet left of the sink.", language: "", fact: "" });
+  if (/—/.test(typed.sentText)) fail(`an em dash was sent: ${typed.sentText}`);
+}
+
 // Suggest with AI: any conversation, from the thread in English and the Hub; nothing is sent.
 {
   const commits = capturedCommits().length;

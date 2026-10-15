@@ -40,6 +40,7 @@ import {
 import BrowserSurface, { SessionLine } from "./BrowserSurface";
 import { DueReminder, OverviewReminders, ReminderCard, RemindersView, type ReminderActions } from "./RemindersUi";
 import { TasksBoard, type BoardApi, type BoardPayload } from "../tasks/TasksBoard";
+import { withoutEmDashes } from "../../../shared/copilot/guestTranslate";
 import { overviewReminderLine, sidebarCount, type Reminder, type ReminderCardDraft } from "../../../shared/copilot/reminderView";
 
 function pageTitle(url: string): string {
@@ -2606,22 +2607,33 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     }}
                     onSubmit={async (draft, fact, attachments) => {
                       const row = guestAnswer;
-                      const result = await api<{ sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string; hubOffers?: HubProposal[]; pending?: boolean }>("guests-submit", {
-                        id: row?.id,
-                        propertyId: row?.propertyId,
-                        property: row?.property,
-                        guest: row?.guest,
-                        english: draft,
-                        language: row?.language,
-                        fact,
-                        attachments,
-                      });
-                      if ((result.sent || result.pending) && row) {
-                        // Show it now: the message in the thread and the inbox row, then refresh quietly.
-                        const at = new Date().toISOString();
-                        const text = result.sentText || draft;
-                        const bubble = { role: "host" as const, who: "You", at, time: new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }), text, english: text, language: "", media: [], flag: "" };
-                        setGuestAnswer((current) => (current && current.id === row.id ? { ...current, thread: [...current.thread, bubble], lane: "none", draft: "", sendable: false } : current));
+                      // Instant: the message shows in the thread the moment Send is pressed (as it will go out,
+                      // with no em dashes), and comes back out only if Hospitable refuses it.
+                      const at = new Date().toISOString();
+                      const text = withoutEmDashes(draft);
+                      const bubble = { role: "host" as const, who: "You", at, time: new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }), text, english: text, language: "", media: [], flag: "" };
+                      const before = row ? { lane: row.lane, draft: row.draft, sendable: row.sendable } : null;
+                      if (row) setGuestAnswer((current) => (current && current.id === row.id ? { ...current, thread: [...current.thread, bubble], lane: "none", draft: "", sendable: false } : current));
+                      let result: { sent: boolean; reason: string; savedLine: string; failedLine: string; sentText: string; hubOffers?: HubProposal[]; pending?: boolean };
+                      try {
+                        result = await api<typeof result>("guests-submit", {
+                          id: row?.id,
+                          propertyId: row?.propertyId,
+                          property: row?.property,
+                          guest: row?.guest,
+                          english: draft,
+                          language: row?.language,
+                          fact,
+                          attachments,
+                        });
+                      } catch (err) {
+                        result = { sent: false, reason: err instanceof Error ? err.message : "Nothing was sent.", savedLine: "", failedLine: "", sentText: "" };
+                      }
+                      if (!(result.sent || result.pending)) {
+                        if (row && before) setGuestAnswer((current) => (current && current.id === row.id ? { ...current, ...before, thread: current.thread.filter((item) => item !== bubble && item.at !== at) } : current));
+                        return result;
+                      }
+                      if (row) {
                         setGuestQueue((current) => (isGuestQueue(current) ? movedToGuest(current, row.id, text, at) : current));
                         openedViews.current.delete(row.id);
                         void api<GuestQueue>("guests-refresh", {}).then((queue) => {
@@ -2629,10 +2641,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                           setGuestQueue(queue);
                           setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
                         }).catch(() => undefined);
-                        // Hospitable can take a few seconds to show it; the optimistic message stays until it does.
+                        // Hospitable can take a few seconds to show it; the message already showing stays until it does.
+                        const sentText = result.sentText || text;
                         const reread = (tries: number) => {
                           void readGuestView({ ...row, activityAt: new Date(Date.parse(at) + tries).toISOString() } as unknown as GuestRow).then((view) => {
-                            if (view && view.thread.some((item) => item.text.trim() === text.trim())) setGuestAnswer((current) => (current && current.id === row.id ? view : current));
+                            if (view && view.thread.some((item) => item.text.trim() === sentText.trim())) setGuestAnswer((current) => (current && current.id === row.id ? view : current));
                             else if (tries < 3) window.setTimeout(() => reread(tries + 1), 4000);
                           });
                         };

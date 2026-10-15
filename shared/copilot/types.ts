@@ -280,6 +280,8 @@ export type HospitableCard = {
   /** True after a property choice is saved. False means Copilot still uses the four managed names. */
   choiceSaved: boolean;
   chosenCount: number;
+  /** Who Copilot's guest messages go out as, from Hospitable's own send fields. */
+  sendAs?: string;
 };
 
 export type InboxGuest = {

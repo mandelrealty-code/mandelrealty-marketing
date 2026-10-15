@@ -10,6 +10,7 @@
 import { createHash } from "node:crypto";
 import { parityEnabled } from "./parity/flag.js";
 import { readPrefixedRow, writePrefixedRow } from "./store.js";
+import { withoutEmDashes } from "./guestTranslate.js";
 
 export type Translation = { english: string; language: string };
 
@@ -175,10 +176,15 @@ const SUGGEST_SYSTEM = [
   "If the guest asks something those don't answer (availability, price, a booking change), say you'll check and get back to them shortly; don't guess.",
   "If the latest guest message needs no answer (thanks, a goodbye, a confirmation), write a brief warm acknowledgement.",
   "Greet the guest by first name. Two to five short sentences, plain and friendly. English. No sign-off name, no subject line.",
+  "Never use em dashes (—) or spaced en dashes; use commas or periods.",
 ].join(" ");
 
 /** A suggested reply for any conversation. Nothing is sent; the partner edits and presses Send. */
 export async function suggestGuestReply(input: SuggestInput): Promise<string> {
+  return withoutEmDashes(await writeSuggestion(input)).trim();
+}
+
+async function writeSuggestion(input: SuggestInput): Promise<string> {
   if (suggestSeam) return (await suggestSeam(input)).trim();
   const thread = input.thread.slice(-14).map((row) => `${row.who === "guest" ? "Guest" : "Host"} (${row.name}): ${row.text.slice(0, 1200)}`).join("\n");
   const user = [

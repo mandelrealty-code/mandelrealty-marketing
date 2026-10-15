@@ -125,7 +125,10 @@ export function hospitableCipherForTest(): string {
 export async function hospitableCard(now = new Date()): Promise<HospitableCard> {
   const row = await storedRow();
   if (!row) return emptyCard();
-  return cardFrom(row, now);
+  const card = cardFrom(row, now);
+  const { senderLine } = await import("./hospitableAgent.js");
+  const sendAs = await senderLine().catch(() => "");
+  return sendAs ? { ...card, sendAs } : card;
 }
 
 export async function saveHospitableToken(raw: string, now = new Date()): Promise<{ card: HospitableCard; error: string }> {

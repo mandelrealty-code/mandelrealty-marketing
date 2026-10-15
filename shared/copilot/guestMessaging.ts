@@ -18,7 +18,7 @@ import { hubItems, proposeHubEntries, type HubItem, type HubProposal } from "./h
 import { flushThreadCache, forgetThread, leaveDraft, loadConversations, memoryFor, readStayThread, type Conversation } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
-import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish } from "./guestTranslate.js";
+import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, withoutEmDashes } from "./guestTranslate.js";
 import { looksEnglish, suggestGuestReply, translateMessages, type Translation } from "./guestAi.js";
 import { getSupabaseAdmin } from "../supabase.js";
 import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestMedia, GuestQueue, GuestRow } from "./guestTypes.js";
@@ -413,6 +413,7 @@ export function setImproveModel(next: ImproveModel | null): void {
 }
 
 const IMPROVE_SYSTEM = [
+  "Never use em dashes (—) or spaced en dashes; use commas or periods.",
   "You polish a short-term rental host's message to a guest before it is sent, the way Hospitable's and Airbnb's message assistants do.",
   "Fix grammar, punctuation and flow. Make it warm, clear and professional, and keep it about as short as the original.",
   "Keep every fact exactly as written: names, numbers, prices, dates, times, unit and spot numbers, links and codes. Do not add any new fact, promise, offer, apology or instruction.",
@@ -463,8 +464,8 @@ export async function improveGuestMessage(text: string, guest = "", property = "
   }
   rewritten = rewritten.replace(/^["“]|["”]$/g, "").trim();
   const keeps = (candidate: string) => factsIn(source).every((fact) => candidate.includes(fact));
-  if (rewritten && keeps(rewritten) && rewritten.length <= source.length * 2 + 160) return rewritten;
-  return improveGuestDraft(source, guest);
+  if (rewritten && keeps(rewritten) && rewritten.length <= source.length * 2 + 160) return withoutEmDashes(rewritten);
+  return withoutEmDashes(improveGuestDraft(source, guest));
 }
 
 function polishWording(text: string, guest: string): string {
@@ -530,8 +531,8 @@ export async function submitGuestReply(input: {
   fact: string;
   attachments?: GuestFile[];
 }): Promise<GuestSubmitResult> {
-  // Sent exactly as written: Airbnb translates host messages for the guest, so Copilot never does.
-  const sentText = input.english;
+  // Sent as written (Airbnb translates host messages for the guest), with no em dashes.
+  const sentText = withoutEmDashes(input.english);
   const files = input.attachments ?? [];
   if (!sentText.trim() && !files.length) throw new Error("The draft is empty. Nothing was sent.");
   if (files.length > 3) throw new Error("Only 3 attachments can go with a guest message, so nothing was sent.");

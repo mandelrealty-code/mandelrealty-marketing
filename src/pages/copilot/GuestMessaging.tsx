@@ -473,21 +473,31 @@ function Thread({
                 className="send"
                 disabled={empty || busy}
                 onClick={() => {
+                  // The box clears at once (the message is already showing); it refills only if nothing went out.
+                  const typed = text;
+                  const attached = files;
                   setBusy(true);
                   setFail("");
-                  void onSubmit(text, "", files).then((result) => {
+                  setText("");
+                  setEdited(false);
+                  setFiles([]);
+                  void onSubmit(typed, "", attached).then((result) => {
                     const problem = submitProblem(result);
-                    if (problem) setFail(problem);
-                    else {
-                      // Accepted but not yet on the thread: the box clears so it isn't sent twice.
-                      if (result.pending || result.savedLine) setSent(result.pending ? result.reason : result.savedLine);
-                      setText("");
-                      setEdited(false);
-                      setFiles([]);
+                    if (problem && !result.sent && !result.pending) {
+                      setFail(problem);
+                      setText(typed);
+                      setEdited(true);
+                      setFiles(attached);
+                    } else {
+                      if (problem) setFail(problem);
+                      if (result.savedLine) setSent(result.savedLine);
                       setOffers((result.hubOffers ?? []).map((offer) => ({ ...offer, phase: "open", line: "" })));
                     }
                   }).catch((err: unknown) => {
                     setFail(err instanceof Error ? err.message : "Nothing was sent.");
+                    setText(typed);
+                    setEdited(true);
+                    setFiles(attached);
                   }).finally(() => setBusy(false));
                 }}
               >Send</button>

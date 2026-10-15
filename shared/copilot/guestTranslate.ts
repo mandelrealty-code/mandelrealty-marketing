@@ -133,3 +133,16 @@ export function toGuestLanguage(english: string, language: string): string {
   }
   return `Bonjour, ${english.replace(/\bHi\b/g, "").replace(/\bthank you\b/gi, "merci").replace(/\byou are welcome\b/gi, "vous pouvez").trim()}`;
 }
+
+/**
+ * No em dashes ever reach a guest: " — " and a bare "—" become a comma, as a person would type it.
+ * Number ranges with an en dash ("Oct 9–12") are kept.
+ */
+export function withoutEmDashes(text: string): string {
+  return text
+    .replace(/\s*—\s*/g, ", ")
+    .replace(/(\S)\s+–\s+(?=\S)/g, "$1, ")
+    .replace(/,\s*,/g, ",")
+    .replace(/,\s*([.!?])/g, "$1")
+    .replace(/^,\s*/gm, "");
+}

@@ -9,7 +9,7 @@ import {
   listReservationMessages,
   respondToHospitableReview,
 } from "../pm/hospitableClient.js";
-import { callHospitableMcp, hospitableMcpConfigured } from "./hospitableMcp.js";
+import { callHospitableMcp, hospitableMcpConfigured, hospitableMcpToolArgs } from "./hospitableMcp.js";
 import { propertyLines } from "./stayAnswer.js";
 import { readMail, searchMail } from "./mailSearch.js";
 import { withoutHubSecrets } from "./hubSecrets.js";
@@ -107,6 +107,33 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * Hospitable posts to Airbnb a few seconds after accepting, so the read-back is retried for about
  * 20 seconds. An identical message posted in the last 15 minutes is not sent twice.
  */
+const SENDER_FIELD = /sender|user_?id|team_?member|author|reply_?as|as_user|send_?as|member_?id/i;
+
+/**
+ * Who a message goes out as. When Hospitable's send tool takes a sender field and HOSPITABLE_SENDER_ID
+ * names Shane's Hospitable user, every Copilot message goes out as Shane, never the listing's host.
+ */
+export async function senderArgs(): Promise<Record<string, string>> {
+  if (parityEnabled()) return {};
+  const id = process.env.HOSPITABLE_SENDER_ID?.trim() ?? "";
+  if (!id) return {};
+  const names = await hospitableMcpToolArgs("send-reservation-message").catch(() => null);
+  const field = names?.find((name) => SENDER_FIELD.test(name));
+  return field ? { [field]: id } : {};
+}
+
+/** What the Hospitable connection page says about the sender, from the send tool's own fields. */
+export async function senderLine(): Promise<string> {
+  if (parityEnabled()) return "";
+  const names = await hospitableMcpToolArgs("send-reservation-message").catch(() => null);
+  if (!names) return "Couldn't read Hospitable's send fields to check who messages go out as.";
+  const field = names.find((name) => SENDER_FIELD.test(name));
+  const id = process.env.HOSPITABLE_SENDER_ID?.trim() ?? "";
+  if (field && id) return `Copilot's messages go out as Shane (Hospitable user ${id}, field "${field}").`;
+  if (field) return `Hospitable can choose who a message goes out as (field "${field}"). Set HOSPITABLE_SENDER_ID to Shane's Hospitable user id and every message goes out as Shane.`;
+  return `Hospitable's send tool takes only ${names.join(", ")}: it has no "send as" choice, so messages go out as the listing's Airbnb host account.`;
+}
+
 export async function sendReservationMessage(input: {
   reservationId: string;
   body: string;
@@ -124,6 +151,7 @@ export async function sendReservationMessage(input: {
     await commitHospitable("send-reservation-message", {
       uuid: reservationId,
       reservation_id: reservationId,
+      ...(await senderArgs()),
       body,
       ...(input.images?.length ? { images: input.images } : {}),
     });
@@ -134,7 +162,8 @@ export async function sendReservationMessage(input: {
       : `${message.replace(/\.$/, "")}. Nothing was sent.`;
     return { sent: false, reason };
   }
-  const delays = parityEnabled() ? [0] : [1500, 2500, 4000, 6000, 6000];
+  // A short confirmation: the app already shows the message, so this only decides "sent" vs "accepted".
+  const delays = parityEnabled() ? [0] : [700, 1300, 2000];
   for (const delay of delays) {
     if (delay) await wait(delay);
     const rows = await threadRows(reservationId);
