@@ -49,11 +49,8 @@ import { answerMoneyMove } from "../copilot/moneyMove.js";
 import { answerAboutPrevious } from "../copilot/followOnAnswer.js";
 import { answerProductAdvice } from "../copilot/productAdvice.js";
 import { answerProcess } from "../copilot/processAnswer.js";
-import { addToRoster, asksReminder, changeFromChat, deleteReminder, restoreReminder, leadFor, listReminders, markReminderDone, openCardIn, readRoster, reminderCard, saveCard, snoozeReminder, surfaceDueReminders, undoReminderDone, undoSnooze, updateReminder, whoAnswer } from "../copilot/reminders.js";
-import type { ReminderCardDraft } from "../copilot/reminderView.js";
-import { syncCalendar } from "../copilot/tasks.js";
-import { closeResolvedTasks } from "../copilot/taskAutomation.js";
-import { TASKS_NOT_READY, TasksNotReady } from "../copilot/taskDb.js";
+import { asksReminder } from "../copilot/reminders.js";
+import { TasksNotReady } from "../copilot/taskDb.js";
 import { boardAction, boardOpen, boardPayload } from "../copilot/taskBoardApi.js";
 import { REPORT_CLIENTS, withClientUnits } from "../copilot/reportClients.js";
 import { answerPropertyReport, continuesReport } from "../copilot/reportAnswer.js";
@@ -458,36 +455,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     if (op.startsWith("reminders-")) {
-     try {
-      // Reminders are tasks: one record each, read and written the same way from every surface. Nothing is sent.
-      const viewer = String(body.viewer ?? "").trim() || (await readRoster())[0]!;
-      const id = String(body.id ?? "");
-      if (op === "reminders-save") {
-        const card = body.card as ReminderCardDraft;
-        const saved = await saveCard(String(body.messageId ?? ""), card, viewer);
-        return res.status(200).json({ line: saved.line, reminder: saved.reminder, reminders: await listReminders(), roster: await readRoster() });
-      }
-      if (op === "reminders-update") await updateReminder(id, (body.patch ?? {}) as Parameters<typeof updateReminder>[1], viewer);
-      else if (op === "reminders-done") await markReminderDone(id, viewer);
-      else if (op === "reminders-undo") await undoReminderDone(id, viewer);
-      else if (op === "reminders-snooze") await snoozeReminder(id, String(body.dueAt ?? ""), viewer);
-      else if (op === "reminders-unsnooze") await undoSnooze(id, viewer);
-      else if (op === "reminders-delete") await deleteReminder(id, viewer);
-      else if (op === "reminders-restore") await restoreReminder(id, viewer);
-      else if (op === "reminders-roster-add") await addToRoster(String(body.name ?? ""));
-      else if (op === "reminders-surface") {
-        // App open: the calendar both ways, resolved tasks closed with proof, then due ones into chat.
-        await syncCalendar().catch(() => null);
-        await closeResolvedTasks().catch(() => null);
-        const surfaced = await surfaceDueReminders();
-        return res.status(200).json({ ...surfaced, reminders: await listReminders(), roster: await readRoster(), chats: await listChats() });
-      } else if (op !== "reminders-list") return res.status(400).json({ error: "Unknown reminders action." });
-      return res.status(200).json({ reminders: await listReminders(), roster: await readRoster() });
-     } catch (err) {
-      // Until supabase/pm_tasks_v2.sql is run, every reminder surface shows one plain line.
-      if (err instanceof TasksNotReady) return res.status(200).json({ notReady: TASKS_NOT_READY, reminders: [], roster: await readRoster().catch(() => []), chatId: "", posted: 0 });
-      throw err;
-     }
+      return res.status(410).json({ error: "Reminders were removed. Use Tasks with a due time." });
     }
 
     if (op === "guests-queue") {
@@ -1013,29 +981,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       if (!pictureMode && !skillMode) {
         const priorMessages = (await listMessages(chatId)).slice(0, -1);
         const compHistory = priorMessages.map((row) => ({ role: row.role, body: row.body }));
-        // Reminders: "remind me…" opens the card; an answer to "Whose task is this?" fills it, asked once.
-        const roster = await readRoster();
-        const viewer = String(body.viewer ?? "").trim() || roster[0]!;
-        const waitingCard = openCardIn(priorMessages);
-        const answeredWho = waitingCard ? whoAnswer(text, viewer, roster) : "";
-        if (waitingCard?.reminder?.card && answeredWho) {
-          const card = { ...waitingCard.reminder.card, assignee: answeredWho };
-          await updateDraft(waitingCard.id, { reminder: { card: { ...waitingCard.reminder.card, superseded: true } } } as never).catch(() => null);
-          const next = await addMessage({ chatId, role: "assistant", body: leadFor(card, viewer), reminder: { card }, steps: [{ text: "Noted whose it is" }], thought: "Nothing is sent to anyone." });
-          if (card.dueAt) await saveCard(next.id, card, viewer);
-          return done();
-        }
-        // "cancel that one", "mark it done", "move it to Friday at 3": the reminder this chat is about.
-        const changed = await changeFromChat(typed, priorMessages, viewer).catch(() => null);
-        if (changed) {
-          await addMessage({ chatId, role: "assistant", body: changed.body, reminder: changed.id ? { ref: { id: changed.id, kind: "due" }, changed: true } : null, steps: [{ text: "Changed the reminder" }], thought: "Reminders are Copilot's own. Nothing was sent to anyone." });
-          return done();
-        }
-        if (asksReminder(text, roster)) {
-          const chatTitle = (await listChats().catch(() => [])).find((chat) => chat.id === chatId)?.title ?? "";
-          // The task is kept in the partner's own words, not the routing text with units spelled out.
-          const reply = await reminderCard(typed, { viewer, history: priorMessages, chatTitle });
-          await addMessage({ chatId, role: "assistant", body: reply.body, reminder: { card: reply.card }, steps: [{ text: "Read the reminder" }], thought: "Nothing is sent to anyone. It comes back here until someone marks it done." });
+        if (asksReminder(text)) {
+          await addMessage({
+            chatId,
+            role: "assistant",
+            body: "Reminders live on the Tasks board now. Open Tasks and add one with a due time.",
+            steps: [{ text: "Pointed to Tasks" }],
+            thought: "Standalone reminders were removed. Due times belong on tasks.",
+          });
           return done();
         }
         // "Who do we normally send the parking email to?": the recorded process, never a pointer to a card.

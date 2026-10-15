@@ -4,7 +4,6 @@ import { processUnansweredReviews } from "../../shared/pm/reviewReply/store.js";
 import { runNightlyDream } from "../../shared/copilot/memoryFiles.js";
 import { runScheduledSkills } from "../../shared/copilot/skillRunner.js";
 import { runCopilotPass } from "../../shared/copilot/pass.js";
-import { surfaceDueReminders } from "../../shared/copilot/reminders.js";
 import { withCopilotScope } from "../../shared/copilot/hospitableConnection.js";
 
 export const config = { maxDuration: 60 };
@@ -42,9 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         error: err instanceof Error ? err.message : "Copilot checks failed",
       }));
       const dream = await runNightlyDream().catch(() => ({ wrote: null }));
-      // Due and outstanding reminders come back into the Reminders chat. Nobody is contacted.
-      const reminders = await surfaceDueReminders().catch(() => ({ chatId: "", posted: 0 }));
-      return res.status(200).json({ ok: true, copilot, checks, dream, reminders });
+      return res.status(200).json({ ok: true, copilot, checks, dream });
     } catch (err) {
       const error = err instanceof Error ? err.message : "Copilot skills failed";
       console.error("[cron/follow-ups] copilot", error);

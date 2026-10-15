@@ -6,7 +6,6 @@ import type { GuestDraftView, GuestFollowUp, GuestQueue, GuestRow } from "../../
 import type { ReviewQueuePayload, ReviewQueueRow } from "../../../shared/copilot/reviewTypes";
 import type { BoardPayload } from "../tasks/TasksBoard";
 import { dueOffset, isOpen, type Task } from "../../../shared/copilot/taskTypes";
-import { daysOutstanding, groupReminders, outstandingText, type Reminder } from "../../../shared/copilot/reminderView";
 import { assembleDecisions, type DecisionItem } from "../../../shared/copilot/overviewRank";
 import { withoutEmDashes } from "../../../shared/copilot/guestTranslate";
 import { runWhen, whenLabel } from "./skillsTime";
@@ -25,7 +24,7 @@ type DayBoard = {
 };
 type ActivityEntry = { at: string; text: string; tone: "ok" | "needs" | "failed"; link: string; ref: string };
 
-type DrawerKey = "queue" | "guests" | "reviews" | "turnovers" | "tasks" | "reminders" | "automations" | "connections";
+type DrawerKey = "queue" | "guests" | "reviews" | "turnovers" | "tasks" | "automations" | "connections";
 
 type Resolved = { text: string; undo?: () => void };
 
@@ -97,8 +96,6 @@ function listedChat(chat: CopilotChat): boolean {
 export function OverviewV2({
   brief,
   guestQueue,
-  reminders,
-  now,
   skills,
   connectors,
   hospitable,
@@ -114,13 +111,10 @@ export function OverviewV2({
   onOpenThread,
   onReconnect,
   onGuestQueue,
-  onReminders,
   onSkills,
 }: {
   brief: BriefPayload;
   guestQueue: GuestQueue | null;
-  reminders: Reminder[];
-  now: Date;
   skills: SkillRow[];
   connectors: ConnectorRow[];
   hospitable?: HospitableCard;
@@ -136,10 +130,10 @@ export function OverviewV2({
   onOpenThread: (row: GuestRow) => void;
   onReconnect: (id: string) => void;
   onGuestQueue: (queue: GuestQueue) => void;
-  onReminders: (reminders: Reminder[]) => void;
   onSkills: (skills: SkillRow[], connectors: ConnectorRow[]) => void;
 }) {
   const [phone, setPhone] = useState(() => window.matchMedia("(max-width: 700px)").matches);
+  const [now, setNow] = useState(() => new Date());
   const [day, setDay] = useState<DayBoard | null>(null);
   const [dayError, setDayError] = useState("");
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
@@ -163,6 +157,11 @@ export function OverviewV2({
     const on = () => setPhone(mq.matches);
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -232,15 +231,7 @@ export function OverviewV2({
         guest: row.guest,
         assigned: row.assigned,
       })),
-      reminders: groupReminders(reminders, now).overdue.map((row) => ({
-        id: row.id,
-        text: row.text,
-        assignee: row.assignee,
-        unit: row.unit,
-        dueAt: row.dueAt,
-        overdue: true,
-        when: outstandingText(daysOutstanding(row, now)),
-      })),
+      reminders: [],
       drafts: chats.filter((chat) => listedChat(chat) && chat.needs_you_at).map((chat) => ({
         id: `chat:${chat.id}`,
         title: chat.title,
@@ -249,7 +240,7 @@ export function OverviewV2({
         sendable: false,
       })),
     });
-  }, [guestQueue, reviews, day, reminders, now, chats]);
+  }, [guestQueue, reviews, day, chats]);
 
   const openDecisions = decisions.filter((row) => !resolved[row.id] && !hidden.includes(row.id));
   const shown = phone ? openDecisions : openDecisions.slice(0, VISIBLE);
@@ -423,46 +414,7 @@ export function OverviewV2({
     }
   }
 
-  async function finishReminder(id: string) {
-    setSending(true);
-    try {
-      const data = await api<{ reminders: Reminder[] }>("reminders-done", { id, viewer });
-      remember(id, `Marked done, ${clock(new Date())}`, () => {
-        void api<{ reminders?: Reminder[] }>("reminders-undo", { id, viewer }).then((next) => {
-          setResolved((prev) => {
-            const copy = { ...prev };
-            delete copy[id];
-            return copy;
-          });
-          if (next.reminders) onReminders(next.reminders);
-        }).catch((err) => setLocalError(err instanceof Error ? err.message : "That did not undo."));
-      });
-      if (data.reminders) onReminders(data.reminders);
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : "That did not save.");
-    } finally {
-      setSending(false);
-    }
-  }
-
   function later(item: DecisionItem) {
-    if (item.kind === "reminder") {
-      const dueAt = new Date(now.getTime() + 4 * 36e5).toISOString();
-        void api<{ reminders?: Reminder[] }>("reminders-snooze", { id: item.id, dueAt, viewer }).then((data) => {
-        if (data.reminders) onReminders(data.reminders);
-        remember(item.id, `Moved to later, back ${dayStamp(new Date(dueAt))}, ${clock(new Date(dueAt))}`, () => {
-          void api<{ reminders?: Reminder[] }>("reminders-unsnooze", { id: item.id, viewer }).then((next) => {
-            if (next.reminders) onReminders(next.reminders);
-            setResolved((prev) => {
-              const copy = { ...prev };
-              delete copy[item.id];
-              return copy;
-            });
-          }).catch((err) => setLocalError(err instanceof Error ? err.message : "That did not undo."));
-        });
-      }).catch((err) => setLocalError(err instanceof Error ? err.message : "That did not save."));
-      return;
-    }
     setHidden((ids) => (ids.includes(item.id) ? ids : [...ids, item.id]));
     remember(item.id, "Moved to later", () => {
       setHidden((ids) => ids.filter((id) => id !== item.id));
@@ -476,10 +428,6 @@ export function OverviewV2({
 
   function onPrimary(item: DecisionItem, from?: HTMLElement | null) {
     trigger.current = from ?? (document.activeElement as HTMLElement | null);
-    if (item.kind === "reminder") {
-      void finishReminder(item.id);
-      return;
-    }
     if (item.id.startsWith("chat:")) {
       onOpenChat(item.id.slice(5));
       return;
@@ -574,7 +522,6 @@ export function OverviewV2({
         reviews={reviews}
         day={day}
         tasks={tasks}
-        reminders={reminders}
         now={now}
         skills={skills}
         connectors={connectors}
@@ -594,7 +541,6 @@ export function OverviewV2({
         onDoneTask={(id) => {
           void api<BoardPayload>("tasks-action", { action: "done", id, viewer }).then(setTasks).catch((err) => setLocalError(err instanceof Error ? err.message : "That did not save."));
         }}
-        onDoneReminder={(id) => void finishReminder(id)}
         onRetrySkill={(id) => {
           void api<{ skills: SkillRow[]; connectors: ConnectorRow[] }>("run-skill", { id }).then((data) => onSkills(data.skills, data.connectors)).catch((err) => setLocalError(err instanceof Error ? err.message : "It did not start. Nothing was sent."));
         }}
@@ -661,7 +607,6 @@ export function OverviewV2({
           <Tile label="Turnovers today" n={day?.todayCleans.length ?? (dayError ? 0 : 0)} state={day?.todayCleans.length ? "Needs you" : dayError ? "Paused" : "OK"} tone={day?.todayCleans.length ? "needs" : dayError ? "info" : "ok"} line={dayError || turnoverLine(day)} onOpen={(event) => openDrawer("turnovers", event.currentTarget)} dots={dayDots(day, now)} />
           <Tile label="Reviews" n={reviews?.connected ? reviews.reviews.length : 0} state={paused ? "Paused" : reviews?.reviews.some((row) => row.flagged) ? "Needs you" : "OK"} tone={paused ? "info" : reviews?.reviews.some((row) => row.flagged) ? "needs" : "ok"} line={paused ? "Paused" : reviewLine(reviews)} onOpen={(event) => openDrawer("reviews", event.currentTarget)} />
           <Tile label="Tasks" n={openTasks(tasks).length} state={overdueTasks(tasks, now) ? `${overdueTasks(tasks, now)} overdue` : tasks?.ready === false ? "Paused" : "OK"} tone={overdueTasks(tasks, now) ? "failed" : "ok"} line={tasks?.ready === false ? tasks.line : taskLine(tasks)} onOpen={(event) => openDrawer("tasks", event.currentTarget)} stack={taskStack(tasks)} />
-          <Tile label="Reminders" n={groupReminders(reminders, now).overdue.length} state={groupReminders(reminders, now).overdue.length ? "Overdue" : "OK"} tone={groupReminders(reminders, now).overdue.length ? "needs" : "ok"} line={reminderLine(reminders, now)} onOpen={(event) => openDrawer("reminders", event.currentTarget)} />
           <Tile label="Automations" n={skills.length} state={skills.some((row) => row.lastRun?.status === "failed") ? "Failed" : "OK"} tone={skills.some((row) => row.lastRun?.status === "failed") ? "failed" : "ok"} line={skillLine(skills)} onOpen={(event) => openDrawer("automations", event.currentTarget)} runs={skills.map((row) => row.lastRun?.status === "failed" ? "failed" : row.lastRun?.status === "running" ? "needs" : row.lastRun ? "ok" : "muted")} />
           <Tile label="Connections" n={connectors.length ? `${connectors.filter((row) => row.status === "connected").length}/${connectors.length}` : "0"} state={down ? "Failed" : connectors.length ? "OK" : "OK"} tone={down ? "failed" : "ok"} line={down ? clean(`${down.name} not connected`) : connectors.length ? "All connected" : "No connections saved"} onOpen={(event) => openDrawer("connections", event.currentTarget)} dots={connectors.map((row) => row.status === "connected" ? "ok" as const : "failed" as const)} />
         </div>
@@ -702,8 +647,8 @@ function DecisionCard({ item, fresh, paused, busy, onPrimary, onEdit, onLater }:
   onEdit: (event: MouseEvent<HTMLButtonElement>) => void;
   onLater: () => void;
 }) {
-  const primary = item.kind === "reminder" ? "" : item.hasDraft ? (item.kind === "review" || item.id.startsWith("draft:") ? "Review and submit" : "Review and send") : "";
-  const tone = item.kind === "inquiry" ? "failed" : item.kind === "guest" || item.kind === "turnover" || item.kind === "reminder" ? "needs" : "muted";
+  const primary = item.hasDraft ? (item.kind === "review" || item.id.startsWith("draft:") ? "Review and submit" : "Review and send") : "";
+  const tone = item.kind === "inquiry" ? "failed" : item.kind === "guest" || item.kind === "turnover" ? "needs" : "muted";
   return (
     <article className={`cp-ov2-card${fresh ? " fresh" : ""}`}>
       <div>
@@ -716,9 +661,8 @@ function DecisionCard({ item, fresh, paused, busy, onPrimary, onEdit, onLater }:
       </div>
       <div className="cp-ov2-cardacts">
         {primary && !paused ? <button type="button" className="cp-ov2-go" disabled={busy} onClick={onPrimary}>{primary}</button> : null}
-        {item.kind === "reminder" ? <button type="button" disabled={busy} onClick={onPrimary}>Mark done</button> : null}
         {item.hasDraft ? <button type="button" disabled={busy} onClick={onEdit}>Edit</button> : null}
-        {!item.hasDraft && item.kind !== "reminder" ? <button type="button" disabled={busy} onClick={onEdit}>Open</button> : null}
+        {!item.hasDraft ? <button type="button" disabled={busy} onClick={onEdit}>Open</button> : null}
         <button type="button" className="cp-ov2-quiet" disabled={busy} onClick={onLater}>Not now</button>
       </div>
     </article>
@@ -784,7 +728,6 @@ function Drawer(props: {
   reviews: ReviewQueuePayload | null;
   day: DayBoard | null;
   tasks: BoardPayload | null;
-  reminders: Reminder[];
   now: Date;
   skills: SkillRow[];
   connectors: ConnectorRow[];
@@ -802,7 +745,6 @@ function Drawer(props: {
   onOpenChat: (id: string) => void;
   onReconnect: (id: string) => void;
   onDoneTask: (id: string) => void;
-  onDoneReminder: (id: string) => void;
   onRetrySkill: (id: string) => void;
   onText: (text: string) => void;
   onImprove: () => void;
@@ -948,7 +890,6 @@ function drawerHead(key: DrawerKey, props: { guestQueue: GuestQueue | null; revi
   }
   if (key === "turnovers") return { title: "Turnovers and cleaners", sub: "Today and the next 2 days", foot: "Cleaning in progress and Cleaned will appear once cleaner check-ins are connected." };
   if (key === "tasks") return { title: "Tasks", sub: "Open tasks, by due date", foot: "Tasks sync to Google Calendar, Mandel Tasks." };
-  if (key === "reminders") return { title: "Reminders", sub: "Outstanding first, then today", foot: "Reminders sync to Google Calendar, Mandel Tasks." };
   if (key === "automations") {
     const failed = props.skills.filter((row) => row.lastRun?.status === "failed").length;
     return { title: "Automations", sub: failed ? `${failed} failed` : "Scheduled skills", foot: "Skills only read and prepare. Anything outbound waits for approval." };
@@ -965,7 +906,6 @@ function drawerGroups(props: {
   reviews: ReviewQueuePayload | null;
   day: DayBoard | null;
   tasks: BoardPayload | null;
-  reminders: Reminder[];
   now: Date;
   skills: SkillRow[];
   connectors: ConnectorRow[];
@@ -981,7 +921,6 @@ function drawerGroups(props: {
   onOpenChat: (id: string) => void;
   onReconnect: (id: string) => void;
   onDoneTask: (id: string) => void;
-  onDoneReminder: (id: string) => void;
   onRetrySkill: (id: string) => void;
 }): { label: string; rows: DrawerRowModel[] }[] {
   if (props.drawer === "queue") {
@@ -1009,12 +948,11 @@ function drawerGroups(props: {
   if (props.drawer === "reviews") return reviewGroups(props.reviews, props.paused, props.onReview);
   if (props.drawer === "turnovers") return turnoverGroups(props.day, props.now);
   if (props.drawer === "tasks") return taskGroups(props.tasks, props.now, props.who, props.onDoneTask);
-  if (props.drawer === "reminders") return reminderGroups(props.reminders, props.now, props.onDoneReminder);
   if (props.drawer === "automations") return [skillGroup(props.skills, props.onRetrySkill)];
   return [connectionGroup(props.connectors, props.onReconnect)];
 }
 
-function decisionRow(item: DecisionItem, paused: boolean, onPrimary: () => void, onLater: () => void): DrawerRowModel {
+function decisionRow(item: DecisionItem, paused: boolean, onPrimary: () => void, _onLater: () => void): DrawerRowModel {
   const blocked = paused && (item.kind === "inquiry" || item.kind === "guest" || item.kind === "review");
   return {
     key: item.id,
@@ -1023,10 +961,10 @@ function decisionRow(item: DecisionItem, paused: boolean, onPrimary: () => void,
     ctx: item.detail,
     time: blocked ? "Paused" : item.when,
     tone: item.kind === "inquiry" ? "failed" : item.kind === "review" || item.kind === "draft" ? "muted" : "needs",
-    primary: blocked ? undefined : item.kind === "reminder" ? "Mark done" : item.hasDraft ? (item.kind === "review" ? "Review and submit" : "Review and send") : undefined,
-    secondary: item.kind === "reminder" ? "Not now" : "Open",
+    primary: blocked ? undefined : item.hasDraft ? (item.kind === "review" ? "Review and submit" : "Review and send") : undefined,
+    secondary: "Open",
     onPrimary: blocked ? undefined : onPrimary,
-    onSecondary: item.kind === "reminder" ? onLater : onPrimary,
+    onSecondary: onPrimary,
   };
 }
 
@@ -1167,25 +1105,6 @@ function taskGroups(board: BoardPayload | null, now: Date, who: string, onDone: 
   })).filter((group) => group.rows.length);
 }
 
-function reminderGroups(reminders: Reminder[], now: Date, onDone: (id: string) => void): { label: string; rows: DrawerRowModel[] }[] {
-  const groups = groupReminders(reminders, now);
-  const row = (item: Reminder, tone: "needs" | "info" | "muted"): DrawerRowModel => ({
-    key: item.id,
-    meta: [item.assignee, item.unit].filter(Boolean).join(" · "),
-    title: item.text,
-    ctx: "",
-    time: daysOutstanding(item, now) ? outstandingText(daysOutstanding(item, now)) : `${dayStamp(new Date(item.dueAt))}, ${clock(new Date(item.dueAt))}`,
-    tone,
-    secondary: "Mark done",
-    onSecondary: () => onDone(item.id),
-  });
-  return [
-    { label: "Overdue", rows: groups.overdue.map((item) => row(item, "needs")) },
-    { label: "Today", rows: groups.today.map((item) => row(item, "info")) },
-    { label: "Upcoming", rows: groups.upcoming.map((item) => row(item, "muted")) },
-  ].filter((group) => group.rows.length);
-}
-
 function skillGroup(skills: SkillRow[], onRetry: (id: string) => void): { label: string; rows: DrawerRowModel[] } {
   return {
     label: "Scheduled skills",
@@ -1285,16 +1204,6 @@ function taskStack(board: BoardPayload | null): { n: number; tone: "muted" | "ac
     { n: doing, tone: "accent" as const },
     { n: waiting, tone: "needs" as const },
   ].filter((seg) => seg.n >= 1);
-}
-
-function reminderLine(reminders: Reminder[], now: Date): string {
-  const groups = groupReminders(reminders, now);
-  const first = groups.overdue[0] || groups.today[0];
-  if (!first) {
-    const next = groups.upcoming[0];
-    return next ? `Next ${dayStamp(new Date(next.dueAt))}` : "Nothing due";
-  }
-  return clean([first.text, outstandingText(daysOutstanding(first, now)) || dayStamp(new Date(first.dueAt))].filter(Boolean).join(", "));
 }
 
 function skillLine(skills: SkillRow[]): string {
