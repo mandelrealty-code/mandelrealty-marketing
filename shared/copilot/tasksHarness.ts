@@ -16,7 +16,7 @@ import { closeResolvedTasks, createAutoTasks, setAutoSources } from "./taskAutom
 import { insertTask, resetParityTasks } from "./taskDb.js";
 import handleSession, { setStaffAccounts } from "../adminApi/session.js";
 import { hashPassword } from "../portalAuth.js";
-import { OPS_NAV, opsPathOpensCopilotTasks } from "../opsNav.js";
+import { OPS_NAV, opsPathOpensCopilotReviews, opsPathOpensCopilotTasks } from "../opsNav.js";
 import { getTask, setParityStaff, syncCalendar } from "./tasks.js";
 import { createReminder, listReminders } from "./reminders.js";
 import { overviewReminders, reminderRow } from "./reminderView.js";
@@ -237,6 +237,8 @@ if (!back || back.activity.at(-1)?.text !== "Un-archived by Shane from the old O
 
 // OPS: no Tasks entry; the old route lands on the Copilot board.
 if (OPS_NAV.some(([key, label]) => (key as string) === "tasks" || /tasks/i.test(label))) fail("OPS still lists Tasks");
+if (OPS_NAV.some(([key, label]) => (key as string) === "reviews" || /reviews/i.test(label))) fail("OPS still lists Reviews");
+if (!opsPathOpensCopilotReviews("/ops/reviews") || !opsPathOpensCopilotReviews("/ops/reviews/job-1") || opsPathOpensCopilotReviews("/ops/sops")) fail("the old OPS reviews route didn't land on Copilot");
 if (!opsPathOpensCopilotTasks("/ops/tasks") || !opsPathOpensCopilotTasks("/ops/tasks/123") || opsPathOpensCopilotTasks("/ops/reviews")) fail("the old OPS tasks route didn't land on Copilot");
 
 // An employee signs in to the admin app with their OPS account and sees only their own board.

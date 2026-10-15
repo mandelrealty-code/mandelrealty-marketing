@@ -876,7 +876,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     try {
       const asked = window.sessionStorage.getItem("cp-open") || new URLSearchParams(window.location.search).get("view") || "";
       window.sessionStorage.removeItem("cp-open");
-      return asked === "tasks" ? "tasks" : "brief";
+      return asked === "tasks" ? "tasks" : asked === "reviews" ? "reviews" : "brief";
     } catch {
       return "brief";
     }
@@ -1058,6 +1058,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   useEffect(() => {
     document.documentElement.dataset.cpTheme = theme;
   }, [theme]);
+
+  // Opened straight onto Reviews (an old OPS link): load the queue the sidebar click would have.
+  useEffect(() => {
+    if (screen !== "reviews" || reviewQueue) return;
+    void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch((err) => setReviewQueue({ connected: false, line: err instanceof Error ? err.message : "Hospitable is not connected.", reviews: [], postedToday: [] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen]);
 
   // Reminders whose time has come are waiting in chat when Copilot opens; the minute tick keeps
   // "N days outstanding" and due words current, and a quiet pass every five minutes posts new ones.

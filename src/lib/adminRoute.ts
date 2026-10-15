@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { OPS_NAV, opsPathOpensCopilotTasks } from "../../shared/opsNav";
+import { OPS_NAV, opsPathOpensCopilotReviews, opsPathOpensCopilotTasks } from "../../shared/opsNav";
 
 export { OPS_NAV };
 import {
@@ -55,13 +55,17 @@ function isOpsTab(v: string | undefined): v is OpsTab {
   return !!v && (OPS_TABS as string[]).includes(v);
 }
 
-/** Copilot opens on its Tasks board once (the old /ops/tasks links, ?view=tasks). */
-export function openCopilotTasks(): void {
+/** Copilot opens once on a screen that moved there from OPS (the old /ops/tasks and /ops/reviews links). */
+export function openCopilotScreen(screen: "tasks" | "reviews"): void {
   try {
-    window.sessionStorage.setItem("cp-open", "tasks");
+    window.sessionStorage.setItem("cp-open", screen);
   } catch {
-    /* The board is one click away in the sidebar. */
+    /* The screen is one click away in the sidebar. */
   }
+}
+
+export function openCopilotTasks(): void {
+  openCopilotScreen("tasks");
 }
 
 
@@ -70,7 +74,7 @@ export function emptyAdminRoute(mode: AdminProductMode = readStoredAdminMode()):
     mode,
     crmTab: "contacts",
     leadId: null,
-    opsTab: "reviews",
+    opsTab: "sops",
     propertyId: null,
     clientId: null,
     clientEdit: false,
@@ -128,8 +132,10 @@ export function parseAdminRoute(
       openCopilotTasks();
       return emptyAdminRoute("copilot");
     }
-    if (parts[1] === "reviews" && parts[2]) {
-      return { ...base, opsTab: "reviews", reviewJobId: parts[2] };
+    if (opsPathOpensCopilotReviews(pathname)) {
+      // The old OPS Reviews tab: Reviews live in Copilot now.
+      openCopilotScreen("reviews");
+      return emptyAdminRoute("copilot");
     }
     if (parts[1] === "employees" && parts[2]) {
       return { ...base, opsTab: "employees", employeeId: parts[2] };
@@ -164,7 +170,7 @@ export function adminPath(route: AdminRoute): string {
 
   if (route.reviewJobId) return `/ops/reviews/${encodeURIComponent(route.reviewJobId)}`;
   if (route.employeeId) return `/ops/employees/${encodeURIComponent(route.employeeId)}`;
-  if (route.opsTab === "reviews") return "/ops";
+  if (route.opsTab === "sops") return "/ops";
   return `/ops/${route.opsTab}`;
 }
 

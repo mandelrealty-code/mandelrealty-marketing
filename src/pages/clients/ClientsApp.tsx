@@ -24,7 +24,6 @@ import { PortalInviteControls } from "./PortalInviteControls";
 import { EarningsPanel } from "./EarningsPanel";
 import { MonthClosePanel } from "./MonthClosePanel";
 import { OwnerStatementPanel } from "./OwnerStatementPanel";
-import { ReviewsPanel } from "./ReviewsPanel";
 import { SopsPanel } from "./SopsPanel";
 import { VideoSopStudioModal } from "../../components/sop/VideoSopStudioModal";
 import type { SopItem } from "../../../shared/pm/sopTypes";
@@ -40,7 +39,7 @@ import {
   type AdminProductMode,
   writeStoredAdminMode,
 } from "./mode";
-import { OPS_NAV, adminPath, emptyAdminRoute, openCopilotTasks, type AdminRoute } from "../../lib/adminRoute";
+import { OPS_NAV, adminPath, emptyAdminRoute, openCopilotScreen, type AdminRoute } from "../../lib/adminRoute";
 import {
   FieldLabel,
   GoldButton,
@@ -53,13 +52,13 @@ import {
   TextInput,
 } from "./ui";
 
-/** The old OPS Tasks route: send it to the Tasks board in Copilot. */
-function TasksMoved() {
+/** An old OPS route for something that lives in Copilot now: open it there. */
+function MovedToCopilot({ screen }: { screen: "tasks" | "reviews" }) {
   useEffect(() => {
-    openCopilotTasks();
+    openCopilotScreen(screen);
     window.location.replace("/copilot");
-  }, []);
-  return <p className="p-6 text-sm text-[#9a9590]">Tasks moved to Copilot. Opening the board…</p>;
+  }, [screen]);
+  return <p className="p-6 text-sm text-[#9a9590]">{screen === "tasks" ? "Tasks" : "Reviews"} moved to Copilot. Opening it…</p>;
 }
 
 type Tab = "tasks" | "reviews" | "clients" | "properties" | "month" | "sops" | "employees" | "settings";
@@ -294,7 +293,7 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
       setRoute(
         {
           ...emptyAdminRoute("ops"),
-          opsTab: patch.opsTab ?? "reviews",
+          opsTab: patch.opsTab ?? "sops",
           propertyId: patch.propertyId ?? null,
           clientId: patch.clientId ?? null,
           clientEdit: Boolean(patch.clientEdit),
@@ -2314,22 +2313,10 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     );
   } else if (tab === "tasks") {
     // An old OPS Tasks link: the board lives in Copilot now.
-    main = <TasksMoved />;
+    main = <MovedToCopilot screen="tasks" />;
   } else if (tab === "reviews") {
-    main = (
-      <div className="flex h-full min-h-[calc(100dvh-120px)] flex-col lg:min-h-[calc(100dvh-56px)]">
-        <ReviewsPanel
-          desktop={desktop}
-          restoreJobId={route.reviewJobId}
-          onJobIdChange={(id) => {
-            if (id === route.reviewJobId) return;
-            navOps({ opsTab: "reviews", reviewJobId: id || null });
-          }}
-          onToast={setToast}
-          onError={setLoadError}
-        />
-      </div>
-    );
+    // An old OPS Reviews link: Reviews live in Copilot now.
+    main = <MovedToCopilot screen="reviews" />;
   } else if (tab === "employees") {
     main = (
       <EmployeesPanel
