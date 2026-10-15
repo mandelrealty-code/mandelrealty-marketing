@@ -10,7 +10,7 @@
 
 import { createHash } from "node:crypto";
 import { parityEnabled } from "./parity/flag.js";
-import { readPrefixedRow, writePrefixedRow } from "./store.js";
+import { listPrefixedStamps, readPrefixedRow, writePrefixedRow } from "./store.js";
 import { withoutEmDashes } from "./guestTranslate.js";
 import type { ReviewFact } from "./reviewTypes.js";
 
@@ -206,17 +206,47 @@ function keyOf(id: string, input: KeptKey): string {
   return `${STORE}${id}|${createHash("sha1").update(`v3|${input.stars}|${input.review}|${input.reservationId ?? ""}`).digest("base64url").slice(0, 10)}`;
 }
 
+function parseKept(body: string): ReviewAiResult | null {
+  const start = body.indexOf("{");
+  if (start < 0) return null;
+  try {
+    const parsed = JSON.parse(body.slice(start)) as ReviewAiResult;
+    if (parsed?.kind === "reply" || parsed?.kind === "flag") return parsed;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function rememberedFor(id: string): ReviewAiResult | null {
+  const prefix = `${STORE}${id}|`;
+  for (const [key, value] of memory) {
+    if (key.startsWith(prefix)) return value;
+  }
+  return null;
+}
+
+/** A draft saved for this review, even when the stay match changed the storage key. */
 export async function keptReviewAi(id: string, input: KeptKey): Promise<ReviewAiResult | null> {
   const key = keyOf(id, input);
-  const hit = memory.get(key);
-  if (hit) return hit;
+  const hit = memory.get(key) ?? rememberedFor(id);
+  if (hit) {
+    memory.set(key, hit);
+    return hit;
+  }
   if (parityEnabled()) return null;
   try {
-    const raw = await readPrefixedRow(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as ReviewAiResult;
-    memory.set(key, parsed);
-    return parsed;
+    const exact = parseKept(await readPrefixedRow(key));
+    if (exact) {
+      memory.set(key, exact);
+      return exact;
+    }
+    const rows = await listPrefixedStamps(`${STORE}${id}|`);
+    const newest = rows.filter((row) => row.body.includes("{")).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+    const saved = newest ? parseKept(newest.body) : null;
+    if (!saved) return null;
+    memory.set(key, saved);
+    return saved;
   } catch {
     return null;
   }

@@ -8854,16 +8854,15 @@ html.cp-app[data-cp-theme="dark"] #root {
 }
 
 .cp-ov2 {
-  height: 100%;
-  min-height: 0;
+  min-height: 100%;
+  height: auto;
   display: flex;
   flex-direction: column;
   color: var(--ink);
 }
 .cp-ov2-body {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+  flex: none;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -9080,7 +9079,7 @@ html.cp-app[data-cp-theme="dark"] #root {
 .cp-ov2-asks button:hover { background: var(--tint); color: var(--ink); }
 .cp-main:has(.cp-ov2-railhost) { flex-direction: row; }
 .cp-main:has(.cp-ov2-railhost) .cp-chatpane { flex: 1; min-width: 0; }
-.cp-main:has(.cp-ov2) .cp-scroll { overflow: hidden; }
+.cp-main:has(.cp-ov2) .cp-scroll { overflow-x: hidden; overflow-y: auto; }
 .cp-ov2-railhost {
   width: 300px;
   flex: none;

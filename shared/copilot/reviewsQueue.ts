@@ -8,6 +8,8 @@ import { scopedStayProperties } from "./dayBoard.js";
 import { loadConversations, type Conversation } from "./stayCheck.js";
 import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
 import { flagLine, openingOf, thanksByName, keepReviewAi, keptReviewAi, reviewAiAvailable, reviewIsFlagged, writeReviewAi, type ReviewAiResult, type ReviewAssessment } from "./reviewAi.js";
+import { parityEnabled } from "./parity/flag.js";
+import { readPrefixedRow, writePrefixedRow } from "./store.js";
 import { guestPhotoUrl } from "./guestInquiries.js";
 import { hubPlain } from "./knowledgeHub.js";
 import { addDays, torontoToday } from "./time.js";
@@ -198,6 +200,7 @@ export async function regenerateFromConnection(input: {
     const ai = await writeReviewAi({ guest: input.guest, stars: input.stars, review: input.review, privateFeedback: input.privateFeedback ?? "", property: input.property ?? "", messages: stay.messages, reservation: stay.reservation, hub: stay.hub, avoidOpenings: input.current ? [openingOf(input.current)] : [] });
     if (ai) {
       if (input.id) await keepReviewAi(input.id, { review: input.review, stars: input.stars, reservationId: input.reservationId }, ai);
+      expireReviewQueue();
       return { ...fromAi(ai, input.stars), previous: input.current, sourceLine: aiSourceLine(stay), unchanged: false };
     }
   }
@@ -213,16 +216,19 @@ export async function submitReviewReply(id: string, text: string, guest: string,
   else await respondToHospitableReview(token, id, body);
   const time = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }).format(now);
   posted.set(id, { text: `Reply to ${guest}'s ${stars}-star review, ${property}`, at: time });
+  expireReviewQueue();
 }
 
 export function skipReview(id: string, now = new Date()): string {
   const until = addDays(torontoToday(now), 1);
   skips.set(id, until);
+  expireReviewQueue();
   return until;
 }
 
 export function undoSkip(id: string): void {
   skips.delete(id);
+  expireReviewQueue();
 }
 
 /** What a written review becomes on the row: a reply draft, or a flag with its assessment. */
@@ -253,8 +259,48 @@ export function reviewDate(reviewedAt: string, checkOut: string): { at: string; 
 
 /** Writing budget per load: a review is written once and kept, so later loads are instant. */
 const WRITE_BUDGET_MS = 20_000;
+const QUEUE_SNAPSHOT = "review-queue|snapshot|";
+const QUEUE_FRESH_MS = 10 * 60 * 1000;
 
-export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayload> {
+let reviewQueueInflight: Promise<ReviewQueuePayload> | null = null;
+
+async function readFreshReviewQueue(now: Date): Promise<ReviewQueuePayload | null> {
+  if (parityEnabled()) return null;
+  try {
+    const raw = await readPrefixedRow(QUEUE_SNAPSHOT);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as { at?: string; payload?: ReviewQueuePayload };
+    if (!saved.at || !saved.payload?.connected) return null;
+    if (now.getTime() - new Date(saved.at).getTime() > QUEUE_FRESH_MS) return null;
+    return saved.payload;
+  } catch {
+    return null;
+  }
+}
+
+async function saveReviewQueue(now: Date, payload: ReviewQueuePayload): Promise<void> {
+  if (parityEnabled() || !payload.connected) return;
+  await writePrefixedRow(QUEUE_SNAPSHOT, JSON.stringify({ at: now.toISOString(), payload })).catch(() => undefined);
+}
+
+function expireReviewQueue(): void {
+  reviewQueueInflight = null;
+  if (parityEnabled()) return;
+  void writePrefixedRow(QUEUE_SNAPSHOT, JSON.stringify({ at: "" })).catch(() => undefined);
+}
+
+export function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayload> {
+  if (reviewQueueInflight) return reviewQueueInflight;
+  const run = loadReviewQueueOnce(now).finally(() => {
+    if (reviewQueueInflight === run) reviewQueueInflight = null;
+  });
+  reviewQueueInflight = run;
+  return run;
+}
+
+async function loadReviewQueueOnce(now = new Date()): Promise<ReviewQueuePayload> {
+  const cached = await readFreshReviewQueue(now);
+  if (cached) return cached;
   const token = await copilotHospitableToken();
   if (!token) {
     return { connected: false, line: "Hospitable is not connected.", reviews: [], postedToday: [...posted.values()] };
@@ -355,7 +401,7 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
     unreadable.length ? `Couldn't read reviews for ${unreadable.join(", ")}. Open Reviews again in a moment.` : "",
     closed ? `${closed} older review${closed === 1 ? "" : "s"} can no longer be answered on Airbnb, so ${closed === 1 ? "it is" : "they are"} not listed.` : "",
   ].filter(Boolean);
-  return {
+  const payload: ReviewQueuePayload = {
     connected: true,
     line: "",
     reviews: rankReviews(reviews),
@@ -363,6 +409,8 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
     properties: listed,
     ...(notes.length ? { note: notes.join(" ") } : {}),
   };
+  await saveReviewQueue(now, payload);
+  return payload;
 }
 
 /**

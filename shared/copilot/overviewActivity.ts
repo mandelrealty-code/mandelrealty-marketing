@@ -64,14 +64,15 @@ export function buildOverviewActivity(records: ActivityRecords): ActivityEntry[]
     if (!text) continue;
     entries.push({ at, ref: task.id, link: "tasks", tone: "ok", text: clean(text) });
   }
-  for (const review of records.reviews) {
-    if (!review.at || !review.id) continue;
+  const flags = records.reviews.filter((row) => row.kind === "flag" && row.at && row.id).sort((a, b) => (a.at < b.at ? 1 : -1));
+  const newestFlag = flags[0];
+  if (newestFlag) {
     entries.push({
-      at: review.at,
-      ref: review.id,
+      at: newestFlag.at,
+      ref: newestFlag.id,
       link: "reviews",
-      tone: review.kind === "flag" ? "needs" : "ok",
-      text: clean(review.kind === "flag" ? "Wrote a flagged review assessment" : "Drafted a review reply"),
+      tone: "needs",
+      text: clean(flags.length === 1 ? "Wrote a flagged review assessment" : `Flagged ${flags.length} reviews`),
     });
   }
   if (records.guestRefreshAt.trim()) {
