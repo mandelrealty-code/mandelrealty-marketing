@@ -1726,8 +1726,16 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         .catch(() => undefined);
       threadFlight = false;
     };
+    // The open thread is one cheap read every 2s. The inbox check reads every property, so it runs every
+    // 10s on Guest messaging and 30s elsewhere (a minute when hidden): back-to-back checks made Hospitable
+    // turn reads away, and properties showed as unreadable.
+    let inboxAt = 0;
     const pull = () => {
-      void pullInbox();
+      const gap = document.hidden ? 60000 : screenRef.current === "guests" ? 10000 : 30000;
+      if (Date.now() - inboxAt >= gap) {
+        inboxAt = Date.now();
+        void pullInbox();
+      }
       void pullThread();
       if (!stopped) timer = window.setTimeout(pull, document.hidden ? 30000 : 2000);
     };

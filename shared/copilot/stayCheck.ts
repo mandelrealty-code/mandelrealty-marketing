@@ -196,13 +196,15 @@ function rateLimited(err: unknown): boolean {
 }
 
 /** One read, with one wait and retry when Hospitable rate-limits it. */
+/** A read Hospitable turned away for going too fast is tried again after 1.5s, 3s and 6s. */
 export async function readWithRetry<T>(read: () => Promise<T>): Promise<T> {
-  try {
-    return await read();
-  } catch (err) {
-    if (!rateLimited(err)) throw err;
-    await new Promise((resolve) => setTimeout(resolve, parityEnabled() ? 0 : 1500));
-    return read();
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await read();
+    } catch (err) {
+      if (!rateLimited(err) || attempt >= 3) throw err;
+      await new Promise((resolve) => setTimeout(resolve, parityEnabled() ? 0 : 1500 * 2 ** attempt));
+    }
   }
 }
 
@@ -443,10 +445,15 @@ let fullRead: { at: number; scope: string; rows: Map<string, Conversation> } | n
 /** How often every stay back to 2010 is re-read; between those, only stays checking out from 60 days ago on. */
 const FULL_READ_MS = 15 * 60_000;
 const RECENT_DAYS = 60;
+/** When each property's reservations were last read successfully. */
+const lastGood = new Map<string, number>();
+/** A property is said to be unreadable only after this long without a good read. */
+const STALE_SAY_MS = 5 * 60_000;
 
 export function resetConversationReads(): void {
   fullRead = null;
   inquiryTurnsKept.clear();
+  lastGood.clear();
 }
 
 /**
@@ -465,6 +472,9 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
   const found = new Map<string, Conversation>();
   const failed: string[] = [];
   let fullFailed = false;
+  const failedIds = new Set<string>();
+  const failedLabel = new Map<string, string>();
+  const hasRowsFor = (id: string) => [...(fullRead?.rows.values() ?? [])].some((row) => row.stay.propertyId === id);
   const readProperty = async (property: (typeof properties)[number]) => {
     const label = placeLabel(`${property.name} ${property.address}`, property.name);
     const id = property.id;
@@ -498,9 +508,11 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
     };
     try {
       await readAll(full ? "2010-01-01" : addDays(today, -RECENT_DAYS));
+      lastGood.set(id, now.getTime());
     } catch {
       if (!full) {
-        fullFailed = true;
+        failedIds.add(id);
+        failedLabel.set(id, label);
         failed.push(label);
         return;
       }
@@ -510,6 +522,8 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
         failed.push(`${label} (conversations from stays that ended more than two years ago)`);
       } catch {
         fullFailed = true;
+        failedIds.add(id);
+        failedLabel.set(id, label);
         failed.push(label);
         return;
       }
@@ -537,10 +551,18 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
   const lane = async () => {
     for (let property = queue.shift(); property; property = queue.shift()) await readProperty(property);
   };
-  await Promise.all([lane(), lane(), lane()]);
-  if (!full && fullRead) {
-    // Older stays come from the last full read; anything read just now is fresher and wins.
-    for (const [key, row] of fullRead.rows) if (!found.has(key)) found.set(key, row);
+  await Promise.all([lane(), lane()]);
+  // A property that didn't answer this time keeps the conversations last read for it: they are shown,
+  // and the failure is said only when it hasn't been read successfully for a few minutes.
+  if (fullRead) {
+    for (const [key, row] of fullRead.rows) {
+      if (!found.has(key) && (failedIds.has(row.stay.propertyId) || !full)) found.set(key, row);
+    }
+  }
+  for (const id of failedIds) {
+    const good = lastGood.get(id) ?? 0;
+    const at = failed.indexOf(failedLabel.get(id) ?? "");
+    if (at >= 0 && !parityEnabled() && now.getTime() - good < STALE_SAY_MS && hasRowsFor(id)) failed.splice(at, 1);
   }
   await readInquiryMessages([...found.values()].filter((row) => row.inquiry && !row.turns?.length), today, now);
   if (full && !fullFailed) fullRead = { at: now.getTime(), scope, rows: new Map(found) };
