@@ -18,7 +18,7 @@ import { hubItems, proposeHubEntries, type HubItem, type HubProposal } from "./h
 import { flushThreadCache, forgetThread, leaveDraft, loadConversations, memoryFor, readStayThread, type Conversation } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
-import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
+import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish } from "./guestTranslate.js";
 import { looksEnglish, suggestGuestReply, translateMessages, type Translation } from "./guestAi.js";
 import { getSupabaseAdmin } from "../supabase.js";
 import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestMedia, GuestQueue, GuestRow } from "./guestTypes.js";
@@ -530,7 +530,8 @@ export async function submitGuestReply(input: {
   fact: string;
   attachments?: GuestFile[];
 }): Promise<GuestSubmitResult> {
-  const sentText = toGuestLanguage(input.english, input.language);
+  // Sent exactly as written: Airbnb translates host messages for the guest, so Copilot never does.
+  const sentText = input.english;
   const files = input.attachments ?? [];
   if (!sentText.trim() && !files.length) throw new Error("The draft is empty. Nothing was sent.");
   if (files.length > 3) throw new Error("Only 3 attachments can go with a guest message, so nothing was sent.");
@@ -1131,7 +1132,7 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
     basedOn: outside.basedOn || (fromHub.facts ? `the Knowledge Hub · ${fromHub.facts}` : ""),
     sourceLine: sourceLine(read, reservation, outside.pageTitle),
     mediaSlot: read.mediaSlot,
-    sentVersion: !held && draft ? toGuestLanguage(draft, row.language) : "",
+    sentVersion: !held && draft ? draft : "",
     facts: fromHub.facts,
     gap: !draft && !held ? fromHub.gap : "",
     savedLine: "",

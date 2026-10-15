@@ -33,7 +33,6 @@ import {
   setHubWriter,
   submitGuestReply,
   toEnglish,
-  toGuestLanguage,
   forgetGuestProcessMemory,
   guestDrafts,
   guestTabText,
@@ -159,8 +158,9 @@ if (!/check in|1 PM|flight/i.test(isabelle.askedEn)) fail("english line");
 if (!/Translated from French/.test(`Translated from ${isabelle.language}`)) fail("marker");
 const covered = draftFromHub(isabelle.guest, FRENCH, HUB);
 if (covered.mode !== "hub" || !/check-in from 2 PM/i.test(covered.draft) || !covered.facts) fail("hub draft");
-const sentVersion = toGuestLanguage(covered.draft, "French");
-if (sentVersion === covered.draft || !/bonjour|vous pouvez|14 h/i.test(sentVersion)) fail("french send version");
+// Replies go out exactly as written, in English: Airbnb translates host messages for the guest.
+const isabelleSent = await submitGuestReply({ reservationId: isabelle.id, propertyId: isabelle.propertyId, property: isabelle.property, guest: isabelle.guest, english: covered.draft, language: "French", fact: "" });
+if (isabelleSent.sentText !== covered.draft || /bonjour|vous pouvez/i.test(isabelleSent.sentText)) fail(`a reply to a French guest was rewritten: ${isabelleSent.sentText}`);
 if (toEnglish(FRENCH) === FRENCH) fail("translation unchanged");
 
 const rack = draftFromHub("Daniel Okafor", "Hey, where’s the dish drying rack? We’ve looked everywhere.", "The Wi-Fi password is on the fridge.");
