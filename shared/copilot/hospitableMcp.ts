@@ -72,7 +72,46 @@ export async function hospitableMcpToolArgs(name: string): Promise<string[] | nu
     const listed = (await rpc(token, "tools/list", {})) as { tools?: { name?: string; inputSchema?: { properties?: Record<string, unknown> } }[] } | null;
     toolArgs = new Map((listed?.tools ?? []).map((tool) => [String(tool.name ?? ""), Object.keys(tool.inputSchema?.properties ?? {})]));
   }
-  return toolArgs.get(name) ?? null;
+  const names = toolArgs.get(name) ?? null;
+  // Hospitable lists some tools with a stub schema; the tool returns its real one when asked for it.
+  if (names?.includes(FULL_SCHEMA)) {
+    const token = await getHospitableMcpToken();
+    const full = token ? propertyNames(await callWith(token, name, { [FULL_SCHEMA]: true }).catch(() => null)) : [];
+    if (!full.length) return null;
+    toolArgs.set(name, full);
+    return full;
+  }
+  return names;
+}
+
+const FULL_SCHEMA = "__fetch_full_schema__";
+
+/** The argument names in a returned schema: the first "properties" object found, at any depth. */
+export function propertyNames(raw: unknown): string[] {
+  let value = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  const seen = new Set<unknown>();
+  const walk = (node: unknown): string[] => {
+    if (!node || typeof node !== "object" || seen.has(node)) return [];
+    seen.add(node);
+    const props = (node as { properties?: unknown }).properties;
+    if (props && typeof props === "object" && !Array.isArray(props)) {
+      const keys = Object.keys(props).filter((key) => key !== FULL_SCHEMA);
+      if (keys.length) return keys;
+    }
+    for (const child of Object.values(node as Record<string, unknown>)) {
+      const found = walk(typeof child === "string" && /^\s*[{[]/.test(child) ? (() => { try { return JSON.parse(child); } catch { return null; } })() : child);
+      if (found.length) return found;
+    }
+    return [];
+  };
+  return walk(value);
 }
 
 async function callWith(token: string, name: string, args: Record<string, unknown>, retried = false): Promise<unknown> {
