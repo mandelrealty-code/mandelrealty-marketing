@@ -19,6 +19,7 @@ import { flushThreadCache, forgetThread, leaveDraft, loadConversations, memoryFo
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
 import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, toGuestLanguage } from "./guestTranslate.js";
+import { looksEnglish, suggestGuestReply, translateMessages, type Translation } from "./guestAi.js";
 import { getSupabaseAdmin } from "../supabase.js";
 import type { GuestBubble, GuestDraftView, GuestFile, GuestFollowUp, GuestMedia, GuestQueue, GuestRow } from "./guestTypes.js";
 
@@ -617,6 +618,20 @@ async function loadGuestQueueOnce(now: Date): Promise<GuestQueue> {
   if (!copilotScopeActive()) return withCopilotScope(() => loadGuestQueueOnce(now));
   await readHandledThreads();
   const queue = await scanGuestQueue(now);
+  // Conversations waiting on you show their last guest message in English too (one batched, stored call).
+  try {
+    const rows = [...queue.waiting, ...queue.held];
+    const texts = rows.map((row) => (row.preview || row.asked || "").trim()).filter((text) => text && !looksEnglish(text));
+    if (texts.length) {
+      const done = await translateMessages(texts);
+      for (const row of rows) {
+        const hit = done.get((row.preview || row.asked || "").trim());
+        if (hit) row.askedEn = hit.english;
+      }
+    }
+  } catch {
+    /* The original text still shows. */
+  }
   queue.answer = waitingSurfaceText(queue);
   if (queue.connected) {
     rememberedQueue = queue;
@@ -1009,6 +1024,35 @@ async function inquiryThread(id: string): Promise<{ at: string; role: string; na
   }));
 }
 
+/**
+ * Suggest with AI, for any conversation: the thread in English, the property's Knowledge Hub and notes,
+ * into one suggested reply. The partner edits it and presses Send; nothing is sent here.
+ */
+export async function suggestReply(row: GuestRow, now = new Date()): Promise<string> {
+  const [messages, hubRead, memory] = await Promise.all([
+    (row.inquiry ? inquiryThread(row.id) : readStayThread(row.id, now)).catch(() => []),
+    readPropertyHub(row.propertyId),
+    memoryFor(row.property).catch(() => ""),
+  ]);
+  const spoken = messages.filter((item) => item.role !== "system" && item.body.trim());
+  const translations = await translateMessages(spoken.filter((item) => item.role === "guest").map((item) => item.body)).catch(() => new Map<string, Translation>());
+  const thread = spoken
+    .slice()
+    .sort((a, b) => a.at.localeCompare(b.at))
+    .map((item) => ({ who: item.role === "guest" ? "guest" as const : "host" as const, name: item.name || (item.role === "guest" ? row.guest : "Host"), text: translations.get(item.body.trim())?.english ?? item.body }));
+  if (!thread.length) throw new Error("There are no messages in this conversation to reply to yet.");
+  const draft = await suggestGuestReply({
+    guest: row.guest,
+    property: row.property,
+    stay: row.dates || [row.checkIn, row.checkOut].filter(Boolean).join(" to "),
+    thread,
+    hub: hubRead.ok ? hubRead.text : "",
+    memory,
+  });
+  if (!draft) throw new Error("The AI didn't answer. Nothing was changed; try again.");
+  return draft;
+}
+
 export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<GuestDraftView> {
   // Every read at once: the thread (cached when its activity hasn't moved), the reservation, the
   // Knowledge Hub, the saved inbox and memory. One after another took seconds.
@@ -1029,7 +1073,10 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
   const spoken = turns.filter((item) => item.body.trim() || item.media.length);
   const lastHost = spoken.filter((item) => item.role === "host").map((item) => item.at).sort().at(-1) ?? "";
   const pending = spoken.filter((item) => item.role === "guest" && item.at > lastHost);
-  const ask = pending.map((item) => item.body.trim()).join(" ") || row.asked;
+  // Every guest message that isn't English is shown and drafted from in English (stored; never paid for twice).
+  const translations = await translateMessages(spoken.filter((item) => item.role === "guest").map((item) => item.body)).catch(() => new Map<string, Translation>());
+  const english = (body: string) => translations.get(body.trim())?.english ?? body;
+  const ask = pending.map((item) => english(item.body).trim()).join(" ") || row.asked;
   // The same rule as the inbox: a cancelled, superseded, closed, or passed thread gets no draft.
   const listed = saved?.quiet?.find((item) => item.id === row.id);
   const raw = oneRecord(stayRaw) ?? {};
@@ -1059,7 +1106,10 @@ export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<
   const held = read.lane === "guest";
   const draft = held ? (stood || outside.draft) : stood || (fromHub.mode === "hub" ? fromHub.draft : outside.draft);
   const mode = held ? "held" as const : draft ? "hub" as const : "gap" as const;
-  const thread = presentGuestThread(messages ?? [], row.guest, hostNameFrom(stayRaw), now, read.copied);
+  const thread = presentGuestThread(messages ?? [], row.guest, hostNameFrom(stayRaw), now, read.copied).map((bubble) => {
+    const done = translations.get(bubble.text.trim());
+    return done ? { ...bubble, english: done.english, language: done.language } : bubble;
+  });
   if (!held && mode === "hub" && draft) rememberGuestDraft({ to: row.guest, body: draft, reservationId: row.id, language: row.language });
   const reservation = reservationSpan(stayRaw);
   return {

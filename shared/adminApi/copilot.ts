@@ -73,7 +73,7 @@ import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMc
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
-import { markThreadHandled, unmarkThreadHandled, beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestMessage, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
+import { suggestReply, markThreadHandled, unmarkThreadHandled, beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestMessage, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, listStoredMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
@@ -524,6 +524,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         quietReason: typeof body.quietReason === "string" ? body.quietReason : undefined,
       });
       return res.status(200).json(row);
+    }
+
+    if (op === "guests-suggest") {
+      // Suggest with AI for any conversation; a suggestion only fills the box, nothing is sent.
+      try {
+        const draft = await suggestReply({ ...(body as Record<string, unknown>), id: String(body.id ?? ""), inquiry: body.inquiry === true } as unknown as Parameters<typeof suggestReply>[0]);
+        return res.status(200).json({ draft });
+      } catch (err) {
+        return res.status(200).json({ draft: "", line: err instanceof Error ? err.message : "The AI didn't answer. Nothing was changed." });
+      }
     }
 
     if (op === "guests-improve") {

@@ -25,6 +25,7 @@ export function GuestMessaging({
   onInquiry,
   onImprove,
   onMarkHandled,
+  onSuggest,
   onHubSave,
 }: {
   queue: GuestQueue | null;
@@ -41,6 +42,7 @@ export function GuestMessaging({
   onInquiry?: (id: string, action: "approve" | "decline") => Promise<string>;
   onImprove?: (text: string) => Promise<string>;
   onMarkHandled?: (handled: boolean) => Promise<void>;
+  onSuggest?: () => Promise<{ draft: string; line?: string }>;
   onHubSave?: HubSave;
 }) {
   // Kept while a thread is open, so Back returns to the same filtered list. A reload clears them.
@@ -70,6 +72,7 @@ export function GuestMessaging({
         }}
         onImprove={onImprove}
         onMarkHandled={onMarkHandled}
+        onSuggest={onSuggest}
         onHubSave={onHubSave}
       />
     );
@@ -307,6 +310,7 @@ function Thread({
   onInquiry,
   onImprove,
   onMarkHandled,
+  onSuggest,
   onHubSave,
 }: {
   answer: GuestDraftView;
@@ -318,6 +322,7 @@ function Thread({
   onInquiry: (action: "approve" | "decline") => Promise<string>;
   onImprove?: (text: string) => Promise<string>;
   onMarkHandled?: (handled: boolean) => Promise<void>;
+  onSuggest?: () => Promise<{ draft: string; line?: string }>;
   onHubSave?: HubSave;
 }) {
   const needsReply = answer.lane === "reply";
@@ -436,8 +441,20 @@ function Thread({
               ) : null}
               <button
                 type="button"
-                disabled={empty || improving}
+                disabled={improving || (empty && !onSuggest)}
                 onClick={() => {
+                  // Empty box: Suggest with AI writes a reply from the thread and the Hub. Typed: Improve polishes it.
+                  if (empty && onSuggest && !improving) {
+                    setImproving(true);
+                    setFail("");
+                    void onSuggest().then((result) => {
+                      if (result.draft.trim()) {
+                        setText(result.draft);
+                        setEdited(true);
+                      } else setFail(result.line || "The AI didn't answer. Nothing was changed.");
+                    }).catch((err: unknown) => setFail(err instanceof Error ? err.message : "The AI didn't answer. Nothing was changed.")).finally(() => setImproving(false));
+                    return;
+                  }
                   if (!onImprove || empty || improving) return;
                   setImproving(true);
                   setFail("");
@@ -450,7 +467,7 @@ function Thread({
                     setFail(err instanceof Error ? err.message : "The draft was not changed.");
                   }).finally(() => setImproving(false));
                 }}
-              >{improving ? "Improving…" : "Improve"}</button>
+              >{improving ? (empty ? "Suggesting…" : "Improving…") : empty && onSuggest ? "Suggest with AI" : "Improve"}</button>
               <button
                 type="button"
                 className="send"
@@ -715,6 +732,8 @@ function guestRowFromStay(stay: StayCard): GuestRow {
 }
 
 function lastLine(row: GuestRow): string {
+  // A guest message that wasn't English shows in English.
+  if (row.askedEn?.trim() && (row.preview || row.asked).trim()) return row.askedEn;
   if (row.preview?.trim()) return row.preview;
   if (!row.asked.trim() && /video/i.test(row.mediaLabel)) return "Sent a video";
   if (!row.asked.trim() && /photo/i.test(row.mediaLabel)) return "Sent a photo";

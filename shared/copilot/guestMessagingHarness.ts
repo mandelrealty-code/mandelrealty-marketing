@@ -5,6 +5,7 @@
  */
 
 import { hospitableRead, resetHospitableConnection, saveHospitableToken, setHospitableProbe } from "./hospitableConnection.js";
+import { looksEnglish, resetTranslations, setSuggestModel, setTranslator, suggestGuestReply, translateMessages } from "./guestAi.js";
 import { callHospitableMcp } from "./hospitableMcp.js";
 import { installResearch, resetResearch } from "./skillResearch.js";
 import { answerWaitingDrafts } from "./guestInboxAnswer.js";
@@ -1730,6 +1731,40 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   await unmarkThreadHandled("res-lee");
   if (handledReason("res-lee", "2026-10-14T16:35:00.000Z")) fail("Undo didn't restore the thread");
   if (capturedCommits().length !== commits) fail("marking handled sent something");
+}
+
+// Translation: only non-English goes to the model, one batched call, stored so it's never paid for twice.
+{
+  resetTranslations();
+  const calls: string[][] = [];
+  setTranslator(async (texts) => {
+    calls.push(texts);
+    return texts.map((text) => (/questionnaire/.test(text) ? { language: "French", english: "Hello, I completed this questionnaire on the day of my departure. Thank you and have a good day." } : { language: "Spanish", english: "Thank you so much!" }));
+  });
+  const diane = "Bonjour j'ai fait ce questionnaire la journée de mon départ. Merci et bonne journée";
+  const english = ["Hi! Can we check in early tomorrow?", "Thanks 😊", "ok", "Perfect, see you at 4pm"];
+  for (const text of english) if (!looksEnglish(text)) fail(`English read as foreign: ${text}`);
+  if (looksEnglish(diane) || looksEnglish("¡Muchas gracias por todo!")) fail("a foreign message read as English");
+  const first = await translateMessages([diane, ...english, "¡Muchas gracias por todo!"]);
+  if (calls.length !== 1 || calls[0]!.length !== 2 || calls[0]!.some((text) => english.includes(text))) fail(`translation calls ${JSON.stringify(calls)}`);
+  if (first.get(diane)?.english !== "Hello, I completed this questionnaire on the day of my departure. Thank you and have a good day." || first.get(diane)?.language !== "French") fail("Diane's message wasn't translated");
+  await translateMessages([diane]);
+  if (calls.length !== 1) fail("a stored translation was paid for again");
+  setTranslator(null);
+}
+
+// Suggest with AI: any conversation, from the thread in English and the Hub; nothing is sent.
+{
+  const commits = capturedCommits().length;
+  let seen: { thread: { text: string }[]; hub: string } | null = null;
+  setSuggestModel(async (input) => {
+    seen = input;
+    return "Hi Diane, thank you so much for filling it in, and for staying with us. Safe travels!";
+  });
+  const suggested = await suggestGuestReply({ guest: "Diane", property: "20 Blue Jays Way", stay: "Oct 9–12", thread: [{ who: "guest", name: "Diane", text: "Hello, I completed this questionnaire on the day of my departure." }], hub: "Checkout is 11 AM.", memory: "" });
+  if (!/^Hi Diane/.test(suggested) || !seen) fail(`suggest: ${suggested}`);
+  setSuggestModel(null);
+  if (capturedCommits().length !== commits) fail("a suggestion sent something");
 }
 
 console.log("Guest messaging harness passed.");

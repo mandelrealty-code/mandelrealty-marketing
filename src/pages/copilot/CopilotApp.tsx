@@ -2634,6 +2634,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       return result;
                     }}
                     onHubSave={(offer) => api<{ saved: boolean; line: string }>("guests-hub-save", offer)}
+                    onSuggest={async () => {
+                      const row = guestAnswer;
+                      if (!row) return { draft: "", line: "Open a conversation first." };
+                      return api<{ draft: string; line?: string }>("guests-suggest", { ...row, thread: undefined });
+                    }}
                     onMarkHandled={async (handled) => {
                       const row = guestAnswer;
                       if (!row) return;
