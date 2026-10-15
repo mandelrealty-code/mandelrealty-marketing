@@ -539,8 +539,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     if (op === "guests-suggest") {
       // Suggest with AI for any conversation; a suggestion only fills the box, nothing is sent.
+      // The messages already on screen are the fallback when Hospitable's re-read comes back empty.
+      const shown = Array.isArray(body.shown) ? body.shown.flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const row = item as Record<string, unknown>;
+        const text = String(row.body ?? "").trim();
+        const role = String(row.role ?? "");
+        if (!text || role === "automated" || role === "system") return [];
+        return [{ at: String(row.at ?? ""), role: role === "guest" ? "guest" : "host", name: String(row.name ?? ""), body: text.slice(0, 2000) }];
+      }).slice(-30) : [];
       try {
-        const draft = await suggestReply({ ...(body as Record<string, unknown>), id: String(body.id ?? ""), inquiry: body.inquiry === true } as unknown as Parameters<typeof suggestReply>[0]);
+        const draft = await suggestReply({ ...(body as Record<string, unknown>), id: String(body.id ?? ""), inquiry: body.inquiry === true } as unknown as Parameters<typeof suggestReply>[0], new Date(), shown);
         return res.status(200).json({ draft });
       } catch (err) {
         return res.status(200).json({ draft: "", line: err instanceof Error ? err.message : "The AI didn't answer. Nothing was changed." });

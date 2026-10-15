@@ -1030,13 +1030,28 @@ async function inquiryThread(id: string): Promise<{ at: string; role: string; na
  * Suggest with AI, for any conversation: the thread in English, the property's Knowledge Hub and notes,
  * into one suggested reply. The partner edits it and presses Send; nothing is sent here.
  */
-export async function suggestReply(row: GuestRow, now = new Date()): Promise<string> {
+export async function suggestReply(
+  row: GuestRow,
+  now = new Date(),
+  shown: { at: string; role: string; name: string; body: string }[] = [],
+): Promise<string> {
   const [messages, hubRead, memory] = await Promise.all([
     (row.inquiry ? inquiryThread(row.id) : readStayThread(row.id, now)).catch(() => []),
     readPropertyHub(row.propertyId),
     memoryFor(row.property).catch(() => ""),
   ]);
-  const spoken = messages.filter((item) => item.role !== "system" && item.body.trim());
+  const live = messages.filter((item) => item.role !== "system" && item.body.trim());
+  // The open thread is already on screen. A second Hospitable read can come back empty (a cold
+  // server, a rate limit). Suggest from the messages the partner is looking at.
+  const spoken = live.length
+    ? live
+    : shown.filter((item) => item.body.trim()).map((item) => ({
+      at: item.at,
+      role: item.role === "guest" ? "guest" : "host",
+      name: item.name,
+      body: item.body.trim(),
+      media: [] as { url: string; type: string }[],
+    }));
   const translations = await translateMessages(spoken.filter((item) => item.role === "guest").map((item) => item.body)).catch(() => new Map<string, Translation>());
   const thread = spoken
     .slice()

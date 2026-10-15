@@ -2456,7 +2456,20 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     onSuggest={async () => {
                       const row = guestAnswer;
                       if (!row) return { draft: "", line: "Open a conversation first." };
-                      return api<{ draft: string; line?: string }>("guests-suggest", { ...row, thread: undefined });
+                      const shown = row.thread
+                        .filter((item) => item.role !== "automated" && (item.english || item.text).trim())
+                        .map((item) => ({ at: item.at, role: item.role, name: item.who || (item.role === "guest" ? row.guest : "Host"), body: (item.english || item.text).trim() }));
+                      return api<{ draft: string; line?: string }>("guests-suggest", {
+                        id: row.id,
+                        guest: row.guest,
+                        property: row.property,
+                        propertyId: row.propertyId,
+                        dates: row.dates,
+                        checkIn: row.checkIn,
+                        checkOut: row.checkOut,
+                        inquiry: Boolean((row as GuestDraftView & { inquiry?: boolean }).inquiry),
+                        shown,
+                      });
                     }}
                     onMarkHandled={async (handled) => {
                       const row = guestAnswer;

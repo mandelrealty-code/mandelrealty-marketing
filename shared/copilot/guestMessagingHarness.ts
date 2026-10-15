@@ -32,6 +32,7 @@ import {
   setGuestUploader,
   setHubWriter,
   submitGuestReply,
+  suggestReply,
   toEnglish,
   forgetGuestProcessMemory,
   guestDrafts,
@@ -1775,6 +1776,21 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   if (!/^Hi Diane/.test(suggested) || !seen) fail(`suggest: ${suggested}`);
   setSuggestModel(null);
   if (capturedCommits().length !== commits) fail("a suggestion sent something");
+}
+
+// Suggest with AI still drafts when Hospitable's re-read comes back empty, from the thread on screen.
+{
+  setSuggestModel(async (input) => {
+    if (!input.thread.some((row) => /tomorrow afternoon/i.test(row.text))) throw new Error(`shown thread missing: ${input.thread.map((row) => row.text).join(" | ")}`);
+    return "Hi Eloise, tomorrow afternoon works. If you will not be home, please leave the keys in the lockbox.";
+  });
+  const draft = await suggestReply(
+    { id: "no-such-stay", guest: "Eloise", property: "8 Charlotte 606", propertyId: "", dates: "", checkIn: "", checkOut: "" } as unknown as GuestRow,
+    new Date(),
+    [{ at: "2026-10-15T19:55:00.000Z", role: "guest", name: "Eloise", body: "Thanks Ryan, might it be possible to take a look tomorrow afternoon?" }],
+  );
+  if (!/tomorrow afternoon works/.test(draft)) fail(`shown thread was ignored: ${draft}`);
+  setSuggestModel(null);
 }
 
 console.log("Guest messaging harness passed.");
