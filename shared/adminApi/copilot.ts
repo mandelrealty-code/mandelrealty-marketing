@@ -522,7 +522,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         preview: typeof body.preview === "string" ? body.preview : undefined,
         lastBy: typeof body.lastBy === "string" ? body.lastBy : undefined,
         quietReason: typeof body.quietReason === "string" ? body.quietReason : undefined,
-      });
+      }, new Date(), { live: body.live === true });
       return res.status(200).json(row);
     }
 

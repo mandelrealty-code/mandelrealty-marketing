@@ -1055,12 +1055,15 @@ export async function suggestReply(row: GuestRow, now = new Date()): Promise<str
   return draft;
 }
 
-export async function openGuestAnswer(row: GuestRow, now = new Date()): Promise<GuestDraftView> {
+export async function openGuestAnswer(row: GuestRow, now = new Date(), options: { live?: boolean } = {}): Promise<GuestDraftView> {
+  // An open conversation re-reads live every few seconds; opened from the inbox, a kept thread is used
+  // only when it was read at or after the activity the inbox shows.
+  if (options.live && !row.inquiry) forgetThread(row.id);
   // Every read at once: the thread (cached when its activity hasn't moved), the reservation, the
   // Knowledge Hub, the saved inbox and memory. One after another took seconds.
   const [messages, stayRaw, hubRead, saved, memory] = await Promise.all([
     // A thread that won't read still opens, from the row, with the failure said in the thread view.
-    (row.inquiry ? inquiryThread(row.id) : readStayThread(row.id, now)).catch(() => null),
+    (row.inquiry ? inquiryThread(row.id) : readStayThread(row.id, now, options.live || parityEnabled() ? "" : row.activityAt ?? "")).catch(() => null),
     hospitableRead("get-reservation", { identifier: row.id }).catch(() => null),
     readPropertyHub(row.propertyId),
     readSavedGuestQueue().catch(() => null),

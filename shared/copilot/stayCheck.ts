@@ -114,9 +114,11 @@ function resetThreadCache(): void {
   threadMemory.clear();
   threadCacheLoaded = null;
   threadCacheDirty = false;
+  resetConversationReads();
 }
 
 registerThreadReset(resetThreadCache);
+
 
 /** A reply was just posted: the next read of this thread goes to Hospitable, not the cache. */
 export function forgetThread(id: string): void {
@@ -411,22 +413,39 @@ function inquiryTurns(row: Record<string, unknown>): { at: string; role: string;
   }).filter((turn) => turn.body.trim());
 }
 
+/** The last full read of every conversation, kept so most checks read only recent stays. */
+let fullRead: { at: number; scope: string; rows: Map<string, Conversation> } | null = null;
+/** How often every stay back to 2010 is re-read; between those, only stays checking out from 60 days ago on. */
+const FULL_READ_MS = 15 * 60_000;
+const RECENT_DAYS = 60;
+
+export function resetConversationReads(): void {
+  fullRead = null;
+  inquiryTurnsKept.clear();
+}
+
 /**
  * Every reservation and inquiry conversation on the selected properties, newest activity first.
- * Nothing is left out for being old, ended, cancelled, or past a page: every page is read until
- * Hospitable says it is the last one. A property or page that fails is named in `failed`.
+ * Nothing is left out for being old, ended, cancelled, or past a page: a full read pages every stay
+ * until Hospitable says it is the last one, every 15 minutes. Checks in between read only recent
+ * stays (where new messages are) and keep the rest from the full read, so a check takes seconds.
+ * Properties are read three at a time. A property or page that fails is named in `failed`.
  */
 export async function loadConversations(now: Date): Promise<{ conversations: Conversation[]; failed: string[] }> {
   const today = torontoToday(now);
   const properties = await scopedStayProperties();
+  const scope = properties.map((property) => property.id).sort().join(",");
+  // Test worlds change between checks, so every check there is a full read.
+  const full = parityEnabled() || !fullRead || fullRead.scope !== scope || now.getTime() - fullRead.at >= FULL_READ_MS || now.getTime() < fullRead.at;
   const found = new Map<string, Conversation>();
   const failed: string[] = [];
-  for (const property of properties) {
+  let fullFailed = false;
+  const readProperty = async (property: (typeof properties)[number]) => {
     const label = placeLabel(`${property.name} ${property.address}`, property.name);
     const id = property.id;
     if (!id) {
       failed.push(label);
-      continue;
+      return;
     }
     const readAll = async (startDate: string) => {
       for (let page = 1; ; page += 1) {
@@ -453,15 +472,21 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
       }
     };
     try {
-      await readAll("2010-01-01");
+      await readAll(full ? "2010-01-01" : addDays(today, -RECENT_DAYS));
     } catch {
+      if (!full) {
+        fullFailed = true;
+        failed.push(label);
+        return;
+      }
       // A long date range can be refused. The last two years are read instead, and the gap is said.
       try {
         await readAll(addDays(today, -730));
         failed.push(`${label} (conversations from stays that ended more than two years ago)`);
       } catch {
+        fullFailed = true;
         failed.push(label);
-        continue;
+        return;
       }
     }
     try {
@@ -482,11 +507,26 @@ export async function loadConversations(now: Date): Promise<{ conversations: Con
     } catch {
       failed.push(`${label} inquiries`);
     }
+  };
+  const queue = [...properties];
+  const lane = async () => {
+    for (let property = queue.shift(); property; property = queue.shift()) await readProperty(property);
+  };
+  await Promise.all([lane(), lane(), lane()]);
+  if (!full && fullRead) {
+    // Older stays come from the last full read; anything read just now is fresher and wins.
+    for (const [key, row] of fullRead.rows) if (!found.has(key)) found.set(key, row);
   }
-  await readInquiryMessages([...found.values()].filter((row) => row.inquiry && !row.turns?.length), today);
+  await readInquiryMessages([...found.values()].filter((row) => row.inquiry && !row.turns?.length), today, now);
+  if (full && !fullFailed) fullRead = { at: now.getTime(), scope, rows: new Map(found) };
+  else if (!full && fullRead) for (const [key, row] of found) fullRead.rows.set(key, row);
   const conversations = [...found.values()].sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt) || a.stay.id.localeCompare(b.stay.id));
   return { conversations, failed };
 }
+
+/** An inquiry's messages, kept against the activity time the list showed when they were read. */
+const inquiryTurnsKept = new Map<string, { stamp: string; at: number; turns: NonNullable<Conversation["turns"]> }>();
+const INQUIRY_FRESH_MS = 60_000;
 
 const INQUIRY_READ_DAYS = 45;
 
@@ -494,16 +534,30 @@ const INQUIRY_READ_DAYS = 45;
  * An inquiry's messages come from reading that inquiry. Recent ones are read, two at a time;
  * older ones keep the activity time the list reported. A failed read marks the row, never drops it.
  */
-async function readInquiryMessages(rows: Conversation[], today: string): Promise<void> {
+async function readInquiryMessages(rows: Conversation[], today: string, now: Date): Promise<void> {
   const since = addDays(today, -INQUIRY_READ_DAYS);
-  const queue = rows.filter((row) => !row.lastMessageAt || row.lastMessageAt.slice(0, 10) >= since);
+  const recent = rows.filter((row) => !row.lastMessageAt || row.lastMessageAt.slice(0, 10) >= since);
+  // An inquiry whose activity time hasn't moved is not read again (re-read after a minute when Hospitable gives no time).
+  const queue = recent.filter((row) => {
+    const stamp = activityOf(row.reservation ?? {}, "");
+    const kept = inquiryTurnsKept.get(row.stay.id);
+    if (kept && !parityEnabled() && (stamp ? kept.stamp === stamp : now.getTime() - kept.at < INQUIRY_FRESH_MS)) {
+      row.turns = kept.turns;
+      const latest = kept.turns.map((turn) => turn.at).sort().at(-1) ?? "";
+      if (latest) row.lastMessageAt = activityOf(row.reservation ?? {}, latest);
+      return false;
+    }
+    return true;
+  });
   const lane = async () => {
     for (let row = queue.shift(); row; row = queue.shift()) {
+      const stamp = activityOf(row.reservation ?? {}, "");
       try {
         const raw = await readWithRetry(() => callTool("get-inquiry", { uuid: row.stay.id, identifier: row.stay.id, include: "guest,messages" }));
         const record = isRow(raw) && isRow(raw.data) ? raw.data : isRow(raw) ? raw : {};
         const turns = inquiryTurns(record);
         row.turns = turns;
+        inquiryTurnsKept.set(row.stay.id, { stamp, at: now.getTime(), turns });
         const latest = turns.map((turn) => turn.at).sort().at(-1) ?? "";
         // Same rule as before the list stopped carrying messages: Hospitable's own activity time, then the latest message.
         if (latest) row.lastMessageAt = activityOf(row.reservation ?? {}, latest);

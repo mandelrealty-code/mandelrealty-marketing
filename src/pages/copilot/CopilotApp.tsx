@@ -159,6 +159,18 @@ const SUGGESTIONS = [
 ];
 
 /** A thread opened from its inbox row, shown at once while the full read lands. */
+/**
+ * A fresh read of the open conversation, never losing what is on screen: a read that came back with
+ * no messages keeps the shown thread, and a just-sent message stays until Hospitable shows it.
+ */
+function mergeGuestView(current: GuestDraftView, next: GuestDraftView): GuestDraftView {
+  if (!next.thread.length && current.thread.length) return { ...current, loading: false };
+  const shown = new Set(next.thread.map((item) => item.text.trim()));
+  const newest = next.thread.map((item) => item.at).sort().at(-1) ?? "";
+  const pending = current.thread.filter((item) => item.role === "host" && item.who === "You" && item.at > newest && !shown.has(item.text.trim()));
+  return pending.length ? { ...next, thread: [...next.thread, ...pending], lane: "none", draft: "", sendable: false } : next;
+}
+
 function placeholderView(row: GuestRow): GuestDraftView {
   return {
     id: row.id, guest: row.guest, first: row.first, initials: row.initials, guestPhoto: row.guestPhoto,
@@ -869,6 +881,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }, []);
   const [guestQueue, setGuestQueue] = useState<GuestQueue | null>(null);
   const [guestAnswer, setGuestAnswer] = useState<GuestDraftView | null>(null);
+  const guestAnswerRef = useRef<GuestDraftView | null>(null);
+  guestAnswerRef.current = guestAnswer;
   // Threads already opened, keyed by reservation with the activity they were read at, and reads in flight.
   const openedViews = useRef(new Map<string, { activityAt: string; view: GuestDraftView }>());
   const openingViews = useRef(new Map<string, Promise<GuestDraftView | null>>());
@@ -1929,31 +1943,59 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     void openCard(card.text, label);
   }
 
-  // A full inbox scan can take most of a minute, so the next one starts only after the last one
-  // answers. Firing every few seconds stacked dozens of scans on Hospitable and the server.
+  // The inbox is checked all the time Copilot is open (so the sidebar count is live on every screen):
+  // the next check starts a few seconds after the last one answers, never stacking checks on Hospitable.
+  // A hidden tab checks every half minute.
   useEffect(() => {
-    if (screen !== "guests") return;
+    if (!guestQueue?.connected) return;
     let stopped = false;
     let timer = 0;
     const pull = async () => {
-      const open = guestAnswer;
-      await Promise.all([
-        api<GuestQueue>("guests-refresh", {})
-          .then((queue) => {
-            if (stopped || !isGuestQueue(queue)) return;
-            setGuestQueue(queue);
-            setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
-          })
-          .catch(() => undefined),
-        open
-          ? api<GuestDraftView>("guests-open", { ...open })
-            .then((next) => { if (!stopped) setGuestAnswer((current) => (current && current.id === open.id ? next : current)); })
-            .catch(() => undefined)
-          : Promise.resolve(),
-      ]);
-      if (!stopped) timer = window.setTimeout(() => { void pull(); }, 20000);
+      await api<GuestQueue>("guests-refresh", {})
+        .then((queue) => {
+          if (stopped || !isGuestQueue(queue)) return;
+          setGuestQueue(queue);
+          setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
+        })
+        .catch(() => undefined);
+      if (!stopped) timer = window.setTimeout(() => { void pull(); }, document.hidden ? 30000 : 4000);
     };
-    timer = window.setTimeout(() => { void pull(); }, 20000);
+    timer = window.setTimeout(() => { void pull(); }, 1500);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+  }, [guestQueue?.connected]);
+
+  // Guests waiting on a reply show on the tab title and the installed app's icon, as well as the sidebar.
+  const guestsWaiting = guestQueue?.connected ? guestQueue.waiting.length : 0;
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\)\s*/, "");
+    document.title = guestsWaiting ? `(${guestsWaiting}) ${base}` : base;
+    const nav = navigator as Navigator & { setAppBadge?: (count: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+    try {
+      if (guestsWaiting) void nav.setAppBadge?.(guestsWaiting).catch(() => undefined);
+      else void nav.clearAppBadge?.().catch(() => undefined);
+    } catch {
+      /* Not every browser has app badges. */
+    }
+  }, [guestsWaiting]);
+
+  // The open conversation is re-read every few seconds, so a guest's new message shows almost at once.
+  useEffect(() => {
+    if (screen !== "guests" || !guestAnswer?.id) return;
+    let stopped = false;
+    let timer = 0;
+    const pull = async () => {
+      const open = guestAnswerRef.current;
+      if (open && !open.loading) {
+        await api<GuestDraftView>("guests-open", { ...open, thread: undefined, live: true })
+          .then((next) => { if (!stopped) setGuestAnswer((current) => (current && current.id === open.id ? mergeGuestView(current, next) : current)); })
+          .catch(() => undefined);
+      }
+      if (!stopped) timer = window.setTimeout(() => { void pull(); }, document.hidden ? 30000 : 4000);
+    };
+    timer = window.setTimeout(() => { void pull(); }, 4000);
     return () => {
       stopped = true;
       window.clearTimeout(timer);
@@ -1967,7 +2009,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     if (inflight) return inflight;
     const read = api<GuestDraftView>("guests-open", { ...row })
       .then((view) => {
-        openedViews.current.set(row.id, { activityAt: row.activityAt ?? "", view });
+        // An empty read (Hospitable didn't answer) is never kept as the thread.
+        if (view.thread.length) openedViews.current.set(row.id, { activityAt: row.activityAt ?? "", view });
         return view;
       })
       .catch(() => null)
@@ -2561,7 +2604,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       const kept = openedViews.current.get(row.id);
                       setGuestAnswer(kept && kept.activityAt === (row.activityAt ?? "") ? kept.view : placeholderView(row));
                       void readGuestView(row).then((view) => {
-                        if (view) setGuestAnswer((current) => (current && current.id === row.id ? view : current));
+                        if (view) setGuestAnswer((current) => (current && current.id === row.id ? mergeGuestView(current, view) : current));
                         // A failed read stays open on the row and says so, rather than snapping back to the list.
                         else setGuestAnswer((current) => (current && current.id === row.id && current.loading ? { ...current, loading: false, lane: "none", waitingLine: "Hospitable didn't return this conversation. Go back and open it again in a moment." } : current));
                       });
@@ -2645,7 +2688,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         const sentText = result.sentText || text;
                         const reread = (tries: number) => {
                           void readGuestView({ ...row, activityAt: new Date(Date.parse(at) + tries).toISOString() } as unknown as GuestRow).then((view) => {
-                            if (view && view.thread.some((item) => item.text.trim() === sentText.trim())) setGuestAnswer((current) => (current && current.id === row.id ? view : current));
+                            if (view && view.thread.some((item) => item.text.trim() === sentText.trim())) setGuestAnswer((current) => (current && current.id === row.id ? mergeGuestView(current, view) : current));
                             else if (tries < 3) window.setTimeout(() => reread(tries + 1), 4000);
                           });
                         };
