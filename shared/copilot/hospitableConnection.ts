@@ -125,9 +125,13 @@ export function hospitableCipherForTest(): string {
 export async function hospitableCard(now = new Date()): Promise<HospitableCard> {
   const row = await storedRow();
   if (!row) return emptyCard();
-  const card = cardFrom(row, now);
+  return withSendAs(cardFrom(row, now));
+}
+
+/** Every connected card says who Copilot's guest messages go out as. */
+async function withSendAs(card: HospitableCard): Promise<HospitableCard> {
   const { senderLine } = await import("./hospitableAgent.js");
-  const sendAs = await senderLine().catch(() => "");
+  const sendAs = await senderLine().catch(() => "Couldn't check who messages go out as.");
   return sendAs ? { ...card, sendAs } : card;
 }
 
@@ -302,7 +306,7 @@ export async function saveHospitableSelection(ids: string[], now = new Date()): 
     chosen: found.properties.filter((property) => want.has(property.id)).map((property) => ({ id: property.id, name: property.name })),
   };
   await persist(row);
-  return cardFrom(row, now);
+  return withSendAs(cardFrom(row, now));
 }
 
 function checkedLine(iso: string, now: Date): string {
@@ -340,14 +344,14 @@ export async function hospitablePage(now = new Date()): Promise<HospitableCard> 
       chosen: current.chosen ?? null,
     };
     await persist(row);
-    return cardFrom(row, now);
+    return withSendAs(cardFrom(row, now));
   } catch (err) {
     const message = scrub(err instanceof Error ? err.message : "", token);
     if (/not connected|didn't accept|reject|unauth|401|403/i.test(message)) {
       await persist(null);
       return { ...emptyCard(), statusLine: "Hospitable is not connected." };
     }
-    return cardFrom(current, now);
+    return withSendAs(cardFrom(current, now));
   }
 }
 
