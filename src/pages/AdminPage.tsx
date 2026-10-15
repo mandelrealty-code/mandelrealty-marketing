@@ -265,7 +265,27 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+/**
+ * The admin app behaves like an installed app on a phone: tapping a text box never zooms the page
+ * (iOS zooms into any field under 16px and stays zoomed), double-tap doesn't zoom, and text keeps its
+ * designed size. Pinch-to-zoom still works for accessibility. Restored when the admin app unmounts.
+ */
+function useAppViewport(): void {
+  useEffect(() => {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    const before = meta?.getAttribute("content") ?? "";
+    meta?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
+    const root = document.documentElement;
+    root.classList.add("app-shell");
+    return () => {
+      if (meta && before) meta.setAttribute("content", before);
+      root.classList.remove("app-shell");
+    };
+  }, []);
+}
+
 export function AdminPage() {
+  useAppViewport();
   const isLg = useIsLg();
   const [route, setRoute] = useAdminRoute();
   const [authed, setAuthed] = useState<boolean | null>(null);

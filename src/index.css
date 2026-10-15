@@ -107,3 +107,13 @@ body {
 .crm-live-dot {
   animation: crm-live-pulse 2.4s ease-in-out infinite;
 }
+
+/* The admin app on a phone: no double-tap zoom, no text inflation, no sideways drift. */
+html.app-shell,
+html.app-shell body {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}

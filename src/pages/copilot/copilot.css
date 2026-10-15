@@ -9205,3 +9205,14 @@ html.cp-app[data-cp-theme="dark"] #root {
 /* The reply box keeps its one quiet border when focused: no outline on the text, no recolored frame. */
 .cp-gt .cp-gt-field textarea:focus,
 .cp-gt .cp-gt-field textarea:focus-visible { outline: none; box-shadow: none; }
+/* Phones: a reminder row stacks: the task on its own line, then when it's due and Mark done. */
+.cp-rm-meta > span { white-space: nowrap; }
+@media (max-width: 720px) {
+  .cp-rm-ovrow .cp-rm-copy,
+  .cp-rm-rowmain .cp-rm-copy { flex: 1 1 100%; }
+  .cp-rm-ovrow { align-items: center; gap: 10px 12px; }
+  .cp-rm-ovrow .cp-rm-side { order: 2; flex: 1; width: auto; align-items: flex-start; text-align: left; }
+  .cp-rm-ovrow .cp-rm-btn { order: 3; }
+  .cp-rm-rowmain .cp-rm-side { order: 2; }
+  .cp-rm-rowmain .cp-rm-acts { order: 3; }
+}
