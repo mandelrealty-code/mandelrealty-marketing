@@ -40,6 +40,17 @@ export type ReviewAssessment = {
 
 export type ReviewAiResult = { kind: "reply"; reply: string } | { kind: "flag"; assessment: ReviewAssessment };
 
+/**
+ * "Thank you, Kahina, for the review" reads "Thank you Kahina for the review": no commas around the
+ * guest's name after the thanks. Names joined by "and" or "&" are kept together.
+ */
+export function thanksByName(text: string): string {
+  return text.replace(
+    /^(\s*(?:Thank you(?: so much)?|Thanks(?: so much)?|Merci(?: beaucoup)?)),\s+((?:\p{Lu}[\p{L}'\u2019-]*)(?:\s+(?:and|&|et)\s+\p{Lu}[\p{L}'\u2019-]*)?)(,\s*|(?=[.!?\s]))/u,
+    (_all, thanks: string, name: string, after: string) => `${thanks} ${name}${after.startsWith(",") ? " " : ""}`,
+  ).replace(/^(\s*\S.*?) {2,}/, "$1 ");
+}
+
 /** 3 stars or fewer is flagged to the team; 4 and 5 get a reply draft. */
 export function reviewIsFlagged(stars: number): boolean {
   return stars >= 1 && stars <= 3;
@@ -75,7 +86,7 @@ const live: Model = async (system, user, maxTokens) => {
 
 const REPLY_SYSTEM = [
   "You write a short-term-rental host's public reply to an Airbnb guest review, for the host (Mandel Realty Group) to edit before posting.",
-  "Thank the guest by first name and mention one or two specific things they wrote about, in your own words; never copy their sentences.",
+  "Open with \"Thank you\" followed directly by the guest's first name, with no commas around the name (\"Thank you Kahina for...\"). Mention one or two specific things they wrote about, in your own words; never copy their sentences.",
   "If the review mentions a small issue, acknowledge it briefly and say what was done, but only if the conversation or the host notes show it was done; never invent fixes, refunds, upgrades or promises.",
   "Never mention private feedback, money, refunds, or anything from the private messages that the guest would not want public.",
   "Two to four sentences. Warm, plain, professional. Invite them back. No sign-off name, no hashtags, no exclamation overload.",

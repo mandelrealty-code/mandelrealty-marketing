@@ -7,7 +7,7 @@ import { listHospitableReviews, respondToHospitableReview } from "../pm/hospitab
 import { scopedStayProperties } from "./dayBoard.js";
 import { loadConversations, type Conversation } from "./stayCheck.js";
 import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
-import { flagLine, keepReviewAi, keptReviewAi, reviewAiAvailable, reviewIsFlagged, writeReviewAi, type ReviewAiResult, type ReviewAssessment } from "./reviewAi.js";
+import { flagLine, thanksByName, keepReviewAi, keptReviewAi, reviewAiAvailable, reviewIsFlagged, writeReviewAi, type ReviewAiResult, type ReviewAssessment } from "./reviewAi.js";
 import { guestPhotoUrl } from "./guestInquiries.js";
 import { hubPlain } from "./knowledgeHub.js";
 import { addDays, torontoToday } from "./time.js";
@@ -227,9 +227,9 @@ export function undoSkip(id: string): void {
 
 /** What a written review becomes on the row: a reply draft, or a flag with its assessment. */
 function fromAi(ai: ReviewAiResult, stars: number): Pick<RegeneratedReview, "draft" | "dispute" | "facts" | "flagged" | "retaliation" | "removalRequest"> {
-  if (ai.kind === "reply") return { draft: ai.reply, dispute: "", facts: [], flagged: false };
+  if (ai.kind === "reply") return { draft: thanksByName(ai.reply), dispute: "", facts: [], flagged: false };
   return {
-    draft: ai.assessment.reply,
+    draft: thanksByName(ai.assessment.reply),
     dispute: flagLine(stars, ai.assessment),
     facts: ai.assessment.facts,
     flagged: true,

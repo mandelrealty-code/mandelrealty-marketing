@@ -23,7 +23,7 @@ import {
   reviewWindowStart,
   reviewDate,
 } from "./reviewsQueue.js";
-import { checkedAssessment, resetReviewAi, setReviewModel, writeReviewAi } from "./reviewAi.js";
+import { checkedAssessment, thanksByName, resetReviewAi, setReviewModel, writeReviewAi } from "./reviewAi.js";
 import { installWorld, type ParityReview } from "./parity/world.js";
 import { NO_REVIEWS_SYNCED } from "./reviewTypes.js";
 
@@ -428,5 +428,10 @@ if (don?.reservationId !== "res-don-old") fail(`review not matched to its stay: 
 if (don.when !== "Stay ended May 4") fail(`a months-old review with no link said ${don.when}`);
 if (posts.length) fail(`loading reviews posted ${posts.length} replies`);
 setReviewModel(null);
+
+// "Thank you Kahina for…": no commas around the name after the thanks.
+if (thanksByName("Thank you, Kahina, for the wonderful review.") !== "Thank you Kahina for the wonderful review.") fail("commas kept around the name");
+if (thanksByName("Thank you, Marty and Jenny, for the kind words.") !== "Thank you Marty and Jenny for the kind words.") fail("two names split");
+if (thanksByName("Thank you for staying, Don.") !== "Thank you for staying, Don.") fail("a later comma was removed");
 
 console.log("Reviews harness passed.");
