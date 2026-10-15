@@ -138,6 +138,10 @@ export type ParityReview = {
   categories?: { label: string; rating: number }[];
   /** The host's public reply. Absent means unanswered. */
   response?: string;
+  checkOut?: string;
+  privateFeedback?: string;
+  /** False when Airbnb no longer takes a reply. */
+  canRespond?: boolean;
 };
 
 /** A status is printed only when a follow-up record matches the quote. */
@@ -980,10 +984,12 @@ export function parityHttp(method: string, path: string, query: Record<string, u
         platform: row.platform,
         rating: row.rating,
         reviewed_at: row.reviewedAt,
-        reservation: row.reservationId,
+        reservation: row.checkOut ? { id: row.reservationId, departure_date: row.checkOut } : row.reservationId,
         property_id: row.propertyId,
         guest: { first_name: row.guest },
         public: { review: row.publicReview, response: row.response ?? "" },
+        ...(row.privateFeedback ? { private: { feedback: row.privateFeedback } } : {}),
+        ...(row.canRespond === undefined ? {} : { can_respond: row.canRespond }),
       }));
     return { handled: true, value: { data: rows, meta: { last_page: 1 } } };
   }

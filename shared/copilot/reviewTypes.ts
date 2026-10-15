@@ -24,6 +24,14 @@ export type ReviewQueueRow = {
   needsCare?: boolean;
   facts: ReviewFact[];
   returned: boolean;
+  /** 3 stars or fewer: shown to the team first, with an assessment instead of a ready reply. */
+  flagged?: boolean;
+  /** Whether the review may be retaliatory under Airbnb's Reviews Policy, with the guest's own words. */
+  retaliation?: { level: "likely" | "possible" | "no"; why: string; quotes: string[] };
+  /** A removal request to file with Airbnb by hand. Copilot never files it. */
+  removalRequest?: string;
+  /** The guest's private feedback to the host (never posted). */
+  privateFeedback?: string;
 };
 
 export type PostedReviewLine = {
@@ -44,6 +52,8 @@ export type ReviewQueuePayload = {
   line: string;
   reviews: ReviewQueueRow[];
   postedToday: PostedReviewLine[];
+  /** Reviews hidden because Airbnb no longer takes a reply to them, and properties whose reviews couldn't be read. */
+  note?: string;
   /** Every managed property, in the order the filter shows them. */
   properties?: ReviewQueueProperty[];
 };

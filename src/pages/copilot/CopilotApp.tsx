@@ -2733,13 +2733,17 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     postedToday={reviewQueue?.postedToday ?? []}
                     loading={!reviewQueue}
                     disconnected={reviewQueue && !reviewQueue.connected ? reviewQueue.line : ""}
+                    note={reviewQueue?.note ?? ""}
                     onRegenerate={async (row, current) => {
-                      const result = await api<{ draft: string; previous: string; sourceLine: string; dispute: string; facts: ReviewQueueRow["facts"]; unchanged: boolean }>("reviews-regenerate", {
+                      const result = await api<{ draft: string; previous: string; sourceLine: string; dispute: string; facts: ReviewQueueRow["facts"]; unchanged: boolean; flagged?: boolean; retaliation?: ReviewQueueRow["retaliation"]; removalRequest?: string }>("reviews-regenerate", {
+                        id: row.id,
                         guest: row.guest,
                         review: row.review,
                         current,
                         reservationId: row.reservationId,
                         propertyId: row.propertyId,
+                        property: row.property,
+                        privateFeedback: row.privateFeedback ?? "",
                         stars: row.stars,
                       });
                       return {
@@ -2748,6 +2752,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         sourceLine: result.sourceLine,
                         dispute: result.dispute,
                         facts: result.facts,
+                        retaliation: result.retaliation,
+                        removalRequest: result.removalRequest,
                         error: result.unchanged ? result.sourceLine : "",
                       };
                     }}

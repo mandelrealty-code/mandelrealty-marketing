@@ -14,6 +14,8 @@ type Local = {
   facts: ReviewFact[];
   factsOpen: boolean;
   postedAt: string;
+  retaliation?: ReviewQueueRow["retaliation"];
+  removalRequest: string;
 };
 
 function stars(n: number) {
@@ -33,6 +35,7 @@ export function ReviewsQueue({
   propertyList = [],
   postedToday = [],
   disconnected = "",
+  note = "",
   loading = false,
   onRegenerate,
   onSubmit,
@@ -44,8 +47,9 @@ export function ReviewsQueue({
   propertyList?: ReviewQueueProperty[];
   postedToday?: { text: string; at: string }[];
   disconnected?: string;
+  note?: string;
   loading?: boolean;
-  onRegenerate?: (row: ReviewQueueRow, current: string) => Promise<{ draft: string; previous: string; sourceLine: string; dispute: string; facts: ReviewFact[]; error: string }>;
+  onRegenerate?: (row: ReviewQueueRow, current: string) => Promise<{ draft: string; previous: string; sourceLine: string; dispute: string; facts: ReviewFact[]; error: string; retaliation?: ReviewQueueRow["retaliation"]; removalRequest?: string }>;
   onSubmit?: (row: ReviewQueueRow, text: string) => Promise<void>;
   onPrepare?: (row: ReviewQueueRow) => Promise<{ dispute: string; facts: ReviewFact[]; error: string }>;
   onSkip?: (row: ReviewQueueRow) => Promise<void>;
@@ -73,6 +77,8 @@ export function ReviewsQueue({
             facts: row.facts,
             factsOpen: false,
             postedAt: "",
+            retaliation: row.retaliation,
+            removalRequest: row.removalRequest ?? "",
           };
         }
       }
@@ -92,6 +98,7 @@ export function ReviewsQueue({
     return local[row.id] ?? {
       draft: row.draft, previous: "", source: "", showPrev: false, editing: false, working: false,
       status: "", error: "", dispute: row.dispute, facts: row.facts, factsOpen: false, postedAt: "",
+      retaliation: row.retaliation, removalRequest: row.removalRequest ?? "",
     };
   }
 
@@ -135,6 +142,8 @@ export function ReviewsQueue({
           error: result.error,
           dispute: result.dispute || current.dispute,
           facts: result.facts.length ? result.facts : current.facts,
+          retaliation: result.error ? current.retaliation : result.retaliation ?? current.retaliation,
+          removalRequest: result.error ? current.removalRequest : result.removalRequest ?? current.removalRequest,
           showPrev: false,
           editing: false,
         },
@@ -193,6 +202,7 @@ export function ReviewsQueue({
     <div className="cp-rv">
       <h1>Reviews</h1>
       <p className="cp-rv-summary">{summary(waiting, care, propertyName)}</p>
+      {note ? <p className="cp-rv-quiet">{note}</p> : null}
       <div className="cp-rv-filters">
         <button type="button" className={filter === "all" ? "on" : ""} onClick={() => { setFilter("all"); setShown(10); }}>
           All properties <span>{waitingCount("all")}</span>
@@ -207,8 +217,8 @@ export function ReviewsQueue({
         <>
           {waiting > 0 ? (
             <div className="cp-rv-legend">
-              <strong>Most damaging first</strong>
-              <span>Nothing posts until you press Submit</span>
+              <strong>3 stars or fewer first, then newest</strong>
+              <span>Every reply is a draft. Nothing posts until you press Submit</span>
             </div>
           ) : null}
           {page.map((row) => {
@@ -251,7 +261,7 @@ export function ReviewsQueue({
                   </div>
                   <p>{row.review}</p>
                   {current.dispute ? (
-                    <p className="cp-rv-flag"><i /> <strong>Possible dispute</strong> <span>{current.dispute}</span></p>
+                    <p className="cp-rv-flag"><i /> <strong>{row.flagged ? "Flagged" : "Possible dispute"}</strong> <span>{current.dispute}</span></p>
                   ) : null}
                   <div className="cp-rv-draft">
                     <span>Draft reply</span>
@@ -294,7 +304,7 @@ export function ReviewsQueue({
                             return;
                           }
                           setLocal((prev) => ({ ...prev, [row.id]: { ...current, factsOpen: !current.factsOpen } }));
-                        }}>Prepare dispute</button>
+                        }}>{row.flagged ? "Evidence and removal request" : "Prepare dispute"}</button>
                       </div>
                     ) : null}
                   </div>
@@ -320,12 +330,26 @@ export function ReviewsQueue({
                           </span>
                         ))}
                       </div>
+                      {current.retaliation && current.retaliation.level !== "no" ? (
+                        <div className="cp-rv-prev">
+                          <span>{current.retaliation.level === "likely" ? "Likely retaliatory under Airbnb’s Reviews Policy" : "Possibly retaliatory under Airbnb’s Reviews Policy"}</span>
+                          <p>{current.retaliation.why}</p>
+                          {current.retaliation.quotes.map((quote) => <p key={quote}>The guest wrote: “{quote}”</p>)}
+                        </div>
+                      ) : null}
+                      {current.removalRequest ? (
+                        <div className="cp-rv-prev">
+                          <span>Removal request to Airbnb (draft)</span>
+                          <p style={{ whiteSpace: "pre-wrap" }}>{current.removalRequest}</p>
+                          <button type="button" onClick={() => void navigator.clipboard?.writeText(current.removalRequest)}>Copy request</button>
+                        </div>
+                      ) : null}
                       <div>
                         <button type="button" onClick={() => {
                           const text = current.facts.map((fact) => `${fact.claim}\n${fact.record}\n${fact.source}`).join("\n\n");
                           void navigator.clipboard?.writeText(text);
                         }}>Copy facts</button>
-                        <span>Nothing is filed from here. You file it in Airbnb’s Resolution Center. The reply above is separate.</span>
+                        <span>Nothing is filed or sent from here. You send it to Airbnb yourself. The reply above is a separate draft.</span>
                       </div>
                     </div>
                   ) : null}

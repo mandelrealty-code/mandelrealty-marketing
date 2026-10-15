@@ -630,6 +630,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         reservationId: String(body.reservationId ?? ""),
         propertyId: String(body.propertyId ?? ""),
         stars: Number.isFinite(stars) && stars >= 1 && stars <= 5 ? stars : undefined,
+        id: String(body.id ?? ""),
+        property: String(body.property ?? ""),
+        privateFeedback: String(body.privateFeedback ?? ""),
       });
       return res.status(200).json(result);
     }

@@ -21,7 +21,9 @@ import {
   submitReviewReply,
   loadReviewQueue,
   reviewWindowStart,
+  reviewDate,
 } from "./reviewsQueue.js";
+import { checkedAssessment, resetReviewAi, setReviewModel, writeReviewAi } from "./reviewAi.js";
 import { installWorld, type ParityReview } from "./parity/world.js";
 import { NO_REVIEWS_SYNCED } from "./reviewTypes.js";
 
@@ -335,5 +337,86 @@ if (!rose || rose.synced !== true) fail("a property whose only review is answere
 const blue = filterRows.find((row) => row.id === BLUE.id);
 if (!blue || blue.synced !== true) fail("Blue Jays Way lost its synced state");
 if (NO_REVIEWS_SYNCED !== "No reviews synced for this property yet") fail(`empty-state line ${NO_REVIEWS_SYNCED}`);
+
+// ---------- The real review date, low-star flags, retaliation, and nothing ever posted ----------
+
+// Hospitable's "reviewed" time months after checkout is a record time: the stay's end is shown instead.
+const stale = reviewDate("2026-10-14T09:00:00Z", "2025-12-03");
+if (!stale.fromStay || !stale.at.startsWith("2025-12-03")) fail(`stale review date ${JSON.stringify(stale)}`);
+const fresh = reviewDate("2026-10-05T09:00:00Z", "2026-09-28");
+if (fresh.fromStay || fresh.at !== "2026-10-05T09:00:00Z") fail(`fresh review date ${JSON.stringify(fresh)}`);
+
+const threadInput = {
+  guest: "Dana",
+  stars: 1,
+  review: "Dirty and the host was rude.",
+  privateFeedback: "",
+  property: "20 Blue Jays Way",
+  messages: [
+    { role: "guest" as const, body: "Give me a 50% refund or I will leave a 1 star review." },
+    { role: "host" as const, body: "We can't refund a stay that's complete, but we're happy to look at any issue." },
+  ],
+  reservation: "",
+  hub: "",
+};
+const realQuote = checkedAssessment({ headline: "Guest demanded a refund under threat of a bad review.", facts: [], retaliation: { level: "likely", why: "Threatened a 1 star review for a refund.", quotes: ["Give me a 50% refund or I will leave a 1 star review."] }, removalRequest: "Please remove this review — it was coercive.", reply: "Thank you — we take cleanliness seriously." }, threadInput);
+if (realQuote?.retaliation.level !== "likely" || realQuote.retaliation.quotes.length !== 1) fail(`a quoted threat lost its level: ${JSON.stringify(realQuote?.retaliation)}`);
+if (/\u2014/.test(`${realQuote.reply}${realQuote.removalRequest}`)) fail("an em dash survived in a review draft");
+const madeUp = checkedAssessment({ headline: "Retaliation.", facts: [], retaliation: { level: "likely", why: "x", quotes: ["I will ruin your listing"] }, removalRequest: "Remove it.", reply: "Thank you for staying." }, threadInput);
+if (madeUp?.retaliation.level !== "possible" || madeUp.retaliation.quotes.length) fail("an invented quote was kept as proof");
+
+resetReviewAi();
+const prompts: string[] = [];
+setReviewModel(async (system, user) => {
+  prompts.push(user);
+  if (/low Airbnb guest review/.test(system)) {
+    return JSON.stringify({ headline: "Guest threatened a bad review unless refunded.", facts: [{ claim: "Dirty", record: "No cleanliness issue was reported during the stay.", source: "Conversation" }], retaliation: { level: "likely", why: "Refund demand with a review threat.", quotes: ["Give me a 50% refund or I will leave a 1 star review."] }, removalRequest: "Hello Airbnb Support, this review followed a refund demand under threat.", reply: "Thank you for the feedback, Dana. No issue was raised during the stay, and the home was cleaned to our standard." });
+  }
+  return "Thank you, Sam! We're so glad the view from the balcony made the stay. We'd love to host you again.";
+});
+const five = await writeReviewAi({ ...threadInput, guest: "Sam", stars: 5, review: "Loved the balcony view." });
+if (five?.kind !== "reply" || !/balcony/.test(five.reply)) fail(`5 stars did not get a reply draft: ${JSON.stringify(five)}`);
+const one = await writeReviewAi(threadInput);
+if (one?.kind !== "flag" || one.assessment.retaliation.level !== "likely" || !one.assessment.removalRequest) fail(`1 star was not flagged with a removal request: ${JSON.stringify(one)}`);
+if (!prompts.some((text) => text.includes("Give me a 50% refund"))) fail("the assessment did not read the conversation");
+
+// The queue: every selected property, flagged first then newest, closed reviews counted, nothing posted.
+const MAIN = { id: "prop-main-q", name: "1065 Shaw Street", address: "1065 Shaw Street, Toronto", managed: true };
+const BLUE2 = { id: "prop-blue-q", name: "20 Blue Jays Way", address: "20 Blue Jays Way, Toronto", managed: true };
+const qNow = new Date("2026-10-15T15:00:00-04:00");
+const rv = (id: string, propertyId: string, reviewedAt: string, rating: number, extra: Partial<ParityReview> = {}): ParityReview => ({
+  id, propertyId, reservationId: `${id}-stay`, guest: id.toUpperCase(), platform: "airbnb", reviewedAt, rating, publicReview: `${id} stayed here and it was fine.`, ...extra,
+});
+installWorld({
+  now: qNow,
+  properties: [MAIN, BLUE2],
+  reservations: [],
+  gmail: [],
+  outlook: [],
+  memory: [],
+  items: [],
+  reviews: [
+    rv("older5", BLUE2.id, "2026-09-20T18:00:00Z", 5),
+    rv("newer5", MAIN.id, "2026-10-12T18:00:00Z", 5),
+    rv("low2", MAIN.id, "2026-08-01T18:00:00Z", 2, { privateFeedback: "Heat was off." }),
+    rv("closed5", BLUE2.id, "2026-06-01T18:00:00Z", 5, { canRespond: false }),
+    rv("stale", BLUE2.id, "2026-10-14T09:00:00Z", 4, { checkOut: "2026-03-02" }),
+  ],
+});
+posts.length = 0;
+const q = await loadReviewQueue(qNow);
+const order = q.reviews.map((row) => row.id);
+if (order[0] !== "low2") fail(`a 2-star review was not first: ${order.join(", ")}`);
+if (order.indexOf("newer5") > order.indexOf("older5")) fail(`newest was not first after the flags: ${order.join(", ")}`);
+if (order.includes("closed5")) fail("a review Airbnb no longer takes a reply to was listed");
+if (!/1 older review can no longer be answered/.test(q.note ?? "")) fail(`closed review not said: ${q.note}`);
+const low = q.reviews.find((row) => row.id === "low2");
+if (!low?.flagged || !/Flagged for the team/.test(low.dispute)) fail(`low review not flagged: ${JSON.stringify(low)}`);
+if (low.privateFeedback !== "Heat was off.") fail("private feedback was not carried to the assessment");
+const staleRow = q.reviews.find((row) => row.id === "stale");
+if (staleRow?.when !== "Stay ended Mar 2") fail(`a months-old review said ${staleRow?.when}`);
+if (new Set(q.reviews.map((row) => row.propertyId)).size !== 2) fail("reviews from only one property");
+if (posts.length) fail(`loading reviews posted ${posts.length} replies`);
+setReviewModel(null);
 
 console.log("Reviews harness passed.");

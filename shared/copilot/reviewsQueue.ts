@@ -4,8 +4,9 @@
  */
 
 import { listHospitableReviews, respondToHospitableReview } from "../pm/hospitableClient.js";
-import { listPmProperties } from "../pm/propertyStore.js";
-import { copilotHospitableToken, copilotKeepsProperty, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
+import { scopedStayProperties } from "./dayBoard.js";
+import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
+import { flagLine, keepReviewAi, keptReviewAi, reviewAiAvailable, reviewIsFlagged, writeReviewAi, type ReviewAiResult, type ReviewAssessment } from "./reviewAi.js";
 import { guestPhotoUrl } from "./guestInquiries.js";
 import { hubPlain } from "./knowledgeHub.js";
 import { addDays, torontoToday } from "./time.js";
@@ -47,6 +48,9 @@ export type RegeneratedReview = {
   unchanged: boolean;
   dispute: string;
   facts: ReviewFact[];
+  flagged?: boolean;
+  retaliation?: ReviewAssessment["retaliation"];
+  removalRequest?: string;
 };
 
 const skips = new Map<string, string>();
@@ -66,8 +70,10 @@ export function setReviewPoster(next: ((id: string, text: string) => Promise<voi
 export function rankReviews<T extends { stars: number; reviewedAt: string; review: string; id: string; returned?: boolean }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => {
     if (Boolean(a.returned) !== Boolean(b.returned)) return a.returned ? -1 : 1;
-    if (a.stars !== b.stars) return a.stars - b.stars;
+    // Flagged (3 stars or fewer) first, then newest first.
+    if (reviewIsFlagged(a.stars) !== reviewIsFlagged(b.stars)) return reviewIsFlagged(a.stars) ? -1 : 1;
     if (a.reviewedAt !== b.reviewedAt) return a.reviewedAt < b.reviewedAt ? 1 : -1;
+    if (a.stars !== b.stars) return a.stars - b.stars;
     if (a.review.length !== b.review.length) return b.review.length - a.review.length;
     return a.id.localeCompare(b.id);
   });
@@ -152,6 +158,9 @@ export async function regenerateFromConnection(input: {
   reservationId: string;
   propertyId: string;
   stars?: number;
+  id?: string;
+  property?: string;
+  privateFeedback?: string;
 }): Promise<RegeneratedReview> {
   const token = await copilotHospitableToken();
   if (!token) {
@@ -183,6 +192,14 @@ export async function regenerateFromConnection(input: {
   if (stay.failed.length >= 3 && !stay.messages.length && !stay.reservation && !stay.hub) {
     return { draft: input.current, previous: input.current, sourceLine: SOURCE_UNCHANGED, unchanged: true, dispute: "", facts: [] };
   }
+  // Regenerate with AI writes afresh from the whole stay; the kept version is replaced.
+  if (input.stars && reviewAiAvailable()) {
+    const ai = await writeReviewAi({ guest: input.guest, stars: input.stars, review: input.review, privateFeedback: input.privateFeedback ?? "", property: input.property ?? "", messages: stay.messages, reservation: stay.reservation, hub: stay.hub });
+    if (ai) {
+      if (input.id) await keepReviewAi(input.id, { review: input.review, stars: input.stars }, ai);
+      return { ...fromAi(ai, input.stars), previous: input.current, sourceLine: aiSourceLine(stay), unchanged: false };
+    }
+  }
   return regenerateDraft({ ...input, stay });
 }
 
@@ -207,30 +224,59 @@ export function undoSkip(id: string): void {
   skips.delete(id);
 }
 
+/** What a written review becomes on the row: a reply draft, or a flag with its assessment. */
+function fromAi(ai: ReviewAiResult, stars: number): Pick<RegeneratedReview, "draft" | "dispute" | "facts" | "flagged" | "retaliation" | "removalRequest"> {
+  if (ai.kind === "reply") return { draft: ai.reply, dispute: "", facts: [], flagged: false };
+  return {
+    draft: ai.assessment.reply,
+    dispute: flagLine(stars, ai.assessment),
+    facts: ai.assessment.facts,
+    flagged: true,
+    retaliation: ai.assessment.retaliation,
+    removalRequest: ai.assessment.removalRequest,
+  };
+}
+
+/**
+ * When the review was really left. Airbnb reviews are written within 14 days of checkout, so a
+ * "reviewed" date long after checkout is Hospitable's record time, not the review: the checkout is used.
+ */
+export function reviewDate(reviewedAt: string, checkOut: string): { at: string; fromStay: boolean } {
+  const day = checkOut.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    const latest = addDays(day, 16);
+    if (!reviewedAt || reviewedAt.slice(0, 10) > latest || reviewedAt.slice(0, 10) < day) return { at: `${day}T12:00:00Z`, fromStay: true };
+  }
+  return { at: reviewedAt, fromStay: false };
+}
+
+/** Writing budget per load: a review is written once and kept, so later loads are instant. */
+const WRITE_BUDGET_MS = 20_000;
+
 export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayload> {
   const token = await copilotHospitableToken();
   if (!token) {
     return { connected: false, line: "Hospitable is not connected.", reviews: [], postedToday: [...posted.values()] };
   }
-  const properties = [];
-  for (const row of await listPmProperties().catch(() => [])) {
-    if (await copilotKeepsProperty({ id: row.hospitable_property_id || row.id, name: row.name, address: row.address })) properties.push(row);
-  }
+  // The same properties as the guest inbox: the Hospitable selection saved in Settings.
+  const properties = await scopedStayProperties().catch(() => []);
   const reviews: ReviewQueueRow[] = [];
-  const listed: ReviewQueueProperty[] = [];
-  for (const property of properties) {
-    const propertyId = (property.hospitable_property_id || "").trim();
-    if (!propertyId) continue;
+  const listed: ReviewQueueProperty[] = properties.map((property) => ({ id: property.id, name: property.name, synced: true }));
+  const unreadable: string[] = [];
+  let closed = 0;
+  let disconnected = false;
+  const today = torontoToday(now);
+  const readProperty = async (property: (typeof properties)[number], index: number) => {
+    const propertyId = property.id.trim();
+    if (!propertyId) return;
     let rows: Awaited<ReturnType<typeof listHospitableReviews>> = [];
     try {
       // Every page: two pages cut a property's newest reviews off when Hospitable lists oldest first.
       rows = await listHospitableReviews({ pat: token, propertyId, responded: false, maxPages: 30 });
     } catch (err) {
-      if (err instanceof Error && err.message === HOSPITABLE_NOT_CONNECTED) {
-        return { connected: false, line: "Hospitable is not connected.", reviews: [], postedToday: [...posted.values()] };
-      }
-      listed.push({ id: propertyId, name: property.name, synced: true });
-      continue;
+      if (err instanceof Error && err.message === HOSPITABLE_NOT_CONNECTED) disconnected = true;
+      else unreadable.push(property.name);
+      return;
     }
     // No unanswered review at any age: ask whether Hospitable holds any review for it at all.
     let synced = rows.length > 0;
@@ -241,23 +287,28 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
         synced = true;
       }
     }
-    listed.push({ id: propertyId, name: property.name, synced });
+    listed[index] = { id: propertyId, name: property.name, synced };
     for (const review of rows) {
-      // Only the last 12 months. Older reviews stay in Hospitable, unanswered and untouched.
-      if (!inReviewWindow(review.reviewed_at || "", now)) continue;
       if (review.public_response.trim()) continue;
       if (review.platform && !/airbnb/i.test(review.platform)) continue;
       if (posted.has(review.id)) continue;
+      const when = reviewDate(review.reviewed_at || "", review.check_out || "");
+      // Only the last 12 months. Older reviews stay in Hospitable, unanswered and untouched.
+      if (!inReviewWindow(when.at, now)) continue;
+      // Airbnb takes a reply only for a while after a review posts; past that, Submit could only fail.
+      if (review.raw.can_respond === false || review.raw.canRespond === false) {
+        closed += 1;
+        continue;
+      }
       const stars = review.rating == null ? 0 : Math.round(review.rating);
       if (stars < 1 || stars > 5) continue;
       const until = skips.get(review.id);
-      const today = torontoToday(now);
       if (until && until > today) continue;
       const guest = review.guest_first_name || "Guest";
       const text = review.public_review.trim();
       if (!text) continue;
       const flag = textDispute(text);
-      const needsCare = reviewNeedsCare(text, flag.reason);
+      const flagged = reviewIsFlagged(stars);
       reviews.push({
         id: review.id,
         reservationId: review.reservation_id,
@@ -268,24 +319,70 @@ export async function loadReviewQueue(now = new Date()): Promise<ReviewQueuePayl
         property: property.name,
         propertyPhoto: "",
         stars,
-        when: reviewedLabel(review.reviewed_at || "", now),
-        reviewedAt: review.reviewed_at || "",
+        when: reviewedLabel(when.at, now, when.fromStay),
+        reviewedAt: when.at,
         review: text,
         draft: seedDraft(guest, text),
-        dispute: flag.reason,
-        needsCare,
+        dispute: flagged ? `${stars} star${stars === 1 ? "" : "s"}. Flagged for the team.${flag.reason ? ` ${flag.reason}` : ""}` : flag.reason,
+        needsCare: flagged || reviewNeedsCare(text, flag.reason),
         facts: flag.facts,
         returned: Boolean(until && until <= today),
+        flagged,
+        privateFeedback: review.private_feedback || "",
       });
     }
-  }
+  };
+  const queue = properties.map((property, index) => ({ property, index }));
+  const lane = async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) await readProperty(next.property, next.index);
+  };
+  await Promise.all([lane(), lane(), lane()]);
+  if (disconnected) return { connected: false, line: "Hospitable is not connected.", reviews: [], postedToday: [...posted.values()] };
+  await writeDrafts(reviews, now);
+  const notes = [
+    unreadable.length ? `Couldn't read reviews for ${unreadable.join(", ")}. Open Reviews again in a moment.` : "",
+    closed ? `${closed} older review${closed === 1 ? "" : "s"} can no longer be answered on Airbnb, so ${closed === 1 ? "it is" : "they are"} not listed.` : "",
+  ].filter(Boolean);
   return {
     connected: true,
     line: "",
     reviews: rankReviews(reviews),
     postedToday: [...posted.values()],
     properties: listed,
+    ...(notes.length ? { note: notes.join(" ") } : {}),
   };
+}
+
+/** Each review's AI draft or assessment: kept ones at once, new ones written (three at a time) within the budget. */
+async function writeDrafts(rows: ReviewQueueRow[], now: Date): Promise<void> {
+  const started = Date.now();
+  const apply = (row: ReviewQueueRow, ai: ReviewAiResult) => Object.assign(row, fromAi(ai, row.stars), { needsCare: row.flagged || row.needsCare });
+  const pending: ReviewQueueRow[] = [];
+  for (const row of rows) {
+    const kept = await keptReviewAi(row.id, { review: row.review, stars: row.stars });
+    if (kept) apply(row, kept);
+    else pending.push(row);
+  }
+  if (!reviewAiAvailable()) return;
+  // Newest first, flagged first: the ones the team will read first are written first.
+  const queue = rankReviews(pending);
+  const lane = async () => {
+    for (let row = queue.shift(); row; row = queue.shift()) {
+      if (Date.now() - started > WRITE_BUDGET_MS) return;
+      try {
+        const stay = await readStay(row.reservationId, row.propertyId);
+        const ai = await writeReviewAi({ guest: row.guest, stars: row.stars, review: row.review, privateFeedback: row.privateFeedback ?? "", property: row.property, messages: stay.messages, reservation: stay.reservation, hub: stay.hub });
+        if (!ai) continue;
+        await keepReviewAi(row.id, { review: row.review, stars: row.stars }, ai);
+        apply(row, ai);
+        row.sourceLine = aiSourceLine(stay);
+      } catch {
+        /* The template draft stays; Regenerate with AI tries again. */
+      }
+    }
+  };
+  void now;
+  await Promise.all([lane(), lane(), lane()]);
 }
 
 async function readStay(reservationId: string, propertyId: string): Promise<StayFacts> {
@@ -423,6 +520,12 @@ function claimReply(guest: string, review: string, stay: StayFacts, plain = fals
   if (bits.length === 1) bits.push(reviewOnlyMiddle(review));
   bits.push("Thank you for staying with us.");
   return { draft: bits.join(" "), marks };
+}
+
+/** The AI read the whole stay: say what it had. */
+function aiSourceLine(stay: StayFacts): string {
+  const base = stay.messages.some((row) => row.body.trim()) ? SOURCE_FULL : SOURCE_ALONE;
+  return [base, ...stay.failed].join(" ");
 }
 
 function sourceLineFor(stay: StayFacts, draft: string, marks: FactMarks): string {
@@ -678,13 +781,16 @@ function clip(value: string, max: number): string {
   return one.length <= max ? one : `${one.slice(0, max - 1).trimEnd()}…`;
 }
 
-function reviewedLabel(iso: string, now: Date): string {
+function reviewedLabel(iso: string, now: Date, fromStay = false): string {
   const day = iso.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return "";
   const today = torontoToday(now);
+  const sameYear = day.slice(0, 4) === today.slice(0, 4);
+  const date = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }), timeZone: "UTC" }).format(new Date(`${day}T12:00:00Z`));
+  if (fromStay) return `Stay ended ${date}`;
   if (day === today) return "Posted today";
   if (day === addDays(today, -1)) return "Posted yesterday";
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${day}T12:00:00Z`));
+  return `Posted ${date}`;
 }
 
 function guestPhoto(raw: Record<string, unknown>): string {
