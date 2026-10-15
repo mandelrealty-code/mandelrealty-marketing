@@ -17,7 +17,8 @@ import { insertTask, resetParityTasks } from "./taskDb.js";
 import handleSession, { setStaffAccounts } from "../adminApi/session.js";
 import { hashPassword } from "../portalAuth.js";
 import { OPS_NAV, opsPathOpensCopilotReviews, opsPathOpensCopilotTasks } from "../opsNav.js";
-import { getTask, setParityStaff, syncCalendar } from "./tasks.js";
+import { createTask, getTask, setParityStaff, syncCalendar } from "./tasks.js";
+import { taskTools } from "./hospitableAgent.js";
 import { createReminder, listReminders } from "./reminders.js";
 import { overviewReminders, reminderRow } from "./reminderView.js";
 import { fromToronto, shiftDay, torontoParts } from "./reminderTime.js";
@@ -267,6 +268,15 @@ await handleCopilot(
 );
 if (copilotStatus !== 401) fail(`an employee reached the rest of Copilot (${copilotStatus})`);
 setStaffAccounts(null);
+
+// Chat reads the board: "any tasks due this week?" finds a task due in two days.
+await createTask({ title: "Finish groceries flow", assignee: "Shane", dueDay: shiftDayKey(2), by: "Shane" });
+const listTool = taskTools().find((tool) => tool.name === "list_tasks");
+const listed = (await listTool!.run({ from_day: shiftDayKey(0), to_day: shiftDayKey(6) })) as { count: number; tasks: { title: string; for: string; due: string }[] };
+const groceries = listed.tasks.find((row) => row.title === "Finish groceries flow");
+if (!groceries || groceries.for !== "Shane" || groceries.due === "no due date") fail(`chat couldn't read the task board: ${JSON.stringify(listed)}`);
+const notThisWeek = (await listTool!.run({ from_day: shiftDayKey(10), to_day: shiftDayKey(12) })) as { tasks: { title: string }[] };
+if (notThisWeek.tasks.some((row) => row.title === "Finish groceries flow")) fail("a task outside the range was listed");
 
 if (capturedCommits().length) fail("a task sent something");
 setParityClock(null);

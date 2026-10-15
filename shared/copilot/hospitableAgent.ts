@@ -266,7 +266,7 @@ export async function answerHospitable(input: {
       hospitable = [];
       mcp = false;
     }
-    const tools = [...mailTools(), ...hospitable];
+    const tools = [...mailTools(), ...taskTools(), ...hospitable];
     const which = process.env.ANTHROPIC_API_KEY?.trim()
       ? "claude"
       : process.env.OPENAI_API_KEY?.trim()
@@ -295,6 +295,59 @@ export async function answerHospitable(input: {
 
 function say(body: string, step: string, thought: string): HospitableTurn {
   return { body, steps: [{ text: step }], thought, draft: null, choices: null };
+}
+
+/** The team's task board and reminders, read-only. Changes are made on the board. */
+export function taskTools(): ToolDef[] {
+  return [
+    {
+      name: "list_tasks",
+      description:
+        "Read Copilot's task board (the team's tasks) and reminders. Filter by due day range in Toronto (from_day, to_day as YYYY-MM-DD), by person (who, a team member's name), and whether to include done tasks. With no range, every open task is returned. Reading only: this changes nothing.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          from_day: { type: "string" },
+          to_day: { type: "string" },
+          who: { type: "string" },
+          include_done: { type: "boolean" },
+        },
+      },
+      run: async (args) => {
+        const [{ listTasks }, { isArchived }] = await Promise.all([import("./tasks.js"), import("./taskTypes.js")]);
+        const from = text(args.from_day);
+        const to = text(args.to_day);
+        const who = text(args.who).trim().toLowerCase();
+        const dayOf = (task: { dueAt: string; dueDay: string }) => task.dueDay || (task.dueAt ? torontoToday(new Date(task.dueAt)) : "");
+        const rows = (await listTasks())
+          .filter((task) => !task.deletedAt && !isArchived(task))
+          .filter((task) => args.include_done === true || task.status !== "done")
+          .filter((task) => !who || task.assignee.toLowerCase().startsWith(who))
+          .filter((task) => {
+            if (!from && !to) return true;
+            const day = dayOf(task);
+            return Boolean(day) && (!from || day >= from) && (!to || day <= to);
+          })
+          .sort((a, b) => (dayOf(a) || "9999").localeCompare(dayOf(b) || "9999"));
+        return {
+          count: rows.length,
+          tasks: rows.slice(0, 60).map((task) => ({
+            title: task.title,
+            for: task.assignee || "no one yet",
+            status: task.status,
+            due: task.dueAt
+              ? new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }).format(new Date(task.dueAt))
+              : task.dueDay
+                ? new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${task.dueDay}T12:00:00Z`))
+                : "no due date",
+            unit: task.unit || "",
+            waiting_on: task.waitingOn || "",
+            kind: task.source.kind === "chat" ? "reminder" : "task",
+          })),
+        };
+      },
+    },
+  ];
 }
 
 function mailTools(): ToolDef[] {
@@ -538,6 +591,7 @@ export function instructions(mcp: boolean, hasHospitable: boolean, facts: string
     "choices, when you ask that, are short labels for the ways you just named. The question itself stays in the body.",
     "If a memory already says how this job works, follow it. Do not ask again. Offer to handle the next one that way.",
     "When they choose, call keep_way with that choice, then confirm it in a sentence. Do not call keep_way on a question that only asks what you see.",
+    "Copilot has a task board (Tasks) and reminders. For any question about tasks, to-dos, reminders or what is due, call list_tasks first (for \"this week\", Monday to Sunday of the current week) and answer from it: each task's title, who it's for, and when it's due. Never say there is no task list.",
     "Reminders are Copilot's own records, kept in Copilot. Never say a reminder was set in a phone, calendar or another app, or that you can't change one.",
     "Every time you write is Toronto time. For mail, use the `when` field exactly as given; never convert a date or Date header yourself. Hospitable times are UTC: say them in Toronto time.",
     "A question about whether, when, or to whom an email was sent is answered from Sent mail: lead with sent or not sent, then when, from which account, to whom, and what it said. A reservation only tells you which stay is meant; it is never the answer.",
