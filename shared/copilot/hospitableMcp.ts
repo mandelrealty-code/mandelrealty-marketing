@@ -67,17 +67,28 @@ export async function hospitableMcpToolArgs(name: string): Promise<string[] | nu
   if (parityMcp("get-user", {}).handled) return null;
   if (!toolArgs) {
     const token = await getHospitableMcpToken();
-    if (!token) return null;
+    if (!token) {
+      schemaNotes.set(name, "The Hospitable MCP connection isn't set up, and it is the one that sends messages.");
+      return null;
+    }
     await ensureSession(token);
-    const listed = (await rpc(token, "tools/list", {})) as { tools?: { name?: string; inputSchema?: { properties?: Record<string, unknown> } }[] } | null;
+    const listed = (await rpc(token, "tools/list", {})) as { tools?: { name?: string; inputSchema?: { properties?: Record<string, { description?: string }> } }[] } | null;
     toolArgs = new Map((listed?.tools ?? []).map((tool) => [String(tool.name ?? ""), Object.keys(tool.inputSchema?.properties ?? {})]));
+    for (const tool of listed?.tools ?? []) {
+      const stub = tool.inputSchema?.properties?.[FULL_SCHEMA];
+      if (stub) stubHelp.set(String(tool.name ?? ""), JSON.stringify(stub).slice(0, 300));
+    }
   }
   const names = toolArgs.get(name) ?? null;
   // Hospitable lists some tools with a stub schema; the tool returns its real one when asked for it.
   if (names?.includes(FULL_SCHEMA)) {
     const token = await getHospitableMcpToken();
-    const full = token ? propertyNames(await callWith(token, name, { [FULL_SCHEMA]: true }).catch(() => null)) : [];
-    if (!full.length) return null;
+    const reply = token ? await callWith(token, name, { [FULL_SCHEMA]: true }).catch((err: unknown) => ({ error: err instanceof Error ? err.message : String(err) })) : null;
+    const full = propertyNames(reply);
+    if (!full.length) {
+      schemaNotes.set(name, `Hospitable's list says: ${stubHelp.get(name) ?? "(nothing)"}. Asking the tool returned: ${JSON.stringify(reply ?? null).slice(0, 400)}`);
+      return null;
+    }
     toolArgs.set(name, full);
     return full;
   }
@@ -85,6 +96,13 @@ export async function hospitableMcpToolArgs(name: string): Promise<string[] | nu
 }
 
 const FULL_SCHEMA = "__fetch_full_schema__";
+const stubHelp = new Map<string, string>();
+const schemaNotes = new Map<string, string>();
+
+/** What Hospitable answered when a tool's full schema couldn't be read: shown on Settings so it can be fixed. */
+export function hospitableSchemaNote(name: string): string {
+  return schemaNotes.get(name) ?? "";
+}
 
 /** The argument names in a returned schema: the first "properties" object found, at any depth. */
 export function propertyNames(raw: unknown): string[] {

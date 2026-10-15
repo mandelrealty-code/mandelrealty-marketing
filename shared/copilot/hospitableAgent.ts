@@ -9,7 +9,7 @@ import {
   listReservationMessages,
   respondToHospitableReview,
 } from "../pm/hospitableClient.js";
-import { callHospitableMcp, hospitableMcpConfigured, hospitableMcpToolArgs } from "./hospitableMcp.js";
+import { callHospitableMcp, hospitableMcpConfigured, hospitableMcpToolArgs, hospitableSchemaNote } from "./hospitableMcp.js";
 import { propertyLines } from "./stayAnswer.js";
 import { readMail, searchMail } from "./mailSearch.js";
 import { withoutHubSecrets } from "./hubSecrets.js";
@@ -126,7 +126,10 @@ export async function senderArgs(): Promise<Record<string, string>> {
 export async function senderLine(): Promise<string> {
   if (parityEnabled()) return "";
   const names = await hospitableMcpToolArgs("send-reservation-message").catch(() => null);
-  if (!names) return "Couldn't read Hospitable's send fields to check who messages go out as.";
+  if (!names) {
+    const note = hospitableSchemaNote("send-reservation-message");
+    return `Couldn't read Hospitable's send fields to check who messages go out as.${note ? ` ${note}` : ""}`;
+  }
   const field = names.find((name) => SENDER_FIELD.test(name));
   const id = process.env.HOSPITABLE_SENDER_ID?.trim() ?? "";
   if (field && id) return `Copilot's messages go out as Shane (Hospitable user ${id}, field "${field}").`;
