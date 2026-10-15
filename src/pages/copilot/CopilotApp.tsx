@@ -762,6 +762,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [roster, setRoster] = useState<string[]>(["Shane", "Ryan"]);
   const [remindersLine, setRemindersLine] = useState("");
   const [remNow, setRemNow] = useState(() => new Date());
+  /** Tasks board kept warm so the tab opens on the last board instead of “Loading tasks.” */
+  const [tasksBoard, setTasksBoard] = useState<BoardPayload | null>(null);
   const viewer = useMemo(() => {
     let asked = "";
     try {
@@ -789,6 +791,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       return "brief";
     }
   });
+  const [tasksKept, setTasksKept] = useState(() => screen === "tasks");
   const [boardSeed, setBoardSeed] = useState<Workflow>(BLANK);
   const [boardSkillId, setBoardSkillId] = useState<string | null>(null);
   const [boardTick, setBoardTick] = useState(0);
@@ -1028,6 +1031,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         }
         void api<{ brief: BriefPayload }>("refresh-brief")
           .then((next) => setBoot((prev) => (prev ? { ...prev, brief: next.brief } : prev)))
+          .catch(() => undefined);
+        // Warm the Tasks tab with the fast board read so the first click paints at once.
+        void api<BoardPayload>("tasks-board", { open: false, viewer })
+          .then((board) => setTasksBoard((current) => current ?? board))
           .catch(() => undefined);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load Copilot."));
@@ -1876,7 +1883,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         <span>Reviews</span>
         {reviewQueue?.connected && reviewQueue.reviews.length ? <span className="cp-ov-count">{reviewQueue.reviews.length}</span> : null}
       </button>
-      <button type="button" className={`cp-row${screen === "tasks" ? " on" : ""}`} onClick={() => { setScreen("tasks"); setSheet(false); }}>
+      <button type="button" className={`cp-row${screen === "tasks" ? " on" : ""}`} onClick={() => { setTasksKept(true); setScreen("tasks"); setSheet(false); }}>
         <span>Tasks</span>
       </button>
       <button type="button" className={`cp-row${screen === "reminders" ? " on" : ""}`} onClick={showReminders}>
@@ -2571,8 +2578,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     }}
                   />
                 ) : null}
-                {screen === "tasks" ? (
-                  <div className="cp-tasks"><TasksBoard api={tasksApi} theme={theme} /></div>
+                {screen === "tasks" || tasksKept ? (
+                  <div className={`cp-tasks${screen === "tasks" ? "" : " off"}`} aria-hidden={screen !== "tasks"}>
+                    <TasksBoard api={tasksApi} theme={theme} seed={tasksBoard} onBoard={setTasksBoard} />
+                  </div>
                 ) : null}
                 {screen === "reminders" ? (
                   <RemindersView reminders={reminders ?? []} roster={roster} partners={roster.slice(0, 2)} viewer={viewer} now={remNow} actions={reminderActions} loading={!reminders} notReady={remindersLine} />

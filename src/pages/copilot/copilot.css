@@ -8832,6 +8832,7 @@ html.cp-app[data-cp-theme="dark"] #root {
 
 /* The Tasks board fills the main pane; its detail panel floats inside it. */
 .cp-tasks { flex: 1; min-height: 100%; width: 100%; display: flex; position: relative; }
+.cp-tasks.off { display: none; }
 
 /* Mark handled: a quiet action beside Improve; Undo inline in the idle line. */
 .cp-gt-actions button.quiet { border-color: transparent; background: transparent; color: var(--muted); }

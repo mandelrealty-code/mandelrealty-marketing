@@ -81,8 +81,19 @@ function minutesOf(task: Task): number | null {
   return p.h * 60 + p.min;
 }
 
-export function TasksBoard({ api, theme = "dark" }: { api: BoardApi; theme?: "light" | "dark" }) {
-  const [board, setBoard] = useState<BoardPayload | null>(null);
+export function TasksBoard({
+  api,
+  theme = "dark",
+  seed = null,
+  onBoard,
+}: {
+  api: BoardApi;
+  theme?: "light" | "dark";
+  /** Board already on hand (boot prefetch or the last visit). The tab paints this at once. */
+  seed?: BoardPayload | null;
+  onBoard?: (board: BoardPayload) => void;
+}) {
+  const [board, setBoard] = useState<BoardPayload | null>(seed);
   const [fail, setFail] = useState("");
   const [view, setView] = useState<"board" | "date">("board");
   const [who, setWho] = useState<Who>("all");
@@ -97,7 +108,9 @@ export function TasksBoard({ api, theme = "dark" }: { api: BoardApi; theme?: "li
   const [withArchived, setWithArchived] = useState(false);
   const [width, setWidth] = useState(1200);
   const ref = useRef<HTMLDivElement>(null);
-  const previous = useRef<Task[]>([]);
+  const previous = useRef<Task[]>(seed?.tasks ?? []);
+  const onBoardRef = useRef(onBoard);
+  onBoardRef.current = onBoard;
 
   const take = useCallback((next: BoardPayload) => {
     // A task Copilot closed while the board was open glows once.
@@ -108,13 +121,32 @@ export function TasksBoard({ api, theme = "dark" }: { api: BoardApi; theme?: "li
     }
     previous.current = next.tasks;
     setBoard(next);
+    onBoardRef.current?.(next);
     setNow(new Date());
     setFail("");
   }, []);
 
+  // A seed that arrives after mount (boot prefetch) fills an empty board without a flash.
+  useEffect(() => {
+    if (seed && !board) {
+      previous.current = seed.tasks;
+      setBoard(seed);
+    }
+  }, [seed, board]);
+
   useEffect(() => {
     let alive = true;
-    api.load(true, { includeArchived: withArchived }).then((next) => alive && take(next)).catch((err) => alive && setFail(err instanceof Error ? err.message : "The board didn't load."));
+    // Paint from the fast read first. Calendar sync (open: true) runs after so the tab never waits on it.
+    api.load(false, { includeArchived: withArchived })
+      .then((next) => { if (alive) take(next); })
+      .catch((err) => {
+        if (!alive) return;
+        setBoard((current) => {
+          if (!current) setFail(err instanceof Error ? err.message : "The board didn't load.");
+          return current;
+        });
+      });
+    void api.load(true, { includeArchived: withArchived }).then((next) => { if (alive) take(next); }).catch(() => undefined);
     const timer = window.setInterval(() => {
       api.load(false, { includeArchived: withArchived }).then((next) => alive && take(next)).catch(() => undefined);
     }, 60_000);
