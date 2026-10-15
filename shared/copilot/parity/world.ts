@@ -27,6 +27,10 @@ export type ParityMessage = {
   at: string;
   role: "guest" | "host" | "system";
   name: string;
+  /** Platform sender, when it differs from `name`. "Unknown" is not a person. */
+  senderName?: string;
+  /** Hospitable channel user. Used when the platform sender is blank. */
+  userName?: string;
   body: string;
   /** What the photo or video shows, when the message carried one. */
   media?: { kind: "photo" | "video"; url?: string; duration?: string; shows?: string }[];
@@ -1141,13 +1145,18 @@ function mcpMessage(row: ParityMessage) {
     duration: item.duration || "",
     content: item.shows || "",
   }));
+  const platformSender = row.senderName ?? "";
   return {
     id: row.id,
     body: row.body,
     created_at: row.at,
     sender_role: row.role,
     sender_type: row.role,
-    author: { name: row.name },
+    author: platformSender ? null : { name: row.name },
+    sender: platformSender
+      ? { first_name: platformSender, full_name: platformSender }
+      : { name: row.name, full_name: row.name, first_name: row.name },
+    ...(row.userName ? { user: { name: row.userName } } : {}),
     ...(attachments.length ? { attachments } : {}),
   };
 }

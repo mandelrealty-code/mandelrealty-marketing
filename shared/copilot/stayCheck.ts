@@ -125,6 +125,12 @@ export function forgetThread(id: string): void {
   threadMemory.delete(id);
 }
 
+/** When this thread was last read, as the newest message time. Empty when it has never been read. */
+export async function cachedThreadStamp(id: string): Promise<string> {
+  await loadThreadCache();
+  return threadMemory.get(id)?.watermark ?? "";
+}
+
 function freshThread(id: string, nowMs: number): Msg[] | null {
   const hit = threadMemory.get(id);
   if (!hit || nowMs - hit.at > THREAD_FRESH_MS) return null;
@@ -208,18 +214,22 @@ export async function readStayThread(reservationId: string, now: Date, watermark
       });
     }
   }
-  const raw = await readWithRetry(() => hospitableRead("get-reservation-messages", { uuid: reservationId }));
+  const raw = await readWithRetry(() => hospitableRead("get-reservation-messages", { uuid: reservationId, include: "user" }));
   const messages = rowsOf(raw)
     .map((row) => {
       const author = isRow(row.author) ? row.author : {};
       const sender = isRow(row.sender) ? row.sender : {};
+      const channel = isRow(row.user) ? row.user : {};
       const roleRaw = `${text(row.sender_role)} ${text(row.sender_type)} ${text(sender.type)}`.toLowerCase();
       const role = roleRaw.includes("guest") ? "guest" : roleRaw.includes("host") ? "host" : roleRaw.includes("system") ? "system" : "unknown";
       const media = mediaFromMessage(row);
+      // The platform profile wins (Shane on an automated message, Eloise on a guest message).
+      // A co-host reply from Airbnb often has sender "Unknown" and the real name on `user`.
+      const platformName = spokenName(author.name) || spokenName(sender.full_name) || spokenName(sender.first_name) || spokenName(sender.name);
       return {
         at: text(row.created_at) || text(row.sent_at) || text(row.timestamp),
         role,
-        name: spokenName(author.name) || spokenName(sender.name) || spokenName(sender.full_name) || spokenName(sender.first_name) || spokenName(isRow(row.user) ? row.user.name : ""),
+        name: platformName || spokenName(channel.name),
         body: text(row.body) || text(row.message) || text(row.content) || text(row.text),
         media,
       };

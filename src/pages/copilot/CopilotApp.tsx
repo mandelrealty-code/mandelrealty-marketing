@@ -1700,8 +1700,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   // The inbox is checked all the time Copilot is open (so the sidebar count is live on every screen):
-  // the next check starts a few seconds after the last one answers, never stacking checks on Hospitable.
-  // A hidden tab checks every half minute.
+  // a fast pass reads only stays Hospitable says have a new message. A hidden tab checks every half minute.
   useEffect(() => {
     if (!guestQueue?.connected) return;
     let stopped = false;
@@ -1714,9 +1713,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           setBoot((prev) => (prev ? { ...prev, guestQueue: queue } : prev));
         })
         .catch(() => undefined);
-      if (!stopped) timer = window.setTimeout(() => { void pull(); }, document.hidden ? 30000 : 4000);
+      if (!stopped) timer = window.setTimeout(() => { void pull(); }, document.hidden ? 30000 : 2000);
     };
-    timer = window.setTimeout(() => { void pull(); }, 1500);
+    timer = window.setTimeout(() => { void pull(); }, 1000);
     return () => {
       stopped = true;
       window.clearTimeout(timer);
@@ -1737,7 +1736,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   }, [guestsWaiting]);
 
-  // The open conversation is re-read every few seconds, so a guest's new message shows almost at once.
+  // The open conversation asks whether Hospitable has a newer message, then reads that thread.
   useEffect(() => {
     if (screen !== "guests" || !guestAnswer?.id) return;
     let stopped = false;
@@ -1749,9 +1748,9 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           .then((next) => { if (!stopped) setGuestAnswer((current) => (current && current.id === open.id ? mergeGuestView(current, next) : current)); })
           .catch(() => undefined);
       }
-      if (!stopped) timer = window.setTimeout(() => { void pull(); }, document.hidden ? 30000 : 4000);
+      if (!stopped) timer = window.setTimeout(() => { void pull(); }, document.hidden ? 30000 : 2000);
     };
-    timer = window.setTimeout(() => { void pull(); }, 4000);
+    timer = window.setTimeout(() => { void pull(); }, 1500);
     return () => {
       stopped = true;
       window.clearTimeout(timer);

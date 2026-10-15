@@ -1793,4 +1793,42 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   setSuggestModel(null);
 }
 
+// A co-host reply whose Airbnb sender is "Unknown" is named from the Hospitable channel user, not the listing host.
+{
+  resetGuestMessaging();
+  const ryanNow = new Date("2026-10-15T20:10:00Z");
+  installWorld({
+    now: ryanNow,
+    properties: [{ id: "prop-ryan", name: "Unit #606", address: "606, 8 Charlotte Street, Toronto", managed: true }],
+    reservations: [{
+      id: "stay-ryan",
+      code: "HMJSMMMFSF",
+      propertyId: "prop-ryan",
+      status: "accepted",
+      checkIn: "2026-09-29",
+      checkOut: "2026-11-07",
+      guest: "Eloise",
+      adults: 2,
+      children: 0,
+      hostName: "Shane Mosoff",
+      messages: [
+        { id: "shane-auto", at: "2026-10-01T20:01:18Z", role: "host" as const, name: "Shane Mosoff", body: "I hope you're enjoying your stay." },
+        { id: "ryan-reply", at: "2026-10-15T20:03:41Z", role: "host" as const, name: "Unknown", senderName: "Unknown", userName: "Ryan Mandel", body: "Yes what time works for you?" },
+      ],
+    }],
+    gmail: [],
+    outlook: [],
+    memory: [],
+    items: [],
+  });
+  const ryanQueue = await loadGuestQueue(ryanNow);
+  const ryanRow = [...ryanQueue.onGuest, ...(ryanQueue.quiet ?? []), ...ryanQueue.waiting].find((row) => row.id === "stay-ryan");
+  if (!ryanRow) fail("ryan stay was not listed");
+  const ryanView = await openGuestAnswer(ryanRow, ryanNow);
+  const ryanHosts = ryanView.thread.filter((row) => row.role === "host").map((row) => `${row.who}: ${row.text}`);
+  if (!ryanHosts.some((line) => line.startsWith("Ryan Mandel:"))) fail(`co-host name\n${ryanHosts.join("\n")}`);
+  if (!ryanHosts.some((line) => line.startsWith("Shane Mosoff:"))) fail(`listing host name\n${ryanHosts.join("\n")}`);
+  if (ryanHosts.filter((line) => line.startsWith("Shane Mosoff:")).length !== 1) fail(`ryan reply labeled as shane\n${ryanHosts.join("\n")}`);
+}
+
 console.log("Guest messaging harness passed.");

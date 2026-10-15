@@ -449,7 +449,10 @@ async function readLive(token: string, name: string, args: Record<string, unknow
     });
   }
   if (name === "get-reservation-messages") {
-    return hospitableFetch(token, `/reservations/${encodeURIComponent(String(args.uuid ?? args.reservation_id ?? ""))}/messages`);
+    // `user` is the Hospitable person on the channel. Airbnb co-host replies often have sender "Unknown".
+    return hospitableFetch(token, `/reservations/${encodeURIComponent(String(args.uuid ?? args.reservation_id ?? ""))}/messages`, {
+      include: String(args.include ?? "user"),
+    });
   }
   if (name === "get-property-knowledge-hub") {
     const id = String(args.property_id ?? args.uuid ?? args.id ?? "");
