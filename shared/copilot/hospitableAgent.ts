@@ -132,9 +132,11 @@ export async function senderLine(): Promise<string> {
   }
   const field = names.find((name) => SENDER_FIELD.test(name));
   const id = process.env.HOSPITABLE_SENDER_ID?.trim() ?? "";
-  if (field && id) return `Copilot's messages go out as Shane (Hospitable user ${id}, field "${field}").`;
-  if (field) return `Hospitable can choose who a message goes out as (field "${field}"). Set HOSPITABLE_SENDER_ID to Shane's Hospitable user id and every message goes out as Shane.`;
-  return `Hospitable's send tool takes only ${names.join(", ")}: it has no "send as" choice, so messages go out as the listing's Airbnb host account.`;
+  const imageField = names.find((name) => /image|attach|media|photo|file/i.test(name));
+  const images = imageField ? ` Image attachments: the send tool lists "${imageField}".` : " Image attachments: the send tool lists no image field.";
+  if (field && id) return `Copilot's messages go out as Shane (Hospitable user ${id}, field "${field}").${images}`;
+  if (field) return `Hospitable can choose who a message goes out as (field "${field}"). Set HOSPITABLE_SENDER_ID to Shane's Hospitable user id and every message goes out as Shane.${images}`;
+  return `Hospitable's send tool takes only ${names.join(", ")}: it has no "send as" choice, so messages go out as the listing's Airbnb host account.${images}`;
 }
 
 export async function sendReservationMessage(input: {
