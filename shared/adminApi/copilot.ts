@@ -71,6 +71,8 @@ import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMc
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
+import { cachedThreadsForSampling } from "../copilot/stayCheck.js";
+import { findAutomatedTemplates } from "../copilot/automationSamples.js";
 import { suggestReply, markThreadHandled, unmarkThreadHandled, beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestMessage, liveGuestUpdate, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, listStoredMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
@@ -375,6 +377,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       }
       if (op === "guests-refresh" || op === "guests-queue") {
         return res.status(200).json(await loadGuestQueue());
+      }
+      if (op === "automation-samples") {
+        // Read only: groups host and system messages that repeat across several reservations, from threads already
+        // stored. It makes no Hospitable calls and writes nothing. A partner confirms the list before anything uses it.
+        const min = Math.max(2, Math.min(20, Math.floor(Number(req.query.min)) || 3));
+        const threads = await cachedThreadsForSampling();
+        return res.status(200).json({
+          note: "Messages from the host or from Hospitable that repeat, nearly word for word, across several reservations. Roles 'system' and 'automated' are almost surely automations. Confirm which ones are before they are ignored by the grocery thread check.",
+          minThreads: min,
+          ...findAutomatedTemplates(threads, { minThreads: min }),
+        });
       }
       const [cursorRuns, browserRuns] = await Promise.all([
         listCursorRuns().catch(() => []),

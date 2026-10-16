@@ -97,7 +97,9 @@ alter table public.grocery_order_items add constraint grocery_order_items_listin
 -- For an allergy guest: from the guest's approval request onward every item is Refund (no replacements), and from
 -- "placed" onward a partner has confirmed all-Refund and checked EVERY item against its Instacart listing.
 create or replace function public.grocery_allergy_gate() returns trigger
-language plpgsql as $$
+language plpgsql
+set search_path = public
+as $$
 begin
   if new.allergy ->> 'state' = 'has' then
     if new.status in ('awaiting_guest_approval', 'approved', 'in_checkout_queue', 'placed', 'stocked', 'receipt_received', 'payment_requested', 'paid') then
@@ -128,7 +130,9 @@ create trigger grocery_orders_allergy_gate
 -- can still be updated, so a partner can always cancel or finish one.
 
 create or replace function public.grocery_require_flag() returns trigger
-language plpgsql as $$
+language plpgsql
+set search_path = public
+as $$
 declare
   s record;
   prop uuid;
@@ -169,7 +173,9 @@ alter table public.grocery_orders add constraint grocery_orders_gap_resolution c
 );
 
 create or replace function public.grocery_messages_guard() returns trigger
-language plpgsql as $$
+language plpgsql
+set search_path = public
+as $$
 declare
   gap boolean;
   resolved text;

@@ -52,3 +52,8 @@ create index if not exists pm_time_entries_work_date_idx
 
 comment on table public.pm_time_entries is
   'Manual timesheet entries from the employee portal.';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.staff_users enable row level security;
+alter table public.pm_time_entries enable row level security;

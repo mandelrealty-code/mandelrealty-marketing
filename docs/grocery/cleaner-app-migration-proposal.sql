@@ -54,7 +54,9 @@ create index if not exists grocery_deliveries_task_idx on public.grocery_deliver
 -- 4. A cleaner without a phone number cannot be assigned to a turnover that has a grocery delivery,
 --    and a delivery cannot be added to a turnover whose cleaner has no phone.
 create or replace function public.require_cleaner_phone_for_grocery() returns trigger
-language plpgsql as $$
+language plpgsql
+set search_path = public
+as $$
 declare
   has_delivery boolean;
   phone text;

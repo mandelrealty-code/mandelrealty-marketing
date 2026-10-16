@@ -21,3 +21,8 @@ create table if not exists copilot_memory_claims (
 );
 
 create index if not exists copilot_memory_claims_path_idx on copilot_memory_claims (path, created_at desc);
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.copilot_memory_files enable row level security;
+alter table public.copilot_memory_claims enable row level security;

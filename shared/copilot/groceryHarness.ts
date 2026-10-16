@@ -44,6 +44,7 @@ import {
 } from "./groceryRules.js";
 import { GROCERY_ENDS, GROCERY_PIPELINE, type AllergyAnswer, type GroceryItem, type GroceryOrderView, type SentGroceryMessage, type ThreadMessage } from "./groceryTypes.js";
 import { torontoParts } from "./reminderTime.js";
+import { findAutomatedTemplates, matchesAutomation, templateKey, type SampleThread } from "./automationSamples.js";
 
 function fail(label: string): never {
   throw new Error(`Grocery harness failed: ${label}`);
@@ -521,5 +522,38 @@ o.instacartCancel = "cannot_cancel";
 eq(codes(o, "2026-11-05T12:00:00Z").includes("cancel_waiting_for_receipt"), true, "Instacart couldn't cancel: wait for the receipt");
 o.instacartCancel = "cancelled";
 eq(codes(o, "2026-11-05T12:00:00Z").filter((code) => code.startsWith("cancel")), [], "Instacart cancelled it: nothing more to do");
+
+// ---------- Finding Hospitable's automated messages in stored threads (read only) ----------
+{
+  const msgs = (id: string, items: [string, string, string, string][]): SampleThread => ({ id, messages: items.map(([at, role, name, body]) => ({ at, role, name, body })) });
+  const checkIn = (name: string, time: string) => `Hi ${name}, welcome! Your check-in is at ${time}. The door code will be sent 2 hours before arrival. See you soon!`;
+  const review = (name: string) => `Hello ${name}, thank you for staying with us. We'd love a review: it helps other travellers find us. https://www.airbnb.ca/review/abc${name}`;
+  const threads: SampleThread[] = [
+    msgs("a", [["2026-10-01T10:00:00Z", "system", "", checkIn("Dana", "4:00 PM")], ["2026-10-01T11:00:00Z", "guest", "Dana", "Thanks! Can we park?"], ["2026-10-05T12:00:00Z", "host", "Shane", review("Dana")]]),
+    msgs("b", [["2026-10-02T10:00:00Z", "system", "", checkIn("Lee", "3:00 PM")], ["2026-10-06T12:00:00Z", "host", "Shane", review("Lee")]]),
+    msgs("c", [["2026-10-03T10:00:00Z", "system", "", checkIn("Sam", "4:00 PM")], ["2026-10-04T09:00:00Z", "host", "Ryan", "Sure, the parking spot is number 12. Let me know if you need anything else."], ["2026-10-07T12:00:00Z", "host", "Shane", review("Sam")]]),
+    msgs("d", [["2026-10-04T10:00:00Z", "system", "", checkIn("Mia", "5:00 PM")]]),
+    msgs("e", [["2026-10-05T10:00:00Z", "guest", "Joe", checkIn("Joe", "4:00 PM")]]),
+  ];
+  const found = findAutomatedTemplates(threads);
+  eq(found.scanned, { threads: 5, messages: 10, hostOrSystem: 8 }, "what was scanned");
+  eq(found.groups.length, 2, "two repeating templates across 3+ reservations (check-in x4, review request x3)");
+  eq(found.groups[0]!.threads, 4, "the most common template is listed first");
+  eq(found.groups[0]!.roles, { system: 4 }, "Hospitable's own label is reported");
+  if (!found.groups[0]!.key.startsWith("hi {name} welcome")) fail(`names weren't removed from the template: ${found.groups[0]!.key}`);
+  if (!found.groups[1]!.key.includes("{link}") && !found.groups[1]!.key.startsWith("hello {name}")) fail(`review template: ${found.groups[1]!.key}`);
+  eq(found.groups[1]!.senders, ["Shane"], "a partner-typed template shows who sent it, so the partner can tell it from an automation");
+  if (found.groups.some((group) => /parking spot is number/.test(group.examples.join(" ")))) fail("a one-off partner reply was listed as an automation");
+  if (found.groups.some((group) => group.examples.some((text) => /^Hi Joe/.test(text)) && group.threads === 4 && group.messages !== 4)) fail("a guest's message was counted");
+  eq(found.groups[0]!.examples.length, 2, "two examples at most");
+  eq(findAutomatedTemplates(threads, { minThreads: 5 }).groups.length, 0, "the threshold is respected");
+  eq(findAutomatedTemplates([]).groups, [], "no threads, no groups");
+  // Matching a confirmed automation later: the same wording with a different name and time matches; other text doesn't.
+  const confirmed = [found.groups[0]!.key];
+  eq(matchesAutomation(checkIn("Priya", "6:30 PM"), confirmed), true, "a new guest's check-in message matches the confirmed template");
+  eq(matchesAutomation("Hi Priya, here is a quick note from your host about the groceries you asked for.", confirmed), false, "a different message doesn't match");
+  eq(matchesAutomation("", confirmed), false, "an empty message never matches");
+  eq(templateKey("Hi Dana, welcome! Check-in at 4:00 PM. Code 2481"), templateKey("Hi Lee, welcome! Check-in at 3:30 PM. Code 9902"), "names, times and codes don't change the template");
+}
 
 console.log("Grocery harness passed.");

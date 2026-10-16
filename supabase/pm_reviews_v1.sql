@@ -31,3 +31,7 @@ create index if not exists pm_reviews_property_checkout_idx
 
 comment on table public.pm_reviews is
   'Hospitable guest reviews — public rating/text only for host statements';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.pm_reviews enable row level security;

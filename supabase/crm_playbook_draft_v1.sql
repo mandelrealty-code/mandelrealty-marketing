@@ -35,3 +35,7 @@ create index if not exists sms_drafts_lead_idx
 comment on column public.leads.ai_send_mode is 'draft = queue SMS for approve; autopilot = send immediately';
 comment on column public.leads.playbook_steps is 'Ordered next-step checklist [{id,title,status}]';
 comment on table public.sms_drafts is 'AI SMS waiting for operator approve / edit / send';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.sms_drafts enable row level security;

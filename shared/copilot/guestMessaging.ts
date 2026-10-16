@@ -1573,18 +1573,47 @@ function shortRange(checkIn: string, checkOut: string): string {
   return `${start}–${end}`;
 }
 
+/** Guest photos and receipts live in their own PRIVATE bucket, apart from contracts. */
+export const GUEST_ATTACHMENT_BUCKET = "guest-attachments";
+
+/** How long the link given to Hospitable keeps working: 24 hours by default, 1 to 168 hours with GUEST_ATTACHMENT_TTL_HOURS. */
+export function guestAttachmentTtlSeconds(env: Record<string, string | undefined> = process.env): number {
+  const hours = Number(env.GUEST_ATTACHMENT_TTL_HOURS);
+  return Number.isFinite(hours) && hours >= 1 ? Math.min(hours, 168) * 3600 : 24 * 3600;
+}
+
+export function guestAttachmentPath(name: string, id: string = randomUUID()): string {
+  const safe = name.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "file";
+  return `guest-messages/${id}-${safe}`;
+}
+
+type StorageBucketLike = {
+  upload(path: string, bytes: Buffer, options: { contentType: string; upsert: boolean }): Promise<{ error: { message: string } | null }>;
+  createSignedUrl(path: string, seconds: number): Promise<{ data: { signedUrl: string } | null; error: { message: string } | null }>;
+};
+export type GuestStorageLike = { storage: { from(bucket: string): StorageBucketLike } };
+
+/** Uploads to the private bucket and returns an expiring signed link. Never a public link. */
+export async function uploadGuestAttachment(db: GuestStorageLike, file: GuestFile, env: Record<string, string | undefined> = process.env): Promise<string> {
+  const bucket = db.storage.from(GUEST_ATTACHMENT_BUCKET);
+  const path = guestAttachmentPath(file.name);
+  const uploaded = await bucket.upload(path, Buffer.from(file.data, "base64"), { contentType: file.mime || "application/octet-stream", upsert: false });
+  if (uploaded.error) {
+    const missing = /bucket not found|not found/i.test(uploaded.error.message);
+    throw new Error(missing
+      ? `The file didn’t upload: the ${GUEST_ATTACHMENT_BUCKET} storage bucket isn’t set up yet. Nothing was sent.`
+      : `The file didn’t upload (${uploaded.error.message})`);
+  }
+  const signed = await bucket.createSignedUrl(path, guestAttachmentTtlSeconds(env));
+  if (signed.error || !signed.data?.signedUrl) throw new Error("The file didn’t upload");
+  return signed.data.signedUrl;
+}
+
 async function publicGuestFile(file: GuestFile): Promise<string> {
   if (uploader) return uploader(file);
   const db = getSupabaseAdmin();
   if (!db) throw new Error("The file didn’t upload");
-  const bytes = Buffer.from(file.data, "base64");
-  const safe = file.name.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "file";
-  const path = `guest-messages/${randomUUID()}-${safe}`;
-  const { error } = await db.storage.from("pm-contracts").upload(path, bytes, { contentType: file.mime || "application/octet-stream", upsert: false });
-  if (error) throw new Error(`The file didn’t upload (${error.message})`);
-  const { data } = db.storage.from("pm-contracts").getPublicUrl(path);
-  if (!data?.publicUrl) throw new Error("The file didn’t upload");
-  return data.publicUrl;
+  return uploadGuestAttachment(db as unknown as GuestStorageLike, file);
 }
 
 function propertiesOf(raw: unknown): { id: string; name: string; photo: string }[] {

@@ -20,3 +20,7 @@ create table if not exists public.pm_proposals (
 
 create index if not exists pm_proposals_client_idx
   on public.pm_proposals (client_id, created_at desc);
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.pm_proposals enable row level security;

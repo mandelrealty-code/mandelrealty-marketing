@@ -48,3 +48,7 @@ create index if not exists pm_review_reply_jobs_property_idx
 
 comment on table public.pm_review_reply_jobs is
   'AI draft + approval queue for public Airbnb review replies (OPS Reviews tab).';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.pm_review_reply_jobs enable row level security;

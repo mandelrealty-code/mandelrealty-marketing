@@ -25,3 +25,7 @@ create index if not exists pm_mat_filings_property_idx
 
 comment on table public.pm_mat_filings is
   'Toronto MAT quarterly filing status per property (owner files; nil returns required)';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.pm_mat_filings enable row level security;

@@ -60,3 +60,8 @@ alter table public.pm_contracts
 
 comment on table public.portal_users is 'Owner portal logins keyed by slug under /owner/{slug}';
 comment on table public.pm_contract_templates is 'Reusable agreement PDFs for Send portal invite';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.portal_users enable row level security;
+alter table public.pm_contract_templates enable row level security;

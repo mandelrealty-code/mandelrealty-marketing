@@ -10,3 +10,7 @@ create table if not exists copilot_hospitable (
   property_count int not null default 0,
   selected_ids text
 );
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.copilot_hospitable enable row level security;

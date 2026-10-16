@@ -1,5 +1,11 @@
 # Supabase security audit (Admin/Copilot project): what is open, what would break
 
+> **Update (live result):** the Security Advisor shows all 57 tables as "RLS Enabled, No Policy" with 0 errors, so the
+> tables were never open to the anon key. The migration files simply didn't say so. They do now: every table's migration
+> declares RLS, and `npm run rls-harness` fails if a new table is added without it. No token rotation is needed.
+> Sections 2 and 3 below describe the risk had the tables been open; section 1 (no anon-key use in this repo) and
+> section 4 (the storage bucket) still stand. The grant revokes in `security_rls_v1.sql` are optional hardening, not a fix.
+
 Status: read-only audit and PROPOSALS. Nothing in this document has been run. The migration is
 `supabase/security_rls_v1.sql`.
 
@@ -112,3 +118,29 @@ exposure as an environment variable. Two follow-ups, separate from this migratio
 3. If the tables were open: rotate the tokens (section 5).
 4. Create the `guest-attachments` bucket and change the guest-message upload, after the image test.
 5. Phase 2 of the groceries work resumes.
+
+## 7. Do the grant revokes add real protection, now that RLS is on? (verdict)
+
+RLS on with no policies already refuses every row to `anon` and `authenticated`. The revokes in `security_rls_v1.sql`
+add three smaller things:
+
+1. **They survive a later mistake.** If someone turns RLS off on a table, or adds a permissive policy for one feature,
+   a revoked table stays closed.
+2. **They hide the table.** Without a grant, Supabase's public REST schema doesn't list the table or its columns to
+   someone holding the anon key.
+3. **They match `grocery_v2.sql`**, which already does this for the grocery tables.
+
+Cost: low. Risk: only an outside app connecting directly with the anon key (none known). **My recommendation: don't run
+it now.** The live database is already protected and the files now describe it. If you do one thing, run only the
+optional `alter default privileges` statement at the end of that file, so a table made in the SQL editor later starts
+closed even if someone forgets RLS.
+
+## 8. What changed in the repo after this audit
+
+- Every migration file that creates a table now ends with its `alter table ... enable row level security;` line
+  (appended only; no existing line was changed), and `supabase/security_rls_v1.sql` is kept as an optional backup.
+- `npm run rls-harness` checks that every `create table` has an RLS line, that no migration creates a policy, and that none
+  grants access to `anon` or `authenticated`.
+- Guest message attachments now go to a private `guest-attachments` bucket and are sent as expiring signed links
+  (`supabase/guest_attachments_v1.sql` creates the bucket; not yet run). The old public-link code is gone.
+- The three grocery trigger functions pin `search_path`, which clears Supabase's "Function Search Path Mutable" warning.

@@ -31,3 +31,7 @@ create index if not exists pm_outreach_outcomes_staff_idx
 
 comment on table public.pm_outreach_outcomes is
   'VA-marked host interest outcomes. Fed into outreach AI prompts so drafts improve over time.';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.pm_outreach_outcomes enable row level security;

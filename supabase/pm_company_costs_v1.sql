@@ -44,3 +44,8 @@ create unique index if not exists pm_company_expenses_override_month_idx
 
 comment on table public.pm_company_expenses is
   'One-off company costs for a month, or an amount that replaces a subscription for that month.';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.pm_company_subscriptions enable row level security;
+alter table public.pm_company_expenses enable row level security;

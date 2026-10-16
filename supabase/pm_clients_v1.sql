@@ -64,3 +64,10 @@ comment on table public.pm_clients is 'Managed hosts for MRG Clients product mod
 comment on table public.pm_properties is 'Units under pm_clients; bridge IDs to Hospitable/Guidebook/Portal';
 comment on table public.pm_commission_terms is 'Versioned MRG commission; never mutate history — close + insert';
 comment on column public.pm_commission_terms.rate_bps is '1500 = 15%';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.pm_settings enable row level security;
+alter table public.pm_clients enable row level security;
+alter table public.pm_properties enable row level security;
+alter table public.pm_commission_terms enable row level security;

@@ -73,3 +73,9 @@ values (
   array['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
 )
 on conflict (id) do nothing;
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.pm_reservations enable row level security;
+alter table public.pm_manual_expenses enable row level security;
+alter table public.pm_contracts enable row level security;

@@ -40,6 +40,11 @@ import {
   improveGuestDraft,
   improveGuestMessage,
   setImproveModel,
+  GUEST_ATTACHMENT_BUCKET,
+  guestAttachmentPath,
+  guestAttachmentTtlSeconds,
+  uploadGuestAttachment,
+  type GuestStorageLike,
 } from "./guestMessaging.js";
 import type { GuestFollowUp, GuestQueue, GuestRow } from "./guestTypes.js";
 import { guestQueueRows } from "./guestQueueRows.js";
@@ -1898,6 +1903,36 @@ if (!pickUp.open.some((row) => row.kind === "incident" && /suitcase/i.test(`${ro
   if (byWho.Husson !== hussonPhoto) fail(`husson photo ${byWho.Husson}`);
   if (byWho.Jordan !== jordanPhoto) fail(`jordan photo ${byWho.Jordan}`);
   if (byWho.Raymond) fail(`raymond inherited a photo: ${byWho.Raymond}`);
+}
+
+// ---------- Guest attachments: a private bucket and an expiring link, never a public link ----------
+{
+  const calls: string[] = [];
+  const fake = (over: { uploadError?: string; signError?: string } = {}): GuestStorageLike => ({
+    storage: {
+      from: (bucket: string) => ({
+        upload: async (path: string) => { calls.push(`upload ${bucket} ${path}`); return { error: over.uploadError ? { message: over.uploadError } : null }; },
+        createSignedUrl: async (path: string, seconds: number) => { calls.push(`sign ${bucket} ${seconds}`); return over.signError ? { data: null, error: { message: over.signError } } : { data: { signedUrl: `https://example.test/signed/${path}?token=abc` }, error: null }; },
+      }),
+    },
+  });
+  const file = { name: "receipt photo (1).JPG", mime: "image/jpeg", data: Buffer.from("x").toString("base64") };
+  const url = await uploadGuestAttachment(fake(), file, {});
+  if (GUEST_ATTACHMENT_BUCKET !== "guest-attachments") fail("the attachment bucket is not guest-attachments");
+  if (!calls[0]?.startsWith("upload guest-attachments guest-messages/") || !calls[0].endsWith("-receipt-photo-1-.JPG")) fail(`upload call ${calls[0]}`);
+  if (calls[1] !== "sign guest-attachments 86400") fail(`signing call ${calls[1]}: a 24 hour signed link was expected`);
+  if (!url.includes("token=")) fail("the attachment link isn't signed");
+  if (calls.some((line) => line.includes("pm-contracts"))) fail("a guest attachment touched the contracts bucket");
+  if (guestAttachmentTtlSeconds({ GUEST_ATTACHMENT_TTL_HOURS: "6" }) !== 21600) fail("the link lifetime isn't configurable");
+  if (guestAttachmentTtlSeconds({ GUEST_ATTACHMENT_TTL_HOURS: "99999" }) !== 168 * 3600) fail("the link lifetime isn't capped at 7 days");
+  if (guestAttachmentTtlSeconds({ GUEST_ATTACHMENT_TTL_HOURS: "0" }) !== 86400 || guestAttachmentTtlSeconds({}) !== 86400) fail("a bad lifetime didn't fall back to 24 hours");
+  if (guestAttachmentPath("../../etc/passwd", "id1") !== "guest-messages/id1-..-..-etc-passwd") fail(`path ${guestAttachmentPath("../../etc/passwd", "id1")}`);
+  let said = "";
+  try { await uploadGuestAttachment(fake({ uploadError: "Bucket not found" }), file, {}); } catch (err) { said = err instanceof Error ? err.message : ""; }
+  if (!/isn’t set up yet\. Nothing was sent/.test(said)) fail(`a missing bucket said: ${said}`);
+  said = "";
+  try { await uploadGuestAttachment(fake({ signError: "nope" }), file, {}); } catch (err) { said = err instanceof Error ? err.message : ""; }
+  if (!said) fail("a failed signed link was treated as success");
 }
 
 console.log("Guest messaging harness passed.");

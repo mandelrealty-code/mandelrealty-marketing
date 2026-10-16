@@ -20,3 +20,7 @@ create table if not exists public.pm_sops (
 create index if not exists idx_pm_sops_slug on public.pm_sops (slug);
 create index if not exists idx_pm_sops_category on public.pm_sops (category);
 create index if not exists idx_pm_sops_published on public.pm_sops (is_published);
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.pm_sops enable row level security;

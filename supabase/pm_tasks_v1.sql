@@ -33,3 +33,7 @@ create index if not exists pm_tasks_property_idx
 
 comment on table public.pm_tasks is
   'OPS team tasks — cleaning, maintenance, owner, compliance, statement, supplies, marketing, software';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.pm_tasks enable row level security;

@@ -71,3 +71,14 @@ create table if not exists copilot_text_log (
   body text not null,
   link text not null default ''
 );
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.copilot_chats enable row level security;
+alter table public.copilot_messages enable row level security;
+alter table public.copilot_reminders enable row level security;
+alter table public.copilot_memory enable row level security;
+alter table public.copilot_dismissals enable row level security;
+alter table public.copilot_skills enable row level security;
+alter table public.copilot_text_numbers enable row level security;
+alter table public.copilot_text_log enable row level security;

@@ -33,3 +33,8 @@ create index if not exists copilot_runs_job_idx on copilot_runs (job_id, started
 -- "This needs you." Set only by a job report, never by a normal answer.
 -- Existing chats stay null, so nothing lights up after this change.
 alter table copilot_chats add column if not exists needs_you_at timestamptz;
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.copilot_jobs enable row level security;
+alter table public.copilot_runs enable row level security;

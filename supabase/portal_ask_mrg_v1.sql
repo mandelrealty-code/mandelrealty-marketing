@@ -16,3 +16,7 @@ create index if not exists portal_ask_messages_user_created_idx
 
 comment on table public.portal_ask_messages is
   'Ask MRG chat. billed=true means a Claude call was made for that assistant turn.';
+
+-- Row Level Security: server-only. The app reaches these tables with the service-role key, which bypasses RLS,
+-- so there are deliberately NO policies: the public anon key and signed-in users can't read or write them.
+alter table public.portal_ask_messages enable row level security;

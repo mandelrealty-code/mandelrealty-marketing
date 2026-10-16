@@ -1,3 +1,6 @@
+-- OPTIONAL BACKUP. The live database already shows RLS enabled on all 57 tables (Security Advisor), so this is hardening,
+-- not a fix: see section 7 of docs/security/rls-audit.md. Do not run it unless you want the extra grant revokes.
+--
 -- Security hardening v1 (Admin database): turn on Row Level Security and cut off public access on every table this
 -- repo created. PROPOSAL: NOT RUN. Read docs/security/rls-audit.md first, then run once in the Supabase SQL editor of the
 -- COPILOT/ADMIN project (the one with pm_properties and copilot_messages), never the cleaner app's project.
