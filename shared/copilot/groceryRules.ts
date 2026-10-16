@@ -11,21 +11,25 @@ import { fromToronto, shiftDay, torontoParts, type LocalDay } from "./reminderTi
 import type {
   Allergen,
   AllergyAnswer,
-  DeliveryTo,
   GateResult,
   GroceryAlert,
   GroceryConfig,
+  GroceryFlag,
   GroceryItem,
   GroceryOrderView,
   GroceryStatus,
   Handoff,
   ItemRule,
   ReceiptLine,
+  SentGroceryMessage,
+  ThreadMessage,
 } from "./groceryTypes.js";
 
 export const GROCERY_DEFAULTS: GroceryConfig = {
   stockingFeeCents: 1000,
-  minimumOrderCents: 3500,
+  // The estimated items subtotal must reach $40, so refunded items can't push an order under Instacart+'s $35 threshold.
+  minimumOrderCents: 4000,
+  instacartFreeDeliveryCents: 3500,
   offerDaysBefore: 7,
   noOfferWithinHours: 72,
   offerQueueMinutes: 9 * 60,
@@ -224,32 +228,86 @@ export function validateGroceryMessage(text: string): string[] {
   if (OFF_AIRBNB.test(text)) problems.push("Mentions contact or payment outside Airbnb.");
   if (/[—]|\s[–]\s/.test(text)) problems.push("Contains an em dash.");
   if (/\[[^\]]+\]/.test(text)) problems.push("Still has a [placeholder] to fill in.");
+  const promise = allergyPromise(text);
+  if (promise) problems.push(`Promises allergen safety ("${promise}"). Say we avoid the listed allergens and check listings, never "allergen-free".`);
   return problems;
 }
 
+/** Wording that promises safety. A sentence that says "can't", "don't promise" and the like is a disclaimer, not a promise. */
+const PROMISE = /\b(allerg(en|y)[- ]?(free|safe|friendly)|free (of|from) (all |any |your )?(allergens?|allergies)|safe (for|from) (your |the |an? )?(allerg\w*|nuts?|gluten|dairy|peanuts?)|(guarantee|guaranteed|guarantees|promise|promised|promises)\b[^.]*\b(safe|free|no |without)|100 ?% (safe|free)|no (traces|cross[- ]?contamination)|(everything|all (of )?(the )?items?|the (whole )?order|your order|all (the )?groceries) (is|are|will be) (\w+[- ])?(free|safe))\b/i;
+const DISCLAIMER = /\b(can'?t|cannot|can not|won'?t|will not|unable to|not able to|don'?t|do not|never|no way to)\s+(\w+\s+)?(promise|guarantee|ensure|confirm|assure|claim|be sure|be certain|say)\b/i;
+
+export function allergyPromise(text: string): string {
+  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+    const hit = sentence.match(PROMISE);
+    if (hit && !DISCLAIMER.test(sentence)) return hit[0].trim();
+  }
+  return "";
+}
+
 // ---------- Allergies ----------
+//
+// How the check works, in plain words. For a guest with listed allergies every item gets one of three results:
+//
+//   remove         A DEFINITE match: the item's tags, its name, or a known product (Nutella) contains a listed allergen.
+//                  It comes off the order and is flagged to a partner.
+//   needs_partner  Anything else we can't clear: a POSSIBLE match (pesto, granola, trail mix, chocolate, baked goods),
+//                  a category whose recipe varies by brand (sauces, bars, cookies, "natural flavours"), an allergy we
+//                  can't map to a known allergen, or an item we have no verified ingredient data for (off-catalogue,
+//                  brand names with no ingredient words). UNKNOWN IS NEVER SAFE.
+//   ok             Only a verified catalogue item with known tags, no name hits, no possible match and no ambiguous
+//                  category. "ok" means "our records show none of the listed allergens", not "allergen-free".
+//
+// Every rule only ADDS flags. A name word, an implied ingredient or a category can raise a flag; nothing here
+// can lower one. Reducing false positives must never reduce catches, so there are no "peanut butter isn't dairy"
+// exceptions: the partner decides after reading the product listing.
+//
+// On top of this, for an allergy guest the checkout card requires a partner to confirm EVERY item against its
+// Instacart product listing (item.listingChecked), whatever the result above.
 
 const ALLERGEN_WORDS: [Allergen, RegExp][] = [
-  ["peanut", /\b(peanuts?|groundnuts?)\b/i],
-  ["tree_nut", /\b(tree ?nuts?|almonds?|cashews?|walnuts?|pecans?|pistachios?|hazelnuts?|macadamias?|brazil nuts?|nuts?)\b/i],
-  ["sesame", /\b(sesame|tahini)\b/i],
-  ["dairy", /\b(dairy|milk|lactose|cheese|butter|cream|yogh?urt|whey|casein)\b/i],
-  ["egg", /\b(eggs?)\b/i],
-  ["fish", /\b(fish|salmon|tuna|cod|anchov(y|ies))\b/i],
-  ["shellfish", /\b(shellfish|shrimp|prawns?|crab|lobster|clams?|mussels?|oysters?|scallops?|crustaceans?|molluscs?)\b/i],
-  ["soy", /\b(soy|soya|tofu|edamame)\b/i],
-  ["wheat", /\b(wheat)\b/i],
-  ["gluten", /\b(gluten|celiac|coeliac)\b/i],
+  ["peanut", /\b(peanuts?|groundnuts?|arachis)\b/i],
+  ["tree_nut", /\b(tree ?nuts?|almonds?|cashews?|walnuts?|pecans?|pistachios?|hazelnuts?|filberts?|macadamias?|brazil nuts?|pine nuts?|chestnuts?|coconuts?|nuts?)\b/i],
+  ["sesame", /\b(sesame|tahini|halva|halvah)\b/i],
+  ["dairy", /\b(dairy|milk|lactose|cheese|butter|cream|yogh?urt|whey|casein|ghee|kefir|custard|ice cream)\b/i],
+  ["egg", /\b(eggs?|mayo(nnaise)?|aioli|meringue|albumin)\b/i],
+  ["fish", /\b(fish|salmon|tuna|cod|anchov(y|ies)|sardines?|trout|tilapia|worcestershire)\b/i],
+  ["shellfish", /\b(shellfish|shrimp|prawns?|crab|lobster|clams?|mussels?|oysters?|scallops?|crustaceans?|molluscs?|squid|calamari)\b/i],
+  ["soy", /\b(soy|soya|tofu|edamame|miso|tempeh|lecithin)\b/i],
+  ["wheat", /\b(wheat|flour|semolina|spelt|durum|farro|bulgur|couscous|seitan)\b/i],
+  ["gluten", /\b(gluten|celiac|coeliac|barley|rye|malt)\b/i],
   ["sulphites", /\b(sulph?ites?)\b/i],
   ["mustard", /\b(mustard)\b/i],
 ];
 const ALLERGY_CUE = /\b(allerg\w*|anaphyla\w*|epi-?pen|intoleran\w*|celiac|coeliac|can'?t (eat|have)|cannot (eat|have))\b/i;
 
-/** Allergens named in a piece of text. Used on items ("peanut butter") and on guest words. */
+/** Known products that DEFINITELY contain an allergen whatever the label wording. */
+const IMPLIED_DEFINITE: [RegExp, Allergen[]][] = [
+  [/\bnutella\b|\bhazelnut spread\b/i, ["tree_nut", "dairy", "soy"]],
+  [/\bpeanut butter\b/i, ["peanut"]],
+  [/\bpesto\b/i, ["tree_nut", "dairy"]],
+];
+
+/** Things that POSSIBLY contain an allergen: a partner must check the listing. */
+const IMPLIED_POSSIBLE: [RegExp, Allergen[]][] = [
+  [/\bpesto\b/i, ["tree_nut", "dairy", "peanut", "sesame", "soy"]],
+  [/\b(nutella|hazelnut spread|chocolate spread|cocoa spread)\b/i, ["peanut", "sesame", "wheat", "gluten", "egg"]],
+  [/\b(granola|muesli|oat clusters?)\b/i, ["peanut", "tree_nut", "wheat", "gluten", "sesame"]],
+  [/\b(trail mix|mixed nuts?|nut mix|snack mix|party mix)\b/i, ["peanut", "tree_nut", "soy", "sesame"]],
+  [/\b(marzipan|praline|nougat|frangipane|amaretto|baklava)\b/i, ["tree_nut"]],
+  [/\b(satay|pad thai|kung pao|rendang)\b/i, ["peanut", "shellfish", "fish", "soy"]],
+  [/\b(chocolate|choc|candy|candies|truffles?|brownie|fudge|caramel|toffee)\b/i, ["peanut", "tree_nut", "dairy", "soy", "egg"]],
+  [/\b(bread|bagel|bun|roll|cracker|tortilla|wrap|pasta|noodles?|ramen|udon|pizza|pastry|croissant|muffin|cake|cookie|biscuit|cereal|pancake|waffle)s?\b/i, ["wheat", "gluten", "egg", "dairy", "soy", "sesame"]],
+  [/\b(sauce|dressing|marinade|gravy|dip|hummus|spread|soup|broth|stock|curry paste|seasoning|spice blend)\b/i, ["wheat", "gluten", "soy", "dairy", "egg", "fish", "mustard", "sesame", "sulphites", "tree_nut", "peanut"]],
+  [/\b(protein|energy|granola|snack|cereal) (bar|bite|ball)s?\b/i, ["peanut", "tree_nut", "dairy", "soy", "wheat", "gluten", "egg", "sesame"]],
+];
+
+/** Categories whose recipe varies by brand, and wording that can hide an allergen. Always a partner check for an allergy guest. */
+const AMBIGUOUS_CATEGORY = /\b(pesto|nutella|hazelnut|natural flavou?rs?|artificial flavou?rs?|flavou?rings?|spice|seasoning|sauce|dressing|marinade|gravy|soup|broth|stock|spread|dip|hummus|protein|energy bar|granola|snack|candy|candies|chocolate|cookies?|crackers?|chips|crisps|cereal|ice cream|frozen|dessert|pastry|baked|mix|may contain|processed|prepared|ready[- ]?(made|to[- ]eat)|vegan|plant[- ]based|dairy[- ]free alternative)\b/i;
+
+/** Allergens named in a piece of text. Used on items ("peanut butter") and on guest words. Only ever adds. */
 export function allergensIn(text: string): Allergen[] {
-  // Non-dairy "butters" (peanut butter, cocoa butter, butternut squash) are not dairy.
-  const clean = text.replace(/\b(peanut|almond|cashew|nut|seed|sunflower|cocoa|shea|apple|soy) butter\b/gi, "$1 ").replace(/\bbutternut\b/gi, " ");
-  return ALLERGEN_WORDS.filter(([, word]) => word.test(clean)).map(([name]) => name);
+  return ALLERGEN_WORDS.filter(([, word]) => word.test(text)).map(([name]) => name);
 }
 
 /**
@@ -263,23 +321,63 @@ export function scanAllergyMentions(messages: string[]): { mentions: { text: str
   return { mentions };
 }
 
-export type ItemCheck = { result: "ok" | "remove" | "needs_partner"; matched: Allergen[]; reason: string };
+export type ItemCheck = {
+  result: "ok" | "remove" | "needs_partner";
+  matched: Allergen[];
+  reason: string;
+};
 
-/** One item against the guest's allergies. For an allergy guest, anything unverifiable goes to a partner. */
-export function checkItem(item: Pick<GroceryItem, "name" | "allergens" | "tagsKnown">, allergy: AllergyAnswer): ItemCheck {
-  if (allergy.state !== "has") return { result: "ok", matched: [], reason: "" };
-  const own = new Set<Allergen>([...item.allergens, ...allergensIn(item.name)]);
-  const matched = allergy.allergens.filter((name) => own.has(name));
-  // Wheat and gluten overlap for these guests: either listed word matches either tag.
-  const wheatGluten = allergy.allergens.some((name) => name === "wheat" || name === "gluten") && (own.has("wheat") || own.has("gluten"));
-  if (wheatGluten && !matched.length) matched.push(allergy.allergens.find((name) => name === "wheat" || name === "gluten")!);
-  if (matched.length) return { result: "remove", matched, reason: `Contains or is ${matched.join(", ").replace(/_/g, " ")}.` };
-  if (allergy.other.length) return { result: "needs_partner", matched: [], reason: `The guest listed "${allergy.other.join(", ")}", which can't be checked automatically.` };
-  if (!item.tagsKnown) return { result: "needs_partner", matched: [], reason: "Off-catalogue item: its ingredients aren't known." };
+function impliedFor(name: string, table: [RegExp, Allergen[]][]): Allergen[] {
+  const found = new Set<Allergen>();
+  for (const [pattern, allergens] of table) if (pattern.test(name)) allergens.forEach((a) => found.add(a));
+  return [...found];
+}
+
+function overlap(guest: Allergen[], item: Allergen[]): Allergen[] {
+  const have = new Set(item);
+  const out = guest.filter((name) => have.has(name));
+  // Wheat and gluten are one concern for these guests: either listed word matches either tag.
+  const wg = guest.find((name) => name === "wheat" || name === "gluten");
+  if (wg && (have.has("wheat") || have.has("gluten")) && !out.includes(wg)) out.push(wg);
+  return out;
+}
+
+const label = (list: Allergen[]) => list.join(", ").replace(/_/g, " ");
+
+/** One item against the guest's allergies. Unknown is never safe. */
+export function checkItem(
+  item: Pick<GroceryItem, "name" | "allergens" | "tagsKnown"> & Partial<Pick<GroceryItem, "inCatalogue">>,
+  allergy: AllergyAnswer,
+): ItemCheck {
+  if (allergy.state === "none") return { result: "ok", matched: [], reason: "" };
+  if (allergy.state === "unset") return { result: "needs_partner", matched: [], reason: "No allergy answer is stored, so nothing can be cleared." };
+
+  // 1. Definite: tags, name words, or a known product.
+  const definite = overlap(allergy.allergens, [...item.allergens, ...allergensIn(item.name), ...impliedFor(item.name, IMPLIED_DEFINITE)]);
+  if (definite.length) return { result: "remove", matched: definite, reason: `Contains or is ${label(definite)}.` };
+
+  // 2. An allergy we can't map to a known allergen: nothing can be cleared automatically.
+  if (allergy.other.length) {
+    return { result: "needs_partner", matched: [], reason: `The guest listed "${allergy.other.join(", ")}", which can't be checked automatically.` };
+  }
+
+  // 3. Possible: an implied ingredient that may be in it.
+  const possible = overlap(allergy.allergens, impliedFor(item.name, IMPLIED_POSSIBLE));
+  if (possible.length) return { result: "needs_partner", matched: possible, reason: `May contain ${label(possible)}. Check the product listing.` };
+
+  // 4. Categories and wording that vary by brand or can hide an allergen.
+  if (AMBIGUOUS_CATEGORY.test(item.name)) {
+    return { result: "needs_partner", matched: [], reason: "The recipe varies by brand or may hide an allergen (for example natural flavours). Check the product listing." };
+  }
+
+  // 5. Unknown: only a verified catalogue item with known tags can be cleared. A brand name alone tells us nothing.
+  if (!(item.inCatalogue !== false && item.tagsKnown)) {
+    return { result: "needs_partner", matched: [], reason: "Unknown: no verified ingredient data. A partner must check it." };
+  }
   return { result: "ok", matched: [], reason: "" };
 }
 
-/** Every item on the list and in the welcome basket. Matches come off the order; unknowns wait for a partner. */
+/** Every item on the list and in the welcome basket. Matches come off the order; the rest wait for a partner. */
 export function checkOrderAllergies(
   items: GroceryItem[],
   allergy: AllergyAnswer,
@@ -293,6 +391,13 @@ export function checkOrderAllergies(
     else if (check.result === "needs_partner" && !item.partnerConfirmed) needsPartner.push({ name: item.name, reason: check.reason });
   }
   return { removed, needsPartner, clear: !removed.length && !needsPartner.length };
+}
+
+/** The only wording a guest sees about allergies: we avoid what they listed and check listings; we never promise. */
+export function allergyWording(allergy: AllergyAnswer): string {
+  if (allergy.state !== "has") return "";
+  const listed = [...allergy.allergens.map((name) => name.replace(/_/g, " ")), ...allergy.other].join(", ");
+  return `We'll avoid the allergens you listed (${listed}) when choosing items, and we check each product listing. We can't promise any product is free of an allergen, so please read the labels yourself.`;
 }
 
 /**
@@ -391,6 +496,10 @@ export function gateTransition(order: GroceryOrderView, to: GroceryStatus, now: 
     if (now.getTime() >= listLockAt(order.arrivalAt, cfg).getTime()) blockers.push("The list locked 72 hours before arrival.");
   }
 
+  if ((to === "awaiting_guest_approval" || to === "approved") && order.threadGap.flagged && !order.threadGap.resolvedBy) {
+    blockers.push("A partner must review this thread first: a message was sent that Copilot didn't send. Nothing is drafted over it.");
+  }
+
   if (to === "approved") {
     if (order.allergy.state === "unset") blockers.push("There is no stored allergy answer.");
     if (!order.approval) blockers.push("The guest hasn't approved the estimate in the thread.");
@@ -412,6 +521,11 @@ export function gateTransition(order: GroceryOrderView, to: GroceryStatus, now: 
     if (!order.checkout.leaveAtDoorOff) blockers.push("Turn Leave-at-door off.");
     if (!order.checkout.orderNumber.trim()) blockers.push("Enter the Instacart order number.");
     if (order.allergy.state === "has" && !order.checkout.allRefundConfirmed) blockers.push("Confirm every item is set to Refund (no replacements).");
+    if (order.allergy.state === "has") {
+      const unchecked = order.items.filter((row) => !row.removed && !row.listingChecked).map((row) => row.name);
+      if (unchecked.length) blockers.push(`Confirm each item against its Instacart product listing: ${unchecked.join(", ")}.`);
+    }
+    if (order.threadGap.flagged && !order.threadGap.resolvedBy) blockers.push("A partner must review this thread first.");
     if (order.allergy.state === "unset") blockers.push("There is no stored allergy answer.");
     if (order.deliveryTo === "cleaner") {
       const slot = slotWithinWindow(order.slot, order.cleanerWindow);
@@ -438,8 +552,13 @@ export function gateTransition(order: GroceryOrderView, to: GroceryStatus, now: 
   }
 
   if (to === "payment_requested") {
-    if (!(order.receiptTotalCents > 0) && !(order.status === "cancelled" && order.owedCents > 0)) blockers.push("There is no receipt total to request.");
-    if (order.status === "cancelled" && !(order.owedCents > 0)) blockers.push("Nothing is owed on this cancellation.");
+    if (!(order.receiptTotalCents > 0)) blockers.push("There is no receipt total to request. Money is only ever requested for the exact receipt, never the estimate.");
+    if (order.status === "cancelled") {
+      if (order.instacartCancel !== "cannot_cancel") blockers.push("Cancel the Instacart order first. Money is requested only if Instacart can't cancel it.");
+      warnings.push("Requesting money on a cancelled Airbnb reservation is unconfirmed. Check with Airbnb before sending.");
+      const owed = owedOnCancel({ cancelledBy: order.cancelledBy === "" ? "guest" : order.cancelledBy, status: "stocked", instacartCancel: order.instacartCancel, receiptTotalCents: order.receiptTotalCents, stockedByCleaner: order.deliveryTo === "cleaner" && Boolean(order.stocking.receivedAt), cfg });
+      if (order.paymentRequestCents && order.paymentRequestCents !== owed.owedCents) blockers.push(`The request must be exactly ${money(owed.owedCents)}: the receipt${owed.owedCents > order.receiptTotalCents ? " plus the stocking fee" : ""}.`);
+    }
     if (order.status !== "cancelled") {
       const expected = guestChargeCents(order.receiptTotalCents, order.deliveryTo === "cleaner", cfg);
       if (order.paymentRequestCents && order.paymentRequestCents !== expected) blockers.push(`The request must be exactly ${money(expected)}: the receipt${order.deliveryTo === "cleaner" ? " plus the stocking fee" : ""}.`);
@@ -461,25 +580,36 @@ export function gateTransition(order: GroceryOrderView, to: GroceryStatus, now: 
 // ---------- Cancellations ----------
 
 /**
- * What a cancellation owes. Guest cancels before the order is placed: nothing. After it is placed: the groceries
- * (the exact receipt once known, else the estimate), plus the stocking fee only if a cleaner already stocked it.
- * We or Airbnb cancel: nothing. Food from a cancelled or completed stay is never passed on to the next guest.
+ * What a cancellation owes. We never request money on the estimate.
+ * - We or Airbnb cancel: nothing is owed.
+ * - The guest cancels before the order is placed: nothing is owed.
+ * - The guest cancels after it is placed: the FIRST step is a partner alert to cancel the Instacart order (possible
+ *   until the shopper starts). If it is cancelled, nothing is owed. Only if Instacart can't cancel: wait for the
+ *   receipt and request exactly that, plus the stocking fee only if a cleaner already stocked it.
+ * - Requesting money on a cancelled Airbnb reservation is unconfirmed, so a partner is told to check first.
+ * Food from a cancelled or completed stay is never passed on to the next guest.
  */
 export function owedOnCancel(input: {
   cancelledBy: "guest" | "host" | "airbnb";
   status: GroceryStatus;
+  instacartCancel: GroceryOrderView["instacartCancel"];
   receiptTotalCents: number;
-  estimateCents: number;
   stockedByCleaner: boolean;
   cfg?: GroceryConfig;
-}): { owedCents: number; basis: "none" | "receipt" | "estimate" } {
+}): { owedCents: number; basis: "none" | "waiting_for_receipt" | "receipt"; partnerAction: "" | "cancel_instacart_order"; flags: string[] } {
   const cfg = input.cfg ?? GROCERY_DEFAULTS;
-  if (input.cancelledBy !== "guest") return { owedCents: 0, basis: "none" };
+  const none = { owedCents: 0, basis: "none" as const, partnerAction: "" as const, flags: [] as string[] };
+  if (input.cancelledBy !== "guest") return none;
   const placed: GroceryStatus[] = ["placed", "stocked", "receipt_received", "payment_requested", "paid"];
-  if (!placed.includes(input.status)) return { owedCents: 0, basis: "none" };
+  if (!placed.includes(input.status)) return none;
+  if (input.instacartCancel === "cancelled") return none;
+  if (input.instacartCancel !== "cannot_cancel") {
+    return { owedCents: 0, basis: "none", partnerAction: "cancel_instacart_order", flags: [] };
+  }
+  const unconfirmed = "Requesting money on a cancelled Airbnb reservation is unconfirmed. Check with Airbnb before sending.";
+  if (!(input.receiptTotalCents > 0)) return { owedCents: 0, basis: "waiting_for_receipt", partnerAction: "", flags: [unconfirmed] };
   const stocked = input.stockedByCleaner && (input.status === "stocked" || input.status === "receipt_received" || input.status === "payment_requested" || input.status === "paid");
-  const base = input.receiptTotalCents > 0 ? input.receiptTotalCents : input.estimateCents;
-  return { owedCents: base + (stocked ? cfg.stockingFeeCents : 0), basis: input.receiptTotalCents > 0 ? "receipt" : "estimate" };
+  return { owedCents: input.receiptTotalCents + (stocked ? cfg.stockingFeeCents : 0), basis: "receipt", partnerAction: "", flags: [unconfirmed] };
 }
 
 /** Pay for a clean where the cleaner waited for delivery: a flat configured amount, no timer. */
@@ -535,7 +665,95 @@ export function groceryAlerts(order: GroceryOrderView, now: Date, cfg: GroceryCo
   if ((order.status === "list_received" || order.status === "clarifying") && order.allergy.state === "unset") {
     add("allergy_unanswered", "needs", "The list is in, but the guest hasn't answered the allergy question.");
   }
+  if (order.status === "cancelled" && order.cancelledBy === "guest" && order.cancelledAfterPlaced && order.instacartCancel === "pending") {
+    add("cancel_instacart_order", "failed", "The guest cancelled after the order was placed. Cancel the Instacart order now (possible until the shopper starts).");
+  }
+  if (order.status === "cancelled" && order.instacartCancel === "cannot_cancel" && !(order.receiptTotalCents > 0)) {
+    add("cancel_waiting_for_receipt", "needs", "Instacart couldn't cancel it. Wait for the receipt, then request exactly that. Requesting money on a cancelled Airbnb reservation is unconfirmed: check with Airbnb first.");
+  }
+  if (order.threadGap.flagged && !order.threadGap.resolvedBy) {
+    add("thread_gap", "needs", `A partner needs to review this thread: ${order.threadGap.reason || "a message was sent that Copilot didn't send."}`);
+  }
   return alerts;
 }
 
-export type { DeliveryTo };
+
+
+// ---------- The feature flag ----------
+
+/** Every grocery feature is off until a partner turns it on, and then only for the trial properties. */
+export const GROCERY_FLAG_OFF: GroceryFlag = { enabled: false, trialPropertyIds: [] };
+
+export function groceryActive(flag: GroceryFlag | null | undefined, propertyId: string): boolean {
+  return Boolean(flag?.enabled) && Boolean(propertyId) && (flag?.trialPropertyIds ?? []).includes(propertyId);
+}
+
+/** Show the Groceries tab and run the trigger at all: on, and at least one trial property chosen. */
+export function groceryVisible(flag: GroceryFlag | null | undefined): boolean {
+  return Boolean(flag?.enabled) && (flag?.trialPropertyIds ?? []).length > 0;
+}
+
+// ---------- A gap in the thread ----------
+
+const norm = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+function isOurs(message: ThreadMessage, sent: SentGroceryMessage[]): SentGroceryMessage | null {
+  const body = norm(message.body);
+  for (const ours of sent) {
+    if (ours.ref && message.ref && ours.ref === message.ref) return ours;
+    const mine = norm(ours.body);
+    if (!body || !mine) continue;
+    if (body === mine) return ours;
+    // Hospitable may add or trim a greeting or a signature: the longer text must contain most of the shorter.
+    const [short, long] = body.length <= mine.length ? [body, mine] : [mine, body];
+    if (short.length >= 24 && long.includes(short)) return ours;
+  }
+  return null;
+}
+
+/**
+ * Has someone spoken in this thread outside Copilot? A host message after our first one that we didn't send, or a
+ * guest approval that follows a host message that wasn't our estimate, means a partner probably replied in the
+ * Airbnb app. The thread is flagged for a partner, and Copilot does not draft over it.
+ *
+ * It errs toward flagging: Hospitable's own automated messages also count unless `automated` recognizes them,
+ * and a partner clears the flag with one press.
+ */
+export function detectThreadGap(input: {
+  thread: ThreadMessage[];
+  sent: SentGroceryMessage[];
+  automated?: RegExp[];
+}): { gap: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (!input.sent.length) return { gap: false, reasons };
+  const since = Math.min(...input.sent.map((row) => Date.parse(row.at)).filter(Number.isFinite));
+  const ordered = [...input.thread].filter((m) => m.role !== "system" && Date.parse(m.at) >= since - 60_000).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const automated = input.automated ?? [];
+  let lastHostOurs: SentGroceryMessage | null = null;
+  let lastHostWasOurs = false;
+  for (const message of ordered) {
+    if (message.role === "host") {
+      const ours = isOurs(message, input.sent);
+      if (ours) {
+        lastHostOurs = ours;
+        lastHostWasOurs = true;
+      } else if (automated.some((pattern) => pattern.test(message.body))) {
+        continue;
+      } else {
+        lastHostWasOurs = false;
+        lastHostOurs = null;
+        reasons.push(`A host message at ${message.at} wasn't sent by Copilot (probably a partner in the Airbnb app).`);
+      }
+    } else if (message.role === "guest" && interpretApproval(message.body) === "approved") {
+      if (!lastHostWasOurs || lastHostOurs?.kind !== "estimate") {
+        reasons.push(`The guest said "approved" at ${message.at}, but the message before it wasn't our estimate.`);
+      }
+    }
+  }
+  return { gap: reasons.length > 0, reasons: [...new Set(reasons)] };
+}
+
+/** Drafting is blocked for a flagged, unresolved thread. */
+export function draftingBlockedByGap(order: Pick<GroceryOrderView, "threadGap">): string {
+  return order.threadGap.flagged && !order.threadGap.resolvedBy ? "A partner must review this thread first. Nothing is drafted over it." : "";
+}

@@ -70,6 +70,8 @@ export type GroceryItem = {
   removed: boolean;
   removedReason: string;
   partnerConfirmed: boolean;
+  /** For an allergy guest, a partner confirmed THIS item against its Instacart product listing at checkout. */
+  listingChecked: boolean;
 };
 
 export type ReceiptLine = {
@@ -122,12 +124,28 @@ export type GroceryOrderView = {
   paymentRequestCents: number;
   cancelledBy: "" | "guest" | "host" | "airbnb";
   cancelledAfterPlaced: boolean;
+  /**
+   * After a guest cancels a placed order: pending = a partner must try to cancel it in Instacart (possible until
+   * the shopper starts); cancelled = nothing is owed; cannot_cancel = wait for the receipt and request exactly that.
+   */
+  instacartCancel: "na" | "pending" | "cancelled" | "cannot_cancel";
   owedCents: number;
+  /** A reply in the thread that Copilot never sent (probably a partner in the Airbnb app) flags it for a partner. */
+  threadGap: { flagged: boolean; reason: string; resolvedBy: string };
 };
+
+/** Every grocery feature sits behind this. Off by default; only the trial properties are active. */
+export type GroceryFlag = { enabled: boolean; trialPropertyIds: string[] };
+
+export type ThreadMessage = { role: "guest" | "host" | "system"; at: string; body: string; ref?: string };
+export type SentGroceryMessage = { kind: string; body: string; at: string; ref?: string };
 
 export type GroceryConfig = {
   stockingFeeCents: number;
+  /** The estimated ITEMS subtotal an order needs, so refunded items can't pull it under Instacart's threshold. */
   minimumOrderCents: number;
+  /** Instacart+'s free-delivery threshold, for reference. The minimum above sits above it on purpose. */
+  instacartFreeDeliveryCents: number;
   offerDaysBefore: number;
   /** No offer for a booking made less than this many hours before arrival. */
   noOfferWithinHours: number;
@@ -160,7 +178,10 @@ export type GroceryAlert = {
     | "unpaid_at_checkin"
     | "unpaid_72h"
     | "waiting_on_cleaner_times"
-    | "allergy_unanswered";
+    | "allergy_unanswered"
+    | "cancel_instacart_order"
+    | "cancel_waiting_for_receipt"
+    | "thread_gap";
   severity: "needs" | "failed";
   text: string;
 };

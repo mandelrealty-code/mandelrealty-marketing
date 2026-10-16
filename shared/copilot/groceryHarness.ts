@@ -6,7 +6,14 @@
 
 import {
   GROCERY_DEFAULTS,
+  GROCERY_FLAG_OFF,
   allergensIn,
+  allergyPromise,
+  allergyWording,
+  detectThreadGap,
+  draftingBlockedByGap,
+  groceryActive,
+  groceryVisible,
   arrivalInstant,
   canTransition,
   cardBlockers,
@@ -35,7 +42,7 @@ import {
   validateGroceryMessage,
   waitedPayCents,
 } from "./groceryRules.js";
-import { GROCERY_ENDS, GROCERY_PIPELINE, type AllergyAnswer, type GroceryItem, type GroceryOrderView } from "./groceryTypes.js";
+import { GROCERY_ENDS, GROCERY_PIPELINE, type AllergyAnswer, type GroceryItem, type GroceryOrderView, type SentGroceryMessage, type ThreadMessage } from "./groceryTypes.js";
 import { torontoParts } from "./reminderTime.js";
 
 function fail(label: string): never {
@@ -48,7 +55,7 @@ function eq<T>(got: T, want: T, label: string): void {
 
 const item = (name: string, qty: number, unitCents: number, extra: Partial<GroceryItem> = {}): GroceryItem => ({
   name, qty, unitCents, inCatalogue: true, allergens: [], tagsKnown: true, shelfStable: true, source: "guest_list",
-  presetReplacement: "", rule: "refund", removed: false, removedReason: "", partnerConfirmed: false, ...extra,
+  presetReplacement: "", rule: "refund", removed: false, removedReason: "", partnerConfirmed: false, listingChecked: false, ...extra,
 });
 
 // ---------- Money ----------
@@ -70,21 +77,25 @@ try { guestChargeCents(-1, false); } catch { threw = true; }
 if (!threw) fail("a negative receipt was accepted");
 
 // ---------- Minimum ----------
-eq(meetsMinimum(3499), false, "$34.99 is under the minimum");
-eq(meetsMinimum(3500), true, "$35.00 meets the minimum");
+eq(GROCERY_DEFAULTS.minimumOrderCents, 4000, "the estimated items subtotal must reach $40");
+eq(GROCERY_DEFAULTS.instacartFreeDeliveryCents, 3500, "Instacart+'s own threshold stays $35, for reference");
+eq(meetsMinimum(3999), false, "$39.99 is under the minimum");
+eq(meetsMinimum(3500), false, "$35.00 is no longer enough: refunded items could pull it under Instacart's threshold");
+eq(meetsMinimum(4000), true, "$40.00 meets the minimum");
+eq(meetsMinimum(3500, { ...GROCERY_DEFAULTS, minimumOrderCents: 3500 }), true, "the minimum is configurable");
 eq(itemsSubtotalCents([item("Milk", 2, 599), item("Bread", 1, 450, { removed: true })]), 1198, "removed items don't count toward the subtotal");
 
 // ---------- The split rule ----------
-eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-09", shelfStableCents: 5000, freshCents: 4000 }).mode, "split", "clean 4 days before, both parts over $35, splits");
-eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-07", shelfStableCents: 5000, freshCents: 4000 }).mode, "split", "exactly 2 days before still splits");
-eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-09", shelfStableCents: 5000, freshCents: 2000 }).mode, "single_after_checkin", "a part under $35 sends everything after check-in");
-eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-09", shelfStableCents: 3499, freshCents: 5000 }).mode, "single_after_checkin", "shelf-stable $34.99 sends everything after check-in");
-eq(planDelivery({ cleanDay: "2026-11-08", arrivalDay: "2026-11-09", shelfStableCents: 5000, freshCents: 4000 }).mode, "single_at_clean", "clean 1 day before: one order at the clean");
+eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-09", shelfStableCents: 5000, freshCents: 4500 }).mode, "split", "clean 4 days before, both parts over $40, splits");
+eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-07", shelfStableCents: 5000, freshCents: 4000 }).mode, "split", "exactly 2 days before still splits, a part at exactly $40 counts");
+eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-09", shelfStableCents: 5000, freshCents: 2000 }).mode, "single_after_checkin", "a part under $40 sends everything after check-in");
+eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-09", shelfStableCents: 3999, freshCents: 5000 }).mode, "single_after_checkin", "shelf-stable $39.99 sends everything after check-in");
+eq(planDelivery({ cleanDay: "2026-11-08", arrivalDay: "2026-11-09", shelfStableCents: 5000, freshCents: 4500 }).mode, "single_at_clean", "clean 1 day before: one order at the clean");
 eq(planDelivery({ cleanDay: "2026-11-09", arrivalDay: "2026-11-09", shelfStableCents: 1000, freshCents: 3000 }).mode, "single_at_clean", "same-day clean: one order at the clean");
 eq(planDelivery({ cleanDay: "", arrivalDay: "2026-11-09", shelfStableCents: 5000, freshCents: 0 }).mode, "single_after_checkin", "no clean before arrival: after check-in");
 eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-09", shelfStableCents: 4000, freshCents: 0 }).mode, "single_at_clean", "only shelf-stable: at the clean");
 eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-09", shelfStableCents: 0, freshCents: 4000 }).mode, "single_after_checkin", "only fresh: after check-in");
-eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-09", shelfStableCents: 2000, freshCents: 1000 }).mode, "below_minimum", "under $35 in total: no order");
+eq(planDelivery({ cleanDay: "2026-11-05", arrivalDay: "2026-11-09", shelfStableCents: 2000, freshCents: 1000 }).mode, "below_minimum", "under $40 in total: no order");
 
 // ---------- Timeline in Toronto time, across the November DST change ----------
 const offerEdt = offerDue({ arrivalDay: "2026-11-03" }).due!;
@@ -135,7 +146,7 @@ for (const [text, why] of [
 // ---------- Allergies ----------
 const none: AllergyAnswer = { state: "none", source: "guest_reply", at: "2026-11-01T15:00:00Z", messageRef: "m1" };
 const peanuts: AllergyAnswer = { state: "has", allergens: ["peanut", "dairy"], other: [], source: "guest_reply", at: "2026-11-01T15:00:00Z", messageRef: "m1" };
-eq(allergensIn("Skippy peanut butter"), ["peanut"], "an item name is read for allergens");
+eq(allergensIn("Skippy peanut butter"), ["peanut", "dairy"], "an item name is read for allergens, and the word butter always adds dairy");
 eq(allergensIn("Oat milk latte"), ["dairy"], "milk in a name is flagged for a dairy allergy (a partner confirms it)");
 eq(checkItem(item("Peanut butter", 1, 500), peanuts).result, "remove", "a peanut item is removed for a peanut allergy");
 eq(checkItem(item("Cheddar", 1, 700, { allergens: ["dairy"] }), peanuts).result, "remove", "a tagged dairy item is removed");
@@ -183,7 +194,8 @@ const base = (): GroceryOrderView => {
     checkout: { replacementsChecked: true, leaveAtDoorOff: true, orderNumber: "R123", allRefundConfirmed: false },
     stocking: { receivedAt: "", fridgePhoto: false, counterPhoto: false, waitedForDelivery: false },
     receiptTotalCents: 0, receiptRef: "", receiptAt: "", paymentRequestedAt: "", paymentRequestCents: 0,
-    cancelledBy: "", cancelledAfterPlaced: false, owedCents: 0,
+    cancelledBy: "", cancelledAfterPlaced: false, instacartCancel: "na", owedCents: 0,
+    threadGap: { flagged: false, reason: "", resolvedBy: "" },
   };
 };
 const now = new Date("2026-11-01T17:00:00Z");
@@ -249,7 +261,12 @@ o.allergy = peanuts;
 if (!gateTransition(o, "placed", new Date("2026-11-07T00:00:00Z")).blockers.some((line) => /Refund/.test(line))) fail("an allergy order was placed without the all-Refund confirmation");
 o.checkout.allRefundConfirmed = true;
 o.items = o.items.map((row) => ({ ...row, rule: "refund" as const }));
-eq(gateTransition(o, "placed", new Date("2026-11-07T00:00:00Z")).ok, true, "an allergy order placed once all-Refund is confirmed");
+const unchecked = gateTransition(o, "placed", new Date("2026-11-07T00:00:00Z"));
+if (unchecked.ok || !unchecked.blockers.some((line) => /product listing: Milk, Bread, Eggs, Coffee/.test(line))) fail(`an allergy order was placed without every item checked against its listing: ${JSON.stringify(unchecked)}`);
+o.items = o.items.map((row, i) => ({ ...row, listingChecked: i !== 2 }));
+if (!gateTransition(o, "placed", new Date("2026-11-07T00:00:00Z")).blockers.some((line) => /listing: Eggs/.test(line))) fail("one unchecked item did not block placing");
+o.items = o.items.map((row) => ({ ...row, listingChecked: true }));
+eq(gateTransition(o, "placed", new Date("2026-11-07T00:00:00Z")).ok, true, "an allergy order placed once all-Refund is confirmed and every item is checked against its listing");
 o = base();
 o.status = "in_checkout_queue";
 if (!gateTransition(o, "placed", new Date("2026-11-05T00:00:00Z")).warnings.some((line) => /48 hours/.test(line))) fail("placing too early gave no warning");
@@ -289,12 +306,41 @@ eq(gateTransition(o, "unpaid_escalated", new Date("2026-11-05T12:00:00Z")).ok, t
 eq(gateTransition(o, "unpaid_escalated", new Date("2026-11-10T21:00:00Z")).ok, true, "unpaid at check-in escalates");
 
 // ---------- Cancellations ----------
-eq(owedOnCancel({ cancelledBy: "guest", status: "approved", receiptTotalCents: 0, estimateCents: 8000, stockedByCleaner: true }), { owedCents: 0, basis: "none" }, "guest cancels before the order is placed: nothing owed");
-eq(owedOnCancel({ cancelledBy: "guest", status: "placed", receiptTotalCents: 7332, estimateCents: 8000, stockedByCleaner: true }), { owedCents: 7332, basis: "receipt" }, "guest cancels after placing: the receipt, no stocking fee yet");
-eq(owedOnCancel({ cancelledBy: "guest", status: "stocked", receiptTotalCents: 7332, estimateCents: 8000, stockedByCleaner: true }), { owedCents: 8332, basis: "receipt" }, "already stocked: the fee applies");
-eq(owedOnCancel({ cancelledBy: "guest", status: "placed", receiptTotalCents: 0, estimateCents: 8000, stockedByCleaner: false }), { owedCents: 8000, basis: "estimate" }, "no receipt yet: the estimate is the basis, to be replaced by the receipt");
-eq(owedOnCancel({ cancelledBy: "host", status: "stocked", receiptTotalCents: 7332, estimateCents: 8000, stockedByCleaner: true }).owedCents, 0, "we cancel: nothing owed");
-eq(owedOnCancel({ cancelledBy: "airbnb", status: "placed", receiptTotalCents: 7332, estimateCents: 8000, stockedByCleaner: true }).owedCents, 0, "Airbnb cancels: nothing owed");
+const cancelIn = (over: Partial<Parameters<typeof owedOnCancel>[0]>) => owedOnCancel({ cancelledBy: "guest", status: "placed", instacartCancel: "pending", receiptTotalCents: 0, stockedByCleaner: false, ...over });
+eq(cancelIn({ status: "approved", instacartCancel: "na" }), { owedCents: 0, basis: "none", partnerAction: "", flags: [] }, "guest cancels before the order is placed: nothing owed, no Instacart step");
+eq(cancelIn({}).partnerAction, "cancel_instacart_order", "guest cancels after placing: the first step is to cancel the Instacart order");
+eq(cancelIn({}).owedCents, 0, "nothing is requested while the Instacart cancel is pending");
+eq(cancelIn({ instacartCancel: "cancelled", status: "placed" }), { owedCents: 0, basis: "none", partnerAction: "", flags: [] }, "Instacart cancelled it: nothing is owed");
+eq(cancelIn({ instacartCancel: "cancelled", status: "stocked", receiptTotalCents: 7332, stockedByCleaner: true }).owedCents, 0, "a cancelled Instacart order owes nothing even with a receipt on file");
+const cannot = cancelIn({ instacartCancel: "cannot_cancel" });
+eq([cannot.owedCents, cannot.basis], [0, "waiting_for_receipt"], "Instacart can't cancel: wait for the receipt, never request the estimate");
+if (!cannot.flags.some((line) => /unconfirmed/.test(line))) fail("a request on a cancelled Airbnb reservation wasn't flagged as unconfirmed");
+eq(cancelIn({ instacartCancel: "cannot_cancel", receiptTotalCents: 7332 }).owedCents, 7332, "the receipt, exactly, and no stocking fee before a cleaner stocked it");
+eq(cancelIn({ instacartCancel: "cannot_cancel", status: "stocked", receiptTotalCents: 7332, stockedByCleaner: true }).owedCents, 8332, "already stocked: the receipt plus the $10");
+eq(cancelIn({ cancelledBy: "host", status: "stocked", instacartCancel: "cannot_cancel", receiptTotalCents: 7332, stockedByCleaner: true }).owedCents, 0, "we cancel: nothing owed");
+eq(cancelIn({ cancelledBy: "airbnb", instacartCancel: "cannot_cancel", receiptTotalCents: 7332 }).owedCents, 0, "Airbnb cancels: nothing owed");
+// The request after a cancellation: only when Instacart can't cancel, only on the receipt, flagged as unconfirmed.
+o = base();
+o.status = "cancelled";
+o.cancelledBy = "guest";
+o.cancelledAfterPlaced = true;
+o.instacartCancel = "pending";
+o.receiptTotalCents = 0;
+let g2 = gateTransition(o, "payment_requested", now);
+if (g2.ok || !g2.blockers.some((line) => /Cancel the Instacart order first/.test(line)) || !g2.blockers.some((line) => /never the estimate/.test(line))) fail(`a request on a pending cancellation was allowed: ${JSON.stringify(g2)}`);
+o.instacartCancel = "cannot_cancel";
+g2 = gateTransition(o, "payment_requested", now);
+if (g2.ok || !g2.blockers.some((line) => /never the estimate/.test(line))) fail("a request with no receipt was allowed");
+o.receiptTotalCents = 7332;
+g2 = gateTransition(o, "payment_requested", now);
+eq(g2.ok, true, "a request on the exact receipt when Instacart couldn't cancel");
+if (!g2.warnings.some((line) => /unconfirmed/.test(line))) fail("no warning that a request on a cancelled Airbnb reservation is unconfirmed");
+o.paymentRequestCents = 9000;
+if (gateTransition(o, "payment_requested", now).ok) fail("a request that isn't the exact receipt was allowed");
+o.paymentRequestCents = 7332;
+eq(gateTransition(o, "payment_requested", now).ok, true, "the exact receipt amount");
+o.instacartCancel = "cancelled";
+if (gateTransition(o, "payment_requested", now).ok) fail("a request was allowed after Instacart cancelled the order");
 
 // ---------- Paid wait ----------
 eq(waitedPayCents(true, { ...GROCERY_DEFAULTS, waitedForDeliveryCents: 1500 }), 1500, "waited for delivery adds the configured flat amount");
@@ -336,5 +382,144 @@ o.allergy = { state: "unset" };
 eq(codes(o, "2026-11-01T17:00:00Z"), ["allergy_unanswered"], "a list with no allergy answer");
 const keys = groceryAlerts(base(), now).map((alert) => alert.key);
 eq(new Set(keys).size, keys.length, "alert keys are unique per order");
+
+// ---------- Allergy check: err toward flagging; unknown is never safe ----------
+const allergic = (...allergens: import("./groceryTypes.js").Allergen[]): AllergyAnswer => ({ state: "has", allergens, other: [], source: "guest_reply", at: "2026-11-01T15:00:00Z", messageRef: "m1" });
+const res = (name: string, allergy: AllergyAnswer, extra: Partial<GroceryItem> = {}) => checkItem(item(name, 1, 500, extra), allergy);
+const flagged = (name: string, allergy: AllergyAnswer, extra: Partial<GroceryItem> = {}) => res(name, allergy, extra).result !== "ok";
+
+// The items you named. A verified-looking catalogue entry with known tags must still be flagged.
+eq(res("Pesto", allergic("tree_nut")).result, "remove", "pesto is removed for a tree nut allergy (pine nuts)");
+eq(res("Basil pesto", allergic("dairy")).result, "remove", "pesto is removed for a dairy allergy (parmesan)");
+eq(res("Pesto", allergic("peanut")).result, "needs_partner", "pesto for a peanut allergy goes to a partner: cross-contact and recipes vary");
+eq(res("Nutella", allergic("tree_nut")).result, "remove", "Nutella is removed for a hazelnut/tree nut allergy");
+eq(res("Nutella", allergic("dairy")).result, "remove", "Nutella is removed for a dairy allergy");
+eq(res("Nutella", allergic("soy")).result, "remove", "Nutella is removed for a soy allergy (lecithin)");
+eq(res("Nutella", allergic("peanut")).result, "needs_partner", "Nutella for a peanut allergy goes to a partner (chocolate spread, cross-contact)");
+for (const allergen of ["peanut", "tree_nut", "wheat", "gluten", "sesame"] as const) {
+  if (!flagged("Granola", allergic(allergen), { tagsKnown: true })) fail(`granola cleared for a ${allergen} allergy`);
+}
+for (const allergen of ["peanut", "tree_nut", "soy", "sesame"] as const) {
+  if (!flagged("Trail mix", allergic(allergen), { tagsKnown: true })) fail(`trail mix cleared for a ${allergen} allergy`);
+}
+eq(res("Trail mix", allergic("peanut")).result, "needs_partner", "trail mix for a peanut allergy goes to a partner: it is a mix, so the contents vary");
+for (const name of ["Natural flavours cola", "Vanilla natural flavor syrup", "Artificial flavouring drops", "Seasoning blend", "Ranch dressing"]) {
+  if (res(name, allergic("dairy")).result !== "needs_partner" && res(name, allergic("dairy")).result !== "remove") fail(`"${name}" cleared for a dairy allergy`);
+  if (flagged(name, allergic("sesame"), { tagsKnown: true }) === false) fail(`"${name}" cleared for a sesame allergy even with tags`);
+}
+eq(res("Natural flavours soda", allergic("peanut"), { tagsKnown: true }).reason.includes("natural flavours"), true, "natural flavours says why it needs a partner");
+// Brand names with no ingredient words: unknown, never safe.
+for (const brand of ["Kinder Bueno", "Skittles", "Pop-Tarts", "Reese's", "Kit Kat", "Oreo", "Ferrero Rocher", "Cheerios", "Quaker", "Haribo", "Toblerone", "Snickers", "Cliff", "Larabar"]) {
+  const r = checkItem({ name: brand, allergens: [], tagsKnown: false, inCatalogue: false }, allergic("peanut"));
+  if (r.result === "ok") fail(`the brand "${brand}" was treated as safe with no ingredient data`);
+}
+eq(checkItem({ name: "Skittles", allergens: [], tagsKnown: true, inCatalogue: false }, allergic("peanut")).result, "needs_partner", "tags can't clear an item that isn't a verified catalogue item");
+eq(checkItem({ name: "Skittles", allergens: [], tagsKnown: false, inCatalogue: true }, allergic("peanut")).result, "needs_partner", "a catalogue item with unverified tags is unknown");
+eq(checkItem({ name: "Skittles", allergens: [], tagsKnown: false, inCatalogue: false }, allergic("peanut")).reason.startsWith("Unknown"), true, "an unknown item says it is unknown");
+eq(checkItem({ name: "Gala apples", allergens: [], tagsKnown: true, inCatalogue: true }, allergic("peanut")).result, "ok", "a verified plain catalogue item can be cleared (and still gets a listing check at checkout)");
+// An unanswered allergy question clears nothing.
+eq(checkItem({ name: "Gala apples", allergens: [], tagsKnown: true, inCatalogue: true }, { state: "unset" }).result, "needs_partner", "no allergy answer: nothing is cleared");
+// False-positive reduction must never reduce catches: words only ever add flags.
+eq(res("Peanut butter", allergic("dairy")).result, "remove", "peanut butter is still flagged for dairy: butter is a dairy word and nothing exempts it");
+eq(res("Oat milk", allergic("dairy")).result, "remove", "oat milk is still flagged for dairy: a partner confirms it from the listing");
+eq(res("Coconut milk", allergic("tree_nut")).result, "remove", "coconut is a tree nut word for this check: flagged");
+eq(res("Almond flour", allergic("wheat")).result, "remove", "flour is a wheat word: flagged");
+eq(allergensIn("Peanut butter"), ["peanut", "dairy"], "peanut butter reads as both peanut and dairy");
+// A listed allergy we can't map clears nothing.
+eq(res("Gala apples", { ...allergic("peanut"), other: ["kiwi"] } as AllergyAnswer, { tagsKnown: true }).result, "needs_partner", "an unmapped allergy sends even a plain item to a partner");
+
+// ---------- What a guest is told ----------
+const wording = allergyWording(allergic("peanut", "tree_nut"));
+if (!/avoid the allergens you listed \(peanut, tree nut\)/.test(wording) || /allergen[- ]free/i.test(wording) && !/can't promise/.test(wording)) fail(`allergy wording: ${wording}`);
+eq(validateGroceryMessage(wording), [], "the approved allergy sentence passes the message check");
+eq(allergyWording(none), "", "no allergy: no allergy wording");
+for (const bad of [
+  "Don't worry, everything is allergen-free.",
+  "All items are nut-free and safe for your allergy.",
+  "We guarantee your order is safe.",
+  "This is 100% safe for a peanut allergy.",
+  "Your order will be free of allergens.",
+  "There are no traces of nuts or cross-contamination.",
+  "The whole order is peanut free.",
+]) {
+  if (!allergyPromise(bad)) fail(`an allergy promise was allowed: ${bad}`);
+  if (!validateGroceryMessage(bad).some((line) => /Promises allergen safety/.test(line))) fail(`the message check missed: ${bad}`);
+}
+for (const fine of [
+  "Gluten-free bread, 2 x $5.99",
+  "We can't guarantee anything is free of allergens, so please read the labels.",
+  "We don't promise any product is nut free.",
+  "We'll avoid the nuts you listed.",
+]) {
+  if (allergyPromise(fine)) fail(`a fine message was blocked: ${fine}`);
+}
+
+// ---------- The feature flag ----------
+eq(GROCERY_FLAG_OFF, { enabled: false, trialPropertyIds: [] }, "the flag is off by default");
+eq(groceryActive(GROCERY_FLAG_OFF, "p1"), false, "nothing is active when the flag is off");
+eq(groceryActive(null, "p1"), false, "nothing is active with no settings");
+eq(groceryActive({ enabled: true, trialPropertyIds: [] }, "p1"), false, "on with no trial units: still nothing active");
+eq(groceryActive({ enabled: true, trialPropertyIds: ["p1", "p2"] }, "p1"), true, "a trial unit is active");
+eq(groceryActive({ enabled: true, trialPropertyIds: ["p1", "p2"] }, "p3"), false, "a non-trial unit stays off");
+eq(groceryActive({ enabled: false, trialPropertyIds: ["p1"] }, "p1"), false, "off wins over a trial list");
+eq(groceryVisible({ enabled: true, trialPropertyIds: [] }), false, "no tab until a trial unit is chosen");
+eq(groceryVisible({ enabled: true, trialPropertyIds: ["p1"] }), true, "the tab shows when on with a trial unit");
+eq(groceryVisible(GROCERY_FLAG_OFF), false, "no tab when off");
+
+// ---------- A gap in the thread: flag it, never draft over it ----------
+const sentOffer: SentGroceryMessage = { kind: "offer", body: "Hi Dana, would you like us to stock groceries before you arrive? Reply with your list.", at: "2026-11-01T14:00:00Z", ref: "h1" };
+const sentEstimate: SentGroceryMessage = { kind: "estimate", body: "Here is your itemized estimate: milk $5.99, bread $4.50. Reply approved to confirm.", at: "2026-11-02T14:00:00Z", ref: "h2" };
+const msg = (role: ThreadMessage["role"], at: string, body: string, ref?: string): ThreadMessage => ({ role, at, body, ...(ref ? { ref } : {}) });
+// Clean: everything the host said is ours.
+let gap = detectThreadGap({ thread: [msg("host", "2026-11-01T14:00:05Z", sentOffer.body, "h1"), msg("guest", "2026-11-01T15:00:00Z", "Milk and bread please"), msg("host", "2026-11-02T14:00:05Z", sentEstimate.body, "h2"), msg("guest", "2026-11-02T16:00:00Z", "approved")], sent: [sentOffer, sentEstimate] });
+eq(gap, { gap: false, reasons: [] }, "a thread of only our messages has no gap");
+// A partner replied in the Airbnb app.
+gap = detectThreadGap({ thread: [msg("host", "2026-11-01T14:00:05Z", sentOffer.body, "h1"), msg("guest", "2026-11-01T15:00:00Z", "Milk and bread please"), msg("host", "2026-11-01T17:00:00Z", "Sure! Also, do you want eggs?"), msg("guest", "2026-11-01T18:00:00Z", "Yes eggs too")], sent: [sentOffer] });
+if (!gap.gap || !/wasn't sent by Copilot/.test(gap.reasons[0] ?? "")) fail(`a host message we never sent was not flagged: ${JSON.stringify(gap)}`);
+// A guest approves, but the message before it wasn't our estimate.
+gap = detectThreadGap({ thread: [msg("host", "2026-11-02T14:00:05Z", sentEstimate.body, "h2"), msg("host", "2026-11-02T14:30:00Z", "Quick change: I swapped the milk for oat milk."), msg("guest", "2026-11-02T16:00:00Z", "approved")], sent: [sentEstimate] });
+if (!gap.gap || !gap.reasons.some((line) => /wasn't our estimate/.test(line))) fail(`an approval of something we didn't send was not flagged: ${JSON.stringify(gap)}`);
+// A guest "approved" with only an offer before it.
+gap = detectThreadGap({ thread: [msg("host", "2026-11-01T14:00:05Z", sentOffer.body, "h1"), msg("guest", "2026-11-01T15:00:00Z", "approved")], sent: [sentOffer] });
+if (!gap.gap) fail("an approval right after an offer (never an estimate) was not flagged");
+// Hospitable adds a greeting and the body still matches by text.
+gap = detectThreadGap({ thread: [msg("host", "2026-11-01T14:00:05Z", `Hello! ${sentOffer.body} Thanks, the team`)], sent: [sentOffer] });
+eq(gap.gap, false, "a lightly reformatted copy of our message is still ours");
+// Matching by text when the reference is missing, and em dashes/spacing don't matter.
+gap = detectThreadGap({ thread: [msg("host", "2026-11-01T14:00:05Z", sentOffer.body.replace(/,/g, " ,").toUpperCase())], sent: [sentOffer] });
+eq(gap.gap, false, "case and spacing don't matter");
+// Hospitable's own automations are ignored only when recognized.
+const checkIn = msg("host", "2026-11-03T12:00:00Z", "Welcome! Your check-in instructions are below.");
+eq(detectThreadGap({ thread: [checkIn], sent: [sentOffer] }).gap, true, "an unrecognized automated message errs toward flagging");
+eq(detectThreadGap({ thread: [checkIn], sent: [sentOffer], automated: [/check-in instructions/i] }).gap, false, "a recognized automation is ignored");
+eq(detectThreadGap({ thread: [msg("host", "2026-10-01T12:00:00Z", "An old message from before the offer.")], sent: [sentOffer] }).gap, false, "messages from before the offer don't count");
+eq(detectThreadGap({ thread: [], sent: [] }).gap, false, "nothing sent yet: nothing to compare");
+// A flagged thread blocks drafting and approval until a partner resolves it.
+o = base();
+o.threadGap = { flagged: true, reason: "A host message wasn't sent by Copilot.", resolvedBy: "" };
+if (!draftingBlockedByGap(o)) fail("a flagged thread didn't block drafting");
+o.status = "list_received";
+if (!gateTransition(o, "awaiting_guest_approval", now).blockers.some((line) => /review this thread/.test(line))) fail("a flagged thread reached guest approval");
+o.status = "awaiting_guest_approval";
+o.approval = { text: "approved", at: "2026-11-02T10:00:00Z", messageRef: "m9", estimateHash: o.estimateHash };
+if (!gateTransition(o, "approved", now).blockers.some((line) => /review this thread/.test(line))) fail("a flagged thread was approved");
+o.status = "in_checkout_queue";
+if (!gateTransition(o, "placed", new Date("2026-11-07T00:00:00Z")).blockers.some((line) => /review this thread/.test(line))) fail("a flagged thread was placed");
+if (!groceryAlerts(o, now).some((alert) => alert.code === "thread_gap")) fail("no thread-gap alert");
+o.threadGap.resolvedBy = "Shane";
+eq(draftingBlockedByGap(o), "", "a partner clearing the flag unblocks drafting");
+if (groceryAlerts(o, now).some((alert) => alert.code === "thread_gap")) fail("a resolved thread gap still alerts");
+
+// ---------- Cancellation alerts ----------
+o = base();
+o.status = "cancelled";
+o.cancelledBy = "guest";
+o.cancelledAfterPlaced = true;
+o.instacartCancel = "pending";
+eq(codes(o, "2026-11-05T12:00:00Z").includes("cancel_instacart_order"), true, "a guest cancelling after the order was placed alerts a partner to cancel the Instacart order");
+o.instacartCancel = "cannot_cancel";
+eq(codes(o, "2026-11-05T12:00:00Z").includes("cancel_waiting_for_receipt"), true, "Instacart couldn't cancel: wait for the receipt");
+o.instacartCancel = "cancelled";
+eq(codes(o, "2026-11-05T12:00:00Z").filter((code) => code.startsWith("cancel")), [], "Instacart cancelled it: nothing more to do");
 
 console.log("Grocery harness passed.");
