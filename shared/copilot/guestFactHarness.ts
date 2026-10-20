@@ -7,13 +7,16 @@
  *  2. A failed or shallow thread read is never turned into a "no".
  *  3. The building email carries the facts already found, and drops the template's "provide shortly" line.
  *  4. A request found in a thread read for another reason still opens its follow-up, once.
+ *  5. A reply answers every item in the guest's latest message from the thread, the property record and the Hub: no deflection.
  *  6. A follow-up stands on a quote from its own guest's thread, is re-checked against it every run, and no fact travels
  *     between threads.
  */
 
 import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
-import { forgetGuestProcessMemory, loadGuestQueue, readSavedGuestQueue, resetGuestMessaging } from "./guestMessaging.js";
+import { forgetGuestProcessMemory, loadGuestQueue, openGuestAnswer, readSavedGuestQueue, resetGuestMessaging, submitGuestReply, suggestReply } from "./guestMessaging.js";
+import { setSuggestModel } from "./guestAi.js";
+import { composeGuestReply, deflectionProblems } from "./guestReplyCompose.js";
 import { capturedCommits, capturedDrafts, capturedMailQueries, resetCaptures } from "./parity/capture.js";
 import { ID, worldAt } from "./parity/catalog.js";
 import { installWorld, pushParityMessage, type ParityMail, type ParityReservation } from "./parity/world.js";
@@ -267,5 +270,88 @@ if (verifyFollowUp(ghost("g1", undefined), eloiseTurns).ok) fail("no quote passe
 if (verifyFollowUp(ghost("g2", { quote: "Hi! Could we get an extra key and a fob for the second adult?", at: "x", role: "guest", name: "Eloise" }), [{ at: "x", role: "guest", name: "Rebecca", body: "I have a gluten allergy." }]).ok) fail("another thread's quote passed");
 if (verifyFollowUp({ ...real, topic: "Towels" }, eloiseTurns).ok) fail("a topic the quote doesn't mention passed");
 if (verifyFollowUp({ ...real, agreedAs: "agreed" }, eloiseTurns).ok) fail("'agreed' with no agreement quoted passed");
+
+// ---------- Rule 5: a reply that answers everything Rebecca wrote ----------
+reset(buildWorld());
+const queue5 = await loadGuestQueue(new Date(NOW));
+const rebeccaRow = queue5.waiting.find((row) => row.id === RES.rebecca);
+if (!rebeccaRow) fail(`Rebecca should be waiting on a reply: ${JSON.stringify(queue5.waiting.map((row) => row.guest))}`);
+const opened = await openGuestAnswer(rebeccaRow, new Date(NOW));
+const reply = opened.draft;
+if (!reply) fail("no draft for Rebecca");
+const checks: [RegExp, string][] = [
+  [/^Hi Rebecca,/, "a greeting by name"],
+  [/Thank you for the car details/, "thanks for the car details"],
+  [/Nissan Rogue \(CDDD 686\)/, "her car, make, model and plate"],
+  [/handling the parking registration with the building/, "registration is being handled"],
+  [/gluten allergy/, "her allergy, in her words"],
+  [/snacks/, "the snacks the hosts leave out"],
+  [/recorded it for your arrival/, "recorded for her arrival"],
+  [/can't promise specific items/, "no promise of specific items"],
+  [/an hour early/, "an hour early, in her words"],
+  [/parking spot \(P4-62\)/, "the parking spot"],
+  [/feed the baby in the car/, "to feed the baby"],
+];
+for (const [pattern, what] of checks) if (!pattern.test(reply)) fail(`Rebecca's reply is missing ${what}:\n${reply}`);
+if (/restaurant|menu/i.test(reply)) fail(`the words restaurant and menu must not appear:\n${reply}`);
+if (deflectionProblems(reply).length) fail(`Rebecca's reply deflects: ${deflectionProblems(reply).join(" ")}`);
+if (/\[|\]/.test(reply)) fail(`a clean thread should leave no blank:\n${reply}`);
+if (/please send the make|send the make, model|gluten-free|check with|we don't have|feel free|let me know if/i.test(reply)) fail(`filler or a repeat ask:\n${reply}`);
+const paragraphs = reply.split(/\n\n/);
+if (paragraphs.length !== 4) fail(`the reply should be a greeting and exactly three paragraphs (car, allergy, arrival): ${paragraphs.length}\n${reply}`);
+if (opened.alternates.length !== 2 || !/an hour early/.test(opened.alternates[0]!) || /baby/.test(opened.alternates[0]!) || !/baby/.test(opened.alternates[1]!) || /an hour early/.test(opened.alternates[1]!)) fail(`the two arrival options as separate approvable choices: ${JSON.stringify(opened.alternates)}`);
+if (!opened.partnerNotes?.some((note) => /colour/.test(note)) || /colour/i.test(reply)) fail(`the missing colour is a note for the partner, not text to the guest: ${JSON.stringify(opened.partnerNotes)}`);
+if (!/the thread and the property record/.test(opened.basedOn)) fail(`basedOn: ${opened.basedOn}`);
+// The button writes the same reply, with no model.
+const suggested = await suggestReply(rebeccaRow, new Date(NOW));
+if (suggested !== reply) fail(`Suggest with AI wrote a different reply:\n${suggested}`);
+// Another guest checks out of the unit that morning: the reply doesn't promise an hour early, and says why.
+{
+  const busy = buildWorld();
+  busy.reservations.push(stay("00000000-0000-4000-8000-0000000b0009", ID.blue, "Prior", "2026-10-18", "2026-10-21", [msg("p1", "2026-10-18T10:00:00-04:00", "guest", "Prior", "Thanks!")]));
+  reset(busy);
+  const q = await loadGuestQueue(new Date(NOW));
+  const row = q.waiting.find((item) => item.id === RES.rebecca)!;
+  const draftBusy = (await openGuestAnswer(row, new Date(NOW))).draft;
+  if (/no one is checking out|nobody is checking out/i.test(draftBusy) || !/a guest checks out of the unit that morning/.test(draftBusy) || !/parking spot \(P4-62\)/.test(draftBusy)) fail(`same-day checkout:\n${draftBusy}`);
+}
+// The standing snack practice comes from the thread too, at a property the process record doesn't cover.
+{
+  const plan = composeGuestReply({
+    guest: "Lee", property: "Unit #606 8 Charlotte", checkIn: "2026-10-30", checkOut: "2026-11-02", sameDayDeparture: "unknown",
+    thread: [
+      { at: "2026-10-20T10:00:00Z", role: "host", name: "Shane", body: "Hi Lee! We like to leave a few snacks for guests. Any allergies?" },
+      { at: "2026-10-21T10:00:00Z", role: "guest", name: "Lee", body: "Yes, a peanut allergy please." },
+    ],
+  });
+  if (!plan || !/peanut allergy/.test(plan.draft) || !/snacks/.test(plan.draft) || /restaurant|menu/i.test(plan.draft)) fail(`snacks from the thread: ${plan?.draft}`);
+  const none = composeGuestReply({ guest: "Lee", property: "Unit #606 8 Charlotte", checkIn: "2026-10-30", checkOut: "2026-11-02", sameDayDeparture: "unknown", thread: [{ at: "2026-10-21T10:00:00Z", role: "guest", name: "Lee", body: "I have a peanut allergy." }] });
+  if (!none || /snacks/.test(none.draft) || !none.notes.some((note) => /snacks are left out/.test(note))) fail(`no snack claim without a source: ${none?.draft}`);
+  // A question nothing answers is a visible blank, which blocks sending.
+  const blank = composeGuestReply({ guest: "Lee", property: "Unit #606 8 Charlotte", checkIn: "2026-10-30", checkOut: "2026-11-02", sameDayDeparture: "unknown", thread: [{ at: "2026-10-21T10:00:00Z", role: "guest", name: "Lee", body: "I have a gluten allergy. Can you recommend a pharmacy nearby?" }] });
+  if (!blank || !/\[Your answer to: Can you recommend a pharmacy nearby\?\]/.test(blank.draft) || /restaurant|menu/i.test(blank.draft)) fail(`an unanswered question: ${blank?.draft}`);
+  let blocked = "";
+  try { await submitGuestReply({ reservationId: RES.rebecca, propertyId: ID.blue, property: "x", guest: "Lee", english: blank.draft, language: "", fact: "" }); } catch (err) { blocked = err instanceof Error ? err.message : ""; }
+  if (!/still has a blank to fill in/.test(blocked)) fail(`a draft with a blank was sent: ${blocked}`);
+  // Nothing to answer: no composed reply.
+  if (composeGuestReply({ guest: "Lee", property: "x", checkIn: "2026-10-30", checkOut: "2026-11-02", sameDayDeparture: "unknown", thread: [{ at: "2026-10-21T10:00:00Z", role: "guest", name: "Lee", body: "Thanks so much!" }] })) fail("a thank-you got a composed reply");
+}
+// A model's deflection is never shown as an answer; its real answer is.
+reset(buildWorld({ rebeccaMessages: [msg("r1", "2026-10-14T15:00:00-04:00", "host", "Shane", HOST_ASK), msg("r2", "2026-10-19T14:10:00-04:00", "guest", "Rebecca", "Is there a microwave?")] }));
+{
+  const q = await loadGuestQueue(new Date(NOW));
+  const row = q.waiting.find((item) => item.id === RES.rebecca)!;
+  setSuggestModel(async () => "Hi Rebecca, we don't have specific details on hand about that. Feel free to reach out if you have any other questions, or check local menus.");
+  let said = "";
+  try { await suggestReply(row, new Date(NOW)); } catch (err) { said = err instanceof Error ? err.message : ""; }
+  if (!/generic reply, not an answer/.test(said)) fail(`a deflecting model reply was shown: ${said}`);
+  setSuggestModel(async () => "Hi Rebecca, yes, there is a microwave in the kitchen.");
+  if (await suggestReply(row, new Date(NOW)) !== "Hi Rebecca, yes, there is a microwave in the kitchen.") fail("a good model reply was rejected");
+  setSuggestModel(null);
+}
+for (const bad of ["Please check local menus.", "We don't have specific details on hand.", "Feel free to reach out!", "Don't hesitate to ask.", "Let me know if you have any other questions.", "Try a nearby restaurant."]) {
+  if (!deflectionProblems(bad).length) fail(`a deflection was allowed: ${bad}`);
+}
+if (deflectionProblems("Thank you for the car details. I'm handling the registration.").length) fail("a real answer was called a deflection");
 
 console.log("Guest fact harness passed.");

@@ -3,6 +3,7 @@
  * Reads the same threads Guest messaging reads. Drafts wait in that tab, not in Checks.
  */
 
+import { composeGuestReply, sameDayDepartureFor } from "./guestReplyCompose.js";
 import { readPropertyHub } from "./knowledgeHub.js";
 import { parityNow } from "./parity/clock.js";
 import { draftFromHub, guestDrafts, loadGuestQueue, needsGuestReply, openGuestAnswer, rememberGuestDraft } from "./guestMessaging.js";
@@ -19,7 +20,34 @@ type OpenThread = {
   row: RecentStay;
   ask: string;
   at: string;
+  /** The whole thread, so the reply can answer everything in it. */
+  thread?: { at: string; role: string; name: string; body: string }[];
 };
+
+type ThreadLine = NonNullable<OpenThread["thread"]>[number];
+
+/** The reply for a waiting guest: the composed, every-item answer when the thread calls for it, else the Knowledge Hub's. */
+function replyFor(
+  guest: string,
+  ask: string,
+  hub: string,
+  place: string,
+  memory: string,
+  row: RecentStay,
+  thread: ThreadLine[],
+  stays: RecentStay[],
+): ReturnType<typeof draftFromHub> {
+  const composed = composeGuestReply({
+    guest,
+    property: place,
+    thread,
+    checkIn: row.stay.checkIn,
+    checkOut: row.stay.checkOut,
+    sameDayDeparture: sameDayDepartureFor(stays.map((item) => ({ id: item.stay.id, propertyId: item.stay.propertyId, checkOut: item.stay.checkOut, status: item.stay.status })), { id: row.stay.id, propertyId: row.stay.propertyId, checkIn: row.stay.checkIn }),
+  });
+  if (composed) return { mode: "hub", draft: composed.draft, facts: composed.handled.join(", "), gap: "" };
+  return draftFromHub(guest, ask, hub, { place, memory });
+}
 
 const FULL_NAME = /^([A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+)*)$/;
 
@@ -254,6 +282,7 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
         row,
         ask: pending.map((item) => item.body.trim()).join(" "),
         at: pending[pending.length - 1]?.at || last.at,
+        thread: spoken,
       });
       continue;
     }
@@ -274,7 +303,7 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
     const place = `${item.row.label} ${item.row.propertyName} ${item.row.address}`;
     const hubRead = await readPropertyHub(item.row.stay.propertyId);
     const memory = await memoryFor(place).catch(() => "");
-    const written = draftFromHub(guest, item.ask, hubRead.ok ? hubRead.text : "", { place, memory });
+    const written = replyFor(guest, item.ask, hubRead.ok ? hubRead.text : "", place, memory, item.row, item.thread ?? [], loaded.stays);
     if (written.mode !== "hub" || !written.draft) continue;
     rememberGuestDraft({ to: guest, body: written.draft, reservationId: item.row.stay.id });
     drafted.push(guest);
@@ -295,7 +324,7 @@ export async function answerGuestThreads(question: string, now?: Date): Promise<
 async function lastWordFrom(who: string, loaded: Awaited<ReturnType<typeof loadRecentStays>>, clock: Date): Promise<string> {
   const stays = loaded.stays.filter((row) => sameGuest(row.stay.guest, who));
   const failed: string[] = [];
-  let best: { row: RecentStay; guestAt: string; body: string; hostAt: string; hostName: string } | null = null;
+  let best: { row: RecentStay; guestAt: string; body: string; hostAt: string; hostName: string; spoken: ThreadLine[] } | null = null;
   for (const row of stays) {
     let messages: { at: string; role: string; name: string; body: string }[];
     try {
@@ -308,7 +337,7 @@ async function lastWordFrom(who: string, loaded: Awaited<ReturnType<typeof loadR
     const lastGuest = [...spoken].reverse().find((item) => item.role === "guest");
     if (!lastGuest) continue;
     const after = spoken.filter((item) => item.role === "host" && item.at > lastGuest.at).at(-1);
-    if (!best || lastGuest.at > best.guestAt) best = { row, guestAt: lastGuest.at, body: lastGuest.body.trim(), hostAt: after?.at ?? "", hostName: after?.name ?? "" };
+    if (!best || lastGuest.at > best.guestAt) best = { row, guestAt: lastGuest.at, body: lastGuest.body.trim(), hostAt: after?.at ?? "", hostName: after?.name ?? "", spoken };
   }
   const failedLine = failed.length ? `${failed.join(" and ")} didn't return a thread, so a later message there wasn't read.` : "";
   if (!best) return [`I didn't find a message from ${who} on a Hospitable thread for a managed stay.`, failedLine].filter(Boolean).join("\n");
@@ -320,7 +349,7 @@ async function lastWordFrom(who: string, loaded: Awaited<ReturnType<typeof loadR
     const place = `${best.row.label} ${best.row.propertyName} ${best.row.address}`;
     const hubRead = await readPropertyHub(best.row.stay.propertyId);
     const memory = await memoryFor(place).catch(() => "");
-    const written = draftFromHub(guest, best.body, hubRead.ok ? hubRead.text : "", { place, memory });
+    const written = replyFor(guest, best.body, hubRead.ok ? hubRead.text : "", place, memory, best.row, best.spoken, loaded.stays);
     if (written.mode === "hub" && written.draft) {
       rememberGuestDraft({ to: guest, body: written.draft, reservationId: best.row.stay.id });
       lines.push(`No one has replied yet. Here is the draft, also in ${guest}'s Guest messaging reply box (nothing is sent until you press Submit):`, written.draft);

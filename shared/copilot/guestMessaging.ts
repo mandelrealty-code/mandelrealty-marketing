@@ -8,6 +8,8 @@ import { copilotHospitableToken, copilotKeepsProperty, copilotScopeActive, hospi
 import { sendReservationMessage } from "./hospitableAgent.js";
 import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIntelligence.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
+import { composeGuestReply, deflectionProblems, GUEST_BLANK, sameDayDepartureFor } from "./guestReplyCompose.js";
+import { BLUE_JAYS_PROCESS } from "./processFacts.js";
 import { detectFollowUps, orderFollowUps, repaintFollowUp, verifyFollowUp, type FollowUpStay } from "./guestFollowUps.js";
 import { bookingRequestFollowUp, guestPhotoUrl, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
 import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, readPrefixedRow, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, writePrefixedRow, type InquiryVerify } from "./store.js";
@@ -536,6 +538,8 @@ export async function submitGuestReply(input: {
   const sentText = withoutEmDashes(input.english);
   const files = input.attachments ?? [];
   if (!sentText.trim() && !files.length) throw new Error("The draft is empty. Nothing was sent.");
+  // A blank the draft left for the partner ([Your answer to: ...]) is not an answer. Fill it in first.
+  if (GUEST_BLANK.test(sentText)) throw new Error("The draft still has a blank to fill in. Nothing was sent.");
   if (files.length > 3) throw new Error("Only 3 attachments can go with a guest message, so nothing was sent.");
   let images: string[] = [];
   if (files.length) {
@@ -1281,6 +1285,21 @@ export async function suggestReply(
     .sort((a, b) => a.at.localeCompare(b.at))
     .map((item) => ({ who: item.role === "guest" ? "guest" as const : "host" as const, name: item.name || (item.role === "guest" ? row.guest : "Host"), text: translations.get(item.body.trim())?.english ?? item.body }));
   if (!thread.length) throw new Error("There are no messages in this conversation to reply to yet.");
+  // The structured reply first: the whole thread, the property record, every item answered, no model needed.
+  const saved = await readSavedGuestQueue().catch(() => null);
+  const composed = composeGuestReply({
+    guest: row.guest,
+    property: row.property,
+    thread: spoken.map((item) => ({ at: item.at, role: item.role, name: item.name, body: item.body })),
+    checkIn: row.checkIn ?? "",
+    checkOut: row.checkOut ?? "",
+    sameDayDeparture: sameDayDepartureFor(
+      saved ? [...saved.waiting, ...saved.onGuest, ...saved.held, ...(saved.thanks ?? []), ...(saved.quiet ?? [])].map((item) => ({ id: item.id, propertyId: item.propertyId, checkOut: item.checkOut ?? "", status: item.bookingStatus || item.status || "" })) : null,
+      { id: row.id, propertyId: row.propertyId, checkIn: row.checkIn ?? "" },
+    ),
+  });
+  if (composed) return composed.draft;
+  const blue = /blue jays|\b318\b/i.test(row.property);
   const draft = await suggestGuestReply({
     guest: row.guest,
     property: row.property,
@@ -1288,8 +1307,12 @@ export async function suggestReply(
     thread,
     hub: hubRead.ok ? hubRead.text : "",
     memory,
+    practices: blue ? BLUE_JAYS_PROCESS : "",
   });
   if (!draft) throw new Error("The AI didn't answer. Nothing was changed; try again.");
+  // A reply that deflects ("check local menus", "feel free to reach out") is never shown as an answer.
+  const deflects = deflectionProblems(draft);
+  if (deflects.length) throw new Error(`The AI wrote a generic reply, not an answer (${deflects[0]!.replace(/^The reply /, "it ").replace(/\.$/, "")}). Nothing was changed. Try again, or write it yourself.`);
   return draft;
 }
 
@@ -1380,7 +1403,23 @@ export async function openGuestAnswer(row: GuestRow, now = new Date(), options: 
   const outside = read.situation ? await outsideDraft(read, row.guest, turns) : { draft: "", alternates: [], basedOn: "", pageTitle: "" };
   const stood = read.situation ? standing.get(read.situation) ?? "" : "";
   const held = read.lane === "guest";
-  const draft = held ? (stood || outside.draft) : stood || (fromHub.mode === "hub" ? fromHub.draft : outside.draft);
+  // The whole thread, what the hosts already told the guest, and the property record come first: a reply that answers every
+  // item in the guest's latest message, from those facts only. The old hub reply is the fallback for everything else.
+  const composed = !held && !stood && read.lane === "reply"
+    ? composeGuestReply({
+      guest: row.guest,
+      property: row.property,
+      thread: turns.map((turn) => ({ at: turn.at, role: turn.role, name: turn.name, body: turn.body })),
+      checkIn: row.checkIn ?? "",
+      checkOut: row.checkOut ?? "",
+      checkInMinutes: clockMinutes(raw.checkin_time),
+      sameDayDeparture: sameDayDepartureFor(
+        saved ? [...saved.waiting, ...saved.onGuest, ...saved.held, ...(saved.thanks ?? []), ...(saved.quiet ?? [])].map((item) => ({ id: item.id, propertyId: item.propertyId, checkOut: item.checkOut ?? "", status: item.bookingStatus || item.status || "" })) : null,
+        { id: row.id, propertyId: row.propertyId, checkIn: row.checkIn ?? "" },
+      ),
+    })
+    : null;
+  const draft = held ? (stood || outside.draft) : stood || composed?.draft || (fromHub.mode === "hub" ? fromHub.draft : outside.draft);
   const mode = held ? "held" as const : draft ? "hub" as const : "gap" as const;
   const thread = presentGuestThread(messages ?? [], row.guest, hostNameFrom(stayRaw), now, read.copied).map((bubble) => {
     const done = translations.get(bubble.text.trim());
@@ -1399,17 +1438,17 @@ export async function openGuestAnswer(row: GuestRow, now = new Date(), options: 
     thread,
     mode: fromHub.mode === "gap" && !draft && !held ? "gap" : mode,
     draft,
-    alternates: outside.alternates,
+    alternates: composed?.alternates.length ? composed.alternates : outside.alternates,
     sendable: !held && Boolean(draft),
     situation: read.situation,
     waitingLine: unread ? "Hospitable didn't return the messages for this conversation. Go back and open it again in a moment." : read.waitingLine,
-    partnerNotes: read.partnerNotes,
-    basedOn: outside.basedOn || (fromHub.facts ? `the Knowledge Hub · ${fromHub.facts}` : ""),
+    partnerNotes: composed?.notes.length ? [...(read.partnerNotes ?? []), ...composed.notes] : read.partnerNotes,
+    basedOn: composed ? `the thread and the property record · ${composed.handled.join(", ")}` : outside.basedOn || (fromHub.facts ? `the Knowledge Hub · ${fromHub.facts}` : ""),
     sourceLine: sourceLine(read, reservation, outside.pageTitle),
     mediaSlot: read.mediaSlot,
     sentVersion: !held && draft ? draft : "",
-    facts: fromHub.facts,
-    gap: !draft && !held ? fromHub.gap : "",
+    facts: composed ? composed.handled.join(", ") : fromHub.facts,
+    gap: !draft && !held && !composed ? fromHub.gap : "",
     savedLine: "",
     failedLine: "",
   };

@@ -3,6 +3,8 @@
  * the exact text Submit will send.
  */
 
+import { readTimeAsk } from "./guestTimeAsk.js";
+
 const FRENCH = /\b(est-ce|qu'|bonjour|merci|nous|pour|avec|arrivée|vol|au lieu)\b|[àâéèêëïîôùûç]/i;
 
 const REACTION_PHRASES = [
@@ -91,12 +93,23 @@ function reportsProblem(text: string): boolean {
   return /\b(broken|missing|doesn'?t work|does not work|not working|isn'?t working|won't work|wont work|dirty|leak|leaking|smell|smells|locked|no power|unplugged|no hot water|problem|issue|stopped|stuck|clog|clogged|overflow|too (strong|weak|hot|cold|loud))\b/i.test(text);
 }
 
-/** A guest message needs a reply only when it asks, requests, or reports a problem. */
+/**
+ * A guest telling us something we have to act on, with no question mark in it: an allergy or diet ("I have a gluten allergy"),
+ * an early check-in or late checkout in any wording ("likely just an hour before"), a hedged request ("even if I could just use
+ * the parking spot"). A "Thank you so much!" on either end doesn't make that a thank-you note.
+ */
+function informs(text: string): boolean {
+  if (/\b(allerg\w*|intoleran\w*|celiac|coeliac|dietary restrictions?|vegan|vegetarian|gluten[- ]free|lactose[- ]free)\b/i.test(text)) return true;
+  if (readTimeAsk(text, "").length) return true;
+  return /\b(?:even )?if (?:i|we) could\b|\b(?:i|we) could (?:just )?(?:use|park|arrive|come|get in|leave|drop|store|check)\b/i.test(text);
+}
+
+/** A guest message needs a reply only when it asks, requests, reports a problem, or tells us something to act on. */
 export function needsGuestReply(text: string): boolean {
   const clean = normalizeGuestText(text);
   if (!clean) return false;
   const english = messageLanguage(clean) ? toEnglish(clean) : clean;
-  return [clean, english].some((sample) => asks(sample) || requests(sample) || reportsProblem(sample));
+  return [clean, english].some((sample) => asks(sample) || requests(sample) || reportsProblem(sample) || informs(sample));
 }
 
 /** Thanks, closers, acknowledgements, and reactions. They never wait and never get a draft. */

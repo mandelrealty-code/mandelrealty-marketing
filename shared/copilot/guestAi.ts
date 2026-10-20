@@ -168,14 +168,18 @@ export type SuggestInput = {
   thread: { who: "guest" | "host"; name: string; text: string }[];
   hub: string;
   memory: string;
+  /** What the hosts always do at this property (the snacks they leave out, the parking spot), from the process record. */
+  practices?: string;
 };
 
 const SUGGEST_SYSTEM = [
   "You write the next reply from a short-term-rental host (Mandel Realty Group) to a guest, for the host to review before sending.",
-  "Use only facts in the Knowledge Hub, the host notes, or the conversation. Never invent codes, prices, times, availability, policies or promises.",
-  "If the guest asks something those don't answer (availability, price, a booking change), say you'll check and get back to them shortly; don't guess.",
+  "Read the WHOLE conversation first, including what the hosts already told the guest, then answer EVERY item in the guest's latest message, in the guest's own terms.",
+  "Use only facts in the conversation, the standing practices, the Knowledge Hub or the host notes. Never invent codes, prices, times, availability, policies or promises.",
+  "Where the hosts leave out snacks for arriving guests, a guest naming an allergy is giving an instruction about THOSE snacks: say it is recorded for their arrival and promise no specific items. Never mention restaurants or menus.",
+  "Never write filler: no \"feel free to reach out\", no \"we don't have specific details on hand\", no \"check local menus\". If the facts don't answer something the guest asked (availability, price, a booking change), write [Your answer to: their question] for the host to fill in; do not guess and do not deflect.",
   "If the latest guest message needs no answer (thanks, a goodbye, a confirmation), write a brief warm acknowledgement.",
-  "Greet the guest by first name. Two to five short sentences, plain and friendly. English. No sign-off name, no subject line.",
+  "Greet the guest by first name. Short and friendly: one short paragraph per thing they raised. English. No sign-off name, no subject line.",
   "Never use em dashes (—) or spaced en dashes; use commas or periods.",
 ].join(" ");
 
@@ -191,6 +195,7 @@ async function writeSuggestion(input: SuggestInput): Promise<string> {
     `Guest: ${input.guest}`,
     `Property: ${input.property}${input.stay ? ` · ${input.stay}` : ""}`,
     `Knowledge Hub:\n${input.hub.slice(0, 6000) || "(none)"}`,
+    input.practices ? `Standing practices at this property:\n${input.practices.slice(0, 1500)}` : "",
     input.memory ? `Host notes:\n${input.memory.slice(0, 2000)}` : "",
     `Conversation, oldest first:\n${thread}`,
   ].filter(Boolean).join("\n\n");
