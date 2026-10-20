@@ -14,7 +14,7 @@
 
 import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
-import { forgetGuestProcessMemory, loadGuestQueue, openGuestAnswer, readSavedGuestQueue, resetGuestMessaging, submitGuestReply, suggestReply } from "./guestMessaging.js";
+import { forgetGuestProcessMemory, loadGuestQueue, markFollowUpHandled, openGuestAnswer, recordFollowUpHandled, readSavedGuestQueue, resetGuestMessaging, submitGuestReply, suggestReply } from "./guestMessaging.js";
 import { setSuggestModel } from "./guestAi.js";
 import { composeGuestReply, deflectionProblems } from "./guestReplyCompose.js";
 import { capturedCommits, capturedDrafts, capturedMailQueries, resetCaptures } from "./parity/capture.js";
@@ -353,5 +353,32 @@ for (const bad of ["Please check local menus.", "We don't have specific details 
   if (!deflectionProblems(bad).length) fail(`a deflection was allowed: ${bad}`);
 }
 if (deflectionProblems("Thank you for the car details. I'm handling the registration.").length) fail("a real answer was called a deflection");
+
+// ---------- The live screenshot: the host already granted it, and Mark handled must clear the card ----------
+{
+  reset(buildWorld({ rebeccaMessages: [
+    msg("r1", "2026-10-14T15:00:00-04:00", "host", "Shane", HOST_ASK),
+    msg("r2", "2026-10-19T14:10:00-04:00", "guest", "Rebecca", REBECCA_SAYS),
+  ] }));
+  const open = await loadGuestQueue(new Date(NOW));
+  const ask = open.followUps.find((row) => row.reservationId === RES.rebecca);
+  if (!ask) fail("the early-arrival follow-up should be open before anyone answers");
+  // Mark handled: gone from the saved queue at once, and a later read doesn't bring it back.
+  await recordFollowUpHandled(ask.id);
+  if ((await readSavedGuestQueue())?.followUps.some((row) => row.id === ask.id)) fail("a follow-up marked handled stayed in the saved queue");
+  const after = await markFollowUpHandled(ask.id, new Date(NOW));
+  if (after.followUps.some((row) => row.id === ask.id)) fail("Mark handled returned a queue that still holds the follow-up");
+  forgetGuestProcessMemory();
+  if ((await readSavedGuestQueue())?.followUps.some((row) => row.id === ask.id)) fail("a handled follow-up came back from the saved queue");
+  // The host's reply that grants it without using any of its words.
+  reset(buildWorld({ rebeccaMessages: [
+    msg("r1", "2026-10-14T15:00:00-04:00", "host", "Shane", HOST_ASK),
+    msg("r2", "2026-10-19T14:10:00-04:00", "guest", "Rebecca", REBECCA_SAYS),
+    msg("r3", "2026-10-20T13:56:00-04:00", "host", "Shane", "Hey Rebecca! No problem at all. The unit will be ready for you, and we've added your car to the system so you're all set to enter the parking garage. Noted on the gluten allergy. Let us know if you need anything else!"),
+    msg("r4", "2026-10-20T13:57:00-04:00", "guest", "Rebecca", "Thank you so much!"),
+  ] }));
+  const granted = await loadGuestQueue(new Date(NOW));
+  if (granted.followUps.some((row) => row.reservationId === RES.rebecca)) fail(`the host said the unit will be ready, and the follow-up stayed: ${JSON.stringify(granted.followUps.map((row) => row.line))}`);
+}
 
 console.log("Guest fact harness passed.");

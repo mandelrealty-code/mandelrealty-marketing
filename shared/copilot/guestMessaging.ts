@@ -165,6 +165,13 @@ export async function recordFollowUpHandled(id: string): Promise<void> {
 /** Closes a follow-up for good, here, in Checks, and in Overview. */
 export async function markFollowUpHandled(id: string, now = parityNow() ?? new Date()): Promise<GuestQueue> {
   await closeFollowUpEverywhere(id);
+  // Gone from the saved queue at once, so the card disappears on the next look and not at the next full scan.
+  const saved = await readSavedGuestQueue().catch(() => null);
+  if (saved) {
+    rememberedQueue = saved;
+    if (parityEnabled()) paritySavedQueue = saved;
+    await saveGuestQueueSnapshot(saved).catch(() => undefined);
+  }
   return loadGuestQueue(now);
 }
 
@@ -644,14 +651,25 @@ async function groundedOnly(rows: GuestFollowUp[]): Promise<GuestFollowUp[]> {
   return kept;
 }
 
+/** Follow-ups a partner already marked handled never come back from the saved queue, whatever the last scan said. */
+async function withoutHandled(rows: GuestFollowUp[]): Promise<GuestFollowUp[]> {
+  if (!rows.length) return rows;
+  const handled = await handledNow();
+  return rows.filter((row) => !handled.has(row.id));
+}
+
 /** The last saved guest pass. This does not scan Hospitable. */
 export async function readSavedGuestQueue(): Promise<GuestQueue | null> {
-  if (rememberedQueue) return rememberedQueue;
+  if (rememberedQueue) {
+    const open = await withoutHandled(rememberedQueue.followUps ?? []);
+    if (open.length !== (rememberedQueue.followUps ?? []).length) rememberedQueue.followUps = open;
+    return rememberedQueue;
+  }
   const saved = await readGuestQueueSnapshot<GuestQueue>();
   if (!saved || !Array.isArray(saved.waiting) || !Array.isArray(saved.thanks)) return null;
   saved.onGuest = Array.isArray(saved.onGuest) ? saved.onGuest : [];
   saved.held = Array.isArray(saved.held) ? saved.held : [];
-  saved.followUps = await groundedOnly(Array.isArray(saved.followUps) ? saved.followUps : []);
+  saved.followUps = await withoutHandled(await groundedOnly(Array.isArray(saved.followUps) ? saved.followUps : []));
   saved.closedFollowUps = Array.isArray(saved.closedFollowUps) ? saved.closedFollowUps : [];
   saved.properties = Array.isArray(saved.properties) ? saved.properties : [];
   saved.answer = waitingSurfaceText(saved);

@@ -141,7 +141,9 @@ export function readTimeAsk(body: string, at: string, standardIn = STANDARD_IN, 
 /** A host turn that offers, prices, or declines the ask. "I'll check and get back to you" does not count. */
 function hostAnswers(body: string, kind: "early" | "late"): boolean {
   const text = plain(body).replace(MAYBE, " ");
-  const named = TOPIC.test(text) || (kind === "early" ? /\b(early|arriv)/i.test(text) : /\b(late|checkout|check[\s-]*out)/i.test(text));
+  // "The unit will be ready for you" answers an early arrival without using any of its words.
+  const ready = kind === "early" && /\b(?:will be|is|'ll be|are) ready(?: for you| for your arrival)?\b|\bready for (?:you|your arrival)\b/i.test(text);
+  const named = TOPIC.test(text) || ready || (kind === "early" ? /\b(early|arriv)/i.test(text) : /\b(late|checkout|check[\s-]*out)/i.test(text));
   if (!named) return false;
   return PRICE.test(text) || DECLINE.test(text) || OFFER.test(text);
 }
