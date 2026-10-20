@@ -13,6 +13,7 @@ import { parityEnabled } from "./parity/flag.js";
 import { listPrefixedStamps, readPrefixedRow, writePrefixedRow } from "./store.js";
 import { withoutEmDashes } from "./guestTranslate.js";
 import type { ReviewFact } from "./reviewTypes.js";
+import { checkReviewReply, composeReviewReply, critiquesIn, maxWordsFor, newVoiceMemory, praisesIn, rememberReply, reviewLanguage, tierOf, type VoiceMemory } from "./reviewVoice.js";
 
 export type ReviewAiInput = {
   guest: string;
@@ -24,7 +25,8 @@ export type ReviewAiInput = {
   reservation: string;
   hub: string;
   /** The first words of replies already drafted, so this one opens differently. */
-  avoidOpenings?: string[];
+  /** The openings and closings already used by other replies in this queue. */
+  memory?: VoiceMemory;
 };
 
 export type ReviewAssessment = {
@@ -91,14 +93,69 @@ const live: Model = async (system, user, maxTokens) => {
   return (data.content ?? []).filter((block) => block.type === "text").map((block) => block.text ?? "").join("").trim();
 };
 
-const REPLY_SYSTEM = [
-  "You write a short-term-rental host's public reply to an Airbnb guest review, for the host (Mandel Realty Group) to edit before posting.",
-  "Vary the opening so replies don't all sound the same: e.g. \"Thanks for the kind words, Kahina!\", \"Kahina, we're so glad...\", \"What a lovely review, Kahina.\", \"So happy the check-in was easy, Kahina!\". Use the guest's first name once. If you open with thanks and the name, write \"Thank you Kahina for...\" with no commas around the name. Never start the same way as any opening listed under \"Openings already used\". Mention one or two specific things they wrote about, in your own words; never copy their sentences.",
-  "If the review mentions a small issue, acknowledge it briefly and say what was done, but only if the conversation or the host notes show it was done; never invent fixes, refunds, upgrades or promises.",
-  "Never mention private feedback, money, refunds, or anything from the private messages that the guest would not want public.",
-  "Two to four sentences. Warm, plain, professional. Invite them back. No sign-off name, no hashtags, no exclamation overload.",
-  "Never use em dashes or spaced en dashes; use commas or periods. Reply with the reply text only.",
+const PUBLIC_REPLY_SYSTEM = [
+  "You write a short-term-rental host's PUBLIC reply to an Airbnb guest review, for the host (Mandel Realty Group) to edit before posting.",
+  "Use ONLY the review text you are given. You know nothing else about this stay: no messages, no private feedback, no cleaner notes, no records. Never mention anything the review does not mention, even if you think it is true.",
+  "Sound like a real host replying, warm and natural. Open like \"Thanks Edith! We're so glad you had a great stay.\" Use the guest's first name once, usually in the opening. Never open with the stiff \"Name, we're really glad...\" pattern.",
+  "Pick up one or two specific things the guest actually wrote (the balcony, the two bathrooms, the welcome snacks, the location) and respond to those in your own words. Never copy their sentences.",
+  "If a small critique appears INSIDE a good review (windows needing a clean, a tight parking spot, the den layout), give it one brief, warm acknowledgement: no defensiveness, no over-explaining, no promises or refunds. Only critiques that are actually in the review.",
+  "Write the whole reply in the review's own language: a French review gets a fully French reply, never a French greeting with an English body.",
+  "Match the review's length and energy: a two-line review gets a line or two; a detailed review can get a fuller reply. Stay under the word limit.",
+  "Do not repeat any opening sentence or closing sentence listed as already used. No stock closings like \"We hope to welcome you back to Unit 606 the next time you're in Toronto\".",
+  "No em dashes. Reply with the reply text only.",
 ].join(" ");
+
+function publicPrompt(input: { guest: string; review: string; stars: number; property: string; memory: VoiceMemory; feedback: string }): string {
+  const language = reviewLanguage(input.review);
+  const details = praisesIn(input.review).slice(0, 3).map((item) => item.phrase);
+  const critiques = critiquesIn(input.review).slice(0, 2).map((item) => item.phrase);
+  return [
+    `Reply language: ${language.name}`,
+    `Guest first name: ${input.guest.trim().split(/\s+/)[0] || "the guest"}`,
+    input.stars ? `Stars: ${input.stars} of 5` : "",
+    input.property ? `Property: ${input.property}` : "",
+    `Word limit: ${maxWordsFor(input.review)} (${tierOf(input.review)} review)`,
+    details.length ? `Things the guest praised (pick one or two): ${details.join(", ")}` : "",
+    critiques.length ? `Small critiques the guest actually made (acknowledge briefly): ${critiques.join(", ")}` : "No critiques in this review: do not mention any problem.",
+    input.memory.openings.size ? `Opening sentences already used (use a different one):\n${[...input.memory.openings].slice(-14).map((line) => `- ${line}`).join("\n")}` : "",
+    input.memory.closings.size ? `Closing sentences already used (use a different one):\n${[...input.memory.closings].slice(-14).map((line) => `- ${line}`).join("\n")}` : "",
+    input.feedback ? `Your last attempt was rejected: ${input.feedback} Fix this.` : "",
+    `Public review:\n${input.review}`,
+  ].filter(Boolean).join("\n\n");
+}
+
+export type PublicReply = { reply: string; by: "model" | "template" };
+
+/**
+ * The public reply to one review, from that review's text alone (nothing private is ever passed in). A model writes it when
+ * one is available, and its reply is accepted only if it keeps every rule (nothing the review didn't say, the review's
+ * language, the right length, an opening and closing no other reply in the queue uses). Two rejected tries, then the
+ * template writes it. A review in a language the template can't write, with no model, gets no reply at all.
+ */
+export async function writePublicReply(input: { guest: string; review: string; stars: number; property: string; memory?: VoiceMemory }): Promise<PublicReply | null> {
+  const memory = input.memory ?? newVoiceMemory();
+  const language = reviewLanguage(input.review);
+  if (reviewAiAvailable()) {
+    const model = seam ?? live;
+    let feedback = "";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const raw = await model(PUBLIC_REPLY_SYSTEM, publicPrompt({ guest: input.guest, review: input.review, stars: input.stars, property: input.property, memory, feedback }), 500).catch(() => "");
+      const reply = withoutEmDashes(raw).replace(/^["'“”]+|["'“”]+$/g, "").trim();
+      if (!reply) {
+        feedback = "It was empty.";
+        continue;
+      }
+      const check = checkReviewReply({ reply, review: input.review, guest: input.guest, language, memory });
+      if (check.ok) {
+        rememberReply(memory, reply, input.guest);
+        return { reply, by: "model" };
+      }
+      feedback = check.problems.join(" ");
+    }
+  }
+  const composed = composeReviewReply({ guest: input.guest, review: input.review, stars: input.stars, language, memory });
+  return composed ? { reply: composed.reply, by: "template" } : null;
+}
 
 const ASSESS_SYSTEM = [
   "You review a low Airbnb guest review for a short-term-rental host (Mandel Realty Group) before anyone replies.",
@@ -128,7 +185,6 @@ function promptOf(input: ReviewAiInput): string {
     input.reservation ? `Reservation:\n${input.reservation.slice(0, 1500)}` : "",
     input.hub ? `Host notes (Knowledge Hub):\n${input.hub.slice(0, 4000)}` : "",
     `Conversation, oldest first:\n${thread || "(no messages found)"}`,
-    input.avoidOpenings?.length ? `Openings already used (start differently):\n${input.avoidOpenings.slice(-12).map((line) => `- ${line}`).join("\n")}` : "",
   ].filter(Boolean).join("\n\n");
 }
 
@@ -178,15 +234,15 @@ function parseJson(text: string): unknown {
 
 /** A reply draft (4 or 5 stars) or an assessment (3 or fewer). Null when no model is available or it didn't answer. */
 export async function writeReviewAi(input: ReviewAiInput): Promise<ReviewAiResult | null> {
-  if (!reviewAiAvailable()) return null;
+  // The public reply: this review's own text only. The messages, private feedback, reservation and Knowledge Hub below are
+  // for the partner's assessment of a low review and never reach any text a guest or Airbnb can see.
+  const pub = await writePublicReply({ guest: input.guest, review: input.review, stars: input.stars, property: input.property, ...(input.memory ? { memory: input.memory } : {}) });
+  if (!reviewIsFlagged(input.stars)) return pub ? { kind: "reply", reply: pub.reply } : null;
+  if (!reviewAiAvailable() || !pub) return null;
   const model = seam ?? live;
-  if (reviewIsFlagged(input.stars)) {
-    const text = await model(ASSESS_SYSTEM, promptOf(input), 1800).catch(() => "");
-    const assessment = checkedAssessment(parseJson(text), input);
-    return assessment ? { kind: "flag", assessment } : null;
-  }
-  const reply = withoutEmDashes(await model(REPLY_SYSTEM, promptOf(input), 400).catch(() => "")).replace(/^["']|["']$/g, "").trim();
-  return reply ? { kind: "reply", reply } : null;
+  const text = await model(ASSESS_SYSTEM, promptOf(input), 1800).catch(() => "");
+  const assessment = checkedAssessment(parseJson(text), input);
+  return assessment ? { kind: "flag", assessment: { ...assessment, reply: pub.reply } } : null;
 }
 
 // ---------- Kept per review, so a review is written once unless Regenerate is pressed ----------
@@ -203,7 +259,7 @@ type KeptKey = Pick<ReviewAiInput, "review" | "stars"> & { reservationId?: strin
 
 /** Written against one stay: a review matched to its stay later is written again, with the conversation. */
 function keyOf(id: string, input: KeptKey): string {
-  return `${STORE}${id}|${createHash("sha1").update(`v3|${input.stars}|${input.review}|${input.reservationId ?? ""}`).digest("base64url").slice(0, 10)}`;
+  return `${STORE}${id}|${createHash("sha1").update(`v4|${input.stars}|${input.review}|${input.reservationId ?? ""}`).digest("base64url").slice(0, 10)}`;
 }
 
 function parseKept(body: string): ReviewAiResult | null {

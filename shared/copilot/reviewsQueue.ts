@@ -7,7 +7,8 @@ import { listHospitableReviews, respondToHospitableReview } from "../pm/hospitab
 import { scopedStayProperties } from "./dayBoard.js";
 import { loadConversations, type Conversation } from "./stayCheck.js";
 import { copilotHospitableToken, hospitableRead, HOSPITABLE_NOT_CONNECTED } from "./hospitableConnection.js";
-import { flagLine, openingOf, thanksByName, keepReviewAi, keptReviewAi, reviewAiAvailable, reviewIsFlagged, writeReviewAi, type ReviewAiResult, type ReviewAssessment } from "./reviewAi.js";
+import { checkReviewReply, composeReviewReply, newVoiceMemory, rememberReply, reviewLanguage, type VoiceMemory } from "./reviewVoice.js";
+import { flagLine, thanksByName, keepReviewAi, keptReviewAi, reviewAiAvailable, reviewIsFlagged, writePublicReply, writeReviewAi, type ReviewAiResult, type ReviewAssessment } from "./reviewAi.js";
 import { parityEnabled } from "./parity/flag.js";
 import { readPrefixedRow, writePrefixedRow } from "./store.js";
 import { guestPhotoUrl } from "./guestInquiries.js";
@@ -90,8 +91,34 @@ export function reviewSummary(waiting: number, care: number, property = ""): str
   return `${nWord}${where}. ${careWord}`;
 }
 
-export function seedDraft(guest: string, review: string): string {
-  return writeDraft(guest, review);
+/** A reply from this review's own public text alone, in its language. Empty when only a model (or you) can write that language. */
+export function seedDraft(guest: string, review: string, stars = 0): string {
+  return composeReviewReply({ guest, review, stars })?.reply ?? "";
+}
+
+export const SOURCE_PUBLIC = "Written from the public review only. Nothing private is used.";
+
+/** Openings and closings already used by every OTHER reply in the queue, so each one is written to differ. */
+function voiceOfOthers(rows: { id: string; draft: string; guest: string }[], exceptId: string): VoiceMemory {
+  const memory = newVoiceMemory();
+  for (const row of rows) if (row.id !== exceptId && row.draft.trim()) rememberReply(memory, row.draft, row.guest);
+  return memory;
+}
+
+/** The queue as last built, so Regenerate on one review still knows what the others say. */
+let lastQueueRows: ReviewQueueRow[] = [];
+
+/** Every draft written one after another, newest and most urgent first, each aware of the ones before it. */
+function seedQueueDrafts(rows: ReviewQueueRow[]): void {
+  const memory = newVoiceMemory();
+  for (const row of rankReviews(rows)) {
+    const composed = composeReviewReply({ guest: row.guest, review: row.review, stars: row.stars, memory });
+    row.draft = composed?.reply ?? "";
+    if (!composed) {
+      const language = reviewLanguage(row.review);
+      row.sourceLine = `This review is in ${language.name}. Regenerate with AI to draft the reply in ${language.name}, or write it yourself.`;
+    } else row.sourceLine = SOURCE_PUBLIC;
+  }
 }
 
 /** A review needs care when the text complains, or when a dispute is already flagged. */
@@ -110,13 +137,15 @@ export function regenerateDraft(input: {
   if (!input.stay) {
     return { draft: input.current, previous, sourceLine: SOURCE_UNCHANGED, unchanged: true, dispute: "", facts: [] };
   }
-  const composed = guardedReply(input.guest, input.review, input.stay, input.stars);
+  // The public reply is built from the public review alone. The stay (messages, reservation, Hub) only feeds the partner's
+  // dispute facts below; none of it can appear in text a guest or Airbnb sees.
+  const composed = composeReviewReply({ guest: input.guest, review: input.review, stars: input.stars ?? 0 });
   const dispute = disputeReason(input.review, input.stay);
   return {
-    draft: composed.draft,
+    draft: composed?.reply ?? input.current,
     previous,
-    sourceLine: sourceLineFor(input.stay, composed.draft, composed.marks),
-    unchanged: false,
+    sourceLine: composed ? SOURCE_PUBLIC : `This review is in ${reviewLanguage(input.review).name}, so I can't write the reply without a model. Your draft is unchanged.`,
+    unchanged: !composed,
     dispute: dispute.reason,
     facts: dispute.facts,
   };
@@ -165,6 +194,22 @@ export async function regenerateFromConnection(input: {
   property?: string;
   privateFeedback?: string;
 }): Promise<RegeneratedReview> {
+  // A 4 or 5 star reply is written from the public review alone: no conversation, no reservation, no Hospitable read, nothing
+  // private to leak. It is also written aware of every other reply in the queue.
+  if (!input.stars || input.stars >= 4) {
+    const memory = voiceOfOthers(lastQueueRows, input.id ?? "");
+    // The old draft's own wording is avoided too, so Regenerate reads differently.
+    if (input.current.trim()) rememberReply(memory, input.current, input.guest);
+    const pub = await writePublicReply({ guest: input.guest, review: input.review, stars: input.stars ?? 0, property: input.property ?? "", memory });
+    if (!pub) {
+      const language = reviewLanguage(input.review);
+      return { draft: input.current, previous: input.current, sourceLine: `This review is in ${language.name}, so I can't write the reply without a model. Your draft is unchanged.`, unchanged: true, dispute: "", facts: [] };
+    }
+    const text = textDispute(input.review);
+    if (input.id && input.stars) await keepReviewAi(input.id, { review: input.review, stars: input.stars, reservationId: input.reservationId }, { kind: "reply", reply: pub.reply });
+    expireReviewQueue();
+    return { draft: pub.reply, previous: input.current, sourceLine: SOURCE_PUBLIC, unchanged: false, dispute: text.reason, facts: text.facts };
+  }
   const token = await copilotHospitableToken();
   if (!token) {
     return {
@@ -197,11 +242,11 @@ export async function regenerateFromConnection(input: {
   }
   // Regenerate with AI writes afresh from the whole stay; the kept version is replaced.
   if (input.stars && reviewAiAvailable()) {
-    const ai = await writeReviewAi({ guest: input.guest, stars: input.stars, review: input.review, privateFeedback: input.privateFeedback ?? "", property: input.property ?? "", messages: stay.messages, reservation: stay.reservation, hub: stay.hub, avoidOpenings: input.current ? [openingOf(input.current)] : [] });
+    const ai = await writeReviewAi({ guest: input.guest, stars: input.stars, review: input.review, privateFeedback: input.privateFeedback ?? "", property: input.property ?? "", messages: stay.messages, reservation: stay.reservation, hub: stay.hub, memory: voiceOfOthers(lastQueueRows, input.id ?? "") });
     if (ai) {
       if (input.id) await keepReviewAi(input.id, { review: input.review, stars: input.stars, reservationId: input.reservationId }, ai);
       expireReviewQueue();
-      return { ...fromAi(ai, input.stars), previous: input.current, sourceLine: aiSourceLine(stay), unchanged: false };
+      return { ...fromAi(ai, input.stars), previous: input.current, sourceLine: `${SOURCE_PUBLIC} The assessment above reads the conversation; the reply doesn't.`, unchanged: false };
     }
   }
   return regenerateDraft({ ...input, stay });
@@ -259,7 +304,7 @@ export function reviewDate(reviewedAt: string, checkOut: string): { at: string; 
 
 /** Writing budget per load: a review is written once and kept, so later loads are instant. */
 const WRITE_BUDGET_MS = 20_000;
-const QUEUE_SNAPSHOT = "review-queue|snapshot|";
+const QUEUE_SNAPSHOT = "review-queue|snapshot|v4|";
 const QUEUE_FRESH_MS = 10 * 60 * 1000;
 
 let reviewQueueInflight: Promise<ReviewQueuePayload> | null = null;
@@ -367,7 +412,7 @@ async function loadReviewQueueOnce(now = new Date()): Promise<ReviewQueuePayload
         when: "",
         reviewedAt: review.reviewed_at || "",
         review: text,
-        draft: seedDraft(guest, text),
+        draft: "",
         dispute: flagged ? `${stars} star${stars === 1 ? "" : "s"}. Flagged for the team.${flag.reason ? ` ${flag.reason}` : ""}` : flag.reason,
         needsCare: flagged || reviewNeedsCare(text, flag.reason),
         facts: flag.facts,
@@ -396,7 +441,9 @@ async function loadReviewQueueOnce(now = new Date()): Promise<ReviewQueuePayload
     row.reviewedAt = when.at;
     row.when = reviewedLabel(when.at, now, when.fromStay);
   }
+  seedQueueDrafts(reviews);
   await writeDrafts(reviews, now);
+  lastQueueRows = reviews;
   const notes = [
     unreadable.length ? `Couldn't read reviews for ${unreadable.join(", ")}. Open Reviews again in a moment.` : "",
     closed ? `${closed} older review${closed === 1 ? "" : "s"} can no longer be answered on Airbnb, so ${closed === 1 ? "it is" : "they are"} not listed.` : "",
@@ -455,16 +502,21 @@ async function matchStays(rows: ReviewQueueRow[], stayOf: Map<string, string>, n
 /** Each review's AI draft or assessment: kept ones at once, new ones written (three at a time) within the budget. */
 async function writeDrafts(rows: ReviewQueueRow[], now: Date): Promise<void> {
   const started = Date.now();
-  const apply = (row: ReviewQueueRow, ai: ReviewAiResult) => Object.assign(row, fromAi(ai, row.stars), { needsCare: row.flagged || row.needsCare });
+  const keep = (row: ReviewQueueRow) => ({ review: row.review, stars: row.stars, reservationId: row.reservationId });
+  /** Put a model's reply on the row, but only if it still keeps the rules next to the other replies as they stand now. */
+  const apply = (row: ReviewQueueRow, ai: ReviewAiResult): boolean => {
+    const candidate = Object.assign({}, row, fromAi(ai, row.stars));
+    const check = checkReviewReply({ reply: candidate.draft, review: row.review, guest: row.guest, memory: voiceOfOthers(rows, row.id) });
+    if (!check.ok) return false;
+    Object.assign(row, fromAi(ai, row.stars), { needsCare: row.flagged || row.needsCare });
+    return true;
+  };
   const pending: ReviewQueueRow[] = [];
-  // Openings already used on this page, so each new reply starts differently.
-  const openings: string[] = [];
   for (const row of rows) {
-    const kept = await keptReviewAi(row.id, { review: row.review, stars: row.stars, reservationId: row.reservationId });
-    if (kept) {
-      apply(row, kept);
-      openings.push(openingOf(row.draft));
-    } else pending.push(row);
+    // A kept draft is used only if it still keeps today's rules (an older draft that named a private detail never survives).
+    const kept = await keptReviewAi(row.id, keep(row));
+    if (kept && apply(row, kept)) continue;
+    pending.push(row);
   }
   if (!reviewAiAvailable()) return;
   // Newest first, flagged first: the ones the team will read first are written first.
@@ -473,13 +525,24 @@ async function writeDrafts(rows: ReviewQueueRow[], now: Date): Promise<void> {
     for (let row = queue.shift(); row; row = queue.shift()) {
       if (Date.now() - started > WRITE_BUDGET_MS) return;
       try {
-        const stay = await readStay(row.reservationId, row.propertyId);
-        const ai = await writeReviewAi({ guest: row.guest, stars: row.stars, review: row.review, privateFeedback: row.privateFeedback ?? "", property: row.property, messages: stay.messages, reservation: stay.reservation, hub: stay.hub, avoidOpenings: [...openings] });
+        // A 4 or 5 star reply needs no stay: it is written from the public review alone. A low review's assessment reads the
+        // stay for the partner; the reply it carries is still written from the public review alone.
+        const stay = row.stars <= 3 ? await readStay(row.reservationId, row.propertyId) : null;
+        const ai = await writeReviewAi({
+          guest: row.guest, stars: row.stars, review: row.review, privateFeedback: row.privateFeedback ?? "", property: row.property,
+          messages: stay?.messages ?? [], reservation: stay?.reservation ?? "", hub: stay?.hub ?? "", memory: voiceOfOthers(rows, row.id),
+        });
         if (!ai) continue;
-        openings.push(openingOf(ai.kind === "reply" ? ai.reply : ai.assessment.reply));
-        await keepReviewAi(row.id, { review: row.review, stars: row.stars, reservationId: row.reservationId }, ai);
-        apply(row, ai);
-        row.sourceLine = aiSourceLine(stay);
+        if (!apply(row, ai)) {
+          // Another lane took this opening or closing while this one was being written: the template writes it differently.
+          const again = composeReviewReply({ guest: row.guest, review: row.review, stars: row.stars, memory: voiceOfOthers(rows, row.id) });
+          if (!again) continue;
+          row.draft = again.reply;
+          row.sourceLine = SOURCE_PUBLIC;
+          continue;
+        }
+        await keepReviewAi(row.id, keep(row), ai);
+        row.sourceLine = stay ? `${SOURCE_PUBLIC} The assessment reads the conversation; the reply doesn't.` : SOURCE_PUBLIC;
       } catch {
         /* The template draft stays; Regenerate with AI tries again. */
       }
@@ -541,7 +604,6 @@ function reservationNote(raw: unknown): string {
   return parts.join(", ");
 }
 
-type FactMarks = { conversation: string[]; stay: string[] };
 
 const STITCH = /you're right about this part/i;
 const STAY_TEMPLATE = /\b(door codes?|access codes?|lockbox|wi-?fi passwords?|check-?in instructions|check-?out reminders?|please check out by|leave the keys|hope you'?re enjoying|keypad|code is)\b/i;
@@ -553,111 +615,6 @@ const SCAFFOLDS = [
   "thank you for staying with us",
   "we've read what you wrote",
 ];
-
-function guardedReply(guest: string, review: string, stay: StayFacts, stars?: number): { draft: string; marks: FactMarks } {
-  const attempts = [composeReply(guest, review, stay, stars, false), composeReply(guest, review, stay, stars, true)];
-  for (const attempt of attempts) {
-    if (reviewDraftRejected(attempt.draft, guest, stay) || regeneratedDraftFails(attempt.draft, review)) continue;
-    return attempt;
-  }
-  return { draft: writeDraft(guest, review), marks: { conversation: [], stay: [] } };
-}
-
-function composeReply(guest: string, review: string, stay: StayFacts, stars: number | undefined, plain: boolean): { draft: string; marks: FactMarks } {
-  if (positiveReview(review, stars)) {
-    return {
-      draft: plain ? plainThanks(firstName(guest), review) : writeDraft(guest, review),
-      marks: { conversation: [], stay: [] },
-    };
-  }
-  const guestMessages = stay.messages.filter((row) => row.role === "guest" && row.body.trim());
-  const conversationFailed = stay.failed.some((line) => /conversation/i.test(line));
-  const thin = conversationFailed || guestMessages.length < 2;
-  if (thin) return { draft: reviewOnlyDraft(guest, review), marks: { conversation: [], stay: [] } };
-  return claimReply(guest, review, stay, plain);
-}
-
-function positiveReview(review: string, stars?: number): boolean {
-  if (hasComplaint(review)) return false;
-  return stars == null || stars >= 5;
-}
-
-function plainThanks(name: string, review: string): string {
-  const items = specificPraises(review).slice(0, 2);
-  const about = detailPhrase(items);
-  return `${name}, we were glad to hear about ${about}. You are welcome back.`;
-}
-
-function claimReply(guest: string, review: string, stay: StayFacts, plain = false): { draft: string; marks: FactMarks } {
-  const name = firstName(guest);
-  const host = stay.messages.filter((row) => row.role === "host").map((row) => row.body.trim()).filter((body) => body && !isStayTemplate(body));
-  const marks: FactMarks = { conversation: [], stay: [] };
-  const trueBits: string[] = [];
-  const falseBits: string[] = [];
-  const unanswered = /never answered|did not answer|didn't answer|didn’t answer|no one answered|ignored our messages|never replied/i.test(review);
-  if (unanswered && host.length) {
-    falseBits.push("your messages were answered");
-    marks.conversation.push("messages were answered");
-  }
-  if (/sofa|stain/i.test(review) && host.some((body) => /stain|sofa/i.test(body))) {
-    const when = host.some((body) => /stain|sofa/i.test(body) && /this evening/i.test(body)) ? " this evening" : "";
-    trueBits.push(`the sofa was stained, and the sofa stain was cleaned${when}`);
-    marks.conversation.push("sofa stain");
-    if (when) marks.conversation.push("this evening");
-  }
-  if (/charg|\$\d|checkout fee/i.test(review) && /no (later|extra) charge|nothing was added|security hold/i.test(`${stay.reservation} ${host.join(" ")}`)) {
-    falseBits.push("nothing extra was charged at checkout");
-    marks.conversation.push("nothing extra was charged");
-    if (stay.reservation) marks.stay.push("nothing extra was charged");
-  }
-  if (!trueBits.length) {
-    const topics = reviewTopics(review);
-    if (topics) trueBits.push(topics);
-  }
-  const bits = [`${name}, thank you for writing.`];
-  if (trueBits.length) bits.push(`You're right that ${joinList(trueBits)}.`);
-  if (falseBits.length) bits.push(`${cap(joinList(falseBits))}.`);
-  if (!plain && /sofa/i.test(review) && /sofa/i.test(stay.hub) && /closet/i.test(stay.hub)) {
-    bits.push("A spare cover for the sofa is kept in the closet in the hall.");
-    marks.stay.push("spare cover");
-  }
-  if (bits.length === 1) bits.push(reviewOnlyMiddle(review));
-  bits.push("Thank you for staying with us.");
-  return { draft: bits.join(" "), marks };
-}
-
-/** The AI read the whole stay: say what it had. */
-function aiSourceLine(stay: StayFacts): string {
-  const base = stay.messages.some((row) => row.body.trim()) ? SOURCE_FULL : SOURCE_ALONE;
-  return [base, ...stay.failed].join(" ");
-}
-
-function sourceLineFor(stay: StayFacts, draft: string, marks: FactMarks): string {
-  const blob = draft.toLowerCase();
-  const conversation = marks.conversation.some((fact) => fact && blob.includes(fact.toLowerCase()));
-  const record = marks.stay.some((fact) => fact && blob.includes(fact.toLowerCase()));
-  const guestMessages = stay.messages.filter((row) => row.role === "guest" && row.body.trim());
-  const conversationFailed = stay.failed.some((line) => /conversation/i.test(line));
-  const base = conversation && record
-    ? SOURCE_FULL
-    : conversation
-      ? "Based on the full conversation."
-      : record
-        ? "Based on the stay record."
-        : conversationFailed
-          ? "Based on the review alone. The conversation read failed."
-          : guestMessages.length
-            ? SOURCE_REVIEW
-            : SOURCE_ALONE;
-  const notes = stay.failed.filter((line) => {
-    const bare = line.replace(/\.$/, "").toLowerCase();
-    if (base.toLowerCase().includes(bare)) return false;
-    if (conversation && /conversation/i.test(line)) return false;
-    if (record && /knowledge hub|reservation/i.test(line)) return false;
-    return true;
-  });
-  return notes.length ? `${base.replace(/\.$/, "")}. ${notes.join(" ")}` : base;
-}
 
 function repeatedScaffold(draft: string): boolean {
   const lower = draft.toLowerCase();
@@ -686,78 +643,6 @@ function words(text: string): string[] {
 
 function isStayTemplate(text: string): boolean {
   return STAY_TEMPLATE.test(text);
-}
-
-function hasComplaint(review: string): boolean {
-  return /never answered|did not answer|didn't answer|didn’t answer|no one answered|ignored|stained|stain|dirty|dirt|weak|too soft|too hard|broken|smell|noisy|problem|issue|disappoint|terrible|awful|worst|refund|\bcharg|wasn'?t|weren'?t|not clean|didn'?t|did not|harder|difficult/i.test(review);
-}
-
-function joinList(items: string[]): string {
-  if (items.length === 1) return items[0];
-  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
-}
-
-function cap(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-function reviewOnlyDraft(guest: string, review: string): string {
-  return writeDraft(guest, review);
-}
-
-function reviewOnlyMiddle(review: string): string {
-  const complaints = specificComplaints(review);
-  if (complaints.length) return `Sorry ${detailPhrase(complaints)}.`;
-  const praises = specificPraises(review);
-  if (praises.length) return `We are happy to hear about ${detailPhrase(praises)}.`;
-  return "Thank you for telling us how the stay went.";
-}
-
-function reviewTopics(review: string): string {
-  const found = specificComplaints(review);
-  return found.length ? detailPhrase(found) : "";
-}
-
-function writeDraft(guest: string, review: string): string {
-  const name = firstName(guest);
-  const french = isFrenchReview(review);
-  const complaints = specificComplaints(review);
-  const praises = specificPraises(review, french);
-  if (french) return frenchDraft(name, praises, complaints);
-  if (complaints.length) {
-    const point = detailPhrase(complaints);
-    const kind = praises.length ? `${name}, thank you for the kind words about ${detailPhrase(praises)}.` : `${name}, thank you for the honest note.`;
-    return `${kind} Sorry ${point}. We hope to welcome you back.`;
-  }
-  return kindThanks(name, praises);
-}
-
-function kindThanks(name: string, praises: string[]): string {
-  const about = detailPhrase(praises.slice(0, 2));
-  return `${name}, thank you for the kind words about ${about}. ${welcomeBack(praises)}`;
-}
-
-function welcomeBack(praises: string[]): string {
-  const tag = praises.join(" ").toLowerCase();
-  if (/location/.test(tag) && /host/.test(tag)) return "You are welcome back whenever you travel again.";
-  if (/mattress/.test(tag)) return "You are welcome back when you want another good night.";
-  if (/check-in/.test(tag)) return "You are welcome back, and we will keep the arrival simple.";
-  if (/clean/.test(tag) && /bed/.test(tag)) return "You are welcome back for another restful visit.";
-  if (/clean/.test(tag)) return "You are welcome back to a place we take care of.";
-  if (/location/.test(tag)) return "You are welcome back the next time you visit.";
-  if (/host/.test(tag)) return "You are welcome back, and we will be glad to see you.";
-  if (/\bbed\b/.test(tag)) return "You are welcome back for another comfortable night.";
-  if (/responsive/.test(tag)) return "You are welcome back whenever you need a place in the city.";
-  return "You are welcome back anytime.";
-}
-
-function frenchDraft(name: string, praises: string[], complaints: string[]): string {
-  if (complaints.length) {
-    const point = detailPhrase(complaints, true);
-    return `${name}, merci pour votre message. Désolé pour ${point}. Au plaisir de vous accueillir de nouveau.`;
-  }
-  const details = detailPhrase(praises, true);
-  return `${name}, un grand merci pour ${details}. Au plaisir de vous accueillir de nouveau.`;
 }
 
 function specificComplaints(review: string): string[] {
@@ -826,12 +711,6 @@ function splitClauses(review: string): string[] {
     .split(/[.!?;]+|\s+\b(?:and|but|et|mais)\b\s+/i)
     .map((part) => part.replace(/\s+/g, " ").trim())
     .filter((part) => part.length > 1);
-}
-
-function detailPhrase(items: string[], french = false): string {
-  if (!items.length) return french ? "le séjour" : "the stay";
-  if (items.length === 1) return items[0];
-  return `${items[0]} ${french ? "et" : "and"} ${items[1]}`;
 }
 
 function isFrenchReview(text: string): boolean {
