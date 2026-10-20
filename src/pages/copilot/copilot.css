@@ -6282,6 +6282,7 @@ html.cp-app[data-cp-theme="dark"] #root {
 
 .cp-rv-prev button,
 .cp-rv-actions button,
+.cp-rv-actions select,
 .cp-rv-facts button {
   align-self: flex-start;
   height: 28px;
@@ -6307,6 +6308,18 @@ html.cp-app[data-cp-theme="dark"] #root {
   height: 32px;
   padding: 0 14px;
   font-size: 13px;
+}
+
+.cp-rv-actions select {
+  height: 32px;
+  padding: 0 10px;
+  font-family: inherit;
+  appearance: auto;
+}
+
+.cp-rv-actions select:disabled {
+  color: var(--muted);
+  cursor: default;
 }
 
 .cp-rv-actions button.submit {

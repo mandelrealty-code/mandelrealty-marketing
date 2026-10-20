@@ -69,6 +69,7 @@ import { commitPurchase, failedText, heldText, holdPurchase, offerAlternative, s
 import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitable, sendReservationMessage } from "../copilot/hospitableAgent.js";
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
+import { adjustDraft, ADJUST_KINDS, type AdjustKind } from "../copilot/reviewAdjust.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
 import { cachedThreadsForSampling } from "../copilot/stayCheck.js";
@@ -645,6 +646,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         privateFeedback: String(body.privateFeedback ?? ""),
       });
       return res.status(200).json(result);
+    }
+
+    if (op === "reviews-adjust") {
+      const kind = String(body.kind ?? "") as AdjustKind;
+      if (!ADJUST_KINDS.includes(kind)) return res.status(400).json({ error: "Unknown adjustment." });
+      const current = String(body.current ?? "");
+      const result = adjustDraft({ draft: current, review: String(body.review ?? ""), guest: String(body.guest ?? ""), stars: Number(body.stars ?? 0), kind });
+      return res.status(200).json({ draft: result.draft, previous: current, changed: result.changed, note: result.note });
     }
 
     if (op === "reviews-submit") {

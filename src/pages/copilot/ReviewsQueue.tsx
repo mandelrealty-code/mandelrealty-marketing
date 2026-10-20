@@ -38,6 +38,7 @@ export function ReviewsQueue({
   note = "",
   loading = false,
   onRegenerate,
+  onAdjust,
   onSubmit,
   onPrepare,
   onSkip,
@@ -50,6 +51,7 @@ export function ReviewsQueue({
   note?: string;
   loading?: boolean;
   onRegenerate?: (row: ReviewQueueRow, current: string) => Promise<{ draft: string; previous: string; sourceLine: string; dispute: string; facts: ReviewFact[]; error: string; retaliation?: ReviewQueueRow["retaliation"]; removalRequest?: string }>;
+  onAdjust?: (row: ReviewQueueRow, current: string, kind: string) => Promise<{ draft: string; changed: boolean; note: string }>;
   onSubmit?: (row: ReviewQueueRow, text: string) => Promise<void>;
   onPrepare?: (row: ReviewQueueRow) => Promise<{ dispute: string; facts: ReviewFact[]; error: string }>;
   onSkip?: (row: ReviewQueueRow) => Promise<void>;
@@ -153,6 +155,29 @@ export function ReviewsQueue({
         ...prev,
         [row.id]: { ...stateOf(row), working: false, error: err instanceof Error ? err.message : "Couldn't read Hospitable. Your draft is unchanged." },
       }));
+    }
+  }
+
+  async function adjust(row: ReviewQueueRow, kind: string) {
+    const current = stateOf(row);
+    if (current.working || !onAdjust || !current.draft.trim()) return;
+    setLocal((prev) => ({ ...prev, [row.id]: { ...stateOf(row), working: true, editing: false, showPrev: false, error: "" } }));
+    try {
+      const result = await onAdjust(row, current.draft, kind);
+      setLocal((prev) => ({
+        ...prev,
+        [row.id]: {
+          ...stateOf(row),
+          working: false,
+          editing: false,
+          showPrev: false,
+          draft: result.changed ? result.draft : current.draft,
+          previous: result.changed ? current.draft : current.previous,
+          source: result.note || current.source,
+        },
+      }));
+    } catch {
+      setLocal((prev) => ({ ...prev, [row.id]: { ...stateOf(row), working: false, error: "Couldn't adjust the draft. It is unchanged." } }));
     }
   }
 
@@ -293,6 +318,14 @@ export function ReviewsQueue({
                     <button type="button" className="submit" data-review-id={row.id} disabled={current.working || current.status === "posting"} onClick={() => void submit(row)}>{current.status === "posting" ? "Posting…" : "Submit"}</button>
                     <button type="button" disabled={current.working} onClick={() => setLocal((prev) => ({ ...prev, [row.id]: { ...current, editing: !current.editing } }))}>{current.editing ? "Done" : "Edit"}</button>
                     <button type="button" disabled={current.working} onClick={() => void regenerate(row)}>{current.working ? "Reading the conversation…" : "Regenerate with AI"}</button>
+                    <button type="button" disabled={current.working || !current.draft.trim()} onClick={() => void adjust(row, "shorter")}>Shorter</button>
+                    <select aria-label="Adjust the draft" value="" disabled={current.working || !current.draft.trim()} onChange={(event) => { const kind = event.target.value; if (kind) void adjust(row, kind); }}>
+                      <option value="">Adjust</option>
+                      <option value="personal">More personal</option>
+                      <option value="friendlier">Friendlier</option>
+                      <option value="casual">More casual</option>
+                      <option value="professional">More professional</option>
+                    </select>
                     <button type="button" onClick={() => { const next = nextOpen(row.id); setLocal((prev) => ({ ...prev, [row.id]: { ...current, status: "skipped", editing: false, factsOpen: false } })); void onSkip?.(row); focusSubmit(next); }}>Skip for now</button>
                     {current.dispute ? (
                       <div className="cp-rv-dispute">

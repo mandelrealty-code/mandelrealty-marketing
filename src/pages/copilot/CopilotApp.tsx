@@ -2497,6 +2497,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         error: result.unchanged ? result.sourceLine : "",
                       };
                     }}
+                    onAdjust={async (row, current, kind) => api<{ draft: string; changed: boolean; note: string }>("reviews-adjust", { kind, current, review: row.review, guest: row.guest, stars: row.stars })}
                     onSubmit={async (row, text) => {
                       await api("reviews-submit", { id: row.id, text, guest: row.guest, property: row.property, stars: row.stars });
                     }}

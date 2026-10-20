@@ -20,6 +20,7 @@ import {
 } from "./reviewsQueue.js";
 import { checkedAssessment, thanksByName, resetReviewAi, setReviewModel, writeReviewAi } from "./reviewAi.js";
 import { checkReviewReply, newVoiceMemory, reviewLanguage, sentencesOf, norm, withoutName } from "./reviewVoice.js";
+import { adjustDraft, ADJUST_KINDS } from "./reviewAdjust.js";
 import { installWorld, type ParityReview } from "./parity/world.js";
 import { NO_REVIEWS_SYNCED } from "./reviewTypes.js";
 
@@ -342,5 +343,48 @@ setReviewModel(null);
 if (thanksByName("Thank you, Kahina, for the wonderful review.") !== "Thank you Kahina for the wonderful review.") fail("commas kept around the name");
 if (thanksByName("Thank you, Marty and Jenny, for the kind words.") !== "Thank you Marty and Jenny for the kind words.") fail("two names split");
 if (thanksByName("Thank you for staying, Don.") !== "Thank you for staying, Don.") fail("a later comma was removed");
+
+// ---------- Adjust: length and tone only, chained, idempotent, grounded ----------
+
+const postsBefore = posts.length;
+const lindsayReview = "Perfect for our family trip. The kids loved the games in the den and the downtown location was ideal. The den was a bit cramped though.";
+const lindsayLong = "Thank you Lindsay, we are really glad your family chose our home for this trip. It was lovely to hear that everyone settled in so well. We are so happy the games were such a hit with the kids. Thanks for mentioning the den, we will look into it. We hope the downtown location suited you. Safe travels!";
+const short = adjustDraft({ draft: lindsayLong, review: lindsayReview, guest: "Lindsay", stars: 5, kind: "shorter" });
+const shortSentences = sentencesOf(short.draft);
+if (!short.changed || shortSentences.length < 2 || shortSentences.length > 3) fail(`Lindsay shorter shape: ${short.draft}`);
+if (!/family/i.test(short.draft) || !/games/i.test(short.draft) || !/Lindsay/.test(short.draft)) fail(`Lindsay shorter lost her family or the games: ${short.draft}`);
+if (short.draft.split(/\s+/).length > lindsayLong.split(/\s+/).length * 0.65) fail(`Lindsay shorter is not about half: ${short.draft}`);
+const stiff = "Lindsay, we're really glad the family loved the games.";
+const warmer = adjustDraft({ draft: stiff, review: lindsayReview, guest: "Lindsay", stars: 5, kind: "personal" });
+if (warmer.draft !== "Thanks Lindsay! We're really glad the family loved the games.") fail(`stiff to personal: ${warmer.draft}`);
+const samuelShort = "Thanks Samuel, that's great to hear! Wonderful that the location stood out for you.";
+const samuelAgain = adjustDraft({ draft: samuelShort, review: "Amazing location. Great host.", guest: "Samuel", stars: 5, kind: "shorter" });
+if (samuelAgain.changed || samuelAgain.draft !== samuelShort) fail(`Samuel shorter changed a short reply: ${samuelAgain.draft}`);
+for (const kind of ADJUST_KINDS) {
+  const once = adjustDraft({ draft: lindsayLong, review: lindsayReview, guest: "Lindsay", stars: 5, kind });
+  const twice = adjustDraft({ draft: once.draft, review: lindsayReview, guest: "Lindsay", stars: 5, kind });
+  if (twice.draft !== once.draft) fail(`${kind} twice stacked: ${once.draft} | ${twice.draft}`);
+  if (/\u2014/.test(once.draft) || LEAK.test(once.draft)) fail(`${kind} broke grounding`);
+  if (!/Lindsay/.test(once.draft) || !/(games|family)/i.test(once.draft)) fail(`${kind} lost the facts: ${once.draft}`);
+}
+const casual = adjustDraft({ draft: lindsayLong, review: lindsayReview, guest: "Lindsay", stars: 5, kind: "casual" });
+if (/we are|We are|Thank you/.test(casual.draft) || !/we're/i.test(casual.draft)) fail(`casual: ${casual.draft}`);
+const formal = adjustDraft({ draft: "Thanks Lindsay! We're so glad the family loved the games, we'll keep an eye on the den!", review: lindsayReview, guest: "Lindsay", stars: 5, kind: "professional" });
+if (/!|We're|we'll/.test(formal.draft) || !/Thank you Lindsay/.test(formal.draft) || !/games/.test(formal.draft)) fail(`professional: ${formal.draft}`);
+const friendly = adjustDraft({ draft: "Thank you Lindsay. We are glad the family loved the games. Safe travels.", review: lindsayReview, guest: "Lindsay", stars: 5, kind: "friendlier" });
+if (!friendly.draft.endsWith("!") || !/so glad/.test(friendly.draft) || !/games/.test(friendly.draft)) fail(`friendlier: ${friendly.draft}`);
+// Chained on edits the partner made: Shorter, then Friendlier, each on the current text.
+const edited = `${lindsayLong} Our hosts are looking forward to the next visit.`;
+const step1 = adjustDraft({ draft: edited, review: lindsayReview, guest: "Lindsay", stars: 5, kind: "shorter" });
+const step2 = adjustDraft({ draft: step1.draft, review: lindsayReview, guest: "Lindsay", stars: 5, kind: "friendlier" });
+if (!step1.changed || !step2.changed || step2.draft.split(/\s+/).length > step1.draft.split(/\s+/).length + 3) fail(`chain: ${step1.draft} | ${step2.draft}`);
+// A French reply is adjusted in French, and an adjustment never adds a detail the review didn't name.
+const frAdj = adjustDraft({ draft: byId.get("virginie")!.draft, review: FIX[1]!.review, guest: "Virginie", stars: 5, kind: "professional" });
+if (/\b(the|and|thanks)\b/i.test(frAdj.draft)) fail(`French adjust: ${frAdj.draft}`);
+for (const kind of ADJUST_KINDS) {
+  const out = adjustDraft({ draft: byId.get("henry")!.draft, review: FIX[3]!.review, guest: "Henry", stars: 5, kind });
+  if (LEAK.test(out.draft) || /(parking|pool|gym|kitchen|elevator)/i.test(out.draft)) fail(`${kind} added a detail: ${out.draft}`);
+}
+if (posts.length !== postsBefore) fail("adjust posted");
 
 console.log("Reviews harness passed.");
