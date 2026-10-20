@@ -32,6 +32,7 @@
     "grocery-harness": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/groceryHarness.ts",
     "rls-harness": "tsx shared/copilot/rlsHarness.ts",
     "guestfact-harness": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/guestFactHarness.ts",
+    "improve-harness": "COPILOT_PARITY=1 NODE_ENV=test tsx shared/copilot/guestImproveHarness.ts",
     "connectors": "tsx shared/copilot/connectorHealthMain.ts"
   },
   "dependencies": {

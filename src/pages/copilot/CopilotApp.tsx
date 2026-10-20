@@ -2344,8 +2344,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       }).catch(() => undefined);
                     }}
                     onImprove={async (text) => {
-                      const result = await api<{ draft: string }>("guests-improve", { text, guest: guestAnswer?.first || guestAnswer?.guest || "", property: guestAnswer?.property ?? "" });
-                      return result.draft ?? text;
+                      // What the guest wrote since the last host reply (in order, in English), and how the hosts have been writing.
+                      const thread = guestAnswer?.thread ?? [];
+                      const lastHost = thread.map((bubble) => bubble.role).lastIndexOf("host");
+                      const guestMessage = thread.slice(lastHost + 1).filter((bubble) => bubble.role === "guest").map((bubble) => bubble.english || bubble.text).join("\n");
+                      const voice = thread.filter((bubble) => bubble.role === "host").map((bubble) => bubble.text).slice(-3);
+                      const result = await api<{ draft: string; unanswered?: string }>("guests-improve", { text, guest: guestAnswer?.first || guestAnswer?.guest || "", property: guestAnswer?.property ?? "", guestMessage, voice });
+                      return { text: result.draft ?? text, unanswered: result.unanswered ?? "" };
                     }}
                     onHold={async (id) => {
                       await api("guests-hold", { id });

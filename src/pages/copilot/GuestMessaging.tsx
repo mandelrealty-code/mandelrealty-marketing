@@ -40,7 +40,7 @@ export function GuestMessaging({
   onRefresh?: () => void;
   onHandleFollowUp?: (id: string) => Promise<void>;
   onInquiry?: (id: string, action: "approve" | "decline") => Promise<string>;
-  onImprove?: (text: string) => Promise<string>;
+  onImprove?: (text: string) => Promise<{ text: string; unanswered: string }>;
   onMarkHandled?: (handled: boolean) => Promise<void>;
   onSuggest?: () => Promise<{ draft: string; line?: string }>;
   onHubSave?: HubSave;
@@ -320,7 +320,7 @@ function Thread({
   onSubmit: (draft: string, fact: string, attachments: GuestFile[]) => Promise<SubmitResult>;
   onHandle: () => Promise<void>;
   onInquiry: (action: "approve" | "decline") => Promise<string>;
-  onImprove?: (text: string) => Promise<string>;
+  onImprove?: (text: string) => Promise<{ text: string; unanswered: string }>;
   onMarkHandled?: (handled: boolean) => Promise<void>;
   onSuggest?: () => Promise<{ draft: string; line?: string }>;
   onHubSave?: HubSave;
@@ -331,6 +331,9 @@ function Thread({
   const [text, setText] = useState(needsReply ? answer.draft : "");
   const [edited, setEdited] = useState(false);
   const [improving, setImproving] = useState(false);
+  // Improve replaces the draft; the partner's own words stay one tap away, and anything still unanswered is named.
+  const [original, setOriginal] = useState<string | null>(null);
+  const [unanswered, setUnanswered] = useState("");
   const [files, setFiles] = useState<GuestFile[]>([]);
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
@@ -349,6 +352,8 @@ function Thread({
   useEffect(() => {
     setText(answer.lane === "reply" ? answer.draft : "");
     setEdited(false);
+    setOriginal(null);
+    setUnanswered("");
     setFail("");
     setSent("");
     setFiles([]);
@@ -430,6 +435,13 @@ function Thread({
           ) : null}
           {follow?.kind === "inquiry" ? <InquiryCard item={follow} now={tick} busy={busy} onInquiry={onInquiry} onBusy={setBusy} onFail={setFail} /> : null}
           {note ? <p className="cp-gt-closed" aria-live="polite"><strong>Follow-up closed</strong> · {note}</p> : null}
+          {original !== null ? (
+            <p className="cp-gt-src" aria-live="polite">
+              Improved. Nothing was sent.
+              <button type="button" className="cp-gt-undo" onClick={() => { setText(original); setOriginal(null); setUnanswered(""); setEdited(true); }}>Restore my draft</button>
+            </p>
+          ) : null}
+          {unanswered ? <p className="cp-gt-src" aria-live="polite">{unanswered}</p> : null}
           {showDraft ? <p className="cp-gt-src">Copilot draft · from the {answer.property} Knowledge Hub and the full conversation</p> : null}
           {idle ? (
             <p className="cp-gt-idle" aria-live="polite">
@@ -474,11 +486,14 @@ function Thread({
                   if (!onImprove || empty || improving) return;
                   setImproving(true);
                   setFail("");
+                  const before = text;
                   void onImprove(text).then((next) => {
-                    if (next.trim()) {
-                      setText(next);
+                    if (next.text.trim() && next.text.trim() !== before.trim()) {
+                      setOriginal(before);
+                      setText(next.text);
                       setEdited(true);
                     }
+                    setUnanswered(next.unanswered);
                   }).catch((err: unknown) => {
                     setFail(err instanceof Error ? err.message : "The draft was not changed.");
                   }).finally(() => setImproving(false));

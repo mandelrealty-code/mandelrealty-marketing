@@ -74,7 +74,7 @@ import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
 import { cachedThreadsForSampling } from "../copilot/stayCheck.js";
 import { answerGuestFact, topicOf as guestFactTopic } from "../copilot/guestFacts.js";
 import { findAutomatedTemplates } from "../copilot/automationSamples.js";
-import { suggestReply, markThreadHandled, unmarkThreadHandled, beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestMessage, liveGuestUpdate, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
+import { suggestReply, markThreadHandled, unmarkThreadHandled, beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestReview, liveGuestUpdate, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
 import { deleteMemoryFile, listMemoryFiles, listStoredMemoryFiles, promptLines, takeMemoryTurn } from "../copilot/memoryFiles.js";
 import { makePicture } from "../copilot/picture.js";
@@ -545,8 +545,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     if (op === "guests-improve") {
-      const draft = await improveGuestMessage(String(body.text ?? ""), String(body.guest ?? ""), String(body.property ?? ""));
-      return res.status(200).json({ draft });
+      // The page sends what the guest wrote and how the hosts have been writing, so the rewrite answers in the guest's order, in the host's voice.
+      const voice = Array.isArray(body.voice) ? body.voice.map((line) => String(line)).filter(Boolean).slice(-3) : [];
+      const improved = await improveGuestReview(String(body.text ?? ""), String(body.guest ?? ""), String(body.property ?? ""), { guestMessage: String(body.guestMessage ?? ""), voice });
+      return res.status(200).json({ draft: improved.text, unanswered: improved.unanswered, changed: improved.changed });
     }
 
     if (op === "guests-hub-save") {

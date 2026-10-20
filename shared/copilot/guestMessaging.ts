@@ -10,6 +10,7 @@ import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIn
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
 import { composeGuestReply, deflectionProblems, GUEST_BLANK, sameDayDepartureFor } from "./guestReplyCompose.js";
 import { BLUE_JAYS_PROCESS } from "./processFacts.js";
+import { improvementProblems, isCleanDraft, rewriteDraft, unansweredLine } from "./guestImprove.js";
 import { detectFollowUps, orderFollowUps, repaintFollowUp, verifyFollowUp, type FollowUpStay } from "./guestFollowUps.js";
 import { bookingRequestFollowUp, guestPhotoUrl, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
 import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, readPrefixedRow, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, writePrefixedRow, type InquiryVerify } from "./store.js";
@@ -389,25 +390,19 @@ export function replyFromAnswer(guest: string, answer: string): string {
   return `Hi ${name}, ${answer.trim()}`;
 }
 
-const KEPT_FACT = /\$\d[\d,]*(?:\.\d+)?|\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*\d{4})?|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\s*(?:AM|PM)\b/gi;
-
-/** Polishes the partner's current reply. Dates and amounts stay character for character. Nothing is sent. */
-export function improveGuestDraft(text: string, guest = ""): string {
+/**
+ * Improve, with no model: the same rewrite the model path falls back to. Clearer and warmer, sentences finished, the guest's
+ * points answered in the order they raised them. Every fact stays exactly; if the rewrite ever lost one, the partner's own
+ * text is returned instead.
+ */
+export function improveGuestDraft(text: string, guest = "", guestMessage = ""): string {
   const source = text.trim();
   if (!source) return "";
-  const kept: string[] = [];
-  const masked = source.replace(KEPT_FACT, (match) => {
-    const token = `\u0000${kept.length}\u0000`;
-    kept.push(match);
-    return token;
-  });
-  let polished = polishWording(masked, guest);
-  polished = polished.replace(/\u0000(\d+)\u0000/g, (_match, index: string) => kept[Number(index)] ?? "");
-  if (kept.some((fact) => !polished.includes(fact))) return source;
-  return polished === source ? source : polished;
+  const rewritten = withoutEmDashes(rewriteDraft(source, { first: guest.trim().split(/\s+/)[0] || "", guestMessage }));
+  return improvementProblems(source, rewritten).length ? source : rewritten;
 }
 
-type ImproveModel = (input: { text: string; guest: string; property: string }) => Promise<string>;
+type ImproveModel = (input: { text: string; guest: string; property: string; guestMessage?: string; voice?: string[] }) => Promise<string>;
 let improveModel: ImproveModel | null = null;
 
 /** Test seam: the parity suite supplies the rewrite instead of calling Claude. */
@@ -416,15 +411,16 @@ export function setImproveModel(next: ImproveModel | null): void {
 }
 
 const IMPROVE_SYSTEM = [
-  "Never use em dashes (—) or spaced en dashes; use commas or periods.",
-  "You polish a short-term rental host's message to a guest before it is sent, the way Hospitable's and Airbnb's message assistants do.",
-  "Fix grammar, punctuation and flow. Make it warm, clear and professional, and keep it about as short as the original.",
-  "Keep every fact exactly as written: names, numbers, prices, dates, times, unit and spot numbers, links and codes. Do not add any new fact, promise, offer, apology or instruction.",
-  "Greet the guest by first name if a name is given and the message doesn't already greet them. Keep the host's meaning and voice; don't make it longer than it needs to be.",
+  "Never use em dashes (\u2014) or spaced en dashes; use commas or periods.",
+  "You rewrite a short-term-rental host's draft reply to a guest so it is genuinely better, not just proofread: clear, warm, in complete sentences, well structured, and in the host's usual voice (examples of the host's past messages are given).",
+  "Answer the guest's points in the order the guest raised them.",
+  "HARD LIMITS. Keep every fact, date, time, price, number, code, name and decision in the host's draft exactly as written. Never add a commitment, offer, fact, promise or apology the host did not write. Never soften, hedge or drop something the host decided: a yes stays a yes, a no stays a no.",
+  "If part of the guest's message is left unanswered by the draft, do NOT invent an answer.",
+  "If the draft is already clean and complete, return it nearly unchanged: do not pad it with new sentences.",
   "Reply with the message only: no quotes, no notes, no options.",
 ].join(" ");
 
-async function claudeImprove(input: { text: string; guest: string; property: string }): Promise<string> {
+async function claudeImprove(input: { text: string; guest: string; property: string; guestMessage?: string; voice?: string[] }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) return "";
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -432,10 +428,19 @@ async function claudeImprove(input: { text: string; guest: string; property: str
     headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 600,
+      max_tokens: 700,
       temperature: 0.3,
       system: IMPROVE_SYSTEM,
-      messages: [{ role: "user", content: `Guest first name: ${input.guest || "unknown"}${input.property ? `\nProperty: ${input.property}` : ""}\n\nHost's message:\n${input.text}` }],
+      messages: [{
+        role: "user",
+        content: [
+          `Guest first name: ${input.guest || "unknown"}`,
+          input.property ? `Property: ${input.property}` : "",
+          input.guestMessage ? `What the guest wrote (answer their points in this order):\n${input.guestMessage.slice(0, 1500)}` : "",
+          input.voice?.length ? `How the host usually writes (match this voice):\n${input.voice.slice(-3).map((line) => `- ${line.slice(0, 300)}`).join("\n")}` : "",
+          `Host's draft to rewrite:\n${input.text}`,
+        ].filter(Boolean).join("\n\n"),
+      }],
     }),
   });
   if (!res.ok) return "";
@@ -443,52 +448,47 @@ async function claudeImprove(input: { text: string; guest: string; property: str
   return (data.content ?? []).filter((block) => block.type === "text").map((block) => block.text ?? "").join("").trim();
 }
 
-/** Every fact the partner wrote that a rewrite must carry over unchanged: amounts, dates, times, links, numbers. */
-function factsIn(text: string): string[] {
-  const links = text.match(/https?:\/\/\S+/g) ?? [];
-  const numbers = text.replace(/https?:\/\/\S+/g, " ").match(/\$?\d[\d,.:]*(?:\s?(?:am|pm))?/gi) ?? [];
-  const named = text.match(KEPT_FACT) ?? [];
-  return [...new Set([...links, ...named, ...numbers].map((fact) => fact.replace(/[.,]+$/, "")))].filter(Boolean);
-}
+export type ImprovedDraft = {
+  /** What replaces the draft in the box. */
+  text: string;
+  /** One plain line naming what the guest raised that the text still doesn't answer, or "". */
+  unanswered: string;
+  /** False when the draft was already clean and came back as it was. */
+  changed: boolean;
+};
 
 /**
- * Improve with AI: Claude rewrites what the partner typed. The rewrite is used only when it keeps
- * every fact; otherwise, or without a model, the plain wording pass runs. Nothing is sent.
+ * Improve: a rewrite for quality. The improved text replaces the draft (the page keeps the partner's original one tap away) and
+ * Improve itself sends nothing. A model's rewrite is used only when it keeps every fact and adds nothing: no new number, no
+ * commitment, offer or apology, no hedge, no lost "no". Otherwise the rewrite is made without a model. A draft that is already
+ * clean and complete is returned as it is.
  */
-export async function improveGuestMessage(text: string, guest = "", property = ""): Promise<string> {
+export async function improveGuestReview(
+  text: string,
+  guest = "",
+  property = "",
+  context: { guestMessage?: string; voice?: string[] } = {},
+): Promise<ImprovedDraft> {
   const source = text.trim();
-  if (!source) return "";
+  if (!source) return { text: "", unanswered: "", changed: false };
   const first = guest.trim().split(/\s+/)[0] || "";
+  const guestMessage = context.guestMessage ?? "";
+  if (isCleanDraft(source)) return { text: source, unanswered: unansweredLine(guestMessage, source), changed: false };
   let rewritten = "";
   try {
-    rewritten = improveModel ? await improveModel({ text: source, guest: first, property }) : parityEnabled() ? "" : await claudeImprove({ text: source, guest: first, property });
+    const input = { text: source, guest: first, property, guestMessage, voice: context.voice ?? [] };
+    rewritten = improveModel ? await improveModel(input) : parityEnabled() ? "" : await claudeImprove(input);
   } catch {
     rewritten = "";
   }
-  rewritten = rewritten.replace(/^["“]|["”]$/g, "").trim();
-  const keeps = (candidate: string) => factsIn(source).every((fact) => candidate.includes(fact));
-  if (rewritten && keeps(rewritten) && rewritten.length <= source.length * 2 + 160) return withoutEmDashes(rewritten);
-  return withoutEmDashes(improveGuestDraft(source, guest));
+  rewritten = withoutEmDashes(rewritten.replace(/^["“]|["”]$/g, "").trim());
+  const best = rewritten && !improvementProblems(source, rewritten).length ? rewritten : improveGuestDraft(source, guest, guestMessage);
+  return { text: best, unanswered: unansweredLine(guestMessage, best), changed: best !== source };
 }
 
-function polishWording(text: string, guest: string): string {
-  let spoken = text.trim().replace(/\s+/g, " ");
-  spoken = spoken
-    .replace(/\bpls\b/gi, "please")
-    .replace(/\bu\b/gi, "you")
-    .replace(/\bur\b/gi, "your")
-    .replace(/\bthx\b/gi, "thanks")
-    .replace(/\bim\b/gi, "I'm")
-    .replace(/\bdont\b/gi, "don't")
-    .replace(/\bcant\b/gi, "can't")
-    .replace(/\bits\b/gi, "it's");
-  spoken = spoken.replace(/(^|[.!?]\s+)([a-z])/g, (_match, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`);
-  if (!/[.!?]$/.test(spoken)) spoken = `${spoken}.`;
-  const first = guest.trim().split(/\s+/)[0] || "";
-  if (first && !/^(hi|hello|hey|dear)\b/i.test(spoken)) {
-    spoken = `Hi ${first}, ${spoken.charAt(0).toLowerCase()}${spoken.slice(1)}`;
-  }
-  return spoken;
+/** Text only, for callers that don't show the unanswered line. */
+export async function improveGuestMessage(text: string, guest = "", property = ""): Promise<string> {
+  return (await improveGuestReview(text, guest, property)).text;
 }
 
 export type GuestSubmitResult = {
