@@ -438,6 +438,45 @@ function photoOf(row: Record<string, unknown>): string {
   return "";
 }
 
+const PAGE_CAP = 40;
+
+function pageRows(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  const data = raw && typeof raw === "object" ? (raw as { data?: unknown }).data : null;
+  return Array.isArray(data) ? data : [];
+}
+
+/** How many pages a response says there are: meta.last_page, or meta.total over meta.per_page, else a next link, else one. */
+export function advertisedPages(raw: unknown): number {
+  const meta = raw && typeof raw === "object" && (raw as { meta?: unknown }).meta && typeof (raw as { meta: unknown }).meta === "object" ? (raw as { meta: Record<string, unknown> }).meta : {};
+  const last = Number(meta.last_page);
+  if (Number.isFinite(last) && last >= 1) return Math.floor(last);
+  const total = Number(meta.total);
+  const per = Number(meta.per_page);
+  if (Number.isFinite(total) && Number.isFinite(per) && per > 0 && total > per) return Math.ceil(total / per);
+  const links = raw && typeof raw === "object" && (raw as { links?: unknown }).links && typeof (raw as { links: unknown }).links === "object" ? (raw as { links: Record<string, unknown> }).links : {};
+  const current = Number(meta.current_page);
+  return links.next ? (Number.isFinite(current) && current >= 1 ? Math.floor(current) + 1 : 2) : 1;
+}
+
+/** All the rows of a paged response, in order. Throws, rather than returning less, when any advertised page can't be read. */
+export async function readAdvertisedPages(first: unknown, fetchPage: (page: number) => Promise<unknown>): Promise<unknown> {
+  let last = advertisedPages(first);
+  if (last <= 1) return first;
+  const rows = [...pageRows(first)];
+  let page = 1;
+  while (page < last) {
+    if (last > PAGE_CAP) throw new Error(`Hospitable says this thread has ${last} pages, more than I read in one go.`);
+    page += 1;
+    const next = await fetchPage(page);
+    rows.push(...pageRows(next));
+    // A later page can advertise more (a next link past the count).
+    last = Math.max(last, advertisedPages(next));
+  }
+  const meta = first && typeof first === "object" && (first as { meta?: unknown }).meta && typeof (first as { meta: unknown }).meta === "object" ? (first as { meta: Record<string, unknown> }).meta : {};
+  return { ...(first as object), data: rows, meta: { ...meta, last_page: 1, pages_read: page } };
+}
+
 async function readLive(token: string, name: string, args: Record<string, unknown>): Promise<unknown> {
   if (name === "get-properties") {
     // listings carries each property's Airbnb listing id, for its specs and comps.
@@ -450,9 +489,12 @@ async function readLive(token: string, name: string, args: Record<string, unknow
   }
   if (name === "get-reservation-messages") {
     // `user` is the Hospitable person on the channel. Airbnb co-host replies often have sender "Unknown".
-    return hospitableFetch(token, `/reservations/${encodeURIComponent(String(args.uuid ?? args.reservation_id ?? ""))}/messages`, {
-      include: String(args.include ?? "user"),
-    });
+    const path = `/reservations/${encodeURIComponent(String(args.uuid ?? args.reservation_id ?? ""))}/messages`;
+    const include = String(args.include ?? "user");
+    const first = await hospitableFetch(token, path, { include });
+    // A long thread comes back in pages. Every page Hospitable advertises is read; a page that fails fails the whole
+    // read, so a partial thread is never returned as if it were the whole one.
+    return readAdvertisedPages(first, (page) => hospitableFetch(token, path, { include, page: String(page) }));
   }
   if (name === "get-property-knowledge-hub") {
     const id = String(args.property_id ?? args.uuid ?? args.id ?? "");

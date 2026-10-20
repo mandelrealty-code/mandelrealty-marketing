@@ -6,7 +6,7 @@
  * Inquiry rows are created elsewhere and only sorted here.
  */
 
-import { readTimeAsks, timeAskLine } from "./guestTimeAsk.js";
+import { readTimeAsk, readTimeAsks, timeAskLine } from "./guestTimeAsk.js";
 import { addDays, torontoToday } from "./time.js";
 import type { GuestFollowUp, GuestFollowUpClose } from "./guestTypes.js";
 
@@ -52,6 +52,10 @@ type Owe = {
   accepted: boolean;
   due: string;
   onOrAfter: boolean;
+  /** The whole messages the wording stands on, exactly as written in this thread. */
+  promiseMessage: string;
+  askedMessage: string;
+  agreedMessage: string;
 };
 
 type Incident = {
@@ -157,6 +161,7 @@ export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFol
             item.agreed = agreedText;
             item.agreedAt = turn.at;
             item.agreedBy = nameOf(turn.name, first);
+            item.agreedMessage = turn.body.trim();
           } else if (mixed && /on or after/i.test(agreedText)) {
             item.agreed = agreedText;
           }
@@ -211,6 +216,7 @@ export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFol
         existing.at = turn.at;
         existing.by = nameOf(turn.name, "Host");
         existing.body = quote;
+        existing.promiseMessage = turn.body.trim();
         if (dated.due) existing.due = dated.due;
         if (dated.onOrAfter) existing.onOrAfter = true;
         continue;
@@ -230,6 +236,9 @@ export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFol
         accepted: false,
         due: dated.due,
         onOrAfter: dated.onOrAfter,
+        promiseMessage: turn.body.trim(),
+        askedMessage: topic.test(asked) ? asked.trim() : "",
+        agreedMessage: "",
       });
     }
   }
@@ -281,6 +290,7 @@ export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFol
       agreedAt: ask.at,
       agreedWhen: `${first} · ${quoteStamp(ask.at)}`,
       agreedAs: "asked",
+      grounding: { quote: ask.quote, at: ask.at, role: "guest", name: first },
     }), today, now)),
   ];
   return { open, settled };
@@ -347,8 +357,22 @@ function oweCard(stay: FollowUpStay, item: Owe, today: string, now: Date): Guest
     agreedWhen: agreed ? `${agreedBy} · ${quoteStamp(agreedAt)}` : "",
     agreedAs: item.accepted ? "agreed" : agreed ? "asked" : "",
     draft: draftFor(first, item.topic.label, due),
+    grounding: oweGrounding(item, first),
   });
   return paint(card, today, now);
+}
+
+/** The messages an "owed" follow-up stands on: the guest's ask when there is one, the host's promise, and the guest's yes. */
+function oweGrounding(item: Owe, first: string): GuestFollowUp["grounding"] {
+  const promise = { quote: item.promiseMessage || item.body, at: item.at, role: "host" as const, name: item.by };
+  const ask = item.askedMessage ? { quote: item.askedMessage, at: item.askedAt, role: "guest" as const, name: first } : null;
+  const yes = item.accepted && item.agreedMessage ? { quote: item.agreedMessage, at: item.agreedAt, role: "guest" as const, name: item.agreedBy || first } : null;
+  const primary = ask ?? promise;
+  const also = [
+    ...(ask ? [{ ...promise, as: "promise" as const }] : []),
+    ...(yes ? [{ ...yes, as: "agreement" as const }] : []),
+  ];
+  return { ...primary, ...(also.length ? { also } : {}) };
 }
 
 function incidentCard(stay: FollowUpStay, item: Incident, now: Date): GuestFollowUp {
@@ -391,12 +415,55 @@ function incidentCard(stay: FollowUpStay, item: Incident, now: Date): GuestFollo
     promised: item.body,
     promisedBy: item.by,
     promisedAt: item.at,
+    grounding: { quote: item.body, at: item.at, role: "host", name: item.by, ...(item.guestBody ? { also: [{ quote: item.guestBody, at: item.at, role: "guest" as const, name: first, as: "ask" as const }] } : {}) },
   });
   if (item.topic.id === "suitcase" && /front desk/i.test(item.body)) {
     card.line = `Suitcase at front desk · building security · sent ${sent}, no confirmation yet`;
     card.resolvesWhen = `${first} confirms in the thread that the suitcase was picked up. Copilot closes this on its own when that message arrives.`;
   }
   return paint(card, torontoToday(now), now);
+}
+
+function normText(text: string): string {
+  return plain(text).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Is this follow-up still standing on words in the guest's own thread? It must have a quote; that quote must be a message
+ * (or part of one) in THIS thread, by the same side; and it must support the wording: the topic named, the ask made, the
+ * guest's agreement real. If not, the follow-up closes itself and is never shown. Nothing from another thread can pass,
+ * because only this thread's turns are searched. Inquiry follow-ups come from Hospitable's booking record and are checked
+ * elsewhere.
+ */
+export function verifyFollowUp(row: GuestFollowUp, turns: FollowUpTurn[]): { ok: boolean; reason: string } {
+  if (row.kind === "inquiry") return { ok: true, reason: "" };
+  const grounding = row.grounding;
+  if (!grounding || !grounding.quote.trim()) return { ok: false, reason: "it has no quote from the guest's thread" };
+  const mine = turns.filter((turn) => (turn.role === "guest" || turn.role === "host") && turn.body.trim());
+  const foundIn = (m: { quote: string; role: string }) => mine.some((turn) => turn.role === m.role && normText(turn.body).includes(normText(m.quote)));
+  const quotes = [grounding, ...(grounding.also ?? [])];
+  const missing = quotes.find((m) => !m.quote.trim() || !foundIn(m));
+  if (missing) return { ok: false, reason: "its quote isn't in this guest's thread" };
+  if (row.kind === "ask") {
+    const wanted = /late/i.test(row.topic) ? "late" : "early";
+    if (grounding.role !== "guest" || !readTimeAsk(grounding.quote, grounding.at).some((ask) => ask.kind === wanted)) {
+      return { ok: false, reason: `the quote doesn't ask for ${wanted === "early" ? "early check-in" : "late checkout"}` };
+    }
+    return { ok: true, reason: "" };
+  }
+  const blob = quotes.map((m) => m.quote).join("\n");
+  const labels = row.topic.split(" and ").map((part) => part.trim()).filter(Boolean);
+  const supported = labels.length > 0 && labels.every((label) => {
+    const known = TOPICS.find((topic) => topic.label === label);
+    return known ? known.test(blob) : normText(blob).includes(normText(label).slice(0, 24));
+  });
+  if (!supported) return { ok: false, reason: `the quote doesn't mention ${row.topic.toLowerCase() || "this"}` };
+  if (row.kind === "owe" && row.agreedAs === "agreed") {
+    const yes = (grounding.also ?? []).find((m) => m.as === "agreement");
+    // Agreement is judged a sentence at a time, as the detector does: "No need for the extra key. On or after 14th is fine" agrees to the windows.
+    if (!yes || yes.role !== "guest" || !sentences(yes.quote).some((sentence) => accepts(sentence))) return { ok: false, reason: "the guest's agreement isn't in the thread" };
+  }
+  return { ok: true, reason: "" };
 }
 
 /** A stored follow-up shown again: its due line and stay line are worked out for today. */

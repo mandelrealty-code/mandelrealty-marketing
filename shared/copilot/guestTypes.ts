@@ -118,6 +118,21 @@ export type GuestDraftView = {
 /** ask: a guest asked for early check-in or late checkout. Copilot only notices it. */
 export type GuestFollowUpKind = "owe" | "incident" | "inquiry" | "ask";
 
+/**
+ * The exact message a follow-up stands on, from the SAME guest's own thread. The follow-up's wording is built from this
+ * quote alone. No quote, no follow-up: it is checked against the thread again at every run, and closes itself when the
+ * quote isn't there or doesn't support the wording. Facts never travel between threads.
+ */
+export type FollowUpGrounding = {
+  /** The message text, exactly as written in the thread. */
+  quote: string;
+  at: string;
+  role: "guest" | "host";
+  name: string;
+  /** Other messages from the same thread the wording also uses: the host's promise behind a guest's ask, the guest's reply that agreed. */
+  also?: { quote: string; at: string; role: "guest" | "host"; name: string; as: "promise" | "ask" | "agreement" }[];
+};
+
 export type GuestFollowUp = {
   id: string;
   kind: GuestFollowUpKind;
@@ -167,6 +182,8 @@ export type GuestFollowUp = {
   expiresAt: string;
   draft: string;
   notes: string[];
+  /** The quote this follow-up stands on, from this guest's own thread. Every owe, incident and ask has one. */
+  grounding?: FollowUpGrounding;
   /** Present on an inquiry built from a booking request. */
   newToAirbnb?: boolean;
   joined?: string;

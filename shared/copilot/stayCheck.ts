@@ -138,6 +138,13 @@ export async function cachedThreadStamp(id: string): Promise<string> {
   return threadMemory.get(id)?.watermark ?? "";
 }
 
+/** One thread from the stored cache, or null when it hasn't been read. No Hospitable call. */
+export async function cachedThreadMessages(id: string): Promise<{ at: string; role: string; name: string; body: string }[] | null> {
+  await loadThreadCache();
+  const hit = threadMemory.get(id);
+  return hit ? hit.messages.map((message) => ({ at: message.at, role: message.role, name: message.name, body: message.body })) : null;
+}
+
 /** Every thread Copilot has already read (kept for 60 days). Reads the stored cache only: no Hospitable calls. */
 export async function cachedThreadsForSampling(): Promise<{ id: string; messages: { at: string; role: string; name: string; body: string }[] }[]> {
   await loadThreadCache();

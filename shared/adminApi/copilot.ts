@@ -72,6 +72,7 @@ import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePag
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
 import { cachedThreadsForSampling } from "../copilot/stayCheck.js";
+import { answerGuestFact, topicOf as guestFactTopic } from "../copilot/guestFacts.js";
 import { findAutomatedTemplates } from "../copilot/automationSamples.js";
 import { suggestReply, markThreadHandled, unmarkThreadHandled, beginInquiryVerify, forgetStandingAnswer, holdGuestThread, improveGuestMessage, liveGuestUpdate, loadGuestQueue, markFollowUpHandled, openGuestAnswer, readSavedGuestQueue, saveStandingAnswer, submitGuestReply } from "../copilot/guestMessaging.js";
 import { agreesToReply, asksAboutMail, declinesReply, deliverReply, mailDraftFromOffer } from "../copilot/mailReply.js";
@@ -1033,6 +1034,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
               steps: [{ text: ok ? "Copied the last sent registration email" : "The building email was not drafted" }],
               thought: ok ? "The draft is in Checks. Nothing was sent. Submit is what sends it." : "Nothing was drafted or sent.",
             });
+            return done();
+          }
+        }
+        // A fact a guest supplied ("did Rebecca send her car details?") lives in that guest's Airbnb thread: the guest is matched to
+        // their reservation from Hospitable first, the whole thread is read, and email is never the first source. A guest lookup
+        // never asks which property, and a failed read is never turned into "no".
+        if (guestFactTopic(text)) {
+          const fact = await answerGuestFact(text, recentTurns, clock).catch(() => null);
+          if (fact) {
+            await addMessage({ chatId, role: "assistant", body: fact.body, steps: [{ text: fact.step }], thought: fact.thought });
             return done();
           }
         }

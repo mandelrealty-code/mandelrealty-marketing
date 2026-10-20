@@ -28,9 +28,22 @@ const LATE_WORDS = /\blate(?:r)?\s*check[\s-]*out\b|\b(?:check[\s-]*out|checkout
 const ARRIVE = /\b(arrive|arriving|arrival|get in|get there|be there|come in|come by|come at|come over|check[\s-]*in|checking in|drop (?:off )?(?:our |the )?(?:bags|luggage)|access)\b/i;
 const DEPART = /\b(check[\s-]*out|checkout|checking out|leave|leaving|depart|departing|stay (?:until|till|til|to)|stay in the (?:unit|apartment|place) (?:until|till|til)|keep the (?:unit|apartment|place) (?:until|till|til))\b/i;
 
+/** "an hour before", "30 minutes earlier", "a couple of hours early": how much sooner than check-in, when no clock time is given. */
+const RELATIVE_EARLY = /\b(an?|one|two|three|half an?|a couple of|a few|\d+(?:\.\d+)?)\s*(?:and a half\s*)?(hours?|hrs?|minutes?|mins?)\s+(?:before|earlier|early|ahead)\b/i;
+const HEDGE = /\b(likely|probably|hoping|hope to|would like|we'?d like|i'?d like|if possible|possibly|maybe|ideally|just)\b/i;
+
+function relativeMinutes(text: string): number | null {
+  const match = RELATIVE_EARLY.exec(text);
+  if (!match) return null;
+  const word = (match[1] ?? "").toLowerCase();
+  const amount = word === "a" || word === "an" || word === "one" ? 1 : word === "two" || word === "a couple of" ? 2 : word === "three" ? 3 : word === "a few" ? 3 : word === "half a" || word === "half an" ? 0.5 : Number(word);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return Math.round(amount * (/^m/i.test(match[2] ?? "") ? 1 : 60));
+}
+
 const PRICE = /\$\s?\d|\b\d+\s?(?:dollars|cad|usd)\b|\b(fee|charge|cost|costs|extra|price)\b/i;
 const DECLINE = /\b(unfortunately|sorry|can't|cannot|can not|won't be able|not able|unable|isn't possible|is not possible|not possible|not available|isn't available|no early|no late|fully booked|another guest|guests (?:arriving|checking in|checking out)|back[\s-]to[\s-]back|same[\s-]day)\b/i;
-const OFFER = /\b(yes|yep|sure|of course|absolutely|no problem|happy to|works|that's fine|that is fine|we can|i can|you can|can do|confirmed|is available|is open|we'?ll have it ready|it'?s ready|offer|go ahead)\b/i;
+const OFFER = /\b(yes|yep|sure|of course|absolutely|no problem|not a problem|happy to|works|that's fine|that is fine|is fine|is okay|is ok|would be fine|would be great|we can|i can|you can|you're welcome to|you are welcome to|welcome to|can do|confirmed|is available|is open|we'?ll have it ready|it'?s ready|offer|go ahead)\b/i;
 const MAYBE = /\b(if (?:we|i) can|see if|let (?:me|us) check|i'?ll check|we'?ll check|will check|get back to you|let you know|will confirm|i'?ll confirm|we'?ll confirm)\b/gi;
 const TOPIC = /\b(early|earlier|late|later|check(?:ing)?[\s-]*(?:in|out)|checkout|arriv\w*|leav\w*|depart\w*|until|till|that morning|that afternoon)\b|\b\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)/i;
 const DROP = /\b(never mind|nevermind|no worries|no need|don't need|do not need|won't need|will not need|not needed|forget (?:it|about it|that)|we'?re fine|we are fine|(?:standard|normal|usual|regular) (?:check[\s-]*in|check[\s-]*out|checkout|time) is (?:fine|ok|okay|great))\b|\bwe'?ll (?:just )?(?:arrive|come|check in) (?:at|around) (?:4|four)\b|\bwe'?ll (?:just )?(?:leave|check out) (?:at|by) (?:11|eleven)\b/i;
@@ -106,8 +119,13 @@ export function readTimeAsk(body: string, at: string, standardIn = STANDARD_IN, 
       const early = EARLY_WORDS.test(text);
       const near = ARRIVE.test(text);
       const minutes = near ? times.map((clock) => arrivalMinutes(clock, standardIn)).find((value): value is number => value != null) : undefined;
+      const sooner = relativeMinutes(text);
       if (minutes != null && (asking || early)) asks.push({ kind: "early", time: label(minutes), quote: sentence.trim(), at });
       else if (early && asking) asks.push({ kind: "early", time: "", quote: sentence.trim(), at });
+      // "Likely just an hour before": sooner than check-in by that much. Not a checkout ("an hour before we leave").
+      else if (sooner != null && !DEPART.test(text) && (asking || HEDGE.test(text) || near || early)) {
+        asks.push({ kind: "early", time: standardIn - sooner > 0 ? label(standardIn - sooner) : "", quote: sentence.trim(), at });
+      }
     }
     if (!asks.some((row) => row.kind === "late")) {
       const late = LATE_WORDS.test(text);

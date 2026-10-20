@@ -8,14 +8,14 @@ import { copilotHospitableToken, copilotKeepsProperty, copilotScopeActive, hospi
 import { sendReservationMessage } from "./hospitableAgent.js";
 import { outsideDraft, readThread, sourceLine, type ThreadTurn } from "./guestIntelligence.js";
 import { hubPlain, readPropertyHub } from "./knowledgeHub.js";
-import { detectFollowUps, orderFollowUps, repaintFollowUp, type FollowUpStay } from "./guestFollowUps.js";
+import { detectFollowUps, orderFollowUps, repaintFollowUp, verifyFollowUp, type FollowUpStay } from "./guestFollowUps.js";
 import { bookingRequestFollowUp, guestPhotoUrl, inquiryCloseText, isOpenRequest, recordFromRow, type InquiryPhase, type InquiryTurn } from "./guestInquiries.js";
 import { readGuestQueueSnapshot, readHandledFollowUps, readInquiryVerifying, readPrefixedRow, saveGuestQueueSnapshot, saveHandledFollowUps, saveInquiryVerifying, writePrefixedRow, type InquiryVerify } from "./store.js";
 import { parityEnabled } from "./parity/flag.js";
 import { closeFollowUpEverywhere } from "./dueFollowUps.js";
 import { draftProblem, guestKey, looksLikeHeading, replyState } from "./guestReplyState.js";
 import { hubItems, proposeHubEntries, type HubItem, type HubProposal } from "./hubLearning.js";
-import { cachedThreadStamp, flushThreadCache, forgetThread, leaveDraft, loadConversations, memoryFor, readStayThread, type Conversation } from "./stayCheck.js";
+import { cachedThreadMessages, cachedThreadStamp, flushThreadCache, forgetThread, leaveDraft, loadConversations, memoryFor, readStayThread, type Conversation } from "./stayCheck.js";
 import { parityNow } from "./parity/clock.js";
 import { addDays, torontoToday } from "./time.js";
 import { isThanksOnly, messageLanguage, needsGuestReply, toEnglish, withoutEmDashes } from "./guestTranslate.js";
@@ -592,6 +592,54 @@ async function writeAndConfirm(propertyId: string, fact: string): Promise<boolea
   }
 }
 
+/**
+ * Follow-ups found in a thread that something other than the inbox scan just read (a chat question about the guest):
+ * an early check-in or late checkout ask, a promise, an open incident. They open in Guest Messaging now, quoting the guest's
+ * own words, once: nothing already open or already handled is added again, and the next scan finds the same ones and
+ * doesn't duplicate them. Nothing is sent.
+ */
+export async function surfaceFollowUpsFromThread(
+  conversation: Conversation,
+  messages: { at: string; role: string; name: string; body: string }[],
+  now: Date = parityNow() ?? new Date(),
+): Promise<GuestFollowUp[]> {
+  if (conversation.inquiry || !messages.length) return [];
+  const handled = await handledNow();
+  const open = detectFollowUps(followStay(conversation, messages, ""), now).open.filter((row) => !handled.has(row.id) && verifyFollowUp(row, messages).ok);
+  if (!open.length) return [];
+  const saved = await readSavedGuestQueue().catch(() => null);
+  if (!saved) return open;
+  const have = saved.followUps ?? [];
+  const sameLoop = (a: GuestFollowUp, b: GuestFollowUp) => a.reservationId === b.reservationId && a.kind === b.kind && a.topic === b.topic;
+  const added = open.filter((row) => !have.some((item) => item.id === row.id || sameLoop(item, row)));
+  if (!added.length) return [];
+  saved.followUps = orderFollowUps([...have, ...added], now);
+  rememberedQueue = saved;
+  if (parityEnabled()) paritySavedQueue = saved;
+  await saveGuestQueueSnapshot(saved).catch(() => undefined);
+  return added;
+}
+
+/**
+ * A follow-up stands on a quote in its own guest's thread, or it isn't shown. Rows saved without a quote are dropped. Rows
+ * with one are checked against that reservation's stored thread when there is one; a quote that isn't there, or doesn't
+ * support the wording, closes the row. Nothing is read from Hospitable here.
+ */
+async function groundedOnly(rows: GuestFollowUp[]): Promise<GuestFollowUp[]> {
+  const kept: GuestFollowUp[] = [];
+  for (const row of rows) {
+    if (row.kind === "inquiry") {
+      kept.push(row);
+      continue;
+    }
+    if (!row.grounding?.quote?.trim()) continue;
+    const thread = await cachedThreadMessages(row.reservationId).catch(() => null);
+    if (thread && !verifyFollowUp(row, thread).ok) continue;
+    kept.push(row);
+  }
+  return kept;
+}
+
 /** The last saved guest pass. This does not scan Hospitable. */
 export async function readSavedGuestQueue(): Promise<GuestQueue | null> {
   if (rememberedQueue) return rememberedQueue;
@@ -599,7 +647,7 @@ export async function readSavedGuestQueue(): Promise<GuestQueue | null> {
   if (!saved || !Array.isArray(saved.waiting) || !Array.isArray(saved.thanks)) return null;
   saved.onGuest = Array.isArray(saved.onGuest) ? saved.onGuest : [];
   saved.held = Array.isArray(saved.held) ? saved.held : [];
-  saved.followUps = Array.isArray(saved.followUps) ? saved.followUps : [];
+  saved.followUps = await groundedOnly(Array.isArray(saved.followUps) ? saved.followUps : []);
   saved.closedFollowUps = Array.isArray(saved.closedFollowUps) ? saved.closedFollowUps : [];
   saved.properties = Array.isArray(saved.properties) ? saved.properties : [];
   saved.answer = waitingSurfaceText(saved);
@@ -921,7 +969,8 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
         scanned.add(stay.stay.id);
         const detected = detectFollowUps(followStay(stay, messages, photo), now);
         for (const row of detected.open) {
-          if (!handled.has(row.id)) followUps.push(row);
+          // Belt and braces: a follow-up the detector just built must pass the same quote check a stored one does.
+          if (!handled.has(row.id) && verifyFollowUp(row, messages).ok) followUps.push(row);
         }
         for (const row of detected.settled) settled.set(row.id, row.closeText);
       }
@@ -1027,6 +1076,16 @@ async function scanGuestQueue(now: Date): Promise<GuestQueue> {
     for (const row of previous) {
       if (handled.has(row.id) || followUps.some((item) => item.id === row.id || sameLoop(item, row))) continue;
       if (settled.has(row.id)) continue;
+      // Re-verified against its quote at every run: this pass's thread when it was read, else the stored one. No quote, a quote
+      // that isn't in this guest's thread, or a quote that doesn't support the wording: it closes and is never shown.
+      if (row.kind !== "inquiry") {
+        const now_ = threads.get(row.reservationId) ?? (await cachedThreadMessages(row.reservationId).catch(() => null));
+        const check = !row.grounding?.quote?.trim() ? { ok: false, reason: "it has no quote from the guest's thread" } : now_ ? verifyFollowUp(row, now_) : { ok: true, reason: "" };
+        if (!check.ok) {
+          settled.set(row.id, `closed: ${check.reason}`);
+          continue;
+        }
+      }
       if (row.kind === "inquiry") {
         if (unreadThreads.has(row.reservationId)) followUps.push(row);
         continue;

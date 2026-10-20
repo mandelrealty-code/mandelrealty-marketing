@@ -10,17 +10,18 @@ import { readMailThread, searchMail, type MailLetter } from "./mailSearch.js";
 import { parityNow } from "./parity/clock.js";
 import { confirmedChecksDraft, waitingChecksMessages } from "./checksClaim.js";
 import { updateDraft } from "./store.js";
-import { leaveDraft, loadRecentStays, readStayThread, type RecentStay } from "./stayCheck.js";
+import { leaveDraft, loadRecentStays, type RecentStay } from "./stayCheck.js";
 import { captureMailMatch } from "./parity/capture.js";
 import { namesMatch, platesFrom, registrationMatchesStay, sentProof } from "./partnerStandard.js";
 import { torontoToday } from "./time.js";
+import { vehiclesFrom, vehiclesFromThread as vehiclesInThread, noCarFromThread, type Vehicle } from "./guestVehicle.js";
+import { readFullThread } from "./guestFacts.js";
 import { asksProcess } from "./processAnswer.js";
 import { isRegistrationDraft } from "./checksLabel.js";
 import { registrationSubjectTemplate } from "./processFacts.js";
 import type { ChecksItemRef } from "./types.js";
 
 
-type Vehicle = { guest: string; make: string; model: string; plate: string; colour: string; count: string };
 
 const NAME_STOP = new Set(["has", "the", "building", "been", "about", "for", "her", "his", "their", "stay", "starting", "today", "cars", "car", "draft", "sent", "email", "emailed"]);
 
@@ -226,6 +227,12 @@ export function asksBuildingRegistration(text: string, context = ""): boolean {
   if (asksProcess(asked)) return false;
   // "Is there a draft?" or "has it been sent?" is a status question unless they also ask for one written.
   if (asksRegistrationStatus(asked) && !/\b(write|another|re-?do|re-?draft)\b/i.test(asked)) return false;
+  // "We need to send her the email for parking and her stay like the other ones we sent to the building": a request to write
+  // one, with no property named. The guest and the building come from the reservations.
+  const SEND_IT = /\b(?:need|want|have|got|ought|should|gotta|let'?s|going|ready|time|supposed)\s+(?:to\s+)?(?:send|write|draft|make|prepare|do)\b|\b(?:can|could|would|will)\s+you\s+(?:send|write|draft|make|prepare|do)\b|^\s*(?:please\s+)?(?:send|write|draft|make|prepare)\b/i;
+  const PAST_STATUS = /\b(did|has|have|was|were|had|been)\b[^.?!]*\b(sent|send|emailed|e-?mailed)\b/i;
+  if (SEND_IT.test(asked) && !PAST_STATUS.test(asked) && /\be-?mails?\b/i.test(asked) && /\b(parking|registration|register|building|car|vehicle)\b/i.test(asked)
+    && (/\b(like|same as|just like|exactly like)\s+(?:the\s+)?(?:other|last|previous|usual|ones)\b|\bthe ones we (?:sent|send)\b|\bto the building\b|\bfor the building\b/i.test(asked) || PLACE.test(`${asked} ${context}`))) return true;
   const writes = /\b(write|draft|another|re-?do|re-?draft)\b/i.test(asked);
   if (writes && /\b(e-?mails?|sent)\b/i.test(asked) && /\b(guest|car|vehicle|registration|subject|body|parking)\b/i.test(asked) && PLACE.test(asked)) return true;
   if (writes && /\b(registration|parking|building)\s+e-?mail\b/i.test(asked) && PLACE.test(`${asked} ${context}`)) return true;
@@ -259,75 +266,6 @@ function longDate(iso: string): string {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(Date.UTC(year, month - 1, dayNum)));
-}
-
-function clean(value: string): string {
-  return value.replace(/[.,;]+$/g, "").replace(/\s+/g, " ").trim();
-}
-
-function vehiclesFromThread(messages: { at: string; role: string; body: string }[], guest: string): Vehicle[] {
-  const guestLines = messages
-    .filter((row) => row.role === "guest")
-    .slice()
-    .sort((a, b) => a.at.localeCompare(b.at));
-  for (let index = guestLines.length - 1; index >= 0; index -= 1) {
-    const found = vehiclesFrom(guestLines[index]?.body ?? "", guest);
-    if (found.length) return found;
-  }
-  return [];
-}
-
-function vehiclesFrom(text: string, guest: string): Vehicle[] {
-  const labeled = text
-    .split(/(?=make\s*:)/i)
-    .map((part) => part.trim())
-    .filter((part) => /^make\s*:/i.test(part));
-  let vehicles: Vehicle[] = [];
-  if (labeled.length) {
-    vehicles = labeled.map((part) => vehicleFrom(part, guest)).filter((item) => item.make || item.model || item.plate);
-  }
-  if (!vehicles.length) vehicles = proseVehicles(text, guest);
-  if (!vehicles.length) {
-    const one = vehicleFrom(text, guest);
-    if (one.make || one.model || one.plate || one.colour || one.count) vehicles = [one];
-  }
-  if (vehicles.length > 1) {
-    const count = String(vehicles.length);
-    for (const item of vehicles) item.count = count;
-  }
-  return vehicles;
-}
-
-function proseVehicles(text: string, guest: string): Vehicle[] {
-  const found: Vehicle[] = [];
-  for (const line of text.split(/\n|;/)) {
-    const match = /^\s*([A-Z][A-Za-z]+)\s+(.+?)\s*,\s*([A-Z0-9]{2,4}(?:\s+[A-Z0-9]{2,4})+)\s*$/.exec(line.trim());
-    if (!match?.[1] || !match[2] || !match[3]) continue;
-    found.push({
-      guest,
-      make: clean(match[1]),
-      model: clean(match[2]),
-      plate: clean(match[3]),
-      colour: "",
-      count: "",
-    });
-  }
-  return found;
-}
-
-function vehicleFrom(text: string, guest: string): Vehicle {
-  const make = clean(/make\s*:\s*([^.\n]+)/i.exec(text)?.[1] ?? "");
-  const model = clean(/model\s*:\s*([^.\n]+)/i.exec(text)?.[1] ?? "");
-  const plate = clean(/(?:plate|licence|license)\s*:\s*([^.\n]+)/i.exec(text)?.[1] ?? "");
-  const colour = clean(/colou?r\s*:\s*([^.\n]+)/i.exec(text)?.[1] ?? "");
-  let count = "";
-  if (/\bone\s+(?:car|vehicle)\b|\b1\s+(?:car|vehicle)\b/i.test(text)) count = "1";
-  else if (/\btwo\s+(?:cars|vehicles)\b|\b2\s+(?:cars|vehicles)\b/i.test(text)) count = "2";
-  else {
-    const numbered = /\b(\d+)\s+(?:cars|vehicles)\b/i.exec(text);
-    if (numbered?.[1]) count = numbered[1];
-  }
-  return { guest, make, model, plate, colour, count };
 }
 
 function blankFor(label: string): string {
@@ -401,7 +339,10 @@ function swapDates(text: string, oldIn: WrittenDate | null, oldOut: WrittenDate 
   });
 }
 
-function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string, vehicles: Vehicle[]): { subject: string; body: string; warnings: string[] } {
+/** A line the template carries when the vehicle wasn't known yet: "We will provide the vehicle information shortly." */
+const VEHICLE_LATER = /^[^\n]*\b(?:vehicle|car|plate|licen[cs]e)\b[^\n]*\b(?:shortly|soon|later|to follow|tbd|to be (?:confirmed|provided)|will (?:be )?(?:provided|sent|shared|follow)|will (?:provide|send|share|forward)|once (?:we|they|she|he) (?:have|know|receive|get))\b[^\n]*$/im;
+
+function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string, vehicles: Vehicle[], noVehicleNote = ""): { subject: string; body: string; warnings: string[] } {
   const vehicle = vehicles[0] ?? { guest: "", make: "", model: "", plate: "", colour: "", count: "" };
   const known = vehicles.some((item) => item.make || item.model || item.plate);
   const [oldIn, oldOut] = templateStay(letter);
@@ -424,6 +365,13 @@ function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string,
     if (old.length && old.join(" ") !== next) body = body.replace(named[0], named[0].replace(old.join(" "), next));
   }
   const warnings: string[] = [];
+  // The template said the vehicle was still to come. When it is known, the facts go in; only when it is genuinely unknown
+  // does the line stay, and then the draft says so plainly.
+  const later = VEHICLE_LATER.exec(body);
+  if (later && !/^(?:Make|Model|Plate|Colou?r)\s*:/im.test(body)) {
+    if (known) body = body.replace(later[0], vehicles.map((item) => vehicleBlock(item, warnings)).join("\n\n"));
+    else warnings.unshift(`${noVehicleNote || "I didn't find vehicle details in the guest's messages"}, so the draft keeps the template's line “${later[0].trim()}”.`);
+  }
   body = body.split("\n").map((line) => {
     const match = /^(Guest|Make|Model|Plate|Licence plate|License plate|Colour|Color|Vehicle count|Number of vehicles):\s*(.*)$/i.exec(line.trim());
     if (!match) {
@@ -507,48 +455,65 @@ export async function answerBuildingRegistrationItem(text: string, context = "")
 
 async function registrationBody(asked: string, context: string): Promise<string | { body: string; item: ChecksItemRef } | null> {
   if (!asksBuildingRegistration(asked, context)) return null;
-  // The building comes from the question, or from the chat when the question is a follow-up.
-  const text = PLACE.test(asked) ? asked : `${asked}\n${context}`;
   const clock = parityNow() ?? new Date();
   const today = torontoToday(clock);
-  // The template is the most recent sent registration, read from the mailbox now; never asked for.
-  const sent = await sentLetters(text);
-  if (!sent.letters.length) return sent.note;
-  const template = sent.letters[0];
-  if (!template) return sent.note;
   let loaded: Awaited<ReturnType<typeof loadRecentStays>>;
   try {
     loaded = await loadRecentStays(clock);
   } catch {
     return "Hospitable didn't return the reservations. I didn't draft the email.";
   }
-  const upcoming = loaded.stays
-    .filter((row) => samePlace(text, row) && row.stay.checkIn >= today && !/cancel/.test(row.stay.status))
-    .filter((row) => !alreadySent(row.stay, sent.letters))
-    .sort((a, b) => a.stay.checkIn.localeCompare(b.stay.checkIn) || a.stay.id.localeCompare(b.stay.id));
-  // A guest named in the question (or earlier in the chat) is the one drafted for; else the next arrival.
-  const named = (blob: string) => upcoming.find((row) => {
-    const first = (row.stay.guest || "").trim().split(/\s+/)[0] ?? "";
+  // The guest comes first, from the reservations: a guest named in the question (or earlier in the chat) is the one drafted
+  // for, whatever property they are at. The building is only guessed (20 Blue Jays Way) when no guest is named.
+  const firstName = (row: RecentStay) => (row.stay.guest || "").trim().split(/\s+/)[0] ?? "";
+  const mentions = (row: RecentStay, blob: string) => {
+    const first = firstName(row);
     return first.length >= 2 && new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(blob);
-  });
-  const next = named(asked) ?? named(context) ?? upcoming[0];
+  };
+  const live = loaded.stays
+    .filter((row) => row.stay.checkIn >= today && !/cancel/.test(row.stay.status))
+    .sort((a, b) => a.stay.checkIn.localeCompare(b.stay.checkIn) || a.stay.id.localeCompare(b.stay.id));
+  const guestNamed = live.find((row) => mentions(row, asked)) ?? live.find((row) => mentions(row, context));
+  const placeText = guestNamed ? guestNamed.label : PLACE.test(asked) ? asked : PLACE.test(context) ? `${asked}\n${context}` : "20 Blue Jays Way 318";
+  if (guestNamed && !/blue jays|\b318\b/i.test(placeText)) {
+    return `I only have a building registration process for 20 Blue Jays Way, and ${firstName(guestNamed)}'s stay is at ${guestNamed.label}. I didn't draft one.`;
+  }
+  // The template is the most recent sent registration, read from the mailbox now; never asked for.
+  const sent = await sentLetters(placeText);
+  if (!sent.letters.length) return sent.note;
+  const template = sent.letters[0];
+  if (!template) return sent.note;
+  const upcoming = live
+    .filter((row) => samePlace(placeText, row))
+    .filter((row) => !alreadySent(row.stay, sent.letters));
+  const next = (guestNamed && upcoming.find((row) => row.stay.id === guestNamed.stay.id)) ?? (guestNamed ? undefined : upcoming[0]);
   if (!next) {
     // Proof is only for a sent message that matches one of this property's stays.
-    const stays = loaded.stays.filter((row) => samePlace(text, row) && !/cancel/.test(row.stay.status));
+    const stays = loaded.stays.filter((row) => samePlace(placeText, row) && !/cancel/.test(row.stay.status));
     const closed = sent.letters.find((letter) => stays.some((row) => registrationMatchesStay(letter, row.stay.checkIn, row.stay.checkOut)));
     if (closed) return sentProof(closed, platesFrom(`${closed.subject}\n${closed.body}`));
     return "I didn't find an upcoming guest there whose registration hasn't been sent. I didn't draft one.";
   }
-  let messages: Awaited<ReturnType<typeof readStayThread>> = [];
-  try {
-    messages = await readStayThread(next.stay.id, clock);
-  } catch {
-    return `I couldn't read ${next.stay.guest || "the guest"}'s messages. I didn't draft the email or fill in a vehicle.`;
-  }
+  // The whole thread is read (every page, one retry). A failed read never turns into "she hasn't sent a car".
+  const read = await readFullThread({ id: next.stay.id, reservation: next.reservation ?? null }, clock);
+  if (!read.ok) return `I couldn't read ${next.stay.guest || "the guest"}'s messages (${read.reason.replace(/\.$/, "")}). I didn't draft the email or fill in a vehicle.`;
+  const messages = read.messages;
   const guest = next.stay.guest || "";
-  const found = vehiclesFromThread(messages, guest);
+  const inThread = vehiclesInThread(messages, guest).vehicles;
+  // Facts already found earlier in this conversation: only what the guest-fact answer itself wrote down ("Rebecca sent her
+  // vehicle in her Airbnb thread on …: Nissan Rogue, plate CDDD 686."), never any other word in the chat. No round trip.
+  const firstOfGuest = guest.split(/\s+/)[0] ?? "";
+  const stated = firstOfGuest
+    ? new RegExp(`${firstOfGuest.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} sent her vehicles? in her Airbnb thread on [^:]+:\\s*([^\\n]*?)(?:\\.\\s+Not given:|\\.\\s+Her stay:|\\s*$)`, "i").exec(context)?.[1] ?? ""
+    : "";
+  const fromChat = inThread.length || !stated ? [] : vehiclesFrom(stated.replace(/;\s*/g, " "), guest);
+  const found = inThread.length ? inThread : fromChat;
   const vehicles = found.length ? found : [{ guest, make: "", model: "", plate: "", colour: "", count: "" }];
-  const filled = fillFromTemplate(template, next.stay.checkIn, next.stay.checkOut, vehicles);
+  const noCar = !found.length ? noCarFromThread(messages) : null;
+  const readNote = read.behind
+    ? `${guest || "The guest"}'s thread may be incomplete (${read.behind})`
+    : `I read all ${messages.length} message${messages.length === 1 ? "" : "s"} in ${guest || "the guest"}'s thread and ${noCar ? "she said she isn't bringing a car" : "she hasn't sent vehicle details"}`;
+  const filled = fillFromTemplate(template, next.stay.checkIn, next.stay.checkOut, vehicles, readNote);
   const lead = `Here is the vehicle registration email for ${guest || "the next guest"} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}), to the building. Nothing was sent.${filled.warnings.length ? `\n\nCheck before approving:\n${filled.warnings.map((warning) => `• ${warning}`).join("\n")}` : ""}`;
   const saved = await leaveDraft({
     channel: "email",
@@ -574,7 +539,11 @@ async function registrationBody(asked: string, context: string): Promise<string 
   const label = `Vehicle registration for ${who} at ${next.label}, ${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}`;
   const count = stored.to.split(/[,;]+/).filter((item) => item.trim()).length;
   return {
-    body: `The vehicle registration email for ${who} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}) is in Checks, to the building's ${count} registration address${count === 1 ? "" : "es"}, subject “${stored.subject}”. Nothing is sent until you press Submit.`,
+    body: `The vehicle registration email for ${who} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}) is in Checks, to the building's ${count} registration address${count === 1 ? "" : "es"}, subject “${stored.subject}”. Nothing is sent until you press Submit.${(() => {
+      // A fact that is genuinely unknown after the full thread read is said plainly, above the card.
+      const unknown = filled.warnings.find((warning) => /keeps the template's line/.test(warning));
+      return unknown ? `\n\n${unknown}` : "";
+    })()}`,
     item: { chatId: saved?.chat_id ?? "", messageId: saved?.id ?? "", label },
   };
 }
