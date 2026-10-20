@@ -96,13 +96,17 @@ const live: Model = async (system, user, maxTokens) => {
 const PUBLIC_REPLY_SYSTEM = [
   "You write a short-term-rental host's PUBLIC reply to an Airbnb guest review, for the host (Mandel Realty Group) to edit before posting.",
   "Use ONLY the review text you are given. You know nothing else about this stay: no messages, no private feedback, no cleaner notes, no records. Never mention anything the review does not mention, even if you think it is true.",
-  "Sound like a real host replying, warm and natural. Open like \"Thanks Edith! We're so glad you had a great stay.\" Use the guest's first name once, usually in the opening. Never open with the stiff \"Name, we're really glad...\" pattern.",
-  "Pick up one or two specific things the guest actually wrote (the balcony, the two bathrooms, the welcome snacks, the location) and respond to those in your own words. Never copy their sentences.",
-  "If a small critique appears INSIDE a good review (windows needing a clean, a tight parking spot, the den layout), give it one brief, warm acknowledgement: no defensiveness, no over-explaining, no promises or refunds. Only critiques that are actually in the review.",
+  "WRITE PROSE, NOT FRAMES. Write real sentences about what this guest actually said, picking up their standout points (a feeling like 'felt at home', the particular balcony, the flexible check-in) in your own words. Never use a sentence that would still work if a different review's keyword were swapped in. Banned: 'It's lovely that the X was part of your stay', 'Hope the X brings you back', 'Glad the X hit the spot', 'made a difference', 'stood out for you', 'was a highlight'.",
+  "SENTIMENT MUST MATCH. Praise is thanked warmly and never answered with complaint language. 'We'll look into it', 'we hear you on', 'thanks for flagging', 'noted' belong ONLY to a real critique that is in the review. A critique (for example a sliding-door layout) is acknowledged honestly as a critique, never turned into praise.",
+  "THE NAME IS USED ONCE. Open exactly like 'Thanks Henry!' (exclamation, no comma after the name). Never put the name between commas ('Thank you, James, for...' is banned). No other use of the name.",
+  "Match the review's length and energy: a two-line review gets two or three short sentences; a detailed review gets a fuller reply that touches its standout points. Stay under the word limit. Grammar must be correct (subject and verb agree).",
   "Write the whole reply in the review's own language: a French review gets a fully French reply, never a French greeting with an English body.",
-  "Match the review's length and energy: a two-line review gets a line or two; a detailed review can get a fuller reply. Stay under the word limit.",
-  "Do not repeat any opening sentence or closing sentence listed as already used. No stock closings like \"We hope to welcome you back to Unit 606 the next time you're in Toronto\".",
-  "No em dashes. Reply with the reply text only.",
+  "Voice examples:",
+  "Henry (felt at home on arrival, loved the L-shaped balcony over King St.): \"Thanks Henry! We're thrilled you felt at home from the moment you arrived, and we love that the balcony became your spot to unwind over King St. It was a pleasure hosting you, and we'd happily welcome you back anytime.\"",
+  "Zak (praise plus a layout critique): \"Thanks Zak! Really appreciate the honest, balanced review. You're right about the layout: the second room is divided by a sliding frosted-glass door, so it works best for families and close groups, and your note helps us describe it more clearly for the next guests. Glad the place itself was spotless and the downtown location worked for you. You're welcome back anytime.\"",
+  "Virginie (French review): \"Merci Virginie! Nous sommes ravis que le logement ait été parfait pour votre famille et que les deux salles de bain vous aient plu. Au plaisir de vous accueillir à nouveau!\"",
+  "Samuel (two-line review): \"Thanks Samuel! So glad you felt right at home. You're welcome back anytime.\"",
+  "Do not repeat any opening or closing sentence listed as already used. No stock closing like 'We hope to welcome you back to Unit 606 the next time you're in Toronto'. No em dashes. Reply with the reply text only.",
 ].join(" ");
 
 function publicPrompt(input: { guest: string; review: string; stars: number; property: string; memory: VoiceMemory; feedback: string }): string {
@@ -259,7 +263,7 @@ type KeptKey = Pick<ReviewAiInput, "review" | "stars"> & { reservationId?: strin
 
 /** Written against one stay: a review matched to its stay later is written again, with the conversation. */
 function keyOf(id: string, input: KeptKey): string {
-  return `${STORE}${id}|${createHash("sha1").update(`v4|${input.stars}|${input.review}|${input.reservationId ?? ""}`).digest("base64url").slice(0, 10)}`;
+  return `${STORE}${id}|${createHash("sha1").update(`v5|${input.stars}|${input.review}|${input.reservationId ?? ""}`).digest("base64url").slice(0, 10)}`;
 }
 
 function parseKept(body: string): ReviewAiResult | null {

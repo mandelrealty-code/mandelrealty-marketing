@@ -304,7 +304,7 @@ export function reviewDate(reviewedAt: string, checkOut: string): { at: string; 
 
 /** Writing budget per load: a review is written once and kept, so later loads are instant. */
 const WRITE_BUDGET_MS = 20_000;
-const QUEUE_SNAPSHOT = "review-queue|snapshot|v4|";
+const QUEUE_SNAPSHOT = "review-queue|snapshot|v5|";
 const QUEUE_FRESH_MS = 10 * 60 * 1000;
 
 let reviewQueueInflight: Promise<ReviewQueuePayload> | null = null;

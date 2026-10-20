@@ -91,7 +91,7 @@ const FEATURES: Feature[] = [
   { group: "clean", words: /\b(clean|cleanliness|spotless|immaculate|propre|propreté|proprete|impeccable|nickel)\b/i, en: "cleanliness", fr: "propreté", frArticle: "la " },
   { group: "space", words: /\b(spacious|space|roomy|cozy|cosy|layout|spacieux|espace|agencement)\b/i, en: "space", fr: "espace", frArticle: "l'" },
   { group: "decor", words: /\b(decor|décor|design|furnishings?|furniture|meubles?)\b/i, en: "decor", fr: "décor", frArticle: "le " },
-  { group: "family", words: /\b(kids?|children|baby|crib|high ?chair|toys|enfants?|bébé|bebe)\b/i, en: "family setup", fr: "installation pour les enfants", frArticle: "l'" },
+  { group: "family", words: /\b(kids?|children|baby|crib|high ?chair|toys|family|famille|familial\w*|enfants?|bébé|bebe)\b/i, en: "family setup", fr: "installation pour les enfants", frArticle: "l'" },
   { group: "sights", words: /\b(cn tower|rogers centre|waterfront|restaurants?|shops?|transit|subway|ttc|union station|harbourfront|lake|park)\b/i, en: "neighbourhood", fr: "quartier", frArticle: "le " },
 ];
 
@@ -134,10 +134,10 @@ function phraseOf(clause: string, feature: Feature, critique = false): Mention |
 }
 
 function clausesOf(review: string): string[] {
-  return review.split(/[.!?;\n]+|\s+\b(?:but|however|though|although|mais|cependant|sauf)\b\s+/i).map((part) => part.replace(/\s+/g, " ").trim()).filter((part) => part.length > 1);
+  return clauseParts(review);
 }
 
-const NEGATIVE = /\b(could (?:use|be|have|do)|could've|needs? (?:a |some )?(?:clean|cleaning|work|repair|fix|update|attention|replac)\w*|would be (?:nice|better|great|good)|wish|unfortunately|too (?:small|tight|narrow|loud|hot|cold|soft|hard)|tight|small|cramped|narrow|dirty|dusty|dated|old|noisy|loud|broken|stained|issue|problem|bit (?:awkward|small|tight|noisy|dated)|slightly|a little|only (?:one|a)|hard to|difficult|awkward|lacking|missing|smelled|smell|leak|weak|pas assez|trop|dommage|petit|bruyant|sale|vieux|un peu)\b/i;
+const NEGATIVE = /\b(slow|long wait|(?:wait|waiting) (?:was|is|were) (?:long|slow)|only (?:note|downside|thing|complaint|issue)|rather than|separated|divided|not (?:very|really|that|quite|so|a |enough|private)|no privacy|isn't|wasn't|aren't|could (?:use|be|have|do)|could've|needs? (?:a |some )?(?:clean|cleaning|work|repair|fix|update|attention|replac)\w*|would be (?:nice|better|great|good)|wish|unfortunately|too (?:small|tight|narrow|loud|hot|cold|soft|hard)|tight|small|cramped|narrow|dirty|dusty|dated|old|noisy|loud|broken|stained|issue|problem|bit (?:awkward|small|tight|noisy|dated)|slightly|a little|only (?:one|a)|hard to|difficult|awkward|lacking|missing|smelled|smell|leak|weak|pas assez|trop|dommage|petit|bruyant|sale|vieux|un peu)\b/i;
 
 /** The features one clause names, in the order the guest wrote them: "the den was cramped as a second bedroom" is about the den. */
 function inClause(clause: string, critique: boolean): Mention[] {
@@ -179,7 +179,7 @@ export type Tier = "short" | "medium" | "long";
 
 export function tierOf(review: string): Tier {
   const words = review.trim().split(/\s+/).filter(Boolean).length;
-  return words <= 22 ? "short" : words <= 70 ? "medium" : "long";
+  return words <= 16 ? "short" : words <= 70 ? "medium" : "long";
 }
 
 /** The most words a reply to this review may use. */
@@ -225,91 +225,194 @@ export function withoutName(sentence: string, name: string): string {
 }
 
 export function sentencesOf(text: string): string[] {
-  return text.split(/(?<=[.!?])\s+|\n+/).map((part) => part.trim()).filter(Boolean);
+  return text.split(/(?<=[.!?])(?<!\b(?:St|Ave|Rd|Blvd|Dr|Mt)\.)\s+|\n+/).map((part) => part.trim()).filter(Boolean);
+}
+
+// ---------- Writing from the guest's own sentences ----------
+
+const BARE_SUBJECTS = /^(host|hosts|location|check-in|check-out|checkin|communication|apartment|place|stay|kitchen|windows|parking|bathroom|bathrooms|shower|elevator|wifi|building|view|views|bed|beds|bedroom|bedrooms|space|decor|unit|condo|studio|balcony|den|laundry)\b(?= (?:was|were|is|are|had|has|could|needs?|felt|looked)\b)/i;
+const VERB = /\b(?:was|were|is|are|had|has|felt|feel|loved|enjoyed|liked|made|gave|came|stayed|looked|worked|met|needed|exceeded|appreciated|adored|helped|arrived|could|would|will|did|got|found|took)\b|(?<![\p{L}])(?:était|étaient|est|sont|avait|avaient|avons|avez|ont|adoré|aimé|apprécié|été)(?![\p{L}])/iu;
+const ADJ = /^(?:(?:a|an|the)\s+)?(?:(?:such|really|very|so|super|extremely|incredibly)\s+)?(great|amazing|perfect|wonderful|fantastic|lovely|beautiful|excellent|superb|awesome|incredible|outstanding|stunning|gorgeous|nice|good|flexible|easy|smooth|seamless|simple|quick|fast|helpful|friendly|responsive|quiet|bright|modern|stylish|clean|tidy|cozy|cosy|comfy|comfortable|convenient|central|safe|spacious|huge|updated|spotless|immaculate|peaceful|charming|cute|impeccable|well[- ](?:equipped|located|maintained|stocked|kept))\b\s*(.*)$/i;
+const PREP = /\b(for|in|with|near|on|to|at|of|by|from|over|around)\b/i;
+const SKIP_CLAUSE = /^(?:thank|thanks|merci|will|would (?:definitely |absolutely |highly )?(?:recommend|stay|return|come|book)|we will (?:be back|definitely)|highly recommend|definitely recommend|recommend|5 stars|five stars)\b/i;
+const FEELING = /\b(home|relax\w*|unwind|at ease|welcom\w*|peaceful|safe)\b|\b(chez nous|à l'aise|detendu|détendu)\b/i;
+
+function protect(text: string): string {
+  return text.replace(/\b(St|Ave|Rd|Blvd|Dr|Mt|Ft|Apt)\./g, "$1§");
+}
+function restore(text: string): string {
+  return text.replace(/§/g, ".");
+}
+
+function tidyClause(clause: string): string {
+  return restore(clause)
+    .replace(/\bcheck[\s-]?in\b/gi, "check-in")
+    .replace(/\bcheck[\s-]?out\b/gi, "check-out")
+    .replace(/\s*\/\s*/g, " and ")
+    .replace(/^(?:and|but|so|also|overall|honestly|just|plus|definitely)\s+/i, "")
+    .replace(/[\s,;:]+(?:though|tho|but|however|mais|cependant)?[\s,;:]*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The guest's words turned to face them: "we loved our stay" becomes "you loved your stay". */
+export function toGuestVoice(clause: string, french = false): string {
+  let text = clause;
+  const table: [RegExp, string][] = french
+    ? [
+        [/\bnous avons\b/gi, "vous avez"], [/\bnous sommes\b/gi, "vous êtes"], [/\bnous étions\b/gi, "vous étiez"], [/\bnous\b/gi, "vous"],
+        [/\bnotre\b/gi, "votre"], [/\bnos\b/gi, "vos"], [/\bj'ai\b/gi, "vous avez"], [/\bje suis\b/gi, "vous êtes"], [/\bj'étais\b/gi, "vous étiez"],
+        [/\bmon\b/gi, "votre"], [/\bma\b/gi, "votre"], [/\bmes\b/gi, "vos"],
+      ]
+    : [
+        [/\bwe're\b/gi, "you're"], [/\bwe've\b/gi, "you've"], [/\bwe'd\b/gi, "you'd"], [/\bwe'll\b/gi, "you'll"], [/\bwe\b/gi, "you"],
+        [/\bourselves\b/gi, "yourselves"], [/\bours\b/gi, "yours"], [/\bour\b/gi, "your"], [/\bus\b/gi, "you"],
+        [/\bI'm\b/g, "you're"], [/\bI've\b/g, "you've"], [/\bI'd\b/g, "you'd"], [/\bI'll\b/g, "you'll"], [/\bI\b/g, "you"],
+        [/\bmyself\b/gi, "yourself"], [/\bmy\b/gi, "your"], [/\bme\b/gi, "you"], [/\bmine\b/gi, "yours"],
+      ];
+  for (const [pattern, to] of table) text = text.replace(pattern, to);
+  // "You" mid-sentence stays lower case; the first word is lower-cased too, since it follows a lead-in.
+  return text.replace(/^([A-ZÀ-Ý])(?![A-ZÀ-Ý])/, (letter) => letter.toLowerCase());
+}
+
+function clauseParts(review: string): string[] {
+  const text = protect(review).replace(/\s+&\s+/g, ". ");
+  return text
+    .split(/[.!?;\n]+|\s+\b(?:but|however|though|although|mais|cependant|sauf)\b\s+/i)
+    .flatMap((part) => part.split(/\s+(?:and|et)\s+(?=(?:the|a|an|our|we|it|everything|tout|les?|la|l'|nous|notre|nos|check[\s-]?in|[\p{L}-]+ (?:was|were|is|are|had|has|était|étaient|est|sont|avait)\b))/iu))
+    .map((part) => tidyClause(part))
+    .filter((part) => part.length > 2);
+}
+
+const FR_NOUNS: Record<string, string> = {
+  logement: "le ", appartement: "l'", séjour: "le ", endroit: "l'", emplacement: "l'", quartier: "le ", accueil: "l'", balcon: "le ", lit: "le ", salon: "le ", studio: "le ", condo: "le ",
+  cuisine: "la ", vue: "la ", literie: "la ", chambre: "la ", terrasse: "la ", maison: "la ", propreté: "la ", situation: "la ", communication: "la ", décoration: "la ",
+};
+
+type Echo = { text: string; score: number; groups: string[]; feeling: boolean; at: number };
+
+function plural(noun: string): boolean {
+  return /[a-z]s$/i.test(noun) && !/(ss|us|is)$/i.test(noun);
+}
+
+/** What the guest liked, as sentences about what they actually wrote. Each is their own clause, turned to face them. */
+export function echoesIn(review: string, french: boolean): Echo[] {
+  const out: Echo[] = [];
+  for (const raw of clauseParts(review)) {
+    if (NEGATIVE.test(raw) || SKIP_CLAUSE.test(raw)) continue;
+    let clause = raw;
+    const wordsIn = clause.split(/\s+/);
+    if (wordsIn.length > 18) {
+      const cut = clause.split(/,\s*/)[0] ?? "";
+      if (cut.split(/\s+/).length < 3 || cut.split(/\s+/).length > 18) continue;
+      clause = cut;
+    }
+    let body = "";
+    const verbed = VERB.test(clause) && wordsIn.length >= 3;
+    const home = /\b(felt|feel|feeling)\s+(?:right |completely |totally |just |so )?(?:at )?home\b(?:\s+(?:from |since |right from )?(?:the )?(?:moment|minute|second|time)\s+we\s+\w+)?/i.exec(clause);
+    if (!french && home) body = toGuestVoice(`we ${home[0]}`);
+    else if (verbed) {
+      let voiced = toGuestVoice(clause, french);
+      if (!french && BARE_SUBJECTS.test(voiced)) voiced = `the ${voiced}`;
+      if (!french && /^(loved|enjoyed|liked|adored|appreciated)\b/i.test(voiced)) voiced = `you ${voiced}`;
+      if (french && /^(adoré|aimé|apprécié)\b/i.test(voiced)) voiced = `vous avez ${voiced}`;
+      body = voiced;
+    } else if (french) {
+      const m = /^(\p{L}+)\s+((?:très |tellement |vraiment )?(?:parfait|parfaite|magnifique|super|excellent|excellente|impeccable|agréable|propre|confortable|charmant|charmante|idéal|idéale|formidable|génial|géniale|spacieux|spacieuse|calme|bien situé|bien située|bien équipé|bien équipée|top|nickel))\b(.*)$/iu.exec(clause);
+      const article = m ? FR_NOUNS[m[1]!.toLowerCase()] : undefined;
+      if (!m || !article) continue;
+      body = `${article}${m[1]!.toLowerCase()} était ${m[2]}${toGuestVoice(m[3] ?? "", true)}`;
+    } else {
+      const m = ADJ.exec(clause.replace(/^(\w+),\s+/, "$1 "));
+      if (!m) continue;
+      const adjective = m[1]!.toLowerCase();
+      let rest = (m[2] ?? "").trim();
+      if (!rest) continue;
+      // "Great condo, super clean": the second adjective joins the first.
+      let also = "";
+      const comma = /^([^,]+),\s*((?:very |super |really |so )?[a-z-]+)$/i.exec(rest);
+      if (comma && ADJ.test(comma[2]!)) {
+        rest = comma[1]!.trim();
+        also = ` and ${comma[2]!.toLowerCase()}`;
+      }
+      if (ADJ.test(rest) || /[,]|\b(and|like|exactly|than)\b/i.test(rest)) continue;
+      const words = rest.split(/\s+/);
+      const at = words.findIndex((word, index) => index > 0 && PREP.test(word));
+      const head = (at > 0 ? words.slice(0, at) : words).join(" ");
+      const tail = at > 0 ? ` ${toGuestVoice(words.slice(at).join(" "))}` : "";
+      const noun = (at > 0 ? words[at - 1]! : words[words.length - 1]!).replace(/[^\w-]/g, "");
+      const countable = !/^(communication|hospitality|service|support|help|access|parking|wi-?fi|check-in|check-out|location|cleanliness|quiet)$/i.test(noun) && !plural(noun);
+      if (at > 0 && countable && !/^(the|our|your|my|this|a|an)\b/i.test(head)) {
+        body = `it was ${/^[aeiou]/i.test(adjective) ? "an" : "a"} ${adjective}${also} ${toGuestVoice(head)}${tail}`;
+      } else {
+        const determiner = /^(the|our|your|my|this|a|an)\b/i.test(head) ? "" : "the ";
+        body = `${determiner}${toGuestVoice(head)}${tail} ${plural(noun) ? "were" : "was"} ${adjective}${also}`;
+      }
+    }
+    if (french && /^(le|la|l'|les) /.test(body) === false && !/^(vous|tout|ce|c')/i.test(body) && !VERB.test(body)) continue;
+    const groups = FEATURES.filter((feature) => feature.words.test(clause)).map((feature) => feature.group);
+    const feeling = FEELING.test(clause);
+    out.push({ text: restore(body), score: (feeling ? 4 : 0) + groups.length * 2 + (/[A-Z]{1}\w+ St|-shaped|\bover\b/.test(clause) ? 1 : 0), groups, feeling, at: out.length });
+  }
+  return out;
+}
+
+type Critique = { text: string; plain: boolean; noun: string };
+
+/** The small critiques the guest actually made, each kept as their own words for an honest acknowledgement. */
+function critiqueClauses(review: string, french: boolean): Critique[] {
+  const out: Critique[] = [];
+  for (const raw of clauseParts(review)) {
+    if (!NEGATIVE.test(raw) || SKIP_CLAUSE.test(raw)) continue;
+    const mention = inClause(raw, true)[0];
+    if (!mention) continue;
+    const cut = raw.split(/\s+/).length > 20 ? (raw.split(/,\s*/)[0] ?? raw) : raw;
+    if (VERB.test(cut) && cut.split(/\s+/).length >= 3 && cut.split(/\s+/).length <= 20) {
+      let voiced = toGuestVoice(cut, french).replace(/^(?:the )?(?:only|just|one) (?:note|thing|downside|complaint|issue)(?: is| was)?(?: that)?[:,]?\s*/i, "");
+      if (!french && BARE_SUBJECTS.test(voiced)) voiced = `the ${voiced}`;
+      out.push({ text: voiced, plain: false, noun: french ? mention.frPhrase : mention.phrase });
+    } else out.push({ text: "", plain: true, noun: french ? mention.frPhrase : mention.phrase });
+    if (out.length >= 2) break;
+  }
+  return out;
 }
 
 // ---------- English ----------
 
-const EN_OPENINGS = [
-  "Thanks {name}! We're so glad you had a great stay.",
-  "Thank you so much, {name}, that's lovely to hear.",
-  "What a kind review, thank you {name}!",
-  "Thanks for staying with us, {name}!",
-  "Thank you {name}, this made us smile.",
-  "Really appreciate the kind words, {name}!",
-  "Thanks so much {name}, we loved hosting you.",
-  "Hi {name}, thank you for such a warm review!",
-  "So happy to read this, {name}, thank you!",
-  "Thanks {name}! Reading this made our day.",
-  "Thank you for taking the time to write this, {name}.",
-  "Wonderful to hear, {name}, thanks so much!",
-  "Thanks {name}, that really means a lot to us.",
-  "Thank you {name}, what a great note to get!",
-  "We're thrilled you enjoyed it, {name}, thank you!",
-  "Thank you {name}, we're delighted it went so well.",
+const EN_THANKS = ["Thanks {name}!", "Thank you {name}!", "Thanks so much {name}!"];
+const EN_CALM_THANKS = ["Thank you {name} for the thoughtful review.", "Thanks {name} for taking the time to write this.", "Thank you {name} for the honest feedback."];
+const EN_LEAD_THAT = ["So glad that", "We're delighted that", "It's great to hear that", "Really happy that", "We're thrilled that", "Wonderful to read that"];
+const EN_LEAD_YOU = ["So glad you", "We're delighted you", "Really happy you", "We're thrilled you", "It's wonderful that you", "Great to hear you"];
+const EN_ACK = [
+  "You're right that {c}, and your note helps us describe it more clearly for future guests.",
+  "Fair point that {c}, and thanks for the honest note.",
+  "Appreciate you mentioning that {c}, it's helpful to know.",
+  "Good to know that {c}, thanks for telling us.",
 ];
-const EN_CALM_OPENINGS = [
-  "Thank you for the thoughtful review, {name}.",
-  "Thanks for the honest feedback, {name}.",
-  "Thank you for taking the time to share this, {name}.",
-  "Thanks {name}, we appreciate you writing this.",
-  "Thank you {name}, this is useful to hear.",
-  "We appreciate the candid note, {name}.",
+const EN_ACK_PLAIN = [
+  "You're right about {x}, and your note helps us describe it more clearly for future guests.",
+  "Thanks for the honest note about {x}, it's helpful to know.",
+  "Fair point about {x}, and we appreciate you saying so.",
 ];
-const EN_SHORT_OPENINGS = [
-  "Thanks {name}!",
-  "Thank you {name}!",
-  "Much appreciated, {name}!",
-  "Thanks so much {name}!",
-  "So glad, {name}, thank you!",
-  "Lovely to hear, {name}!",
-  "Thanks {name}, that's great to hear!",
-  "Appreciate it, {name}!",
-];
-const EN_PRAISE = [
-  "So glad you enjoyed {x}.",
-  "Happy to hear {x} worked for you.",
-  "It means a lot that {x} stood out.",
-  "We're delighted {x} {was} a highlight.",
-  "Nice to hear you liked {x}.",
-  "Great to know {x} made a difference.",
-  "Glad {x} hit the spot.",
-  "We loved hearing about {x}.",
-  "Happy {x} made the stay better.",
-  "So pleased {x} {was} just what you needed.",
-  "Wonderful that {x} stood out for you.",
-  "It's lovely that {x} {was} part of your stay.",
-];
-const EN_CRITIQUE = [
-  "Thanks for mentioning {x}, we'll keep an eye on it.",
-  "Appreciate you flagging {x}, we'll take a look.",
-  "Good note about {x}, thank you, we'll look into it.",
-  "Thanks for letting us know about {x}, we'll make a note of it.",
-  "We hear you on {x}, thank you for saying so.",
-];
-const EN_LOW_CRITIQUE = [
-  "We're sorry about {x}.",
-  "We're sorry {x} fell short.",
-  "Sorry about {x}, that's not the experience we want.",
-  "We're sorry {x} wasn't what you hoped for.",
-];
+const EN_LOW_ACK = ["We're sorry that {c}.", "We're sorry to read that {c}.", "Sorry that {c}, that's not the experience we want you to have."];
+const EN_LOW_ACK_PLAIN = ["We're sorry about {x}.", "Sorry about {x}, that's not what we want for our guests."];
 const EN_CLOSINGS = [
+  "You're welcome back anytime.",
   "Safe travels!",
-  "You're always welcome back.",
-  "Hope to host you again!",
+  "We'd happily welcome you back.",
   "Come back anytime!",
   "Wishing you wonderful travels ahead.",
   "Take care, and thanks again!",
   "Until next time!",
-  "Happy travels!",
   "We'd love to have you back.",
   "All the best on your next trip.",
   "See you next time you're in town!",
-  "Thanks again for choosing us.",
   "Hope our paths cross again soon.",
-  "Wishing you all the best!",
   "Come stay with us again whenever you like.",
-  "Until we host you again!",
+  "Our door is always open to you.",
+  "We'd be thrilled to host you again.",
+  "Hope we can welcome you back soon.",
+  "Happy travels!",
 ];
 const EN_LOW_CLOSINGS = [
   "We'd welcome the chance to do better.",
@@ -318,59 +421,29 @@ const EN_LOW_CLOSINGS = [
   "We appreciate you giving us the chance to hear this.",
 ];
 
-function cap(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
 // ---------- French ----------
 
-const FR_OPENINGS = [
-  "Merci {name} ! Nous sommes ravis que votre séjour vous ait plu.",
-  "Un grand merci {name}, votre message nous fait très plaisir.",
-  "Merci beaucoup {name}, quel gentil commentaire !",
-  "Merci d'avoir séjourné chez nous, {name} !",
-  "Merci {name}, ce message nous a fait sourire.",
-  "Nous sommes touchés par vos mots, {name}, merci !",
-  "Merci infiniment {name}, c'était un plaisir de vous accueillir.",
-  "Quel plaisir de vous lire, {name}, merci !",
+const FR_THANKS = ["Merci {name}!", "Merci beaucoup {name}!", "Un grand merci {name}!"];
+const FR_CALM_THANKS = ["Merci {name} pour votre commentaire sincère.", "Merci {name} d'avoir pris le temps de nous écrire."];
+const FR_LEAD = ["Nous sommes ravis d'apprendre que", "Quel plaisir de lire que", "Nous sommes heureux de savoir que", "C'est un vrai bonheur d'apprendre que"];
+const FR_ACK = [
+  "Vous avez raison de souligner que {c}, et votre remarque nous aide à mieux décrire le logement aux prochains voyageurs.",
+  "Merci pour votre franchise: {c}, nous en prenons bonne note.",
 ];
-const FR_CALM_OPENINGS = [
-  "Merci pour votre commentaire sincère, {name}.",
-  "Merci {name} d'avoir pris le temps de nous écrire.",
-  "Nous vous remercions pour ce retour, {name}.",
-];
-const FR_SHORT_OPENINGS = ["Merci {name} !", "Un grand merci {name} !", "Merci beaucoup {name} !", "Avec plaisir {name}, merci !"];
-const FR_PRAISE = [
-  "Ravis que {x} vous ait plu.",
-  "Nous sommes heureux que {x} ait compté pour vous.",
-  "Content d'apprendre que {x} était à votre goût.",
-  "C'est un plaisir de lire que {x} vous a plu.",
-  "Quel bonheur que {x} ait fait la différence.",
-  "Très heureux que {x} vous ait fait plaisir.",
-];
-const FR_PRAISE_PLURAL = [
-  "Ravis que {x} vous aient plu.",
-  "Nous sommes heureux que {x} aient compté pour vous.",
-  "Content d'apprendre que {x} étaient à votre goût.",
-  "C'est un plaisir de lire que {x} vous ont plu.",
-  "Quel bonheur que {x} aient fait la différence.",
-  "Très heureux que {x} vous aient fait plaisir.",
-];
-const FR_CRITIQUE = [
-  "Merci d'avoir signalé {x}, nous allons y jeter un œil.",
-  "Merci pour votre remarque sur {x}, nous en prenons note.",
-  "Bonne remarque concernant {x}, nous allons nous en occuper.",
-];
-const FR_LOW_CRITIQUE = ["Nous sommes désolés pour {x}.", "Nous regrettons que {x} ne vous ait pas satisfait."];
+const FR_ACK_PLAIN = ["Merci pour votre remarque sur {x}, elle nous aide à mieux décrire le logement.", "Vous avez raison au sujet de {x}, merci de nous l'avoir dit."];
+const FR_LOW_ACK = ["Nous sommes désolés d'apprendre que {c}."];
+const FR_LOW_ACK_PLAIN = ["Nous sommes désolés pour {x}."];
 const FR_CLOSINGS = [
-  "Bon voyage !",
+  "Au plaisir de vous accueillir à nouveau!",
+  "Bon voyage!",
   "Vous serez toujours les bienvenus.",
-  "Au plaisir de vous accueillir à nouveau !",
-  "Revenez quand vous voulez !",
-  "Excellente continuation !",
-  "Prenez soin de vous, et merci encore !",
-  "À très bientôt, nous l'espérons !",
+  "Revenez quand vous voulez!",
+  "Excellente continuation!",
+  "Prenez soin de vous, et merci encore!",
+  "À très bientôt, nous l'espérons!",
   "Nous serions ravis de vous revoir.",
+  "Notre porte vous reste toujours ouverte.",
+  "Revenez nous voir quand l'envie vous prendra!",
 ];
 const FR_LOW_CLOSINGS = ["Nous espérons avoir l'occasion de mieux faire.", "Merci de nous l'avoir dit, cela nous aide à nous améliorer."];
 
@@ -384,83 +457,87 @@ export type ComposeInput = {
 
 export type ComposedReply = { reply: string; opening: string; closing: string; details: string[]; critiques: string[] } | null;
 
-/** Things a guest names together that are one point to a host: the balcony and the view, the bed and the mattress. */
-const TOPIC: Record<string, string> = { balcony: "outlook", view: "outlook", bed: "sleep", bedroom: "sleep", mattress: "sleep", bathroom: "bath", shower: "bath", location: "place", sights: "place" };
+function sentence(text: string): string {
+  const trimmed = text.replace(/\s+/g, " ").trim().replace(/[\s,;:]+$/, "");
+  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}${/[.!?]$/.test(trimmed) ? "" : "."}`;
+}
 
-const PLURAL_NOUN = /\b(bathrooms|bedrooms|windows|towels|pillows|views|amenities|beds|doors|sheets|linens|snacks|appliances|mattresses|two|three|four|both)\b/i;
+/** The opening a reply is compared on: a bare "Thanks Edith!" and the sentence after it are one opening. */
+export function openingKey(reply: string, name: string): string {
+  const parts = sentencesOf(reply);
+  const first = parts[0] ? withoutName(parts[0], name) : "";
+  if (first.split(" ").filter(Boolean).length <= 3 && parts[1]) return `${first} ${withoutName(parts[1], name)}`.trim();
+  return first;
+}
 
-/** A reply from this review alone. Null when the review isn't in English or French: those need a model, or the partner. */
+/** A reply from this review alone, in the guest's own terms. Null when the review isn't in English or French: those need a model, or the partner. */
 export function composeReviewReply(input: ComposeInput): ComposedReply {
   const language = input.language ?? reviewLanguage(input.review);
   if (language.code === "other") return null;
   const french = language.code === "fr";
-  const name = input.guest.trim().split(/\s+/)[0] || (french ? "vous" : "there");
+  const name = input.guest.trim().split(/\s+/)[0] || "";
   const memory = input.memory ?? newVoiceMemory();
   const seed = `${name}|${input.review}`;
   const tier = tierOf(input.review);
-  const praises = praisesIn(input.review);
-  const critiques = critiquesIn(input.review).slice(0, 1);
   const low = input.stars > 0 && input.stars <= 3;
-  const nameFree = (sentence: string) => withoutName(sentence, name);
+  const nameFree = (text: string) => withoutName(text, name);
 
-  // Opening. Compared with the name taken out: "Thanks Edith! We're so glad..." and "Thanks Henry! We're so glad..." are one opening.
-  const openBank = french
-    ? (low ? FR_CALM_OPENINGS : tier === "short" ? FR_SHORT_OPENINGS : FR_OPENINGS)
-    : (low ? EN_CALM_OPENINGS : tier === "short" ? EN_SHORT_OPENINGS : EN_OPENINGS);
-  const opening = pickBy(openBank, `${seed}|open`, (candidate) => !memory.openings.has(nameFree(candidate.replace("{name}", name))), (candidate) => candidate.replace("{name}", name));
-  const parts: string[] = [opening];
+  const thanksBank = low ? (french ? FR_CALM_THANKS : EN_CALM_THANKS) : french ? FR_THANKS : EN_THANKS;
+  const taken = new Set([...memory.openings].map((key) => key.split(" ")[0] ?? ""));
+  const thanks = pickBy(thanksBank, `${seed}|thanks`, (candidate) => !taken.has(nameFree(candidate.replace("{name}", name)).split(" ")[0] ?? ""), (candidate) => candidate.replace("{name}", name));
+
+  // What they liked: feelings first, then the most specific, never more than the review's length calls for. None for a low review.
+  const echoes = low ? [] : echoesIn(input.review, french).sort((a, b) => b.score - a.score);
+  const wanted = tier === "short" ? 1 : tier === "medium" ? 2 : 3;
+  const chosen: Echo[] = [];
+  const topics = new Set<string>();
+  for (const echo of echoes) {
+    if (chosen.length >= wanted) break;
+    const mine = echo.groups.map((group) => TOPIC[group] ?? group);
+    if (mine.length && mine.every((topic) => topics.has(topic))) continue;
+    for (const topic of mine) topics.add(topic);
+    chosen.push(echo);
+  }
+  chosen.sort((x, y) => x.at - y.at);
+  const critiques = critiqueClauses(input.review, french).slice(0, 1);
+
+  const used = new Set<string>();
+  const parts: string[] = [];
   const details: string[] = [];
-
-  // What the guest praised: one thing for a short review, two for the rest. Never for a low review.
-  const sentencesUsed = new Set<string>();
-  // A short review gets a line or two in all: with a critique in it, the one line is the acknowledgement.
-  if (!low && !(tier === "short" && critiques.length)) {
-    const topics = new Set<string>();
-    const wanted = tier === "short" || critiques.length ? 1 : 2;
-    const chosen = praises.filter((mention) => {
-      const topic = TOPIC[mention.group] ?? mention.group;
-      if (topics.has(topic)) return false;
-      topics.add(topic);
-      return true;
-    });
-    for (const mention of chosen.slice(0, wanted)) {
-      const x = french ? mention.frPhrase : mention.phrase;
-      const plural = french ? /^les /.test(x) : PLURAL_NOUN.test(x);
-      const bank = french ? (plural ? FR_PRAISE_PLURAL : FR_PRAISE) : EN_PRAISE;
-      const sentence = pick(bank, `${seed}|${mention.group}`, sentencesUsed, (template) => template
-        .replace("{x}", x).replace("{X}", cap(x)).replace("{was}", plural ? "were" : "was").replace("{is}", plural ? "are" : "is"));
-      sentencesUsed.add(norm(sentence));
-      parts.push(sentence);
-      details.push(x);
+  for (const echo of chosen) {
+    let lead: string;
+    if (french) lead = pick(FR_LEAD, `${seed}|${echo.text}`, used);
+    else {
+      const you = /^you\b/i.test(echo.text);
+      lead = pick(you ? EN_LEAD_YOU : EN_LEAD_THAT, `${seed}|${echo.text}`, used);
+      if (you) {
+        parts.push(sentence(`${lead} ${echo.text.replace(/^you\s+/i, "")}`));
+        used.add(norm(lead));
+        details.push(echo.text);
+        continue;
+      }
     }
+    used.add(norm(lead));
+    parts.push(sentence(`${lead} ${echo.text}`));
+    details.push(echo.text);
   }
-  // A small critique that is really in the review: one brief, warm acknowledgement.
-  for (const mention of critiques) {
-    const x = french ? mention.frPhrase : mention.phrase;
-    const bank = french ? (low ? FR_LOW_CRITIQUE : FR_CRITIQUE) : (low ? EN_LOW_CRITIQUE : EN_CRITIQUE);
-    parts.push(pick(bank, `${seed}|c|${mention.group}`, new Set(), (template) => template.replace("{x}", x)));
-    details.push(x);
+  for (const critique of critiques) {
+    const bank = critique.plain ? (french ? (low ? FR_LOW_ACK_PLAIN : FR_ACK_PLAIN) : low ? EN_LOW_ACK_PLAIN : EN_ACK_PLAIN) : french ? (low ? FR_LOW_ACK : FR_ACK) : low ? EN_LOW_ACK : EN_ACK;
+    parts.push(sentence(pick(bank, `${seed}|c|${critique.text || critique.noun}`, new Set(), (template) => template.replace("{c}", critique.text).replace("{x}", critique.noun))));
+    details.push(critique.text || critique.noun);
   }
-  // A review with nothing nameable still gets its own warmth back, never an invented detail.
-  if (!details.length && tier !== "short") parts.push(french ? "Votre message nous fait chaud au cœur." : low ? "We take this seriously." : "It means a lot to hear this from you.");
+  if (!parts.length) parts.push(french ? "Votre message nous fait chaud au cœur." : low ? "We take this seriously." : "It means a lot to hear this from you.");
 
-  // The closing: none for a short review (a line or two is the whole reply), one for the rest.
-  let closing = "";
-  if (tier !== "short") {
-    const bank = low ? (french ? FR_LOW_CLOSINGS : EN_LOW_CLOSINGS) : (french ? FR_CLOSINGS : EN_CLOSINGS);
-    closing = pick(bank, `${seed}|close`, memory.closings);
-    if (memory.closings.has(norm(closing)) && !low) {
-      // Every stock closing is taken: tie this one to something this guest said.
-      closing = french ? "Revenez nous voir quand l'envie vous prendra !" : details[0] ? `Hope ${details[0]} brings you back!` : "Come see us again whenever you're in town!";
-    }
-    parts.push(closing);
-  }
-  const reply = parts.join(" ").replace(/\s+/g, " ").trim();
-  const lastSentence = sentencesOf(reply).at(-1) ?? "";
-  memory.openings.add(nameFree(opening));
-  memory.closings.add(norm(tier === "short" ? lastSentence : closing));
-  return { reply, opening, closing: tier === "short" ? lastSentence : closing, details, critiques: critiques.map((item) => item.word) };
+  const closingBank = low ? (french ? FR_LOW_CLOSINGS : EN_LOW_CLOSINGS) : french ? FR_CLOSINGS : EN_CLOSINGS;
+  const closing = pick(closingBank, `${seed}|close`, memory.closings);
+  const reply = [thanks, ...parts, closing].join(" ").replace(/\s+/g, " ").trim();
+  memory.openings.add(openingKey(reply, name));
+  memory.closings.add(norm(closing));
+  return { reply, opening: openingKey(reply, name), closing, details, critiques: critiques.map((item) => item.noun) };
 }
+
+/** Things named together that are one point to a host: the balcony and the view. */
+const TOPIC: Record<string, string> = { balcony: "outlook", view: "outlook", bed: "sleep", bedroom: "sleep", mattress: "sleep", bathroom: "bath", shower: "bath", location: "place", sights: "place" };
 
 function pickBy(options: string[], seed: string, free: (candidate: string) => boolean, fill: (text: string) => string): string {
   const start = hash(seed) % options.length;
@@ -522,14 +599,35 @@ export function checkReviewReply(input: { reply: string; review: string; guest: 
     const mentioned = [...praises, ...critiquesIn(review)].some((item) => replyGroups.has(item.group) || new RegExp(`\\b${item.word}\\b`, "i").test(reply));
     if (!mentioned) problems.push("It names no specific detail from the review.");
   }
+  // Prose, not frames: these assembled patterns read like keyword slot-filling and are never allowed.
+  const FRAMES = /part of your stay|brings you back|bring you back\b.*\bhope|hit the spot|made a difference|make a difference|stood out for you|stands out for you|made the stay better|just what you needed|was a highlight|were a highlight|a highlight\b/i;
+  if (FRAMES.test(reply)) problems.push("It uses a stock frame with a keyword dropped in.");
+  // Praise is thanked, never answered with complaint language: that is for the critiques the review actually made.
+  const COMPLAINT = /look(?:ing)? into|hear you on|thanks? for (?:flagging|letting us know|mentioning)|appreciate you (?:flagging|mentioning)|\bnoted\b|take a look|keep an eye|make a note|fair point|you're right|vous avez raison|prenons (?:bonne )?note|jeter un œil|we're sorry|sorry (?:about|that|for)|désolé/i;
+  const critiqueList = critiquesIn(review);
+  for (const text of sentencesOf(reply)) {
+    if (!COMPLAINT.test(text)) continue;
+    const answersCritique = critiqueList.some((item) => new RegExp(`\\b${item.word}\\b`, "i").test(text) || FEATURES.some((feature) => feature.group === item.group && feature.words.test(text)));
+    if (!critiqueList.length) problems.push(`"${text.slice(0, 50)}" answers praise with complaint language; the review has no critique.`);
+    else if (!answersCritique) problems.push(`"${text.slice(0, 50)}" uses complaint language about something the guest praised.`);
+  }
+  // Names: once, opening the reply as "Thanks Name!", never bracketed by commas.
+  if (name) {
+    const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`,\\s*${n}\\b|\\b${n}\\s*,`, "i").test(reply)) problems.push("The name sits between commas.");
+    if (!new RegExp(`^(?:thanks|thank you|merci)(?: so much| beaucoup)?\\s+${n}\\b|^un grand merci\\s+${n}\\b`, "i").test(reply.trim())) problems.push("It must open with the guest's name right after the thanks, like \"Thanks Name!\".");
+  }
+  // Agreement errors that assembly causes: a plural thing with a singular verb.
+  const PLURALS = "mattresses|bathrooms|bedrooms|windows|towels|pillows|views|beds|doors|sheets|linens|snacks|appliances|amenities|hosts|kids|bathrooms";
+  if (new RegExp(`\\b(?:${PLURALS})\\s+(?:brings|was|is|has|makes|hits|stands|feels|looks|works|gives)\\b`, "i").test(reply)) problems.push("A plural subject has a singular verb.");
+  if (/\b(?:the|a|an)\s+(?:mattress|bathroom|bedroom|window|towel|pillow|view|bed|door|host|kid)\s+(?:were|are|have|bring|make|stand)\b/i.test(reply)) problems.push("A singular subject has a plural verb.");
   if (input.memory) {
     const sentences = sentencesOf(reply);
-    const open = sentences[0] ? withoutName(sentences[0], name) : "";
+    const open = openingKey(reply, name);
     const close = sentences.at(-1) ? norm(sentences.at(-1)!) : "";
-    const own = input.ownDraft ? sentencesOf(input.ownDraft) : [];
-    const ownOpen = own[0] ? withoutName(own[0], name) : "";
-    const ownClose = own.at(-1) ? norm(own.at(-1)!) : "";
-    if (open && open !== ownOpen && input.memory.openings.has(open)) problems.push("Its opening sentence is already used by another reply in this queue.");
+    const ownOpen = input.ownDraft ? openingKey(input.ownDraft, name) : "";
+    const ownClose = input.ownDraft ? norm(sentencesOf(input.ownDraft).at(-1) ?? "") : "";
+    if (open && open !== ownOpen && input.memory.openings.has(open)) problems.push("Its opening is already used by another reply in this queue.");
     if (close && close !== ownClose && input.memory.closings.has(close)) problems.push("Its closing sentence is already used by another reply in this queue.");
   }
   return { ok: problems.length === 0, problems };
@@ -539,7 +637,7 @@ export function checkReviewReply(input: { reply: string; review: string; guest: 
 export function rememberReply(memory: VoiceMemory, reply: string, guest: string): void {
   const name = guest.trim().split(/\s+/)[0] ?? "";
   const sentences = sentencesOf(reply);
-  if (sentences[0]) memory.openings.add(withoutName(sentences[0], name));
+  if (sentences[0]) memory.openings.add(openingKey(reply, name));
   const last = sentences.at(-1);
   if (last) memory.closings.add(norm(last));
 }

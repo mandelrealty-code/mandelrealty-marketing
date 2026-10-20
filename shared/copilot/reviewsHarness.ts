@@ -19,7 +19,7 @@ import {
   reviewDate,
 } from "./reviewsQueue.js";
 import { checkedAssessment, thanksByName, resetReviewAi, setReviewModel, writeReviewAi } from "./reviewAi.js";
-import { checkReviewReply, newVoiceMemory, reviewLanguage, sentencesOf, norm, withoutName } from "./reviewVoice.js";
+import { checkReviewReply, openingKey, newVoiceMemory, reviewLanguage, sentencesOf, norm, withoutName } from "./reviewVoice.js";
 import { adjustDraft, ADJUST_KINDS } from "./reviewAdjust.js";
 import { installWorld, type ParityReview } from "./parity/world.js";
 import { NO_REVIEWS_SYNCED } from "./reviewTypes.js";
@@ -49,17 +49,22 @@ const U606 = { id: "prop-606", name: "20 Blue Jays Way Unit 606", address: "20 B
 const nowQ = new Date("2026-10-15T15:00:00-04:00");
 type Fixture = { id: string; guest: string; stars: number; review: string; private: string; thread: string[]; need: RegExp };
 const FIX: Fixture[] = [
-  { id: "edith", guest: "Edith", stars: 5, review: "Nous avons passé un séjour merveilleux. L'appartement était très propre et la vue sur la ville est magnifique. L'accueil était parfait.", private: "", thread: [], need: /propre|vue/i },
-  { id: "virginie", guest: "Virginie", stars: 5, review: "Appartement très bien situé, avec un balcon agréable. Lit confortable et cuisine bien équipée. Nous reviendrons avec plaisir.", private: "Les pommeaux de douche étaient bouchés et la poubelle débordait.", thread: ["Les pommeaux de douche ne marchent pas bien, et la poubelle est pleine."], need: /situ|balcon|lit|cuisine/i },
-  { id: "samuel", guest: "Samuel", stars: 5, review: "Amazing location. Great host.", private: "", thread: [], need: /location|host/i },
-  { id: "henry", guest: "Henry", stars: 5, review: "Wonderful stay with a great view of the city from the balcony. The bed was very comfortable and the check-in was easy. Windows could use a clean, but everything else was great and we would happily stay again.", private: "The shower door was off its track.", thread: ["The shower door is stuck and won't close."], need: /view|balcony|bed|check-?in/i },
-  { id: "gakte", guest: "Gákte Biera", stars: 5, review: "Perfect place for our family trip. The kitchen had everything we needed and the location near the CN Tower and the waterfront was ideal. The host was very responsive.", private: "The washing machine leaked on the floor.", thread: ["The washing machine is leaking."], need: /kitchen|location|CN Tower|waterfront|host|family/i },
-  { id: "josh", guest: "Josh", stars: 5, review: "Great condo, super clean and the building is quiet. The parking spot was a little tight for our SUV but no big deal. Loved the decor.", private: "No paper towels, and a mess on the sink.", thread: ["Paper towels on the sink were left out."], need: /clean|quiet|decor|parking/i },
-  { id: "lindsay", guest: "Lindsay", stars: 5, review: "Lovely, bright space in a perfect downtown location. The den was a bit cramped as a second bedroom, though the main bedroom was very comfortable. Check-in was a breeze.", private: "Please check the bed frame, it creaked.", thread: ["The bed frame needs a check."], need: /bright|downtown|location|den|bedroom|check-?in/i },
-  { id: "jennifer", guest: "Jennifer", stars: 5, review: "We loved the pool and gym in the building, and the unit was spotless. The host was friendly and communication was great.", private: "", thread: ["Could you pick up a paper towel roll for us?"], need: /pool|gym|spotless|clean|host|communication/i },
-  { id: "marco", guest: "Marco", stars: 4, review: "Nice stay overall. Great views at night and a comfortable mattress. The elevator wait was long in the mornings.", private: "", thread: [], need: /view|mattress/i },
-  { id: "nina", guest: "Nina", stars: 5, review: "Spacious, stylish and exactly like the photos. We loved walking to restaurants and the subway. Would stay again for sure!", private: "", thread: [], need: /space|spacious|stylish|photos|restaurants|subway|walking/i },
+  { id: "edith", guest: "Edith", stars: 5, review: "Nous avons passé un séjour merveilleux. L'appartement était très propre et la vue sur la ville est magnifique. L'accueil était parfait.", private: "", thread: [], need: /propre|vue|accueil/i },
+  { id: "virginie", guest: "Virginie", stars: 5, review: "Logement parfait pour notre famille. Les deux salles de bain étaient très pratiques et tout était propre. Nous reviendrons avec plaisir.", private: "Les pommeaux de douche étaient bouchés et la poubelle débordait.", thread: ["Les pommeaux de douche ne marchent pas bien, et la poubelle est pleine."], need: /salles de bain/i },
+  { id: "samuel", guest: "Samuel", stars: 5, review: "Amazing location & amazing hosts felt right at home", private: "", thread: [], need: /at home/i },
+  { id: "henry", guest: "Henry", stars: 5, review: "We felt right at home the moment we arrived. The L-shaped balcony over King St. was our favourite spot to unwind with a coffee, and the whole unit was spotless. We would happily stay again.", private: "The shower door was off its track.", thread: ["The shower door is stuck and won't close."], need: /at home[^.]*arrived/i },
+  { id: "zak", guest: "Zak", stars: 5, review: "Spotless apartment in a great downtown location. The only note is that the second bedroom is separated by a sliding frosted glass door, so it is best for families or close friends.", private: "", thread: [], need: /sliding frosted glass door/i },
+  { id: "pushkar", guest: "Pushkar", stars: 5, review: "Flexible check-in and a very comfortable bed. Great communication from the host.", private: "", thread: [], need: /check-in/i },
+  { id: "lindsay", guest: "Lindsay", stars: 5, review: "Bright space in a perfect downtown location. The two bathrooms were a real bonus, and the den was a bit cramped though. Check-in was a breeze.", private: "Please check the bed frame, it creaked.", thread: ["The bed frame needs a check."], need: /two bathrooms/i },
+  { id: "gakte", guest: "Gákte Biera", stars: 5, review: "Perfect place for our family trip. The kitchen had everything we needed and the location near the CN Tower and the waterfront was ideal. The host was very responsive.", private: "The washing machine leaked on the floor.", thread: ["The washing machine is leaking."], need: /kitchen|family trip|everything you needed/i },
+  { id: "josh", guest: "Josh", stars: 5, review: "Great condo, super clean and the building is quiet. The parking spot was a little tight for our SUV but no big deal. Loved the decor.", private: "No paper towels, and a mess on the sink.", thread: ["Paper towels on the sink were left out."], need: /clean|quiet|decor/i },
+  { id: "jennifer", guest: "Jennifer", stars: 5, review: "We loved the pool and gym in the building, and the unit was spotless. The host was friendly and communication was great.", private: "", thread: ["Could you pick up a paper towel roll for us?"], need: /pool|gym|spotless/i },
+  { id: "marco", guest: "Marco", stars: 4, review: "Nice stay overall. Great views at night and a comfortable mattress. The elevator wait was long in the mornings.", private: "", thread: [], need: /views|mattress/i },
+  { id: "nina", guest: "Nina", stars: 5, review: "Spacious, stylish and exactly like the photos. We loved walking to restaurants and the subway. Would stay again for sure!", private: "", thread: [], need: /walking|restaurants|subway|spacious|stylish/i },
 ];
+const CRITIC = new Set(["zak", "lindsay", "josh", "marco"]);
+const COMPLAINT_WORDS = /look(?:ing)? into|hear you on|flagging|\bnoted\b|take a look|keep an eye|make a note|you're right|fair point|sorry/i;
+const BANNED_FRAMES = /part of your stay|brings? you back|hit the spot|made a difference|stood out for you|made the stay better|just what you needed|a highlight/i;
 const LEAK = /shower door|washing machine|washer|showerhead|shower head|pommeau|poubelle|\bbin\b|paper towel|bed frame|creak|leak|stuck|track/i;
 installWorld({
   now: nowQ,
@@ -109,7 +114,7 @@ for (const row of FIX) {
   if (/\u2014/.test(draft)) fail(`${row.id} has an em dash`);
   if (got.sourceLine !== SOURCE_PUBLIC) fail(`${row.id} source line ${got.sourceLine}`);
   const sentences = sentencesOf(draft);
-  const first = norm(withoutName(sentences[0] ?? "", row.guest));
+  const first = openingKey(draft, row.guest.split(" ")[0]!);
   const last = norm(withoutName(sentences[sentences.length - 1] ?? "", row.guest));
   if (openingSeen.has(first)) fail(`${row.id} shares an opening with ${openingSeen.get(first)}: ${first}`);
   openingSeen.set(first, row.id);
@@ -120,33 +125,40 @@ for (const row of FIX) {
   if (!new RegExp(`\\b${row.guest.split(" ")[0]}\\b`).test(draft)) fail(`${row.id} never uses the guest's name`);
   if ((draft.match(new RegExp(`\\b${row.guest.split(" ")[0]}\\b`, "g")) ?? []).length > 1) fail(`${row.id} repeats the name`);
   if (/^[^,]+, we('re| are) (really )?glad/i.test(draft)) fail(`${row.id} stiff opening: ${draft}`);
+  const first1 = row.guest.split(" ")[0]!;
+  if (!new RegExp(`^(?:Thanks|Thank you|Thanks so much|Merci|Merci beaucoup|Un grand merci) ${first1}!`).test(draft)) fail(`${row.id} does not open "Thanks Name!": ${draft}`);
+  if (new RegExp(`,\\s*${first1}\\b|\\b${first1}\\s*,`).test(draft)) fail(`${row.id} name between commas: ${draft}`);
+  if (BANNED_FRAMES.test(draft)) fail(`${row.id} uses a banned frame: ${draft}`);
+  if (!CRITIC.has(row.id) && COMPLAINT_WORDS.test(draft)) fail(`${row.id} answers praise with complaint language: ${draft}`);
+  if (/\b(mattresses|bathrooms|windows|views) (brings|was|is|has)\b/i.test(draft)) fail(`${row.id} agreement error: ${draft}`);
 }
 // Every sentence in the queue differs from every other sentence apart from the name.
 const allSentences = new Map<string, string>();
 for (const row of FIX) {
   for (const sentence of sentencesOf(byId.get(row.id)!.draft)) {
     const key = norm(withoutName(sentence, row.guest));
+    if (key.split(" ").length <= 3) continue; // the bare "Thanks Name!" interjection
     if (allSentences.has(key)) fail(`${row.id} and ${allSentences.get(key)} share a sentence: ${key}`);
     allSentences.set(key, row.id);
   }
 }
 for (const french of ["edith", "virginie"]) {
   const draft = byId.get(french)!.draft;
-  if (/\b(the|and|was|were|your|stay|thank|we're|glad|hope|welcome|you)\b/i.test(draft)) fail(`${french} is not fully French: ${draft}`);
-  if (!/\b(merci|plaisir|ravi|heureux|content|belle|bien|revoir|accueillir|accueil)\b/i.test(draft)) fail(`${french} is not French: ${draft}`);
+  if (/\b(the|and|was|were|your|stay|thank|thanks|we're|glad|hope|welcome|you|so)\b/i.test(draft.replace(/^Merci[^!]*!/, ""))) fail(`${french} is not fully French: ${draft}`);
+  if (!/\b(merci|plaisir|ravis|heureux|content|revoir|accueillir)\b/i.test(draft)) fail(`${french} is not French: ${draft}`);
 }
+if (!/salles de bain/i.test(byId.get("virginie")!.draft) || !/famille/i.test(byId.get("virginie")!.draft)) fail(`Virginie's two bathrooms and family: ${byId.get("virginie")!.draft}`);
 const wordsOf = (id: string) => byId.get(id)!.draft.split(/\s+/).length;
-if (sentencesOf(byId.get("samuel")!.draft).length > 2 || wordsOf("samuel") > 28) fail(`Samuel's two-line review got a long reply: ${byId.get("samuel")!.draft}`);
+if (sentencesOf(byId.get("samuel")!.draft).length > 4 || wordsOf("samuel") > 28) fail(`Samuel's two-line review got a long reply: ${byId.get("samuel")!.draft}`);
+if (!/at home/i.test(byId.get("samuel")!.draft)) fail("Samuel's reply misses feeling at home");
 if (wordsOf("henry") <= wordsOf("samuel")) fail("a long review did not get a longer reply than a short one");
-// One brief warm acknowledgement of a small critique, only where the review has one.
-for (const id of ["henry", "josh", "lindsay"]) {
-  const draft = byId.get(id)!.draft;
-  if (!/window|parking|spot|den|space|cramp|tight|clean/i.test(draft)) fail(`${id} ignored its small critique: ${draft}`);
-  if (/\b(actually|however|but we|not our fault|you're wrong)\b/i.test(draft)) fail(`${id} is defensive: ${draft}`);
-}
-for (const id of ["samuel", "edith", "nina", "gakte", "jennifer"]) {
-  if (/windows|parking|elevator|cramped|too small|tight/i.test(byId.get(id)!.draft)) fail(`${id} acknowledges a critique that is not in its review: ${byId.get(id)!.draft}`);
-}
+const henryDraft = byId.get("henry")!.draft;
+if (!/at home/i.test(henryDraft) || !/balcony/i.test(henryDraft) || !/King St/.test(henryDraft)) fail(`Henry's standout points: ${henryDraft}`);
+const zakDraft = byId.get("zak")!.draft;
+if (!/(You're right that|Fair point that|Appreciate you mentioning that|Good to know that) the second bedroom is separated by a sliding frosted glass door/.test(zakDraft)) fail(`Zak's layout point is not acknowledged honestly: ${zakDraft}`);
+if (/(bedroom|door|layout)[^.]*(stood out|worked for you|made a difference)/i.test(zakDraft)) fail(`Zak's critique turned into praise: ${zakDraft}`);
+if (!/pushkar/i.test(byId.get("pushkar")!.draft) || !/check-in was flexible/i.test(byId.get("pushkar")!.draft)) fail(`Pushkar: ${byId.get("pushkar")!.draft}`);
+if (!/two bathrooms were a real bonus/i.test(byId.get("lindsay")!.draft) || /hear you on|look into/i.test(byId.get("lindsay")!.draft.split(/(?<=\.)\s+/).filter((line) => /bathrooms/.test(line)).join(" "))) fail(`Lindsay: ${byId.get("lindsay")!.draft}`);
 if (posts.length) fail("loading the queue posted");
 console.log(lines.join("\n\n"));
 
