@@ -179,7 +179,7 @@ const TOOLS: Record<string, Tool> = {
   },
   search_mail: {
     description:
-      "Search Sent and the main inbox in Gmail and Outlook. Results come newest first, and each says which mailbox it came from (mailboxLabel): always name it. For the latest sent email use last_sent_email instead. Gmail Social and Promotions, and Outlook Other, are already excluded. Pass keywords from the question, such as a property or a subject. Set mailbox to gmail or outlook only when the question named that one. Set where to sent, inbox, or both. Set include_airbnb only when the question is about Airbnb email. Read only. This does not send.",
+      "Search Sent and the main inbox in Gmail and Outlook. Results come newest first, and each says which mailbox it came from (mailboxLabel): always name it. For the latest sent email use last_sent_email instead. Gmail Social and Promotions, and Outlook Other, are already excluded. Every keyword must appear in the message, so use one or two distinctive words (a unit number, a name), never a description of the kind of email. Set mailbox to gmail or outlook only when the question named that one. Set where to sent, inbox, or both. Set include_airbnb only when the question is about Airbnb email. Read only. This does not send.",
     inputSchema: {
       type: "object",
       properties: {

@@ -9,7 +9,8 @@ import { clientMapFacts, resolveScope, type Scope } from "./clientProperty.js";
 import { answerOps } from "./ops.js";
 import { compLines, compSet, sizeOf } from "./compsAnswer.js";
 import { connectorRows } from "./connectorStatus.js";
-import { nextStays, readableUnit } from "./stayLookup.js";
+import { findStays, nextStays, readableUnit } from "./stayLookup.js";
+import { answerBuildingRegistrationItem } from "./buildingRegistration.js";
 import { unitFacts } from "./unitFacts.js";
 import type { UpcomingStay } from "./guestInbox.js";
 import { scopedStayProperties } from "./dayBoard.js";
@@ -56,13 +57,15 @@ export const STEP_LABELS: Record<string, string> = {
   connector_status: "Checked what is connected",
   market_comps: "Pulled comparable listings from AirROI",
   next_stays: "Looked up the next reservations",
+  find_stay: "Found the guest's reservation",
+  building_email: "Drafted the building email",
 };
 
 /** Which of the agent's tools use each connector, so "is it connected" and "can you use it" never disagree. */
 const CONNECTOR_TOOLS: Record<string, string[]> = {
   gmail: ["search_mail", "read_mail"],
   outlook: ["search_mail", "read_mail"],
-  hospitable: ["guest_inbox", "list_stays", "next_stays", "read_guest_messages", "hospitable_read", "unit_facts", "guest_contacts"],
+  hospitable: ["guest_inbox", "list_stays", "next_stays", "find_stay", "read_guest_messages", "hospitable_read", "unit_facts", "guest_contacts"],
   airroi: ["market_comps"],
   cleaner: ["cleaner_read"],
   browser: ["research_web", "web_lookup"],
@@ -140,6 +143,12 @@ function ownTools(): AgentTool[] {
         if (!scope) throw new Error("That isn't a client or unit in the records. Say which of Raj, Nance, Roya or Precilla, or which unit.");
         return nextStays(scope, typeof input.count === "number" ? input.count : 3);
       },
+    },
+    {
+      name: "find_stay",
+      description: "Finds a guest's reservation by their name across every property Copilot reads, and says which unit it is at. Use it whenever the partner names a guest (Michelle, Mark) without a unit: the unit comes from the reservation, never from a guess. Pass guest (a first or last name) and optionally check_in (YYYY-MM-DD) to pick between several. If nothing matches it says what it searched. Read only.",
+      input_schema: { type: "object", properties: { guest: { type: "string" }, check_in: { type: "string", description: "YYYY-MM-DD, optional." } }, required: ["guest"] },
+      run: async (input) => findStays({ guest: String(input.guest ?? ""), checkIn: typeof input.check_in === "string" && input.check_in ? input.check_in : undefined }),
     },
     {
       name: "recall_facts",
@@ -316,6 +325,24 @@ function listStaysTool(def: BrainTool, run: AgentTool["run"]): AgentTool {
   };
 }
 
+/**
+ * The building registration email for a guest: it finds the guest's stay, reads their messages for vehicles, finds the last
+ * registration email sent as the template and leaves the draft in Checks. It sends nothing.
+ */
+function buildingEmailTool(partnerText: string): AgentTool {
+  return {
+    name: "building_email",
+    description: "Drafts the vehicle registration email to the building for a guest's stay. It finds the guest's reservation itself, reads their messages for vehicle details, uses the last registration email that was sent as the template, and leaves the draft in Checks for the partner to approve. Pass guest (the guest's name). Do not search mail for a template yourself and do not pick a unit: call this. Nothing is sent.",
+    input_schema: { type: "object", properties: { guest: { type: "string" } }, required: ["guest"] },
+    run: async (input) => {
+      const guest = String(input.guest ?? "").trim();
+      if (!guest) throw new Error("Say which guest the building email is for.");
+      const out = await answerBuildingRegistrationItem(`${partnerText}\nbuilding registration email for ${guest}`, "", true);
+      return { answer: out?.body ?? "No building email was drafted.", saved: Boolean(out?.item), nothingSent: true };
+    },
+  };
+}
+
 export function agentTools(ctx: ToolContext = {}): AgentTool[] {
   const named = toolDefinitions(ctx.names ?? [...AGENT_TOOLS]).map((def): AgentTool => {
     const run: AgentTool["run"] = ctx.run && ctx.skill
@@ -331,7 +358,7 @@ export function agentTools(ctx: ToolContext = {}): AgentTool[] {
     }
     return { ...def, run };
   });
-  return [...named, ...ownTools(), resolveClientTool(), ...(ctx.partnerText !== undefined ? [proposeSkillTool(ctx.partnerText)] : [])];
+  return [...named, ...ownTools(), ...(ctx.partnerText !== undefined ? [buildingEmailTool(ctx.partnerText)] : []), resolveClientTool(), ...(ctx.partnerText !== undefined ? [proposeSkillTool(ctx.partnerText)] : [])];
 }
 
 export function agentSystem(facts: string, today: string): string {
@@ -344,6 +371,7 @@ export function agentSystem(facts: string, today: string): string {
     "EMAIL: every answer about an email names the mailbox it came from, in words (Gmail or Outlook). For the last email the partner sent, call last_sent_email: it reads Gmail Sent newest first. If its note says Gmail couldn't be read, say that plainly and say the answer is from Outlook. Never present one mailbox's mail as the other's, and never answer from memory.",
     "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",
     "RESERVATIONS: for a unit's next reservation, who is in the house, or whether a date is free, call next_stays (it looks a year ahead). list_stays only looks 14 days. Never say a unit has no reservations from a short look: say what window you checked, or use next_stays.",
+    "GUESTS: when the partner names a guest without a unit, call find_stay: the unit comes from their reservation, never from a guess or a default. For the building registration email call building_email with the guest. Never search mail for the template yourself.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
     "NOTHING SENDS WITHOUT A PARTNER. You cannot send a message, email, post or purchase. To prepare one, call propose_draft: it leaves a draft in the chat waiting for the partner to approve. Then say the draft is waiting for approval. Messages to guests go out as Shane. Never write an em dash in anything a guest will read.",
     "Never repeat access codes, door codes or passwords, even if a tool returned them.",

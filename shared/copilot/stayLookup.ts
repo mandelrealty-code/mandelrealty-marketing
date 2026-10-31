@@ -70,6 +70,40 @@ export async function nextStays(scope: Scope, count = 3, now: Date = new Date())
   };
 }
 
+export type FoundStay = { reservationId: string; guest: string; unit: string; propertyId: string; checkIn: string; checkOut: string; status: string; platform: string };
+
+/**
+ * A guest's reservations by name, across every property Copilot reads: which unit they are at comes from the reservation, never
+ * from a guess. Looks a month back to a year ahead by check-in and by checkout.
+ */
+export async function findStays(input: { guest: string; checkIn?: string }, now: Date = new Date()): Promise<{ matches: FoundStay[]; searched: { properties: number; from: string; to: string }; note: string }> {
+  const name = input.guest.trim().toLowerCase();
+  if (name.length < 2) throw new Error("Say which guest to look for.");
+  const properties = await scopedStayProperties().catch(() => [] as Readable[]);
+  const pat = await copilotHospitableToken();
+  if (!pat) throw new Error("Hospitable is not connected, so nothing was read.");
+  if (!properties.length) throw new Error("No properties are readable from Hospitable, so nothing was read.");
+  const today = torontoToday(now);
+  const from = addDays(today, -30);
+  const to = addDays(today, 365);
+  const ids = properties.map((row) => row.id);
+  const lists = await Promise.all((["checkin", "checkout"] as const).map((dateQuery) => listHospitableReservations({ pat, propertyIds: ids, startDate: from, endDate: to, include: ["guest"], dateQuery })));
+  const unit = new Map(properties.map((row) => [row.id, row.name]));
+  const seen = new Set<string>();
+  const matches: FoundStay[] = [];
+  for (const row of lists.flat()) {
+    if (seen.has(row.id) || DEAD.test(row.status) || !row.check_in || !row.check_out) continue;
+    seen.add(row.id);
+    const guest = guestName(row.raw);
+    const full = [String((row.raw.guest as Record<string, unknown> | undefined)?.first_name ?? ""), String((row.raw.guest as Record<string, unknown> | undefined)?.last_name ?? "")].join(" ").trim() || guest;
+    if (!`${guest} ${full}`.toLowerCase().split(/\s+/).some((word) => word === name) && !full.toLowerCase().includes(name)) continue;
+    if (input.checkIn && row.check_in !== input.checkIn) continue;
+    matches.push({ reservationId: row.id, guest: full, unit: unit.get(row.property_id) ?? row.property_id, propertyId: row.property_id, checkIn: row.check_in, checkOut: row.check_out, status: row.status, platform: row.platform });
+  }
+  matches.sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+  return { matches, searched: { properties: properties.length, from, to }, note: matches.length ? "" : `No reservation for "${input.guest}" at any of the ${properties.length} properties Copilot reads, between ${from} and ${to}.` };
+}
+
 // ---------- Why a stay is missing: the whole chain, laid out ----------
 
 export type StayProbe = {

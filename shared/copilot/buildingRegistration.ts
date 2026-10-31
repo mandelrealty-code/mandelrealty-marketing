@@ -447,14 +447,14 @@ function shortDate(iso: string): string {
 }
 
 /** The answer and the one Checks item it is about, so chat opens that exact card. */
-export async function answerBuildingRegistrationItem(text: string, context = ""): Promise<{ body: string; item: ChecksItemRef | null } | null> {
-  const body = await registrationBody(text, context);
+export async function answerBuildingRegistrationItem(text: string, context = "", force = false): Promise<{ body: string; item: ChecksItemRef | null } | null> {
+  const body = await registrationBody(text, context, force);
   if (body == null) return null;
   return typeof body === "string" ? { body, item: null } : body;
 }
 
-async function registrationBody(asked: string, context: string): Promise<string | { body: string; item: ChecksItemRef } | null> {
-  if (!asksBuildingRegistration(asked, context)) return null;
+async function registrationBody(asked: string, context: string, force = false): Promise<string | { body: string; item: ChecksItemRef } | null> {
+  if (!force && !asksBuildingRegistration(asked, context)) return null;
   const clock = parityNow() ?? new Date();
   const today = torontoToday(clock);
   let loaded: Awaited<ReturnType<typeof loadRecentStays>>;

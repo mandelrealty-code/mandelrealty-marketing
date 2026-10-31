@@ -21,6 +21,32 @@ export type LoopOutcome = {
   end: "done" | "rounds" | "deadline" | "brain";
 };
 
+type ToolLogLine = Record<string, string | number | boolean | Record<string, string | number | boolean>>;
+let toolLogger: ((line: ToolLogLine) => void) | null = null;
+
+/** Tests read the log. Null restores the server log. */
+export function setToolLogger(next: ((line: ToolLogLine) => void) | null): void {
+  toolLogger = next;
+}
+
+/** Short plain values only: a unit, a guest, a date, a mailbox. Never message text, a draft body or anything long. */
+function loggable(input: Record<string, unknown>): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (/body|text|draft|message|password|token|secret|code/i.test(key)) continue;
+    if (typeof value === "boolean" || typeof value === "number") out[key] = value;
+    else if (typeof value === "string" && value.length <= 80) out[key] = value;
+  }
+  return out;
+}
+
+/** One line per tool the brain calls: which tool, with what short arguments, and whether it worked. For finding out what the agent actually did. */
+function toolLog(line: ToolLogLine): void {
+  if (toolLogger) return toolLogger(line);
+  if (process.env.COPILOT_PARITY === "1" && !process.env.VERCEL && process.env.NODE_ENV !== "production") return;
+  console.log(`[agent] ${JSON.stringify(line)}`);
+}
+
 const clip = (value: unknown): string => (typeof value === "string" ? value : JSON.stringify(value) ?? "").slice(0, 14_000);
 
 export async function runLoop(input: {
@@ -74,6 +100,7 @@ export async function runLoop(input: {
           ok = false;
         }
       }
+      toolLog({ agent: "tool", tool: use.name, args: loggable(use.input), ok, chars: content.length, ...(ok ? {} : { error: content.slice(0, 140) }) });
       calls.push({ tool: use.name, input: use.input, ok, result: content });
       results.push({ type: "tool_result", tool_use_id: use.id, content, ...(ok ? {} : { is_error: true }) });
     }

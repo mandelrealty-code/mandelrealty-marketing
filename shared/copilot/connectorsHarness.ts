@@ -23,6 +23,11 @@ import { checkOutlookLogin, outlookStatus, setOutlookValidator } from "../adminA
 import { forgetLoginState } from "./mailLoginStatus.js";
 import { clearGmailLogin, readGmailLogin, readOutlookLogin, saveGmailLogin, saveOutlookLogin, setParityMailLogin } from "./store.js";
 import type { ConnectorRow } from "./types.js";
+import { setToolLogger } from "./agentLoop.js";
+import { findStays } from "./stayLookup.js";
+import { capturedCommits, resetCaptures } from "./parity/capture.js";
+import { parityChecksMessages, resetParityChecksMessages } from "./parity/storeStub.js";
+import { searchMail } from "./mailSearch.js";
 
 function fail(label: string): never {
   throw new Error(`Connectors harness failed: ${label}`);
@@ -520,5 +525,53 @@ setBrainModel(null);
 const rules = (await import("./agentChat.js")).agentSystem("", "2026-10-20");
 if (!/HOSPITABLE BEATS MEMORY/.test(rules) || !/never read local files, notes or drafts as knowledge/.test(rules) || !/call unit_facts/.test(rules) || !/guidebook/.test(rules) || !/cleaner app/.test(rules)) fail("the agent isn't told where facts come from");
 resetBusinessFacts();
+
+// ---------- "Draft the building email for Michelle's stay" (no unit named) ----------
+{
+  const building = "supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com";
+  const oct30 = { id: "oct30-sent", mailbox: "gmail" as const, folder: "sent" as const, from: "Mandel Realty", email: "mandelrealtyteam@gmail.com", to: building, date: "2026-10-30T11:00:00-04:00",
+    subject: "Re: AirBNB Rental for Unit 318, October 30 \u2013 November 1, 2026", snippet: "20 Blue Jays Way Unit 318",
+    body: "Hello,\n\nPlease register this vehicle with the building.\nGuest: Dana\nCheck-in: October 30, 2026\nCheck-out: November 1, 2026\nMake: Honda\nModel: Civic\nPlate: ABCD123\nColour: Grey\n\nShane, Co-Host 647-822-0448", airbnb: false };
+  const world = worldAt("2026-10-31T12:00:00-04:00", false, [oct30]);
+  world.reservations = [
+    stay("r-michelle", ID.blue, "Michelle Sanders", "2026-11-04", "2026-11-08", "accepted"),
+    stay("r-nance", ID.charlotte, "Tom", "2026-11-06", "2026-11-09"),
+  ];
+  world.reservations[0]!.messages = [{ id: "m-car", at: "2026-10-30T18:00:00-04:00", role: "guest", name: "Michelle", body: "Make: Kia. Model: Soul. Plate: BXYZ456. One car." }];
+  installWorld(world);
+  resetCaptures();
+  resetParityChecksMessages();
+  // The old failures: a guest's first name is not a client or unit, and a described template is not a keyword.
+  const stays = await findStays({ guest: "Michelle" }, new Date("2026-10-31T16:00:00Z"));
+  if (stays.matches.length !== 1 || stays.matches[0]!.propertyId !== ID.blue || stays.matches[0]!.checkIn !== "2026-11-04") fail(`find_stay: ${JSON.stringify(stays)}`);
+  if (!/No reservation for "Nobody"/.test((await findStays({ guest: "Nobody" }, new Date("2026-10-31T16:00:00Z"))).note)) fail("find_stay for a guest that doesn't exist");
+  if ((await searchMail({ keywords: "building email template", where: "sent" })).hits.length) fail("a described template unexpectedly matched");
+  if (!(await searchMail({ keywords: "AirBNB Rental Unit 318", where: "sent" })).hits.length) fail("the Oct 30 email wasn't found by its subject words");
+  // Through the agent: the tool calls and their arguments are logged, nothing leaks, and the draft lands in Checks unsent.
+  const lines: Record<string, unknown>[] = [];
+  setToolLogger((line) => lines.push(line as Record<string, unknown>));
+  setBrainModel(async (request) => {
+    if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+    const last = request.messages!.at(-1)!;
+    if (!Array.isArray(last.content)) return { text: "", toolUses: [{ id: "f1", name: "find_stay", input: { guest: "Michelle" } }], blocks: [{ type: "tool_use", id: "f1", name: "find_stay", input: { guest: "Michelle" } }], stop: "tool_use" };
+    const names = request.messages!.flatMap((m) => (Array.isArray(m.content) ? m.content.filter((b) => b.type === "tool_use").map((b) => (b as { name: string }).name) : []));
+    if (!names.includes("building_email")) return { text: "", toolUses: [{ id: "b1", name: "building_email", input: { guest: "Michelle" } }], blocks: [{ type: "tool_use", id: "b1", name: "building_email", input: { guest: "Michelle" } }], stop: "tool_use" };
+    return { text: "The building email is waiting for approval.", toolUses: [], blocks: [{ type: "text", text: "The building email is waiting for approval." }], stop: "end_turn" };
+  });
+  const turn = await runAgentTurn({ chatId: "c", text: "draft the building email for Michelle's stay, Nov 4-8" });
+  setBrainModel(null);
+  setToolLogger(null);
+  const tools = lines.filter((line) => line.agent === "tool");
+  const resolved = tools.find((line) => line.tool === "find_stay");
+  if (!resolved || (resolved.args as Record<string, unknown>).guest !== "Michelle" || resolved.ok !== true) fail(`the agent's tool log: ${JSON.stringify(lines)}`);
+  if (/Charlotte/.test(JSON.stringify(lines.map((line) => line.args)))) fail("the agent's calls named Charlotte");
+  const mailed = tools.find((line) => line.tool === "building_email");
+  if (!mailed || mailed.ok !== true) fail(`building_email: ${JSON.stringify(tools)}`);
+  if (/ABCD123|BXYZ456|Co-Host/.test(JSON.stringify(lines))) fail("the log carried message text");
+  const card = parityChecksMessages().find((row) => row.draft?.channel === "email" && row.draft.status === "waiting");
+  if (!card || card.draft!.to !== building || !/Make: Kia/.test(card.draft!.body) || !/Michelle/.test(card.draft!.body)) fail(`the building draft: ${JSON.stringify(card?.draft)} / ${turn.body}`);
+  if (capturedCommits().length) fail("the building email request sent something");
+  if (!/call find_stay/.test((await import("./agentChat.js")).agentSystem("", "2026-10-31"))) fail("the agent isn't told to find the guest's stay");
+}
 
 console.log("Connectors harness passed.");
