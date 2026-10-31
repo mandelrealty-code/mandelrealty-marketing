@@ -22,8 +22,6 @@ type DayBoard = {
   weekCleans: Turn[];
   overdue: Turn[];
 };
-type ActivityEntry = { at: string; text: string; tone: "ok" | "needs" | "failed"; link: string; ref: string };
-
 type DrawerKey = "queue" | "guests" | "reviews" | "turnovers" | "tasks" | "automations" | "connections";
 
 type Resolved = { text: string; undo?: () => void };
@@ -103,10 +101,8 @@ export function OverviewV2({
   runningChatIds,
   viewer,
   error,
-  railEl,
   mainEl,
   api,
-  onAsk,
   onOpenChat,
   onOpenThread,
   onReconnect,
@@ -122,10 +118,8 @@ export function OverviewV2({
   runningChatIds: string[];
   viewer: string;
   error: string | null;
-  railEl: HTMLElement | null;
   mainEl: HTMLElement | null;
   api: Api;
-  onAsk: (text: string) => void;
   onOpenChat: (id: string) => void;
   onOpenThread: (row: GuestRow) => void;
   onReconnect: (id: string) => void;
@@ -136,14 +130,12 @@ export function OverviewV2({
   const [now, setNow] = useState(() => new Date());
   const [day, setDay] = useState<DayBoard | null>(null);
   const [dayError, setDayError] = useState("");
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [reviews, setReviews] = useState<ReviewQueuePayload | null>(null);
   const [tasks, setTasks] = useState<BoardPayload | null>(null);
   const [drawer, setDrawer] = useState<DrawerKey | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [resolved, setResolved] = useState<Record<string, Resolved>>({});
   const [hidden, setHidden] = useState<string[]>([]);
-  const [actOpen, setActOpen] = useState(false);
   const [who, setWho] = useState("Everyone");
   const [fresh, setFresh] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
@@ -171,9 +163,6 @@ export function OverviewV2({
       if ("board" in data && data.board) setDay((data as { board: DayBoard }).board);
       else if ("ok" in data && data.ok === false) setDayError(data.error || "Turnovers could not be read.");
     }).catch((err) => { if (!stop) setDayError(err instanceof Error ? err.message : "Turnovers could not be read."); });
-    void api<{ entries: ActivityEntry[] }>("overview-activity", {}).then((data) => {
-      if (!stop) setActivity(data.entries ?? []);
-    }).catch(() => undefined);
     void api<ReviewQueuePayload>("reviews-queue", {}).then((data) => { if (!stop) setReviews(data); }).catch((err) => {
       if (!stop) setReviews({ connected: false, line: err instanceof Error ? err.message : "Hospitable is not connected.", reviews: [], postedToday: [] });
     });
@@ -247,10 +236,7 @@ export function OverviewV2({
   const more = Math.max(0, openDecisions.length - shown.length);
 
   useEffect(() => {
-    const ids = [
-      ...openDecisions.map((row) => row.id),
-      ...activity.map((row) => row.ref),
-    ];
+    const ids = openDecisions.map((row) => row.id);
     if (!seen.current.size) {
       ids.forEach((id) => seen.current.add(id));
       return;
@@ -262,7 +248,7 @@ export function OverviewV2({
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const timer = window.setTimeout(() => setFresh([]), reduce ? 0 : 5000);
     return () => window.clearTimeout(timer);
-  }, [openDecisions, activity]);
+  }, [openDecisions]);
 
   function openDrawer(key: DrawerKey, from?: HTMLElement | null) {
     trigger.current = from ?? (document.activeElement as HTMLElement | null);
@@ -456,55 +442,14 @@ export function OverviewV2({
     return follow ? followGuest(follow) : null;
   }
 
-  const lastCheck = brief.builtAt
-    ? `Last check ${clock(new Date(brief.builtAt))}`
-    : brief.overview?.checkedAt || "";
+  const lastCheckAt = brief.builtAt ? new Date(brief.builtAt) : null;
   const urgent = openDecisions[0];
-  const countLine = openDecisions.length
-    ? `${openDecisions.length} ${openDecisions.length === 1 ? "thing needs" : "things need"} a partner`
-    : "Nothing needs a partner.";
-  const briefPost = urgent ? `, the most urgent is ${urgent.title}.` : "";
-  const asks = suggestionChips({ day, reviews, tasks, now, open: openDecisions.length });
+  const head = openDecisions.length
+    ? { lead: `${openDecisions.length} ${openDecisions.length === 1 ? "thing needs" : "things need"} you.`, rest: urgent ? ` Most urgent: ${clean(urgent.title)}.` : "" }
+    : { lead: "Nothing needs you.", rest: " Guests, reviews, turnovers and tasks are all handled." };
+  const dateLine = `${new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric" }).format(now)}${lastCheckAt ? ` · Checked ${clock(lastCheckAt)}` : ""}`;
 
   const banner = down ? connectionExtra(down, hospitable, guestQueue?.line || "") : "";
-
-  const rail = (
-    <aside className="cp-ov2-rail" aria-label="Activity">
-      <div className="cp-ov2-railhead">
-        <span>Activity</span>
-        <span className="cp-ov2-watch" style={{ color: paused ? "var(--needs)" : "var(--ok)" }}>
-          <i className="cp-ov2-dot" />
-          {paused ? "Partial" : "Watching"}
-        </span>
-      </div>
-      <p>Copilot reads and prepares on its own. Sending waits for a partner.</p>
-      <div className="cp-ov2-feed">
-        {activity.map((entry) => (
-          <ActivityRow key={`${entry.ref}:${entry.at}`} entry={entry} fresh={fresh.includes(entry.ref)} onOpen={() => openFromLink(entry.link)} onRetry={entry.tone === "failed" && entry.link === "automations" ? () => void retryFrom(entry) : undefined} />
-        ))}
-      </div>
-    </aside>
-  );
-
-  function openFromLink(link: string) {
-    if (link === "guests" || link === "reviews" || link === "tasks" || link === "automations") openDrawer(link);
-  }
-
-  async function retryFrom(entry: ActivityEntry) {
-    const skill = skills.find((row) => entry.text.includes(row.name));
-    if (!skill) {
-      openDrawer("automations");
-      return;
-    }
-    try {
-      const data = await api<{ skills: SkillRow[]; connectors: ConnectorRow[] }>("run-skill", { id: skill.id });
-      onSkills(data.skills, data.connectors);
-      const next = await api<{ entries: ActivityEntry[] }>("overview-activity", {});
-      setActivity(next.entries ?? []);
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : "It did not start. Nothing was sent.");
-    }
-  }
 
   const sheet = drawer ? (
     <div className="cp-ov2-layer">
@@ -552,39 +497,40 @@ export function OverviewV2({
     </div>
   ) : null;
 
+  const guestsFlag = !paused && Boolean(guestQueue?.connected && guestQueue.waiting.length);
+  const inquiries = inquiryCount(guestQueue);
+  const overdue = overdueTasks(tasks, now);
+  const skillFailed = skills.some((row) => row.lastRun?.status === "failed");
+  const reviewFlag = !paused && Boolean(reviews?.reviews.some((row) => row.flagged));
+  const connected = connectors.filter((row) => row.status === "connected").length;
+
   return (
-    <div className="cp-ov2">
-      <div className="cp-ov2-body">
+    <div className="cp-ov2 cp-ov3">
+      <div className="cp-ov3-col">
         {error || localError ? <p className="cp-ov2-err">{clean(error || localError || "")}</p> : null}
         {down ? (
-          <div className="cp-ov2-banner">
+          <div className="cp-ov3-banner">
             <i />
-            <span><strong>{down.name || "A connection"} is not connected.</strong>{banner ? ` ${banner}` : ""}</span>
+            <span><strong>{down.name || "A connection"} is not connected.</strong>{banner ? ` ${banner}` : ""} Guest items may be stale.</span>
             <button type="button" onClick={() => onReconnect(down.id || "hospitable")}>Reconnect</button>
           </div>
         ) : null}
-        <header className="cp-ov2-brief">
-          <h1>{clean(brief.hello || "Good morning, team.")}</h1>
-          <p>{clean(brief.line)} <strong>{countLine}</strong>{openDecisions.length ? briefPost : ""}</p>
-          <div className="cp-ov2-meta">
-            <span className="cp-ov2-watch" style={{ color: paused ? "var(--needs)" : "var(--ok)" }}><i className="cp-ov2-dot" />{paused ? "Copilot is watching, Hospitable paused" : "Copilot is watching"}</span>
-            {lastCheck ? <span>{lastCheck}</span> : null}
-            <span>{dayStamp(now)}, Toronto</span>
-          </div>
+        <header className="cp-ov3-head">
+          <div>{dateLine}</div>
+          <h1>{head.lead}<span>{head.rest}</span></h1>
         </header>
-        <section className="cp-ov2-decisions" aria-label="Decisions">
-          <div className="cp-ov2-sechead">
+        <section className="cp-ov3-sec" aria-label="Decisions">
+          <div className="cp-ov3-sechead">
             <div>
               <span>Decisions</span>
               <span>Nothing goes out until a partner presses the button.</span>
             </div>
-            {more > 0 ? <button type="button" className="cp-ov2-more" onClick={(event) => openDrawer("queue", event.currentTarget)}>{more} more</button> : null}
+            {more > 0 ? <button type="button" className="cp-ov3-more" onClick={(event) => openDrawer("queue", event.currentTarget)}>{more} more</button> : null}
           </div>
           {openDecisions.length || Object.keys(resolved).length ? (
-            <div className={`cp-ov2-cards${phone ? " row" : ""}`}>
+            <div className="cp-ov3-list">
               {Object.entries(resolved).slice(-1).map(([id, row]) => (
-                <div key={id} className="cp-ov2-resolved">
-                  <i style={{ background: row.text.startsWith("Moved") ? "var(--muted)" : "var(--ok)" }} />
+                <div key={id} className="cp-ov3-done">
                   <span>{row.text}</span>
                   {row.undo ? <button type="button" onClick={row.undo}>Undo</button> : null}
                 </div>
@@ -594,45 +540,25 @@ export function OverviewV2({
               ))}
             </div>
           ) : (
-            <div className="cp-ov2-empty">
-              <i />
+            <div className="cp-ov3-empty">
               <div><strong>Nothing to decide.</strong> <span>{emptyLine(reviews)}</span></div>
               {reviews?.reviews.some((row) => row.draft.trim()) ? <button type="button" onClick={(event) => openDrawer("reviews", event.currentTarget)}>Review drafts</button> : null}
             </div>
           )}
         </section>
-        <div className="cp-ov2-tiles">
-          <Tile label="Guests waiting" n={guestQueue?.connected ? guestQueue.waiting.length : 0} state={paused ? "Paused" : guestQueue?.connected && guestQueue.waiting.length ? "Needs you" : "OK"} tone={paused ? "info" : guestQueue?.waiting.length ? "needs" : "ok"} line={guestLine(guestQueue)} fresh={fresh.some((id) => guestQueue?.waiting.some((row) => row.id === id))} onOpen={(event) => openDrawer("guests", event.currentTarget)} bar={waitBar(guestQueue)} />
-          <Tile label="Inquiries" n={inquiryCount(guestQueue)} state={paused ? "Paused" : inquiryCount(guestQueue) ? "Needs you" : "OK"} tone={paused ? "info" : inquiryCount(guestQueue) ? "failed" : "ok"} line={inquiryLine(guestQueue)} onOpen={(event) => openDrawer("guests", event.currentTarget)} />
-          <Tile label="Turnovers today" n={day?.todayCleans.length ?? (dayError ? 0 : 0)} state={day?.todayCleans.length ? "Needs you" : dayError ? "Paused" : "OK"} tone={day?.todayCleans.length ? "needs" : dayError ? "info" : "ok"} line={dayError || turnoverLine(day)} onOpen={(event) => openDrawer("turnovers", event.currentTarget)} dots={dayDots(day, now)} />
-          <Tile label="Reviews" n={reviews?.connected ? reviews.reviews.length : 0} state={paused ? "Paused" : reviews?.reviews.some((row) => row.flagged) ? "Needs you" : "OK"} tone={paused ? "info" : reviews?.reviews.some((row) => row.flagged) ? "needs" : "ok"} line={paused ? "Paused" : reviewLine(reviews)} onOpen={(event) => openDrawer("reviews", event.currentTarget)} />
-          <Tile label="Tasks" n={openTasks(tasks).length} state={overdueTasks(tasks, now) ? `${overdueTasks(tasks, now)} overdue` : tasks?.ready === false ? "Paused" : "OK"} tone={overdueTasks(tasks, now) ? "failed" : "ok"} line={tasks?.ready === false ? tasks.line : taskLine(tasks)} onOpen={(event) => openDrawer("tasks", event.currentTarget)} stack={taskStack(tasks)} />
-          <Tile label="Automations" n={skills.length} state={skills.some((row) => row.lastRun?.status === "failed") ? "Failed" : "OK"} tone={skills.some((row) => row.lastRun?.status === "failed") ? "failed" : "ok"} line={skillLine(skills)} onOpen={(event) => openDrawer("automations", event.currentTarget)} runs={skills.map((row) => row.lastRun?.status === "failed" ? "failed" : row.lastRun?.status === "running" ? "needs" : row.lastRun ? "ok" : "muted")} />
-          <Tile label="Connections" n={connectors.length ? `${connectors.filter((row) => row.status === "connected").length}/${connectors.length}` : "0"} state={down ? "Failed" : connectors.length ? "OK" : "OK"} tone={down ? "failed" : "ok"} line={down ? clean(`${down.name} not connected`) : connectors.length ? "All connected" : "No connections saved"} onOpen={(event) => openDrawer("connections", event.currentTarget)} dots={connectors.map((row) => row.status === "connected" ? "ok" as const : "failed" as const)} />
-        </div>
-        {phone ? (
-          <div className="cp-ov2-actphone">
-            <button type="button" onClick={() => setActOpen((open) => !open)}>
-              <i className="cp-ov2-dot" style={{ background: paused ? "var(--needs)" : "var(--ok)" }} />
-              <span>Activity</span>
-              <em>{activity.length ? `${activity.length} today, last ${clock(new Date(activity[0].at))}` : "Nothing recorded yet"}</em>
-              <strong>{actOpen ? "Hide" : "Show"}</strong>
-            </button>
-            {actOpen ? activity.map((entry) => (
-              <div key={`${entry.ref}:${entry.at}`} className="cp-ov2-actrow">
-                <span>{clock(new Date(entry.at))}</span>
-                <span style={{ color: toneColor(entry.tone === "ok" ? "muted" : entry.tone) }}>{entry.text}</span>
-              </div>
-            )) : null}
+        <section className="cp-ov3-sec" aria-label="Status">
+          <span className="cp-ov3-label">Status</span>
+          <div className="cp-ov3-tiles">
+            <Tile label="Guests waiting" n={guestQueue?.connected ? guestQueue.waiting.length : 0} flag={guestsFlag} line={paused ? "Paused" : guestLine(guestQueue)} onOpen={(event) => openDrawer("guests", event.currentTarget)} />
+            <Tile label="Inquiries" n={inquiries} flag={!paused && inquiries > 0} line={paused ? "Paused" : inquiryLine(guestQueue)} onOpen={(event) => openDrawer("guests", event.currentTarget)} />
+            <Tile label="Turnovers" n={day?.todayCleans.length ?? 0} flag={Boolean(day?.todayCleans.length)} line={dayError || turnoverLine(day)} onOpen={(event) => openDrawer("turnovers", event.currentTarget)} />
+            <Tile label="Reviews" n={reviews?.connected ? reviews.reviews.length : 0} flag={reviewFlag} line={paused ? "Paused" : reviewLine(reviews)} onOpen={(event) => openDrawer("reviews", event.currentTarget)} />
+            <Tile label="Tasks" n={openTasks(tasks).length} flag={overdue > 0} line={tasks?.ready === false ? tasks.line : overdue ? `${overdue} overdue` : taskLine(tasks)} onOpen={(event) => openDrawer("tasks", event.currentTarget)} />
+            <Tile label="Automations" n={skills.length} flag={skillFailed} line={skillLine(skills)} onOpen={(event) => openDrawer("automations", event.currentTarget)} />
+            <Tile label="Connections" n={connectors.length ? `${connected}/${connectors.length}` : 0} flag={Boolean(down)} line={down ? clean(`${down.name} not connected`) : connectors.length ? "All connected" : "No connections saved"} onOpen={(event) => openDrawer("connections", event.currentTarget)} />
           </div>
-        ) : null}
+        </section>
       </div>
-      {asks.length ? (
-        <div className="cp-ov2-asks">
-          {asks.map((label) => <button key={label} type="button" onClick={() => onAsk(label)}>{label}</button>)}
-        </div>
-      ) : null}
-      {railEl && !phone ? createPortal(rail, railEl) : null}
       {mainEl && sheet ? createPortal(sheet, mainEl) : null}
     </div>
   );
@@ -650,68 +576,41 @@ function DecisionCard({ item, fresh, paused, busy, onPrimary, onEdit, onLater }:
   const primary = item.hasDraft ? (item.kind === "review" || item.id.startsWith("draft:") ? "Review and submit" : "Review and send") : "";
   const tone = item.kind === "inquiry" ? "failed" : item.kind === "guest" || item.kind === "turnover" ? "needs" : "muted";
   return (
-    <article className={`cp-ov2-card${fresh ? " fresh" : ""}`}>
-      <div>
-        <div className="cp-ov2-cardmeta">
+    <article className={`cp-ov3-row${fresh ? " fresh" : ""}`}>
+      <div className="cp-ov3-copy">
+        <div className="cp-ov3-tag">
           <span>{labelOf(item.kind)}</span>
-          <span style={{ color: paused ? "var(--info)" : toneColor(tone) }}><i />{paused ? "Paused" : item.when}</span>
+          <i />
+          <span style={{ color: paused ? "var(--muted)" : tone === "failed" ? "var(--accent)" : "var(--muted)" }}>{paused ? "Paused" : item.when}</span>
         </div>
-        <strong>{item.title}</strong>
-        {item.detail ? <p>{item.detail}</p> : null}
+        <div className="cp-ov3-title">{item.title}</div>
+        {item.detail ? <div className="cp-ov3-prop">{item.detail}</div> : null}
       </div>
-      <div className="cp-ov2-cardacts">
-        {primary && !paused ? <button type="button" className="cp-ov2-go" disabled={busy} onClick={onPrimary}>{primary}</button> : null}
-        {item.hasDraft ? <button type="button" disabled={busy} onClick={onEdit}>Edit</button> : null}
-        {!item.hasDraft ? <button type="button" disabled={busy} onClick={onEdit}>Open</button> : null}
-        <button type="button" className="cp-ov2-quiet" disabled={busy} onClick={onLater}>Not now</button>
+      <div className="cp-ov3-acts">
+        <button type="button" className="cp-ov3-ghost" disabled={busy} onClick={onLater}>Not now</button>
+        {item.hasDraft ? <button type="button" disabled={busy} onClick={onEdit}>Edit</button> : <button type="button" disabled={busy} onClick={onEdit}>Open</button>}
+        {primary && !paused ? <button type="button" className="cp-ov3-go" disabled={busy} onClick={onPrimary}>{primary}</button> : null}
       </div>
     </article>
   );
 }
 
-function Tile({ label, n, state, tone, line, onOpen, fresh, bar, dots, stack, runs }: {
+function Tile({ label, n, flag, line, onOpen }: {
   label: string;
   n: number | string;
-  state: string;
-  tone: "ok" | "needs" | "failed" | "info";
+  flag: boolean;
   line: string;
   onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
-  fresh?: boolean;
-  bar?: number;
-  dots?: ("ok" | "needs" | "muted" | "failed")[];
-  stack?: { n: number; tone: "muted" | "accent" | "needs" }[];
-  runs?: ("ok" | "failed" | "needs" | "muted")[];
 }) {
   const zero = n === 0 || n === "0" || n === "0/0";
   return (
-    <button type="button" className={`cp-ov2-tile${fresh ? " fresh" : ""}`} title={`Open ${label}`} onClick={onOpen}>
-      <span className="cp-ov2-tiletop"><em>{label}</em><strong style={{ color: toneColor(tone) }}>{state}</strong></span>
-      <span className="cp-ov2-tilenum">
+    <button type="button" className="cp-ov3-tile" title={`${label}: ${line}`} onClick={onOpen}>
+      <span>{label}</span>
+      <span className="cp-ov3-num">
         <b style={{ color: zero ? "var(--muted)" : "var(--ink)" }}>{n}</b>
-        {typeof bar === "number" ? <span className="cp-ov2-bar"><i style={{ width: `${bar}%`, background: toneColor(tone) }} /></span> : null}
-        {dots ? <span className="cp-ov2-dots">{dots.map((dot, index) => <i key={index} style={{ background: dot === "muted" ? "var(--line2)" : toneColor(dot) }} />)}</span> : null}
-        {stack ? <span className="cp-ov2-stack">{stack.map((seg, index) => <i key={index} style={{ flex: seg.n, background: seg.tone === "accent" ? "var(--accent)" : seg.tone === "needs" ? "var(--needs)" : "var(--line2)" }} />)}</span> : null}
-        {runs?.length ? <span className="cp-ov2-runs">{runs.map((run, index) => <i key={index} style={{ background: run === "muted" ? "var(--line2)" : toneColor(run) }} />)}</span> : null}
+        {flag ? <i /> : null}
       </span>
-      <span className="cp-ov2-tileline">{line}</span>
     </button>
-  );
-}
-
-function ActivityRow({ entry, fresh, onOpen, onRetry }: { entry: ActivityEntry; fresh: boolean; onOpen: () => void; onRetry?: () => void }) {
-  const lead = entry.text.startsWith("Skill ") ? "Skill " : "";
-  const rest = lead ? entry.text.slice(lead.length) : entry.text;
-  return (
-    <div className={`cp-ov2-act${fresh ? " fresh" : ""}`}>
-      <span>{clock(new Date(entry.at))}</span>
-      <div>
-        <button type="button" className="cp-ov2-acttext" onClick={onOpen}>
-          {lead ? <strong>{lead}</strong> : null}
-          <span style={{ color: entry.tone === "failed" ? "var(--failed)" : entry.tone === "needs" ? "var(--needs)" : "var(--ink2)" }}>{rest}</span>
-        </button>
-        {onRetry ? <button type="button" className="cp-ov2-retry" onClick={onRetry}>Retry</button> : null}
-      </div>
-    </div>
   );
 }
 
@@ -1193,19 +1092,6 @@ function taskLine(board: BoardPayload | null): string {
   return clean([next.title, who, when].filter(Boolean).join(", "));
 }
 
-function taskStack(board: BoardPayload | null): { n: number; tone: "muted" | "accent" | "needs" }[] | undefined {
-  const open = openTasks(board);
-  if (!open.length) return undefined;
-  const todo = open.filter((task) => task.status === "todo").length;
-  const doing = open.filter((task) => task.status === "doing").length;
-  const waiting = open.filter((task) => task.status === "waiting").length;
-  return [
-    { n: todo, tone: "muted" as const },
-    { n: doing, tone: "accent" as const },
-    { n: waiting, tone: "needs" as const },
-  ].filter((seg) => seg.n >= 1);
-}
-
 function skillLine(skills: SkillRow[]): string {
   const failed = skills.find((row) => row.lastRun?.status === "failed");
   if (failed) return clean(`${failed.name}${failed.lastRun?.error ? `, ${failed.lastRun.error}` : ""}`);
@@ -1215,45 +1101,9 @@ function skillLine(skills: SkillRow[]): string {
   return pending ? `${pending} ${pending === 1 ? "has" : "have"} not run yet` : "Running";
 }
 
-function waitBar(queue: GuestQueue | null): number | undefined {
-  const ms = Math.max(0, ...(queue?.waiting ?? []).map((row) => row.waitedMs));
-  if (!ms) return undefined;
-  return Math.max(8, Math.min(100, Math.round((ms / (2 * 36e5)) * 100)));
-}
-
-function dayDots(day: DayBoard | null, now: Date): ("ok" | "needs" | "muted")[] | undefined {
-  if (!day) return undefined;
-  const today = day.today || torontoDay(now);
-  return [0, 1, 2].map((offset) => {
-    const date = addDays(today, offset);
-    const hit = [...day.todayCleans, ...day.weekCleans, ...day.overdue].some((row) => row.date === date && !row.assigned);
-    return hit ? "needs" : "muted";
-  });
-}
-
 function emptyLine(reviews: ReviewQueuePayload | null): string {
   const drafted = reviews?.reviews.filter((row) => !row.flagged && row.draft.trim()).length ?? 0;
   if (drafted) return `${drafted} ${drafted === 1 ? "reply is" : "replies are"} drafted for whenever there is a minute.`;
   return "Guests, reviews, turnovers, tasks and automations have nothing waiting on a partner.";
 }
 
-function suggestionChips(input: { day: DayBoard | null; reviews: ReviewQueuePayload | null; tasks: BoardPayload | null; now: Date; open: number }): string[] {
-  const asks: string[] = [];
-  if ((input.day?.todayCleans.length || input.day?.weekCleans.length)) asks.push("Who still needs a cleaner this week?");
-  const flagged = input.reviews?.reviews.find((row) => row.flagged);
-  if (flagged?.guest) asks.push(`Summarize ${flagged.guest}'s review`);
-  if (openTasks(input.tasks).length || groupHasDue(input.tasks, input.now)) asks.push("What's due before Saturday?");
-  if (!asks.length) {
-    asks.push("What's the plan for today?");
-    asks.push("Any unanswered messages?");
-    asks.push("Who's checking in and out today?");
-  }
-  return asks.slice(0, 3);
-}
-
-function groupHasDue(board: BoardPayload | null, now: Date): boolean {
-  return openTasks(board).some((task) => {
-    const offset = dueOffset(task, now);
-    return offset != null && offset >= 0 && offset < 7;
-  });
-}

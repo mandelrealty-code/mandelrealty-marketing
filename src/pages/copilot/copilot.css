@@ -8874,14 +8874,6 @@ html.cp-app[data-cp-theme="dark"] #root {
   flex-direction: column;
   color: var(--ink);
 }
-.cp-ov2-body {
-  flex: none;
-  overflow: visible;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 32px 0;
-}
 .cp-ov2-err { margin: 0; color: var(--failed); font-size: 13px; line-height: 20px; }
 .cp-ov2-banner {
   display: flex;
@@ -8900,12 +8892,9 @@ html.cp-app[data-cp-theme="dark"] #root {
 .cp-ov2-banner span { flex: 1 1 220px; }
 .cp-ov2-banner strong { color: var(--failed); }
 .cp-ov2-banner button,
-.cp-ov2-cardacts button,
-.cp-ov2-empty button,
 .cp-ov2-drow button,
 .cp-ov2-improve button,
-.cp-ov2-drawer footer button,
-.cp-ov2-retry {
+.cp-ov2-drawer footer button {
   height: 32px;
   padding: 0 14px;
   border-radius: 8px;
@@ -8920,91 +8909,15 @@ html.cp-app[data-cp-theme="dark"] #root {
   white-space: nowrap;
 }
 .cp-ov2-banner button:hover,
-.cp-ov2-cardacts button:hover,
-.cp-ov2-empty button:hover,
 .cp-ov2-drow button:hover,
 .cp-ov2-improve button:hover,
-.cp-ov2-drawer footer button:hover,
-.cp-ov2-retry:hover { background: var(--tint); }
+.cp-ov2-drawer footer button:hover { background: var(--tint); }
 .cp-ov2 button:focus-visible,
-.cp-ov2-drawer button:focus-visible,
-.cp-ov2-rail button:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
-.cp-ov2-brief h1 {
-  margin: 0;
-  font-family: "Source Serif 4", Georgia, serif;
-  font-size: 26px;
-  line-height: 32px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-.cp-ov2-brief p {
-  margin: 2px 0 0;
-  max-width: 720px;
-  font-family: "Source Serif 4", Georgia, serif;
-  font-size: 16px;
-  line-height: 24px;
-  color: var(--ink2);
-  text-wrap: pretty;
-}
-.cp-ov2-brief strong { font-weight: 600; color: var(--ink); }
-.cp-ov2-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 14px;
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
-  color: var(--muted);
-}
-.cp-ov2-watch { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
-.cp-ov2-dot, .cp-ov2-watch i, .cp-ov2-cardmeta i, .cp-ov2-resolved i, .cp-ov2-empty > i, .cp-ov2-dtime i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: none;
-}
-.cp-ov2-dot, .cp-ov2-watch i { animation: cpOv2Pulse 2.4s ease-in-out infinite; }
-@keyframes cpOv2Pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.cp-ov2-sechead, .cp-ov2-sechead > div { display: flex; align-items: baseline; gap: 2px 10px; min-width: 0; }
-.cp-ov2-sechead { justify-content: space-between; }
-.cp-ov2-sechead > div > span:first-child { font-size: 13px; line-height: 20px; font-weight: 600; }
-.cp-ov2-sechead > div > span:last-child { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted); }
-.cp-ov2-more {
-  flex: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  color: var(--muted);
-  font: inherit;
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.cp-ov2-cards { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-.cp-ov2-card, .cp-ov2-empty {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  padding: 8px 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-  min-width: 0;
-}
-.cp-ov2-card.fresh, .cp-ov2-tile.fresh, .cp-ov2-act.fresh { background: var(--wash); }
-.cp-ov2-card > div:first-child { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.cp-ov2-cardmeta { display: flex; align-items: center; gap: 10px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ink2); }
-.cp-ov2-cardmeta span:last-child { display: inline-flex; align-items: center; gap: 6px; }
-.cp-ov2-card strong, .cp-ov2-drow strong { font-size: 15px; line-height: 22px; font-weight: 600; }
-.cp-ov2-card p, .cp-ov2-drow p { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-ov2-cardacts, .cp-ov2-drow > div:last-child, .cp-ov2-drawer footer > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.cp-ov2-drawer button:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.cp-ov2-drow strong { font-size: 15px; line-height: 22px; font-weight: 600; }
+.cp-ov2-drow p { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-ov2-drow > div:last-child,
+.cp-ov2-drawer footer > div { display: flex; flex-wrap: wrap; gap: 8px; }
 .cp-ov2-quiet { border-color: transparent !important; color: var(--muted) !important; padding: 0 10px !important; }
 .cp-ov2-quiet:hover { color: var(--ink) !important; }
 .cp-ov2-go, .cp-ov2-drawer footer .cp-ov2-go {
@@ -9013,143 +8926,7 @@ html.cp-app[data-cp-theme="dark"] #root {
   color: var(--on-accent) !important;
 }
 .cp-ov2-go:hover, .cp-ov2-drawer footer .cp-ov2-go:hover { background: var(--accent-hover) !important; border-color: var(--accent-hover) !important; }
-.cp-ov2-resolved {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 8px 16px;
-  border: 1px dashed var(--line2);
-  border-radius: 12px;
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--ink2);
-}
-.cp-ov2-resolved span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-ov2-resolved button {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.cp-ov2-empty > div { flex: 1 1 260px; }
-.cp-ov2-empty > i { background: var(--ok); }
-.cp-ov2-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
-.cp-ov2-tile {
-  min-width: 0;
-  min-height: 76px;
-  text-align: left;
-  font: inherit;
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  cursor: pointer;
-  overflow: hidden;
-}
-.cp-ov2-tile:hover { border-color: var(--line2); }
-.cp-ov2-tiletop { display: flex; justify-content: space-between; gap: 8px; width: 100%; font-size: 12px; line-height: 16px; font-weight: 500; }
-.cp-ov2-tiletop em { color: var(--muted); font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-ov2-tilenum { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 32px; width: 100%; }
-.cp-ov2-tilenum b { font-family: "JetBrains Mono", monospace; font-size: 24px; line-height: 32px; font-weight: 500; }
-.cp-ov2-tileline { width: 100%; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-ov2-bar, .cp-ov2-stack { flex: 1; max-width: 88px; height: 4px; border-radius: 999px; background: var(--tint); overflow: hidden; display: flex; }
-.cp-ov2-stack { height: 6px; gap: 2px; background: transparent; }
-.cp-ov2-bar i { display: block; height: 100%; border-radius: 999px; }
-.cp-ov2-dots, .cp-ov2-runs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 108px; }
-.cp-ov2-runs { gap: 3px; }
-.cp-ov2-dots i, .cp-ov2-runs i { width: 8px; height: 8px; border-radius: 50%; }
-.cp-ov2-runs i { border-radius: 0; }
-.cp-ov2-asks {
-  flex: none;
-  display: flex;
-  gap: 6px;
-  padding: 8px 32px 4px;
-  overflow-x: auto;
-}
-.cp-ov2-asks button {
-  flex: none;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid var(--line2);
-  background: transparent;
-  color: var(--ink2);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.cp-ov2-asks button:hover { background: var(--tint); color: var(--ink); }
-.cp-main:has(.cp-ov2-railhost) { flex-direction: row; }
-.cp-main:has(.cp-ov2-railhost) .cp-chatpane { flex: 1; min-width: 0; }
 .cp-main:has(.cp-ov2) .cp-scroll { overflow-x: hidden; overflow-y: auto; }
-.cp-ov2-railhost {
-  width: 300px;
-  flex: none;
-  min-height: 0;
-  display: flex;
-  border-left: 1px solid var(--line);
-  background: var(--canvas);
-}
-.cp-ov2-rail { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.cp-ov2-railhead {
-  padding: 20px 20px 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-  line-height: 20px;
-  font-weight: 600;
-}
-.cp-ov2-rail > p {
-  margin: 4px 0 0;
-  padding: 0 20px 12px;
-  border-bottom: 1px solid var(--line);
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
-  color: var(--muted);
-}
-.cp-ov2-feed { flex: 1; min-height: 0; overflow: auto; padding: 0 20px 16px; }
-.cp-ov2-act {
-  display: flex;
-  gap: 10px;
-  padding: 10px 8px;
-  margin: 0 -8px;
-  border-bottom: 1px solid var(--line);
-  font-size: 13px;
-  line-height: 20px;
-  border-radius: 8px;
-}
-.cp-ov2-act > span, .cp-ov2-actrow > span:first-child {
-  width: 64px;
-  flex: none;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 12px;
-  color: var(--muted);
-}
-.cp-ov2-acttext {
-  border: none;
-  background: transparent;
-  padding: 0;
-  text-align: left;
-  font: inherit;
-  color: var(--ink2);
-  cursor: pointer;
-}
-.cp-ov2-acttext strong { font-weight: 600; }
-.cp-ov2-retry { height: 28px; margin-top: 4px; }
 .cp-ov2-layer { position: absolute; inset: 0; z-index: 30; }
 .cp-ov2-shade { position: absolute; inset: 0; border: none; background: rgba(20, 19, 17, 0.32); cursor: pointer; }
 .cp-ov2-drawer {
@@ -9228,7 +9005,6 @@ html.cp-app[data-cp-theme="dark"] #root {
 .cp-ov2-drow > div:first-child { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .cp-ov2-dmeta { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted); }
 .cp-ov2-dmeta em { font-style: normal; font-weight: 600; border: 1px solid currentColor; border-radius: 999px; padding: 0 8px; }
-.cp-ov2-dtime { margin-top: 4px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 600; }
 .cp-ov2-filters { display: flex; gap: 4px; padding: 12px 0 0; }
 .cp-ov2-filters button {
   height: 28px;
@@ -9257,54 +9033,138 @@ html.cp-app[data-cp-theme="dark"] #root {
   color: var(--muted);
 }
 .cp-ov2-drawer footer > span { flex: 1 1 200px; }
-.cp-ov2-actphone { display: none; }
 @media (max-width: 700px) {
   .cp-ov2 { height: auto; flex: none; align-self: flex-start; width: 100%; }
-  .cp-ov2-body { overflow: visible; padding: 20px 16px 8px; }
   .cp-main:has(.cp-ov2) .cp-scroll { overflow: auto; }
-  .cp-ov2-railhost { display: none; }
-  .cp-ov2-cards.row {
-    flex-direction: row;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    margin: 8px -16px 0;
-    padding: 0 16px 4px;
-  }
-  .cp-ov2-cards.row .cp-ov2-card,
-  .cp-ov2-cards.row .cp-ov2-resolved { flex: 0 0 300px; scroll-snap-align: start; }
-  .cp-ov2-card p { white-space: normal; }
-  .cp-ov2-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .cp-ov2-asks { flex-wrap: wrap; padding: 8px 16px; }
-  .cp-ov2-asks button, .cp-ov2-banner button, .cp-ov2-cardacts button, .cp-ov2-empty button, .cp-ov2-drow button, .cp-ov2-drawer footer button, .cp-ov2-drawer header > button, .cp-ov2-tile {
-    min-height: 44px;
-  }
-  .cp-ov2-cardacts button, .cp-ov2-banner button, .cp-ov2-empty button, .cp-ov2-drow button, .cp-ov2-drawer footer button { height: 44px; }
+  .cp-ov2-drow button, .cp-ov2-drawer footer button, .cp-ov2-drawer header > button { min-height: 44px; }
+  .cp-ov2-drow button, .cp-ov2-drawer footer button { height: 44px; }
   .cp-ov2-drawer { width: 100%; }
-  .cp-ov2-actphone {
-    display: block;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--surface);
-  }
-  .cp-ov2-actphone > button {
-    width: 100%;
-    min-height: 52px;
-    padding: 0 16px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font: inherit;
-    color: var(--ink);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    text-align: left;
-  }
-  .cp-ov2-actphone em { flex: 1; font-style: normal; font-size: 12px; font-weight: 500; color: var(--muted); }
-  .cp-ov2-actphone strong { font-size: 12px; color: var(--muted); }
-  .cp-ov2-actrow { display: flex; gap: 10px; padding: 8px 16px; border-top: 1px solid var(--line); font-size: 13px; line-height: 20px; }
+}
+
+/* Overview v3: one calm column. The line, Decisions, Status. */
+.cp-ov3 { min-height: 100%; }
+.cp-ov3-col {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  padding: 72px 48px 32px;
+}
+.cp-ov3-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink2);
+}
+.cp-ov3-banner i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-fill); flex: none; }
+.cp-ov3-banner span { flex: 1 1 220px; }
+.cp-ov3-banner strong { font-weight: 600; color: var(--ink); }
+.cp-ov3-head { display: flex; flex-direction: column; gap: 8px; }
+.cp-ov3-head > div { font-size: 13px; line-height: 20px; color: var(--muted); }
+.cp-ov3-head h1 { margin: 0; font-size: 26px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em; text-wrap: balance; }
+.cp-ov3-head h1 span { color: var(--muted); }
+.cp-ov3-sec { display: flex; flex-direction: column; gap: 12px; }
+.cp-ov3-label { font-size: 13px; line-height: 20px; font-weight: 600; }
+.cp-ov3-sechead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.cp-ov3-sechead > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.cp-ov3-sechead > div > span:first-child { font-size: 13px; line-height: 20px; font-weight: 600; }
+.cp-ov3-sechead > div > span:last-child { font-size: 13px; line-height: 20px; color: var(--muted); }
+.cp-ov3-more { flex: none; border: none; background: transparent; padding: 0; font: inherit; font-size: 13px; line-height: 20px; color: var(--muted); cursor: pointer; }
+.cp-ov3-more:hover { color: var(--ink); }
+.cp-ov3-list, .cp-ov3-empty {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(33, 27, 22, 0.04);
+  overflow: hidden;
+}
+.cp-ov3-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 24px;
+  padding: 20px 20px 20px 22px;
+  border-top: 1px solid var(--line);
+}
+.cp-ov3-list > :first-child { border-top: none; }
+.cp-ov3-row.fresh { background: var(--wash); }
+.cp-ov3-copy { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cp-ov3-tag { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.cp-ov3-tag span:last-child { font-weight: 500; }
+.cp-ov3-tag i { width: 2px; height: 2px; border-radius: 50%; background: var(--line2); }
+.cp-ov3-title { font-size: 15px; line-height: 22px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-ov3-prop { font-size: 13px; line-height: 20px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-ov3-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cp-ov3-acts button, .cp-ov3-empty button, .cp-ov3-banner button {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line2);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cp-ov3-acts button:hover, .cp-ov3-empty button:hover, .cp-ov3-banner button:hover { background: var(--tint); }
+.cp-ov3-acts button:disabled { opacity: 0.5; cursor: default; }
+.cp-ov3-acts .cp-ov3-ghost { padding: 0 10px; border-color: transparent; color: var(--muted); }
+.cp-ov3-acts .cp-ov3-ghost:hover { background: transparent; color: var(--ink); }
+.cp-ov3-acts .cp-ov3-go { border-color: var(--accent-fill); background: var(--accent-fill); color: var(--on-accent); }
+.cp-ov3-acts .cp-ov3-go:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.cp-ov3-done { display: flex; align-items: center; gap: 10px; padding: 14px 20px 14px 22px; border-top: 1px solid var(--line); font-size: 13px; line-height: 20px; color: var(--muted); }
+.cp-ov3-done span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-ov3-done button { flex: none; border: none; background: transparent; padding: 0; font: inherit; font-size: 13px; line-height: 20px; color: var(--ink); cursor: pointer; }
+.cp-ov3-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 20px 22px; }
+.cp-ov3-empty > div { flex: 1 1 260px; min-width: 0; font-size: 14px; line-height: 22px; }
+.cp-ov3-empty strong { font-weight: 500; }
+.cp-ov3-empty span { color: var(--muted); }
+.cp-ov3-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.cp-ov3-tile {
+  min-width: 0;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+}
+.cp-ov3-tile:hover { background: var(--tint); }
+.cp-ov3-tile > span:first-child { width: 100%; font-size: 12px; line-height: 16px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-ov3-num { display: flex; align-items: center; gap: 7px; }
+.cp-ov3-num b { font-size: 22px; line-height: 28px; font-weight: 500; letter-spacing: -0.01em; }
+.cp-ov3-num i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-fill); }
+.cp-ov3 button:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+@media (max-width: 700px) {
+  .cp-ov3-col { gap: 32px; padding: 24px 16px 16px; }
+  .cp-ov3-head h1 { font-size: 21px; line-height: 30px; }
+  .cp-ov3-title, .cp-ov3-prop { white-space: normal; }
+  .cp-ov3-acts button, .cp-ov3-empty button, .cp-ov3-banner button { height: 44px; }
+  .cp-ov3-tile { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cp-ov2-dot, .cp-ov2-watch i { animation: none; }
-  .cp-ov2-card.fresh, .cp-ov2-tile.fresh, .cp-ov2-act.fresh { transition: none; }
+  .cp-ov3-row.fresh { transition: none; }
 }

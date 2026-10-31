@@ -880,7 +880,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
-  const [railEl, setRailEl] = useState<HTMLElement | null>(null);
   const [trail, setTrail] = useState<Record<string, boolean>>({});
   const [report, setReport] = useState(false);
   const [reportDock, setReportDock] = useState<ReportView | { status: "loading"; id: string } | null>(null);
@@ -2642,10 +2641,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     runningChatIds={[...new Set([...(boot.runningChatIds ?? []), ...liveRuns])]}
                     viewer={viewer}
                     error={error}
-                    railEl={railEl}
                     mainEl={mainEl}
                     api={api}
-                    onAsk={(text) => void send(text)}
                     onOpenChat={(id) => void openChat(id)}
                     onOpenThread={(row) => {
                       setScreen("guests");
@@ -3059,7 +3056,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
             </>
           </div>
           {reportDock && screen === "chat" ? <ReportViewer view={reportDock} onClose={() => setReportDock(null)} /> : null}
-          {screen === "brief" && boot ? <div className="cp-ov2-railhost" ref={setRailEl} /> : null}
         </main>
         {stage && !inSettings && screen !== "reviews" && screen !== "guests" ? (
           <aside className={`cp-stage${stage.control ? " control" : ""}`}>
