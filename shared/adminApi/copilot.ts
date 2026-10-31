@@ -70,6 +70,7 @@ import { answerHospitable, applyHospitableEdit, ASKS_HOSPITABLE, commitHospitabl
 import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMcp.js";
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { adjustDraft, ADJUST_KINDS, type AdjustKind } from "../copilot/reviewAdjust.js";
+import { answerInChat, type AgentEvent } from "../copilot/agentChat.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
 import { cachedThreadsForSampling } from "../copilot/stayCheck.js";
@@ -936,6 +937,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       return res.status(200).json({ chatId, messages: await listMessages(chatId), pending: false });
     }
 
+    // The business agent: the brain reads the connected systems, calls tools mid-turn, and answers. Nothing here sends.
+    // stream:true answers as server-sent events (step, text, done); otherwise one JSON reply like "send".
+    if (op === "agent") {
+      const typed = String(body.text ?? "").trim();
+      if (!typed) return res.status(400).json({ error: "Write a message first." });
+      let chatId = String(body.chatId ?? "");
+      if (!chatId) chatId = (await createChat(await nameChat(typed), "chat")).id;
+      await addMessage({ chatId, role: "user", body: typed });
+      if (body.stream === true) {
+        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.status(200);
+        const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        send("chat", { chatId });
+        const outcome = await answerInChat({ chatId, text: typed, onEvent: (event: AgentEvent) => send(event.type, event) });
+        send("done", { chatId, body: outcome.body, steps: outcome.steps, drafted: outcome.drafted, messages: await listMessages(chatId), chats: await listChats() });
+        res.end();
+        return;
+      }
+      const outcome = await answerInChat({ chatId, text: typed });
+      return res.status(200).json({ chatId, messages: await listMessages(chatId), chats: await listChats(), pending: false, drafted: outcome.drafted });
+    }
+
     if (op === "send") {
       const images = readImages(body.images);
       const typed = String(body.text ?? "").trim() || (images.length ? "Look at the attached photo." : "");
@@ -962,6 +987,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const webSearch = !skipsWeb(text) && (body.webSearch === true || wantsWeb(text));
       const pictureChoice = pictureFor(text, images.length > 0);
       const userMessage = await addMessage({ chatId, role: "user", body: typed, images, picture: pictureMode });
+      // BRAIN_AGENT_CHAT=1 sends ordinary chat turns through the business agent instead of the older answer chain.
+      if (process.env.BRAIN_AGENT_CHAT === "1" && kind === "chat" && !pictureMode && !skillMode && !images.length) {
+        await answerInChat({ chatId, text: typed });
+        return res.status(200).json({ chatId, messages: await listMessages(chatId), chats: await listChats(), pending: false });
+      }
       const signIn = await answerSignIn(chatId);
       if (signIn) {
         await addMessage({

@@ -77,6 +77,8 @@ function asReport(args: Record<string, unknown>, headline: string): CopilotRepor
 }
 
 async function noteTool(ctx: Ctx, name: string, patch: Partial<NonNullable<CopilotRun["result"]>> = {}) {
+  // An interactive chat turn has no skill run to note the tool on.
+  if (!ctx.run.id) return;
   const fresh = (await getRun(ctx.run.id)) ?? ctx.run;
   const result = fresh.result ?? { headline: "", needs_you: false, posted: false, tools: [] };
   await updateRun(ctx.run.id, {
@@ -608,6 +610,18 @@ async function answer(rpc: Rpc, ctx: Ctx): Promise<Record<string, unknown> | nul
     }
   }
   return fail(-32601, `Unknown method: ${method}`);
+}
+
+/** What the chat agent may use: each tool's name, words and input shape. Nothing outside the allowed names is offered. */
+export function toolDefinitions(names: string[]): { name: string; description: string; input_schema: Record<string, unknown> }[] {
+  return names.filter((name) => TOOLS[name]).map((name) => ({ name, description: TOOLS[name]!.description, input_schema: TOOLS[name]!.inputSchema }));
+}
+
+/** Runs one of those tools for an interactive chat. propose_draft leaves a draft waiting in this chat: nothing is sent. */
+export async function callToolForChat(name: string, args: Record<string, unknown>, chatId: string): Promise<unknown> {
+  const tool = TOOLS[name];
+  if (!tool) throw new Error(`Unknown tool: ${name}`);
+  return tool.call(args, { run: { id: "" } as CopilotRun, skill: { id: "", name: "Copilot", chat_id: chatId } as CopilotSkill, chatId });
 }
 
 export async function callCopilotTool(name: string, args: Record<string, unknown>): Promise<unknown> {
