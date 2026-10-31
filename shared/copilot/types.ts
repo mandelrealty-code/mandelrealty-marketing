@@ -325,8 +325,6 @@ export type CopilotRun = {
   finished_at: string | null;
   status: "running" | "ok" | "failed";
   trigger: "schedule" | "manual";
-  agent_id: string;
-  cursor_run_id: string;
   result: SkillRunResult | null;
   error: string;
 };

@@ -283,7 +283,7 @@ export async function answerHospitable(input: {
     }
     const model = which === "openai"
       ? "gpt-4.1-mini"
-      : input.model === "sonnet" || input.model === "cursor"
+      : input.model === "sonnet"
         ? "claude-sonnet-4-6"
         : "claude-haiku-4-5";
     const roster = ASKS_HOSPITABLE.test(question) ? await propertyLines().catch(() => "") : "";

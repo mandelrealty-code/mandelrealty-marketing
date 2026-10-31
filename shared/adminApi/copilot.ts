@@ -12,7 +12,7 @@ import type { LoginState } from "../copilot/mailLoginStatus.js";
 import { applyOpenItemOnBrief, dismissSavedCard, noteRankPass, quietBrief, readStoredBrief, refreshSavedBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
-import { answerSignIn, cancelCursorRun, collectCursorRun } from "../copilot/cursorThink.js";
+import { answerSignIn } from "../copilot/chatReply.js";
 import { beginSession, publishFindings, readPage, type SessionPage } from "../copilot/browserSession.js";
 import { cancelBrowser, collectBrowser, browserIsLive, publicError, releaseBrowser, resumeBrowser, startBrowser } from "../copilot/webBrowser.js";
 import { nameChat } from "../copilot/chatTitle.js";
@@ -95,7 +95,6 @@ import {
   deleteChat,
   deleteSkill,
   listChats,
-  listCursorRuns,
   listMemory,
   markChatSeen,
   listMessages,
@@ -246,7 +245,6 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
   const gmailReady = gmailKeysReady();
   const outlookReady = outlookKeysReady();
   const airroi = Boolean(process.env.AIRROI_API_KEY?.trim());
-  const cursor = Boolean(process.env.CURSOR_API_KEY?.trim());
   const cleaner = cleanerWebhookReady();
   const twilio = twilioReady();
   return [
@@ -315,13 +313,6 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
       statusLabel: airroi ? "Connected" : "Not connected",
     },
     {
-      id: "whatsapp",
-      name: "WhatsApp",
-      detail: "Host groups only.",
-      status: "not_connected",
-      statusLabel: "Not connected",
-    },
-    {
       id: "browser",
       name: "Browser",
       detail: "Looks things up on the web when you ask.",
@@ -336,14 +327,6 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
       status: "connected",
       statusLabel: "On",
       note: "Copilot reads OPS here. It does not use the Hospitable token stored for Copilot.",
-    },
-    {
-      id: "cursor",
-      name: "Cursor",
-      detail: "Team keys.",
-      status: cursor ? "connected" : "not_connected",
-      statusLabel: cursor ? "Team keys are set" : "Not connected",
-      note: cursor ? "Saved skill runs can use the team key. This chat does not." : "The team key is not set on the server.",
     },
   ];
 }
@@ -428,11 +411,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           ...findAutomatedTemplates(threads, { minThreads: min }),
         });
       }
-      const [cursorRuns, browserRuns] = await Promise.all([
-        listCursorRuns().catch(() => []),
-        listOpenBrowsers().catch(() => []),
-      ]);
-      const runningChatIds = [...new Set([...cursorRuns.map((row) => row.chatId), ...browserRuns.map((row) => row.chatId)])];
+      const runningChatIds = [...new Set((await listOpenBrowsers().catch(() => [])).map((row) => row.chatId))];
       const skills = await skillRows().catch(() => [] as Awaited<ReturnType<typeof skillRows>>);
       const [brief, chats, memory, textLog, textNumbers, memoryFiles, connectorRows, guestQueue, hospitable] = await Promise.all([
         readStoredBrief().catch(() => quietBrief()),
@@ -458,9 +437,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         connectors: connectorRows,
         hospitable,
         runningChatIds,
-        billing: process.env.CURSOR_API_KEY
-          ? "Cursor Auto is connected. The team spend total appears when the admin key is set."
-          : "Cursor isn’t connected yet. The brief still uses your records. Nothing is sent.",
       });
     }
 
@@ -948,25 +924,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           chats: browser.pending ? undefined : await listChats(),
         });
       }
-      const state = await collectCursorRun(chatId, true);
-      const stamp = state.view?.image ? `${state.view.image.length}:${state.view.image.slice(0, 16)}:${state.view.image.slice(-16)}` : "";
-      const sameFrame = Boolean(stamp) && stamp === String(body.viewRev ?? "");
-      const view = state.view
-        ? {
-            url: state.view.url,
-            pointer: state.view.pointer,
-            ...(stamp ? { rev: stamp } : {}),
-            ...(state.view.image && !sameFrame ? { image: state.view.image, mime: state.view.mime } : {}),
-          }
-        : undefined;
       return res.status(200).json({
         chatId,
         messages: await listMessages(chatId),
-        pending: state.pending,
-        steps: state.steps,
-        thought: state.thought,
-        view,
-        chats: state.pending ? undefined : await listChats(),
+        pending: false,
+        steps: [],
+        chats: await listChats(),
       });
     }
 
@@ -977,8 +940,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     if (op === "cancel-think") {
       const chatId = String(body.chatId ?? "");
       if (!chatId) return res.status(400).json({ error: "Missing chat." });
-      const stoppedBrowser = await cancelBrowser(chatId);
-      if (!stoppedBrowser) await cancelCursorRun(chatId);
+      await cancelBrowser(chatId);
+      const thread = await listMessages(chatId);
+      if (thread[thread.length - 1]?.role === "user") await addMessage({ chatId, role: "assistant", body: "Stopped. Nothing was sent." });
       return res.status(200).json({ chatId, messages: await listMessages(chatId), pending: false });
     }
 

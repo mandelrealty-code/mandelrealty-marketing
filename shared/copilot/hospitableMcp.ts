@@ -1,11 +1,10 @@
-import type { McpServerConfig } from "@cursor/sdk";
 import { getHospitableMcpToken } from "../pm/clientStore.js";
 import { parityMcp } from "./parity/world.js";
 import { withReservationWindow } from "./hospitableConnection.js";
 
 /**
  * Hospitable's hosted MCP. Every Copilot model reaches the account through this,
- * because Haiku, Sonnet, and Cursor cannot share one OAuth login.
+ * because the Copilot models cannot share one OAuth login.
  * The Public API personal access token is a separate credential.
  */
 
@@ -29,19 +28,6 @@ export function cleanMcpToken(value: string): string {
 
 export async function hospitableMcpConfigured(): Promise<boolean> {
   return Boolean(await getHospitableMcpToken());
-}
-
-/** Cursor cloud agents speak MCP themselves. Pass this on create and on resume. */
-export async function hospitableMcpServers(): Promise<Record<string, McpServerConfig> | undefined> {
-  const token = await getHospitableMcpToken();
-  if (!token) return undefined;
-  return {
-    hospitable: {
-      type: "http",
-      url: MCP_URL,
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  };
 }
 
 export async function verifyHospitableMcpToken(token: string): Promise<void> {

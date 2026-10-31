@@ -1,9 +1,9 @@
 import { ANSWER_STYLE } from "./answerStyle.js";
 
 /**
- * Cheap answers that must not start a Cursor agent.
+ * Cheap answers that need no agent.
  * Arithmetic is computed here. A photo is described by one small OpenAI vision call.
- * A general question uses one small chat call. Company records still go to Cursor.
+ * A general question uses one small chat call. Company records go to the agent.
  */
 
 export const GENERAL_ANSWER_SYSTEM =
@@ -178,7 +178,7 @@ export async function answerGeneral(input: string): Promise<string | null> {
   return reply;
 }
 
-/** A spoken description of the attached photos. Never falls through to Cursor. */
+/** A spoken description of the attached photos. Never falls through to the agent. */
 export async function answerPhoto(
   input: string,
   images: { mimeType: string; data: string }[],

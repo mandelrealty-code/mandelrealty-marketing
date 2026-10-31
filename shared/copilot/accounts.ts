@@ -15,7 +15,7 @@ function row(
   name: string,
   fields: { spent: string | null; left: string | null; note: string },
 ): AccountSpend {
-  const envName = id === "openai" ? "OPENAI_API_KEY" : id === "anthropic" ? "ANTHROPIC_API_KEY" : "CURSOR_API_KEY";
+  const envName = id === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
   return { id, name, ...fields, keyHint: keyEnding(envName), addUrl: ACCOUNT_LINKS[id] };
 }
 
@@ -144,87 +144,9 @@ async function anthropicSpend(): Promise<AccountSpend> {
   });
 }
 
-const CURSOR_PLAN = "$88.42 CAD a month";
-
-type CursorMember = {
-  autoPercentUsed?: number;
-  apiPercentUsed?: number;
-  totalPercentUsed?: number;
-};
-
-function usedPercent(value: number | undefined): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
-  const pct = value > 0 && value < 1 ? value * 100 : value;
-  return Math.max(0, Math.round(pct));
-}
-
-function renewalLabel(cycleStart: number | undefined): string | null {
-  if (typeof cycleStart !== "number" || !Number.isFinite(cycleStart)) return null;
-  const ms = cycleStart < 1e12 ? cycleStart * 1000 : cycleStart;
-  const start = new Date(ms);
-  if (Number.isNaN(start.getTime())) return null;
-  const renew = new Date(start.getTime());
-  renew.setUTCMonth(renew.getUTCMonth() + 1);
-  const when = renew.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/Toronto" });
-  return `Renews ${when}`;
-}
-
-async function cursorSpend(): Promise<AccountSpend> {
-  const admin = process.env.CURSOR_ADMIN_API_KEY?.trim() || "";
-  const key = admin || process.env.CURSOR_API_KEY?.trim() || "";
-  if (!key) {
-    return row("cursor", "Cursor", { spent: CURSOR_PLAN, left: null, note: "Cursor isn’t connected, so the usage bars and renewal date aren’t available." });
-  }
-  const members: CursorMember[] = [];
-  let cycleStart: number | undefined;
-  let page = 1;
-  let pages = 1;
-  while (page <= pages && page <= 5) {
-    const res = await readJson("https://api.cursor.com/teams/spend", {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ page, pageSize: 100 }),
-    });
-    if (!res.ok) {
-      const note = res.status === 401 || res.status === 403
-        ? "The plan is $88.42 CAD a month. The usage bars and renewal date need a team admin key."
-        : res.status ? "Cursor didn’t return usage." : "Cursor didn’t answer.";
-      return row("cursor", "Cursor", { spent: CURSOR_PLAN, left: null, note });
-    }
-    const body = res.data as { teamMemberSpend?: CursorMember[]; totalPages?: number; subscriptionCycleStart?: number };
-    if (cycleStart == null && typeof body.subscriptionCycleStart === "number") cycleStart = body.subscriptionCycleStart;
-    members.push(...(body.teamMemberSpend ?? []));
-    pages = Math.max(1, Number(body.totalPages) || 1);
-    page += 1;
-  }
-  const busiest = members.reduce<CursorMember | null>((best, member) => {
-    const score = member.autoPercentUsed ?? member.totalPercentUsed ?? 0;
-    const bestScore = best?.autoPercentUsed ?? best?.totalPercentUsed ?? -1;
-    return score >= bestScore ? member : best;
-  }, null);
-  const cursorModels = usedPercent(busiest?.autoPercentUsed);
-  const otherModels = usedPercent(busiest?.apiPercentUsed);
-  const bars = [
-    cursorModels == null ? null : { label: "Cursor models", percent: cursorModels },
-    otherModels == null ? null : { label: "Other models", percent: otherModels },
-  ].filter((bar): bar is { label: string; percent: number } => bar != null);
-  const renews = renewalLabel(cycleStart);
-  return {
-    ...row("cursor", "Cursor", {
-      spent: CURSOR_PLAN,
-      left: null,
-      note: renews ?? "The bill didn’t include a renewal date.",
-    }),
-    ...(bars.length ? { bars } : {}),
-  };
-}
-
 export async function accountSpend(): Promise<AccountSpend[]> {
   if (cached && Date.now() - cached.at < TTL_MS) return cached.accounts;
-  const accounts = await Promise.all([openAiSpend(), anthropicSpend(), cursorSpend()]);
+  const accounts = await Promise.all([openAiSpend(), anthropicSpend()]);
   cached = { at: Date.now(), accounts };
   return accounts;
 }

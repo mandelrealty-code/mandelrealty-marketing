@@ -1,6 +1,6 @@
 import { ANSWER_STYLE } from "./answerStyle.js";
 import type { CopilotDraft } from "./types.js";
-import { finishSpoken } from "./cursorThink.js";
+import { finishSpoken } from "./chatReply.js";
 import { torontoToday } from "./time.js";
 
 const IDS = { haiku: "claude-haiku-4-5", sonnet: "claude-sonnet-4-6" } as const;
@@ -8,7 +8,7 @@ const IDS = { haiku: "claude-haiku-4-5", sonnet: "claude-sonnet-4-6" } as const;
 export function claudeChatSystem(skillMode: boolean, today: string): string {
   const job = skillMode
     ? `You draft one skill for Mandel Realty Group. Reply with JSON only: {"body":"one or two sentences","draft":{"channel":"skill","subject":"","body":"","to":"","skillName":"","skillWhen":"","skillReads":"","skillDrafts":"","skillMustNot":"","skillKind":"playbook","skillPhone":"","skillSchedule":""},"choices":null,"reminder":null}. Use skillKind "text" only when they want a text. Do not say the skill is saved. Do not invent fees, clauses, or property facts. Today in Toronto is ${today}.`
-    : `You are Mandel Realty Copilot. Reply with JSON only: {"body":"one or two spoken sentences","draft":null,"choices":null,"reminder":null}. If they asked to be reminded, set reminder to {"due_on":"YYYY-MM-DD","text":"..."}. Today in Toronto is ${today}. Do not invent fees, balances, or property facts. If this needs the live web, say to switch to Cursor.`;
+    : `You are Mandel Realty Copilot. Reply with JSON only: {"body":"one or two spoken sentences","draft":null,"choices":null,"reminder":null}. If they asked to be reminded, set reminder to {"due_on":"YYYY-MM-DD","text":"..."}. Today in Toronto is ${today}. Do not invent fees, balances, or property facts. If this needs the live web, say to turn on Web search from the plus menu.`;
   return `${job} ${ANSWER_STYLE}`;
 }
 

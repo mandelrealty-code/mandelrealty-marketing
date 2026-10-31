@@ -6,7 +6,6 @@
 import { renderAnswer } from "./answerMarkup.js";
 import { ANSWER_STYLE, firstSentence, HEDGE, hasAnswerStyle } from "./answerStyle.js";
 import { claudeChatSystem } from "./claudeAnswer.js";
-import { promptFor } from "./cursorThink.js";
 import { instructions } from "./hospitableAgent.js";
 import { briefFromChecksMessages, readSavedBrief, waitingDraftCard } from "./brief.js";
 import { isDemoted, noteSignal, rankOverview, signalKey, type OverviewInput, type RankSignals } from "./overviewRank.js";
@@ -272,8 +271,6 @@ if (/quiet hours|netflix|garbage bags|hall closet|house manual|check-out instruc
 installWorld(worldAt("2026-10-07T11:00:00-04:00"));
 
 const prompts = [
-  promptFor("facts", "", false, false, false),
-  promptFor("facts", "", false, false, true),
   instructions(true, true, "facts"),
   claudeChatSystem(false, "2026-10-07"),
   GENERAL_ANSWER_SYSTEM,

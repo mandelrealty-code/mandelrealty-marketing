@@ -18,7 +18,7 @@ export const FN: Record<FnName, FnMeta> = {
   'When':            { how: 'Checks each morning',     field: 'Check time',    defaultField: '', placeholder: 'Chosen when you save', defaultNote: 'Something new happens', hue: 75, icon: 'clock' },
   'Read':            { how: 'Reads in code',           field: 'Reads from',    defaultField: 'Review inbox',       defaultNote: 'Reads what came in',         hue: 250, icon: 'lines' },
   'Write':           { how: 'Writes with Sonnet',      field: 'Tone',          defaultField: 'Short and plain',    defaultNote: 'Writes a draft',             hue: 300, icon: 'pen' },
-  'Look on the web': { how: 'Looks with Cursor',       field: 'Where to look', defaultField: 'The review page',    defaultNote: 'Opens a page and checks it', hue: 200, icon: 'globe' },
+  'Look on the web': { how: 'Looks on the web',        field: 'Where to look', defaultField: 'The review page',    defaultNote: 'Opens a page and checks it', hue: 200, icon: 'globe' },
   'Text me':         { how: 'Texts your number',       field: 'Your mobile',   defaultField: '', placeholder: 'Add your mobile number', defaultNote: 'Your mobile', hue: 150, icon: 'bubble' },
   'Wait for you':    { how: 'Stops until you confirm', field: 'Ask me',        defaultField: 'Before it moves on', defaultNote: 'Waits for your OK',          hue: 25,  icon: 'pause' },
 };

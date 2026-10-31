@@ -140,4 +140,16 @@ answer((url) => (url.includes("login.microsoftonline.com") ? json(200, { access_
 if ((await checkOutlookLogin(login)) !== "ok") fail("Outlook: a working token was not ok");
 globalThis.fetch = realFetch;
 
+// WhatsApp was removed on purpose: no connector row, and nothing in the agent's tools offers it.
+const rows = (await call("GET", { op: "boot" })).body.connectors ?? [];
+if (rows.some((row) => /whatsapp/i.test(`${row.id} ${row.name} ${row.detail} ${row.note ?? ""}`))) fail("a WhatsApp connector is still listed");
+const { agentTools, agentSystem } = await import("./agentChat.js");
+if (agentTools().some((tool) => /whatsapp/i.test(`${tool.name} ${tool.description}`))) fail("the agent still offers a WhatsApp tool");
+// Cursor was removed too: no connector row, no tool, no model choice.
+if (rows.some((row) => /cursor/i.test(`${row.id} ${row.name} ${row.detail} ${row.note ?? ""}`))) fail("a Cursor connector is still listed");
+if (agentTools().some((tool) => /cursor/i.test(`${tool.name} ${tool.description}`))) fail("the agent still offers a Cursor tool");
+const { WORK_MODELS } = await import("./models.js");
+if (WORK_MODELS.some((model) => /cursor/i.test(`${model.id} ${model.name} ${model.line}`))) fail("a Cursor model choice is still offered");
+if (!/never offer to read or send WhatsApp/i.test(agentSystem("", "2026-10-20"))) fail("the agent isn't told WhatsApp is off limits");
+
 console.log("Connectors harness passed.");

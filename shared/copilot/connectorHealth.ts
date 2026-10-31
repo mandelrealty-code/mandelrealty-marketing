@@ -4,7 +4,7 @@
  * Counts only. No writes, no sends, no secrets.
  */
 
-import { Agent } from "@cursor/sdk";
+import { brainAvailable, complete } from "./brain.js";
 import { listHospitableReservations, listAllHospitableProperties } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { copilotHospitableToken, hospitableRead, limitToSavedSelection } from "./hospitableConnection.js";
@@ -12,7 +12,6 @@ import { searchMail } from "./mailSearch.js";
 import { listSkills } from "./store.js";
 import { addDays, torontoToday } from "./time.js";
 import { readCleanerUnit } from "./cleanerRead.js";
-import { parityEnabled } from "./parity/flag.js";
 
 export type ConnectorStatus = "ok" | "failed" | "chat-only";
 
@@ -107,32 +106,14 @@ async function storeRow(): Promise<ConnectorRow> {
   }
 }
 
-async function cursorRow(): Promise<ConnectorRow> {
-  const read = "one Cursor cloud completion, no tools";
-  if (parityEnabled()) return row("Cursor", "failed", read, null, "Cursor isn't connected on the server, so the skill did not run.");
-  const key = process.env.CURSOR_API_KEY?.trim();
-  if (!key) return row("Cursor", "failed", read, null, "Cursor isn't connected on the server, so the skill did not run.");
-  let agent: Awaited<ReturnType<typeof Agent.create>> | null = null;
+async function brainRow(): Promise<ConnectorRow> {
+  const read = "one short completion, no tools";
+  if (!brainAvailable()) return row("AI brain", "failed", read, null, "No AI key is set on the server, so saved skills and the agent did not run.");
   try {
-    agent = await Agent.create({
-      apiKey: key,
-      model: { id: "auto" },
-      name: "Mandel Copilot connector check",
-      cloud: { repos: [], autoCreatePR: false, skipReviewerRequest: true },
-    });
-    const run = await agent.send("Reply with the single word ok. Do not use tools, do not edit files, and do not send anything.");
-    const result = await Promise.race([
-      run.wait(),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 60_000)),
-    ]);
-    if (!result) return row("Cursor", "failed", read, null, "Cursor did not finish the completion within 60 seconds.");
-    if (result.status !== "finished") return row("Cursor", "failed", read, null, result.error?.message || "Cursor stopped.");
-    return row("Cursor", "ok", read, 1);
+    const answer = await complete({ task: "simple", system: "Reply with the single word ok.", user: "ok?", maxTokens: 8 });
+    return answer ? row("AI brain", "ok", read, 1) : row("AI brain", "failed", read, null, "The AI brain did not answer.");
   } catch (err) {
-    return row("Cursor", "failed", read, null, messageOf(err));
-  } finally {
-    if (agent?.agentId) await Agent.archive(agent.agentId, { apiKey: key }).catch(() => undefined);
-    await agent?.[Symbol.asyncDispose]().catch(() => undefined);
+    return row("AI brain", "failed", read, null, messageOf(err));
   }
 }
 
@@ -162,7 +143,7 @@ export async function connectorHealthReport(now = new Date()): Promise<Connector
     mcpRow(),
     publicApiRow(),
     storeRow(),
-    cursorRow(),
+    brainRow(),
     cleanerRow(now),
   ]);
   return [

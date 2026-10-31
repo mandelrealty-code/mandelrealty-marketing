@@ -1,7 +1,7 @@
 /** Composer choices. Prices are OpenAI’s published list price for one 1024×1024 gpt-image-1 image. */
 
 export type AccountSpend = {
-  id: "openai" | "anthropic" | "cursor";
+  id: "openai" | "anthropic";
   name: string;
   spent: string | null;
   left: string | null;
@@ -15,10 +15,9 @@ export type AccountSpend = {
 export const ACCOUNT_LINKS = {
   openai: "https://platform.openai.com/settings/organization/billing/overview",
   anthropic: "https://platform.claude.com/settings/billing",
-  cursor: "https://cursor.com/dashboard/billing",
 } as const;
 
-export type WorkModelId = "auto" | "haiku" | "sonnet" | "cursor";
+export type WorkModelId = "auto" | "haiku" | "sonnet";
 export type PictureModelId = "draft" | "edit" | "client";
 
 export type WorkModel = {
@@ -40,7 +39,6 @@ export const WORK_MODELS: WorkModel[] = [
   { id: "auto", name: "Auto", line: "The cheapest model that can do this." },
   { id: "haiku", name: "Haiku", line: "Clicks in the browser, or writes a short answer." },
   { id: "sonnet", name: "Sonnet", line: "Better writing for a skill or anything a person will read." },
-  { id: "cursor", name: "Cursor", line: "Company questions. Uses the Cursor plan." },
 ];
 
 export const PICTURE_MODELS: PictureModel[] = [

@@ -3,7 +3,7 @@ import { idleTooLong, noteLiveSession, PAGE_UNREAD, unreadTooLong } from "./brow
 import { captureBrowser } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 import { chromium, type Page } from "playwright-core";
-import { loginWall } from "./cursorThink.js";
+import { loginWall } from "./chatReply.js";
 import {
   addMessage,
   clearSiteContext,

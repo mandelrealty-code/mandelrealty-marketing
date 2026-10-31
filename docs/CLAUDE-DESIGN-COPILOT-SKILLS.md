@@ -37,7 +37,7 @@ Copilot already has:
 | **Morning inbox report** in its chat | Today it's a plain text bubble. Design it as a readable report inside the existing chat: header (Morning inbox · Tue Oct 6, "Read 23 of 23 stays. Nothing was sent."), **Waiting on a reply** list, **Couldn't tell who wrote last** list, **May have sent details** list with the matching quote, and a failed-read version. |
 
 ### Out of scope (don't draw these)
-- Gmail, WhatsApp, AirROI, furniture report, guest-sending buttons. Nothing in this design sends anything to a guest.
+- Gmail, AirROI, furniture report, guest-sending buttons. Nothing in this design sends anything to a guest.
 - Scheduling pickers, cron editors, custom triggers. The schedule is fixed.
 - The Overview/morning page, Connectors, Account, and the rest of the chat.
 - Dashboards, charts, counts of runs, onboarding tours, essays.

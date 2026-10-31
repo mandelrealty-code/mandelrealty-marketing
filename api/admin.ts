@@ -5,7 +5,6 @@ import handleOpsHubWebhook from "../shared/adminApi/opsHubWebhook.js";
 import handleCopilot from "../shared/adminApi/copilot.js";
 import handleGmail from "../shared/adminApi/gmail.js";
 import handleOutlook from "../shared/adminApi/outlook.js";
-import handleCopilotTools from "../shared/copilot/toolServer.js";
 import handlePm from "../shared/adminApi/pm.js";
 import handleSession from "../shared/adminApi/session.js";
 import handleSettings from "../shared/adminApi/settings.js";
@@ -18,7 +17,6 @@ export const config = { maxDuration: 300 };
  * Paths are rewritten in vercel.json:
  *   /api/admin/leads|settings|knowledge|session|pm → /api/admin?section=…
  *   /api/webhooks/ops-hub → /api/admin?section=ops_hub
- *   /api/copilot/tools → /api/admin?section=copilot_tools (Cursor agents, per-run token)
  * Bound to admin hostname only — never on marketing www (VA / public).
  */
 
@@ -67,8 +65,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleOutlook(req, res);
     case "ops_hub":
       return handleOpsHubWebhook(req, res);
-    case "copilot_tools":
-      return handleCopilotTools(req, res);
     default:
       return res.status(404).json({ error: "Unknown admin section." });
   }

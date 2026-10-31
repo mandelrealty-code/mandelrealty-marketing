@@ -7,8 +7,9 @@ import { agentSystem, agentTools, answerInChat, runAgentTurn, type AgentTool } f
 import { brainAvailable, complete, routePlan, setBrainFetch, setBrainModel, type BrainRequest } from "./brain.js";
 import { extractAndSaveFacts, listFacts, parseExtracted, recallFacts, resetBusinessFacts, saveFact } from "./businessFacts.js";
 import { callToolForChat } from "./toolServer.js";
-import { capturedCommits, capturedDrafts, resetCaptures } from "./parity/capture.js";
-import { createChat, addMessage, listMessages } from "./store.js";
+import { capturedCommits, capturedDrafts, capturedReports, resetCaptures } from "./parity/capture.js";
+import { createChat, addMessage, listMessages, listSkills, saveSkill } from "./store.js";
+import { startSkillRun } from "./skillRunner.js";
 import { streamAgentReply } from "../adminApi/copilot.js";
 import type { VercelResponse } from "@vercel/node";
 import { hospitableRead, resetHospitableConnection, saveHospitableToken, setHospitableProbe, withReservationWindow } from "./hospitableConnection.js";
@@ -274,5 +275,42 @@ await hospitableRead("get-properties", {});
 if ("start_date" in seenArgs.at(-1)!.args) fail("a window was added to a read that isn't reservations");
 setHospitableProbe(null);
 resetHospitableConnection();
+
+// ---------- Saved skills run on the brain, with the same tools and the same approvals ----------
+const skill = await saveSkill({ name: "Morning check", when_text: "Every morning", reads: "Hospitable", drafts: "A short report", must_not: "Send anything", enabled: true, kind: "playbook", schedule: "daily", phone: "" });
+resetCaptures();
+let seenPrompt = "";
+let seenTools: string[] = [];
+let skillRound = 0;
+setBrainModel(async (request) => {
+  skillRound += 1;
+  if (skillRound === 1) {
+    seenPrompt = request.system;
+    seenTools = (request.tools ?? []).map((tool) => tool.name);
+    const input = { headline: "Nothing waiting", text: "No guest is waiting on a reply.", needs_you: false };
+    return { text: "", toolUses: [{ id: "r1", name: "post_report", input }], blocks: [{ type: "tool_use", id: "r1", name: "post_report", input }], stop: "tool_use" };
+  }
+  return { text: "Report posted.", toolUses: [], blocks: [{ type: "text", text: "Report posted." }], stop: "end_turn" };
+});
+const ran = await startSkillRun(skill.id, "manual");
+if (ran.status !== "ok" || !ran.finished_at) fail(`skill run ended ${ran.status} ${ran.error}`);
+if (capturedReports().length !== 1 || capturedReports()[0]!.headline !== "Nothing waiting") fail("the skill's report was not posted through the tool");
+if (!/Skill: Morning check/.test(seenPrompt) || !/It must not: Send anything/.test(seenPrompt)) fail("the skill's own rules did not reach the brain");
+for (const needed of ["post_report", "propose_draft", "hospitable_read", "search_mail", "read_knowledge_hub"]) if (!seenTools.includes(needed)) fail(`a skill run lacks ${needed}`);
+if (capturedCommits().length) fail("a skill run committed something");
+// A brain that doesn't answer fails the run plainly, and leaves a "couldn't finish" note, not a false all-clear.
+setBrainModel(async () => null);
+const failed = await startSkillRun(skill.id, "manual");
+if (failed.status !== "failed" || !/AI brain didn't answer/.test(failed.error)) fail(`a silent brain: ${failed.status} ${failed.error}`);
+const skillChat = ((await listSkills()).find((row) => row.id === skill.id)?.chat_id ?? "") as string;
+if (!(await listMessages(skillChat)).some((row) => /couldn't finish/.test(row.body))) fail("a failed skill run left no plain note");
+setBrainModel(null);
+let noBrainError = "";
+try {
+  await startSkillRun(skill.id, "manual");
+} catch (err) {
+  noBrainError = err instanceof Error ? err.message : "";
+}
+if (!/AI brain isn't connected/.test(noBrainError)) fail(`no brain: ${noBrainError}`);
 
 console.log("Brain harness passed.");

@@ -1,12 +1,10 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { copilotScopeActive, hospitableRead, withCopilotScope } from "./hospitableConnection.js";
+import { hospitableRead } from "./hospitableConnection.js";
 import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { hospitableDraft, isHospitableWrite } from "./hospitableAgent.js";
 import { readMail, searchMail } from "./mailSearch.js";
 import { readStanding } from "./memoryFiles.js";
 import { DEFAULT_CHECKLIST, listStays, readGuestInbox, readThread } from "./guestInbox.js";
-import { readRunToken } from "./runToken.js";
-import { addMessage, addReminder, flagChatNeedsYou, getRun, listSkills, updateRun } from "./store.js";
+import { addMessage, addReminder, flagChatNeedsYou, getRun, updateRun } from "./store.js";
 import { cleanerTool, hubTool, readSheetTool, writeSheetTool } from "./skillExecute.js";
 import { guestCheckins, formatCheckins } from "./skillContacts.js";
 import { answerOps, createOpsSop, prepareCleanerAssignment, prepareContractAmendment } from "./ops.js";
@@ -20,14 +18,12 @@ import { captureDraft, captureReport } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
 
 /**
- * Copilot tools for Cursor cloud agents (MCP over HTTP, stateless JSON).
- * Served via /api/admin?section=copilot_tools. Public path: POST /api/copilot/tools
+ * The Copilot tools: what the chat agent and the saved skill runs may call.
  *
  * Read tools can look at Hospitable. A Hospitable change is only a draft until a partner presses Submit.
  * Nothing here sends a guest message or commits a calendar, task, review, or owner statement.
  */
 
-type Rpc = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
 type Ctx = { run: CopilotRun; skill: CopilotSkill; chatId: string };
 type Tool = {
   description: string;
@@ -35,8 +31,6 @@ type Tool = {
   readOnly: boolean;
   call: (args: Record<string, unknown>, ctx: Ctx) => Promise<unknown>;
 };
-
-const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 function harnessNow(value: unknown): Date | undefined {
   if (!parityEnabled()) return undefined;
@@ -557,61 +551,6 @@ const TOOLS: Record<string, Tool> = {
   },
 };
 
-function toolList() {
-  return Object.entries(TOOLS).map(([name, tool]) => ({
-    name,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-    annotations: { readOnlyHint: tool.readOnly, destructiveHint: false, openWorldHint: false },
-  }));
-}
-
-async function context(req: VercelRequest): Promise<Ctx | null> {
-  const header = String(req.headers.authorization ?? "");
-  const runId = readRunToken(header.startsWith("Bearer ") ? header.slice(7) : "");
-  if (!runId) return null;
-  const run = await getRun(runId);
-  if (!run || run.status !== "running") return null;
-  const skill = (await listSkills()).find((row) => row.id === run.skill_id);
-  if (!skill?.chat_id) return null;
-  return { run, skill, chatId: skill.chat_id };
-}
-
-async function answer(rpc: Rpc, ctx: Ctx): Promise<Record<string, unknown> | null> {
-  const id = rpc.id ?? null;
-  const ok = (result: unknown) => ({ jsonrpc: "2.0", id, result });
-  const fail = (code: number, message: string) => ({ jsonrpc: "2.0", id, error: { code, message } });
-  const method = String(rpc.method ?? "");
-  if (method.startsWith("notifications/")) return null;
-  if (method === "initialize") {
-    const asked = String(rpc.params?.protocolVersion ?? "");
-    return ok({
-      protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
-      capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "mandel-copilot", version: "1.0.0" },
-      instructions: "Mandel Copilot tools. hospitable_read only reads. A Hospitable change goes through propose_draft and waits for Submit. Nothing here commits a guest message, calendar, task, review, or owner statement.",
-    });
-  }
-  if (method === "ping") return ok({});
-  if (method === "tools/list") return ok({ tools: toolList() });
-  if (method === "tools/call") {
-    const name = String(rpc.params?.name ?? "");
-    const tool = TOOLS[name];
-    if (!tool) return fail(-32602, `Unknown tool: ${name}`);
-    const args = (rpc.params?.arguments && typeof rpc.params.arguments === "object" ? rpc.params.arguments : {}) as Record<string, unknown>;
-    try {
-      const out = await tool.call(args, ctx);
-      if (tool.readOnly) await noteTool(ctx, name).catch(() => undefined);
-      const structured = out && typeof out === "object" && !Array.isArray(out) ? { structuredContent: out } : {};
-      return ok({ content: [{ type: "text", text: JSON.stringify(out) }], ...structured });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "The tool failed.";
-      return ok({ content: [{ type: "text", text: message }], isError: true });
-    }
-  }
-  return fail(-32601, `Unknown method: ${method}`);
-}
-
 /** What the chat agent may use: each tool's name, words and input shape. Nothing outside the allowed names is offered. */
 export function toolDefinitions(names: string[]): { name: string; description: string; input_schema: Record<string, unknown> }[] {
   return names.filter((name) => TOOLS[name]).map((name) => ({ name, description: TOOLS[name]!.description, input_schema: TOOLS[name]!.inputSchema }));
@@ -630,25 +569,17 @@ export async function callCopilotTool(name: string, args: Record<string, unknown
   return tool.call(args, { run: { id: "harness" } as CopilotRun, skill: { id: "harness", chat_id: "harness" } as CopilotSkill, chatId: "harness" });
 }
 
-export default async function handleCopilotTools(req: VercelRequest, res: VercelResponse): Promise<unknown> {
-  if (!copilotScopeActive()) return withCopilotScope(() => handleCopilotTools(req, res));
-  if (req.method === "GET" || req.method === "DELETE") return res.status(405).json({ error: "Use POST." });
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-  const ctx = await context(req);
-  if (!ctx) return res.status(401).json({ error: "This run's token is not valid, or the run is over." });
+/** Runs one tool inside a skill run. The tool is noted on the run, so its report can say what was read. Nothing here sends. */
+export async function callToolForRun(name: string, args: Record<string, unknown>, run: CopilotRun, skill: CopilotSkill): Promise<unknown> {
+  const tool = TOOLS[name];
+  if (!tool) throw new Error(`Unknown tool: ${name}`);
+  const ctx: Ctx = { run, skill, chatId: skill.chat_id ?? "" };
+  const out = await tool.call(args, ctx);
+  if (tool.readOnly) await noteTool(ctx, name).catch(() => undefined);
+  return out;
+}
 
-  let body: unknown = req.body;
-  if (typeof body === "string") {
-    try {
-      body = JSON.parse(body);
-    } catch {
-      return res.status(400).json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
-    }
-  }
-  if (Array.isArray(body)) {
-    const out = (await Promise.all(body.map((item) => answer(item as Rpc, ctx)))).filter(Boolean);
-    return out.length ? res.status(200).json(out) : res.status(202).end();
-  }
-  const out = await answer((body ?? {}) as Rpc, ctx);
-  return out ? res.status(200).json(out) : res.status(202).end();
+/** The tools a skill run may use: every tool this server holds, by name and input shape. */
+export function runToolDefinitions(): { name: string; description: string; input_schema: Record<string, unknown> }[] {
+  return toolDefinitions(Object.keys(TOOLS));
 }

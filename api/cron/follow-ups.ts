@@ -7,7 +7,8 @@ import { runWatch } from "../../shared/copilot/watch.js";
 import { runCopilotPass } from "../../shared/copilot/pass.js";
 import { withCopilotScope } from "../../shared/copilot/hospitableConnection.js";
 
-export const config = { maxDuration: 60 };
+// Saved skills run inside this call, so it gets the longest limit the plan allows.
+export const config = { maxDuration: 300 };
 
 function authorized(req: VercelRequest): boolean {
   const secret = process.env.CRON_SECRET?.trim();

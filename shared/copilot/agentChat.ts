@@ -47,7 +47,7 @@ const STEP: Record<string, string> = {
 
 export type AgentTool = BrainTool & { run: (input: Record<string, unknown>, chatId: string) => Promise<unknown> };
 
-/** Tools the agent has that are not in the Cursor tool server: an online lookup, and a search of what the business remembers. */
+/** Tools the agent has that are not in the shared tool table: an online lookup, and a search of what the business remembers. */
 function ownTools(): AgentTool[] {
   return [
     {
@@ -157,6 +157,7 @@ export function agentSystem(facts: string, today: string): string {
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
     "NOTHING SENDS WITHOUT A PARTNER. You cannot send a message, email, post or purchase. To prepare one, call propose_draft: it leaves a draft in the chat waiting for the partner to approve. Then say the draft is waiting for approval. Messages to guests go out as Shane. Never write an em dash in anything a guest will read.",
     "Never repeat access codes, door codes or passwords, even if a tool returned them.",
+    "Copilot is deliberately not connected to WhatsApp: its API can't be limited to business conversations. Never offer to read or send WhatsApp.",
     clientMapFacts(),
     "MEMORY: facts below are what the business already knows. Use them. If the partner corrects one, accept the correction plainly; it is saved over the old fact automatically.",
     facts,

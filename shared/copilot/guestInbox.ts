@@ -9,7 +9,7 @@ import { addDays, torontoToday } from "./time.js";
 import { needsGuestReply } from "./guestTranslate.js";
 import type { GuestInboxResult, InboxGuest } from "./types.js";
 
-/** Reads Hospitable guest threads. Plain code, no Cursor. It never writes to Hospitable. */
+/** Reads Hospitable guest threads. Plain code, no model. It never writes to Hospitable. */
 
 export const DEFAULT_CHECKLIST = ["arrival time", "licence plate", "number of guests"];
 

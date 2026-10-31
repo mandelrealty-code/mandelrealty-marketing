@@ -1,5 +1,5 @@
-import { Agent, CursorAgentError } from "@cursor/sdk";
-import { mintRunToken, toolsReady } from "./runToken.js";
+import { brainAvailable, complete, type BrainBlock, type BrainMessage } from "./brain.js";
+import { callToolForRun, runToolDefinitions } from "./toolServer.js";
 import {
   addMessage,
   chatExists,
@@ -20,28 +20,18 @@ import { skillDue } from "./skillSchedule.js";
 import type { CopilotRun, CopilotSkill } from "./types.js";
 
 /**
- * Runs saved skills with a Cursor cloud agent.
- * Hospitable reads go through the Copilot tools. A change is only a draft until a partner presses Submit.
+ * Runs saved skills with the brain: it reads through the Copilot tools, and leaves its report and any drafts for the partners.
+ * Hospitable reads go through the tools. A change is only a draft until a partner presses Submit.
  */
 
-const TOOLS_URL = () => process.env.COPILOT_TOOLS_URL?.trim() || "https://admin.mandelrealtygroup.com/api/copilot/tools";
-const NEVER_STARTED_MS = 10 * 60 * 1000;
-const TOO_LONG_MS = 45 * 60 * 1000;
+/** A run lives inside one server call, so one that is still "running" after this was cut off. */
+const INTERRUPTED_MS = 10 * 60 * 1000;
+/** The longest one run may work, kept inside the function's time limit. */
+const RUN_BUDGET_MS = 240_000;
+const MAX_ROUNDS = 30;
 
 function prettyToday(): string {
   return new Date(`${torontoToday()}T12:00:00Z`).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-}
-
-function apiKey(): string {
-  const key = process.env.CURSOR_API_KEY?.trim();
-  if (!key) throw new Error("Cursor isn't connected on the server, so the skill did not run.");
-  return key;
-}
-
-function explain(err: unknown): string {
-  if (err instanceof CursorAgentError && err.message) return err.message;
-  if (err instanceof Error && err.message) return err.message;
-  return "Cursor could not start.";
 }
 
 export function runsOnItsOwn(skill: CopilotSkill): boolean {
@@ -92,7 +82,6 @@ async function promptFor(skill: CopilotSkill, trigger: CopilotRun["trigger"], pr
     "- For details found in guest messages, say the guest may have sent it, and quote the line. Never say they sent it.",
     "- If hospitable_read is not connected, use guest_inbox, list_stays, and read_guest_messages, and say what you could not do.",
     "- If the skill needs something no tool can do, say plainly what you could not do.",
-    "- This workspace is empty on purpose. Do not edit files, run code, or open pull requests.",
     "- Write the report for two busy partners: short headings, one line per guest or item, no markdown. Pass title, summary and sections to post_report as well as the plain text, so it shows as a tidy card.",
     "- Finish by calling post_report exactly once. Set needs_you true when someone is waiting, something changed since the last report, a draft is waiting, or something failed.",
     "",
@@ -117,7 +106,7 @@ async function finish(run: CopilotRun, skill: CopilotSkill | undefined, outcome:
   let needsYou = result.needs_you;
   if (skill?.chat_id) {
     if (!outcome.ok) {
-      const why = outcome.error || "Cursor stopped.";
+      const why = outcome.error || "The run stopped.";
       await addMessage({
         chatId: skill.chat_id,
         role: "assistant",
@@ -145,20 +134,47 @@ async function finish(run: CopilotRun, skill: CopilotSkill | undefined, outcome:
   await updateRun(run.id, {
     status: outcome.ok ? "ok" : "failed",
     finished_at: finishedAt,
-    error: outcome.ok ? "" : outcome.error || "Cursor stopped.",
+    error: outcome.ok ? "" : outcome.error || "The run stopped.",
     result: { ...result, needs_you: needsYou },
   });
   const latest = skill ? (await listSkills()).find((row) => row.id === skill.id) : undefined;
   if (latest) await saveSkill({ ...latest, last_run_at: finishedAt }).catch(() => undefined);
 }
 
-/** Starts the agent and returns right away. The agent posts its own report through the tools. */
+const clip = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value) ?? "").slice(0, 14_000);
+
+/** Works the skill through the tools until it has left its report. Returns the closing words, or why it could not finish. */
+async function work(run: CopilotRun, skill: CopilotSkill, system: string): Promise<{ ok: true; final: string } | { ok: false; error: string }> {
+  const started = Date.now();
+  const tools = runToolDefinitions();
+  const messages: BrainMessage[] = [{ role: "user", content: "Run the skill now. Finish by calling post_report once." }];
+  let final = "";
+  for (let round = 0; round < MAX_ROUNDS; round += 1) {
+    if (Date.now() - started > RUN_BUDGET_MS) return { ok: false, error: "It ran too long, so I stopped it." };
+    const result = await complete({ task: "hard", system, messages, tools, maxTokens: 4000 });
+    if (!result) return { ok: false, error: "The AI brain didn't answer. Nothing was sent." };
+    final = result.text || final;
+    if (!result.toolUses.length) return { ok: true, final };
+    messages.push({ role: "assistant", content: result.blocks });
+    const results: BrainBlock[] = [];
+    for (const use of result.toolUses) {
+      try {
+        results.push({ type: "tool_result", tool_use_id: use.id, content: clip(await callToolForRun(use.name, use.input, run, skill)) });
+      } catch (err) {
+        results.push({ type: "tool_result", tool_use_id: use.id, content: err instanceof Error ? err.message : "The tool failed.", is_error: true });
+      }
+    }
+    messages.push({ role: "user", content: results });
+  }
+  return { ok: false, error: "It used up its steps before it finished." };
+}
+
+/** Runs the skill now, start to finish, and returns the finished run. The report is posted by the skill itself through post_report. */
 export async function startSkillRun(skillId: string, trigger: CopilotRun["trigger"]): Promise<CopilotRun> {
   const found = (await listSkills()).find((row) => row.id === skillId);
   if (!found) throw new Error("That skill no longer exists.");
   if (found.kind !== "playbook") throw new Error("Text skills run when the cleaner app pings. They don't use Run now.");
-  if (!toolsReady()) throw new Error("COPILOT_TOOLS_SECRET is not set on the server, so skills cannot run.");
-  const key = apiKey();
+  if (!brainAvailable()) throw new Error("The AI brain isn't connected on the server, so the skill did not run.");
   const skill = await ensureChat(found);
   await collectSkillRuns().catch(() => undefined);
   const running = (await listRuns(skill.id, 1))[0];
@@ -166,61 +182,23 @@ export async function startSkillRun(skillId: string, trigger: CopilotRun["trigge
 
   const previous = await lastReport(skill.chat_id as string);
   const run = await startRun(skill.id, trigger);
-  let agent: Awaited<ReturnType<typeof Agent.create>> | null = null;
   try {
-    agent = await Agent.create({
-      apiKey: key,
-      model: { id: "auto" },
-      name: `Mandel Copilot · ${skill.name}`.slice(0, 80),
-      cloud: { repos: [], autoCreatePR: false, skipReviewerRequest: true, metadata: { copilot_skill: skill.id, copilot_run: run.id } },
-      mcpServers: {
-        copilot: { type: "http", url: TOOLS_URL(), headers: { Authorization: `Bearer ${mintRunToken(run.id)}` } },
-      },
-    });
-    const cursorRun = await agent.send(await promptFor(skill, trigger, previous));
-    await updateRun(run.id, { agent_id: agent.agentId, cursor_run_id: cursorRun.id });
-    return { ...run, agent_id: agent.agentId, cursor_run_id: cursorRun.id };
+    const outcome = await work(run, skill, await promptFor(skill, trigger, previous));
+    await finish(run, skill, outcome.ok ? { ok: true, fallback: outcome.final } : { ok: false, error: outcome.error });
   } catch (err) {
-    await finish(run, skill, { ok: false, error: explain(err) });
-    throw new Error(`${skill.name} did not start: ${explain(err)}`);
-  } finally {
-    await agent?.[Symbol.asyncDispose]().catch(() => undefined);
+    await finish(run, skill, { ok: false, error: err instanceof Error ? err.message : "The run stopped." });
   }
+  return (await getRun(run.id)) ?? run;
 }
 
-/** Checks on runs still marked running. Cheap: one Cursor call per running run. */
+/** A run is worked inside one server call, so one still marked running long after it began was cut off. Close it out plainly. */
 export async function collectSkillRuns(now = Date.now()): Promise<void> {
   const running = await listRunningRuns();
   if (!running.length) return;
   const skills = await listSkills();
-  const key = process.env.CURSOR_API_KEY?.trim();
   for (const run of running) {
-    const skill = skills.find((row) => row.id === run.skill_id);
-    const age = now - Date.parse(run.started_at);
-    try {
-      if (!key || !run.cursor_run_id) {
-        if (age > NEVER_STARTED_MS) await finish(run, skill, { ok: false, error: "Cursor never started this run." });
-        continue;
-      }
-      const cursorRun = await Agent.getRun(run.cursor_run_id, { runtime: "cloud", agentId: run.agent_id, apiKey: key });
-      if (cursorRun.status === "running") {
-        if (age > TOO_LONG_MS) {
-          await Agent.cancelRun(run.cursor_run_id, { runtime: "cloud", agentId: run.agent_id, apiKey: key }).catch(() => undefined);
-          await finish(run, skill, { ok: false, error: "It ran for more than 45 minutes, so I stopped it." });
-          if (run.agent_id) await Agent.archive(run.agent_id, { apiKey: key }).catch(() => undefined);
-        }
-        continue;
-      }
-      const result = await Promise.race([
-        cursorRun.wait(),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
-      ]);
-      if (!result) continue;
-      if (result.status === "finished") await finish(run, skill, { ok: true, fallback: result.result ?? "" });
-      else await finish(run, skill, { ok: false, error: result.error?.message || (result.status === "cancelled" ? "It was stopped." : "Cursor stopped.") });
-      if (run.agent_id) await Agent.archive(run.agent_id, { apiKey: key }).catch(() => undefined);
-    } catch (err) {
-      if (age > TOO_LONG_MS) await finish(run, skill, { ok: false, error: explain(err) }).catch(() => undefined);
+    if (now - Date.parse(run.started_at) > INTERRUPTED_MS) {
+      await finish(run, skills.find((row) => row.id === run.skill_id), { ok: false, error: "The run was cut off before it finished." }).catch(() => undefined);
     }
   }
 }

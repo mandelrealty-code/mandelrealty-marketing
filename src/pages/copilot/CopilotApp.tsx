@@ -65,7 +65,6 @@ type Boot = {
   skills: SkillRow[];
   connectors: ConnectorRow[];
   hospitable?: HospitableCard;
-  billing: string;
   textLog?: CopilotTextSend[];
   textNumbers?: string[];
   twilioFrom?: string;
@@ -648,7 +647,7 @@ function workFor(message: CopilotMessage): { thought: string; steps: { text: str
   if (/can't read the picture/i.test(message.body)) {
     steps.push({ text: "Received the file name" });
     steps.push({ text: "Could not read the picture yet" });
-    return { thought: "Cursor is not connected, so I did not invent what the picture shows.", steps };
+    return { thought: "Picture reading isn’t set up here yet, so I did not invent what the picture shows.", steps };
   }
   if (draft?.channel === "note") {
     steps.push({ text: "Wrote the note" });
@@ -676,13 +675,13 @@ function workFor(message: CopilotMessage): { thought: string; steps: { text: str
     steps.push({ text: "Left it waiting. Nothing was sent" });
     return { thought: "I wrote the email and stopped. It stays here until you confirm.", steps };
   }
-  if (/isn’t connected on the server/.test(message.body)) {
-    steps.push({ text: "Cursor is not connected" });
-    return { thought: "The team key is not set on the server, so Cursor did not answer.", steps };
+  if (/AI brain isn.t connected/.test(message.body)) {
+    steps.push({ text: "The AI brain is not connected" });
+    return { thought: "No AI key is set on the server, so nothing answered.", steps };
   }
-  steps.push({ text: "Cursor answered" });
+  steps.push({ text: "Copilot answered" });
   steps.push({ text: "Nothing was sent" });
-  return { thought: "Cursor wrote this reply. Nothing was sent.", steps };
+  return { thought: "Copilot wrote this reply. Nothing was sent.", steps };
 }
 
 function shownTrail(message: CopilotMessage): { thought?: string; steps: { text: string; meta?: string }[]; summary: string } {
@@ -956,7 +955,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [runBusy, setRunBusy] = useState(false);
   const [runMsg, setRunMsg] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
-  const [liveSteps, setLiveSteps] = useState<{ text: string; meta?: string }[]>([{ text: "Sent your message to Cursor" }]);
+  const [liveSteps, setLiveSteps] = useState<{ text: string; meta?: string }[]>([{ text: "Sent your message to Copilot" }]);
   const [liveThought, setLiveThought] = useState<string | undefined>();
   const [runOpen, setRunOpen] = useState(false);
   const [stopped, setStopped] = useState(false);
@@ -1202,7 +1201,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (!gone) setAccounts((prev) => prev ?? [
         { id: "openai", name: "OpenAI", spent: null, left: null, note: "Couldn’t read the accounts.", keyHint: null, addUrl: ACCOUNT_LINKS.openai },
         { id: "anthropic", name: "Anthropic", spent: null, left: null, note: "Couldn’t read the accounts.", keyHint: null, addUrl: ACCOUNT_LINKS.anthropic },
-        { id: "cursor", name: "Cursor", spent: null, left: null, note: "Couldn’t read the accounts.", keyHint: null, addUrl: ACCOUNT_LINKS.cursor },
       ]);
     });
     return () => { gone = true; };
@@ -1538,7 +1536,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const chatSkill = chatId ? skills.find((s) => s.chat_id === chatId) ?? null : null;
   const anyRunning = skills.some((s) => s.lastRun?.status === "running");
 
-  // While a skill runs, refresh until its report lands. The server checks Cursor on each load.
+  // While a skill runs, refresh until its report lands.
   useEffect(() => {
     if (!anyRunning) return;
     let polls = 0;
@@ -2359,7 +2357,6 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         {(accounts ?? [
                           { id: "openai" as const, name: "OpenAI", spent: null, left: null, note: "Checking the account.", keyHint: null, addUrl: ACCOUNT_LINKS.openai },
                           { id: "anthropic" as const, name: "Anthropic", spent: null, left: null, note: "Checking the account.", keyHint: null, addUrl: ACCOUNT_LINKS.anthropic },
-                          { id: "cursor" as const, name: "Cursor", spent: null, left: null, note: "Checking the account.", keyHint: null, addUrl: ACCOUNT_LINKS.cursor },
                         ]).map((row) => (
                           <div key={row.id} className="cp-bill">
                             <strong>{row.name}</strong>

@@ -351,7 +351,7 @@ export function replyTo(
 
   if (/attached:/.test(lower) && /\.(png|jpe?g|webp|pdf|heic)/.test(lower)) {
     return {
-      body: "I have the file name. I can't read the picture yet, because Cursor isn't connected to look at it. Tell me what you want drafted from it, or attach the measurements in the message. I won't invent a layout.",
+      body: "I have the file name. I can't read the picture yet. Tell me what you want drafted from it, or attach the measurements in the message. I won't invent a layout.",
       draft: null,
       reminder: null,
       memory: null,
@@ -369,7 +369,7 @@ export function replyTo(
 
   if (/whatsapp/.test(lower)) {
     return {
-      body: "WhatsApp is not linked yet. I can't read host groups, and I won't send a WhatsApp message until you confirm one.",
+      body: "Copilot isn't connected to WhatsApp, on purpose: its API can't be limited to business conversations, so it would pull personal chats into a business tool. Anything that needs to reach a guest or a partner goes through Guest messaging, Gmail or Outlook, and waits for you to approve it.",
       draft: null,
       reminder: null,
       memory: null,

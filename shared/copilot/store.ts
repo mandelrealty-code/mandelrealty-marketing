@@ -154,7 +154,7 @@ function missingColumn(error: { message?: string } | null): boolean {
 
 function missingSkillColumn(error: { message?: string } | null): boolean {
   const m = error?.message ?? "";
-  return /column|schema cache/i.test(m) && /schedule|chat_id|last_run_at|skill_id|agent_id|cursor_run_id|workflow/i.test(m);
+  return /column|schema cache/i.test(m) && /schedule|chat_id|last_run_at|skill_id|workflow/i.test(m);
 }
 
 const WORKFLOW_SQL =
@@ -1005,6 +1005,7 @@ export async function listMemory(): Promise<string[]> {
     .slice(0, 20);
 }
 
+/** Notes that are bookkeeping, not memory. "cursor|" and "desk|" are old rows from a removed connector: still hidden if they remain in the table. */
 function hiddenMemoryNote(note: string): boolean {
   return note.startsWith("cursor|")
     || note.startsWith("seen|")
@@ -1019,145 +1020,6 @@ function hiddenMemoryNote(note: string): boolean {
     || note.startsWith("rank-signal|")
     || note.startsWith("reminder|")
     || note.startsWith("team-roster|");
-}
-
-function parseCursorNote(note: string, chatId: string): { agentId: string; runId: string } | null {
-  const prefix = `cursor|${chatId}|`;
-  if (!note.startsWith(prefix)) return null;
-  const rest = note.slice(prefix.length);
-  const cut = rest.indexOf("|");
-  if (cut < 1) return null;
-  return { agentId: rest.slice(0, cut), runId: rest.slice(cut + 1) };
-}
-
-export async function listCursorRuns(): Promise<{ chatId: string; agentId: string; runId: string }[]> {
-  const notes: string[] = [];
-  const client = sb();
-  if (!useFile && client) {
-    const { data, error } = await client.from("copilot_memory").select("note").like("note", "cursor|%").limit(20);
-    if (!error) {
-      for (const row of data ?? []) notes.push(String((row as { note?: string }).note ?? ""));
-    } else if (!useLocalFile(error)) throw new Error(error.message);
-  }
-  if (!notes.length) {
-    for (const row of readFileStore().memory) {
-      if (row.note.startsWith("cursor|")) notes.push(row.note);
-    }
-  }
-  const runs: { chatId: string; agentId: string; runId: string }[] = [];
-  for (const note of notes) {
-    const parts = note.split("|");
-    if (parts.length < 4 || parts[0] !== "cursor") continue;
-    const chatId = parts[1] ?? "";
-    const agentId = parts[2] ?? "";
-    const runId = parts.slice(3).join("|");
-    if (chatId && agentId && runId) runs.push({ chatId, agentId, runId });
-  }
-  return runs;
-}
-
-export async function readCursorLink(chatId: string): Promise<{ agentId: string; runId: string } | null> {
-  const prefix = `cursor|${chatId}|`;
-  const client = sb();
-  if (!useFile && client) {
-    const { data, error } = await client
-      .from("copilot_memory")
-      .select("note")
-      .like("note", `${prefix}%`)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (!error) return parseCursorNote(String((data?.[0] as { note?: string } | undefined)?.note ?? ""), chatId);
-    if (useLocalFile(error)) { /* local file store */ }
-    else throw new Error(error.message);
-  }
-  const hit = [...readFileStore().memory].reverse().find((row) => row.note.startsWith(prefix));
-  return parseCursorNote(hit?.note ?? "", chatId);
-}
-
-export async function saveCursorLink(chatId: string, agentId: string, runId: string): Promise<void> {
-  const prefix = `cursor|${chatId}|`;
-  const note = `${prefix}${agentId}|${runId}`;
-  const client = sb();
-  if (!useFile && client) {
-    const { data, error } = await client.from("copilot_memory").select("id").like("note", `${prefix}%`).limit(1);
-    if (error) {
-      if (!useLocalFile(error)) throw new Error(error.message);
-    } else if (data?.[0]) {
-      const { error: updateError } = await client.from("copilot_memory").update({ note }).eq("id", (data[0] as { id: string }).id);
-      if (!updateError) return;
-      if (!useLocalFile(updateError)) throw new Error(updateError.message);
-    } else {
-      const { error: insertError } = await client.from("copilot_memory").insert({
-        id: randomUUID(),
-        created_at: new Date().toISOString(),
-        note,
-      });
-      if (!insertError) return;
-      if (!useLocalFile(insertError)) throw new Error(insertError.message);
-    }
-  }
-  const data = readFileStore();
-  const existing = data.memory.find((row) => row.note.startsWith(prefix));
-  if (existing) existing.note = note;
-  else data.memory.push({ id: randomUUID(), created_at: new Date().toISOString(), note });
-  writeFileStore(data);
-}
-
-export type StoredDesk = {
-  steps: { text: string; url?: string }[];
-  url?: string;
-  image?: string;
-  mime?: string;
-  pointer?: { x: number; y: number };
-};
-
-export async function readDesk(chatId: string): Promise<StoredDesk | null> {
-  const prefix = `desk|${chatId}|`;
-  let note = "";
-  const client = sb();
-  if (!useFile && client) {
-    const { data, error } = await client.from("copilot_memory").select("note").like("note", `${prefix}%`).limit(1);
-    if (!error) note = String((data?.[0] as { note?: string } | undefined)?.note ?? "");
-    else if (!useLocalFile(error)) throw new Error(error.message);
-  }
-  if (!note) note = readFileStore().memory.find((row) => row.note.startsWith(prefix))?.note ?? "";
-  if (!note.startsWith(prefix)) return null;
-  try {
-    const value = JSON.parse(note.slice(prefix.length)) as StoredDesk;
-    if (!value || !Array.isArray(value.steps)) return null;
-    return value;
-  } catch {
-    return null;
-  }
-}
-
-export async function saveDesk(chatId: string, desk: StoredDesk): Promise<void> {
-  const prefix = `desk|${chatId}|`;
-  const note = `${prefix}${JSON.stringify(desk)}`;
-  const client = sb();
-  if (!useFile && client) {
-    const { data, error } = await client.from("copilot_memory").select("id").like("note", `${prefix}%`).limit(1);
-    if (error) {
-      if (!useLocalFile(error)) throw new Error(error.message);
-    } else if (data?.[0]) {
-      const { error: updateError } = await client.from("copilot_memory").update({ note }).eq("id", (data[0] as { id: string }).id);
-      if (!updateError) return;
-      if (!useLocalFile(updateError)) throw new Error(updateError.message);
-    } else {
-      const { error: insertError } = await client.from("copilot_memory").insert({
-        id: randomUUID(),
-        created_at: new Date().toISOString(),
-        note,
-      });
-      if (!insertError) return;
-      if (!useLocalFile(insertError)) throw new Error(insertError.message);
-    }
-  }
-  const data = readFileStore();
-  const existing = data.memory.find((row) => row.note.startsWith(prefix));
-  if (existing) existing.note = note;
-  else data.memory.push({ id: randomUUID(), created_at: new Date().toISOString(), note });
-  writeFileStore(data);
 }
 
 export type StoredBrowser = {
@@ -1606,22 +1468,6 @@ export async function listOpenBrowsers(): Promise<{ chatId: string; row: StoredB
   return runs;
 }
 
-export async function clearDesk(chatId: string): Promise<void> {
-  const prefix = `desk|${chatId}|`;
-  const client = sb();
-  if (!useFile && client) {
-    const { data, error } = await client.from("copilot_memory").select("id").like("note", `${prefix}%`).limit(1);
-    if (!error && data?.[0]) {
-      await client.from("copilot_memory").delete().eq("id", (data[0] as { id: string }).id);
-      return;
-    }
-    if (error && !useLocalFile(error)) return;
-  }
-  const data = readFileStore();
-  data.memory = data.memory.filter((row) => !row.note.startsWith(prefix));
-  writeFileStore(data);
-}
-
 export async function listTextNumbers(): Promise<string[]> {
   const client = sb();
   if (!useFile && client) {
@@ -1782,8 +1628,6 @@ function asRun(row: Partial<CopilotRun>): CopilotRun {
     finished_at: row.finished_at ? String(row.finished_at) : null,
     status: row.status === "ok" || row.status === "failed" ? row.status : "running",
     trigger: row.trigger === "manual" ? "manual" : "schedule",
-    agent_id: String(row.agent_id ?? ""),
-    cursor_run_id: String(row.cursor_run_id ?? ""),
     result: (row.result as SkillRunResult | null) ?? null,
     error: String(row.error ?? ""),
   };
@@ -1797,8 +1641,6 @@ export async function startRun(skillId: string, trigger: CopilotRun["trigger"]):
     finished_at: null,
     status: "running",
     trigger,
-    agent_id: "",
-    cursor_run_id: "",
     result: { headline: "", needs_you: false, posted: false, tools: [] },
     error: "",
   };
@@ -1828,7 +1670,7 @@ export async function getRun(id: string): Promise<CopilotRun | null> {
 
 export async function updateRun(
   id: string,
-  patch: Partial<Pick<CopilotRun, "status" | "finished_at" | "agent_id" | "cursor_run_id" | "result" | "error">>,
+  patch: Partial<Pick<CopilotRun, "status" | "finished_at" | "result" | "error">>,
 ): Promise<void> {
   const clean = { ...patch, ...(patch.error !== undefined ? { error: patch.error.slice(0, 500) } : {}) };
   const client = sb();
