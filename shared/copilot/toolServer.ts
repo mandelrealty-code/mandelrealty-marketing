@@ -596,8 +596,3 @@ export async function callToolForRun(name: string, args: Record<string, unknown>
   if (tool.readOnly) await noteTool(ctx, name).catch(() => undefined);
   return out;
 }
-
-/** The tools a skill run may use: every tool this server holds, by name and input shape. */
-export function runToolDefinitions(): { name: string; description: string; input_schema: Record<string, unknown> }[] {
-  return toolDefinitions(Object.keys(TOOLS));
-}

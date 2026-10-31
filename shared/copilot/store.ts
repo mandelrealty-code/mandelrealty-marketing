@@ -1633,6 +1633,9 @@ function asRun(row: Partial<CopilotRun>): CopilotRun {
   };
 }
 
+/** Parity keeps skill runs in memory, so a test never writes the chat file. */
+const parityRuns: CopilotRun[] = [];
+
 export async function startRun(skillId: string, trigger: CopilotRun["trigger"]): Promise<CopilotRun> {
   const run: CopilotRun = {
     id: randomUUID(),
@@ -1644,6 +1647,10 @@ export async function startRun(skillId: string, trigger: CopilotRun["trigger"]):
     result: { headline: "", needs_you: false, posted: false, tools: [] },
     error: "",
   };
+  if (parityEnabled()) {
+    parityRuns.unshift(run);
+    return run;
+  }
   const client = sb();
   if (!useFile && !runsInFile && client) {
     const { error } = await client.from("copilot_runs").insert(run);
@@ -1658,6 +1665,10 @@ export async function startRun(skillId: string, trigger: CopilotRun["trigger"]):
 }
 
 export async function getRun(id: string): Promise<CopilotRun | null> {
+  if (parityEnabled()) {
+    const hit = parityRuns.find((row) => row.id === id);
+    return hit ? asRun(hit) : null;
+  }
   const client = sb();
   if (!useFile && !runsInFile && client) {
     const { data, error } = await client.from("copilot_runs").select("*").eq("id", id).maybeSingle();
@@ -1673,6 +1684,11 @@ export async function updateRun(
   patch: Partial<Pick<CopilotRun, "status" | "finished_at" | "result" | "error">>,
 ): Promise<void> {
   const clean = { ...patch, ...(patch.error !== undefined ? { error: patch.error.slice(0, 500) } : {}) };
+  if (parityEnabled()) {
+    const row = parityRuns.find((item) => item.id === id);
+    if (row) Object.assign(row, clean);
+    return;
+  }
   const client = sb();
   if (!useFile && !runsInFile && client) {
     const { error } = await client.from("copilot_runs").update(clean).eq("id", id);
@@ -1687,7 +1703,7 @@ export async function updateRun(
 
 /** Newest runs first. */
 export async function listRuns(skillId: string, limit = 5): Promise<CopilotRun[]> {
-  if (parityEnabled()) return [];
+  if (parityEnabled()) return parityRuns.filter((row) => row.skill_id === skillId).slice(0, limit).map(asRun);
   const client = sb();
   if (!useFile && !runsInFile && client) {
     const { data, error } = await client
@@ -1707,6 +1723,7 @@ export async function listRuns(skillId: string, limit = 5): Promise<CopilotRun[]
 }
 
 export async function listRunningRuns(): Promise<CopilotRun[]> {
+  if (parityEnabled()) return parityRuns.filter((row) => row.status === "running" && row.skill_id).map(asRun);
   const client = sb();
   if (!useFile && !runsInFile && client) {
     const { data, error } = await client

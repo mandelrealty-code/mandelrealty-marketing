@@ -10,9 +10,13 @@ import { answerOps } from "./ops.js";
 import { compLines, compSet, sizeOf } from "./compsAnswer.js";
 import { connectorRows } from "./connectorStatus.js";
 import { scopedStayProperties } from "./dayBoard.js";
-import { brainAvailable, complete, type BrainBlock, type BrainMessage, type BrainTool } from "./brain.js";
+import { brainAvailable, type BrainMessage, type BrainTool } from "./brain.js";
+import { runLoop, type AgentTool } from "./agentLoop.js";
 import { extractAndSaveFacts, factsForPrompt, listFacts, recallFacts, relevantFacts } from "./businessFacts.js";
-import { callToolForChat, toolDefinitions } from "./toolServer.js";
+import { callToolForChat, callToolForRun, toolDefinitions } from "./toolServer.js";
+import { normalizeSchedule, schedulePhrase } from "./skillSchedule.js";
+import { HANDLING_LINE, detectHandling, sayHandling, withHandling, type Handling } from "./skillPolicy.js";
+import type { CopilotRun, CopilotSkill } from "./types.js";
 import { addMessage, listMessages } from "./store.js";
 import { torontoToday } from "./time.js";
 
@@ -25,7 +29,7 @@ export const AGENT_TOOLS = [
   "research_web", "make_pdf", "add_reminder", "propose_draft",
 ] as const;
 
-const STEP: Record<string, string> = {
+export const STEP_LABELS: Record<string, string> = {
   guest_inbox: "Read the guest inbox",
   list_stays: "Looked up the stays",
   read_guest_messages: "Read the guest thread",
@@ -44,6 +48,7 @@ const STEP: Record<string, string> = {
   make_pdf: "Made a PDF",
   add_reminder: "Saved a reminder",
   propose_draft: "Left a draft for your approval",
+  propose_skill: "Drafted a skill for you to save",
   resolve_client: "Matched the client to their property",
   recall_facts: "Checked what I know about this",
   connector_status: "Checked what is connected",
@@ -62,7 +67,7 @@ const CONNECTOR_TOOLS: Record<string, string[]> = {
   twilio: [],
 };
 
-export type AgentTool = BrainTool & { run: (input: Record<string, unknown>, chatId: string) => Promise<unknown> };
+export type { AgentTool };
 
 /** Tools the agent has that are not in the shared tool table: an online lookup, and a search of what the business remembers. */
 function ownTools(): AgentTool[] {
@@ -186,9 +191,87 @@ function resolveClientTool(): AgentTool {
   };
 }
 
-export function agentTools(): AgentTool[] {
-  const named = toolDefinitions([...AGENT_TOOLS]).map((def): AgentTool => {
-    const run: AgentTool["run"] = (input, chatId) => callToolForChat(def.name, input, chatId);
+/**
+ * Drafts a skill from what the partner described and leaves it as a card to save. Nothing is saved or turned on from here.
+ * How it handles things comes from their words ("tell me when" notifies, "just handle it" acts within what it may touch).
+ */
+function proposeSkillTool(partnerText: string): AgentTool {
+  return {
+    name: "propose_skill",
+    description: "Drafts a saved skill for a task the partner described to repeat or to keep watching ('check every morning if...', 'tell me when...', 'just handle...'). Pass name, what it reads or may touch (reads), what it leaves for the partners (leaves), what it must not do (must_not), and when (when). Handling comes from the partner's own words. It leaves a card for them to save: nothing is saved or turned on from here.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "A short name." },
+        reads: { type: "string", description: "What it reads or may touch, in plain words." },
+        leaves: { type: "string", description: "What it leaves for the partners: a report, a draft, a reminder." },
+        must_not: { type: "string", description: "What it must never do." },
+        when: { type: "string", description: "When it runs, in the partner's words, such as 'every morning'. Empty when it only runs when asked." },
+        handling: { type: "string", enum: ["ask", "notify", "autonomous"], description: "Only when the partner's words are unclear. Their words win." },
+      },
+      required: ["name", "reads", "leaves"],
+    },
+    run: async (input, chatId) => {
+      const name = String(input.name ?? "").trim().slice(0, 80);
+      const reads = String(input.reads ?? "").trim().slice(0, 400);
+      if (!name || !reads) throw new Error("A skill needs a name and what it reads.");
+      const spoken = `${partnerText} ${String(input.when ?? "")}`;
+      const modelHandling = ["ask", "notify", "autonomous"].includes(String(input.handling)) ? (String(input.handling) as Handling) : "ask";
+      // Their words decide. The model's guess is only for when they didn't say.
+      const handling = sayHandling(partnerText) ? detectHandling(partnerText) : modelHandling;
+      const shaped = normalizeSchedule("", spoken);
+      const phone = partnerText.match(/(?:\+?1[\s.-]*)?(?:\(?\d{3}\)?[\s.-]*)\d{3}[\s.-]*\d{4}/)?.[0]?.trim() ?? "";
+      const leaves = withHandling(String(input.leaves ?? "").trim().slice(0, 380) || "A report for the partners", handling);
+      const mustNot = [String(input.must_not ?? "").trim().slice(0, 300), "Anything for a guest, a client, a building or any third party waits until a partner presses Submit. Never purchase anything."].filter(Boolean).join(" ");
+      const when = shaped.when_text || schedulePhrase(shaped.schedule);
+      const draft = {
+        subject: "",
+        body: "",
+        to: "",
+        status: "waiting" as const,
+        channel: "skill" as const,
+        skillName: name,
+        skillWhen: when,
+        skillReads: reads,
+        skillDrafts: leaves,
+        skillMustNot: mustNot,
+        skillKind: "playbook" as const,
+        skillPhone: phone,
+        skillSchedule: shaped.schedule,
+      };
+      const how = handling === "autonomous" ? "handle it on its own within what it may touch" : handling === "notify" ? "tell you and do nothing else" : "ask you first";
+      await addMessage({
+        chatId,
+        role: "assistant",
+        body: `Here is the skill I would save: ${name}. It runs ${shaped.schedule ? when.toLowerCase() : "when you ask"}, reads ${reads.replace(/[.]$/, "")}, and will ${how}. It never sends to a guest, a client or a building without your Submit, and never buys anything. Nothing is saved until you press Save on the card.`,
+        draft,
+      });
+      return { drafted: true, name, schedule: shaped.schedule || "when asked", handling, handlingLine: HANDLING_LINE[handling], saved: false };
+    },
+  };
+}
+
+/** Tools only a saved skill or workflow uses, on top of the chat tools: its report, partner delivery, sheets and the prepare-only office actions. */
+export const SKILL_TOOL_NAMES = [...AGENT_TOOLS, "post_report", "deliver_to_partners", "sheet_read", "sheet_write", "amend_contract", "create_sop", "assign_cleaner", "build_proposal", "edit_proposal", "send_proposal"];
+
+export type ToolContext = {
+  /** Inside a skill run: tools note themselves on the run and post to the skill's chat. */
+  run?: CopilotRun;
+  skill?: CopilotSkill;
+  /** In a chat: what the partner just said, so a skill drafted from it keeps their own handling words. */
+  partnerText?: string;
+  names?: string[];
+};
+
+/**
+ * The agent's tools. Chat and skills get the same ones: the same reads, the same web lookup, the same approvals, so a
+ * partner's ask and a saved skill are equally smart. A skill run just adds its report and delivery tools.
+ */
+export function agentTools(ctx: ToolContext = {}): AgentTool[] {
+  const named = toolDefinitions(ctx.names ?? [...AGENT_TOOLS]).map((def): AgentTool => {
+    const run: AgentTool["run"] = ctx.run && ctx.skill
+      ? (input) => callToolForRun(def.name, input, ctx.run!, ctx.skill!)
+      : (input, chatId) => callToolForChat(def.name, input, chatId);
     if (def.name === "ops_revenue") return revenueTool(def);
     if (def.name === "list_stays") return scoped(def, run, (out, scope) => ({ stays: inScope(out, scope) }));
     if (def.name === "guest_inbox") {
@@ -199,7 +282,7 @@ export function agentTools(): AgentTool[] {
     }
     return { ...def, run };
   });
-  return [...named, ...ownTools(), resolveClientTool()];
+  return [...named, ...ownTools(), resolveClientTool(), ...(ctx.partnerText !== undefined ? [proposeSkillTool(ctx.partnerText)] : [])];
 }
 
 export function agentSystem(facts: string, today: string): string {
@@ -210,6 +293,7 @@ export function agentSystem(facts: string, today: string): string {
     "READ BEFORE ANSWERING: use your tools to read the guest thread, the Knowledge Hub, Hospitable, Gmail and Outlook, the client list and the cleaner app instead of guessing. Use web_lookup when you do not know something or it may have changed. Say plainly once if a read failed.",
     "WHAT IS CONNECTED: for any question about whether a connector is connected, or when it was last checked, call connector_status and answer from it. Never answer from memory or business records, and never say a connector is connected without it. A connector that needs re-authorization is not connected. If a connector says none of your tools use it, say so plainly.",
     "EMAIL: every answer about an email names the mailbox it came from, in words (Gmail or Outlook). For the last email the partner sent, call last_sent_email: it reads Gmail Sent newest first. If its note says Gmail couldn't be read, say that plainly and say the answer is from Outlook. Never present one mailbox's mail as the other's, and never answer from memory.",
+    "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
     "NOTHING SENDS WITHOUT A PARTNER. You cannot send a message, email, post or purchase. To prepare one, call propose_draft: it leaves a draft in the chat waiting for the partner to approve. Then say the draft is waiting for approval. Messages to guests go out as Shane. Never write an em dash in anything a guest will read.",
     "Never repeat access codes, door codes or passwords, even if a tool returned them.",
@@ -225,11 +309,6 @@ export type AgentOutcome = { body: string; steps: string[]; drafted: boolean; re
 
 const MAX_ROUNDS = 8;
 
-function clip(value: unknown): string {
-  const text = typeof value === "string" ? value : JSON.stringify(value);
-  return (text ?? "").slice(0, 14_000);
-}
-
 /** One partner message in, one answer out. The loop calls tools mid-turn and streams text through onEvent. */
 export async function runAgentTurn(input: {
   chatId: string;
@@ -238,65 +317,38 @@ export async function runAgentTurn(input: {
   onEvent?: (event: AgentEvent) => void;
   tools?: AgentTool[];
 }): Promise<AgentOutcome> {
-  const steps: string[] = [];
   const emit = input.onEvent ?? (() => undefined);
   if (!brainAvailable()) {
+    const steps: string[] = [];
     const body = "The AI brain isn't connected right now, so I can't think this through. Nothing was sent. Check that META_API_KEY or ANTHROPIC_API_KEY is set in Vercel.";
     emit({ type: "text", text: body });
     return { body, steps, drafted: false, remembered: [], usedBrain: false };
   }
-  const tools = input.tools ?? agentTools();
+  const tools = input.tools ?? agentTools({ partnerText: input.text });
   const known = await listFacts();
   const recalled = relevantFacts(known, `${input.text} ${(input.history ?? []).slice(-4).map((turn) => turn.text).join(" ")}`, 12);
   const system = agentSystem(factsForPrompt(recalled), torontoToday());
   const messages: BrainMessage[] = [...(input.history ?? []).slice(-20).map((turn): BrainMessage => ({ role: turn.role, content: turn.text })), { role: "user", content: input.text }];
-  let drafted = false;
-  let body = "";
-  for (let round = 0; round < MAX_ROUNDS; round += 1) {
-    const result = await complete({
-      task: "chat",
-      system,
-      messages,
-      tools: tools.map(({ name, description, input_schema }) => ({ name, description, input_schema })),
-      maxTokens: 1500,
-      onText: (text) => emit({ type: "text", text }),
-    });
-    if (!result) {
-      body = body || "I couldn't reach the AI brain just now. Nothing was sent. Try again in a moment.";
-      if (!steps.length) emit({ type: "text", text: body });
-      return { body, steps, drafted, remembered: [], usedBrain: false };
-    }
-    if (!result.toolUses.length) {
-      body = result.text;
-      break;
-    }
-    messages.push({ role: "assistant", content: result.blocks });
-    const results: BrainBlock[] = [];
-    for (const use of result.toolUses) {
-      const tool = tools.find((item) => item.name === use.name);
-      const label = STEP[use.name] ?? `Used ${use.name}`;
-      steps.push(label);
-      emit({ type: "step", text: label });
-      let content: string;
-      let isError = false;
-      if (!tool) {
-        content = "That tool isn't available.";
-        isError = true;
-      } else {
-        try {
-          const out = await tool.run(use.input, input.chatId);
-          content = clip(out);
-          if (use.name === "propose_draft") drafted = true;
-        } catch (err) {
-          content = err instanceof Error ? err.message : "The tool failed.";
-          isError = true;
-        }
-      }
-      results.push({ type: "tool_result", tool_use_id: use.id, content, ...(isError ? { is_error: true } : {}) });
-    }
-    messages.push({ role: "user", content: results });
-    if (round === MAX_ROUNDS - 1) body = "I read what I could but ran out of steps before I could finish. Ask me again and I'll pick up from there.";
+  const loop = await runLoop({
+    system,
+    messages,
+    tools,
+    chatId: input.chatId,
+    task: "chat",
+    maxRounds: MAX_ROUNDS,
+    label: (name) => STEP_LABELS[name] ?? `Used ${name}`,
+    onText: (text) => emit({ type: "text", text }),
+    onStep: (text) => emit({ type: "step", text }),
+  });
+  const steps: string[] = [...loop.steps];
+  const drafted = loop.calls.some((call) => call.tool === "propose_draft" && call.ok);
+  if (loop.end === "brain") {
+    const said = loop.text || "I couldn't reach the AI brain just now. Nothing was sent. Try again in a moment.";
+    if (!steps.length) emit({ type: "text", text: said });
+    return { body: said, steps, drafted, remembered: [], usedBrain: false };
   }
+  let body = loop.text;
+  if (loop.end === "rounds") body = "I read what I could but ran out of steps before I could finish. Ask me again and I'll pick up from there.";
   const remembered: string[] = [];
   try {
     const saved = await extractAndSaveFacts({

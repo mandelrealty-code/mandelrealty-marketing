@@ -320,6 +320,8 @@ export type SkillRunResult = {
   /** The agent posted its report through the tools. */
   posted: boolean;
   tools: string[];
+  /** A workflow that stopped at "Wait for you": what is left, what it found so far, and what it is waiting for. */
+  paused?: { remaining: string[]; context: string; waitingFor: string };
 };
 
 export type CopilotRun = {

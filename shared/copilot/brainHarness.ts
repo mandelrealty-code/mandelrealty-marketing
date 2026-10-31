@@ -333,7 +333,8 @@ setBrainModel(async () => null);
 const failed = await startSkillRun(skill.id, "manual");
 if (failed.status !== "failed" || !/AI brain didn't answer/.test(failed.error)) fail(`a silent brain: ${failed.status} ${failed.error}`);
 const skillChat = ((await listSkills()).find((row) => row.id === skill.id)?.chat_id ?? "") as string;
-if (!(await listMessages(skillChat)).some((row) => /couldn't finish/.test(row.body))) fail("a failed skill run left no plain note");
+const failureNote = (await listMessages(skillChat)).find((row) => /stopped at/.test(row.body))?.body ?? "";
+if (!/What it tried:/.test(failureNote) || !/What came back: The AI brain didn't answer/.test(failureNote) || !/Suggested fix: Try Run now again/.test(failureNote)) fail(`a failed skill run left no plain note: ${failureNote}`);
 setBrainModel(null);
 let noBrainError = "";
 try {
