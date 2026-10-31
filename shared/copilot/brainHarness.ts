@@ -9,6 +9,8 @@ import { extractAndSaveFacts, listFacts, parseExtracted, recallFacts, resetBusin
 import { callToolForChat } from "./toolServer.js";
 import { capturedCommits, capturedDrafts, resetCaptures } from "./parity/capture.js";
 import { createChat, addMessage, listMessages } from "./store.js";
+import { streamAgentReply } from "../adminApi/copilot.js";
+import type { VercelResponse } from "@vercel/node";
 import { installWorld } from "./parity/world.js";
 
 const META = "meta-test-key-not-a-secret-1";
@@ -215,6 +217,31 @@ await addMessage({ chatId: chat.id, role: "user", body: "When are cleaners paid?
 const done = await answerInChat({ chatId: chat.id, text: "When are cleaners paid?" });
 const stored = await listMessages(chat.id);
 if (stored.at(-1)?.role !== "assistant" || stored.at(-1)?.body !== done.body || !sawFacts) fail(`chat turn: ${JSON.stringify(stored.map((m) => m.body))} facts=${sawFacts}`);
+setBrainModel(null);
+
+// ---------- The reply as a stream: chat, step, text chunks, then done with the stored messages ----------
+const wire: string[] = [];
+const headers: Record<string, string> = {};
+const fakeRes = { setHeader: (k: string, v: string) => { headers[k.toLowerCase()] = v; }, status: () => fakeRes, write: (chunk: string) => { wire.push(chunk); return true; }, end: () => undefined } as unknown as VercelResponse;
+setBrainModel(async (request) => {
+  if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+  request.onText?.("Friday. ");
+  request.onText?.("Want a reminder?");
+  return { text: "Friday. Want a reminder?", toolUses: [], blocks: [{ type: "text", text: "Friday. Want a reminder?" }], stop: "end_turn" };
+});
+const streamChat = await createChat("stream");
+await addMessage({ chatId: streamChat.id, role: "user", body: "When are cleaners paid?" });
+await streamAgentReply(fakeRes, streamChat.id, "When are cleaners paid?");
+const events = wire.join("").split("\n\n").filter(Boolean).map((raw) => ({ event: /^event: (.+)$/m.exec(raw)![1]!, data: JSON.parse(/^data: (.+)$/m.exec(raw)![1]!) as { text?: string; messages?: { role: string; body: string }[] } }));
+if (!/event-stream/.test(headers["content-type"] ?? "")) fail("stream content type");
+if (events[0]?.event !== "chat" || events.at(-1)?.event !== "done") fail(`stream order ${events.map((e) => e.event).join(",")}`);
+if (events.filter((e) => e.event === "text").map((e) => e.data.text).join("") !== "Friday. Want a reminder?") fail("text chunks do not add up to the reply");
+const doneEvent = events.at(-1)!;
+if (doneEvent.data.messages?.at(-1)?.body !== "Friday. Want a reminder?") fail("done does not carry the stored reply");
+setBrainModel(async () => { throw new Error("boom"); });
+wire.length = 0;
+await streamAgentReply(fakeRes, streamChat.id, "again");
+if (!wire.join("").includes("event: error") || wire.join("").includes("boom")) fail("a failed stream must end with a plain error event");
 setBrainModel(null);
 
 console.log("Brain harness passed.");

@@ -231,15 +231,10 @@ function listedChat(chat: CopilotChat): boolean {
   return chat.title !== "Checks" && chat.title !== "Reminders";
 }
 
-async function api<T>(op: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(body ? "/api/admin/copilot" : `/api/admin/copilot?op=${op}`, {
-    method: body ? "POST" : "GET",
-    credentials: "include",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify({ op, ...body }) : undefined,
-    signal,
-  });
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string; messages?: { role?: string; body?: string; thought?: string | null; steps?: { text?: string }[] | null }[] };
+type ReplyShape = { error?: string; messages?: { role?: string; body?: string; thought?: string | null; steps?: { text?: string }[] | null }[] };
+
+/** The same clean-up every Copilot reply gets, whether it came as JSON or at the end of a stream. */
+function cleanReply<T>(data: T & ReplyShape, body?: Record<string, unknown>): T & ReplyShape {
   const report = Boolean(body && typeof body.text === "string" && asksPropertyReport(body.text));
   if (typeof data.error === "string") data.error = withoutFilesystemDetail(data.error, report);
   for (const message of data.messages ?? []) {
@@ -249,8 +244,94 @@ async function api<T>(op: string, body?: Record<string, unknown>, signal?: Abort
       if (typeof step.text === "string") step.text = withoutFilesystemDetail(step.text, report);
     }
   }
+  return data;
+}
+
+async function readReply<T>(res: Response, body?: Record<string, unknown>): Promise<T> {
+  const data = cleanReply((await res.json().catch(() => ({}))) as T & ReplyShape, body);
   if (!res.ok) throw new Error(data.error || "Copilot request failed.");
   return data;
+}
+
+async function api<T>(op: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(body ? "/api/admin/copilot" : `/api/admin/copilot?op=${op}`, {
+    method: body ? "POST" : "GET",
+    credentials: "include",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify({ op, ...body }) : undefined,
+    signal,
+  });
+  return readReply<T>(res, body);
+}
+
+type StreamHandlers = { onText: (piece: string) => void; onStep: (text: string) => void };
+
+/**
+ * Sends a chat message and shows the reply as it is written. The server streams only when the business agent answers;
+ * every other reply comes back as one JSON message, read exactly as before. If the stream drops before it finishes,
+ * the chat is read back from the server so the finished reply still appears.
+ */
+async function sendStreaming<T extends { chatId: string }>(body: Record<string, unknown>, signal: AbortSignal, handlers: StreamHandlers): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch("/api/admin/copilot", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "send", ...body, stream: true }),
+      signal,
+    });
+  } catch (err) {
+    if (signal.aborted) throw err;
+    // Nothing reached the server, so a plain send cannot double the message.
+    return api<T>("send", body, signal);
+  }
+  if (!/event-stream/i.test(res.headers.get("content-type") ?? "") || !res.body) return readReply<T>(res, body);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let chatId = "";
+  let finished: T | null = null;
+  let failed = "";
+  const handle = (raw: string) => {
+    const event = /^event:\s*(.+)$/m.exec(raw)?.[1]?.trim() ?? "";
+    const data = raw.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("");
+    if (!data) return;
+    let payload: { chatId?: string; text?: string; error?: string };
+    try {
+      payload = JSON.parse(data) as typeof payload;
+    } catch {
+      return;
+    }
+    if (event === "chat" && payload.chatId) chatId = payload.chatId;
+    else if (event === "text" && payload.text) handlers.onText(payload.text);
+    else if (event === "step" && payload.text) handlers.onStep(withoutFilesystemDetail(payload.text, false));
+    else if (event === "done") finished = cleanReply(payload as unknown as T & ReplyShape, body) as T;
+    else if (event === "error") failed = payload.error ?? "Couldn't finish that reply.";
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let cut = buffer.indexOf("\n\n");
+      while (cut >= 0) {
+        handle(buffer.slice(0, cut));
+        buffer = buffer.slice(cut + 2);
+        cut = buffer.indexOf("\n\n");
+      }
+    }
+    if (buffer.trim()) handle(buffer);
+  } catch (err) {
+    if (signal.aborted) throw err;
+  }
+  if (finished) return finished;
+  if (chatId) {
+    // The stream dropped: the server keeps working, so read the chat back instead of showing nothing.
+    const stored = await api<{ messages: CopilotMessage[] }>(`messages&chatId=${encodeURIComponent(chatId)}`).catch(() => null);
+    if (stored?.messages.at(-1)?.role === "assistant") return { chatId, messages: stored.messages } as unknown as T;
+  }
+  throw new Error(failed || "The reply was cut off. Check the chat in a moment.");
 }
 
 function pause(ms: number, signal: AbortSignal) {
@@ -870,6 +951,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [pw, setPw] = useState({ cur: "", next: "", conf: "" });
   const [pwMsg, setPwMsg] = useState<"" | "err" | "current" | "server">("");
   const [pending, setPending] = useState<string | null>(null);
+  const [streamText, setStreamText] = useState("");
   const [runBusy, setRunBusy] = useState(false);
   const [runMsg, setRunMsg] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
@@ -1283,7 +1365,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     let handed = false;
     try {
       const makingSkill = skillMode && (!preset || keepChat);
-      const data = await api<{ chatId: string; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[]; view?: DeskView; steps?: { text: string }[]; thought?: string; memoryFiles?: MemoryFileView[] }>("send", {
+      const data = await sendStreaming<{ chatId: string; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[]; view?: DeskView; steps?: { text: string }[]; thought?: string; memoryFiles?: MemoryFileView[] }>({
         text: value || "Look at the attached photo.",
         chatId: preset && !keepChat ? null : chatId,
         kind: "chat",
@@ -1292,7 +1374,10 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         webSearch: searching,
         images,
         viewer,
-      }, ctrl.signal);
+      }, ctrl.signal, {
+        onText: (piece) => setStreamText((prev) => prev + piece),
+        onStep: (step) => setLiveSteps((prev) => (prev.some((item) => item.text === step) ? prev : [...prev, { text: step }])),
+      });
       delivered = true;
       if (ctrl.signal.aborted) return;
       kept.forEach((file) => {
@@ -1322,6 +1407,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
       if (generatedId && generated) void openReport(generatedId, generated.id);
       if (data.chats) setBoot((prev) => (prev ? { ...prev, chats: data.chats ?? prev.chats } : prev));
       setPending(null);
+      setStreamText("");
       let shown = data.messages;
       if (data.pending) {
         handed = true;
@@ -1362,6 +1448,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     } finally {
       if (abortRef.current === ctrl) abortRef.current = null;
       setPending(null);
+      setStreamText("");
       setPendingPicture(false);
       if (!handed) setThinking(false);
       setBusy(false);
@@ -2840,6 +2927,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         live
                         onShowBrowser={chatId && !stage && deskMemory.current[chatId]?.kind === "page" ? reopenBrowser : undefined}
                       />
+                    ) : null}
+                    {streamText ? (
+                      <div className="cp-bot">
+                        <ChatText text={withoutFilesystemDetail(streamText, true)} />
+                      </div>
                     ) : null}
                     {stopped && !pending && !thinking ? <p className="cp-muted">Stopped. Nothing was sent.</p> : null}
                     {chatId && !stage && !thinking && !pending && deskMemory.current[chatId]?.kind === "page" ? (

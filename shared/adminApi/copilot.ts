@@ -358,6 +358,23 @@ async function factsFor(): Promise<string> {
   return lines.join("\n");
 }
 
+/** The agent's reply as server-sent events: chat (the id), step, text (one chunk), done (the stored messages). */
+export async function streamAgentReply(res: VercelResponse, chatId: string, typed: string): Promise<void> {
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.status(200);
+  const emit = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  emit("chat", { chatId });
+  try {
+    const outcome = await answerInChat({ chatId, text: typed, onEvent: (event: AgentEvent) => emit(event.type, event) });
+    emit("done", { chatId, body: outcome.body, steps: outcome.steps, drafted: outcome.drafted, messages: await listMessages(chatId), chats: await listChats(), pending: false });
+  } catch {
+    emit("error", { error: "Couldn't finish that reply. Nothing was sent." });
+  }
+  res.end();
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<unknown> {
   if (!copilotScopeActive()) return withCopilotScope(() => handler(req, res));
   if (!isAdminConfigured()) {
@@ -945,18 +962,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       let chatId = String(body.chatId ?? "");
       if (!chatId) chatId = (await createChat(await nameChat(typed), "chat")).id;
       await addMessage({ chatId, role: "user", body: typed });
-      if (body.stream === true) {
-        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-        res.setHeader("Cache-Control", "no-cache, no-transform");
-        res.setHeader("X-Accel-Buffering", "no");
-        res.status(200);
-        const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-        send("chat", { chatId });
-        const outcome = await answerInChat({ chatId, text: typed, onEvent: (event: AgentEvent) => send(event.type, event) });
-        send("done", { chatId, body: outcome.body, steps: outcome.steps, drafted: outcome.drafted, messages: await listMessages(chatId), chats: await listChats() });
-        res.end();
-        return;
-      }
+      if (body.stream === true) return streamAgentReply(res, chatId, typed);
       const outcome = await answerInChat({ chatId, text: typed });
       return res.status(200).json({ chatId, messages: await listMessages(chatId), chats: await listChats(), pending: false, drafted: outcome.drafted });
     }
@@ -989,6 +995,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const userMessage = await addMessage({ chatId, role: "user", body: typed, images, picture: pictureMode });
       // BRAIN_AGENT_CHAT=1 sends ordinary chat turns through the business agent instead of the older answer chain.
       if (process.env.BRAIN_AGENT_CHAT === "1" && kind === "chat" && !pictureMode && !skillMode && !images.length) {
+        // The screen asks for a stream; anything else gets the one JSON reply.
+        if (body.stream === true) return streamAgentReply(res, chatId, typed);
         await answerInChat({ chatId, text: typed });
         return res.status(200).json({ chatId, messages: await listMessages(chatId), chats: await listChats(), pending: false });
       }
