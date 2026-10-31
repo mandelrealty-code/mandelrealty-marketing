@@ -7,7 +7,11 @@ import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
 import { setAirroiValidator } from "../airroi.js";
 import { runAgentTurn } from "./agentChat.js";
-import { installWorld } from "./parity/world.js";
+import { installWorld, type ParityReservation } from "./parity/world.js";
+import { worldAt, ID } from "./parity/catalog.js";
+import { setHospitableLogger } from "../pm/hospitableClient.js";
+import { resolveScope } from "./clientProperty.js";
+import { diagnoseStays, nextStays, readableUnit } from "./stayLookup.js";
 import { latestSent } from "./mailSearch.js";
 import { setBrainModel } from "./brain.js";
 import { checkGmailLogin, diagnoseGmail, gmailStatus, latestSentGmail, readGmailThread, searchGmail, setGmailLogger, setGmailValidator } from "../adminApi/gmail.js";
@@ -398,5 +402,67 @@ try {
   if (wasParity === undefined) delete process.env.COPILOT_PARITY;
   else process.env.COPILOT_PARITY = wasParity;
 }
+
+// ---------- "What's the next reservation for that unit?" ----------
+const stay = (id: string, propertyId: string, guest: string, checkIn: string, checkOut: string, status = "accepted"): ParityReservation => ({ id, code: id.toUpperCase(), propertyId, status, checkIn, checkOut, guest, adults: 2, children: 0, messages: [] });
+const stayWorld = worldAt("2026-10-31T12:00:00-04:00");
+stayWorld.reservations = [
+  stay("r-michelle", ID.blue, "Michelle Sanders", "2026-11-04", "2026-11-07"),
+  stay("r-mark", ID.blue, "Mark Bixler", "2026-11-22", "2026-11-28"),
+  stay("r-zoe", ID.blue, "Zoe", "2026-11-10", "2026-11-12", "cancelled"),
+  stay("r-ola", ID.shaw, "Ola", "2026-11-25", "2026-11-28"),
+];
+installWorld(stayWorld);
+const rajScope = resolveScope("Raj")!;
+const hospitableLines: Record<string, unknown>[] = [];
+setHospitableLogger((line) => hospitableLines.push(line));
+const raj = await nextStays(rajScope, 3, new Date("2026-10-31T16:00:00Z"));
+if (raj.next.map((row) => row.guest).join() !== "Michelle Sanders,Mark Bixler" || raj.next[0]!.checkIn !== "2026-11-04" || raj.next[0]!.checkOut !== "2026-11-07" || raj.next[1]!.checkIn !== "2026-11-22") fail(`Raj's next stays: ${JSON.stringify(raj.next)}`);
+if (raj.next.some((row) => row.status === "cancelled") || raj.current.length || raj.moreAfter) fail("cancelled or current stays were wrong");
+if (raj.propertyIds.join() !== ID.blue || raj.read.from !== "2026-10-31" || raj.read.to !== "2027-10-31") fail(`what was asked: ${JSON.stringify(raj.read)} ${raj.propertyIds}`);
+// The logs say which property and which dates were asked, by both date filters, and never a token.
+const reads = hospitableLines.filter((line) => line.path === "/reservations");
+if (reads.length < 2 || !reads.every((line) => line.properties === ID.blue && line.from === "2026-10-31" && line.to === "2027-10-31" && line.status === 200) || !["checkin", "checkout"].every((kind) => reads.some((line) => line.dateQuery === kind))) fail(`the Hospitable log: ${JSON.stringify(reads)}`);
+if (/token|bearer|authorization/i.test(JSON.stringify(hospitableLines))) fail("the Hospitable log leaked a credential");
+setHospitableLogger(null);
+// The 14-day look misses Roya's stay on Nov 25 and says so, rather than "no reservations".
+const shortLook = (await agentTools().find((tool) => tool.name === "list_stays")!.run({ days_ahead: 14, for: "Roya" }, "c")) as { stays: unknown[]; note: string; propertyIds: string[] };
+if (shortLook.stays.length || !/only this window/.test(shortLook.note) || !/next_stays/.test(shortLook.note) || shortLook.propertyIds.join() !== ID.shaw) fail(`the short look: ${JSON.stringify(shortLook)}`);
+if ((await nextStays(resolveScope("Roya")!, 3, new Date("2026-10-31T16:00:00Z"))).next[0]?.guest !== "Ola") fail("Roya's next stay");
+const rajShort = (await agentTools().find((tool) => tool.name === "list_stays")!.run({ days_ahead: 14, for: "Raj" }, "c")) as { stays: { guest: string; propertyId: string }[] };
+if (rajShort.stays.map((row) => row.guest).join() !== "Michelle Sanders" || rajShort.stays[0]!.propertyId !== ID.blue) fail(`Raj's 14-day look: ${JSON.stringify(rajShort)}`);
+// A unit Copilot can't read is said plainly, never "no stays".
+const rose = resolveScope("Roseglor")!;
+installWorld({ ...stayWorld, properties: stayWorld.properties.filter((row) => row.id !== ID.rose) });
+const unreadable = await readableUnit(rose);
+if (unreadable.properties.length || !/isn't a property Copilot knows from OPS/.test(unreadable.why)) fail(`an unreadable unit: ${JSON.stringify(unreadable)}`);
+let unreadableError = "";
+try {
+  await nextStays(rose, 3, new Date("2026-10-31T16:00:00Z"));
+} catch (err) {
+  unreadableError = err instanceof Error ? err.message : "";
+}
+if (!/isn't a property Copilot knows/.test(unreadableError)) fail(`next_stays on an unreadable unit: ${unreadableError}`);
+installWorld(stayWorld);
+// The diagnosis lays the chain out and pins a missing stay to the step that dropped it.
+const probe = await diagnoseStays(rajScope, "Michelle", new Date("2026-10-31T16:00:00Z"));
+if (probe.chosen.length !== 1 || probe.chosen[0]!.hospitableId !== ID.blue || !probe.chosen[0]!.existsInHospitable || !probe.chosen[0]!.inSavedSelection) fail(`the property chain: ${JSON.stringify(probe.chosen)}`);
+if (!probe.highlighted.some((line) => /Michelle .*2026-11-04 to 2026-11-07/.test(line)) || probe.reservations.find((row) => row.id === "r-mark")?.dropped !== "checks in after the 14-day look" || probe.reservations.find((row) => row.id === "r-zoe")?.dropped !== "status \"cancelled\" is filtered out") fail(`the diagnosis: ${JSON.stringify(probe.reservations)}`);
+const missing = await diagnoseStays(rajScope, "Nobody", new Date("2026-10-31T16:00:00Z"));
+if (!missing.notes.some((note) => /returned no reservation for a guest named "Nobody"/.test(note))) fail(`a guest the API doesn't have: ${JSON.stringify(missing.notes)}`);
+// Through the agent: "what's the next reservation for that unit?" is answered from next_stays.
+setBrainModel(async (request) => {
+  if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+  const last = request.messages!.at(-1)!;
+  if (!Array.isArray(last.content)) return { text: "", toolUses: [{ id: "n1", name: "next_stays", input: { for: "Raj" } }], blocks: [{ type: "tool_use", id: "n1", name: "next_stays", input: { for: "Raj" } }], stop: "tool_use" };
+  const raw = last.content.map((block) => (block.type === "tool_result" ? block.content : "")).join("");
+  const result = JSON.parse(raw) as { next: { guest: string; checkIn: string; checkOut: string }[] };
+  const text = `The next reservation at 20 Blue Jays Way is ${result.next[0]!.guest}, ${result.next[0]!.checkIn} to ${result.next[0]!.checkOut}, then ${result.next[1]!.guest} from ${result.next[1]!.checkIn}.`;
+  return { text, toolUses: [], blocks: [{ type: "text", text }], stop: "end_turn" };
+});
+const nextAnswer = await runAgentTurn({ chatId: "c", text: "whats the next reservation for that unit" });
+if (!/Michelle Sanders, 2026-11-04 to 2026-11-07, then Mark Bixler from 2026-11-22/.test(nextAnswer.body)) fail(`the agent said: ${nextAnswer.body}`);
+setBrainModel(null);
+if (!/call next_stays/.test((await import("./agentChat.js")).agentSystem("", "2026-10-20"))) fail("the agent isn't told to use next_stays");
 
 console.log("Connectors harness passed.");

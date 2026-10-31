@@ -1,0 +1,132 @@
+/**
+ * Finding a unit's reservations by the unit, not by a guess: which Hospitable property a client or unit really is, whether Copilot
+ * can read it at all, what Hospitable returns for it across a wide window, and why a stay would be missing from a short look.
+ * An unreadable unit is said plainly. It is never reported as "no stays".
+ */
+
+import { listHospitableReservations } from "../pm/hospitableClient.js";
+import { listPmProperties } from "../pm/propertyStore.js";
+import { scopedStayProperties } from "./dayBoard.js";
+import { DEAD, guestName, listStays } from "./guestInbox.js";
+import { copilotHospitableToken, copilotKeepsProperty, hospitableRead } from "./hospitableConnection.js";
+import type { Scope } from "./clientProperty.js";
+import { addDays, torontoToday } from "./time.js";
+
+type Readable = { id: string; name: string; address: string };
+
+/** The Hospitable properties this unit is, among those Copilot reads. When none, the reason in plain words. */
+export async function readableUnit(scope: Scope): Promise<{ properties: Readable[]; why: string }> {
+  const readable = await scopedStayProperties().catch(() => [] as Readable[]);
+  const matched = readable.filter((row) => scope.match.test(`${row.name} ${row.address}`));
+  if (matched.length) return { properties: matched, why: "" };
+  const known = (await listPmProperties().catch(() => [])).filter((row) => scope.match.test(`${row.name} ${row.address}`));
+  if (!known.length) return { properties: [], why: `${scope.label} isn't a property Copilot knows from OPS, so it can't look up its stays.` };
+  const unlinked = known.filter((row) => !row.hospitable_property_id);
+  if (unlinked.length === known.length) return { properties: [], why: `${known[0]!.name} is in OPS but has no Hospitable link, so Copilot can't read its stays. Link it to its Hospitable property in OPS.` };
+  return { properties: [], why: `${known[0]!.name} is linked to Hospitable but isn't one of the properties Copilot reads. Turn it on under Settings, Connectors, Hospitable, then try again.` };
+}
+
+export type NextStay = { reservationId: string; guest: string; checkIn: string; checkOut: string; nights: number; platform: string; status: string };
+
+/**
+ * The current guest and the next stays for one unit, looking a year ahead: by check-in for what is coming, by checkout for
+ * whoever is in the house now. Says which property ids and dates it asked Hospitable about.
+ */
+export async function nextStays(scope: Scope, count = 3, now: Date = new Date()): Promise<{
+  property: string;
+  propertyIds: string[];
+  read: { from: string; to: string; filters: string[] };
+  current: NextStay[];
+  next: NextStay[];
+  moreAfter: boolean;
+  note: string;
+}> {
+  const found = await readableUnit(scope);
+  if (!found.properties.length) throw new Error(found.why);
+  const pat = await copilotHospitableToken();
+  if (!pat) throw new Error("Hospitable is not connected, so nothing was read.");
+  const today = torontoToday(now);
+  const to = addDays(today, 365);
+  const propertyIds = found.properties.map((row) => row.id);
+  const [coming, inHouse] = await Promise.all([
+    listHospitableReservations({ pat, propertyIds, startDate: today, endDate: to, include: ["guest"], dateQuery: "checkin" }),
+    listHospitableReservations({ pat, propertyIds, startDate: today, endDate: to, include: ["guest"], dateQuery: "checkout" }),
+  ]);
+  const byId = new Map<string, (typeof coming)[number]>();
+  for (const row of [...coming, ...inHouse]) if (!DEAD.test(row.status) && row.check_in && row.check_out) byId.set(row.id, row);
+  const shape = (row: (typeof coming)[number]): NextStay => ({ reservationId: row.id, guest: guestName(row.raw), checkIn: row.check_in ?? "", checkOut: row.check_out ?? "", nights: row.nights, platform: row.platform, status: row.status });
+  const all = [...byId.values()].sort((a, b) => (a.check_in ?? "").localeCompare(b.check_in ?? ""));
+  const current = all.filter((row) => (row.check_in ?? "") <= today && (row.check_out ?? "") > today).map(shape);
+  const upcoming = all.filter((row) => (row.check_in ?? "") > today).map(shape);
+  const next = upcoming.slice(0, Math.max(1, Math.min(count, 10)));
+  return {
+    property: scope.label,
+    propertyIds,
+    read: { from: today, to, filters: ["check-in", "checkout"] },
+    current,
+    next,
+    moreAfter: upcoming.length > next.length,
+    note: next.length ? "" : `No stays are booked at ${scope.label} between ${today} and ${to}.`,
+  };
+}
+
+// ---------- Why a stay is missing: the whole chain, laid out ----------
+
+export type StayProbe = {
+  scope: { label: string; client: string };
+  pmProperties: { name: string; address: string; hospitableId: string; matchesUnit: boolean }[];
+  chosen: { name: string; hospitableId: string; inSavedSelection: boolean; existsInHospitable: boolean; hospitableName: string }[];
+  asked: { from: string; to: string; propertyIds: string[]; filters: string[] };
+  reservations: { id: string; guest: string; checkIn: string; checkOut: string; status: string; platform: string; inListStays: boolean; dropped: string }[];
+  highlighted: string[];
+  notes: string[];
+};
+
+/**
+ * Temporary: the unit's reservations from Hospitable across a wide window, next to what the 14-day look shows, so a stay the
+ * Hospitable calendar has and Copilot doesn't is pinned to the step that dropped it. Shown to the signed-in partner only.
+ */
+export async function diagnoseStays(scope: Scope, guestHint = "", now: Date = new Date()): Promise<StayProbe> {
+  const notes: string[] = [];
+  const pm = await listPmProperties().catch(() => []);
+  const pmProperties = pm.map((row) => ({ name: row.name, address: row.address, hospitableId: row.hospitable_property_id ?? "", matchesUnit: scope.match.test(`${row.name} ${row.address}`) })).filter((row) => row.matchesUnit);
+  if (!pmProperties.length) notes.push(`No OPS property matches ${scope.label}.`);
+  const chosen: StayProbe["chosen"] = [];
+  const hospitableRows = await hospitableRead("get-properties", {}).then((raw) => ((raw as { data?: Record<string, unknown>[] })?.data ?? [])).catch(() => [] as Record<string, unknown>[]);
+  for (const row of pmProperties) {
+    const hospitable = hospitableRows.find((item) => String(item.id ?? "") === row.hospitableId);
+    chosen.push({
+      name: row.name,
+      hospitableId: row.hospitableId,
+      inSavedSelection: row.hospitableId ? await copilotKeepsProperty({ id: row.hospitableId, name: row.name, address: row.address }) : false,
+      existsInHospitable: Boolean(hospitable),
+      hospitableName: String(hospitable?.name ?? hospitable?.public_name ?? ""),
+    });
+    if (!row.hospitableId) notes.push(`${row.name} has no Hospitable id in OPS.`);
+    else if (!hospitable) notes.push(`${row.name}'s Hospitable id ${row.hospitableId} is not among the properties Hospitable lists for this token.`);
+  }
+  const today = torontoToday(now);
+  const from = addDays(today, -30);
+  const to = addDays(today, 400);
+  const ids = chosen.filter((row) => row.hospitableId).map((row) => row.hospitableId);
+  const pat = await copilotHospitableToken();
+  const shown = new Set((await listStays(14, now).catch(() => [])).map((row) => row.reservationId));
+  const reservations: StayProbe["reservations"] = [];
+  if (pat && ids.length) {
+    const lists = await Promise.all((["checkin", "checkout"] as const).map((dateQuery) => listHospitableReservations({ pat, propertyIds: ids, startDate: from, endDate: to, include: ["guest"], dateQuery })));
+    const seen = new Set<string>();
+    for (const row of lists.flat()) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      const dead = DEAD.test(row.status);
+      const horizon = addDays(today, 14);
+      const dropped = shown.has(row.id) ? "" : dead ? `status "${row.status}" is filtered out` : (row.check_in ?? "") > horizon ? "checks in after the 14-day look" : row.check_out && row.check_out < today ? "already checked out" : "not in the 14-day look";
+      reservations.push({ id: row.id, guest: guestName(row.raw), checkIn: row.check_in ?? "", checkOut: row.check_out ?? "", status: row.status, platform: row.platform, inListStays: shown.has(row.id), dropped });
+    }
+    reservations.sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+  } else notes.push(!pat ? "Hospitable is not connected." : "No Hospitable property id to ask about.");
+  const hint = guestHint.trim().toLowerCase();
+  const highlighted = hint ? reservations.filter((row) => row.guest.toLowerCase().includes(hint)).map((row) => `${row.guest} ${row.checkIn} to ${row.checkOut} (${row.status})${row.dropped ? `: ${row.dropped}` : ""}`) : [];
+  if (hint && !highlighted.length) notes.push(`Hospitable's API returned no reservation for a guest named "${guestHint}" at these property ids between ${from} and ${to}.`);
+  return { scope: { label: scope.label, client: scope.client?.full ?? "" }, pmProperties, chosen, asked: { from, to, propertyIds: ids, filters: ["checkin", "checkout"] }, reservations, highlighted, notes };
+}

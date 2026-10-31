@@ -56,7 +56,7 @@ export function handlingOf(skill: { drafts: string }): Handling | "" {
 type Group = "guests" | "mail" | "web" | "business";
 
 const GROUP_TOOLS: Record<Group, string[]> = {
-  guests: ["guest_inbox", "list_stays", "read_guest_messages", "guest_contacts", "read_knowledge_hub", "hospitable_read", "read_memory"],
+  guests: ["guest_inbox", "list_stays", "next_stays", "read_guest_messages", "guest_contacts", "read_knowledge_hub", "hospitable_read", "read_memory"],
   mail: ["search_mail", "read_mail", "last_sent_email"],
   web: ["research_web"],
   business: ["ops_clients", "ops_revenue", "cleaner_read", "market_comps", "resolve_client", "sheet_read"],

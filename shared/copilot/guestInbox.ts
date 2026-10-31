@@ -17,7 +17,7 @@ const LOOKAHEAD_DAYS = 14;
 const TIME_BUDGET_MS = 40_000;
 const PARALLEL = 4;
 
-const DEAD = /cancel|declin|denied|expired|not_possible|withdrawn|inquiry/i;
+export const DEAD = /cancel|declin|denied|expired|not_possible|withdrawn|inquiry/i;
 
 const NUM = "(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)";
 
@@ -64,7 +64,7 @@ function checkFor(item: string): ((text: string) => string | null) | null {
   return null;
 }
 
-function guestName(raw: Record<string, unknown>): string {
+export function guestName(raw: Record<string, unknown>): string {
   const guest = (raw.guest && typeof raw.guest === "object" ? raw.guest : {}) as Record<string, unknown>;
   const first = String(guest.first_name ?? guest.firstName ?? "").trim();
   if (first) return first;
@@ -88,6 +88,7 @@ async function inParallel<T>(items: T[], deadline: number, work: (item: T) => Pr
 
 export type UpcomingStay = {
   reservationId: string;
+  propertyId: string;
   guest: string;
   unit: string;
   platform: string;
@@ -130,6 +131,7 @@ export async function listStays(daysAhead = LOOKAHEAD_DAYS, now = new Date()): P
   return stays
     .map((stay) => ({
       reservationId: stay.id,
+      propertyId: stay.property_id,
       guest: guestName(stay.raw),
       unit: unitFor.get(stay.property_id) || "a unit",
       platform: stay.platform,

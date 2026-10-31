@@ -74,6 +74,9 @@ import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePag
 import { adjustDraft, ADJUST_KINDS, type AdjustKind } from "../copilot/reviewAdjust.js";
 import { answerInChat, type AgentEvent } from "../copilot/agentChat.js";
 import { diagnoseBrain } from "../copilot/brain.js";
+import { actOnWatchItem, watchDecisions } from "../copilot/watch.js";
+import { resolveScope } from "../copilot/clientProperty.js";
+import { diagnoseStays } from "../copilot/stayLookup.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
 import { cachedThreadsForSampling } from "../copilot/stayCheck.js";
@@ -810,6 +813,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const thread = await listMessages(chatId);
       if (thread[thread.length - 1]?.role === "user") await addMessage({ chatId, role: "assistant", body: "Stopped. Nothing was sent." });
       return res.status(200).json({ chatId, messages: await listMessages(chatId), pending: false });
+    }
+
+    // What the watch loop put in Decisions, and what a partner does with it. Items are never chats; snooze keeps one away until tomorrow.
+    if (op === "watch-items") return res.status(200).json({ items: await watchDecisions() });
+    if (op === "watch-act") {
+      const action = body.action === "send" || body.action === "done" ? body.action : "snooze";
+      return res.status(200).json(await actOnWatchItem({ key: String(body.key ?? ""), action, ...(typeof body.text === "string" ? { text: body.text } : {}) }));
+    }
+
+    // Temporary: one unit's reservations from Hospitable across a wide window, beside what the short look shows.
+    if (op === "reservations-diagnose") {
+      const scope = resolveScope(String(body.for ?? ""));
+      if (!scope) return res.status(400).json({ error: "Say a client or unit, such as Raj." });
+      return res.status(200).json(await diagnoseStays(scope, String(body.guest ?? "")));
     }
 
     // Temporary: the Sent folder read four ways, to see which request loses the newest message. Shown to the partner only.

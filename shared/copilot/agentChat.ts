@@ -9,6 +9,8 @@ import { clientMapFacts, resolveScope, type Scope } from "./clientProperty.js";
 import { answerOps } from "./ops.js";
 import { compLines, compSet, sizeOf } from "./compsAnswer.js";
 import { connectorRows } from "./connectorStatus.js";
+import { nextStays, readableUnit } from "./stayLookup.js";
+import type { UpcomingStay } from "./guestInbox.js";
 import { scopedStayProperties } from "./dayBoard.js";
 import { brainAvailable, type BrainMessage, type BrainTool } from "./brain.js";
 import { runLoop, type AgentTool } from "./agentLoop.js";
@@ -53,13 +55,14 @@ export const STEP_LABELS: Record<string, string> = {
   recall_facts: "Checked what I know about this",
   connector_status: "Checked what is connected",
   market_comps: "Pulled comparable listings from AirROI",
+  next_stays: "Looked up the next reservations",
 };
 
 /** Which of the agent's tools use each connector, so "is it connected" and "can you use it" never disagree. */
 const CONNECTOR_TOOLS: Record<string, string[]> = {
   gmail: ["search_mail", "read_mail"],
   outlook: ["search_mail", "read_mail"],
-  hospitable: ["guest_inbox", "list_stays", "read_guest_messages", "hospitable_read", "read_knowledge_hub", "guest_contacts"],
+  hospitable: ["guest_inbox", "list_stays", "next_stays", "read_guest_messages", "hospitable_read", "read_knowledge_hub", "guest_contacts"],
   airroi: ["market_comps"],
   cleaner: ["cleaner_read"],
   browser: ["research_web", "web_lookup"],
@@ -116,6 +119,16 @@ function ownTools(): AgentTool[] {
         const set = await compSet(property.address || property.name, size);
         if (!set) return { property: scope.label, comps: null, note: "AirROI didn't return enough comparable listings. Nothing was guessed." };
         return { property: scope.label, specs: set.specs, currency: set.currency, comparableListings: set.count, median12Month: set.median, middleRange: [set.low, set.high], median90Day: set.recent, topEarners: [set.topLow, set.topHigh], lines: compLines(set) };
+      },
+    },
+    {
+      name: "next_stays",
+      description: "The guest in the house now and the next reservations for one unit, looking a year ahead, straight from Hospitable. Use it for 'what is the next reservation', 'when is it booked next' or 'is it free'. Pass for (the client, the unit or an alias such as Raj or Charlotte). It says which property it asked about. If the unit can't be read from Hospitable it says why. Read only.",
+      input_schema: { type: "object", properties: { for: { type: "string", description: "The client, the unit, or an alias." }, count: { type: "number", description: "How many upcoming stays, default 3." } }, required: ["for"] },
+      run: async (input) => {
+        const scope = resolveScope(String(input.for ?? ""));
+        if (!scope) throw new Error("That isn't a client or unit in the records. Say which of Raj, Nance, Roya or Precilla, or which unit.");
+        return nextStays(scope, typeof input.count === "number" ? input.count : 3);
       },
     },
     {
@@ -267,13 +280,39 @@ export type ToolContext = {
  * The agent's tools. Chat and skills get the same ones: the same reads, the same web lookup, the same approvals, so a
  * partner's ask and a saved skill are equally smart. A skill run just adds its report and delivery tools.
  */
+/**
+ * list_stays for one unit is matched by its Hospitable property id, not by a name, and says plainly when the unit can't be
+ * read. A short window with nothing in it says so and points to next_stays; it never reads as "no reservations".
+ */
+function listStaysTool(def: BrainTool, run: AgentTool["run"]): AgentTool {
+  const properties = { ...((def.input_schema.properties as Record<string, unknown> | undefined) ?? {}), for: FOR_PROP };
+  return {
+    ...def,
+    description: `${def.description} Only looks as far as days_ahead (14 by default, 60 at most): for a unit's next reservation use next_stays.`,
+    input_schema: { ...def.input_schema, properties },
+    run: async (input, chatId) => {
+      const asked = String(input.for ?? "").trim();
+      const out = (await run(input, chatId)) as UpcomingStay[];
+      if (!asked) return out;
+      const scope = resolveScope(asked);
+      if (!scope) throw new Error(`"${asked}" isn't a client or unit in the records. Say which of Raj, Nance, Roya or Precilla, or which unit.`);
+      const found = await readableUnit(scope);
+      if (!found.properties.length) throw new Error(found.why);
+      const ids = new Set(found.properties.map((row) => row.id));
+      const stays = Array.isArray(out) ? out.filter((row) => ids.has(row.propertyId)) : [];
+      const days = typeof input.days_ahead === "number" ? input.days_ahead : 14;
+      return { property: scope.label, propertyIds: [...ids], windowDays: days, stays, note: stays.length ? "" : `No stays at ${scope.label} in the next ${days} days. That is only this window. Call next_stays to see further ahead.` };
+    },
+  };
+}
+
 export function agentTools(ctx: ToolContext = {}): AgentTool[] {
   const named = toolDefinitions(ctx.names ?? [...AGENT_TOOLS]).map((def): AgentTool => {
     const run: AgentTool["run"] = ctx.run && ctx.skill
       ? (input) => callToolForRun(def.name, input, ctx.run!, ctx.skill!)
       : (input, chatId) => callToolForChat(def.name, input, chatId);
     if (def.name === "ops_revenue") return revenueTool(def);
-    if (def.name === "list_stays") return scoped(def, run, (out, scope) => ({ stays: inScope(out, scope) }));
+    if (def.name === "list_stays") return listStaysTool(def, run);
     if (def.name === "guest_inbox") {
       return scoped(def, run, (out, scope) => {
         const box = out as Record<string, unknown>;
@@ -294,6 +333,7 @@ export function agentSystem(facts: string, today: string): string {
     "WHAT IS CONNECTED: for any question about whether a connector is connected, or when it was last checked, call connector_status and answer from it. Never answer from memory or business records, and never say a connector is connected without it. A connector that needs re-authorization is not connected. If a connector says none of your tools use it, say so plainly.",
     "EMAIL: every answer about an email names the mailbox it came from, in words (Gmail or Outlook). For the last email the partner sent, call last_sent_email: it reads Gmail Sent newest first. If its note says Gmail couldn't be read, say that plainly and say the answer is from Outlook. Never present one mailbox's mail as the other's, and never answer from memory.",
     "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",
+    "RESERVATIONS: for a unit's next reservation, who is in the house, or whether a date is free, call next_stays (it looks a year ahead). list_stays only looks 14 days. Never say a unit has no reservations from a short look: say what window you checked, or use next_stays.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
     "NOTHING SENDS WITHOUT A PARTNER. You cannot send a message, email, post or purchase. To prepare one, call propose_draft: it leaves a draft in the chat waiting for the partner to approve. Then say the draft is waiting for approval. Messages to guests go out as Shane. Never write an em dash in anything a guest will read.",
     "Never repeat access codes, door codes or passwords, even if a tool returned them.",

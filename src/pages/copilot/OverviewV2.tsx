@@ -7,6 +7,7 @@ import type { ReviewQueuePayload, ReviewQueueRow } from "../../../shared/copilot
 import type { BoardPayload } from "../tasks/TasksBoard";
 import { dueOffset, isOpen, type Task } from "../../../shared/copilot/taskTypes";
 import { assembleDecisions, type DecisionItem } from "../../../shared/copilot/overviewRank";
+import type { DecisionRow } from "../../../shared/copilot/watch";
 import { withoutEmDashes } from "../../../shared/copilot/guestTranslate";
 import { runWhen, whenLabel } from "./skillsTime";
 
@@ -39,6 +40,7 @@ type Preview = {
   guest?: GuestRow;
   language?: string;
   review?: ReviewQueueRow;
+  watch?: { key: string; guest: string; property: string };
 };
 
 const TZ = "America/Toronto";
@@ -131,6 +133,7 @@ export function OverviewV2({
   const [day, setDay] = useState<DayBoard | null>(null);
   const [dayError, setDayError] = useState("");
   const [reviews, setReviews] = useState<ReviewQueuePayload | null>(null);
+  const [watchRows, setWatchRows] = useState<DecisionRow[]>([]);
   const [tasks, setTasks] = useState<BoardPayload | null>(null);
   const [drawer, setDrawer] = useState<DrawerKey | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -163,6 +166,7 @@ export function OverviewV2({
       if ("board" in data && data.board) setDay((data as { board: DayBoard }).board);
       else if ("ok" in data && data.ok === false) setDayError(data.error || "Turnovers could not be read.");
     }).catch((err) => { if (!stop) setDayError(err instanceof Error ? err.message : "Turnovers could not be read."); });
+    void api<{ items: DecisionRow[] }>("watch-items", {}).then((data) => { if (!stop) setWatchRows(data.items ?? []); }).catch(() => undefined);
     void api<ReviewQueuePayload>("reviews-queue", {}).then((data) => { if (!stop) setReviews(data); }).catch((err) => {
       if (!stop) setReviews({ connected: false, line: err instanceof Error ? err.message : "Hospitable is not connected.", reviews: [], postedToday: [] });
     });
@@ -221,15 +225,18 @@ export function OverviewV2({
         assigned: row.assigned,
       })),
       reminders: [],
-      drafts: chats.filter((chat) => listedChat(chat) && chat.needs_you_at).map((chat) => ({
-        id: `chat:${chat.id}`,
-        title: chat.title,
-        detail: "Waiting in chat",
-        at: chat.needs_you_at || chat.updated_at,
-        sendable: false,
-      })),
+      drafts: [
+        ...watchRows.map((row) => ({ id: `watch:${row.key}`, title: row.title, detail: row.reason, at: row.at, sendable: row.hasDraft })),
+        ...chats.filter((chat) => listedChat(chat) && chat.needs_you_at).map((chat) => ({
+          id: `chat:${chat.id}`,
+          title: chat.title,
+          detail: "Waiting in chat",
+          at: chat.needs_you_at || chat.updated_at,
+          sendable: false,
+        })),
+      ],
     });
-  }, [guestQueue, reviews, day, chats]);
+  }, [guestQueue, reviews, day, chats, watchRows]);
 
   const openDecisions = decisions.filter((row) => !resolved[row.id] && !hidden.includes(row.id));
   const shown = phone ? openDecisions : openDecisions.slice(0, VISIBLE);
@@ -350,6 +357,14 @@ export function OverviewV2({
         }
         remember(preview.id, `Reply sent to ${preview.guest.first || preview.guest.guest}, ${clock(at)}`);
         void reloadGuests().catch(() => undefined);
+      } else if (preview.watch) {
+        const result = await api<{ ok: boolean; note: string }>("watch-act", { key: preview.watch.key, action: "send", text: preview.text });
+        if (!result.ok) {
+          setLocalError(result.note || "Nothing was sent.");
+          return;
+        }
+        remember(preview.id, `Sent, ${clock(at)}`);
+        void reloadWatch();
       } else if (preview.review) {
         await api("reviews-submit", {
           id: preview.review.id,
@@ -378,6 +393,9 @@ export function OverviewV2({
       if (preview.guest) {
         const result = await api<{ draft: string }>("guests-improve", { text: preview.text, guest: preview.guest.guest, property: preview.guest.property });
         if (result.draft) setPreview({ ...preview, text: result.draft });
+      } else if (preview.watch) {
+        const result = await api<{ draft: string }>("guests-improve", { text: preview.text, guest: preview.watch.guest, property: preview.watch.property });
+        if (result.draft) setPreview({ ...preview, text: result.draft });
       } else if (preview.review) {
         const result = await api<{ dispute?: string; unchanged?: boolean; sourceLine?: string }>("reviews-regenerate", {
           id: preview.review.id,
@@ -400,7 +418,30 @@ export function OverviewV2({
     }
   }
 
+  async function reloadWatch() {
+    const data = await api<{ items: DecisionRow[] }>("watch-items", {}).catch(() => null);
+    if (data) setWatchRows(data.items ?? []);
+  }
+
+  function openWatchPreview(row: DecisionRow) {
+    setPreview({
+      id: `watch:${row.key}`,
+      back: "queue",
+      title: "Review before it goes out",
+      sub: clean(`To ${row.draftTo || "the guest"}${row.property ? `, ${row.property}` : ""}`),
+      incoming: row.reason,
+      source: "Prepared by Copilot's watch. Nothing is sent until you press the button.",
+      translation: "",
+      sendLabel: `Send to ${(row.draftTo || "the guest").split(/\s+/)[0]}`,
+      text: row.draftBody,
+      watch: { key: row.key, guest: row.draftTo, property: row.property },
+    });
+    setDrawer("queue");
+  }
+
   function later(item: DecisionItem) {
+    // Not now is a snooze until tomorrow, kept on the server so no later check brings it back today.
+    if (item.id.startsWith("watch:")) void api("watch-act", { key: item.id.slice(6), action: "snooze" }).catch(() => undefined);
     setHidden((ids) => (ids.includes(item.id) ? ids : [...ids, item.id]));
     remember(item.id, "Moved to later", () => {
       setHidden((ids) => ids.filter((id) => id !== item.id));
@@ -416,6 +457,22 @@ export function OverviewV2({
     trigger.current = from ?? (document.activeElement as HTMLElement | null);
     if (item.id.startsWith("chat:")) {
       onOpenChat(item.id.slice(5));
+      return;
+    }
+    if (item.id.startsWith("watch:")) {
+      const key = item.id.slice(6);
+      const row = watchRows.find((entry) => entry.key === key);
+      if (row?.hasDraft) {
+        openWatchPreview(row);
+        return;
+      }
+      if (row?.kind === "task") {
+        openDrawer("tasks", from);
+        return;
+      }
+      const guest = findGuest(key.slice(key.indexOf(":") + 1));
+      if (guest) void openGuestPreview(guest, "queue");
+      else openDrawer("guests", from);
       return;
     }
     if (item.kind === "turnover") {

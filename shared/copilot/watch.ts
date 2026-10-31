@@ -1,10 +1,11 @@
 /**
  * The watch loop: every 15 minutes the agent looks over the business and surfaces what needs a partner, most urgent first,
- * exactly when it should and no more. It only proposes. A surfaced item lands in the Overview's Decisions queue as a chat
- * waiting on a partner (one row per item) with the exact draft or action ready; nothing is sent, booked or charged.
+ * exactly when it should and no more. It only proposes. A surfaced item lives in the Overview's Decisions queue and nowhere
+ * else (never a chat in the sidebar), with the exact draft or action ready; nothing is sent, booked or charged.
  *
- * Quiet rules: an item is surfaced once, ever. A dismissed item never returns. Between 10 PM and 8 AM Toronto time only a
- * guest who is actively waiting on a reply is surfaced. When unsure, stay quiet.
+ * Quiet rules: an item is surfaced once while it is open. Dismissing it snoozes it until tomorrow: it stays away for the rest
+ * of that day however many cycles run, and may come back the next day if the issue is still open. Between 10 PM and 8 AM
+ * Toronto time only a guest who is actively waiting on a reply is surfaced. When unsure, stay quiet.
  */
 
 import { getSupabaseAdmin } from "../supabase.js";
@@ -15,7 +16,9 @@ import { dueQuestion } from "./dueFollowUps.js";
 import { loadGuestQueue } from "./guestMessaging.js";
 import { parityNow } from "./parity/clock.js";
 import { loadReviewQueue } from "./reviewsQueue.js";
-import { addMessage, chatExists, createChat, flagChatNeedsYou, listMessages } from "./store.js";
+import { closeFollowUpEverywhere } from "./dueFollowUps.js";
+import { sendReservationMessage } from "./hospitableAgent.js";
+import { deleteChat, listMessages } from "./store.js";
 import { boardPayload } from "./taskBoardApi.js";
 import { daysOutstanding, isOpen } from "./taskTypes.js";
 import { torontoToday } from "./time.js";
@@ -38,7 +41,21 @@ export type Candidate = {
 };
 
 export type WatchStatus = "surfaced" | "native" | "dismissed" | "handled";
-type LedgerRow = { key: string; kind: WatchKind; title: string; property: string; chatId: string; status: WatchStatus; surfacedAt: string; resolvedAt: string };
+type Payload = { reason: string; urgency: number; draft?: CopilotDraft | null };
+export type LedgerRow = {
+  key: string;
+  kind: WatchKind;
+  title: string;
+  property: string;
+  /** Only set on rows made before items stopped being chats. Cleaned up once. */
+  chatId: string;
+  status: WatchStatus;
+  /** The Toronto day it was dismissed (snoozed), "" otherwise. */
+  dismissedOn: string;
+  surfacedAt: string;
+  resolvedAt: string;
+  payload: Payload | null;
+};
 
 // ---------- The ledger: what was surfaced and how it ended ----------
 
@@ -48,8 +65,23 @@ export function resetWatch(): void {
 }
 
 const TABLE = "copilot_watch_items";
-type Row = { key: string; kind: string; title: string; property: string; chat_id: string; status: string; surfaced_at: string; resolved_at: string | null };
-const fromRow = (row: Row): LedgerRow => ({ key: row.key, kind: row.kind as WatchKind, title: row.title, property: row.property, chatId: row.chat_id, status: row.status as WatchStatus, surfacedAt: row.surfaced_at, resolvedAt: row.resolved_at ?? "" });
+type Row = { key: string; kind: string; title: string; property: string; chat_id: string; status: string; surfaced_at: string; resolved_at: string | null; payload?: string | null };
+
+/** The day a dismissal belongs to is written into the status ("dismissed:2026-10-31"), so no new column is needed for it. */
+function statusOf(row: Pick<LedgerRow, "status" | "dismissedOn">): string {
+  return row.status === "dismissed" && row.dismissedOn ? `dismissed:${row.dismissedOn}` : row.status;
+}
+
+function fromRow(row: Row): LedgerRow {
+  const [status, day] = row.status.split(":");
+  let payload: Payload | null = null;
+  try {
+    payload = row.payload ? (JSON.parse(row.payload) as Payload) : null;
+  } catch {
+    payload = null;
+  }
+  return { key: row.key, kind: row.kind as WatchKind, title: row.title, property: row.property, chatId: row.chat_id, status: status as WatchStatus, dismissedOn: day ?? "", surfacedAt: row.surfaced_at, resolvedAt: row.resolved_at ?? "", payload };
+}
 
 async function ledger(): Promise<LedgerRow[]> {
   const client = getSupabaseAdmin();
@@ -59,13 +91,17 @@ async function ledger(): Promise<LedgerRow[]> {
   return ((data ?? []) as Row[]).map(fromRow);
 }
 
-async function record(row: LedgerRow): Promise<void> {
+/** Writes one ledger row. Also how the harness plants a row from before items stopped being chats. */
+export async function record(row: LedgerRow): Promise<void> {
   const client = getSupabaseAdmin();
   if (!client) {
     volatile.set(row.key, row);
     return;
   }
-  await client.from(TABLE).upsert({ key: row.key, kind: row.kind, title: row.title, property: row.property, chat_id: row.chatId, status: row.status, surfaced_at: row.surfacedAt, resolved_at: row.resolvedAt || null });
+  const base = { key: row.key, kind: row.kind, title: row.title, property: row.property, chat_id: row.chatId, status: statusOf(row), surfaced_at: row.surfacedAt, resolved_at: row.resolvedAt || null };
+  const saved = await client.from(TABLE).upsert({ ...base, payload: row.payload ? JSON.stringify(row.payload) : "" });
+  // Without supabase/watch_v2.sql the payload column isn't there: keep the row, and the item is rebuilt from live state when opened.
+  if (saved.error) await client.from(TABLE).upsert(base);
 }
 
 export async function watchLedger(): Promise<LedgerRow[]> {
@@ -278,63 +314,123 @@ export async function judge(candidates: Candidate[], notes: string[], now: Date)
 // ---------- Dismissals teach the judgment ----------
 
 const learnedSubject = (kind: WatchKind, property: string) => `Dismissed ${kind.replace("_", " ")} alerts at ${property.trim() || "any unit"}`;
+const day = (now: Date) => torontoToday(now);
 
-/** Sees which surfaced items the partner dismissed or acted on, and saves what the dismissals say as facts the agent loads. */
-export async function syncWatchLedger(now: Date): Promise<{ dismissed: number; handled: number }> {
-  const rows = await ledger();
-  let dismissed = 0;
-  let handled = 0;
-  for (const row of rows) {
-    if (row.status !== "surfaced" || !row.chatId) continue;
-    let next: WatchStatus | null = null;
-    if (!(await chatExists(row.chatId))) next = "dismissed";
-    else {
-      const draft = [...(await listMessages(row.chatId).catch(() => []))].reverse().find((message) => message.draft)?.draft;
-      if (draft?.status === "held") next = "dismissed";
-      else if (draft?.status === "sent" || draft?.status === "approved_unsent") next = "handled";
-    }
-    if (!next) continue;
-    const updated: LedgerRow = { ...row, status: next, resolvedAt: now.toISOString() };
-    await record(updated);
-    if (next === "handled") {
-      handled += 1;
-      continue;
-    }
-    dismissed += 1;
-    const times = (await ledger()).filter((item) => item.status === "dismissed" && item.kind === row.kind && item.property === row.property).length;
-    await saveFact({
-      subject: learnedSubject(row.kind, row.property),
-      fact: `The partner dismissed ${times} ${row.kind.replace("_", " ")} alert${times === 1 ? "" : "s"} at ${row.property.trim() || "any unit"} (latest: "${row.title.slice(0, 80)}"). Surface similar items only when clearly urgent.`,
-      category: "standing",
-      source: "Watch loop dismissals",
-    });
-  }
-  return { dismissed, handled };
+/** Each dismissal is one more the judgment learns from, saved as a fact the agent loads. */
+async function learnFromDismissal(row: LedgerRow): Promise<void> {
+  const subject = learnedSubject(row.kind, row.property);
+  const existing = (await listFacts()).find((fact) => subjectKey(fact.subject) === subjectKey(subject));
+  const times = (Number(/dismissed (\d+)/i.exec(existing?.fact ?? "")?.[1]) || 0) + 1;
+  await saveFact({
+    subject,
+    fact: `The partner dismissed ${times} ${row.kind.replace("_", " ")} alert${times === 1 ? "" : "s"} at ${row.property.trim() || "any unit"} (latest: "${row.title.slice(0, 80)}"). Surface similar items only when clearly urgent.`,
+    category: "standing",
+    source: "Watch loop dismissals",
+  });
 }
 
 async function learnedNotes(): Promise<string[]> {
   return (await listFacts()).filter((fact) => subjectKey(fact.subject).startsWith("dismissed ")).map((fact) => fact.fact).slice(0, 12);
 }
 
-// ---------- Delivery ----------
+// ---------- Items live in Decisions, never in the chat list ----------
 
-async function deliver(item: Candidate & { why: string }): Promise<string> {
-  const chat = await createChat(item.title);
-  const body = [item.why || item.reason, "", item.draft ? "The draft is ready. Nothing has been sent." : "Nothing has been done yet."].join("\n");
-  await addMessage({ chatId: chat.id, role: "assistant", body, ...(item.draft ? { draft: item.draft } : {}) });
-  await flagChatNeedsYou(chat.id);
-  return chat.id;
+/**
+ * One time: items the loop used to leave as chats become plain items, and those chats are deleted. Only chats named in the
+ * ledger are touched: a chat a partner started is never one of them. A chat whose draft was sent counts as handled, one that
+ * was held or deleted as dismissed today.
+ */
+export async function cleanupWatchChats(now: Date): Promise<number> {
+  let cleaned = 0;
+  for (const row of await ledger()) {
+    if (!row.chatId) continue;
+    const messages = await listMessages(row.chatId).catch(() => []);
+    const draftMessage = [...messages].reverse().find((message) => message.draft);
+    let next: LedgerRow = { ...row, chatId: "" };
+    if (row.status === "surfaced") {
+      const state = draftMessage?.draft?.status;
+      if (!messages.length) next = { ...next, status: "dismissed", dismissedOn: day(now), resolvedAt: now.toISOString() };
+      else if (state === "sent" || state === "approved_unsent") next = { ...next, status: "handled", resolvedAt: now.toISOString() };
+      else if (state === "held") next = { ...next, status: "dismissed", dismissedOn: day(now), resolvedAt: now.toISOString() };
+      else if (!row.payload) next = { ...next, payload: { reason: (messages[0]?.body ?? row.title).split("\n")[0] ?? row.title, urgency: 70, draft: draftMessage?.draft ?? null } };
+    }
+    await deleteChat(row.chatId).catch(() => undefined);
+    await record(next);
+    cleaned += 1;
+  }
+  return cleaned;
 }
 
-export type WatchItem = { key: string; kind: WatchKind; title: string; reason: string; urgency: number; property: string; delivered: boolean; native: boolean; chatId: string };
-export type WatchResult = { at: string; ranked: WatchItem[]; delivered: number; deferred: number; skipped: number; failed: string[]; usedBrain: boolean; learned: { dismissed: number; handled: number } };
+export type DecisionRow = { key: string; kind: WatchKind; title: string; reason: string; property: string; urgency: number; at: string; hasDraft: boolean; draftBody: string; draftTo: string };
 
-/** One pass. Safe to run every 15 minutes: an item already in the ledger is never surfaced again. */
+/** What the Overview shows in Decisions for the watch loop: items surfaced and not dismissed or handled. */
+export async function watchDecisions(): Promise<DecisionRow[]> {
+  return (await ledger())
+    .filter((row) => row.status === "surfaced")
+    .map((row) => ({ key: row.key, kind: row.kind, title: row.title, reason: row.payload?.reason ?? row.title, property: row.property, urgency: row.payload?.urgency ?? 70, at: row.surfacedAt, hasDraft: Boolean(row.payload?.draft?.body), draftBody: row.payload?.draft?.body ?? "", draftTo: row.payload?.draft?.to ?? "" }))
+    .sort((a, b) => b.urgency - a.urgency || a.at.localeCompare(b.at));
+}
+
+const BLANK = /\[[^\]]+\]/;
+
+/**
+ * What a partner does with an item in Decisions. Snooze keeps it away until tomorrow. Send is a partner pressing the button:
+ * only then does a guest message go out, exactly as shown. Done closes it.
+ */
+export async function actOnWatchItem(input: { key: string; action: "snooze" | "send" | "done"; text?: string }, now: Date = parityNow() ?? new Date()): Promise<{ ok: boolean; note: string }> {
+  const row = (await ledger()).find((item) => item.key === input.key && item.status === "surfaced");
+  if (!row) return { ok: false, note: "That item isn't waiting any more." };
+  if (input.action === "snooze") {
+    await record({ ...row, status: "dismissed", dismissedOn: day(now), resolvedAt: now.toISOString() });
+    await learnFromDismissal(row);
+    return { ok: true, note: "Snoozed until tomorrow." };
+  }
+  if (input.action === "done") {
+    await record({ ...row, status: "handled", resolvedAt: now.toISOString() });
+    return { ok: true, note: "Marked done." };
+  }
+  const draft = row.payload?.draft;
+  if (!draft || draft.channel !== "hospitable" || draft.hospitable?.tool !== "send-reservation-message") return { ok: false, note: "This one has no message to send. Nothing was sent." };
+  const body = (input.text?.trim() || draft.body).trim();
+  const blank = BLANK.exec(body);
+  if (blank) return { ok: false, note: `Fill in ${blank[0]} in the draft first. Nothing was sent.` };
+  const args = draft.hospitable.args;
+  const proof = await sendReservationMessage({ reservationId: String(args.uuid ?? args.reservation_id ?? ""), body });
+  if (!proof.sent && !proof.pending) return { ok: false, note: proof.reason };
+  await record({ ...row, status: "handled", resolvedAt: now.toISOString() });
+  if (draft.followUp?.id) await closeFollowUpEverywhere(draft.followUp.id).catch(() => undefined);
+  return { ok: true, note: proof.sent ? proof.note ?? "Sent." : "Accepted. It will show on the thread shortly." };
+}
+
+export type WatchItem = { key: string; kind: WatchKind; title: string; reason: string; urgency: number; property: string; delivered: boolean; native: boolean; resurfaced: boolean };
+export type WatchResult = { at: string; ranked: WatchItem[]; delivered: number; deferred: number; skipped: number; failed: string[]; usedBrain: boolean; cleaned: number; resolved: number };
+
+/**
+ * One pass. Safe to run every 15 minutes. An item already waiting in Decisions isn't surfaced again, one dismissed today stays
+ * away until tomorrow, and one that is no longer an issue leaves the queue on its own.
+ */
 export async function runWatch(now: Date = parityNow() ?? new Date()): Promise<WatchResult> {
-  const learned = await syncWatchLedger(now);
-  const seen = new Set((await ledger()).map((row) => row.key));
+  const cleaned = await cleanupWatchChats(now);
+  const today = day(now);
   const { candidates, failed } = await (source ?? collectCandidates)(now);
-  const fresh = candidates.filter((item) => !seen.has(item.key));
+  const open = new Set(candidates.map((item) => item.key));
+  const rows = new Map((await ledger()).map((row) => [row.key, row]));
+  // An item whose issue has gone (the guest was answered, the task done) leaves Decisions. Only trusted when every read worked.
+  let resolved = 0;
+  if (!failed.length) {
+    for (const row of rows.values()) {
+      if (row.status === "surfaced" && !open.has(row.key)) {
+        await record({ ...row, status: "handled", resolvedAt: now.toISOString() });
+        resolved += 1;
+      }
+    }
+  }
+  // New items, plus ones dismissed on an earlier day whose issue is still open: a new day is a new chance, not nagging.
+  const fresh = candidates.filter((item) => {
+    const row = rows.get(item.key);
+    if (!row) return true;
+    return row.status === "dismissed" && row.dismissedOn < today;
+  });
   const { ordered, usedBrain } = await judge(fresh, await learnedNotes(), now);
   const quiet = quietHours(now);
   const ranked: WatchItem[] = [];
@@ -345,11 +441,10 @@ export async function runWatch(now: Date = parityNow() ?? new Date()): Promise<W
       deferred += 1;
       continue;
     }
-    let chatId = "";
-    if (!item.native) chatId = await deliver(item);
-    await record({ key: item.key, kind: item.kind, title: item.title, property: item.property, chatId, status: item.native ? "native" : "surfaced", surfacedAt: now.toISOString(), resolvedAt: "" });
-    ranked.push({ key: item.key, kind: item.kind, title: item.title, reason: item.why || item.reason, urgency: item.urgency, property: item.property, delivered: !item.native, native: item.native, chatId });
+    const before = rows.get(item.key);
+    const payload: Payload = { reason: item.why || item.reason, urgency: item.urgency, draft: item.draft ?? null };
+    await record({ key: item.key, kind: item.kind, title: item.title, property: item.property, chatId: "", status: item.native ? "native" : "surfaced", dismissedOn: "", surfacedAt: now.toISOString(), resolvedAt: "", payload: item.native ? null : payload });
+    ranked.push({ key: item.key, kind: item.kind, title: item.title, reason: payload.reason, urgency: item.urgency, property: item.property, delivered: !item.native, native: item.native, resurfaced: before?.status === "dismissed" });
   }
-  return { at: now.toISOString(), ranked, delivered: ranked.filter((item) => item.delivered).length, deferred, skipped: candidates.length - fresh.length + (fresh.length - ordered.length), failed, usedBrain, learned };
+  return { at: now.toISOString(), ranked, delivered: ranked.filter((item) => item.delivered).length, deferred, skipped: candidates.length - fresh.length + (fresh.length - ordered.length), failed, usedBrain, cleaned, resolved };
 }
-

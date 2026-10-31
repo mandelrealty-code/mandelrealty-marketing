@@ -73,6 +73,38 @@ function normalizeProperty(raw: unknown): HospitablePropertySummary | null {
 
 type HospitableQuery = Record<string, string | string[] | undefined>;
 
+type HospitableLogLine = Record<string, string | number>;
+let hospitableLogger: ((line: HospitableLogLine) => void) | null = null;
+
+/** Tests read the log. Null restores the server log. */
+export function setHospitableLogger(next: ((line: HospitableLogLine) => void) | null): void {
+  hospitableLogger = next;
+}
+
+function logRead(path: string, query: HospitableQuery, status: number, json: unknown): void {
+  const rows = Array.isArray((json as { data?: unknown } | null)?.data) ? (json as { data: unknown[] }).data.length : 0;
+  hospitableLog({
+    hospitable: "get",
+    path,
+    properties: Array.isArray(query.properties) ? query.properties.join(",") : String(query.properties ?? ""),
+    from: String(query.start_date ?? ""),
+    to: String(query.end_date ?? ""),
+    dateQuery: String(query.date_query ?? ""),
+    page: String(query.page ?? ""),
+    perPage: String(query.per_page ?? ""),
+    status,
+    rows,
+    lastPage: Number((json as { meta?: { last_page?: unknown } } | null)?.meta?.last_page) || 0,
+  });
+}
+
+/** One line per Hospitable list read: which properties, which dates and date filter, which page, what came back. Never the token. */
+function hospitableLog(line: HospitableLogLine): void {
+  if (hospitableLogger) return hospitableLogger(line);
+  if (process.env.COPILOT_PARITY === "1" && !process.env.VERCEL && process.env.NODE_ENV !== "production") return;
+  console.log(`[hospitable] ${JSON.stringify(line)}`);
+}
+
 function hospitableErrorMessage(json: unknown, status: number): string {
   const errBody = asRecord(json);
   const direct =
@@ -107,7 +139,10 @@ export async function hospitableFetch(
   init?: { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown },
 ): Promise<unknown> {
   const parity = parityHttp(init?.method || "GET", path.startsWith("/") ? path : `/${path}`, query as Record<string, unknown>);
-  if (parity.handled) return parity.value;
+  if (parity.handled) {
+    if ((init?.method || "GET") === "GET") logRead(path, query, 200, parity.value);
+    return parity.value;
+  }
   const token = pat.trim();
   if (!token) throw new Error("Hospitable PAT is not configured.");
 
@@ -144,7 +179,7 @@ export async function hospitableFetch(
   } catch {
     json = null;
   }
-
+  if (method === "GET") logRead(path, query, res.status, json);
   if (!res.ok) {
     throw new Error(hospitableErrorMessage(json, res.status));
   }
