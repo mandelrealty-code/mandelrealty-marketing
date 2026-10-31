@@ -835,6 +835,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   const [hospitableBusy, setHospitableBusy] = useState(false);
   const [hospitableError, setHospitableError] = useState("");
   const [connectorId, setConnectorId] = useState("");
+  const [connectorBusy, setConnectorBusy] = useState(false);
+  const [connectorError, setConnectorError] = useState("");
   const [reviewQueue, setReviewQueue] = useState<ReviewQueuePayload | null>(null);
   /** Tasks board kept warm so the tab opens on the last board instead of “Loading tasks.” */
   const [tasksBoard, setTasksBoard] = useState<BoardPayload | null>(null);
@@ -2260,7 +2262,18 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     {screen === "connectors" && connectorId && connectorId !== "hospitable" ? (
                       <ConnectorStatusPage
                         row={(boot?.connectors ?? []).find((row) => row.id === connectorId) ?? { id: connectorId, name: connectorId, detail: "", status: "not_connected", statusLabel: "Not connected" }}
-                        onBack={() => setConnectorId("")}
+                        busy={connectorBusy}
+                        error={connectorError}
+                        onConnect={(url) => { window.location.href = url; }}
+                        onDisconnect={() => {
+                          setConnectorBusy(true);
+                          setConnectorError("");
+                          void api<{ connectors: ConnectorRow[] }>("connector-disconnect", { id: connectorId })
+                            .then((data) => setBoot((prev) => (prev ? { ...prev, connectors: data.connectors } : prev)))
+                            .catch((err) => setConnectorError(err instanceof Error ? err.message : "That didn't disconnect. Try again."))
+                            .finally(() => setConnectorBusy(false));
+                        }}
+                        onBack={() => { setConnectorId(""); setConnectorError(""); }}
                       />
                     ) : null}
                     {screen === "twilio" ? (

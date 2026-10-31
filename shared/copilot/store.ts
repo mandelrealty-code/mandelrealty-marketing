@@ -1182,8 +1182,21 @@ export type StoredBrowser = {
   pagesRead?: number;
 };
 
-export async function readGmailLogin(): Promise<{ refreshToken: string; email: string } | null> {
-  const raw = await readPrefixed("gmail|");
+type MailLogin = { refreshToken: string; email: string };
+/** Parity keeps mail sign-ins in memory. undefined means the fixture default: connected, with nothing stored. */
+const parityLogins: { gmail?: MailLogin | null; outlook?: MailLogin | null } = {};
+
+export function setParityMailLogin(provider: "gmail" | "outlook", login: MailLogin | null | undefined): void {
+  if (login === undefined) delete parityLogins[provider];
+  else parityLogins[provider] = login;
+}
+
+/** In parity: the stored login if a test set one, null if cleared, undefined when the fixture default applies. */
+export function parityMailLogin(provider: "gmail" | "outlook"): MailLogin | null | undefined {
+  return provider in parityLogins ? parityLogins[provider] ?? null : undefined;
+}
+
+function parseLogin(raw: string): MailLogin | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { refreshToken?: string; email?: string };
@@ -1193,27 +1206,63 @@ export async function readGmailLogin(): Promise<{ refreshToken: string; email: s
   } catch {
     return null;
   }
+}
+
+export async function readGmailLogin(): Promise<MailLogin | null> {
+  if (parityEnabled()) return parityMailLogin("gmail") ?? null;
+  return parseLogin(await readPrefixed("gmail|"));
 }
 
 export async function saveGmailLogin(refreshToken: string, email: string): Promise<void> {
+  if (parityEnabled()) {
+    parityLogins.gmail = { refreshToken, email };
+    return;
+  }
   await writePrefixed("gmail|", JSON.stringify({ refreshToken, email }));
 }
 
-export async function readOutlookLogin(): Promise<{ refreshToken: string; email: string } | null> {
-  const raw = await readPrefixed("outlook|");
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as { refreshToken?: string; email?: string };
-    const refreshToken = parsed.refreshToken?.trim() ?? "";
-    if (!refreshToken) return null;
-    return { refreshToken, email: parsed.email?.trim() ?? "" };
-  } catch {
-    return null;
+/** Disconnect: the stored token is deleted, so nothing can use it again. */
+export async function clearGmailLogin(): Promise<void> {
+  if (parityEnabled()) {
+    parityLogins.gmail = null;
+    return;
   }
+  await removePrefixed("gmail|");
+}
+
+export async function readOutlookLogin(): Promise<MailLogin | null> {
+  if (parityEnabled()) return parityMailLogin("outlook") ?? null;
+  return parseLogin(await readPrefixed("outlook|"));
 }
 
 export async function saveOutlookLogin(refreshToken: string, email: string): Promise<void> {
+  if (parityEnabled()) {
+    parityLogins.outlook = { refreshToken, email };
+    return;
+  }
   await writePrefixed("outlook|", JSON.stringify({ refreshToken, email }));
+}
+
+export async function clearOutlookLogin(): Promise<void> {
+  if (parityEnabled()) {
+    parityLogins.outlook = null;
+    return;
+  }
+  await removePrefixed("outlook|");
+}
+
+async function removePrefixed(prefix: string): Promise<void> {
+  const client = sb();
+  if (!useFile && client) {
+    const { error } = await client.from("copilot_memory").delete().like("note", `${prefix}%`);
+    if (error && !useLocalFile(error)) throw new Error(error.message);
+  }
+  const data = readFileStore();
+  const kept = data.memory.filter((row) => !row.note.startsWith(prefix));
+  if (kept.length !== data.memory.length) {
+    data.memory = kept;
+    writeFileStore(data);
+  }
 }
 
 export type GmailOffer = {

@@ -6,8 +6,9 @@ import {
 } from "../adminAuth.js";
 import { passwordMatches } from "../adminAuth.js";
 import { updatePmSettings } from "../pm/clientStore.js";
-import { gmailConnected, gmailKeysReady } from "./gmail.js";
-import { outlookConnected, outlookKeysReady } from "./outlook.js";
+import { disconnectGmail, gmailKeysReady, gmailStatus } from "./gmail.js";
+import { disconnectOutlook, outlookKeysReady, outlookStatus } from "./outlook.js";
+import type { LoginState } from "../copilot/mailLoginStatus.js";
 import { applyOpenItemOnBrief, dismissSavedCard, noteRankPass, quietBrief, readStoredBrief, refreshSavedBrief } from "../copilot/brief.js";
 import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
@@ -208,6 +209,26 @@ async function hospitableMessage(
   return true;
 }
 
+/** A mail connector as the page shows it. A saved token that the provider rejects is "Needs re-authorization", never "Connected". */
+function mailRow(input: { id: string; name: string; detail: string; login: { state: LoginState; email: string }; ready: boolean; connectedNote: string; readyNote: string; missingNote: string; startUrl: string }): ConnectorRow {
+  const { state } = input.login;
+  const label = state === "connected" ? "Connected" : state === "unverified" ? "Connected, couldn't verify just now" : state === "needs_reauth" ? "Needs re-authorization" : "Not connected";
+  const note = state === "connected" ? input.connectedNote
+    : state === "unverified" ? `${input.name} didn't answer the check just now, so the sign-in couldn't be confirmed. ${input.connectedNote}`
+    : state === "needs_reauth" ? `${input.name} rejected the saved sign-in, so Copilot can't read it right now. Click Connect to sign in again, or Disconnect to clear it.`
+    : input.ready ? input.readyNote : input.missingNote;
+  return {
+    id: input.id,
+    name: input.name,
+    detail: input.detail,
+    status: state === "connected" || state === "unverified" ? "connected" : "not_connected",
+    statusLabel: label,
+    note,
+    ...(input.ready ? { connectUrl: input.startUrl } : {}),
+    canDisconnect: state !== "not_connected",
+  };
+}
+
 async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
   const rows = skills ?? (await skillRows().catch(() => []));
   const readsGuests = rows.some(
@@ -219,8 +240,8 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
   );
   const [hospitable, gmail, outlook] = await Promise.all([
     hospitableCard().catch(() => null),
-    gmailConnected().catch(() => false),
-    outlookConnected().catch(() => false),
+    gmailStatus().catch(() => ({ state: "unverified" as LoginState, email: "" })),
+    outlookStatus().catch(() => ({ state: "unverified" as LoginState, email: "" })),
   ]);
   const gmailReady = gmailKeysReady();
   const outlookReady = outlookKeysReady();
@@ -229,30 +250,28 @@ async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
   const cleaner = cleanerWebhookReady();
   const twilio = twilioReady();
   return [
-    {
+    mailRow({
       id: "gmail",
       name: "Gmail",
       detail: "Reads Sent and Primary, and drafts a reply when you ask.",
-      status: gmail ? "connected" : "not_connected",
-      statusLabel: gmail ? "Connected" : "Not connected",
-      note: gmail
-        ? "Searches Sent and Primary. Social and Promotions stay out. A reply sends only after you press Submit."
-        : gmailReady
-          ? "Click Connect and allow reading and sending. A reply still waits for Submit."
-          : "The Gmail sign-in is not on the server yet.",
-    },
-    {
+      login: gmail,
+      ready: gmailReady,
+      connectedNote: "Searches Sent and Primary. Social and Promotions stay out. A reply sends only after you press Submit.",
+      readyNote: "Click Connect and allow reading and sending. A reply still waits for Submit.",
+      missingNote: "The Gmail sign-in is not on the server yet.",
+      startUrl: "/api/admin/gmail/start",
+    }),
+    mailRow({
       id: "outlook",
       name: "Outlook",
       detail: "Reads Sent and Focused, and drafts a reply when you ask.",
-      status: outlook ? "connected" : "not_connected",
-      statusLabel: outlook ? "Connected" : "Not connected",
-      note: outlook
-        ? "Searches Sent and the Focused inbox. Other stays out. A reply sends only after you press Submit."
-        : outlookReady
-          ? "Click Connect and sign in as the company mailbox. A reply still waits for Submit."
-          : "The Outlook sign-in is not on the server yet.",
-    },
+      login: outlook,
+      ready: outlookReady,
+      connectedNote: "Searches Sent and the Focused inbox. Other stays out. A reply sends only after you press Submit.",
+      readyNote: "Click Connect and sign in as the company mailbox. A reply still waits for Submit.",
+      missingNote: "The Outlook sign-in is not on the server yet.",
+      startUrl: "/api/admin/outlook/start",
+    }),
     {
       id: "hospitable",
       name: "Hospitable",
@@ -716,6 +735,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const saved = await saveHospitableToken(String(body.token ?? ""));
       if (saved.error) return res.status(400).json({ error: saved.error, hospitable: saved.card });
       return res.status(200).json({ hospitable: saved.card, connectors: await connectors() });
+    }
+
+    // Disconnect a stored sign-in so a broken connection can always be reset. Nothing in the mailbox changes.
+    if (op === "connector-disconnect") {
+      const id = String(body.id ?? "");
+      if (id === "gmail") await disconnectGmail();
+      else if (id === "outlook") await disconnectOutlook();
+      else return res.status(400).json({ error: "That connection is set on the server, so it can't be disconnected here." });
+      return res.status(200).json({ connectors: await connectors() });
     }
 
     if (op === "hospitable-mcp") {

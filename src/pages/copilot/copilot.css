@@ -6636,7 +6636,8 @@ html.cp-app[data-cp-theme="dark"] #root {
   color: var(--muted);
 }
 
-.cp-cn-row .needs {
+.cp-cn-row .needs,
+.cp-cn-head .needs {
   font-size: 13px;
   font-weight: 600;
   color: var(--needs);

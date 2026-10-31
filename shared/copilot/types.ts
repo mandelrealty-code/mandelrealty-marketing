@@ -247,6 +247,10 @@ export type ConnectorRow = {
   note?: string;
   /** Hospitable: pat is the Copilot connection. none means it is not connected. */
   setup?: "mcp" | "pat" | "none";
+  /** Where the Connect button goes, for a sign-in the partner can redo. */
+  connectUrl?: string;
+  /** A stored sign-in exists, so Disconnect can reset it. */
+  canDisconnect?: boolean;
 };
 
 /** One property the saved token could list. The photo is a URL or empty. */

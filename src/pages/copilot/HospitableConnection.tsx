@@ -49,11 +49,21 @@ export function ConnectorsList({
 
 export function ConnectorStatusPage({
   row,
+  busy = false,
+  error = "",
+  onConnect,
+  onDisconnect,
   onBack,
 }: {
   row: ConnectorRow;
+  busy?: boolean;
+  error?: string;
+  onConnect?: (url: string) => void;
+  onDisconnect?: () => void;
   onBack: () => void;
 }) {
+  const [confirm, setConfirm] = useState(false);
+  const connected = row.status === "connected";
   return (
     <div className="cp-cn">
       <button type="button" className="cp-cn-back" onClick={onBack}>← Connectors</button>
@@ -66,6 +76,23 @@ export function ConnectorStatusPage({
         <span className={tone(row.statusLabel)}>{row.statusLabel}</span>
       </div>
       {row.note ? <p className="cp-cn-note">{row.note}</p> : null}
+      {row.connectUrl || row.canDisconnect ? (
+        confirm ? (
+          <div className="cp-cn-confirm">
+            <p>Disconnect {row.name}? Copilot stops reading it and the saved sign-in is deleted here. Nothing in {row.name} changes. You can connect again any time.</p>
+            <div className="cp-cn-actions">
+              <button type="button" disabled={busy} onClick={() => { setConfirm(false); onDisconnect?.(); }}>Disconnect</button>
+              <button type="button" onClick={() => setConfirm(false)}>Keep connected</button>
+            </div>
+          </div>
+        ) : (
+          <div className="cp-cn-actions">
+            {row.connectUrl ? <button type="button" className={connected ? "" : "on"} disabled={busy} onClick={() => onConnect?.(row.connectUrl ?? "")}>{connected ? "Reconnect" : "Connect"}</button> : null}
+            {row.canDisconnect ? <button type="button" disabled={busy} onClick={() => setConfirm(true)}>Disconnect</button> : null}
+          </div>
+        )
+      ) : null}
+      {error ? <p className="cp-cn-fail">{error}</p> : null}
     </div>
   );
 }
@@ -134,6 +161,12 @@ export function HospitablePage({
             <button type="button" className={ready ? "on" : ""} disabled={!ready || busy} onClick={save}>{busy ? "Checking…" : "Connect"}</button>
             <span>Copilot checks the token and shows what it found</span>
           </div>
+          {card.last4 ? (
+            <div className="cp-cn-actions">
+              <button type="button" disabled={busy} onClick={() => onDisconnect?.()}>Disconnect</button>
+              <span>Deletes the saved token (ends in {card.last4}) so you can start fresh</span>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -240,7 +273,7 @@ function mark(name: string): string {
 }
 
 function tone(label: string): string {
-  if (/needs you/i.test(label)) return "needs";
+  if (/needs|couldn.t verify/i.test(label)) return "needs";
   if (/not connected/i.test(label)) return "off";
   return "on";
 }

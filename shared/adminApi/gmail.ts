@@ -2,7 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
 import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
-import { readGmailLogin, saveGmailLogin } from "../copilot/store.js";
+import { clearGmailLogin, parityMailLogin, readGmailLogin, saveGmailLogin } from "../copilot/store.js";
+import { REAUTH_NOTE, cachedLoginState, forgetLoginState, rememberLoginState, stateOfCheck, type LoginCheck, type LoginState } from "../copilot/mailLoginStatus.js";
 import { captureCommit, captureMailQuery } from "../copilot/parity/capture.js";
 import { parityEnabled } from "../copilot/parity/flag.js";
 import { parityGmailOffer, parityReadMailThread, paritySearchGmail } from "../copilot/parity/world.js";
@@ -26,9 +27,85 @@ export function gmailKeysReady(): boolean {
 }
 
 export async function gmailConnected(): Promise<boolean> {
-  if (parityEnabled()) return true;
+  if (parityEnabled()) {
+    const stored = parityMailLogin("gmail");
+    return stored === undefined ? true : Boolean(stored);
+  }
   return Boolean(await readGmailLogin());
 }
+
+type Validator = (login: { refreshToken: string; email: string }) => Promise<LoginCheck>;
+let validator: Validator | null = null;
+
+/** Tests answer the light check Google would. Null restores the real one. */
+export function setGmailValidator(next: Validator | null): void {
+  validator = next;
+}
+
+/** The refresh grant as Google answers it: a token, a refusal (revoked or expired), or no answer. */
+async function refreshGrant(refreshToken: string): Promise<{ token: string } | { check: "rejected" | "unreachable" }> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let res: Response;
+    try {
+      res = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ client_id: clientId(), client_secret: clientSecret(), refresh_token: refreshToken, grant_type: "refresh_token" }),
+      });
+    } catch {
+      continue;
+    }
+    const data = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string };
+    if (res.ok && data.access_token) return { token: data.access_token };
+    // invalid_grant and 400/401 mean Google refused this sign-in. Retrying can't help.
+    if (res.status === 400 || res.status === 401 || data.error === "invalid_grant") return { check: "rejected" };
+    // 429 and 5xx: a second try, then say it couldn't be reached.
+  }
+  return { check: "unreachable" };
+}
+
+/** A light real call: refresh the token, then ask Gmail for the profile. */
+export async function checkGmailLogin(login: { refreshToken: string; email: string }): Promise<LoginCheck> {
+  if (validator) return validator(login);
+  if (!gmailKeysReady()) return "unreachable";
+  const granted = await refreshGrant(login.refreshToken);
+  if ("check" in granted) return granted.check;
+  try {
+    const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", { headers: { Authorization: `Bearer ${granted.token}` } });
+    if (res.ok) return "ok";
+    if (res.status === 401 || res.status === 403) return "rejected";
+    return "unreachable";
+  } catch {
+    return "unreachable";
+  }
+}
+
+/**
+ * What the connector page shows. A stored token is checked with Gmail itself: rejected means "needs_reauth", never
+ * "connected". A check that could not reach Google says so ("unverified") instead of guessing either way.
+ */
+export async function gmailStatus(): Promise<{ state: LoginState; email: string }> {
+  if (parityEnabled() && !validator) {
+    const stored = parityMailLogin("gmail");
+    return { state: stored === undefined || stored ? "connected" : "not_connected", email: stored?.email ?? "" };
+  }
+  const login = await readGmailLogin();
+  if (!login) return { state: "not_connected", email: "" };
+  const key = login.refreshToken.slice(-12);
+  const cached = cachedLoginState("gmail", key);
+  if (cached) return { state: cached, email: login.email };
+  const state = stateOfCheck(await checkGmailLogin(login));
+  rememberLoginState("gmail", key, state);
+  return { state, email: login.email };
+}
+
+/** Disconnect: delete the stored token and forget what was checked. */
+export async function disconnectGmail(): Promise<void> {
+  await clearGmailLogin();
+  forgetLoginState("gmail");
+}
+
+export const GMAIL_REAUTH = REAUTH_NOTE("Gmail");
 
 function secret(): string {
   return process.env.ADMIN_SESSION_SECRET?.trim() || process.env.ADMIN_PASSWORD?.trim() || "";
@@ -113,6 +190,7 @@ export default async function handleGmail(req: VercelRequest, res: VercelRespons
         if (profile.emailAddress) email = profile.emailAddress;
       }
       await saveGmailLogin(refresh, email);
+      forgetLoginState("gmail");
       // A fresh connect retries the team calendar now; if Google left Calendar out, say exactly that.
       try {
         const { readCalendarState, writeCalendarState } = await import("../copilot/taskCalendar.js");
@@ -150,19 +228,13 @@ export function googleAccessToken(): Promise<string> {
 async function accessToken(): Promise<string> {
   const login = await readGmailLogin();
   if (!login || !gmailKeysReady()) throw new Error("Gmail isn't connected.");
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId(),
-      client_secret: clientSecret(),
-      refresh_token: login.refreshToken,
-      grant_type: "refresh_token",
-    }),
-  });
-  const data = (await res.json().catch(() => ({}))) as { access_token?: string };
-  if (!res.ok || !data.access_token) throw new Error("Gmail didn't accept the sign-in. Click Connect again.");
-  return data.access_token;
+  const granted = await refreshGrant(login.refreshToken);
+  if ("token" in granted) return granted.token;
+  if (granted.check === "rejected") {
+    rememberLoginState("gmail", login.refreshToken.slice(-12), "needs_reauth");
+    throw new Error(REAUTH_NOTE("Gmail"));
+  }
+  throw new Error("Gmail didn't answer just now. Nothing was changed. Try again in a moment.");
 }
 
 function header(headers: { name?: string; value?: string }[] | undefined, name: string): string {
@@ -290,14 +362,22 @@ export async function searchGmail(input: {
   for (const folder of folders) captureMailQuery("gmail", gmailQuery(folder, keywords, input.includeAirbnb, input.after ?? ""));
   const parity = paritySearchGmail({ ...input, keywords });
   if (parity) return parity;
-  const token = await accessToken();
+  let token = await accessToken();
   const hits: GmailHit[] = [];
   for (const folder of folders) {
     const q = gmailQuery(folder, keywords, input.includeAirbnb, input.after ?? "");
-    const listRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${cap}&q=${encodeURIComponent(q)}`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
+    const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${cap}&q=${encodeURIComponent(q)}`;
+    let listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${token}` } });
+    if (listRes.status === 401) {
+      // The access token was refused: refresh once and try again before saying the sign-in is gone.
+      token = await accessToken();
+      listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${token}` } });
+      if (listRes.status === 401) {
+        const login = await readGmailLogin();
+        if (login) rememberLoginState("gmail", login.refreshToken.slice(-12), "needs_reauth");
+        throw new Error(REAUTH_NOTE("Gmail"));
+      }
+    }
     const list = (await listRes.json().catch(() => ({}))) as { messages?: { id: string; threadId?: string }[]; error?: { message?: string } };
     if (!listRes.ok) throw new Error(list.error?.message || "Gmail didn't return that search.");
     for (const item of list.messages ?? []) {

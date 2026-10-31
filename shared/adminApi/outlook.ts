@@ -2,7 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
 import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
-import { readOutlookLogin, saveOutlookLogin } from "../copilot/store.js";
+import { clearOutlookLogin, parityMailLogin, readOutlookLogin, saveOutlookLogin } from "../copilot/store.js";
+import { REAUTH_NOTE, cachedLoginState, forgetLoginState, rememberLoginState, stateOfCheck, type LoginCheck, type LoginState } from "../copilot/mailLoginStatus.js";
 import { captureCommit, captureMailQuery } from "../copilot/parity/capture.js";
 import { parityEnabled } from "../copilot/parity/flag.js";
 import { parityOutlookOffer, parityReadMailThread, paritySearchOutlook } from "../copilot/parity/world.js";
@@ -28,8 +29,74 @@ export function outlookKeysReady(): boolean {
 }
 
 export async function outlookConnected(): Promise<boolean> {
-  if (parityEnabled()) return true;
+  if (parityEnabled()) {
+    const stored = parityMailLogin("outlook");
+    return stored === undefined ? true : Boolean(stored);
+  }
   return Boolean(await readOutlookLogin());
+}
+
+type Validator = (login: { refreshToken: string; email: string }) => Promise<LoginCheck>;
+let validator: Validator | null = null;
+
+/** Tests answer the light check Microsoft would. Null restores the real one. */
+export function setOutlookValidator(next: Validator | null): void {
+  validator = next;
+}
+
+async function refreshGrant(refreshToken: string): Promise<{ token: string } | { check: "rejected" | "unreachable" }> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let res: Response;
+    try {
+      res = await fetch(`https://login.microsoftonline.com/${tenant()}/oauth2/v2.0/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ client_id: clientId(), client_secret: clientSecret(), refresh_token: refreshToken, grant_type: "refresh_token", scope: SCOPE }),
+      });
+    } catch {
+      continue;
+    }
+    const data = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string };
+    if (res.ok && data.access_token) return { token: data.access_token };
+    if (res.status === 400 || res.status === 401 || data.error === "invalid_grant") return { check: "rejected" };
+  }
+  return { check: "unreachable" };
+}
+
+export async function checkOutlookLogin(login: { refreshToken: string; email: string }): Promise<LoginCheck> {
+  if (validator) return validator(login);
+  if (!outlookKeysReady()) return "unreachable";
+  const granted = await refreshGrant(login.refreshToken);
+  if ("check" in granted) return granted.check;
+  try {
+    const res = await fetch("https://graph.microsoft.com/v1.0/me?$select=mail", { headers: { Authorization: `Bearer ${granted.token}` } });
+    if (res.ok) return "ok";
+    if (res.status === 401 || res.status === 403) return "rejected";
+    return "unreachable";
+  } catch {
+    return "unreachable";
+  }
+}
+
+/** A stored token is checked with Microsoft itself: rejected is "needs_reauth", never "connected". */
+export async function outlookStatus(): Promise<{ state: LoginState; email: string }> {
+  if (parityEnabled() && !validator) {
+    const stored = parityMailLogin("outlook");
+    return { state: stored === undefined || stored ? "connected" : "not_connected", email: stored?.email ?? "" };
+  }
+  const login = await readOutlookLogin();
+  if (!login) return { state: "not_connected", email: "" };
+  const key = login.refreshToken.slice(-12);
+  const cached = cachedLoginState("outlook", key);
+  if (cached) return { state: cached, email: login.email };
+  const state = stateOfCheck(await checkOutlookLogin(login));
+  rememberLoginState("outlook", key, state);
+  return { state, email: login.email };
+}
+
+export async function disconnectOutlook(): Promise<void> {
+  await clearOutlookLogin();
+  forgetLoginState("outlook");
 }
 
 function secret(): string {
@@ -123,6 +190,7 @@ export default async function handleOutlook(req: VercelRequest, res: VercelRespo
         email = profile.mail?.trim() || profile.userPrincipalName?.trim() || email;
       }
       await saveOutlookLogin(refresh, email);
+      forgetLoginState("outlook");
       return go(res, `${BACK}?outlook=connected`);
     } catch {
       return go(res, `${BACK}?outlook=failed`);
@@ -147,20 +215,13 @@ export type OutlookOffer = {
 async function accessToken(): Promise<string> {
   const login = await readOutlookLogin();
   if (!login || !outlookKeysReady()) throw new Error("Outlook isn't connected.");
-  const res = await fetch(`https://login.microsoftonline.com/${tenant()}/oauth2/v2.0/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId(),
-      client_secret: clientSecret(),
-      refresh_token: login.refreshToken,
-      grant_type: "refresh_token",
-      scope: SCOPE,
-    }),
-  });
-  const data = (await res.json().catch(() => ({}))) as { access_token?: string };
-  if (!res.ok || !data.access_token) throw new Error("Outlook didn't accept the sign-in. Click Connect again.");
-  return data.access_token;
+  const granted = await refreshGrant(login.refreshToken);
+  if ("token" in granted) return granted.token;
+  if (granted.check === "rejected") {
+    rememberLoginState("outlook", login.refreshToken.slice(-12), "needs_reauth");
+    throw new Error(REAUTH_NOTE("Outlook"));
+  }
+  throw new Error("Outlook didn't answer just now. Nothing was changed. Try again in a moment.");
 }
 
 type OutlookAddress = { emailAddress?: { name?: string; address?: string } };
