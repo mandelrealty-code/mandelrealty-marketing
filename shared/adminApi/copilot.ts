@@ -72,6 +72,7 @@ import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMc
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { adjustDraft, ADJUST_KINDS, type AdjustKind } from "../copilot/reviewAdjust.js";
 import { answerInChat, type AgentEvent } from "../copilot/agentChat.js";
+import { diagnoseBrain } from "../copilot/brain.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
 import { BLANK, closeFollowUpEverywhere } from "../copilot/dueFollowUps.js";
 import { cachedThreadsForSampling } from "../copilot/stayCheck.js";
@@ -945,6 +946,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       if (thread[thread.length - 1]?.role === "user") await addMessage({ chatId, role: "assistant", body: "Stopped. Nothing was sent." });
       return res.status(200).json({ chatId, messages: await listMessages(chatId), pending: false });
     }
+
+    // Temporary: one tiny call per brain provider, status codes only, to find out why one isn't answering.
+    if (op === "brain-diagnose") return res.status(200).json({ probes: await diagnoseBrain() });
 
     // The business agent: the brain reads the connected systems, calls tools mid-turn, and answers. Nothing here sends.
     // stream:true answers as server-sent events (step, text, done); otherwise one JSON reply like "send".

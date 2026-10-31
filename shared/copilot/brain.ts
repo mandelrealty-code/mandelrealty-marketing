@@ -106,7 +106,33 @@ function endpoint(route: Route): { url: string; headers: Record<string, string> 
   return { url: "https://api.anthropic.com/v1/messages", headers: { "x-api-key": keyOf("anthropic"), "anthropic-version": "2023-06-01", "content-type": "application/json" } };
 }
 
-class Retryable extends Error {}
+/** One failed call, as the log reports it: a status code (0 for none) and how it ended. Never a key, never a body. */
+class CallFailed extends Error {
+  retry: boolean;
+  status: number;
+  outcome: "status" | "network" | "timeout" | "empty";
+  constructor(retry: boolean, outcome: CallFailed["outcome"], status = 0) {
+    super(`${outcome} ${status}`);
+    this.retry = retry;
+    this.status = status;
+    this.outcome = outcome;
+  }
+}
+
+type LogLine = Record<string, string | number | boolean | null | string[]>;
+let logger: ((line: LogLine) => void) | null = null;
+
+/** Tests read the log. Null restores the server log. */
+export function setBrainLogger(next: ((line: LogLine) => void) | null): void {
+  logger = next;
+}
+
+/** One line per step of a brain call: which provider was tried, how it ended (status code only), and who answered. */
+function brainLog(line: LogLine): void {
+  if (logger) return logger(line);
+  if (parityEnabled()) return;
+  console.log(`[brain] ${JSON.stringify(line)}`);
+}
 
 function bodyOf(request: BrainRequest, route: Route): string {
   const messages = request.messages?.length ? request.messages : [{ role: "user" as const, content: request.user ?? "" }];
@@ -125,7 +151,7 @@ type StreamBlock = { type: string; text: string; id: string; name: string; json:
 
 async function readStream(res: Response, onText: (piece: string) => void): Promise<{ blocks: BrainBlock[]; stop: string }> {
   const reader = res.body?.getReader();
-  if (!reader) throw new Retryable("no stream");
+  if (!reader) throw new CallFailed(true, "empty");
   const decoder = new TextDecoder();
   const open = new Map<number, StreamBlock>();
   const done: BrainBlock[] = [];
@@ -189,10 +215,10 @@ async function callOnce(request: BrainRequest, route: Route, emitted: { any: boo
     try {
       res = await (fetcher ?? fetch)(url, { method: "POST", headers, body: bodyOf(request, route), signal: ctrl.signal });
     } catch {
-      throw new Retryable("network");
+      throw new CallFailed(true, ctrl.signal.aborted ? "timeout" : "network");
     }
-    if (res.status === 429 || res.status >= 500) throw new Retryable(`status ${res.status}`);
-    if (!res.ok) throw new Error(`status ${res.status}`);
+    if (res.status === 429 || res.status >= 500) throw new CallFailed(true, "status", res.status);
+    if (!res.ok) throw new CallFailed(false, "status", res.status);
     let blocks: BrainBlock[];
     let stop = "end_turn";
     if (request.onText && /event-stream/i.test(res.headers.get("content-type") ?? "")) {
@@ -215,12 +241,11 @@ async function callOnce(request: BrainRequest, route: Route, emitted: { any: boo
     }
     const text = blocks.filter((block): block is Extract<BrainBlock, { type: "text" }> => block.type === "text").map((block) => block.text).join("").trim();
     const toolUses = blocks.filter((block): block is Extract<BrainBlock, { type: "tool_use" }> => block.type === "tool_use").map((block) => ({ id: block.id, name: block.name, input: block.input ?? {} }));
-    if (!text && !toolUses.length) throw new Retryable("empty");
+    if (!text && !toolUses.length) throw new CallFailed(true, "empty", res.status);
     return { text, toolUses, blocks, stop, provider: route.provider, model: route.model };
   } catch (err) {
-    if (err instanceof Retryable) throw err;
-    if (ctrl.signal.aborted) throw new Retryable("timeout");
-    throw err;
+    if (err instanceof CallFailed) throw err;
+    throw new CallFailed(true, ctrl.signal.aborted ? "timeout" : "network");
   } finally {
     clearTimeout(timer);
   }
@@ -238,19 +263,61 @@ export async function complete(request: BrainRequest): Promise<BrainResult | nul
     return out ? { ...out, provider: "seam", model: "seam" } : null;
   }
   if (parityEnabled() && !fetcher) return null;
+  const plan = routePlan(request.task);
+  const skipped = (["meta", "anthropic"] as const).filter((provider) => !keyOf(provider) && (ROUTES[request.task] ?? []).some((route) => route.provider === provider));
+  brainLog({ brain: "start", task: request.task, try: plan.map((route) => `${route.provider}:${route.model}`), noKey: skipped });
   const emitted = { any: false };
-  for (const route of routePlan(request.task)) {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (const route of plan) {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        return await callOnce(request, route, emitted);
+        const result = await callOnce(request, route, emitted);
+        brainLog({ brain: "answered", task: request.task, provider: route.provider, model: route.model, attempt, fellBack: route !== plan[0] });
+        return result;
       } catch (err) {
+        const failed = err instanceof CallFailed ? err : new CallFailed(false, "network");
+        brainLog({ brain: "failed", task: request.task, provider: route.provider, model: route.model, attempt, outcome: failed.outcome, status: failed.status, retrying: failed.retry && attempt === 1 });
         // Once words have reached the person, a second provider would start the answer over.
         if (emitted.any) return null;
-        if (!(err instanceof Retryable)) break;
+        if (!failed.retry) break;
       }
     }
   }
+  brainLog({ brain: "none", task: request.task, tried: plan.map((route) => route.provider) });
   return null;
+}
+
+export type BrainProbe = { provider: "meta" | "anthropic"; model: string; keyPresent: boolean; url: string; outcome: "ok" | "status" | "network" | "timeout" | "empty" | "no key"; status: number };
+
+/**
+ * One tiny live call per provider and model, reported as status codes only. For finding out why a provider isn't answering:
+ * is the key on the server, is the URL right, and does the model name exist. Never returns a key or a response body.
+ * Meta is tried with the model the router uses and with the versioned names in Meta's docs.
+ */
+export async function diagnoseBrain(): Promise<BrainProbe[]> {
+  const tries: Route[] = [
+    { provider: "meta", model: META_MODEL },
+    { provider: "meta", model: "muse-spark-1.3" },
+    { provider: "meta", model: "muse-spark-1.1" },
+    { provider: "anthropic", model: HAIKU },
+  ];
+  const out: BrainProbe[] = [];
+  for (const route of tries) {
+    const url = endpoint(route).url;
+    const keyPresent = Boolean(keyOf(route.provider));
+    if (!keyPresent) {
+      out.push({ provider: route.provider, model: route.model, keyPresent, url, outcome: "no key", status: 0 });
+      continue;
+    }
+    try {
+      await callOnce({ task: "simple", system: "Reply with the single word ok.", user: "ok?", maxTokens: 8 }, route, { any: false });
+      out.push({ provider: route.provider, model: route.model, keyPresent, url, outcome: "ok", status: 200 });
+    } catch (err) {
+      const failed = err instanceof CallFailed ? err : new CallFailed(false, "network");
+      out.push({ provider: route.provider, model: route.model, keyPresent, url, outcome: failed.outcome, status: failed.status });
+    }
+  }
+  brainLog({ brain: "diagnose", results: out.map((row) => `${row.provider}:${row.model}=${row.outcome}${row.status ? ` ${row.status}` : ""}`) });
+  return out;
 }
 
 /** The text of one plain call, for the many places that only need words back. */
