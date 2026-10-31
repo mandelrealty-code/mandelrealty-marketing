@@ -12,7 +12,6 @@ import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { parityClaims, parityMemory, removeParityFile, writeParityClaim, writeParityFile } from "./parity/world.js";
 import { parityEnabled } from "./parity/flag.js";
 import { BLUE_JAYS_PROCESS, isBlueJaysLine } from "./processFacts.js";
-import { reservationTimes } from "./standing.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { addDays, torontoToday } from "./time.js";
 import {
@@ -404,31 +403,6 @@ export async function readMemoryFile(filePath: string): Promise<MemoryFile | nul
   await seedIfEmpty();
   const { files } = await loadAll();
   return files.find((file) => file.path === filePath) ?? null;
-}
-
-/** The memory block chat already puts in its facts. A skill run uses the same lines. */
-export async function skillMemoryText(): Promise<string> {
-  try {
-    const lines = promptLines(await listMemoryFiles());
-    return lines.length ? lines.join("\n") : "No memory files yet.";
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Memory files could not be read.";
-    return `Memory files could not be read: ${message}`;
-  }
-}
-
-export async function readStanding(unitOrPath: string, checkIn?: string, checkOut?: string): Promise<{ path: string; title: string; body: string } | { error: string }> {
-  const asked = unitOrPath.trim();
-  if (!asked) return { error: "Say which unit or file to read." };
-  const files = await listMemoryFiles();
-  const key = asked.toLowerCase();
-  const file = files.find((row) => {
-    if (row.group !== "files" && row.path !== GUIDANCE_PATH) return false;
-    return row.path.toLowerCase() === key || row.title.toLowerCase() === key || row.title.toLowerCase().includes(key);
-  });
-  if (!file) return { error: `No standing file matches ${asked}.` };
-  const cleaned = withoutHubSecrets(file.body).text;
-  return { path: file.path, title: file.title, body: reservationTimes(cleaned, checkIn, checkOut) };
 }
 
 export function promptLines(files: MemoryFileView[]): string[] {

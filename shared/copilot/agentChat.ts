@@ -10,6 +10,7 @@ import { answerOps } from "./ops.js";
 import { compLines, compSet, sizeOf } from "./compsAnswer.js";
 import { connectorRows } from "./connectorStatus.js";
 import { nextStays, readableUnit } from "./stayLookup.js";
+import { unitFacts } from "./unitFacts.js";
 import type { UpcomingStay } from "./guestInbox.js";
 import { scopedStayProperties } from "./dayBoard.js";
 import { brainAvailable, type BrainMessage, type BrainTool } from "./brain.js";
@@ -26,7 +27,7 @@ import { torontoToday } from "./time.js";
 export const AGENT_TOOLS = [
   "guest_inbox", "list_stays", "read_guest_messages", "guest_contacts",
   "search_mail", "read_mail", "last_sent_email",
-  "read_knowledge_hub", "read_memory", "hospitable_read",
+  "hospitable_read",
   "ops_clients", "ops_revenue", "cleaner_read",
   "research_web", "make_pdf", "add_reminder", "propose_draft",
 ] as const;
@@ -39,8 +40,7 @@ export const STEP_LABELS: Record<string, string> = {
   search_mail: "Searched Gmail and Outlook",
   read_mail: "Read an email",
   last_sent_email: "Read the newest sent email",
-  read_knowledge_hub: "Read the Knowledge Hub",
-  read_memory: "Read the unit file",
+  unit_facts: "Read the unit's Knowledge Hub in Hospitable",
   hospitable_read: "Read Hospitable",
   ops_clients: "Read the client list",
   ops_revenue: "Read revenue",
@@ -62,7 +62,7 @@ export const STEP_LABELS: Record<string, string> = {
 const CONNECTOR_TOOLS: Record<string, string[]> = {
   gmail: ["search_mail", "read_mail"],
   outlook: ["search_mail", "read_mail"],
-  hospitable: ["guest_inbox", "list_stays", "next_stays", "read_guest_messages", "hospitable_read", "read_knowledge_hub", "guest_contacts"],
+  hospitable: ["guest_inbox", "list_stays", "next_stays", "read_guest_messages", "hospitable_read", "unit_facts", "guest_contacts"],
   airroi: ["market_comps"],
   cleaner: ["cleaner_read"],
   browser: ["research_web", "web_lookup"],
@@ -119,6 +119,16 @@ function ownTools(): AgentTool[] {
         const set = await compSet(property.address || property.name, size);
         if (!set) return { property: scope.label, comps: null, note: "AirROI didn't return enough comparable listings. Nothing was guessed." };
         return { property: scope.label, specs: set.specs, currency: set.currency, comparableListings: set.count, median12Month: set.median, middleRange: [set.low, set.high], median90Day: set.recent, topEarners: [set.topLow, set.topHigh], lines: compLines(set) };
+      },
+    },
+    {
+      name: "unit_facts",
+      description: "Everything Hospitable's Knowledge Hub says about one unit: check-in and check-out times, parking, house rules, amenities. It is read live through the Hospitable connection. This is the only source for facts about a unit. Pass for (the client, the unit or an alias). The result may also show what saved memory says about the unit and where that disagrees with Hospitable: say the disagreement plainly and go with Hospitable. If the Knowledge Hub can't be read it says so: do not answer from memory or any note instead. Read only.",
+      input_schema: { type: "object", properties: { for: { type: "string", description: "The client, the unit, or an alias." } }, required: ["for"] },
+      run: async (input) => {
+        const scope = resolveScope(String(input.for ?? ""));
+        if (!scope) throw new Error("That isn't a client or unit in the records. Say which of Raj, Nance, Roya or Precilla, or which unit.");
+        return unitFacts(scope);
       },
     },
     {
@@ -339,6 +349,8 @@ export function agentSystem(facts: string, today: string): string {
     "Never repeat access codes, door codes or passwords, even if a tool returned them.",
     "Copilot is deliberately not connected to WhatsApp: its API can't be limited to business conversations. Never offer to read or send WhatsApp.",
     clientMapFacts(),
+    "WHERE FACTS COME FROM, and nowhere else: saved memories (the facts below, and the ones the partner corrects); skills the partner created; Hospitable (the source of truth: for any question about a unit, such as check-in or check-out times, parking, house rules or amenities, call unit_facts, which reads the Knowledge Hub live); the guidebook for guest-facing property info; and the cleaner app for turnovers, checklists and unit condition. You never read local files, notes or drafts as knowledge, and you never search files for facts.",
+    "HOSPITABLE BEATS MEMORY: a saved memory about a unit is only a hint. If it disagrees with Hospitable, say so plainly (what memory says, what Hospitable says) and go with Hospitable. Never pick the memory silently. If Hospitable can't be read, say that rather than answering the unit question from memory.",
     "MEMORY: facts below are what the business already knows. Use them. If the partner corrects one, accept the correction plainly; it is saved over the old fact automatically.",
     facts,
   ].filter(Boolean).join("\n\n");

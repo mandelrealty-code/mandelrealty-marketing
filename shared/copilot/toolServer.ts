@@ -2,10 +2,9 @@ import { hospitableRead } from "./hospitableConnection.js";
 import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { hospitableDraft, isHospitableWrite } from "./hospitableAgent.js";
 import { MAILBOX_LABEL, latestSent, readMailThread, searchMail } from "./mailSearch.js";
-import { readStanding } from "./memoryFiles.js";
 import { DEFAULT_CHECKLIST, listStays, readGuestInbox, readThread } from "./guestInbox.js";
 import { addMessage, addReminder, flagChatNeedsYou, getRun, updateRun } from "./store.js";
-import { cleanerTool, hubTool, readSheetTool, writeSheetTool } from "./skillExecute.js";
+import { cleanerTool, readSheetTool, writeSheetTool } from "./skillExecute.js";
 import { guestCheckins, formatCheckins } from "./skillContacts.js";
 import { answerOps, createOpsSop, prepareCleanerAssignment, prepareContractAmendment } from "./ops.js";
 import { buildProposal, editProposal, prepareProposalSend } from "./proposal.js";
@@ -233,21 +232,6 @@ const TOOLS: Record<string, Tool> = {
       return { ...letter, mailboxLabel: MAILBOX_LABEL[letter.mailbox], thread: letters.map(brief), threadSize: letters.length, newestInThread: brief(newest), thisIsTheNewest: newest.id === letter.id };
     },
   },
-  read_memory: {
-    description:
-      "Reads one standing memory file, the same files chat uses. Pass unit (the spoken name) or path. Pass check_in and check_out from the reservation when you have them. A check-in or check-out time in the file is replaced by the reservation time. Access codes, door codes, and WiFi passwords are not returned.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        unit: { type: "string" },
-        check_in: { type: "string" },
-        check_out: { type: "string" },
-      },
-      required: ["unit"],
-    },
-    readOnly: true,
-    call: async (args) => readStanding(text(args.unit, 120), text(args.check_in, 40), text(args.check_out, 40)),
-  },
   hospitable_read: {
     description:
       "Reads one Hospitable MCP tool. name must start with get-, list-, or search-, for example get-reservations or get-property-calendar. get-reservations always reads from 30 days ago to 365 days ahead unless you pass start_date and end_date, so current and recently checked-out guests are included. Pass that tool's arguments. This cannot send, publish, or change anything.",
@@ -403,12 +387,6 @@ const TOOLS: Record<string, Tool> = {
     },
     readOnly: false,
     call: async (args) => writeSheetTool(text(args.sheet, 200), Array.isArray(args.row) ? args.row.map((cell) => text(cell, 200)) : []),
-  },
-  read_knowledge_hub: {
-    description: "Reads one property's Hospitable Knowledge Hub. Secrets are left out. Read only.",
-    inputSchema: { type: "object", properties: { property_id: { type: "string" } }, required: ["property_id"] },
-    readOnly: true,
-    call: async (args) => hubTool(text(args.property_id, 80)),
   },
   cleaner_read: {
     description: "Reads one unit's turnovers and supply quantities from the cleaner app. Read only. It does not name a cleaner and it does not purchase anything.",

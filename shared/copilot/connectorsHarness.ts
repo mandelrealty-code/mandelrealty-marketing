@@ -12,6 +12,10 @@ import { worldAt, ID } from "./parity/catalog.js";
 import { setHospitableLogger } from "../pm/hospitableClient.js";
 import { resolveScope } from "./clientProperty.js";
 import { diagnoseStays, nextStays, readableUnit } from "./stayLookup.js";
+import { readFileSync } from "node:fs";
+import { SKILL_TOOL_NAMES } from "./agentChat.js";
+import { resetBusinessFacts, saveFact } from "./businessFacts.js";
+import { conflictsWith, timeAfter, unitFacts } from "./unitFacts.js";
 import { latestSent } from "./mailSearch.js";
 import { setBrainModel } from "./brain.js";
 import { checkGmailLogin, diagnoseGmail, gmailStatus, latestSentGmail, readGmailThread, searchGmail, setGmailLogger, setGmailValidator } from "../adminApi/gmail.js";
@@ -464,5 +468,57 @@ const nextAnswer = await runAgentTurn({ chatId: "c", text: "whats the next reser
 if (!/Michelle Sanders, 2026-11-04 to 2026-11-07, then Mark Bixler from 2026-11-22/.test(nextAnswer.body)) fail(`the agent said: ${nextAnswer.body}`);
 setBrainModel(null);
 if (!/call next_stays/.test((await import("./agentChat.js")).agentSystem("", "2026-10-20"))) fail("the agent isn't told to use next_stays");
+
+// ---------- Where the agent's facts come from: Hospitable beats memory, and no file is ever a source ----------
+const SENTINEL = "SENTINEL-FROM-A-LOCAL-NOTE-FILE-4:15 PM";
+const factsWorld = worldAt("2026-10-31T12:00:00-04:00");
+factsWorld.memory = [...factsWorld.memory, { path: "memory/20-blue-jays-way.md", body: `Check-in time: ${SENTINEL}` } as never];
+installWorld(factsWorld);
+resetBusinessFacts();
+await saveFact({ subject: "8 Charlotte 606 check-in", fact: "Check-in at 8 Charlotte 606 is 4:00 PM.", category: "unit", source: "an earlier chat" });
+await saveFact({ subject: "20 Blue Jays Way parking", fact: "Parking at 20 Blue Jays Way is P2, check-in is 4:00 PM.", category: "unit", source: "an earlier chat" });
+// The tool lists: no memory-file reader, no raw Hub reader, the live unit facts instead.
+for (const names of [agentTools().map((tool) => tool.name), agentTools({ names: SKILL_TOOL_NAMES }).map((tool) => tool.name)]) {
+  if (names.includes("read_memory") || names.includes("read_knowledge_hub") || !names.includes("unit_facts")) fail(`knowledge tools: ${names.join()}`);
+}
+if (agentTools({ names: SKILL_TOOL_NAMES }).some((tool) => /memory file|notes? file|local file|\.md\b/i.test(`${tool.name} ${tool.description}`))) fail("a tool still describes reading a file");
+// No agent code reads a file or the memory files.
+for (const source of ["agentChat", "agentLoop", "skillAgent", "skillPolicy", "unitFacts", "stayLookup", "brain", "toolServer"]) {
+  const code = readFileSync(new URL(`./${source}.ts`, import.meta.url), "utf8");
+  if (/node:fs|readFileSync|readdirSync|memoryFiles|skillMemoryText|readStanding|\bglob\b/.test(code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, ""))) fail(`${source}.ts reaches for a file or the memory files`);
+}
+// Hospitable's Knowledge Hub is the source, read live, and memory shows beside it.
+const charlotte = await unitFacts(resolveScope("Charlotte")!);
+if (!/Check-in 3:00 PM/.test(charlotte.text) || !/live/.test(charlotte.source)) fail(`the Hub: ${JSON.stringify(charlotte)}`);
+if (charlotte.memory.length !== 1 || !/4:00 PM/.test(charlotte.memory[0]!.fact)) fail(`memory beside it: ${JSON.stringify(charlotte.memory)}`);
+if (charlotte.conflicts.length !== 1 || charlotte.conflicts[0]!.hospitable !== "3:00 PM" || charlotte.conflicts[0]!.memory !== "4:00 PM" || !/Going with Hospitable/.test(charlotte.conflicts[0]!.saying)) fail(`the conflict: ${JSON.stringify(charlotte.conflicts)}`);
+if (JSON.stringify(charlotte).includes("SENTINEL")) fail("a local note's text reached the agent");
+if (timeAfter("Check-in is at 3 p.m. sharp", "check-?in")?.minutes !== 15 * 60 || conflictsWith("Check-in 4:00 PM", [{ id: "x", subject: "Check-in", fact: "Check-in 4:00 PM", category: "unit", source: "", updatedAt: "" }]).length) fail("time comparison: agreeing times must not conflict");
+// A Hub that doesn't answer is said: memory does not stand in for it.
+let hubError = "";
+installWorld({ ...factsWorld, hub: [...(factsWorld.hub ?? []).filter((row) => row.propertyId !== ID.blue), { propertyId: ID.blue, body: "", unreadable: true }] });
+try {
+  await unitFacts(resolveScope("Raj")!);
+} catch (err) {
+  hubError = err instanceof Error ? err.message : "";
+}
+installWorld(factsWorld);
+if (!/Knowledge Hub didn't return/.test(hubError) || !/Nothing was taken from memory/.test(hubError) || /P2|4:00 PM/.test(hubError)) fail(`a silent Hub fell back to memory: ${hubError}`);
+// Through the agent: the answer goes with Hospitable and says the memory disagreed.
+setBrainModel(async (request) => {
+  if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+  const last = request.messages!.at(-1)!;
+  if (!Array.isArray(last.content)) return { text: "", toolUses: [{ id: "u1", name: "unit_facts", input: { for: "Charlotte" } }], blocks: [{ type: "tool_use", id: "u1", name: "unit_facts", input: { for: "Charlotte" } }], stop: "tool_use" };
+  const raw = last.content.map((block) => (block.type === "tool_result" ? block.content : "")).join("");
+  const result = JSON.parse(raw) as { conflicts: { saying: string; hospitable: string }[] };
+  const text = `Check-in is ${result.conflicts[0]!.hospitable} at Charlotte 606. ${result.conflicts[0]!.saying}`;
+  return { text, toolUses: [], blocks: [{ type: "text", text }], stop: "end_turn" };
+});
+const checkin = await runAgentTurn({ chatId: "c", text: "what time is check-in at Charlotte?" });
+if (!/Check-in is 3:00 PM/.test(checkin.body) || !/says the check-in time is 4:00 PM, but Hospitable says 3:00 PM\. Going with Hospitable\./.test(checkin.body) || /SENTINEL/.test(checkin.body)) fail(`the agent said: ${checkin.body}`);
+setBrainModel(null);
+const rules = (await import("./agentChat.js")).agentSystem("", "2026-10-20");
+if (!/HOSPITABLE BEATS MEMORY/.test(rules) || !/never read local files, notes or drafts as knowledge/.test(rules) || !/call unit_facts/.test(rules) || !/guidebook/.test(rules) || !/cleaner app/.test(rules)) fail("the agent isn't told where facts come from");
+resetBusinessFacts();
 
 console.log("Connectors harness passed.");

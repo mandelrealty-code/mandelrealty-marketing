@@ -189,7 +189,7 @@ const names = agentTools().map((tool) => tool.name);
 for (const banned of ["deliver_to_partners", "send_proposal", "sheet_write", "assign_cleaner", "amend_contract", "build_proposal", "edit_proposal", "create_sop", "post_report"]) {
   if (names.includes(banned)) fail(`the agent can call ${banned}`);
 }
-for (const needed of ["propose_draft", "web_lookup", "recall_facts", "read_guest_messages", "read_knowledge_hub", "search_mail", "hospitable_read"]) {
+for (const needed of ["propose_draft", "web_lookup", "recall_facts", "read_guest_messages", "unit_facts", "search_mail", "hospitable_read"]) {
   if (!names.includes(needed)) fail(`the agent lacks ${needed}`);
 }
 const draft = (await callToolForChat("propose_draft", { channel: "hospitable", body: "Hi Sarah, parking is in P2.", hospitable_tool: "send-message", hospitable_args: { reservation_id: "r1" } }, "c1")) as { waiting_for_approval?: boolean };
@@ -326,7 +326,7 @@ const ran = await startSkillRun(skill.id, "manual");
 if (ran.status !== "ok" || !ran.finished_at) fail(`skill run ended ${ran.status} ${ran.error}`);
 if (capturedReports().length !== 1 || capturedReports()[0]!.headline !== "Nothing waiting") fail("the skill's report was not posted through the tool");
 if (!/Skill: Morning check/.test(seenPrompt) || !/It must not: Send anything/.test(seenPrompt)) fail("the skill's own rules did not reach the brain");
-for (const needed of ["post_report", "propose_draft", "hospitable_read", "search_mail", "read_knowledge_hub"]) if (!seenTools.includes(needed)) fail(`a skill run lacks ${needed}`);
+for (const needed of ["post_report", "propose_draft", "hospitable_read", "search_mail", "unit_facts"]) if (!seenTools.includes(needed)) fail(`a skill run lacks ${needed}`);
 if (capturedCommits().length) fail("a skill run committed something");
 // A brain that doesn't answer fails the run plainly, and leaves a "couldn't finish" note, not a false all-clear.
 setBrainModel(async () => null);

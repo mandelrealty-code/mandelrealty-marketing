@@ -11,7 +11,6 @@
 import { agentSystem, agentTools, SKILL_TOOL_NAMES, STEP_LABELS } from "./agentChat.js";
 import { runLoop, type AgentTool, type LoopOutcome, type ToolCall } from "./agentLoop.js";
 import { factsForPrompt, listFacts, relevantFacts } from "./businessFacts.js";
-import { skillMemoryText } from "./memoryFiles.js";
 import { failure, type Failure } from "./skillFailure.js";
 import { allowedToolNames, handlingOf, HANDLING_LINE } from "./skillPolicy.js";
 import { callToolForRun } from "./toolServer.js";
@@ -67,15 +66,12 @@ async function skillBlock(skill: CopilotSkill, trigger: CopilotRun["trigger"], p
     handling === "autonomous" ? "This skill handles things on its own, but only inside what it may touch and what the tools allow. Outward messages still wait for Submit." : "",
     "Deliver to the partners with deliver_to_partners: in the app, by email, or by text. If a channel is not configured, say so; do not switch to another.",
     "Use web_lookup when you need something from the web. Cite what you found.",
-    "Access codes, door codes, and WiFi passwords are not in memory files. They stay in the Hospitable Knowledge Hub. Do not put them in a draft.",
+    "For anything about a unit (check-in and check-out times, parking, rules, amenities) use unit_facts: the Hospitable Knowledge Hub is the source. Access codes, door codes, and WiFi passwords stay in the Hospitable Knowledge Hub. Do not put them in a draft.",
     "For details found in guest messages, say the guest may have sent it, and quote the line.",
     "If a tool fails, say so in the report. Never report an all-clear after a failed read.",
     "If the skill needs something no tool can do, say plainly what you could not do.",
     "Write the report for two busy partners: short headings, one line per guest or item, no markdown. Pass title, summary and sections to post_report as well as the plain text, so it shows as a tidy card.",
     "Finish by calling post_report exactly once. Set needs_you true when someone is waiting, something changed since the last report, a draft is waiting, or something failed.",
-    "",
-    "Memory files, the same ones chat uses:",
-    await skillMemoryText(),
     "",
     "Last report from this skill, to say what changed:",
     previous || "(none yet)",
@@ -151,7 +147,7 @@ export function stepsAfter(wf: Workflow, id: string): Set<string> {
   return found;
 }
 
-const READ_TOOLS = ["guest_inbox", "list_stays", "read_guest_messages", "guest_contacts", "read_knowledge_hub", "hospitable_read", "read_memory", "search_mail", "read_mail", "last_sent_email", "ops_clients", "ops_revenue", "cleaner_read", "market_comps", "resolve_client", "recall_facts", "connector_status", "web_lookup", "sheet_read"];
+const READ_TOOLS = ["guest_inbox", "list_stays", "read_guest_messages", "guest_contacts", "hospitable_read", "unit_facts", "search_mail", "read_mail", "last_sent_email", "ops_clients", "ops_revenue", "cleaner_read", "market_comps", "resolve_client", "recall_facts", "connector_status", "web_lookup", "sheet_read"];
 const STEP_TOOLS: Record<string, string[]> = {
   Read: READ_TOOLS,
   "Look on the web": ["web_lookup", "research_web", "recall_facts"],

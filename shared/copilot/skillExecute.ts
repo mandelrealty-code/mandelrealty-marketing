@@ -1,5 +1,4 @@
 import { readCleanerUnit } from "./cleanerRead.js";
-import { readPropertyHub } from "./knowledgeHub.js";
 import { guestCheckins, formatCheckins } from "./skillContacts.js";
 import { asksThirdParty, channelsFor, deliverToPartners, waitingDraft } from "./skillDelivery.js";
 import { reportPdf } from "./skillPdf.js";
@@ -150,10 +149,4 @@ export async function writeSheetTool(link: string, row: string[]) {
 
 export async function cleanerTool(propertyId: string, from: string, to: string) {
   return readCleanerUnit({ propertyId, from, to });
-}
-
-export async function hubTool(propertyId: string) {
-  const hub = await readPropertyHub(propertyId);
-  if (!hub.ok) return { error: "The Knowledge Hub didn't return." };
-  return { text: hub.text };
 }
