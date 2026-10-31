@@ -20,7 +20,7 @@ export const REPORT_CLIENTS: ReportClient[] = [
   { full: "Khamraj Shewnarain", short: "Raj", names: /\b(raj|khamraj|shewnarain)(?:'?s)?\b/i, property: "20 Blue Jays Way", match: /blue jays/i },
   { full: "Nance Ta", short: "Nance", names: /\b(nance)(?:'?s)?\b/i, property: "8 Charlotte 606", match: /charlotte/i },
   { full: "Roya Ardakani", short: "Roya", names: /\b(roya|ardakani)(?:'?s)?\b/i, property: "1065 Shaw Street", match: /\bshaw\b/i },
-  { full: "Precilla Daniel", short: "Precilla", names: /\b(precilla|priscilla|daniel)(?:'?s)?\b/i, property: "41 Roseglor Cres", match: /roseglor/i },
+  { full: "Precilla Daniel", short: "Precilla", names: /\b(precilla|priscilla|daniel)(?:'?s)?\b/i, property: "41 Roseglor Cres", match: /roseglor|scarborough|bright and comfortable home/i },
 ];
 
 export function clientNamed(request: string): ReportClient | null {

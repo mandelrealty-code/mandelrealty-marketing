@@ -5,6 +5,9 @@
  */
 
 import { answerWebQuestion } from "./webAnswer.js";
+import { clientMapFacts, resolveScope, type Scope } from "./clientProperty.js";
+import { answerOps } from "./ops.js";
+import { scopedStayProperties } from "./dayBoard.js";
 import { brainAvailable, complete, type BrainBlock, type BrainMessage, type BrainTool } from "./brain.js";
 import { extractAndSaveFacts, factsForPrompt, listFacts, recallFacts, relevantFacts } from "./businessFacts.js";
 import { callToolForChat, toolDefinitions } from "./toolServer.js";
@@ -38,6 +41,7 @@ const STEP: Record<string, string> = {
   make_pdf: "Made a PDF",
   add_reminder: "Saved a reminder",
   propose_draft: "Left a draft for your approval",
+  resolve_client: "Matched the client to their property",
   recall_facts: "Checked what I know about this",
 };
 
@@ -64,9 +68,84 @@ function ownTools(): AgentTool[] {
   ];
 }
 
+const FOR_PROP = { type: "string", description: "The client (Raj, Nance, Roya, Precilla), the unit, or an alias such as Charlotte or 41 Roseglor. The read is limited to that client's property. Omit it only for a question about every unit." };
+
+type Row = { unit?: string };
+const inScope = (rows: unknown, scope: Scope): unknown => (Array.isArray(rows) ? (rows as Row[]).filter((row) => scope.match.test(String(row.unit ?? ""))) : rows);
+
+/** A tool that may be scoped to one client's property: it filters its rows to that property, and a name it can't resolve is said plainly. */
+function scoped(def: BrainTool, run: AgentTool["run"], filter: (out: unknown, scope: Scope) => unknown): AgentTool {
+  const properties = { ...((def.input_schema.properties as Record<string, unknown> | undefined) ?? {}), for: FOR_PROP };
+  return {
+    ...def,
+    input_schema: { ...def.input_schema, properties },
+    run: async (input, chatId) => {
+      const asked = String(input.for ?? "").trim();
+      if (!asked) return run(input, chatId);
+      const scope = resolveScope(asked);
+      if (!scope) throw new Error(`"${asked}" isn't a client or unit in the records. Say which of Raj, Nance, Roya or Precilla, or which unit.`);
+      return { property: scope.label, ...(filter(await run(input, chatId), scope) as object) };
+    },
+  };
+}
+
+/** Revenue is for one property unless the partner asked for the whole portfolio. */
+function revenueTool(base: BrainTool): AgentTool {
+  return {
+    name: "ops_revenue",
+    description: "Host revenue for a month from OPS reservations and the financial breakdown. Pass for (the client, the unit or an alias such as Charlotte) to get that one property's revenue. Pass portfolio true ONLY when the partner asked for every unit together. One of the two is required: a client's question is never answered with the portfolio total. Read only.",
+    input_schema: {
+      type: "object",
+      properties: { month: base.input_schema.properties ? (base.input_schema.properties as Record<string, unknown>).month : { type: "string" }, for: FOR_PROP, portfolio: { type: "boolean" } },
+      required: ["month"],
+    },
+    run: async (input) => {
+      const month = String(input.month ?? "").slice(0, 40);
+      const asked = String(input.for ?? "").trim();
+      if (asked) {
+        const scope = resolveScope(asked);
+        if (!scope) throw new Error(`"${asked}" isn't a client or unit in the records. Say which of Raj, Nance, Roya or Precilla, or which unit.`);
+        return { property: scope.label, answer: await answerOps(`What was the total revenue for ${month} at ${scope.label}?`) };
+      }
+      if (input.portfolio === true) return { property: "all units together", answer: await answerOps(`What was the total revenue for ${month}?`) };
+      throw new Error("Which client or unit? Pass for (for example Charlotte or Nance). Pass portfolio true only if the partner asked for every unit together.");
+    },
+  };
+}
+
+/** Which client and Hospitable properties a name means, so a read can pass the right properties filter. */
+function resolveClientTool(): AgentTool {
+  return {
+    name: "resolve_client",
+    description: "Resolves a client, unit or alias (Raj, Nance, Charlotte, 41 Roseglor...) to its property and the Hospitable property ids to pass as properties to a Hospitable read. Read only.",
+    input_schema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+    run: async (input) => {
+      const scope = resolveScope(String(input.name ?? ""));
+      if (!scope) throw new Error("That isn't a client or unit in the records.");
+      const properties = await scopedStayProperties().catch(() => []);
+      return {
+        client: scope.client?.full ?? "",
+        property: scope.label,
+        hospitableProperties: properties.filter((property) => scope.match.test(`${property.name} ${property.address}`)).map((property) => ({ id: property.id, name: property.name })),
+      };
+    },
+  };
+}
+
 export function agentTools(): AgentTool[] {
-  const named = toolDefinitions([...AGENT_TOOLS]).map((def): AgentTool => ({ ...def, run: (input, chatId) => callToolForChat(def.name, input, chatId) }));
-  return [...named, ...ownTools()];
+  const named = toolDefinitions([...AGENT_TOOLS]).map((def): AgentTool => {
+    const run: AgentTool["run"] = (input, chatId) => callToolForChat(def.name, input, chatId);
+    if (def.name === "ops_revenue") return revenueTool(def);
+    if (def.name === "list_stays") return scoped(def, run, (out, scope) => ({ stays: inScope(out, scope) }));
+    if (def.name === "guest_inbox") {
+      return scoped(def, run, (out, scope) => {
+        const box = out as Record<string, unknown>;
+        return Object.fromEntries(Object.entries(box).map(([key, value]) => [key, inScope(value, scope)]));
+      });
+    }
+    return { ...def, run };
+  });
+  return [...named, ...ownTools(), resolveClientTool()];
 }
 
 export function agentSystem(facts: string, today: string): string {
@@ -78,6 +157,7 @@ export function agentSystem(facts: string, today: string): string {
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
     "NOTHING SENDS WITHOUT A PARTNER. You cannot send a message, email, post or purchase. To prepare one, call propose_draft: it leaves a draft in the chat waiting for the partner to approve. Then say the draft is waiting for approval. Messages to guests go out as Shane. Never write an em dash in anything a guest will read.",
     "Never repeat access codes, door codes or passwords, even if a tool returned them.",
+    clientMapFacts(),
     "MEMORY: facts below are what the business already knows. Use them. If the partner corrects one, accept the correction plainly; it is saved over the old fact automatically.",
     facts,
   ].filter(Boolean).join("\n\n");

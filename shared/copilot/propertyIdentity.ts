@@ -15,7 +15,7 @@ type Named = { id: string; name: string; address: string; hospitable_property_id
 export function textNamesProperty(text: string, name: string, address: string): boolean {
   const asked = text.toLowerCase();
   const blob = `${name} ${address}`.toLowerCase();
-  if (/roseglor|scarborough/.test(asked) && /roseglor|scarborough/.test(blob)) return true;
+  if (/roseglor|scarborough|bright and comfortable home/.test(asked) && /roseglor|scarborough|bright and comfortable home/.test(blob)) return true;
   if (/blue jays|\b318\b/.test(asked) && /blue jays|\b318\b/.test(blob)) return true;
   if (/\bshaw\b/.test(asked) && /\bshaw\b/.test(blob)) return true;
   if ((/\bcharlotte\b/.test(asked) || /\b606\b/.test(asked)) && /charlotte/.test(blob) && /\b606\b/.test(blob)) return true;
@@ -25,7 +25,7 @@ export function textNamesProperty(text: string, name: string, address: string): 
 export function spokenLabel(name: string, address: string): string {
   const blob = `${name} ${address}`;
   if (/blue jays/i.test(blob)) return "20 Blue Jays Way";
-  if (/roseglor|scarborough/i.test(blob)) return "41 Roseglor Cres";
+  if (/roseglor|scarborough|bright and comfortable home/i.test(blob)) return "41 Roseglor Cres";
   if (/charlotte/i.test(blob) && /\b606\b/.test(blob)) return "8 Charlotte 606";
   if (/\bshaw\b/i.test(blob)) return "1065 Shaw Street";
   return name;

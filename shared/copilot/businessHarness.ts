@@ -15,6 +15,9 @@ import { correctWeekdays } from "./weekdays.js";
 import { ID, worldAt } from "./parity/catalog.js";
 import { setParityClock } from "./parity/clock.js";
 import { installOpsReservations } from "./parity/opsState.js";
+import { agentSystem, agentTools, runAgentTurn } from "./agentChat.js";
+import { resolveScope } from "./clientProperty.js";
+import { setBrainModel } from "./brain.js";
 import { installWorld, type ParityReservation } from "./parity/world.js";
 import { ensureUnitSetups, resetUnitSetups } from "./unitSetup.js";
 import { setWebAnswerer } from "./webAnswer.js";
@@ -402,6 +405,78 @@ if (!/client's email address on file in OPS/.test(proposalAnswer.body) || !/Subj
 
 // Every mail time is Toronto time, whatever zone the timestamp came in.
 if (torontoWhen("2026-10-14T01:58:00Z") !== "Tuesday, October 13, 2026 at 9:58 PM" || torontoWhen("Tue, 13 Oct 2026 18:58:00 -0700") !== "Tuesday, October 13, 2026 at 9:58 PM") fail(`Toronto time ${torontoWhen("2026-10-14T01:58:00Z")}`);
+
+
+// ---------- Client-scoped reads are for that client's property only ----------
+// Four units have September revenue; the portfolio total is NOT what one client made.
+installOpsReservations([
+  ops("res-sep-a", ID.charlotte, "2026-09-01", "2026-09-08", 7, 400000),
+  ops("res-sep-b", ID.charlotte, "2026-09-10", "2026-09-20", 10, 552754),
+  ops("res-sep-shaw", ID.shaw, "2026-09-02", "2026-09-09", 7, 500000),
+  ops("res-sep-rose", ID.rose, "2026-09-03", "2026-09-10", 7, 300000),
+  ops("res-sep-blue", ID.blue, "2026-09-04", "2026-09-11", 7, 200000),
+]);
+for (const [name, label] of [["Raj", "20 Blue Jays Way"], ["Khamraj Shewnarain", "20 Blue Jays Way"], ["Nance Ta", "8 Charlotte 606"], ["Charlotte", "8 Charlotte 606"], ["Roya Ardakani", "1065 Shaw Street"], ["Precilla Daniel", "41 Roseglor Cres"], ["41 Roseglor", "41 Roseglor Cres"], ["Roseglor", "41 Roseglor Cres"], ["Bright and comfortable home for families", "41 Roseglor Cres"]] as const) {
+  if (resolveScope(name)?.label !== label) fail(`"${name}" did not resolve to ${label}: ${resolveScope(name)?.label}`);
+}
+if (resolveScope("the moon")) fail("an unknown name resolved");
+const system = agentSystem("", "2026-10-20");
+for (const line of ["Raj (Khamraj Shewnarain) = 20 Blue Jays Way Unit 318", "Nance (Nance Ta) = 8 Charlotte 606", "Roya (Roya Ardakani) = 1065 Shaw Street", "Precilla (Precilla Daniel) = 41 Roseglor Cres", "Bright and comfortable home for families", "never ask the partner to confirm", "Never sum the portfolio for one client"]) {
+  if (!system.includes(line)) fail(`the always-loaded client map lacks: ${line}`);
+}
+const revenue = agentTools().find((tool) => tool.name === "ops_revenue")!;
+const scopedAnswer = (await revenue.run({ month: "September", for: "Charlotte" }, "c")) as { property: string; answer: string };
+if (scopedAnswer.property !== "8 Charlotte 606" || !/\$9,527\.54/.test(scopedAnswer.answer) || /\$22,6|\$19,|\$29,/.test(scopedAnswer.answer)) fail(`Charlotte's revenue: ${JSON.stringify(scopedAnswer)}`);
+const byOwner = (await revenue.run({ month: "September", for: "Nance Ta" }, "c")) as { answer: string };
+if (!/\$9,527\.54/.test(byOwner.answer) || !/Charlotte 606/.test(byOwner.answer)) fail(`Nance Ta's revenue: ${byOwner.answer}`);
+const portfolio = (await revenue.run({ month: "September", portfolio: true }, "c")) as { answer: string };
+if (!/\$19,527\.54/.test(portfolio.answer)) fail(`the portfolio total: ${portfolio.answer}`);
+const rose = (await revenue.run({ month: "September", for: "Bright and comfortable home for families" }, "c")) as { answer: string };
+if (!/Roseglor/.test(rose.answer) || !/\$3,000\.00/.test(rose.answer)) fail(`Roseglor's revenue by its listing title: ${rose.answer}`);
+let refused = "";
+try {
+  await revenue.run({ month: "September" }, "c");
+} catch (err) {
+  refused = err instanceof Error ? err.message : "";
+}
+if (!/Which client or unit/.test(refused)) fail("a revenue read with no client and no portfolio was answered");
+let unknown = "";
+try {
+  await revenue.run({ month: "September", for: "the moon" }, "c");
+} catch (err) {
+  unknown = err instanceof Error ? err.message : "";
+}
+if (!/isn't a client or unit in the records/.test(unknown)) fail("an unknown client was guessed at");
+
+// "How much did Charlotte make in September?" through the agent: a model that first reaches for the portfolio is turned back, then answers with the 606 unit alone.
+const rounds: string[] = [];
+let step = 0;
+setBrainModel(async (request) => {
+  if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+  step += 1;
+  const last = request.messages!.at(-1)!;
+  const output = Array.isArray(last.content) ? last.content.map((block) => (block.type === "tool_result" ? block.content : "")).join(" ") : "";
+  rounds.push(output);
+  if (step === 1) return { text: "", toolUses: [{ id: "t1", name: "ops_revenue", input: { month: "September" } }], blocks: [{ type: "tool_use", id: "t1", name: "ops_revenue", input: { month: "September" } }], stop: "tool_use" };
+  if (step === 2) return { text: "", toolUses: [{ id: "t2", name: "ops_revenue", input: { month: "September", for: "Charlotte" } }], blocks: [{ type: "tool_use", id: "t2", name: "ops_revenue", input: { month: "September", for: "Charlotte" } }], stop: "tool_use" };
+  const figure = /\$[\d,]+\.\d{2}/.exec(output)?.[0] ?? "";
+  const text = `Charlotte made ${figure} in September at 8 Charlotte 606.`;
+  return { text, toolUses: [], blocks: [{ type: "text", text }], stop: "end_turn" };
+});
+const charlotteTurn = await runAgentTurn({ chatId: "c", text: "How much did Charlotte make in September?" });
+if (!/Which client or unit/.test(rounds[1] ?? "")) fail("the portfolio read was not turned back");
+if (charlotteTurn.body !== "Charlotte made $9,527.54 in September at 8 Charlotte 606.") fail(`agent answer: ${charlotteTurn.body}`);
+if (/22,655|19,527/.test(charlotteTurn.body)) fail("the agent summed the portfolio for one client");
+setBrainModel(null);
+
+// Stays and threads are scoped too: one client's unit, never the others'.
+const stays = agentTools().find((tool) => tool.name === "list_stays")!;
+const all = (await stays.run({ days_ahead: 60 }, "c")) as { unit: string }[];
+const nance = (await stays.run({ days_ahead: 60, for: "Nance" }, "c")) as { property: string; stays: { unit: string }[] };
+if (nance.property !== "8 Charlotte 606" || !nance.stays.length || nance.stays.some((row) => !/606|charlotte/i.test(row.unit))) fail(`Nance's stays: ${JSON.stringify(nance)}`);
+if (!Array.isArray(all) || new Set(all.map((row) => row.unit)).size < 2) fail("the unscoped read should still span units");
+const ids = (await agentTools().find((tool) => tool.name === "resolve_client")!.run({ name: "Roya" }, "c")) as { property: string; client: string; hospitableProperties: { id: string }[] };
+if (ids.property !== "1065 Shaw Street" || ids.client !== "Roya Ardakani" || ids.hospitableProperties.length !== 1) fail(`resolve_client: ${JSON.stringify(ids)}`);
 
 setWebAnswerer(null);
 setCompsSource(null);
