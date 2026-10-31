@@ -395,6 +395,38 @@ export async function searchGmail(input: {
   return hits.slice(0, input.limit && input.limit > 0 ? Math.min(input.limit, 40) : 16);
 }
 
+/**
+ * The single newest message in Sent. No keywords, no date bounds, no inbox: the newest few are all read and ordered by the
+ * time Gmail says they were sent, so the answer never depends on list order. If any of them can't be read, this says so
+ * rather than answer with an older one.
+ */
+export async function latestSentGmail(): Promise<GmailHit> {
+  captureMailQuery("gmail", gmailQuery("sent", "", true));
+  const parity = paritySearchGmail({ keywords: "", where: "sent", includeAirbnb: true });
+  if (parity) {
+    const newest = [...parity].sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
+    if (!newest) throw new Error("Gmail's Sent folder is empty.");
+    return newest;
+  }
+  const token = await accessToken();
+  const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5&q=${encodeURIComponent(gmailQuery("sent", "", true))}`;
+  let res = await fetch(listUrl, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 401) {
+    res = await fetch(listUrl, { headers: { Authorization: `Bearer ${await accessToken()}` } });
+    if (res.status === 401) throw new Error(REAUTH_NOTE("Gmail"));
+  }
+  const list = (await res.json().catch(() => ({}))) as { messages?: { id: string }[]; error?: { message?: string } };
+  if (!res.ok) throw new Error(list.error?.message || "Gmail didn't return the Sent folder.");
+  const ids = (list.messages ?? []).map((item) => item.id);
+  if (!ids.length) throw new Error("Gmail's Sent folder is empty.");
+  const read = await Promise.all(ids.map((id) => gmailGet(token, id, "metadata")));
+  if (read.some((msg) => !msg)) throw new Error("Gmail found your newest sent messages but couldn't read all of them, so it can't say which is the latest.");
+  const hits = (read as GmailMessage[]).map((msg) => gmailHit(msg, "sent")).filter((hit): hit is GmailHit => Boolean(hit));
+  const newest = hits.sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
+  if (!newest) throw new Error("Gmail's Sent folder is empty.");
+  return newest;
+}
+
 async function gmailThreadMessages(token: string, id: string): Promise<GmailMessage[]> {
   const res = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(id)}?format=full`,

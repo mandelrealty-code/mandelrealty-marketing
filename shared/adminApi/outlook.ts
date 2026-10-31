@@ -338,6 +338,29 @@ export async function searchOutlook(input: {
   return hits.slice(0, input.limit && input.limit > 0 ? Math.min(input.limit, 40) : 16);
 }
 
+/** The single newest message in Sent Items, ordered by when Outlook says it was sent. No keywords, no bounds. */
+export async function latestSentOutlook(): Promise<OutlookHit> {
+  captureMailQuery("outlook", "sentitems");
+  const parity = paritySearchOutlook({ keywords: "", where: "sent", includeAirbnb: true });
+  if (parity) {
+    const newest = [...parity].sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
+    if (!newest) throw new Error("Outlook's Sent Items is empty.");
+    return newest;
+  }
+  const token = await accessToken();
+  const url = new URL("https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages");
+  url.searchParams.set("$top", "5");
+  url.searchParams.set("$select", OUTLOOK_SELECT);
+  url.searchParams.set("$orderby", "sentDateTime desc");
+  const res = await fetch(url, { headers: outlookHeaders(token) });
+  const list = (await res.json().catch(() => ({}))) as { value?: OutlookMessage[]; error?: { message?: string } };
+  if (!res.ok) throw new Error(list.error?.message || "Outlook didn't return Sent Items.");
+  const hits = (list.value ?? []).map((item) => outlookHit(item, "sent")).filter((hit): hit is OutlookHit => Boolean(hit));
+  const newest = hits.sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
+  if (!newest) throw new Error("Outlook's Sent Items is empty.");
+  return newest;
+}
+
 function outlookBody(item: OutlookMessage): string {
   const html = item.body?.contentType === "html";
   const text = html ? (item.bodyPreview ?? "") : (item.body?.content ?? item.bodyPreview ?? "");

@@ -1,7 +1,7 @@
 import { hospitableRead } from "./hospitableConnection.js";
 import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { hospitableDraft, isHospitableWrite } from "./hospitableAgent.js";
-import { readMail, searchMail } from "./mailSearch.js";
+import { MAILBOX_LABEL, latestSent, readMail, searchMail } from "./mailSearch.js";
 import { readStanding } from "./memoryFiles.js";
 import { DEFAULT_CHECKLIST, listStays, readGuestInbox, readThread } from "./guestInbox.js";
 import { addMessage, addReminder, flagChatNeedsYou, getRun, updateRun } from "./store.js";
@@ -180,7 +180,7 @@ const TOOLS: Record<string, Tool> = {
   },
   search_mail: {
     description:
-      "Search Sent and the main inbox in Gmail and Outlook. Gmail Social and Promotions, and Outlook Other, are already excluded. Pass keywords from the question, such as a property or a subject. Set mailbox to gmail or outlook only when the question named that one. Set where to sent, inbox, or both. Set include_airbnb only when the question is about Airbnb email. Read only. This does not send.",
+      "Search Sent and the main inbox in Gmail and Outlook. Results come newest first, and each says which mailbox it came from (mailboxLabel): always name it. For the latest sent email use last_sent_email instead. Gmail Social and Promotions, and Outlook Other, are already excluded. Pass keywords from the question, such as a property or a subject. Set mailbox to gmail or outlook only when the question named that one. Set where to sent, inbox, or both. Set include_airbnb only when the question is about Airbnb email. Read only. This does not send.",
     inputSchema: {
       type: "object",
       properties: {
@@ -192,13 +192,23 @@ const TOOLS: Record<string, Tool> = {
       required: ["keywords"],
     },
     readOnly: true,
-    call: async (args) =>
-      searchMail({
+    call: async (args) => {
+      const found = await searchMail({
         keywords: text(args.keywords),
         mailbox: text(args.mailbox),
         where: text(args.where),
         includeAirbnb: args.include_airbnb === true,
-      }),
+      });
+      // Newest first across both mailboxes, each hit named for the mailbox it came from.
+      return { ...found, hits: found.hits.map((hit) => ({ ...hit, mailboxLabel: MAILBOX_LABEL[hit.mailbox] })) };
+    },
+  },
+  last_sent_email: {
+    description:
+      "The single most recent email sent, from Gmail Sent (or Outlook Sent Items if mailbox is outlook), newest first, with no keywords or date limits. Returns the message and which mailbox it came from. If that mailbox could not be read, the result says so in note and names the other mailbox it used instead: say that note to the partner, and never present one mailbox's mail as the other's. Read only. This does not send.",
+    inputSchema: { type: "object", properties: { mailbox: { type: "string", enum: ["gmail", "outlook"], description: "Gmail unless the partner named Outlook." } } },
+    readOnly: true,
+    call: async (args) => latestSent({ mailbox: text(args.mailbox, 20) }),
   },
   read_mail: {
     description:

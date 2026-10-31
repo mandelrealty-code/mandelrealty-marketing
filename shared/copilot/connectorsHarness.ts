@@ -7,6 +7,8 @@ import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
 import { setAirroiValidator } from "../airroi.js";
 import { runAgentTurn } from "./agentChat.js";
+import { installWorld } from "./parity/world.js";
+import { latestSent } from "./mailSearch.js";
 import { setBrainModel } from "./brain.js";
 import { checkGmailLogin, gmailStatus, setGmailValidator } from "../adminApi/gmail.js";
 import { checkOutlookLogin, outlookStatus, setOutlookValidator } from "../adminApi/outlook.js";
@@ -211,5 +213,70 @@ try {
 if (!/no connector called/.test(unknown) || !/Gmail/.test(unknown)) fail(`unknown connector: ${unknown}`);
 setBrainModel(null);
 if (!/call connector_status/.test((await import("./agentChat.js")).agentSystem("", "2026-10-20"))) fail("the agent isn't told to read connector state");
+
+// ---------- "What was the last thing I sent?" is the newest message in Sent, from the mailbox that was asked ----------
+const mail = (id: string, mailbox: "gmail" | "outlook", folder: "sent" | "inbox", date: string, to: string, subject: string) => ({
+  id, mailbox, folder, from: "Mandel Realty Group", email: "info@mandelrealtygroup.com", to, date, subject, snippet: subject, body: subject, airbnb: false,
+});
+installWorld({
+  now: new Date("2026-10-31T15:00:00-04:00"),
+  properties: [],
+  reservations: [],
+  gmail: [
+    // Oldest first, and an inbox message newer than all of them: neither may fool the answer.
+    mail("g-oct26", "gmail", "sent", "2026-10-26T14:00:00Z", "Manik <manik@example.com>", "Re: parking question"),
+    mail("g-oct30", "gmail", "sent", "2026-10-30T15:30:00Z", "Supervisor <supervisor@bluejaysway.example>", "Unit 318 registration, Oct 30 to Nov 1"),
+    mail("g-oct28", "gmail", "sent", "2026-10-28T13:00:00Z", "Priya <priya@example.com>", "Welcome to Unit 318"),
+    mail("g-in-nov1", "gmail", "inbox", "2026-11-01T09:00:00Z", "info@mandelrealtygroup.com", "Thanks!"),
+  ],
+  outlook: [mail("o-oct31", "outlook", "sent", "2026-10-31T12:00:00Z", "Owner <owner@example.com>", "September statement")],
+  memory: [],
+  items: [],
+});
+setParityMailLogin("gmail", undefined);
+setParityMailLogin("outlook", undefined);
+const newest = await latestSent();
+if (newest.message?.id !== "g-oct30" || newest.answeredFrom !== "Gmail" || newest.message.mailboxLabel !== "Gmail" || newest.note) fail(`last sent: ${JSON.stringify(newest)}`);
+if (!/October 30, 2026/.test(newest.message.when ?? "")) fail(`when: ${newest.message.when}`);
+if ((await latestSent({ mailbox: "outlook" })).message?.id !== "o-oct31") fail("Outlook's newest sent");
+// Searching returns newest first across both mailboxes, each named for its mailbox.
+const searched = await agentTools().find((tool) => tool.name === "search_mail")!.run({ keywords: "mandel" }, "c") as { hits: { id: string; mailboxLabel: string; mailbox: string }[] };
+if (searched.hits[0]?.id !== "g-in-nov1" || searched.hits.some((hit) => hit.mailboxLabel !== (hit.mailbox === "gmail" ? "Gmail" : "Outlook"))) fail(`search order or labels: ${JSON.stringify(searched.hits.map((hit) => [hit.id, hit.mailboxLabel]))}`);
+if (searched.hits.map((hit) => hit.id).join() !== "g-in-nov1,o-oct31,g-oct30,g-oct28,g-oct26") fail(`not newest first across mailboxes: ${searched.hits.map((hit) => hit.id).join()}`);
+// Gmail can't be read: the answer says so and names Outlook. It is never presented as Gmail.
+setParityMailLogin("gmail", null);
+const fellBack = await latestSent();
+if (fellBack.answeredFrom !== "Outlook" || fellBack.message?.mailboxLabel !== "Outlook" || !/Gmail couldn't be read/.test(fellBack.note) || !/from Outlook, not Gmail/.test(fellBack.note)) fail(`fallback: ${JSON.stringify(fellBack)}`);
+setParityMailLogin("outlook", null);
+const neither = await latestSent();
+if (neither.message || neither.answeredFrom || !/Gmail:/.test(neither.note) || !/Outlook:/.test(neither.note)) fail(`neither mailbox: ${JSON.stringify(neither)}`);
+setParityMailLogin("gmail", undefined);
+setParityMailLogin("outlook", undefined);
+// Through the agent: the answer comes from the tool, and names the mailbox.
+function mailBrain(): void {
+  let step = 0;
+  setBrainModel(async (request) => {
+    if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+    step += 1;
+    if (step === 1) return { text: "", toolUses: [{ id: "m1", name: "last_sent_email", input: {} }], blocks: [{ type: "tool_use", id: "m1", name: "last_sent_email", input: {} }], stop: "tool_use" };
+    const last = request.messages!.at(-1)!;
+    const raw = Array.isArray(last.content) ? last.content.map((block) => (block.type === "tool_result" ? block.content : "")).join("") : "";
+    const result = JSON.parse(raw) as LatestSentShape;
+    const text = `${result.note ? `${result.note} ` : ""}The last email sent was from ${result.answeredFrom}: "${result.message?.subject}" to ${result.message?.to}, ${result.message?.when}.`;
+    return { text, toolUses: [], blocks: [{ type: "text", text }], stop: "end_turn" };
+  });
+}
+type LatestSentShape = { answeredFrom: string; note: string; message: { subject: string; to: string; when: string } | null };
+mailBrain();
+const said = await runAgentTurn({ chatId: "c", text: "what was the last thing I sent?" });
+if (!/from Gmail: "Unit 318 registration, Oct 30 to Nov 1" to Supervisor/.test(said.body) || /Manik|Oct(ober)? 26/.test(said.body)) fail(`the agent said: ${said.body}`);
+setParityMailLogin("gmail", null);
+mailBrain();
+const saidFallback = await runAgentTurn({ chatId: "c", text: "what was the last thing I sent?" });
+if (!/Gmail couldn't be read/.test(saidFallback.body) || !/from Outlook/.test(saidFallback.body)) fail(`the agent hid the fallback: ${saidFallback.body}`);
+setParityMailLogin("gmail", undefined);
+setBrainModel(null);
+if (!/call last_sent_email/.test((await import("./agentChat.js")).agentSystem("", "2026-10-20"))) fail("the agent isn't told how to find the last sent email");
+if (!agentTools().some((tool) => tool.name === "last_sent_email")) fail("no last_sent_email tool");
 
 console.log("Connectors harness passed.");

@@ -19,7 +19,7 @@ import { torontoToday } from "./time.js";
 /** The tools the agent may call. Reads, drafts that wait for approval, a reminder, a PDF. Nothing that sends or commits. */
 export const AGENT_TOOLS = [
   "guest_inbox", "list_stays", "read_guest_messages", "guest_contacts",
-  "search_mail", "read_mail",
+  "search_mail", "read_mail", "last_sent_email",
   "read_knowledge_hub", "read_memory", "hospitable_read",
   "ops_clients", "ops_revenue", "cleaner_read",
   "research_web", "make_pdf", "add_reminder", "propose_draft",
@@ -32,6 +32,7 @@ const STEP: Record<string, string> = {
   guest_contacts: "Looked up this week's check-ins",
   search_mail: "Searched Gmail and Outlook",
   read_mail: "Read an email",
+  last_sent_email: "Read the newest sent email",
   read_knowledge_hub: "Read the Knowledge Hub",
   read_memory: "Read the unit file",
   hospitable_read: "Read Hospitable",
@@ -208,6 +209,7 @@ export function agentSystem(facts: string, today: string): string {
     "VOICE: plain, direct, warm. Lead with the answer in a sentence or two. Give details only when asked. Ask at most one question at a time. Never answer with a bare \"I can't\": say what you can do instead, or what would unblock it.",
     "READ BEFORE ANSWERING: use your tools to read the guest thread, the Knowledge Hub, Hospitable, Gmail and Outlook, the client list and the cleaner app instead of guessing. Use web_lookup when you do not know something or it may have changed. Say plainly once if a read failed.",
     "WHAT IS CONNECTED: for any question about whether a connector is connected, or when it was last checked, call connector_status and answer from it. Never answer from memory or business records, and never say a connector is connected without it. A connector that needs re-authorization is not connected. If a connector says none of your tools use it, say so plainly.",
+    "EMAIL: every answer about an email names the mailbox it came from, in words (Gmail or Outlook). For the last email the partner sent, call last_sent_email: it reads Gmail Sent newest first. If its note says Gmail couldn't be read, say that plainly and say the answer is from Outlook. Never present one mailbox's mail as the other's, and never answer from memory.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
     "NOTHING SENDS WITHOUT A PARTNER. You cannot send a message, email, post or purchase. To prepare one, call propose_draft: it leaves a draft in the chat waiting for the partner to approve. Then say the draft is waiting for approval. Messages to guests go out as Shane. Never write an em dash in anything a guest will read.",
     "Never repeat access codes, door codes or passwords, even if a tool returned them.",

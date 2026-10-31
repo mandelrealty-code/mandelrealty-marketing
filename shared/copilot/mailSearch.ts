@@ -1,5 +1,5 @@
-import { gmailConnected, readGmailThread, searchGmail } from "../adminApi/gmail.js";
-import { outlookConnected, readOutlookThread, searchOutlook } from "../adminApi/outlook.js";
+import { gmailConnected, latestSentGmail, readGmailThread, searchGmail } from "../adminApi/gmail.js";
+import { latestSentOutlook, outlookConnected, readOutlookThread, searchOutlook } from "../adminApi/outlook.js";
 import { mailKeywords, type MailFolder, type MailboxName } from "./mailScope.js";
 
 export type MailHit = {
@@ -67,7 +67,52 @@ export async function searchMail(input: {
       }
     }
   }
+  // Newest first across both mailboxes, so the top of the list is the latest whichever mailbox it came from.
+  hits.sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
   return { hits, notes };
+}
+
+export const MAILBOX_LABEL: Record<MailboxName, string> = { gmail: "Gmail", outlook: "Outlook" };
+
+export type LatestSent = {
+  /** The mailbox that was asked for. */
+  requested: string;
+  /** The mailbox the answer really came from, or "" when neither could answer. */
+  answeredFrom: string;
+  message: (MailHit & { mailboxLabel: string }) | null;
+  /** In plain words, for the person: what failed, and which mailbox stood in. Empty when nothing went wrong. */
+  note: string;
+};
+
+/**
+ * The single newest message in Sent, from the mailbox that was asked for (Gmail unless Outlook was named). If that read
+ * fails the answer says so and names the other mailbox it used, if it used one. Mail from one mailbox is never passed off as the other's.
+ */
+export async function latestSent(input: { mailbox?: string } = {}): Promise<LatestSent> {
+  const asked: MailboxName = input.mailbox === "outlook" ? "outlook" : "gmail";
+  const other: MailboxName = asked === "gmail" ? "outlook" : "gmail";
+  const read = async (name: MailboxName): Promise<{ hit: MailHit } | { error: string }> => {
+    const connected = name === "gmail" ? await gmailConnected().catch(() => false) : await outlookConnected().catch(() => false);
+    if (!connected) return { error: `${MAILBOX_LABEL[name]} isn't connected.` };
+    try {
+      const row = name === "gmail" ? await latestSentGmail() : await latestSentOutlook();
+      return { hit: withWhen({ mailbox: name, ...row }) };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : `${MAILBOX_LABEL[name]} didn't return Sent.` };
+    }
+  };
+  const first = await read(asked);
+  if ("hit" in first) return { requested: MAILBOX_LABEL[asked], answeredFrom: MAILBOX_LABEL[asked], message: { ...first.hit, mailboxLabel: MAILBOX_LABEL[asked] }, note: "" };
+  const second = await read(other);
+  if ("hit" in second) {
+    return {
+      requested: MAILBOX_LABEL[asked],
+      answeredFrom: MAILBOX_LABEL[other],
+      message: { ...second.hit, mailboxLabel: MAILBOX_LABEL[other] },
+      note: `${MAILBOX_LABEL[asked]} couldn't be read (${first.error.replace(/\.$/, "")}), so this is the latest sent message from ${MAILBOX_LABEL[other]}, not ${MAILBOX_LABEL[asked]}.`,
+    };
+  }
+  return { requested: MAILBOX_LABEL[asked], answeredFrom: "", message: null, note: `${MAILBOX_LABEL[asked]}: ${first.error} ${MAILBOX_LABEL[other]}: ${second.error}` };
 }
 
 /** Recent inbox mail, with no keyword filter. `after` is a Gmail after: date, YYYY/MM/DD. */
