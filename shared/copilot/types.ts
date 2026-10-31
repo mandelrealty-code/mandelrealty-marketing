@@ -251,6 +251,10 @@ export type ConnectorRow = {
   connectUrl?: string;
   /** A stored sign-in exists, so Disconnect can reset it. */
   canDisconnect?: boolean;
+  /** "live" was checked with the provider just now or recently; "configured" is set on the server but not tested. */
+  checked?: "live" | "configured";
+  /** When the live check ran, as an ISO time. */
+  checkedAt?: string;
 };
 
 /** One property the saved token could list. The photo is a URL or empty. */

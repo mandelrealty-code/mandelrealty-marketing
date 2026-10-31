@@ -7,6 +7,8 @@
 import { answerWebQuestion } from "./webAnswer.js";
 import { clientMapFacts, resolveScope, type Scope } from "./clientProperty.js";
 import { answerOps } from "./ops.js";
+import { compLines, compSet, sizeOf } from "./compsAnswer.js";
+import { connectorRows } from "./connectorStatus.js";
 import { scopedStayProperties } from "./dayBoard.js";
 import { brainAvailable, complete, type BrainBlock, type BrainMessage, type BrainTool } from "./brain.js";
 import { extractAndSaveFacts, factsForPrompt, listFacts, recallFacts, relevantFacts } from "./businessFacts.js";
@@ -43,6 +45,20 @@ const STEP: Record<string, string> = {
   propose_draft: "Left a draft for your approval",
   resolve_client: "Matched the client to their property",
   recall_facts: "Checked what I know about this",
+  connector_status: "Checked what is connected",
+  market_comps: "Pulled comparable listings from AirROI",
+};
+
+/** Which of the agent's tools use each connector, so "is it connected" and "can you use it" never disagree. */
+const CONNECTOR_TOOLS: Record<string, string[]> = {
+  gmail: ["search_mail", "read_mail"],
+  outlook: ["search_mail", "read_mail"],
+  hospitable: ["guest_inbox", "list_stays", "read_guest_messages", "hospitable_read", "read_knowledge_hub", "guest_contacts"],
+  airroi: ["market_comps"],
+  cleaner: ["cleaner_read"],
+  browser: ["research_web", "web_lookup"],
+  ops: ["ops_clients", "ops_revenue"],
+  twilio: [],
 };
 
 export type AgentTool = BrainTool & { run: (input: Record<string, unknown>, chatId: string) => Promise<unknown> };
@@ -57,6 +73,43 @@ function ownTools(): AgentTool[] {
       run: async (input) => {
         const answer = await answerWebQuestion(String(input.question ?? "").slice(0, 400));
         return { answer: answer.body };
+      },
+    },
+    {
+      name: "connector_status",
+      description: "Reads which connectors exist and whether each is connected, from live state: the same rows the Settings page shows. Each says Connected, Needs re-authorization, Connected but couldn't verify, or Not connected, when it was last checked, and which of your tools use it. Use it for ANY question about what is connected. Never answer that from memory or business records. Read only.",
+      input_schema: { type: "object", properties: { name: { type: "string", description: "One connector, such as AirROI or Gmail. Omit it for all of them." } } },
+      run: async (input) => {
+        const asked = String(input.name ?? "").trim().toLowerCase();
+        const rows = (await connectorRows()).filter((row) => !asked || `${row.id} ${row.name}`.toLowerCase().includes(asked));
+        if (!rows.length) throw new Error(`There is no connector called "${asked}". The connectors are: ${(await connectorRows()).map((row) => row.name).join(", ")}.`);
+        return {
+          connectors: rows.map((row) => ({
+            name: row.name,
+            connected: row.status === "connected",
+            state: row.statusLabel,
+            needsReauthorization: /re-authorization/i.test(row.statusLabel),
+            checked: row.checked === "live" ? (row.checkedAt ? `checked with the provider at ${row.checkedAt}` : "checked with the provider when the page opens") : row.checked === "configured" ? "set on the server, not tested live" : "nothing to check",
+            note: row.note ?? "",
+            yourTools: CONNECTOR_TOOLS[row.id] ?? [],
+          })),
+        };
+      },
+    },
+    {
+      name: "market_comps",
+      description: "Comparable listings and nightly rates for one of the company's units, from AirROI, in the unit's own currency: the median rate over 12 months, the middle range, the last 90 days and what the top earners get. Pass for (the client, the unit or an alias such as Charlotte). Read only.",
+      input_schema: { type: "object", properties: { for: { type: "string", description: "The client, the unit, or an alias." } }, required: ["for"] },
+      run: async (input) => {
+        const scope = resolveScope(String(input.for ?? ""));
+        if (!scope) throw new Error("That isn't a client or unit in the records. Say which of Raj, Nance, Roya or Precilla, or which unit.");
+        const property = (await scopedStayProperties().catch(() => [])).find((row) => scope.match.test(`${row.name} ${row.address}`));
+        if (!property) throw new Error(`${scope.label} isn't in the properties Copilot reads from Hospitable.`);
+        const size = await sizeOf(property.id);
+        if (!size.known) return { property: scope.label, comps: null, note: "The unit's bedrooms, bathrooms and guests aren't known, so comps for it would be a guess. None were pulled." };
+        const set = await compSet(property.address || property.name, size);
+        if (!set) return { property: scope.label, comps: null, note: "AirROI didn't return enough comparable listings. Nothing was guessed." };
+        return { property: scope.label, specs: set.specs, currency: set.currency, comparableListings: set.count, median12Month: set.median, middleRange: [set.low, set.high], median90Day: set.recent, topEarners: [set.topLow, set.topHigh], lines: compLines(set) };
       },
     },
     {
@@ -154,6 +207,7 @@ export function agentSystem(facts: string, today: string): string {
     `Today in Toronto is ${today}.`,
     "VOICE: plain, direct, warm. Lead with the answer in a sentence or two. Give details only when asked. Ask at most one question at a time. Never answer with a bare \"I can't\": say what you can do instead, or what would unblock it.",
     "READ BEFORE ANSWERING: use your tools to read the guest thread, the Knowledge Hub, Hospitable, Gmail and Outlook, the client list and the cleaner app instead of guessing. Use web_lookup when you do not know something or it may have changed. Say plainly once if a read failed.",
+    "WHAT IS CONNECTED: for any question about whether a connector is connected, or when it was last checked, call connector_status and answer from it. Never answer from memory or business records, and never say a connector is connected without it. A connector that needs re-authorization is not connected. If a connector says none of your tools use it, say so plainly.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
     "NOTHING SENDS WITHOUT A PARTNER. You cannot send a message, email, post or purchase. To prepare one, call propose_draft: it leaves a draft in the chat waiting for the partner to approve. Then say the draft is waiting for approval. Messages to guests go out as Shane. Never write an em dash in anything a guest will read.",
     "Never repeat access codes, door codes or passwords, even if a tool returned them.",

@@ -17,7 +17,7 @@ import {
 import { skillMemoryText } from "./memoryFiles.js";
 import { torontoToday } from "./time.js";
 import { skillDue } from "./skillSchedule.js";
-import type { CopilotRun, CopilotSkill } from "./types.js";
+import type { CopilotRun, CopilotSkill, SkillRow } from "./types.js";
 
 /**
  * Runs saved skills with the brain: it reads through the Copilot tools, and leaves its report and any drafts for the partners.
@@ -226,4 +226,15 @@ export async function runScheduledSkills(now = new Date()): Promise<{ started: s
     }
   }
   return out;
+}
+
+/** Every saved skill with its latest run, for the pages and the agent that show them. */
+export async function skillRows(): Promise<SkillRow[]> {
+  const skills = await listSkills();
+  return Promise.all(
+    skills.map(async (skill) => ({
+      ...skill,
+      lastRun: skill.kind === "playbook" ? ((await listRuns(skill.id, 1).catch(() => []))[0] ?? null) : null,
+    })),
+  );
 }

@@ -6,11 +6,12 @@ import {
 } from "../adminAuth.js";
 import { passwordMatches } from "../adminAuth.js";
 import { updatePmSettings } from "../pm/clientStore.js";
-import { disconnectGmail, gmailKeysReady, gmailStatus } from "./gmail.js";
-import { disconnectOutlook, outlookKeysReady, outlookStatus } from "./outlook.js";
-import type { LoginState } from "../copilot/mailLoginStatus.js";
+import { disconnectGmail } from "./gmail.js";
+import { disconnectOutlook } from "./outlook.js";
+import { connectorRows as connectors } from "../copilot/connectorStatus.js";
+import { skillRows } from "../copilot/skillRunner.js";
 import { applyOpenItemOnBrief, dismissSavedCard, noteRankPass, quietBrief, readStoredBrief, refreshSavedBrief } from "../copilot/brief.js";
-import { cleanerWebhookReady, twilioFromLabel, twilioReady } from "../copilot/cleanText.js";
+import { twilioFromLabel } from "../copilot/cleanText.js";
 import { accountSpend } from "../copilot/accounts.js";
 import { answerSignIn } from "../copilot/chatReply.js";
 import { beginSession, publishFindings, readPage, type SessionPage } from "../copilot/browserSession.js";
@@ -114,19 +115,6 @@ import {
 import type { ConnectorRow, SkillRow } from "../copilot/types.js";
 import { runsOnItsOwn, startSkillRun } from "../copilot/skillRunner.js";
 import { schedulePhrase, normalizeSchedule } from "../copilot/skillSchedule.js";
-import { listRuns } from "../copilot/store.js";
-
-const HOSPITABLE_TOOLS = ["guest_inbox", "list_stays", "read_guest_messages"];
-
-async function skillRows(): Promise<SkillRow[]> {
-  const skills = await listSkills();
-  return Promise.all(
-    skills.map(async (skill) => ({
-      ...skill,
-      lastRun: skill.kind === "playbook" ? ((await listRuns(skill.id, 1).catch(() => []))[0] ?? null) : null,
-    })),
-  );
-}
 
 function readImages(value: unknown): { mimeType: string; data: string }[] {
   if (!Array.isArray(value)) return [];
@@ -207,129 +195,6 @@ async function hospitableMessage(
     choices: turn.choices,
   });
   return true;
-}
-
-/** A mail connector as the page shows it. A saved token that the provider rejects is "Needs re-authorization", never "Connected". */
-function mailRow(input: { id: string; name: string; detail: string; login: { state: LoginState; email: string }; ready: boolean; connectedNote: string; readyNote: string; missingNote: string; startUrl: string }): ConnectorRow {
-  const { state } = input.login;
-  const label = state === "connected" ? "Connected" : state === "unverified" ? "Connected, couldn't verify just now" : state === "needs_reauth" ? "Needs re-authorization" : "Not connected";
-  const note = state === "connected" ? input.connectedNote
-    : state === "unverified" ? `${input.name} didn't answer the check just now, so the sign-in couldn't be confirmed. ${input.connectedNote}`
-    : state === "needs_reauth" ? `${input.name} rejected the saved sign-in, so Copilot can't read it right now. Click Connect to sign in again, or Disconnect to clear it.`
-    : input.ready ? input.readyNote : input.missingNote;
-  return {
-    id: input.id,
-    name: input.name,
-    detail: input.detail,
-    status: state === "connected" || state === "unverified" ? "connected" : "not_connected",
-    statusLabel: label,
-    note,
-    ...(input.ready ? { connectUrl: input.startUrl } : {}),
-    canDisconnect: state !== "not_connected",
-  };
-}
-
-async function connectors(skills?: SkillRow[]): Promise<ConnectorRow[]> {
-  const rows = skills ?? (await skillRows().catch(() => []));
-  const readsGuests = rows.some(
-    (skill) =>
-      skill.enabled &&
-      runsOnItsOwn(skill) &&
-      skill.lastRun?.status === "ok" &&
-      skill.lastRun.result?.tools.some((tool) => HOSPITABLE_TOOLS.includes(tool)),
-  );
-  const [hospitable, gmail, outlook] = await Promise.all([
-    hospitableCard().catch(() => null),
-    gmailStatus().catch(() => ({ state: "unverified" as LoginState, email: "" })),
-    outlookStatus().catch(() => ({ state: "unverified" as LoginState, email: "" })),
-  ]);
-  const gmailReady = gmailKeysReady();
-  const outlookReady = outlookKeysReady();
-  const airroi = Boolean(process.env.AIRROI_API_KEY?.trim());
-  const cleaner = cleanerWebhookReady();
-  const twilio = twilioReady();
-  return [
-    mailRow({
-      id: "gmail",
-      name: "Gmail",
-      detail: "Reads Sent and Primary, and drafts a reply when you ask.",
-      login: gmail,
-      ready: gmailReady,
-      connectedNote: "Searches Sent and Primary. Social and Promotions stay out. A reply sends only after you press Submit.",
-      readyNote: "Click Connect and allow reading and sending. A reply still waits for Submit.",
-      missingNote: "The Gmail sign-in is not on the server yet.",
-      startUrl: "/api/admin/gmail/start",
-    }),
-    mailRow({
-      id: "outlook",
-      name: "Outlook",
-      detail: "Reads Sent and Focused, and drafts a reply when you ask.",
-      login: outlook,
-      ready: outlookReady,
-      connectedNote: "Searches Sent and the Focused inbox. Other stays out. A reply sends only after you press Submit.",
-      readyNote: "Click Connect and sign in as the company mailbox. A reply still waits for Submit.",
-      missingNote: "The Outlook sign-in is not on the server yet.",
-      startUrl: "/api/admin/outlook/start",
-    }),
-    {
-      id: "hospitable",
-      name: "Hospitable",
-      detail: "Lets Copilot read your stays in Hospitable. It never changes anything there.",
-      status: hospitable?.connected ? "connected" : "not_connected",
-      statusLabel: hospitable?.connected
-        ? hospitable.choiceSaved
-          ? `Connected · ${hospitable.chosenCount} in Copilot`
-          : `Connected${(hospitable.properties?.length ?? 0) ? ` · ${hospitable.properties.length} ${hospitable.properties.length === 1 ? "property" : "properties"}` : ""}`
-        : "Not connected",
-      setup: hospitable?.connected ? "pat" : "none",
-      note: hospitable?.connected
-        ? readsGuests
-          ? "Reservations, guest messages, and the Knowledge Hub. A reply waits until you press Submit in Guest messaging."
-          : "Reservations, guest messages, and the Knowledge Hub. Nothing in Hospitable changes from here."
-        : "Hospitable is not connected.",
-    },
-    {
-      id: "cleaner",
-      name: "Cleaner app",
-      detail: "Calendar, assignments, issues, inventory.",
-      status: cleaner ? "connected" : "not_connected",
-      statusLabel: cleaner ? "Connected" : "Not connected",
-      note: cleaner
-        ? "Pings Copilot when a clean is done."
-        : "Turnovers still open tasks in OPS. A live calendar read is next.",
-    },
-    {
-      id: "twilio",
-      name: "Twilio",
-      detail: "Texts the numbers you set.",
-      status: twilio ? "connected" : "not_connected",
-      statusLabel: twilio ? "Connected" : "Not connected",
-      note: twilio ? "It texts you. It does not text guests." : "Twilio keys are not set on the server.",
-    },
-    {
-      id: "airroi",
-      name: "AirROI",
-      detail: "Comps.",
-      status: airroi ? "connected" : "not_connected",
-      statusLabel: airroi ? "Connected" : "Not connected",
-    },
-    {
-      id: "browser",
-      name: "Browser",
-      detail: "Looks things up on the web when you ask.",
-      status: process.env.BROWSERBASE_API_KEY?.trim() ? "connected" : "not_connected",
-      statusLabel: process.env.BROWSERBASE_API_KEY?.trim() ? "On" : "Not connected",
-      note: process.env.BROWSERBASE_API_KEY?.trim() ? "A lookup stays in chat until you watch, pause, or end it." : "Browser is not connected.",
-    },
-    {
-      id: "ops",
-      name: "OPS",
-      detail: "Property records and the operations tools in this app.",
-      status: "connected",
-      statusLabel: "On",
-      note: "Copilot reads OPS here. It does not use the Hospitable token stored for Copilot.",
-    },
-  ];
 }
 
 async function factsFor(): Promise<string> {

@@ -15,7 +15,7 @@ const EMPTY: HospitableCard = {
   chosenCount: 0,
 };
 
-const ORDER = ["hospitable", "gmail", "outlook", "browser", "cleaner", "ops"];
+const ORDER = ["hospitable", "gmail", "outlook", "airroi", "browser", "cleaner", "ops"];
 
 export function ConnectorsList({
   rows,

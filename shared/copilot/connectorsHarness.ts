@@ -5,6 +5,9 @@
 
 import handleCopilot from "../adminApi/copilot.js";
 import { createAdminSessionToken } from "../adminAuth.js";
+import { setAirroiValidator } from "../airroi.js";
+import { runAgentTurn } from "./agentChat.js";
+import { setBrainModel } from "./brain.js";
 import { checkGmailLogin, gmailStatus, setGmailValidator } from "../adminApi/gmail.js";
 import { checkOutlookLogin, outlookStatus, setOutlookValidator } from "../adminApi/outlook.js";
 import { forgetLoginState } from "./mailLoginStatus.js";
@@ -151,5 +154,62 @@ if (agentTools().some((tool) => /cursor/i.test(`${tool.name} ${tool.description}
 const { WORK_MODELS } = await import("./models.js");
 if (WORK_MODELS.some((model) => /cursor/i.test(`${model.id} ${model.name} ${model.line}`))) fail("a Cursor model choice is still offered");
 if (!/never offer to read or send WhatsApp/i.test(agentSystem("", "2026-10-20"))) fail("the agent isn't told WhatsApp is off limits");
+
+// ---------- The agent answers "is airroi connected?" from the live connector state ----------
+process.env.AIRROI_API_KEY = "airroi-test-key-not-a-secret";
+forgetLoginState();
+setAirroiValidator(async () => "ok");
+const settings = (await call("GET", { op: "boot" })).body.connectors?.find((row) => row.id === "airroi");
+if (settings?.statusLabel !== "Connected" || !settings.checkedAt) fail(`settings: ${JSON.stringify(settings)}`);
+let toolNames: string[] = [];
+let round = 0;
+function scriptedBrain(): void {
+  round = 0;
+  setBrainModel(async (request) => {
+    if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+    round += 1;
+    toolNames = (request.tools ?? []).map((tool) => tool.name);
+    if (round === 1) {
+      const input = { name: "airroi" };
+      return { text: "", toolUses: [{ id: "c1", name: "connector_status", input }], blocks: [{ type: "tool_use", id: "c1", name: "connector_status", input }], stop: "tool_use" };
+    }
+    const last = request.messages!.at(-1)!;
+    const raw = Array.isArray(last.content) ? last.content.map((block) => (block.type === "tool_result" ? block.content : "")).join("") : "";
+    const row = (JSON.parse(raw) as { connectors: { connected: boolean; needsReauthorization: boolean; state: string }[] }).connectors[0]!;
+    const text = row.needsReauthorization ? "AirROI needs re-authorization." : row.connected ? "Yes, AirROI is connected." : "No, AirROI is not connected.";
+    return { text, toolUses: [], blocks: [{ type: "text", text }], stop: "end_turn" };
+  });
+}
+scriptedBrain();
+const yes = await runAgentTurn({ chatId: "c", text: "is airroi connected?" });
+if (yes.body !== "Yes, AirROI is connected.") fail(`the agent said: ${yes.body}`);
+if (!yes.steps.includes("Checked what is connected")) fail("the agent did not check the connectors");
+for (const tool of ["connector_status", "market_comps"]) if (!toolNames.includes(tool)) fail(`the agent lacks ${tool}`);
+// A key AirROI refuses is not "connected", in Settings or in the agent's answer.
+forgetLoginState();
+setAirroiValidator(async () => "rejected");
+const refused = (await call("GET", { op: "boot" })).body.connectors?.find((row) => row.id === "airroi");
+if (refused?.statusLabel !== "Needs re-authorization" || refused.status !== "not_connected") fail(`a refused key read as ${refused?.statusLabel}`);
+scriptedBrain();
+const reauth = await runAgentTurn({ chatId: "c", text: "is airroi connected?" });
+if (reauth.body !== "AirROI needs re-authorization.") fail(`the agent said: ${reauth.body}`);
+// Not set at all.
+delete process.env.AIRROI_API_KEY;
+setAirroiValidator(null);
+forgetLoginState();
+scriptedBrain();
+const none = await runAgentTurn({ chatId: "c", text: "is airroi connected?" });
+if (none.body !== "No, AirROI is not connected.") fail(`the agent said: ${none.body}`);
+// An unknown connector is named plainly, with the real list.
+const { agentTools: toolsNow } = await import("./agentChat.js");
+let unknown = "";
+try {
+  await toolsNow().find((tool) => tool.name === "connector_status")!.run({ name: "carrier pigeon" }, "c");
+} catch (err) {
+  unknown = err instanceof Error ? err.message : "";
+}
+if (!/no connector called/.test(unknown) || !/Gmail/.test(unknown)) fail(`unknown connector: ${unknown}`);
+setBrainModel(null);
+if (!/call connector_status/.test((await import("./agentChat.js")).agentSystem("", "2026-10-20"))) fail("the agent isn't told to read connector state");
 
 console.log("Connectors harness passed.");

@@ -1,5 +1,7 @@
 /** AirROI STR data API — server-side only (never expose AIRROI_API_KEY to the browser). */
 
+import { cachedLoginState, rememberLoginState, stateOfCheck, type LoginCheck, type LoginState } from "./copilot/mailLoginStatus.js";
+
 const AIRROI_BASE = "https://api.airroi.com";
 
 export type AirroiListingSnapshot = {
@@ -205,6 +207,50 @@ export type RevenueAuditPaidPack = {
   } | null;
 };
 
+type AirroiValidator = () => Promise<LoginCheck>;
+let airroiValidator: AirroiValidator | null = null;
+
+/** Tests answer the check AirROI would. Null restores the real one. */
+export function setAirroiValidator(next: AirroiValidator | null): void {
+  airroiValidator = next;
+}
+
+/**
+ * Is the AirROI key accepted? One small comparables request, read for its status only: 401 and 403 mean the key is refused.
+ * Kept for six hours, since each check is a request AirROI counts.
+ */
+export async function checkAirroiKey(): Promise<LoginCheck> {
+  if (airroiValidator) return airroiValidator();
+  const key = process.env.AIRROI_API_KEY?.trim();
+  if (!key) return "rejected";
+  try {
+    const url = new URL(`${AIRROI_BASE}/listings/comparables`);
+    for (const [k, v] of Object.entries({ latitude: 43.6426, longitude: -79.3871, bedrooms: 1, baths: 1, guests: 2, currency: "native", room_type: "entire_home" })) url.searchParams.set(k, String(v));
+    const res = await fetch(url.toString(), { headers: { "X-API-KEY": key, Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+    if (res.ok) return "ok";
+    if (res.status === 401 || res.status === 403) return "rejected";
+    return "unreachable";
+  } catch {
+    return "unreachable";
+  }
+}
+
+export async function airroiStatus(): Promise<{ state: LoginState }> {
+  const key = process.env.AIRROI_API_KEY?.trim() ?? "";
+  if (!key && !airroiValidator) return { state: "not_connected" };
+  const id = key.slice(-8) || "test";
+  const cached = cachedLoginState("airroi", id);
+  if (cached) return { state: cached };
+  const state = stateOfCheck(await checkAirroiKey());
+  rememberLoginState("airroi", id, state);
+  return { state };
+}
+
+/** A request the AirROI tools made that the key was refused for: the connector then reads "Needs re-authorization" at once. */
+export function noteAirroiRejected(): void {
+  rememberLoginState("airroi", (process.env.AIRROI_API_KEY?.trim() ?? "").slice(-8) || "test", "needs_reauth");
+}
+
 function apiKey(): string {
   const key = process.env.AIRROI_API_KEY?.trim();
   if (!key) throw new Error("AIRROI_API_KEY is not configured");
@@ -321,6 +367,7 @@ async function parseAirroiResponse(res: Response): Promise<Record<string, unknow
         ? String((data as { error: unknown }).error)
         : null) ||
       `AirROI ${res.status}`;
+    if (res.status === 401 || res.status === 403) noteAirroiRejected();
     const err = new Error(msg);
     (err as Error & { status: number }).status = res.status;
     throw err;

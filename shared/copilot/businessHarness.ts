@@ -478,6 +478,22 @@ if (!Array.isArray(all) || new Set(all.map((row) => row.unit)).size < 2) fail("t
 const ids = (await agentTools().find((tool) => tool.name === "resolve_client")!.run({ name: "Roya" }, "c")) as { property: string; client: string; hospitableProperties: { id: string }[] };
 if (ids.property !== "1065 Shaw Street" || ids.client !== "Roya Ardakani" || ids.hospitableProperties.length !== 1) fail(`resolve_client: ${JSON.stringify(ids)}`);
 
+// AirROI comps for one client's unit, through the agent: Raj's unit, in its own numbers.
+const compsWorld = worldAt("2026-10-13T12:00:00-04:00");
+compsWorld.properties = compsWorld.properties.map((row) => (row.id === ID.blue ? { ...row, capacity: { bedrooms: 2, bathrooms: 2, max: 0 }, airbnbListingId: "985318000", coordinates: { latitude: 43.6416, longitude: -79.3917 } } : row));
+installWorld(compsWorld);
+setCompsSource(async () => comparables);
+setListingSource(async (listingId) => (listingId === "985318000" ? { bedrooms: 2, bathrooms: 2, guests: 8, latitude: 43.6416, longitude: -79.3917 } : null));
+const raj = (await agentTools().find((tool) => tool.name === "market_comps")!.run({ for: "Raj" }, "c")) as { property: string; median12Month: number; comparableListings: number; currency: string; specs: string };
+if (raj.property !== "20 Blue Jays Way" || raj.median12Month !== 300 || raj.comparableListings !== 13 || raj.currency !== "CAD" || !/2 bed, 2 bath/.test(raj.specs)) fail(`market comps: ${JSON.stringify(raj)}`);
+let noComps = "";
+try {
+  await agentTools().find((tool) => tool.name === "market_comps")!.run({ for: "the moon" }, "c");
+} catch (err) {
+  noComps = err instanceof Error ? err.message : "";
+}
+if (!/isn't a client or unit/.test(noComps)) fail("comps for an unknown unit");
+
 setWebAnswerer(null);
 setCompsSource(null);
 setListingSource(null);
