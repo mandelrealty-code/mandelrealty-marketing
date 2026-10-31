@@ -834,6 +834,11 @@ export async function renameChat(id: string, title: string): Promise<void> {
 }
 
 export async function deleteChat(id: string): Promise<void> {
+  if (parityEnabled()) {
+    parityBoard.chats = parityBoard.chats.filter((row) => row.id !== id);
+    parityBoard.messages = parityBoard.messages.filter((row) => row.chat_id !== id);
+    return;
+  }
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_chats").delete().eq("id", id);
@@ -1676,6 +1681,11 @@ export async function addTextLog(input: Omit<CopilotTextSend, "id" | "created_at
 /** A job report that needs a person. Normal answers never call this. */
 export async function flagChatNeedsYou(chatId: string): Promise<void> {
   const now = new Date().toISOString();
+  if (parityEnabled()) {
+    const chat = parityBoard.chats.find((row) => row.id === chatId);
+    if (chat) chat.needs_you_at = now;
+    return;
+  }
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_chats").update({ needs_you_at: now }).eq("id", chatId);
@@ -1691,6 +1701,7 @@ export async function flagChatNeedsYou(chatId: string): Promise<void> {
 }
 
 export async function chatExists(chatId: string): Promise<boolean> {
+  if (parityEnabled()) return parityBoard.chats.some((row) => row.id === chatId);
   const client = sb();
   if (!useFile && client) {
     const { data, error } = await client.from("copilot_chats").select("id").eq("id", chatId).maybeSingle();

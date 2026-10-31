@@ -3,6 +3,7 @@ import { processDueFollowups } from "../../shared/followUpStore.js";
 import { processUnansweredReviews } from "../../shared/pm/reviewReply/store.js";
 import { runNightlyDream } from "../../shared/copilot/memoryFiles.js";
 import { runScheduledSkills } from "../../shared/copilot/skillRunner.js";
+import { runWatch } from "../../shared/copilot/watch.js";
 import { runCopilotPass } from "../../shared/copilot/pass.js";
 import { withCopilotScope } from "../../shared/copilot/hospitableConnection.js";
 
@@ -28,6 +29,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (!authorized(req)) {
     return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  // The watch loop (vercel.json, every 15 minutes): the agent looks over the business and surfaces what needs a partner.
+  // It only proposes. Items land in the Overview's Decisions queue; nothing is sent.
+  if (req.query.job === "watch") {
+    return withCopilotScope(async () => {
+      try {
+        return res.status(200).json({ ok: true, watch: await runWatch() });
+      } catch (err) {
+        const error = err instanceof Error ? err.message : "The watch loop failed";
+        console.error("[cron/follow-ups] watch", error);
+        return res.status(500).json({ ok: false, error });
+      }
+    });
   }
 
   // Copilot cron (vercel.json): 5:00 AM and 1:00 PM Toronto (EDT), via 09:00 and 17:00 UTC.

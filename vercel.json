@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/follow-ups?job=copilot",
       "schedule": "0 9,17 * * *"
+    },
+    {
+      "path": "/api/cron/follow-ups?job=watch",
+      "schedule": "*/15 * * * *"
     }
   ],
   "headers": [
