@@ -6,7 +6,7 @@ import {
 } from "../adminAuth.js";
 import { passwordMatches } from "../adminAuth.js";
 import { updatePmSettings } from "../pm/clientStore.js";
-import { disconnectGmail } from "./gmail.js";
+import { diagnoseGmail, disconnectGmail } from "./gmail.js";
 import { disconnectOutlook } from "./outlook.js";
 import { connectorRows as connectors } from "../copilot/connectorStatus.js";
 import { skillRows } from "../copilot/skillRunner.js";
@@ -811,6 +811,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       if (thread[thread.length - 1]?.role === "user") await addMessage({ chatId, role: "assistant", body: "Stopped. Nothing was sent." });
       return res.status(200).json({ chatId, messages: await listMessages(chatId), pending: false });
     }
+
+    // Temporary: the Sent folder read four ways, to see which request loses the newest message. Shown to the partner only.
+    if (op === "gmail-diagnose") return res.status(200).json(await diagnoseGmail(String(body.keywords ?? "")));
 
     // Temporary: one tiny call per brain provider, status codes only, to find out why one isn't answering.
     if (op === "brain-diagnose") return res.status(200).json({ probes: await diagnoseBrain() });

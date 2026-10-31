@@ -10,10 +10,10 @@ import { runAgentTurn } from "./agentChat.js";
 import { installWorld } from "./parity/world.js";
 import { latestSent } from "./mailSearch.js";
 import { setBrainModel } from "./brain.js";
-import { checkGmailLogin, gmailStatus, setGmailValidator } from "../adminApi/gmail.js";
+import { checkGmailLogin, diagnoseGmail, gmailStatus, latestSentGmail, readGmailThread, searchGmail, setGmailLogger, setGmailValidator } from "../adminApi/gmail.js";
 import { checkOutlookLogin, outlookStatus, setOutlookValidator } from "../adminApi/outlook.js";
 import { forgetLoginState } from "./mailLoginStatus.js";
-import { readGmailLogin, readOutlookLogin, saveGmailLogin, saveOutlookLogin, setParityMailLogin } from "./store.js";
+import { clearGmailLogin, readGmailLogin, readOutlookLogin, saveGmailLogin, saveOutlookLogin, setParityMailLogin } from "./store.js";
 import type { ConnectorRow } from "./types.js";
 
 function fail(label: string): never {
@@ -278,5 +278,125 @@ setParityMailLogin("gmail", undefined);
 setBrainModel(null);
 if (!/call last_sent_email/.test((await import("./agentChat.js")).agentSystem("", "2026-10-20"))) fail("the agent isn't told how to find the last sent email");
 if (!agentTools().some((tool) => tool.name === "last_sent_email")) fail("no last_sent_email tool");
+
+// ---------- The real Gmail requests, against a stand-in Gmail with dated mail ----------
+// Parity answers from fixtures, so the request itself is only exercised with parity off for this block. The stand-in lists oldest
+// first on purpose: the answer must come from the dates, never from list order.
+type StandIn = { id: string; threadId: string; internalDate: string; labels: string[]; subject: string; to: string; body: string };
+const day = (iso: string) => String(Date.parse(iso));
+const BOX: StandIn[] = [
+  { id: "s-oct25", threadId: "t318", internalDate: day("2026-10-25T14:00:00Z"), labels: ["SENT"], subject: "Unit 318 parking", to: "Manik <manik@example.com>", body: "oct 25 body words" },
+  { id: "s-oct28", threadId: "t-priya", internalDate: day("2026-10-28T13:00:00Z"), labels: ["SENT"], subject: "Welcome to Unit 318", to: "Priya <priya@example.com>", body: "oct 28 body words" },
+  { id: "s-oct30", threadId: "t318", internalDate: day("2026-10-30T15:30:00Z"), labels: ["SENT", "CATEGORY_PROMOTIONS"], subject: "Unit 318 registration, Oct 30 to Nov 1", to: "Supervisor <supervisor@bluejaysway.example>", body: "oct 30 body words" },
+  { id: "i-nov1", threadId: "t-in", internalDate: day("2026-11-01T09:00:00Z"), labels: ["INBOX", "CATEGORY_PERSONAL"], subject: "Thanks", to: "info@mandelrealtygroup.com", body: "nov 1 inbox body words" },
+];
+const rfc = (ms: string) => new Date(Number(ms)).toUTCString();
+const asMessage = (row: StandIn, format: string) => ({
+  id: row.id,
+  threadId: row.threadId,
+  labelIds: row.labels,
+  internalDate: row.internalDate,
+  snippet: row.body.slice(0, 20),
+  payload: {
+    mimeType: "text/plain",
+    headers: [{ name: "From", value: "Mandel Realty Group <info@mandelrealtygroup.com>" }, { name: "To", value: row.to }, { name: "Subject", value: row.subject }, { name: "Date", value: rfc(row.internalDate) }],
+    ...(format === "full" ? { body: { data: Buffer.from(row.body).toString("base64url") } } : {}),
+  },
+});
+const gmailSeen: { url: string; params: URLSearchParams }[] = [];
+let failGet = "";
+let failThread = false;
+function gmailStandIn(): void {
+  globalThis.fetch = (async (input: unknown) => {
+    const url = new URL(String(input));
+    if (url.host === "oauth2.googleapis.com") return json(200, { access_token: "access-token-xyz" });
+    if (url.host !== "gmail.googleapis.com") return json(404, {});
+    const path = url.pathname.replace("/gmail/v1/users/me", "");
+    if (path === "/messages") {
+      gmailSeen.push({ url: url.pathname, params: url.searchParams });
+      const q = url.searchParams.get("q") ?? "";
+      const label = url.searchParams.get("labelIds") ?? "";
+      const words = q.replace(/\b(in|category|label|is|has):\S+/g, " ").replace(/-\w+:\S+/g, " ").split(/\s+/).filter(Boolean);
+      const wantsSent = /\bin:sent\b/.test(q) || label === "SENT";
+      const rows = BOX.filter((row) => (wantsSent ? row.labels.includes("SENT") : /\bin:inbox\b/.test(q) ? row.labels.includes("INBOX") : true)).filter((row) => words.every((word) => `${row.subject} ${row.to}`.toLowerCase().includes(word.toLowerCase())));
+      const cap = Number(url.searchParams.get("maxResults") ?? "100");
+      // Oldest first, adversarially: a real list is newest first, and the code must not rely on either.
+      return json(200, { messages: rows.slice(0, cap).map((row) => ({ id: row.id, threadId: row.threadId })), resultSizeEstimate: rows.length });
+    }
+    const message = /^\/messages\/(.+)$/.exec(path);
+    if (message) {
+      if (message[1] === failGet) return json(500, {});
+      const row = BOX.find((item) => item.id === message[1]);
+      return row ? json(200, asMessage(row, url.searchParams.get("format") ?? "metadata")) : json(404, {});
+    }
+    const thread = /^\/threads\/(.+)$/.exec(path);
+    if (thread) {
+      if (failThread) return json(500, {});
+      const rows = BOX.filter((item) => item.threadId === thread[1]).sort((a, b) => Number(a.internalDate) - Number(b.internalDate));
+      return rows.length ? json(200, { messages: rows.map((row) => asMessage(row, "full")) }) : json(404, {});
+    }
+    return json(404, {});
+  }) as typeof fetch;
+}
+const wasParity = process.env.COPILOT_PARITY;
+const gmailLines: Record<string, unknown>[] = [];
+process.env.COPILOT_PARITY = "0";
+try {
+  await saveGmailLogin("stand-in-refresh-token-not-a-secret", "info@mandelrealtygroup.com");
+  gmailStandIn();
+  setGmailLogger((line) => gmailLines.push(line));
+  const latest = await latestSentGmail();
+  if (latest.id !== "s-oct30") fail(`the newest sent message was ${latest.id}`);
+  const found = await searchGmail({ keywords: "Unit 318", where: "sent", includeAirbnb: false });
+  if (found.map((hit) => hit.id).join() !== "s-oct30,s-oct28,s-oct25") fail(`search order: ${found.map((hit) => hit.id).join()}`);
+  // The request itself: Sent only, the keywords, the cap, no label filter, no page token, no date bound.
+  const listed = gmailSeen.filter((row) => row.params.get("q")?.includes("Unit 318"))[0];
+  if (listed?.params.get("q") !== "in:sent -from:airbnb.com Unit 318" || listed.params.get("maxResults") !== "8" || listed.params.has("labelIds") || listed.params.has("pageToken") || /after:|before:|newer_than|older_than/.test(listed.params.get("q") ?? "")) fail(`the sent query: ${JSON.stringify([...(listed?.params.entries() ?? [])])}`);
+  const logText = gmailLines.map((line) => JSON.stringify(line)).join("\n");
+  if (!/"gmail":"list"[^}]*"q":"in:sent -from:airbnb.com Unit 318"[^}]*"maxResults":8[^}]*"labelIds":""[^}]*"pageToken":false[^}]*"status":200[^}]*"returned":3/.test(logText)) fail(`the log lacks the exact list parameters:\n${logText}`);
+  if (!/"newest":"2026-10-30T15:30:00.000Z"/.test(logText)) fail("the log lacks the newest date returned");
+  if (/access-token-xyz|stand-in-refresh|body words|manik@|supervisor@/i.test(logText)) fail("the log leaked a credential, a body or an address");
+  // A message you sent is in Sent even when Gmail also tagged it with a category (Promotions here).
+  if (found[0]?.folder !== "sent") fail("the Oct 30 message was not read as sent");
+  // The newest message can't be read: say so, never answer with an older one.
+  failGet = "s-oct30";
+  let unreadable = "";
+  try {
+    await searchGmail({ keywords: "Unit 318", where: "sent", includeAirbnb: false });
+  } catch (err) {
+    unreadable = err instanceof Error ? err.message : "";
+  }
+  if (!/newest may be missing/.test(unreadable)) fail(`an unreadable newest message was skipped: ${unreadable}`);
+  let latestError = "";
+  try {
+    await latestSentGmail();
+  } catch (err) {
+    latestError = err instanceof Error ? err.message : "";
+  }
+  if (!/can't say which is the latest/.test(latestError)) fail(`latest with an unreadable message: ${latestError}`);
+  failGet = "";
+  // A thread that won't load is not a one-message thread.
+  failThread = true;
+  let threadError = "";
+  try {
+    await readGmailThread("s-oct25", true);
+  } catch (err) {
+    threadError = err instanceof Error ? err.message : "";
+  }
+  if (!/newer messages in it may be missing/.test(threadError)) fail(`a failed thread read fell back silently: ${threadError}`);
+  failThread = false;
+  // read_mail shows the whole chain, so the Oct 30 reply can't hide behind the Oct 25 message it replies to.
+  const readOld = (await agentTools().find((tool) => tool.name === "read_mail")?.run({ mailbox: "gmail", id: "s-oct25" }, "c")) as { thisIsTheNewest: boolean; newestInThread: { id: string }; threadSize: number; mailboxLabel: string } | undefined;
+  if (!readOld || readOld.thisIsTheNewest || readOld.newestInThread.id !== "s-oct30" || readOld.threadSize !== 2 || readOld.mailboxLabel !== "Gmail") fail(`read_mail hid the newer reply: ${JSON.stringify(readOld)}`);
+  // The diagnosis lists the same folder four ways, and each one has the newest.
+  const diagnosis = await diagnoseGmail("Unit 318");
+  if (diagnosis.newest !== "s-oct30" || diagnosis.probes.length !== 5 || diagnosis.probes.some((probe) => !probe.hasNewest)) fail(`diagnosis: ${JSON.stringify(diagnosis.probes.map((probe) => [probe.name, probe.hasNewest]))}`);
+} finally {
+  globalThis.fetch = realFetch;
+  setGmailLogger(null);
+  await clearGmailLogin();
+  if (wasParity === undefined) delete process.env.COPILOT_PARITY;
+  else process.env.COPILOT_PARITY = wasParity;
+}
 
 console.log("Connectors harness passed.");

@@ -14,6 +14,51 @@ const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/gmail/callback";
 const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.app.created";
 const BACK = "https://admin.mandelrealtygroup.com/copilot";
 
+type GmailLogLine = Record<string, string | number | boolean | null>;
+let gmailLogger: ((line: GmailLogLine) => void) | null = null;
+
+/** Tests read the log. Null restores the server log. */
+export function setGmailLogger(next: ((line: GmailLogLine) => void) | null): void {
+  gmailLogger = next;
+}
+
+/** One line per Gmail read: the exact list parameters and what came back (counts and dates). Never a body, a header value or a credential. */
+function gmailLog(line: GmailLogLine): void {
+  if (gmailLogger) return gmailLogger(line);
+  if (parityEnabled()) return;
+  console.log(`[gmail] ${JSON.stringify(line)}`);
+}
+
+type ListParams = { q: string; maxResults: number; labelIds?: string; pageToken?: string };
+
+/** The one place a Gmail list is made, so what is sent is what is logged. Refreshes once on a refused token. */
+async function listMessages(token: string, params: ListParams, why: string): Promise<{ ids: { id: string; threadId?: string }[]; token: string }> {
+  const query = new URLSearchParams({ maxResults: String(params.maxResults), q: params.q });
+  if (params.labelIds) query.set("labelIds", params.labelIds);
+  if (params.pageToken) query.set("pageToken", params.pageToken);
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?${query.toString()}`;
+  let current = token;
+  let res = await fetch(url, { headers: { Authorization: `Bearer ${current}` } });
+  if (res.status === 401) {
+    current = await accessToken();
+    res = await fetch(url, { headers: { Authorization: `Bearer ${current}` } });
+  }
+  const list = (await res.json().catch(() => ({}))) as { messages?: { id: string; threadId?: string }[]; nextPageToken?: string; resultSizeEstimate?: number; error?: { message?: string } };
+  gmailLog({ gmail: "list", why, q: params.q, maxResults: params.maxResults, labelIds: params.labelIds ?? "", pageToken: Boolean(params.pageToken), status: res.status, returned: list.messages?.length ?? 0, more: Boolean(list.nextPageToken), estimate: list.resultSizeEstimate ?? 0 });
+  if (res.status === 401) {
+    const login = await readGmailLogin();
+    if (login) rememberLoginState("gmail", login.refreshToken.slice(-12), "needs_reauth");
+    throw new Error(REAUTH_NOTE("Gmail"));
+  }
+  if (!res.ok) throw new Error(list.error?.message || "Gmail didn't return that search.");
+  return { ids: list.messages ?? [], token: current };
+}
+
+/** A message's metadata, tried twice. Null only when Gmail won't give it, and that is reported by the caller, never skipped silently. */
+async function readMetadata(token: string, id: string): Promise<GmailMessage | null> {
+  return (await gmailGet(token, id, "metadata")) ?? (await gmailGet(token, id, "metadata"));
+}
+
 function clientId(): string {
   return process.env.GOOGLE_GMAIL_CLIENT_ID?.trim() ?? "";
 }
@@ -341,8 +386,9 @@ function gmailHit(msg: GmailMessage, folder: MailFolder): GmailHit | null {
 
 function gmailFolder(labels: string[]): MailFolder | null {
   const set = new Set(labels);
-  if (set.has("CATEGORY_SOCIAL") || set.has("CATEGORY_PROMOTIONS")) return null;
+  // A message you sent is in Sent whatever else Gmail has labelled it.
   if (set.has("SENT")) return "sent";
+  if (set.has("CATEGORY_SOCIAL") || set.has("CATEGORY_PROMOTIONS")) return null;
   if (!set.has("INBOX")) return null;
   if (set.has("CATEGORY_UPDATES") || set.has("CATEGORY_FORUMS")) return null;
   return "inbox";
@@ -366,32 +412,36 @@ export async function searchGmail(input: {
   const hits: GmailHit[] = [];
   for (const folder of folders) {
     const q = gmailQuery(folder, keywords, input.includeAirbnb, input.after ?? "");
-    const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${cap}&q=${encodeURIComponent(q)}`;
-    let listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${token}` } });
-    if (listRes.status === 401) {
-      // The access token was refused: refresh once and try again before saying the sign-in is gone.
-      token = await accessToken();
-      listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${token}` } });
-      if (listRes.status === 401) {
-        const login = await readGmailLogin();
-        if (login) rememberLoginState("gmail", login.refreshToken.slice(-12), "needs_reauth");
-        throw new Error(REAUTH_NOTE("Gmail"));
+    const listed = await listMessages(token, { q, maxResults: cap }, `search ${folder}`);
+    token = listed.token;
+    let unreadable = 0;
+    let dropped = 0;
+    for (const item of listed.ids) {
+      const msg = await readMetadata(token, item.id);
+      if (!msg) {
+        unreadable += 1;
+        continue;
       }
-    }
-    const list = (await listRes.json().catch(() => ({}))) as { messages?: { id: string; threadId?: string }[]; error?: { message?: string } };
-    if (!listRes.ok) throw new Error(list.error?.message || "Gmail didn't return that search.");
-    for (const item of list.messages ?? []) {
-      const msg = await gmailGet(token, item.id, "metadata");
-      if (!msg) continue;
       if (!msg.threadId && item.threadId) msg.threadId = item.threadId;
       const hit = gmailHit(msg, folder);
       if (!hit) continue;
-      if (!input.includeAirbnb && isAirbnbNotification(hit.email)) continue;
+      if (!input.includeAirbnb && isAirbnbNotification(hit.email)) {
+        dropped += 1;
+        continue;
+      }
       const labels = msg.labelIds ?? [];
-      if (labels.length && gmailFolder(labels) !== folder) continue;
+      if (labels.length && gmailFolder(labels) !== folder) {
+        dropped += 1;
+        continue;
+      }
       hits.push(hit);
     }
+    const dates = hits.filter((hit) => hit.folder === folder).map((hit) => Date.parse(hit.date)).filter(Number.isFinite);
+    gmailLog({ gmail: "read", why: `search ${folder}`, listed: listed.ids.length, kept: dates.length, filteredOut: dropped, unreadable, newest: dates.length ? new Date(Math.max(...dates)).toISOString() : "", oldest: dates.length ? new Date(Math.min(...dates)).toISOString() : "" });
+    // The newest message may be the one Gmail wouldn't give. Say so rather than answer with an older one.
+    if (unreadable) throw new Error(`Gmail listed ${listed.ids.length} messages in ${folder === "sent" ? "Sent" : "the inbox"} but wouldn't give ${unreadable} of them, so the newest may be missing.`);
   }
+  hits.sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
   return hits.slice(0, input.limit && input.limit > 0 ? Math.min(input.limit, 40) : 16);
 }
 
@@ -408,23 +458,74 @@ export async function latestSentGmail(): Promise<GmailHit> {
     if (!newest) throw new Error("Gmail's Sent folder is empty.");
     return newest;
   }
-  const token = await accessToken();
-  const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5&q=${encodeURIComponent(gmailQuery("sent", "", true))}`;
-  let res = await fetch(listUrl, { headers: { Authorization: `Bearer ${token}` } });
-  if (res.status === 401) {
-    res = await fetch(listUrl, { headers: { Authorization: `Bearer ${await accessToken()}` } });
-    if (res.status === 401) throw new Error(REAUTH_NOTE("Gmail"));
-  }
-  const list = (await res.json().catch(() => ({}))) as { messages?: { id: string }[]; error?: { message?: string } };
-  if (!res.ok) throw new Error(list.error?.message || "Gmail didn't return the Sent folder.");
-  const ids = (list.messages ?? []).map((item) => item.id);
+  const first = await listMessages(await accessToken(), { q: gmailQuery("sent", "", true), maxResults: 5 }, "latest sent");
+  const ids = first.ids.map((item) => item.id);
   if (!ids.length) throw new Error("Gmail's Sent folder is empty.");
-  const read = await Promise.all(ids.map((id) => gmailGet(token, id, "metadata")));
+  const read = await Promise.all(ids.map((id) => readMetadata(first.token, id)));
   if (read.some((msg) => !msg)) throw new Error("Gmail found your newest sent messages but couldn't read all of them, so it can't say which is the latest.");
   const hits = (read as GmailMessage[]).map((msg) => gmailHit(msg, "sent")).filter((hit): hit is GmailHit => Boolean(hit));
   const newest = hits.sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
   if (!newest) throw new Error("Gmail's Sent folder is empty.");
+  gmailLog({ gmail: "read", why: "latest sent", listed: ids.length, kept: hits.length, newest: newest.date, oldest: hits.length ? hits[hits.length - 1]!.date : "" });
   return newest;
+}
+
+export type GmailProbe = {
+  name: string;
+  q: string;
+  labelIds: string;
+  maxResults: number;
+  status: number;
+  returned: number;
+  hasNewest: boolean;
+  messages: { id: string; date: string; labels: string[]; subject: string; to: string }[];
+};
+
+/**
+ * Temporary: the same Sent folder read four ways, so the one that loses the newest message shows. Returned to the signed-in
+ * partner only, never logged. Each variant lists what came back (id, date, labels, subject, recipient), newest by internalDate.
+ */
+export async function diagnoseGmail(keywords = ""): Promise<{ newest: string; probes: GmailProbe[] }> {
+  if (parityEnabled()) return { newest: "", probes: [] };
+  const word = mailKeywords(keywords);
+  const variants: { name: string; q: string; labelIds?: string }[] = [
+    { name: "plain newest-first: in:sent", q: "in:sent" },
+    { name: "label SENT, no query", q: "", labelIds: "SENT" },
+    { name: "the agent's sent query without keywords", q: gmailQuery("sent", "", false) },
+    ...(word ? [{ name: `the agent's sent query with "${word}"`, q: gmailQuery("sent", word, false) }, { name: `in:sent with "${word}"`, q: `in:sent ${word}` }] : []),
+  ];
+  let token = await accessToken();
+  const probes: GmailProbe[] = [];
+  for (const variant of variants) {
+    const params: ListParams = { q: variant.q, maxResults: 10, ...(variant.labelIds ? { labelIds: variant.labelIds } : {}) };
+    try {
+      const listed = await listMessages(token, params, `diagnose ${variant.name}`);
+      token = listed.token;
+      const rows = await Promise.all(listed.ids.map((item) => readMetadata(token, item.id)));
+      probes.push({
+        name: variant.name,
+        q: variant.q,
+        labelIds: variant.labelIds ?? "",
+        maxResults: 10,
+        status: 200,
+        returned: listed.ids.length,
+        hasNewest: false,
+        messages: rows.filter((msg): msg is GmailMessage => Boolean(msg)).map((msg) => ({
+          id: msg.id ?? "",
+          date: gmailWhen(msg),
+          labels: msg.labelIds ?? [],
+          subject: header(msg.payload?.headers, "Subject"),
+          to: header(msg.payload?.headers, "To"),
+        })),
+      });
+    } catch (err) {
+      probes.push({ name: variant.name, q: variant.q, labelIds: variant.labelIds ?? "", maxResults: 10, status: err instanceof Error && /re-authorization|rejected/i.test(err.message) ? 401 : 0, returned: 0, hasNewest: false, messages: [] });
+    }
+  }
+  const all = probes.flatMap((probe) => probe.messages);
+  const newest = all.sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
+  for (const probe of probes) probe.hasNewest = Boolean(newest) && probe.messages.some((msg) => msg.id === newest!.id);
+  return { newest: newest?.id ?? "", probes };
 }
 
 async function gmailThreadMessages(token: string, id: string): Promise<GmailMessage[]> {
@@ -432,7 +533,10 @@ async function gmailThreadMessages(token: string, id: string): Promise<GmailMess
     `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(id)}?format=full`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
-  if (!res.ok) return [];
+  gmailLog({ gmail: "thread", status: res.status });
+  if (res.status === 404) return [];
+  // A thread that won't load is not an empty one: falling back to the one message hides the newer ones in the chain.
+  if (!res.ok) throw new Error("Gmail wouldn't give the whole thread, so newer messages in it may be missing. Nothing was assumed.");
   const data = (await res.json().catch(() => null)) as { messages?: GmailMessage[] } | null;
   return data?.messages ?? [];
 }
@@ -440,7 +544,8 @@ async function gmailThreadMessages(token: string, id: string): Promise<GmailMess
 function gmailLetter(msg: GmailMessage): GmailLetter | null {
   const labels = msg.labelIds ?? [];
   const set = new Set(labels);
-  if (set.has("CATEGORY_SOCIAL") || set.has("CATEGORY_PROMOTIONS")) return null;
+  // Social and Promotions stay out of the inbox, but a message you sent is yours whatever Gmail tagged it.
+  if (!set.has("SENT") && (set.has("CATEGORY_SOCIAL") || set.has("CATEGORY_PROMOTIONS"))) return null;
   const folder = gmailFolder(labels) ?? (set.has("SENT") ? "sent" : "inbox");
   const hit = gmailHit(msg, folder);
   if (!hit) return null;

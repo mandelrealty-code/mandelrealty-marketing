@@ -1,7 +1,7 @@
 import { hospitableRead } from "./hospitableConnection.js";
 import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { hospitableDraft, isHospitableWrite } from "./hospitableAgent.js";
-import { MAILBOX_LABEL, latestSent, readMail, searchMail } from "./mailSearch.js";
+import { MAILBOX_LABEL, latestSent, readMailThread, searchMail } from "./mailSearch.js";
 import { readStanding } from "./memoryFiles.js";
 import { DEFAULT_CHECKLIST, listStays, readGuestInbox, readThread } from "./guestInbox.js";
 import { addMessage, addReminder, flagChatNeedsYou, getRun, updateRun } from "./store.js";
@@ -212,7 +212,7 @@ const TOOLS: Record<string, Tool> = {
   },
   read_mail: {
     description:
-      "Read one message returned by search_mail, or the whole thread when that message does not open. Pass mailbox and id. id may be the message id or the threadId from search_mail. Set include_airbnb only when the search did. Read only. This does not send.",
+      "Read one message returned by search_mail. The result also lists every message in its thread and says which is the newest (thisIsTheNewest), so a later reply in the same chain is never missed. Pass mailbox and id. id may be the message id or the threadId from search_mail. Set include_airbnb only when the search did. Read only. This does not send.",
     inputSchema: {
       type: "object",
       properties: {
@@ -223,7 +223,15 @@ const TOOLS: Record<string, Tool> = {
       required: ["mailbox", "id"],
     },
     readOnly: true,
-    call: async (args) => readMail({ mailbox: text(args.mailbox), id: text(args.id), includeAirbnb: args.include_airbnb === true }),
+    call: async (args) => {
+      const letters = await readMailThread({ mailbox: text(args.mailbox), id: text(args.id), includeAirbnb: args.include_airbnb === true });
+      const wanted = text(args.id);
+      const letter = letters.find((row) => row.id === wanted) ?? letters[letters.length - 1]!;
+      const brief = (row: (typeof letters)[number]) => ({ id: row.id, when: row.when, date: row.date, from: row.from, to: row.to, subject: row.subject });
+      const newest = [...letters].sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0))[0]!;
+      // The message asked for, plus the whole chain, so a newer reply in the same thread is never hidden behind an older message.
+      return { ...letter, mailboxLabel: MAILBOX_LABEL[letter.mailbox], thread: letters.map(brief), threadSize: letters.length, newestInThread: brief(newest), thisIsTheNewest: newest.id === letter.id };
+    },
   },
   read_memory: {
     description:
