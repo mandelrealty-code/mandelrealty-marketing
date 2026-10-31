@@ -238,7 +238,7 @@ const TOOLS: Record<string, Tool> = {
   },
   hospitable_read: {
     description:
-      "Reads one Hospitable MCP tool. name must start with get-, list-, or search-, for example get-reservations or get-property-calendar. Pass that tool's arguments. This cannot send, publish, or change anything.",
+      "Reads one Hospitable MCP tool. name must start with get-, list-, or search-, for example get-reservations or get-property-calendar. get-reservations always reads from 30 days ago to 365 days ahead unless you pass start_date and end_date, so current and recently checked-out guests are included. Pass that tool's arguments. This cannot send, publish, or change anything.",
     inputSchema: {
       type: "object",
       properties: {

@@ -15,6 +15,7 @@ import {
 import { isManagedUnit } from "./managedUnits.js";
 import { addDays, torontoToday } from "./time.js";
 import { parityEnabled } from "./parity/flag.js";
+import { parityNow } from "./parity/clock.js";
 import { parityPat } from "./parity/world.js";
 import type { HospitableCard, HospitableSeenProperty } from "./types.js";
 
@@ -193,7 +194,25 @@ export async function copilotHospitableToken(): Promise<string> {
 }
 
 /** One Hospitable read through the Copilot token. No OPS key and no MCP stand-in. */
-export async function hospitableRead(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
+/**
+ * Hospitable hides current and recently checked-out guests when a reservation read has no explicit window. Every
+ * reservation read carries one: a read that names its own dates keeps them, and one that doesn't gets 30 days back to
+ * 365 days ahead, filtered on checkout so a guest still in the house, or just gone, is in it.
+ */
+export function withReservationWindow(args: Record<string, unknown>, now: Date = parityNow() ?? new Date()): Record<string, unknown> {
+  const has = (value: unknown) => typeof value === "string" ? value.trim() !== "" : value != null;
+  if (has(args.start_date) && has(args.end_date)) return args;
+  const today = torontoToday(now);
+  return {
+    ...args,
+    start_date: has(args.start_date) ? args.start_date : addDays(today, -30),
+    end_date: has(args.end_date) ? args.end_date : addDays(today, 365),
+    date_query: has(args.date_query) ? args.date_query : "checkout",
+  };
+}
+
+export async function hospitableRead(name: string, rawArgs: Record<string, unknown> = {}): Promise<unknown> {
+  const args = name === "get-reservations" ? withReservationWindow(rawArgs) : rawArgs;
   if (name === "send-reservation-message" || name === "send-inquiry-message") {
     throw new Error("Guest messages are not sent from a read. Nothing was sent.");
   }

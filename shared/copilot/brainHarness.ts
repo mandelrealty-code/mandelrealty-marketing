@@ -11,6 +11,7 @@ import { capturedCommits, capturedDrafts, resetCaptures } from "./parity/capture
 import { createChat, addMessage, listMessages } from "./store.js";
 import { streamAgentReply } from "../adminApi/copilot.js";
 import type { VercelResponse } from "@vercel/node";
+import { hospitableRead, resetHospitableConnection, saveHospitableToken, setHospitableProbe, withReservationWindow } from "./hospitableConnection.js";
 import { installWorld } from "./parity/world.js";
 
 const META = "meta-test-key-not-a-secret-1";
@@ -243,5 +244,35 @@ wire.length = 0;
 await streamAgentReply(fakeRes, streamChat.id, "again");
 if (!wire.join("").includes("event: error") || wire.join("").includes("boom")) fail("a failed stream must end with a plain error event");
 setBrainModel(null);
+
+// ---------- Reservation reads always carry an explicit window ----------
+resetHospitableConnection();
+const seenArgs: { name: string; args: Record<string, unknown> }[] = [];
+setHospitableProbe(async (token, name, args) => {
+  if (token !== "window-token-not-a-secret-9Zx") throw new Error("rejected");
+  seenArgs.push({ name, args });
+  return { data: [] };
+});
+await saveHospitableToken("window-token-not-a-secret-9Zx");
+// Parity's clock is 2026-10-20: 30 days back is 2026-09-20, 365 ahead is 2027-10-20.
+await hospitableRead("get-reservations", { properties: ["p1"] });
+const bare = seenArgs.at(-1)!.args;
+if (bare.start_date !== "2026-09-20" || bare.end_date !== "2027-10-20" || bare.date_query !== "checkout") fail(`default window ${JSON.stringify(bare)}`);
+await callToolForChat("hospitable_read", { name: "get-reservations", arguments: { properties: ["p1"], include: "guest" } }, "c1");
+const viaAgent = seenArgs.at(-1)!.args;
+if (viaAgent.start_date !== "2026-09-20" || viaAgent.end_date !== "2027-10-20") fail(`the agent's read has no window ${JSON.stringify(viaAgent)}`);
+if (viaAgent.include !== "guest") fail("the window dropped the other arguments");
+await hospitableRead("get-reservations", { properties: ["p1"], start_date: "2026-11-01", end_date: "2026-11-30", date_query: "checkin" });
+const explicit = seenArgs.at(-1)!.args;
+if (explicit.start_date !== "2026-11-01" || explicit.end_date !== "2026-11-30" || explicit.date_query !== "checkin") fail("a read that names its own window was changed");
+const half = withReservationWindow({ start_date: "2026-10-01" }, new Date("2026-10-31T12:00:00-04:00"));
+if (half.start_date !== "2026-10-01" || half.end_date !== "2027-10-31") fail(`half a window ${JSON.stringify(half)}`);
+// The guest who checked in Oct 26 is in a read made on Oct 31.
+const oct31 = withReservationWindow({}, new Date("2026-10-31T12:00:00-04:00"));
+if (!(String(oct31.start_date) <= "2026-10-26" && "2026-10-26" <= String(oct31.end_date))) fail("an Oct 26 check-in is outside the window on Oct 31");
+await hospitableRead("get-properties", {});
+if ("start_date" in seenArgs.at(-1)!.args) fail("a window was added to a read that isn't reservations");
+setHospitableProbe(null);
+resetHospitableConnection();
 
 console.log("Brain harness passed.");

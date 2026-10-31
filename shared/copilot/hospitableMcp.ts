@@ -1,6 +1,7 @@
 import type { McpServerConfig } from "@cursor/sdk";
 import { getHospitableMcpToken } from "../pm/clientStore.js";
 import { parityMcp } from "./parity/world.js";
+import { withReservationWindow } from "./hospitableConnection.js";
 
 /**
  * Hospitable's hosted MCP. Every Copilot model reaches the account through this,
@@ -49,7 +50,8 @@ export async function verifyHospitableMcpToken(token: string): Promise<void> {
   await callWith(clean, "get-user", {});
 }
 
-export async function callHospitableMcp(name: string, args: Record<string, unknown>): Promise<unknown> {
+export async function callHospitableMcp(name: string, rawArgs: Record<string, unknown>): Promise<unknown> {
+  const args = name === "get-reservations" ? withReservationWindow(rawArgs) : rawArgs;
   const parity = parityMcp(name, args);
   if (parity.handled) return parity.value;
   const token = await getHospitableMcpToken();
