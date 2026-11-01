@@ -40,7 +40,16 @@ export type BrainResult = {
 
 export type Route = { provider: "meta" | "anthropic"; model: string };
 
-const META_MODEL = "muse-spark";
+/**
+ * Meta's models are versioned. The standard tier only: the "-contributor" variant lets Meta train on what it is sent, so it is
+ * never used, even if META_MODEL names it.
+ */
+const META_DEFAULT = "muse-spark-1.3";
+export function metaModelFrom(named: string | undefined): string {
+  const model = named?.trim() ?? "";
+  return model && !/contributor/i.test(model) ? model : META_DEFAULT;
+}
+const META_MODEL = metaModelFrom(process.env.META_MODEL);
 const HAIKU = "claude-haiku-4-5";
 const SONNET = "claude-sonnet-4-6";
 
@@ -296,8 +305,6 @@ export type BrainProbe = { provider: "meta" | "anthropic"; model: string; keyPre
 export async function diagnoseBrain(): Promise<BrainProbe[]> {
   const tries: Route[] = [
     { provider: "meta", model: META_MODEL },
-    { provider: "meta", model: "muse-spark-1.3" },
-    { provider: "meta", model: "muse-spark-1.1" },
     { provider: "anthropic", model: HAIKU },
   ];
   const out: BrainProbe[] = [];

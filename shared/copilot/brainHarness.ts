@@ -4,7 +4,7 @@
  */
 
 import { agentSystem, agentTools, answerInChat, runAgentTurn, type AgentTool } from "./agentChat.js";
-import { brainAvailable, complete, diagnoseBrain, routePlan, setBrainFetch, setBrainLogger, setBrainModel, type BrainRequest } from "./brain.js";
+import { metaModelFrom, brainAvailable, complete, diagnoseBrain, routePlan, setBrainFetch, setBrainLogger, setBrainModel, type BrainRequest } from "./brain.js";
 import { extractAndSaveFacts, listFacts, parseExtracted, recallFacts, resetBusinessFacts, saveFact } from "./businessFacts.js";
 import { callToolForChat } from "./toolServer.js";
 import { capturedCommits, capturedDrafts, capturedReports, resetCaptures } from "./parity/capture.js";
@@ -29,7 +29,7 @@ resetBusinessFacts();
 // ---------- Routing ----------
 process.env.META_API_KEY = META;
 process.env.ANTHROPIC_API_KEY = ANTH;
-if (routePlan("chat")[0]?.provider !== "meta" || routePlan("chat")[0]?.model !== "muse-spark") fail("chat does not go to Meta first");
+if (routePlan("chat")[0]?.provider !== "meta" || routePlan("chat")[0]?.model !== "muse-spark-1.3") fail("chat does not go to Meta first");
 if (routePlan("simple")[0]?.provider !== "meta") fail("simple does not go to Meta first");
 if (routePlan("hard")[0]?.provider !== "anthropic" || !/sonnet/.test(routePlan("hard")[0]!.model)) fail("hard does not go to the strong model first");
 if (routePlan("chat").at(-1)?.provider !== "anthropic") fail("chat has no Anthropic fallback");
@@ -58,7 +58,7 @@ const retried = await complete(req());
 if (retried?.text !== "from meta" || retried.provider !== "meta") fail(`retry: ${JSON.stringify(retried)}`);
 if (calls.length !== 2 || !calls.every((c) => c.url === "https://api.meta.ai/v1/messages")) fail(`retry calls ${calls.map((c) => c.url).join(",")}`);
 if (calls[0]!.headers.authorization !== `Bearer ${META}` || calls[0]!.headers["x-api-key"]) fail("Meta must use bearer auth only");
-if (calls[0]!.body.model !== "muse-spark") fail("model name");
+if (calls[0]!.body.model !== "muse-spark-1.3") fail("model name");
 if (JSON.stringify(retried).includes(META)) fail("the key was returned");
 
 calls.length = 0;
@@ -130,9 +130,14 @@ setBrainFetch(asFetch((call) => {
   return call.body.model === "muse-spark" ? new Response("{}", { status: 404 }) : ok("ok");
 }));
 const probes = await diagnoseBrain();
-const plain = probes.find((row) => row.model === "muse-spark");
-const versioned = probes.find((row) => row.model === "muse-spark-1.3");
-if (plain?.status !== 404 || plain.outcome !== "status" || versioned?.outcome !== "ok" || !plain.keyPresent) fail(`diagnosis ${JSON.stringify(probes)}`);
+const versioned = probes.find((row) => row.provider === "meta");
+if (versioned?.model !== "muse-spark-1.3" || versioned.outcome !== "ok" || !versioned.keyPresent) fail(`diagnosis ${JSON.stringify(probes)}`);
+if (metaModelFrom(undefined) !== "muse-spark-1.3" || metaModelFrom("  muse-spark-1.4 ") !== "muse-spark-1.4" || metaModelFrom("muse-spark-1.3-contributor") !== "muse-spark-1.3" || metaModelFrom("MUSE-SPARK-1.3-Contributor") !== "muse-spark-1.3") fail("META_MODEL override or the contributor guard");
+// The router asks Meta for the versioned standard model, never the contributor tier, and never the old unversioned name.
+const metaAsked: string[] = [];
+setBrainFetch(asFetch((call) => { if (call.url.includes("meta.ai")) metaAsked.push(String(call.body.model)); return ok("ok"); }));
+await complete(req());
+if (metaAsked.join() !== "muse-spark-1.3") fail(`Meta was asked for ${metaAsked.join()}`);
 if (JSON.stringify(probes).includes(META) || JSON.stringify(probes).includes(ANTH)) fail("the diagnosis returned a key");
 delete process.env.META_API_KEY;
 if (!(await diagnoseBrain()).some((row) => row.provider === "meta" && row.outcome === "no key" && !row.keyPresent)) fail("a missing Meta key was not diagnosed");
