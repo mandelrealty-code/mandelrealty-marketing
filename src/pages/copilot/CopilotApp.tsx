@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import type { BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, HospitableCard, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
+import { streamPiece, streamStart, streamStep } from "../../../shared/copilot/streamText";
 import type { ReviewQueuePayload, ReviewQueueRow } from "../../../shared/copilot/reviewTypes";
 import type { GuestDraftView, GuestQueue, GuestRow } from "../../../shared/copilot/guestTypes";
 import { ConnectorStatusPage, ConnectorsList, HospitablePage } from "./HospitableConnection";
@@ -1362,6 +1363,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     let activeId = preset && !keepChat ? "" : chatId ?? "";
     let delivered = false;
     let handed = false;
+    let streamState = streamStart;
     try {
       const makingSkill = skillMode && (!preset || keepChat);
       const data = await sendStreaming<{ chatId: string; messages: CopilotMessage[]; pending?: boolean; chats?: CopilotChat[]; view?: DeskView; steps?: { text: string }[]; thought?: string; memoryFiles?: MemoryFileView[] }>({
@@ -1374,8 +1376,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
         images,
         viewer,
       }, ctrl.signal, {
-        onText: (piece) => setStreamText((prev) => prev + piece),
-        onStep: (step) => setLiveSteps((prev) => (prev.some((item) => item.text === step) ? prev : [...prev, { text: step }])),
+        onText: (piece) => {
+          streamState = streamPiece(streamState, piece);
+          setStreamText(streamState.text);
+        },
+        onStep: (step) => {
+          streamState = streamStep(streamState);
+          setLiveSteps((prev) => (prev.some((item) => item.text === step) ? prev : [...prev, { text: step }]));
+        },
       });
       delivered = true;
       if (ctrl.signal.aborted) return;

@@ -24,7 +24,9 @@ import { forgetLoginState } from "./mailLoginStatus.js";
 import { clearGmailLogin, readGmailLogin, readOutlookLogin, saveGmailLogin, saveOutlookLogin, setParityMailLogin } from "./store.js";
 import type { ConnectorRow } from "./types.js";
 import { setToolLogger } from "./agentLoop.js";
-import { findStays } from "./stayLookup.js";
+import { streamPiece, streamStart, streamStep } from "./streamText.js";
+import { setParityClock } from "./parity/clock.js";
+import { dayMovements, findStays } from "./stayLookup.js";
 import { capturedCommits, resetCaptures } from "./parity/capture.js";
 import { parityChecksMessages, resetParityChecksMessages } from "./parity/storeStub.js";
 import { searchMail } from "./mailSearch.js";
@@ -572,6 +574,58 @@ resetBusinessFacts();
   if (!card || card.draft!.to !== building || !/Make: Kia/.test(card.draft!.body) || !/Michelle/.test(card.draft!.body)) fail(`the building draft: ${JSON.stringify(card?.draft)} / ${turn.body}`);
   if (capturedCommits().length) fail("the building email request sent something");
   if (!/call find_stay/.test((await import("./agentChat.js")).agentSystem("", "2026-10-31"))) fail("the agent isn't told to find the guest's stay");
+}
+
+// ---------- "How many people are checking out today": one read across the properties, answered in one tool call ----------
+{
+  const world = worldAt("2026-10-31T12:00:00-04:00");
+  world.reservations = [
+    stay("o1", ID.blue, "Pat Lee", "2026-10-28", "2026-10-31"),
+    stay("o2", ID.shaw, "Sam Wu", "2026-10-29", "2026-10-31"),
+    stay("o3", ID.charlotte, "Kim Ho", "2026-10-31", "2026-11-03"),
+    stay("o4", ID.rose, "Gone", "2026-10-28", "2026-10-31", "cancelled"),
+    stay("o5", ID.rose, "Later", "2026-11-01", "2026-11-04"),
+  ];
+  installWorld(world);
+  const reads: Record<string, unknown>[] = [];
+  setHospitableLogger((line) => reads.push(line));
+  const today = await dayMovements({}, new Date("2026-10-31T16:00:00Z"));
+  setHospitableLogger(null);
+  const resRead = reads.filter((line) => line.path === "/reservations");
+  if (today.checkOuts.map((row) => row.guest).sort().join() !== "Pat Lee,Sam Wu" || today.checkIns.map((row) => row.guest).join() !== "Kim Ho") fail(`day movements: ${JSON.stringify(today)}`);
+  if (resRead.length !== 2 || resRead.some((line) => String(line.properties).split(",").length !== 4)) fail(`not one read across the properties: ${JSON.stringify(resRead)}`);
+  const lines: Record<string, unknown>[] = [];
+  setToolLogger((line) => lines.push(line as Record<string, unknown>));
+  setBrainModel(async (request) => {
+    if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+    const last = request.messages!.at(-1)!;
+    if (!Array.isArray(last.content)) return { text: "Two checkouts today, pulling the details now.", toolUses: [{ id: "d1", name: "day_movements", input: {} }], blocks: [{ type: "text", text: "Two checkouts today, pulling the details now." }, { type: "tool_use", id: "d1", name: "day_movements", input: {} }], stop: "tool_use" };
+    const raw = last.content.map((block) => (block.type === "tool_result" ? block.content : "")).join("");
+    const result = JSON.parse(raw) as { checkOuts: unknown[] };
+    const text = `${result.checkOuts.length} people check out today.`;
+    return { text, toolUses: [], blocks: [{ type: "text", text }], stop: "end_turn" };
+  });
+  setParityClock(new Date("2026-10-31T16:00:00Z"));
+  const pieces: string[] = [];
+  const asked = await runAgentTurn({ chatId: "c", text: "how many people are checking out today", onEvent: (event) => { if (event.type === "text") pieces.push(event.text); } });
+  setBrainModel(null);
+  setToolLogger(null);
+  setParityClock(null);
+  const used = lines.filter((line) => line.agent === "tool");
+  if (used.length !== 1 || used[0]!.tool !== "day_movements" || asked.body !== "2 people check out today.") fail(`aggregate took ${used.length} calls: ${JSON.stringify(used)} / ${asked.body}`);
+  void pieces;
+  // Eight rounds that each open with the same line show it once; a round's words replace the last round's after a tool step.
+  let shown = streamStart;
+  for (let round = 0; round < 5; round += 1) {
+    for (const chunk of ["Two checkouts today", " \u2014 pulling the details now."]) shown = streamPiece(shown, chunk);
+    shown = streamStep(shown);
+  }
+  shown = streamPiece(shown, "2 people check out today.");
+  if (shown.text !== "2 people check out today." ) fail(`stacked stream text: ${shown.text}`);
+  let one = streamStart;
+  for (const chunk of ["Two checkouts today", " \u2014 pulling the details now."]) one = streamPiece(one, chunk);
+  if (one.text !== "Two checkouts today \u2014 pulling the details now.") fail(`chunks within a round must append: ${one.text}`);
+  if (!/call day_movements once/.test((await import("./agentChat.js")).agentSystem("", "2026-10-31"))) fail("the agent isn't told to use day_movements");
 }
 
 console.log("Connectors harness passed.");

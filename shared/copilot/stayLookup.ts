@@ -70,6 +70,29 @@ export async function nextStays(scope: Scope, count = 3, now: Date = new Date())
   };
 }
 
+export type DayMove = { guest: string; unit: string; propertyId: string; checkIn: string; checkOut: string; status: string; reservationId: string };
+
+/**
+ * Who checks in and who checks out on one date, across every property Copilot reads, in one go: one read per date filter for
+ * all the properties together, never one per unit. The date defaults to today in Toronto.
+ */
+export async function dayMovements(input: { date?: string; units?: string[] } = {}, now?: Date): Promise<{ date: string; properties: number; checkOuts: DayMove[]; checkIns: DayMove[]; note: string }> {
+  const pat = await copilotHospitableToken();
+  if (!pat) throw new Error("Hospitable is not connected, so nothing was read.");
+  const all = await scopedStayProperties().catch(() => [] as Readable[]);
+  const properties = input.units?.length ? all.filter((row) => input.units!.includes(row.id)) : all;
+  if (!properties.length) throw new Error("No properties are readable from Hospitable, so nothing was read.");
+  const date = input.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : torontoToday(now);
+  const ids = properties.map((row) => row.id);
+  const unit = new Map(properties.map((row) => [row.id, row.name]));
+  const [outs, ins] = await Promise.all((["checkout", "checkin"] as const).map((dateQuery) => listHospitableReservations({ pat, propertyIds: ids, startDate: date, endDate: addDays(date, 1), include: ["guest"], dateQuery })));
+  const move = (row: (typeof outs)[number]): DayMove => ({ guest: guestName(row.raw), unit: unit.get(row.property_id) ?? row.property_id, propertyId: row.property_id, checkIn: row.check_in ?? "", checkOut: row.check_out ?? "", status: row.status, reservationId: row.id });
+  const live = (row: (typeof outs)[number]) => !DEAD.test(row.status);
+  const checkOuts = outs.filter((row) => live(row) && row.check_out === date).map(move);
+  const checkIns = ins.filter((row) => live(row) && row.check_in === date).map(move);
+  return { date, properties: properties.length, checkOuts, checkIns, note: `Read ${properties.length} properties together for ${date}: ${checkOuts.length} check-out${checkOuts.length === 1 ? "" : "s"}, ${checkIns.length} check-in${checkIns.length === 1 ? "" : "s"}.` };
+}
+
 export type FoundStay = { reservationId: string; guest: string; unit: string; propertyId: string; checkIn: string; checkOut: string; status: string; platform: string };
 
 /**

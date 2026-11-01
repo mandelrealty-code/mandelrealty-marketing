@@ -9,7 +9,7 @@ import { clientMapFacts, resolveScope, type Scope } from "./clientProperty.js";
 import { answerOps } from "./ops.js";
 import { compLines, compSet, sizeOf } from "./compsAnswer.js";
 import { connectorRows } from "./connectorStatus.js";
-import { findStays, nextStays, readableUnit } from "./stayLookup.js";
+import { dayMovements, findStays, nextStays, readableUnit } from "./stayLookup.js";
 import { answerBuildingRegistrationItem } from "./buildingRegistration.js";
 import { unitFacts } from "./unitFacts.js";
 import type { UpcomingStay } from "./guestInbox.js";
@@ -57,6 +57,7 @@ export const STEP_LABELS: Record<string, string> = {
   connector_status: "Checked what is connected",
   market_comps: "Pulled comparable listings from AirROI",
   next_stays: "Looked up the next reservations",
+  day_movements: "Looked up the check-ins and check-outs",
   find_stay: "Found the guest's reservation",
   building_email: "Drafted the building email",
 };
@@ -65,7 +66,7 @@ export const STEP_LABELS: Record<string, string> = {
 const CONNECTOR_TOOLS: Record<string, string[]> = {
   gmail: ["search_mail", "read_mail"],
   outlook: ["search_mail", "read_mail"],
-  hospitable: ["guest_inbox", "list_stays", "next_stays", "find_stay", "read_guest_messages", "hospitable_read", "unit_facts", "guest_contacts"],
+  hospitable: ["guest_inbox", "list_stays", "next_stays", "find_stay", "day_movements", "read_guest_messages", "hospitable_read", "unit_facts", "guest_contacts"],
   airroi: ["market_comps"],
   cleaner: ["cleaner_read"],
   browser: ["research_web", "web_lookup"],
@@ -143,6 +144,12 @@ function ownTools(): AgentTool[] {
         if (!scope) throw new Error("That isn't a client or unit in the records. Say which of Raj, Nance, Roya or Precilla, or which unit.");
         return nextStays(scope, typeof input.count === "number" ? input.count : 3);
       },
+    },
+    {
+      name: "day_movements",
+      description: "Who checks out and who checks in on one date across ALL properties, in a single read. Use it for 'who is checking out today', 'how many check-ins tomorrow' and any count of arrivals or departures: one call answers it, never loop over units. date is YYYY-MM-DD and defaults to today in Toronto. Each row names the unit and guest. Read only.",
+      input_schema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD, default today." } } },
+      run: async (input) => dayMovements({ date: typeof input.date === "string" ? input.date : undefined }),
     },
     {
       name: "find_stay",
@@ -371,6 +378,7 @@ export function agentSystem(facts: string, today: string): string {
     "EMAIL: every answer about an email names the mailbox it came from, in words (Gmail or Outlook). For the last email the partner sent, call last_sent_email: it reads Gmail Sent newest first. If its note says Gmail couldn't be read, say that plainly and say the answer is from Outlook. Never present one mailbox's mail as the other's, and never answer from memory.",
     "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",
     "RESERVATIONS: for a unit's next reservation, who is in the house, or whether a date is free, call next_stays (it looks a year ahead). list_stays only looks 14 days. Never say a unit has no reservations from a short look: say what window you checked, or use next_stays.",
+    "AGGREGATES: for how many or who is checking in or out on a date, call day_movements once: it reads every property together. Never read unit by unit, and answer from that one result.",
     "GUESTS: when the partner names a guest without a unit, call find_stay: the unit comes from their reservation, never from a guess or a default. For the building registration email call building_email with the guest. Never search mail for the template yourself.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
     "NOTHING SENDS WITHOUT A PARTNER. You cannot send a message, email, post or purchase. To prepare one, call propose_draft: it leaves a draft in the chat waiting for the partner to approve. Then say the draft is waiting for approval. Messages to guests go out as Shane. Never write an em dash in anything a guest will read.",
