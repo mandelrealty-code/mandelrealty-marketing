@@ -258,6 +258,8 @@ export type ParityCleaner = {
 
 export type ParityWorld = {
   now: Date;
+  /** Hospitable sends arrival_date and departure_date as date-times; set to reproduce that. */
+  datetimeDates?: boolean;
   properties: ParityProperty[];
   reservations: ParityReservation[];
   gmail: ParityMail[];
@@ -1098,8 +1100,8 @@ function mcpReservation(row: ParityReservation, current: ParityWorld) {
     property_id: row.propertyId,
     status: row.status,
     platform: "airbnb",
-    arrival_date: row.checkIn,
-    departure_date: row.checkOut,
+    arrival_date: current.datetimeDates ? `${row.checkIn}T${padClock(row.checkInTime, "16:00")}:00${torontoOffset(row.checkIn)}` : row.checkIn,
+    departure_date: current.datetimeDates ? `${row.checkOut}T${padClock(row.checkOutTime, "11:00")}:00${torontoOffset(row.checkOut)}` : row.checkOut,
     check_in: `${row.checkIn}T${padClock(row.checkInTime, "16:00")}:00${torontoOffset(row.checkIn)}`,
     check_out: `${row.checkOut}T${padClock(row.checkOutTime, "11:00")}:00${torontoOffset(row.checkOut)}`,
     checkin_time: padClock(row.checkInTime, "16:00"),

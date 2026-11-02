@@ -26,7 +26,7 @@ import type { ConnectorRow } from "./types.js";
 import { setToolLogger } from "./agentLoop.js";
 import { streamPiece, streamStart, streamStep } from "./streamText.js";
 import { setParityClock } from "./parity/clock.js";
-import { dayMovements, findStays } from "./stayLookup.js";
+import { setStayLogger, dayMovements, findStays } from "./stayLookup.js";
 import { capturedCommits, resetCaptures } from "./parity/capture.js";
 import { parityChecksMessages, resetParityChecksMessages } from "./parity/storeStub.js";
 import { searchMail } from "./mailSearch.js";
@@ -586,11 +586,25 @@ resetBusinessFacts();
     stay("o4", ID.rose, "Gone", "2026-10-28", "2026-10-31", "cancelled"),
     stay("o5", ID.rose, "Later", "2026-11-01", "2026-11-04"),
   ];
+  world.datetimeDates = true;
   installWorld(world);
   const reads: Record<string, unknown>[] = [];
   setHospitableLogger((line) => reads.push(line));
   const today = await dayMovements({}, new Date("2026-10-31T16:00:00Z"));
   setHospitableLogger(null);
+  // Late on Sun Nov 1 (10:57 PM, after the clocks went back) it is still Nov 1 in Toronto, though Nov 2 in UTC.
+  const late = new Date("2026-11-02T03:57:00Z");
+  const sent: Record<string, unknown>[] = [];
+  setStayLogger((line) => sent.push(line));
+  const lateWorld = worldAt("2026-11-01T22:57:00-05:00");
+  lateWorld.datetimeDates = true;
+  lateWorld.reservations = [stay("n1", ID.blue, "Ashley Gamez", "2026-10-29", "2026-11-01"), stay("n2", ID.shaw, "Shaw Guest", "2026-10-30", "2026-11-01"), stay("n3", ID.blue, "Next", "2026-11-02", "2026-11-05")];
+  installWorld(lateWorld);
+  const night = await dayMovements({}, late);
+  setStayLogger(null);
+  if (night.date !== "2026-11-01" || night.checkOuts.map((row) => row.guest).sort().join() !== "Ashley Gamez,Shaw Guest" || night.checkIns.length) fail(`two check-outs on the queried date: ${JSON.stringify(night)}`);
+  if (sent[0]?.sentDate !== "2026-11-01" || (sent[0]?.checkoutQueryReturned as string[]).length !== 2 || !/2026-11-01/.test(String(sent[0]?.checkoutQueryReturned))) fail(`the raw stays log: ${JSON.stringify(sent)}`);
+  installWorld(world);
   const resRead = reads.filter((line) => line.path === "/reservations");
   if (today.checkOuts.map((row) => row.guest).sort().join() !== "Pat Lee,Sam Wu" || today.checkIns.map((row) => row.guest).join() !== "Kim Ho") fail(`day movements: ${JSON.stringify(today)}`);
   if (resRead.length !== 2 || resRead.some((line) => String(line.properties).split(",").length !== 4)) fail(`not one read across the properties: ${JSON.stringify(resRead)}`);

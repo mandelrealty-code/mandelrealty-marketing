@@ -22,6 +22,20 @@ function asRecord(v: unknown): Record<string, unknown> {
     : {};
 }
 
+/**
+ * A check-in or check-out as a calendar date. Hospitable may send arrival_date and departure_date as date-times
+ * ("2026-11-01T11:00:00-04:00"), and a date compared as text must never carry a time. A date-time with an offset is already
+ * the property's local day; one in UTC is turned into the Toronto day.
+ */
+export function dateOnly(value: string): string {
+  const text = value.trim();
+  if (text.length <= 10) return text;
+  if (!/(?:Z|[+-]00:?00)$/i.test(text)) return text.slice(0, 10);
+  const at = new Date(text);
+  if (Number.isNaN(at.getTime())) return text.slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+}
+
 function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
 }
@@ -322,9 +336,8 @@ function normalizeReservation(raw: unknown): HospitableReservationNormalized | n
     str(statusObj.status) ||
     "";
 
-  const checkIn = str(r.arrival_date) || str(r.check_in)?.slice(0, 10) || null;
-  const checkOut =
-    str(r.departure_date) || str(r.check_out)?.slice(0, 10) || null;
+  const checkIn = dateOnly(str(r.arrival_date)) || str(r.check_in)?.slice(0, 10) || null;
+  const checkOut = dateOnly(str(r.departure_date)) || str(r.check_out)?.slice(0, 10) || null;
   const nights =
     typeof r.nights === "number"
       ? r.nights

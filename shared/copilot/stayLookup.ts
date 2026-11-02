@@ -70,6 +70,21 @@ export async function nextStays(scope: Scope, count = 3, now: Date = new Date())
   };
 }
 
+type StayLine = Record<string, string | number | boolean | string[]>;
+let stayLogger: ((line: StayLine) => void) | null = null;
+
+/** Tests read the log. Null restores the server log. */
+export function setStayLogger(next: ((line: StayLine) => void) | null): void {
+  stayLogger = next;
+}
+
+/** What a day lookup asked for and got back before any filtering: dates and statuses only, never a guest. */
+function stayLog(line: StayLine): void {
+  if (stayLogger) return stayLogger(line);
+  if (process.env.COPILOT_PARITY === "1" && !process.env.VERCEL && process.env.NODE_ENV !== "production") return;
+  console.log(`[stays] ${JSON.stringify(line)}`);
+}
+
 export type DayMove = { guest: string; unit: string; propertyId: string; checkIn: string; checkOut: string; status: string; reservationId: string };
 
 /**
@@ -86,10 +101,13 @@ export async function dayMovements(input: { date?: string; units?: string[] } = 
   const ids = properties.map((row) => row.id);
   const unit = new Map(properties.map((row) => [row.id, row.name]));
   const [outs, ins] = await Promise.all((["checkout", "checkin"] as const).map((dateQuery) => listHospitableReservations({ pat, propertyIds: ids, startDate: date, endDate: addDays(date, 1), include: ["guest"], dateQuery })));
+  const raw = (rows: typeof outs) => rows.map((row) => `${row.status} ${row.check_in ?? "?"} > ${row.check_out ?? "?"}`);
+  stayLog({ stays: "day", sentDate: date, startDate: date, endDate: addDays(date, 1), nowUtc: (now ?? new Date()).toISOString(), properties: properties.length, checkoutQueryReturned: raw(outs), checkinQueryReturned: raw(ins) });
   const move = (row: (typeof outs)[number]): DayMove => ({ guest: guestName(row.raw), unit: unit.get(row.property_id) ?? row.property_id, propertyId: row.property_id, checkIn: row.check_in ?? "", checkOut: row.check_out ?? "", status: row.status, reservationId: row.id });
   const live = (row: (typeof outs)[number]) => !DEAD.test(row.status);
-  const checkOuts = outs.filter((row) => live(row) && row.check_out === date).map(move);
-  const checkIns = ins.filter((row) => live(row) && row.check_in === date).map(move);
+  const onDate = (value: string | null) => (value ?? "").slice(0, 10) === date;
+  const checkOuts = outs.filter((row) => live(row) && onDate(row.check_out)).map(move);
+  const checkIns = ins.filter((row) => live(row) && onDate(row.check_in)).map(move);
   return { date, properties: properties.length, checkOuts, checkIns, note: `Read ${properties.length} properties together for ${date}: ${checkOuts.length} check-out${checkOuts.length === 1 ? "" : "s"}, ${checkIns.length} check-in${checkIns.length === 1 ? "" : "s"}.` };
 }
 
