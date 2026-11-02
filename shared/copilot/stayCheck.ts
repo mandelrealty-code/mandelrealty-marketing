@@ -338,7 +338,7 @@ export async function leaveDraft(row: DraftCapture, reservationId = "", chatId =
     ...(hospitable ? { hospitable } : {}),
     ...(prepared.followUp ? { followUp: prepared.followUp } : {}),
   };
-  const body = prepared.lead ? `${prepared.lead}${warnings}` : `${prepared.cleanerAssign ? prepared.body : prepared.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : prepared.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : emailCardLabel(isRegistrationDraft(prepared) ? "Here is the building email. Nothing was sent." : "", prepared)}${warnings}`;
+  const body = prepared.lead ? `${prepared.lead}${/Check before approving/.test(prepared.lead) ? "" : warnings}` : `${prepared.cleanerAssign ? prepared.body : prepared.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : prepared.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : emailCardLabel(isRegistrationDraft(prepared) ? "Here is the building email. Nothing was sent." : "", prepared)}${warnings}`;
   if (chatId) {
     try {
       return await addMessage({ chatId, role: "assistant", body, draft });

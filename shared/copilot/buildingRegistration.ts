@@ -343,7 +343,33 @@ function swapDates(text: string, oldIn: WrittenDate | null, oldOut: WrittenDate 
 /** A line the template carries when the vehicle wasn't known yet: "We will provide the vehicle information shortly." */
 const VEHICLE_LATER = /^[^\n]*\b(?:vehicle|car|plate|licen[cs]e)\b[^\n]*\b(?:shortly|soon|later|to follow|tbd|to be (?:confirmed|provided)|will (?:be )?(?:provided|sent|shared|follow)|will (?:provide|send|share|forward)|once (?:we|they|she|he) (?:have|know|receive|get))\b[^\n]*$/im;
 
-function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string, vehicles: Vehicle[], noVehicleNote = ""): { subject: string; body: string; warnings: string[] } {
+/** The email's own words only: the quoted earlier messages and reply headers are another conversation. */
+export function ownWords(body: string): string {
+  const text = body.replace(/\r\n?/g, "\n");
+  const cut = text.search(/(?:^|\n|\s)On [A-Z][^\n]{5,180}?\bwrote:|(?:^|\n)\s*-{2,}\s*(?:Original Message|Forwarded message)|(?:^|\n)\s*Begin forwarded message/i);
+  const own = cut >= 0 ? text.slice(0, cut) : text;
+  return own.split("\n").filter((line) => !/^\s*>/.test(line)).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+const NO_VEHICLE = "No vehicle details provided yet.";
+const NO_CAR = "The guest is not bringing a vehicle.";
+const FIELD_LINE = /^(?:Make|Model|Plate|Licen[cs]e plate|Colou?r|Vehicle count|Number of vehicles)\s*:/i;
+const COUNT_PROSE = /(?:\b(?:\d+|one|two|three|four)|\[count\])\s+(?:vehicles?|cars?)\b/i;
+const squash = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+const wordIn = (line: string, word: string) => new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(line);
+
+/** What a sent email says about its own stay's car: makes, models and plates that must never reach another guest's email. */
+function oldCarTokens(own: string, sentSubject = ""): { words: string[]; plates: string[] } {
+  const found = vehiclesFrom(own, "");
+  const words = found.flatMap((item) => [item.make, item.model]).filter((word) => word.length >= 3);
+  // "Unit 318" can look like a plate; the unit and anything in the subject is the property's, not a car's.
+  const plates = [...new Set([...found.map((item) => item.plate), ...platesFrom(own)])].map(squash).filter((plate) => plate.length >= 4 && !/^unit\d+$/.test(plate) && !squash(sentSubject).includes(plate));
+  return { words: [...new Set(words)], plates };
+}
+
+function fillFromTemplate(sent: MailLetter, checkIn: string, checkOut: string, vehicles: Vehicle[], noVehicleNote = "", extra: { oldNames?: string[]; noCar?: boolean } = {}): { subject: string; body: string; warnings: string[]; leaks: string[] } {
+  // The sent email is a template for its shape only: its quoted history is dropped here, and its guest's facts below.
+  const letter: MailLetter = { ...sent, body: ownWords(sent.body) };
   const vehicle = vehicles[0] ?? { guest: "", make: "", model: "", plate: "", colour: "", count: "" };
   const known = vehicles.some((item) => item.make || item.model || item.plate);
   const [oldIn, oldOut] = templateStay(letter);
@@ -364,6 +390,13 @@ function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string,
     const old = named[1]!.split(/\s+/).filter((word) => !/^(They|He|She|The|Will)$/.test(word));
     const next = old.length > 1 ? vehicle.guest : vehicle.guest.split(/\s+/)[0]!;
     if (old.length && old.join(" ") !== next) body = body.replace(named[0], named[0].replace(old.join(" "), next));
+  }
+  for (const name of extra.oldNames ?? []) {
+    const full = name.trim();
+    if (!full || !vehicle.guest || full.toLowerCase() === vehicle.guest.toLowerCase()) continue;
+    body = body.replace(new RegExp(`\\b${full.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi"), vehicle.guest);
+    const first = full.split(/\s+/)[0] ?? "";
+    if (first.length >= 3) body = body.replace(new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), vehicle.guest.split(/\s+/)[0] ?? vehicle.guest);
   }
   const warnings: string[] = [];
   // The template said the vehicle was still to come. When it is known, the facts go in; only when it is genuinely unknown
@@ -407,7 +440,43 @@ function fillFromTemplate(letter: MailLetter, checkIn: string, checkOut: string,
       if (!stayDays.includes(key)) warnings.push(`The ${where} still says ${date.text}, which isn't this stay's check-in or check-out.`);
     }
   }
-  return { subject, body, warnings: [...new Set(warnings)] };
+  // The previous stay's car never stays: its lines are removed, and when this guest's car is unknown the whole vehicle part
+  // becomes one plain sentence instead of a fill-in-the-blanks form.
+  const old = oldCarTokens(letter.body, letter.subject);
+  const mine = vehicles.flatMap((item) => [item.make, item.model].filter((word) => word.length >= 3));
+  const myPlates = vehicles.map((item) => squash(item.plate)).filter(Boolean);
+  const oldWords = old.words.filter((word) => !mine.some((own) => own.toLowerCase() === word.toLowerCase()));
+  const oldPlates = old.plates.filter((plate) => !myPlates.includes(plate));
+  const hasOld = (line: string) => oldPlates.some((plate) => squash(line).includes(plate)) || oldWords.some((word) => wordIn(line, word));
+  const marker = extra.noCar ? NO_CAR : NO_VEHICLE;
+  let said = false;
+  const cleaned: string[] = [];
+  for (const line of body.split("\n")) {
+    const vehicleLine = FIELD_LINE.test(line.trim()) || COUNT_PROSE.test(line) || VEHICLE_LATER.test(line) || hasOld(line);
+    if (!vehicleLine) {
+      cleaned.push(line);
+      continue;
+    }
+    if (known) {
+      if (hasOld(line) && !FIELD_LINE.test(line.trim())) continue;
+      cleaned.push(line);
+    } else if (!said) {
+      cleaned.push(marker);
+      said = true;
+    } else if (cleaned.at(-1) === "") {
+      // Drop the blank that sat between two vehicle lines.
+      cleaned.pop();
+    }
+  }
+  body = cleaned.join("\n").replace(/\n{3,}/g, "\n\n");
+  const kept = known ? warnings : warnings.filter((warning) => !/is still a blank|keeps the template's line/.test(warning));
+  const text = `${subject}\n${body}`;
+  const leaks = [
+    ...oldPlates.filter((plate) => squash(text).includes(plate)),
+    ...oldWords.filter((word) => wordIn(text, word)),
+    ...(extra.oldNames ?? []).filter((name) => name.trim() && vehicle.guest && name.trim().toLowerCase() !== vehicle.guest.toLowerCase() && wordIn(text, name.trim())),
+  ];
+  return { subject, body, warnings: [...new Set(kept)], leaks };
 }
 
 function alreadySent(stay: RecentStay["stay"], letters: MailLetter[]): boolean {
@@ -550,9 +619,18 @@ async function registrationBody(asked: string, context: string, force = false, c
   const readNote = read.behind
     ? `${guest || "The guest"}'s thread may be incomplete (${read.behind})`
     : `I read all ${messages.length} message${messages.length === 1 ? "" : "s"} in ${guest || "the guest"}'s thread and ${noCar ? "she said she isn't bringing a car" : "she hasn't sent vehicle details"}`;
-  const filled = fillFromTemplate(template, next.stay.checkIn, next.stay.checkOut, vehicles, readNote);
+  // Nobody has asked this guest for their car: there is nothing to fill in, and a form of blanks would only look finished.
+  const requested = messages.some((row) => row.role !== "guest" && /\b(car|vehicle|licen[cs]e|plate|parking)\b/i.test(row.body));
+  if (!found.length && !noCar && !requested) {
+    return `I didn't draft the building email for ${guest || "the guest"}. I read ${messages.length === 1 ? "their 1 message" : `all ${messages.length} messages in their thread`} and nobody has asked them for car details yet (no check-in instructions requesting them have gone out), so there is nothing to put in it. Once they have been asked, or you tell me the car, I'll draft it. Nothing was sent.`;
+  }
+  const oldNames = loaded.stays
+    .filter((row) => row.stay.id !== next.stay.id && row.stay.guest && registrationMatchesStay(template, row.stay.checkIn, row.stay.checkOut))
+    .map((row) => row.stay.guest);
+  const filled = fillFromTemplate(template, next.stay.checkIn, next.stay.checkOut, vehicles, readNote, { oldNames, noCar: Boolean(noCar) && !found.length });
+  if (filled.leaks.length) return `I didn't draft the building email: the last registration email I'd copy the layout from carries another stay's details (${filled.leaks.join(", ")}) that I couldn't remove cleanly, and I won't put them in ${guest || "this guest"}'s email. Nothing was sent.`;
   // The thread was read and the car isn't in it: said plainly above the card, whatever the template looks like.
-  if (!found.length && !filled.warnings.some((warning) => warning.startsWith(readNote))) filled.warnings.unshift(`${readNote}, so the vehicle details are left blank for you.`);
+  if (!found.length && !filled.warnings.some((warning) => warning.startsWith(readNote))) filled.warnings.unshift(`${readNote}, so the email says "no vehicle details provided yet".`);
   const lead = `Here is the vehicle registration email for ${guest || "the next guest"} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}), to the building. Nothing was sent.${filled.warnings.length ? `\n\nCheck before approving:\n${filled.warnings.map((warning) => `• ${warning}`).join("\n")}` : ""}`;
   const saved = await leaveDraft({
     channel: "email",
@@ -584,7 +662,7 @@ async function registrationBody(asked: string, context: string, force = false, c
   return {
     body: `The vehicle registration email for ${who} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}) is ${chatId ? "in the draft card here" : "in Checks"}, to the building's ${count} registration address${count === 1 ? "" : "es"}, subject “${stored.subject}”. Nothing is sent until you ${chatId ? "approve it" : "press Submit"}.${(() => {
       // A fact that is genuinely unknown after the full thread read is said plainly, above the card.
-      const unknown = filled.warnings.find((warning) => /keeps the template's line/.test(warning));
+      const unknown = found.length ? undefined : filled.warnings.find((warning) => warning.startsWith(readNote));
       return unknown ? `\n\n${unknown}` : "";
     })()}`,
     item: chatId ? null : { chatId: saved?.chat_id ?? "", messageId: saved?.id ?? "", label },

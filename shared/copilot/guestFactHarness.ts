@@ -169,7 +169,7 @@ await send("gf-unknown", "did rebecca send her car detials").then((reply) => {
 });
 const unknown = await send("gf-unknown", "we need to send her the email for parking and her name and her stay like the other ones we sent to the building");
 const unknownDraft = capturedDrafts().filter((row) => row.channel === "email").at(-1);
-if (!unknownDraft || !/provide the vehicle information shortly/i.test(unknownDraft.body)) fail(`unknown car: the template line should stay: ${unknownDraft?.body}`);
+if (!unknownDraft || !/No vehicle details provided yet\./.test(unknownDraft.body) || /shortly|\[(?:make|model|plate|colour|count)\]/i.test(unknownDraft.body)) fail(`unknown car: the draft should say no vehicle details were provided, with no blanks: ${unknownDraft?.body}`);
 if (!/I read all 2 messages in Rebecca's thread and she hasn't sent vehicle details/.test(unknown.body)) fail(`the draft didn't say plainly that the car is unknown: ${unknown.body}`);
 
 // ---------- Fixture 3: a failed or shallow read is never a "no" ----------

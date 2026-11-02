@@ -16,3 +16,8 @@ export function mailKeywords(raw: string): string {
 
 export type MailFolder = "sent" | "inbox";
 export type MailboxName = "gmail" | "outlook";
+
+/** A message body with its own line breaks: spaces tidied within a line, blank runs cut to one, nothing joined into a wall. */
+export function keepLines(text: string): string {
+  return text.replace(/\r\n?/g, "\n").split("\n").map((line) => line.replace(/[ \t\u00a0]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}

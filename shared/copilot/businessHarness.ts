@@ -288,6 +288,7 @@ if (!/client's email address on file in OPS/.test(proposalAnswer.body) || !/Subj
     subject: "AirBNB Rental for Unit 318 from October 9, 2026 - October 12, 2026", snippet: "AirBNB Rental for Unit 318", body: sentBody.join("\n"), airbnb: false };
   const world = worldAt("2026-10-13T09:00:00-04:00", false, [sentRegistration]);
   world.reservations.push(stay("00000000-0000-4000-8000-0000000a5502", ID.blue, "Husson Ali", "2026-10-15", "2026-10-19", [
+    { id: "host-ask", at: "2026-10-12T17:00:00-04:00", role: "host", name: "Shane", body: "Please send your car make, model and plate for the building parking." },
     { id: "husson-hello", at: "2026-10-12T18:00:00-04:00", role: "guest", name: "Husson", body: "Hi! Looking forward to the stay." },
   ]));
   installWorld(world);
@@ -297,8 +298,8 @@ if (!/client's email address on file in OPS/.test(proposalAnswer.body) || !/Subj
     .replace("Guest: Diane", "Guest: Husson Ali")
     .replace("October 9, 2026", "October 15, 2026")
     .replace("October 12, 2026", "October 19, 2026")
-    .replace("They have 1 vehicle", "They have [count] vehicle")
-    .replace(/^(Make|Model|Colour|Plate): .*$/, (_line, label: string) => `${label}: [${label.toLowerCase()}]`)).join("\n");
+    .replace("They have 1 vehicle and will be parking in P4-62.", "No vehicle details provided yet.")
+    .replace(/^(Make|Model|Colour|Plate): .*$/, "\u0000")).join("\n").replace(/\u0000\n?/g, "").replace(/(No vehicle details provided yet\.)\n\n\n/, "$1\n\n");
   const check = (label: string) => {
     const draft = capturedDrafts().filter((row) => row.channel === "email").at(-1);
     if (!draft) fail(`${label}: no draft`);
@@ -330,7 +331,10 @@ if (!/client's email address on file in OPS/.test(proposalAnswer.body) || !/Subj
     subject: "AirBNB Rental for Unit 318 from October 1, 2026 - October 3, 2026", snippet: "AirBNB Rental for Unit 318",
     body: "Hello,\nI have a new AirBNB tenant arriving from Thursday October 1, 2026 and staying until Monday October 5, 2026 for 4 nights. Their name is: Priya They will be residing in unit 318.\n\nThey will not be bringing any vehicles.\n\nThanks,\nShane, Cohost 6478220448", airbnb: false };
   const world = worldAt("2026-10-13T09:00:00-04:00", false, [odd]);
-  world.reservations.push(stay("00000000-0000-4000-8000-0000000a5503", ID.blue, "Husson Ali", "2026-10-15", "2026-10-17"));
+  world.reservations.push(stay("00000000-0000-4000-8000-0000000a5503", ID.blue, "Husson Ali", "2026-10-15", "2026-10-17", [
+    { id: "host-ask", at: "2026-10-12T17:00:00-04:00", role: "host", name: "Shane", body: "Please send your car make, model and plate for the building parking." },
+    { id: "husson-hi", at: "2026-10-12T18:00:00-04:00", role: "guest", name: "Husson", body: "Hello, looking forward to it." },
+  ]));
   installWorld(world);
   resetCaptures();
   resetParityChecksMessages();

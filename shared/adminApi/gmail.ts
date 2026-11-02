@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
-import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
+import { isAirbnbNotification, keepLines, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
 import { clearGmailLogin, parityMailLogin, readGmailLogin, saveGmailLogin } from "../copilot/store.js";
 import { REAUTH_NOTE, cachedLoginState, forgetLoginState, rememberLoginState, stateOfCheck, type LoginCheck, type LoginState } from "../copilot/mailLoginStatus.js";
 import { captureCommit, captureMailQuery } from "../copilot/parity/capture.js";
@@ -549,7 +549,7 @@ function gmailLetter(msg: GmailMessage): GmailLetter | null {
   const folder = gmailFolder(labels) ?? (set.has("SENT") ? "sent" : "inbox");
   const hit = gmailHit(msg, folder);
   if (!hit) return null;
-  return { ...hit, body: plainText(msg.payload).replace(/\s+/g, " ").trim().slice(0, 4000) };
+  return { ...hit, body: keepLines(plainText(msg.payload)).slice(0, 4000) };
 }
 
 /** The whole chain. A message id opens its thread. A thread id opens the chain when the message read misses. */

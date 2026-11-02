@@ -599,13 +599,13 @@ resetBusinessFacts();
   // The thread is read and has no car: it says so plainly above the card, and never asks the partner.
   const none = worldAt("2026-10-31T12:00:00-04:00", false, [oct30]);
   none.reservations = [stay("r-none", ID.blue, "Michelle Sanders", "2026-11-04", "2026-11-08")];
-  none.reservations[0]!.messages = [{ id: "n1", at: "2026-10-30T18:00:00-04:00", role: "guest", name: "Michelle", body: "Hi, looking forward to the stay!" }];
+  none.reservations[0]!.messages = [{ id: "n0", at: "2026-10-29T18:00:00-04:00", role: "host", name: "Shane", body: "Please send your car make, model and plate for the building." }, { id: "n1", at: "2026-10-30T18:00:00-04:00", role: "guest", name: "Michelle", body: "Hi, looking forward to the stay!" }];
   installWorld(none);
   setBrainModel(async (request) => ({ text: request.task === "extract" ? "{\"vehicles\":[]}" : "", toolUses: [], blocks: [], stop: "end_turn" }));
   const emptyAnswer = await answerBuildingRegistrationItem("draft the building email for Michelle's stay", "", true, "c3");
   setBrainModel(null);
   const emptyCard = (await listMessages("c3")).find((row) => row.draft?.status === "waiting");
-  if (!emptyCard || !/I read all 1 message in Michelle Sanders's thread and she hasn't sent vehicle details/.test(emptyCard.body + (emptyAnswer?.body ?? ""))) fail(`an empty thread was not said plainly: ${emptyCard?.body} / ${emptyAnswer?.body}`);
+  if (!emptyCard || !/I read all 2 messages in Michelle Sanders's thread and she hasn't sent vehicle details/.test(emptyCard.body + (emptyAnswer?.body ?? ""))) fail(`an empty thread was not said plainly: ${emptyCard?.body} / ${emptyAnswer?.body}`);
 }
 
 // ---------- "How many people are checking out today": one read across the properties, answered in one tool call ----------
@@ -709,6 +709,37 @@ resetBusinessFacts();
   const threadReads = reads.filter((line) => /message/i.test(String(line.path)));
   if (threadReads.length !== 1 || /Looking forward to December/.test(JSON.stringify(turn))) fail(`more than one thread was opened: ${JSON.stringify(threadReads)}`);
   if (!/Never open another guest's thread/.test((await import("./agentChat.js")).agentSystem("", "2026-10-31"))) fail("the agent isn't told to stop after one thread");
+}
+
+// ---------- A sent email is a template for structure only: the last stay's car, name and quoted history never carry over ----------
+{
+  const building = "supervisorelement@gmail.com, conciergetscc1851@gmail.com, tscc1851office@gmail.com, kshewnarain@rogers.com";
+  const prior = { id: "oct30-leak", mailbox: "gmail" as const, folder: "sent" as const, from: "Mandel Realty", email: "mandelrealtyteam@gmail.com", to: building, date: "2026-10-30T11:00:00-04:00",
+    subject: "Re: AirBNB Rental for Unit 318, October 30 \u2013 November 1, 2026", snippet: "20 Blue Jays Way Unit 318",
+    body: "Hello,\n\nPlease see below the details for our AirBNB guest Ashley Gamez, October 30, 2026 to November 1, 2026.\n\nThey have a White Buick LaCrosse 2007, plate URAFAN, and a Gray Ford Edge, plate VESC8R.\n\nThank you,\n\nShane, Co-Host 647-822-0448\n\nOn Thu, Oct 29, 2026 at 4:00 PM Ashley Gamez <ashley@example.com> wrote:\n> My car is a white Buick LaCrosse 2007, plate URAFAN\n> and my brother has the Ford Edge VESC8R", airbnb: false };
+  const build = (messages: { id: string; at: string; role: "guest" | "host"; name: string; body: string }[]) => {
+    const world = worldAt("2026-10-31T12:00:00-04:00", false, [prior]);
+    world.reservations = [stay("r-ashley", ID.blue, "Ashley Gamez", "2026-10-30", "2026-11-01"), stay("r-mich", ID.blue, "Michelle Sanders", "2026-11-04", "2026-11-08")];
+    world.reservations[1]!.messages = messages;
+    installWorld(world);
+    resetParityChecksMessages();
+  };
+  const ask = { id: "q1", at: "2026-10-29T18:00:00-04:00", role: "host" as const, name: "Shane", body: "Please send your car make, model and plate for the building." };
+  build([ask, { id: "q2", at: "2026-10-30T18:00:00-04:00", role: "guest", name: "Michelle", body: "Thanks, see you soon!" }]);
+  const empty = await answerBuildingRegistrationItem("draft the building email for Michelle's stay", "", true, "leak1");
+  const card = (await listMessages("leak1")).find((row) => row.draft?.status === "waiting");
+  const text = `${card?.draft?.subject}\n${card?.draft?.body}`;
+  if (!card || /Buick|LaCrosse|URAFAN|Ford|Edge|VESC8R|Ashley|\bGray\b|\bWhite\b|wrote:|^>/m.test(text)) fail(`the last stay leaked into the draft: ${text} / ${empty?.body}`);
+  if (!/Michelle Sanders/.test(card.draft!.body) || !/No vehicle details provided yet\./.test(card.draft!.body) || /\[(?:make|model|plate|colour|count)\]|shortly/i.test(card.draft!.body)) fail(`an unknown car must read as one plain line: ${card.draft!.body}`);
+  if (!/November 4, 2026 to November 8, 2026/.test(card.draft!.body) || !/^Hello,\n\nPlease see below/.test(card.draft!.body) || !/Thank you,\n\nShane, Co-Host 647-822-0448$/.test(card.draft!.body)) fail(`the template's shape and line breaks were not kept: ${JSON.stringify(card.draft!.body)}`);
+  if ((card.body.match(/Check before approving/g) ?? []).length !== 1) fail(`the check-before-approving note must show once: ${card.body}`);
+  // Nobody has asked her for the car: no fill-in-the-blanks draft, said plainly.
+  build([{ id: "q3", at: "2026-10-30T18:00:00-04:00", role: "guest", name: "Michelle", body: "Hi, looking forward to the stay!" }]);
+  const unasked = await answerBuildingRegistrationItem("draft the building email for Michelle's stay", "", true, "leak2");
+  if ((await listMessages("leak2")).some((row) => row.draft) || !/nobody has asked them for car details yet/.test(unasked?.body ?? "")) fail(`an unasked car still got a draft: ${unasked?.body}`);
+  // Mail bodies keep their own lines; they are never joined into one wall of text.
+  const { keepLines } = await import("./mailScope.js");
+  if (keepLines("Hello,\r\n\r\n\r\n\r\nA   b\n> quoted  line\nc ") !== "Hello,\n\nA b\n> quoted line\nc") fail(`line breaks: ${JSON.stringify(keepLines("Hello,\r\n\r\n\r\n\r\nA   b\n> quoted  line\nc "))}`);
 }
 
 console.log("Connectors harness passed.");

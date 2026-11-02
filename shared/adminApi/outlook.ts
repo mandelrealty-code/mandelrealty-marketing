@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
-import { isAirbnbNotification, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
+import { isAirbnbNotification, keepLines, mailKeywords, type MailFolder } from "../copilot/mailScope.js";
 import { clearOutlookLogin, parityMailLogin, readOutlookLogin, saveOutlookLogin } from "../copilot/store.js";
 import { REAUTH_NOTE, cachedLoginState, forgetLoginState, rememberLoginState, stateOfCheck, type LoginCheck, type LoginState } from "../copilot/mailLoginStatus.js";
 import { captureCommit, captureMailQuery } from "../copilot/parity/capture.js";
@@ -364,7 +364,7 @@ export async function latestSentOutlook(): Promise<OutlookHit> {
 function outlookBody(item: OutlookMessage): string {
   const html = item.body?.contentType === "html";
   const text = html ? (item.bodyPreview ?? "") : (item.body?.content ?? item.bodyPreview ?? "");
-  return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000);
+  return keepLines(text.replace(/<br\s*\/?>|<\/p>|<\/div>/gi, "\n").replace(/<[^>]+>/g, " ")).slice(0, 4000);
 }
 
 async function outlookGet(token: string, id: string): Promise<OutlookMessage | null> {
@@ -470,7 +470,7 @@ export async function latestOutlookOffer(): Promise<OutlookOffer | null> {
       threadId: item.conversationId || item.id || "",
       messageId: item.id || "",
       rfcId: item.internetMessageId || "",
-      body: text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000),
+      body: keepLines(text.replace(/<br\s*\/?>|<\/p>|<\/div>/gi, "\n").replace(/<[^>]+>/g, " ")).slice(0, 4000),
       receivedAt: item.receivedDateTime || "",
     };
   }
