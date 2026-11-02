@@ -28,6 +28,8 @@ import { streamPiece, streamStart, streamStep } from "./streamText.js";
 import { setParityClock } from "./parity/clock.js";
 import { setStayLogger, dayMovements, findStays } from "./stayLookup.js";
 import { capturedCommits, resetCaptures } from "./parity/capture.js";
+import { listMessages } from "./store.js";
+import { answerBuildingRegistrationItem } from "./buildingRegistration.js";
 import { parityChecksMessages, resetParityChecksMessages } from "./parity/storeStub.js";
 import { searchMail } from "./mailSearch.js";
 
@@ -570,10 +572,40 @@ resetBusinessFacts();
   const mailed = tools.find((line) => line.tool === "building_email");
   if (!mailed || mailed.ok !== true) fail(`building_email: ${JSON.stringify(tools)}`);
   if (/ABCD123|BXYZ456|Co-Host/.test(JSON.stringify(lines))) fail("the log carried message text");
-  const card = parityChecksMessages().find((row) => row.draft?.channel === "email" && row.draft.status === "waiting");
+  // The card is in the chat itself with approve and hold-off actions, never in Checks.
+  const card = (await listMessages("c")).find((row) => row.draft?.channel === "email" && row.draft.status === "waiting");
   if (!card || card.draft!.to !== building || !/Make: Kia/.test(card.draft!.body) || !/Michelle/.test(card.draft!.body)) fail(`the building draft: ${JSON.stringify(card?.draft)} / ${turn.body}`);
+  if (parityChecksMessages().some((row) => row.draft?.channel === "email")) fail("the building draft went to Checks");
   if (capturedCommits().length) fail("the building email request sent something");
   if (!/call find_stay/.test((await import("./agentChat.js")).agentSystem("", "2026-10-31"))) fail("the agent isn't told to find the guest's stay");
+  if (!/Never ask the partner for a car detail the thread holds/.test((await import("./agentChat.js")).agentSystem("", "2026-10-31"))) fail("the agent isn't told never to ask for the car");
+
+  // The guest wrote the car in her own words, which the pattern reader misses: the thread is still read and the car goes in.
+  const wordy = worldAt("2026-10-31T12:00:00-04:00", false, [oct30]);
+  wordy.reservations = [stay("r-wordy", ID.blue, "Michelle Sanders", "2026-11-04", "2026-11-08")];
+  wordy.reservations[0]!.messages = [{ id: "w1", at: "2026-10-30T18:00:00-04:00", role: "guest", name: "Michelle", body: "Hi! Our ride is the little grey Soul, tag is BXYZ456. Just the one." }];
+  installWorld(wordy);
+  resetParityChecksMessages();
+  setBrainModel(async (request) => {
+    if (request.task === "extract") return { text: JSON.stringify({ vehicles: [{ make: "Kia", model: "Soul", plate: "BXYZ456", colour: "grey" }] }), toolUses: [], blocks: [], stop: "end_turn" };
+    return { text: "", toolUses: [], blocks: [], stop: "end_turn" };
+  });
+  const wordyAnswer = await answerBuildingRegistrationItem("draft the building email for Michelle's stay", "", true, "c2");
+  setBrainModel(null);
+  const wordyCard = (await listMessages("c2")).find((row) => row.draft?.status === "waiting");
+  if (!wordyCard || !/BXYZ456/.test(wordyCard.draft!.body) || /Make: Kia/.test(wordyCard.draft!.body)) fail(`the car from her own words: ${wordyCard?.draft?.body} / ${wordyAnswer?.body}`);
+  if (/shortly/i.test(wordyCard.draft!.body) || /still a blank: \[plate\]/.test(wordyCard.body)) fail(`a read thread with a car still left a placeholder: ${wordyCard.draft!.body}`);
+
+  // The thread is read and has no car: it says so plainly above the card, and never asks the partner.
+  const none = worldAt("2026-10-31T12:00:00-04:00", false, [oct30]);
+  none.reservations = [stay("r-none", ID.blue, "Michelle Sanders", "2026-11-04", "2026-11-08")];
+  none.reservations[0]!.messages = [{ id: "n1", at: "2026-10-30T18:00:00-04:00", role: "guest", name: "Michelle", body: "Hi, looking forward to the stay!" }];
+  installWorld(none);
+  setBrainModel(async (request) => ({ text: request.task === "extract" ? "{\"vehicles\":[]}" : "", toolUses: [], blocks: [], stop: "end_turn" }));
+  const emptyAnswer = await answerBuildingRegistrationItem("draft the building email for Michelle's stay", "", true, "c3");
+  setBrainModel(null);
+  const emptyCard = (await listMessages("c3")).find((row) => row.draft?.status === "waiting");
+  if (!emptyCard || !/I read all 1 message in Michelle Sanders's thread and she hasn't sent vehicle details/.test(emptyCard.body + (emptyAnswer?.body ?? ""))) fail(`an empty thread was not said plainly: ${emptyCard?.body} / ${emptyAnswer?.body}`);
 }
 
 // ---------- "How many people are checking out today": one read across the properties, answered in one tool call ----------

@@ -9,7 +9,8 @@ import { findPlanArrival, loadDayBoard, type StayMove } from "./dayBoard.js";
 import { readMailThread, searchMail, type MailLetter } from "./mailSearch.js";
 import { parityNow } from "./parity/clock.js";
 import { confirmedChecksDraft, waitingChecksMessages } from "./checksClaim.js";
-import { updateDraft } from "./store.js";
+import { listMessages, updateDraft } from "./store.js";
+import { complete } from "./brain.js";
 import { leaveDraft, loadRecentStays, type RecentStay } from "./stayCheck.js";
 import { captureMailMatch } from "./parity/capture.js";
 import { namesMatch, platesFrom, registrationMatchesStay, sentProof } from "./partnerStandard.js";
@@ -446,14 +447,49 @@ function shortDate(iso: string): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${iso.slice(0, 10)}T12:00:00Z`));
 }
 
+/**
+ * A guest said it in their own words and the pattern reader missed it: the brain reads the thread, and only what the guest
+ * wrote counts. A make or plate that isn't in their messages is dropped, so nothing is invented.
+ */
+async function vehiclesViaBrain(messages: { role: string; body: string }[], guest: string): Promise<Vehicle[]> {
+  const said = messages.filter((row) => row.role === "guest" && row.body.trim()).map((row) => row.body.trim());
+  if (!said.length) return [];
+  const result = await complete({
+    task: "extract",
+    system: "You read a short-term-rental guest's messages and pull out the vehicle they said they are bringing. Answer with JSON only: {\"vehicles\":[{\"make\":\"\",\"model\":\"\",\"plate\":\"\",\"colour\":\"\"}]}. Use only what the guest wrote, word for word. Leave a field empty when they did not say it. If they gave no vehicle, return {\"vehicles\":[]}.",
+    user: said.join("\n---\n").slice(0, 6000),
+    maxTokens: 400,
+  }).catch(() => null);
+  if (!result?.text) return [];
+  let parsed: { vehicles?: Record<string, unknown>[] };
+  try {
+    parsed = JSON.parse(/\{[\s\S]*\}/.exec(result.text)?.[0] ?? "{}") as typeof parsed;
+  } catch {
+    return [];
+  }
+  const squash = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const all = squash(said.join(" "));
+  const heard = (value: unknown) => {
+    const text = typeof value === "string" ? value.trim() : "";
+    return text && all.includes(squash(text)) ? text : "";
+  };
+  const vehicles: Vehicle[] = [];
+  for (const item of parsed.vehicles ?? []) {
+    const vehicle: Vehicle = { guest, make: heard(item.make), model: heard(item.model), plate: heard(item.plate), colour: heard(item.colour), count: "" };
+    if (vehicle.make || vehicle.model || vehicle.plate) vehicles.push(vehicle);
+  }
+  for (const vehicle of vehicles) vehicle.count = String(vehicles.length);
+  return vehicles;
+}
+
 /** The answer and the one Checks item it is about, so chat opens that exact card. */
-export async function answerBuildingRegistrationItem(text: string, context = "", force = false): Promise<{ body: string; item: ChecksItemRef | null } | null> {
-  const body = await registrationBody(text, context, force);
+export async function answerBuildingRegistrationItem(text: string, context = "", force = false, chatId = ""): Promise<{ body: string; item: ChecksItemRef | null } | null> {
+  const body = await registrationBody(text, context, force, chatId);
   if (body == null) return null;
   return typeof body === "string" ? { body, item: null } : body;
 }
 
-async function registrationBody(asked: string, context: string, force = false): Promise<string | { body: string; item: ChecksItemRef } | null> {
+async function registrationBody(asked: string, context: string, force = false, chatId = ""): Promise<string | { body: string; item: ChecksItemRef | null } | null> {
   if (!force && !asksBuildingRegistration(asked, context)) return null;
   const clock = parityNow() ?? new Date();
   const today = torontoToday(clock);
@@ -507,13 +543,16 @@ async function registrationBody(asked: string, context: string, force = false): 
     ? new RegExp(`${firstOfGuest.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} sent her vehicles? in her Airbnb thread on [^:]+:\\s*([^\\n]*?)(?:\\.\\s+Not given:|\\.\\s+Her stay:|\\s*$)`, "i").exec(context)?.[1] ?? ""
     : "";
   const fromChat = inThread.length || !stated ? [] : vehiclesFrom(stated.replace(/;\s*/g, " "), guest);
-  const found = inThread.length ? inThread : fromChat;
+  const viaBrain = inThread.length || fromChat.length || noCarFromThread(messages) ? [] : await vehiclesViaBrain(messages, guest);
+  const found = inThread.length ? inThread : fromChat.length ? fromChat : viaBrain;
   const vehicles = found.length ? found : [{ guest, make: "", model: "", plate: "", colour: "", count: "" }];
   const noCar = !found.length ? noCarFromThread(messages) : null;
   const readNote = read.behind
     ? `${guest || "The guest"}'s thread may be incomplete (${read.behind})`
     : `I read all ${messages.length} message${messages.length === 1 ? "" : "s"} in ${guest || "the guest"}'s thread and ${noCar ? "she said she isn't bringing a car" : "she hasn't sent vehicle details"}`;
   const filled = fillFromTemplate(template, next.stay.checkIn, next.stay.checkOut, vehicles, readNote);
+  // The thread was read and the car isn't in it: said plainly above the card, whatever the template looks like.
+  if (!found.length && !filled.warnings.some((warning) => warning.startsWith(readNote))) filled.warnings.unshift(`${readNote}, so the vehicle details are left blank for you.`);
   const lead = `Here is the vehicle registration email for ${guest || "the next guest"} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}), to the building. Nothing was sent.${filled.warnings.length ? `\n\nCheck before approving:\n${filled.warnings.map((warning) => `• ${warning}`).join("\n")}` : ""}`;
   const saved = await leaveDraft({
     channel: "email",
@@ -523,14 +562,18 @@ async function registrationBody(asked: string, context: string, force = false): 
     warnings: filled.warnings,
     needs_you: true,
     lead,
-  });
+  }, "", chatId);
   const marks = vehicles.flatMap((item) => [item.make, item.model, item.plate].filter(Boolean));
-  const stored = await confirmedChecksDraft(saved, { subject: filled.subject, includes: marks });
-  if (!stored) return "The building email was not saved in Checks.";
+  // In a chat the card is read back from that chat; otherwise from Checks.
+  const stored = chatId
+    ? (saved?.id ? (await listMessages(chatId)).find((row) => row.id === saved.id)?.draft ?? null : null)
+    : await confirmedChecksDraft(saved, { subject: filled.subject, includes: marks });
+  if (!stored) return chatId ? "The building email draft was not saved in the chat." : "The building email was not saved in Checks.";
   // The claim is checked against the saved card's own To and Subject before it is made.
   if (!isRegistrationDraft(stored)) return "The draft saved in Checks doesn't read as the building registration, so I'm not pointing you to it. Nothing was sent.";
   // A redo replaces the earlier waiting draft for the same stay, once the new one is read back.
-  for (const older of await waitingChecksMessages().catch(() => [])) {
+  const waiting = chatId ? (await listMessages(chatId).catch(() => [])).filter((row) => row.draft?.status === "waiting") : await waitingChecksMessages().catch(() => []);
+  for (const older of waiting) {
     if (older.id !== saved?.id && older.draft?.channel === "email" && older.draft.subject === stored.subject) {
       await updateDraft(older.id, { status: "held", bodyText: "Replaced by a newer draft of this registration. Nothing was sent." }).catch(() => null);
     }
@@ -539,11 +582,11 @@ async function registrationBody(asked: string, context: string, force = false): 
   const label = `Vehicle registration for ${who} at ${next.label}, ${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}`;
   const count = stored.to.split(/[,;]+/).filter((item) => item.trim()).length;
   return {
-    body: `The vehicle registration email for ${who} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}) is in Checks, to the building's ${count} registration address${count === 1 ? "" : "es"}, subject “${stored.subject}”. Nothing is sent until you press Submit.${(() => {
+    body: `The vehicle registration email for ${who} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}) is ${chatId ? "in the draft card here" : "in Checks"}, to the building's ${count} registration address${count === 1 ? "" : "es"}, subject “${stored.subject}”. Nothing is sent until you ${chatId ? "approve it" : "press Submit"}.${(() => {
       // A fact that is genuinely unknown after the full thread read is said plainly, above the card.
       const unknown = filled.warnings.find((warning) => /keeps the template's line/.test(warning));
       return unknown ? `\n\n${unknown}` : "";
     })()}`,
-    item: { chatId: saved?.chat_id ?? "", messageId: saved?.id ?? "", label },
+    item: chatId ? null : { chatId: saved?.chat_id ?? "", messageId: saved?.id ?? "", label },
   };
 }

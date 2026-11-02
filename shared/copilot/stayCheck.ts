@@ -315,7 +315,8 @@ function datedDraft(row: DraftCapture): DraftCapture {
   };
 }
 
-export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise<CopilotMessage | null> {
+/** With a chatId the draft card goes straight into that chat; without one it waits in Checks. */
+export async function leaveDraft(row: DraftCapture, reservationId = "", chatId = ""): Promise<CopilotMessage | null> {
   const clock = parityNow() ?? new Date();
   const dated = datedDraft(row);
   const prepared = { ...dated, subject: correctWeekdays(dated.subject, clock), body: correctWeekdays(dated.body, clock), ...(dated.lead ? { lead: correctWeekdays(dated.lead, clock) } : {}) };
@@ -338,6 +339,13 @@ export async function leaveDraft(row: DraftCapture, reservationId = ""): Promise
     ...(prepared.followUp ? { followUp: prepared.followUp } : {}),
   };
   const body = prepared.lead ? `${prepared.lead}${warnings}` : `${prepared.cleanerAssign ? prepared.body : prepared.channel === "hospitable" ? "Here is the guest reply. Nothing was sent." : prepared.channel === "note" ? "Here is the purchase to approve. Nothing was purchased." : emailCardLabel(isRegistrationDraft(prepared) ? "Here is the building email. Nothing was sent." : "", prepared)}${warnings}`;
+  if (chatId) {
+    try {
+      return await addMessage({ chatId, role: "assistant", body, draft });
+    } catch {
+      return null;
+    }
+  }
   if (parityEnabled()) {
     try {
       return paritySaveChecksMessage({

@@ -339,13 +339,13 @@ function listStaysTool(def: BrainTool, run: AgentTool["run"]): AgentTool {
 function buildingEmailTool(partnerText: string): AgentTool {
   return {
     name: "building_email",
-    description: "Drafts the vehicle registration email to the building for a guest's stay. It finds the guest's reservation itself, reads their messages for vehicle details, uses the last registration email that was sent as the template, and leaves the draft in Checks for the partner to approve. Pass guest (the guest's name). Do not search mail for a template yourself and do not pick a unit: call this. Nothing is sent.",
+    description: "Drafts the vehicle registration email to the building for a guest's stay. It finds the guest's reservation itself, reads their messages for vehicle details, uses the last registration email that was sent as the template, and puts the draft card in this chat for the partner to approve or hold off. It reads the guest\'s whole Hospitable thread for the car itself. Pass guest (the guest's name). Do not search mail for a template yourself and do not pick a unit: call this. Nothing is sent.",
     input_schema: { type: "object", properties: { guest: { type: "string" } }, required: ["guest"] },
-    run: async (input) => {
+    run: async (input, chatId) => {
       const guest = String(input.guest ?? "").trim();
       if (!guest) throw new Error("Say which guest the building email is for.");
-      const out = await answerBuildingRegistrationItem(`${partnerText}\nbuilding registration email for ${guest}`, "", true);
-      return { answer: out?.body ?? "No building email was drafted.", saved: Boolean(out?.item), nothingSent: true };
+      const out = await answerBuildingRegistrationItem(`${partnerText}\nbuilding registration email for ${guest}`, "", true, chatId);
+      return { answer: out?.body ?? "No building email was drafted.", draftCardInThisChat: Boolean(out && /draft card here/.test(out.body)), nothingSent: true };
     },
   };
 }
@@ -379,7 +379,7 @@ export function agentSystem(facts: string, today: string): string {
     "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",
     "RESERVATIONS: for a unit's next reservation, who is in the house, or whether a date is free, call next_stays (it looks a year ahead). list_stays only looks 14 days. Never say a unit has no reservations from a short look: say what window you checked, or use next_stays.",
     "AGGREGATES: for how many or who is checking in or out on a date, call day_movements once: it reads every property together. Never read unit by unit, and answer from that one result.",
-    "GUESTS: when the partner names a guest without a unit, call find_stay: the unit comes from their reservation, never from a guess or a default. For the building registration email call building_email with the guest. Never search mail for the template yourself.",
+    "GUESTS: when the partner names a guest without a unit, call find_stay: the unit comes from their reservation, never from a guess or a default. For the building registration email call building_email with the guest: it reads the guest's whole thread for the car and puts the draft card in this chat. Never ask the partner for a car detail the thread holds, never search mail for the template yourself, and do not repeat the draft in your reply: say in a line that it is waiting for approval, and pass on any note it gives about missing details.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
     "NOTHING SENDS WITHOUT A PARTNER. You cannot send a message, email, post or purchase. To prepare one, call propose_draft: it leaves a draft in the chat waiting for the partner to approve. Then say the draft is waiting for approval. Messages to guests go out as Shane. Never write an em dash in anything a guest will read.",
     "Never repeat access codes, door codes or passwords, even if a tool returned them.",
@@ -429,7 +429,7 @@ export async function runAgentTurn(input: {
     onStep: (text) => emit({ type: "step", text }),
   });
   const steps: string[] = [...loop.steps];
-  const drafted = loop.calls.some((call) => call.tool === "propose_draft" && call.ok);
+  const drafted = loop.calls.some((call) => (call.tool === "propose_draft" || call.tool === "building_email") && call.ok);
   if (loop.end === "brain") {
     const said = loop.text || "I couldn't reach the AI brain just now. Nothing was sent. Try again in a moment.";
     if (!steps.length) emit({ type: "text", text: said });
