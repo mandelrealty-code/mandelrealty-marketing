@@ -9,6 +9,7 @@ import { clientMapFacts, resolveScope, type Scope } from "./clientProperty.js";
 import { answerOps } from "./ops.js";
 import { compLines, compSet, sizeOf } from "./compsAnswer.js";
 import { connectorRows } from "./connectorStatus.js";
+import { readThread } from "./guestInbox.js";
 import { dayMovements, findStays, nextStays, readableUnit } from "./stayLookup.js";
 import { answerBuildingRegistrationItem } from "./buildingRegistration.js";
 import { unitFacts } from "./unitFacts.js";
@@ -58,6 +59,7 @@ export const STEP_LABELS: Record<string, string> = {
   market_comps: "Pulled comparable listings from AirROI",
   next_stays: "Looked up the next reservations",
   day_movements: "Looked up the check-ins and check-outs",
+  guest_thread: "Read the guest's thread",
   find_stay: "Found the guest's reservation",
   building_email: "Drafted the building email",
 };
@@ -66,7 +68,7 @@ export const STEP_LABELS: Record<string, string> = {
 const CONNECTOR_TOOLS: Record<string, string[]> = {
   gmail: ["search_mail", "read_mail"],
   outlook: ["search_mail", "read_mail"],
-  hospitable: ["guest_inbox", "list_stays", "next_stays", "find_stay", "day_movements", "read_guest_messages", "hospitable_read", "unit_facts", "guest_contacts"],
+  hospitable: ["guest_inbox", "list_stays", "next_stays", "find_stay", "guest_thread", "day_movements", "read_guest_messages", "hospitable_read", "unit_facts", "guest_contacts"],
   airroi: ["market_comps"],
   cleaner: ["cleaner_read"],
   browser: ["research_web", "web_lookup"],
@@ -150,6 +152,37 @@ function ownTools(): AgentTool[] {
       description: "Who checks out and who checks in on one date across ALL properties, in a single read. Use it for 'who is checking out today', 'how many check-ins tomorrow' and any count of arrivals or departures: one call answers it, never loop over units. date is YYYY-MM-DD and defaults to today in Toronto. Each row names the unit and guest. Read only.",
       input_schema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD, default today." } } },
       run: async (input) => dayMovements({ date: typeof input.date === "string" ? input.date : undefined }),
+    },
+    {
+      name: "guest_thread",
+      description: "Reads ONE guest's message thread in a single call: it finds the guest's reservation (use for to narrow by client or unit, check_in to pick a date) and reads that thread, oldest first. Use it for any question about what a guest said or asked. It reads exactly one thread, the best match: the guest in the house now, else the most recent past stay, else the nearest upcoming one. Any other reservations that matched the same name are listed by unit and dates but NOT read: do not open them unless the partner asks. If the read fails or is rate-limited it says so: report that and do not retry. Read only.",
+      input_schema: { type: "object", properties: { guest: { type: "string" }, for: { type: "string", description: "The client, unit or alias, when the partner named one." }, check_in: { type: "string", description: "YYYY-MM-DD, when the partner gave the dates." } }, required: ["guest"] },
+      run: async (input) => {
+        let propertyIds: string[] | undefined;
+        const unit = String(input.for ?? "").trim();
+        if (unit) {
+          const scope = resolveScope(unit);
+          if (!scope) throw new Error(`"${unit}" isn't a client or unit in the records. Say which of Raj, Nance, Roya or Precilla, or which unit.`);
+          const found = await readableUnit(scope);
+          if (!found.properties.length) throw new Error(found.why);
+          propertyIds = found.properties.map((row) => row.id);
+        }
+        const looked = await findStays({ guest: String(input.guest ?? ""), checkIn: typeof input.check_in === "string" && input.check_in ? input.check_in : undefined, propertyIds });
+        if (!looked.matches.length) return { found: false, note: looked.note };
+        const today = torontoToday();
+        const rank = (stay: { checkIn: string; checkOut: string }) => (stay.checkIn <= today && stay.checkOut >= today ? 0 : stay.checkOut < today ? 1 : 2);
+        const ordered = [...looked.matches].sort((a, b) => rank(a) - rank(b) || (rank(a) === 1 ? b.checkOut.localeCompare(a.checkOut) : a.checkIn.localeCompare(b.checkIn)));
+        const pick = ordered[0]!;
+        const others = ordered.slice(1).map((row) => ({ guest: row.guest, unit: row.unit, checkIn: row.checkIn, checkOut: row.checkOut }));
+        let messages: Awaited<ReturnType<typeof readThread>>;
+        try {
+          messages = await readThread(pick.reservationId);
+        } catch (err) {
+          const why = err instanceof Error ? err.message : "Hospitable didn't return the thread.";
+          throw new Error(`I found ${pick.guest} (${pick.unit}, ${pick.checkIn} to ${pick.checkOut}) but couldn't read the thread: ${why}. Say that once; do not retry and do not open other threads.`);
+        }
+        return { found: true, guest: pick.guest, unit: pick.unit, checkIn: pick.checkIn, checkOut: pick.checkOut, messages, ...(others.length ? { otherMatchesNotRead: others } : {}) };
+      },
     },
     {
       name: "find_stay",
@@ -378,6 +411,7 @@ export function agentSystem(facts: string, today: string): string {
     "EMAIL: every answer about an email names the mailbox it came from, in words (Gmail or Outlook). For the last email the partner sent, call last_sent_email: it reads Gmail Sent newest first. If its note says Gmail couldn't be read, say that plainly and say the answer is from Outlook. Never present one mailbox's mail as the other's, and never answer from memory.",
     "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",
     "RESERVATIONS: for a unit's next reservation, who is in the house, or whether a date is free, call next_stays (it looks a year ahead). list_stays only looks 14 days. Never say a unit has no reservations from a short look: say what window you checked, or use next_stays.",
+    "THREADS: for what a guest said, asked or sent, call guest_thread once with the guest (and the unit or dates if given): it finds the stay and reads the thread together. Answer from that one thread, then stop. Never open another guest's thread, a future stay or a second match unprompted; if other matches are listed, mention them in a clause and let the partner choose. If a read is rate-limited or fails, say so once and do not retry it.",
     "AGGREGATES: for how many or who is checking in or out on a date, call day_movements once: it reads every property together. Never read unit by unit, and answer from that one result.",
     "GUESTS: when the partner names a guest without a unit, call find_stay: the unit comes from their reservation, never from a guess or a default. For the building registration email call building_email with the guest: it reads the guest's whole thread for the car and puts the draft card in this chat. Never ask the partner for a car detail the thread holds, never search mail for the template yourself, and do not repeat the draft in your reply: say in a line that it is waiting for approval, and pass on any note it gives about missing details.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",

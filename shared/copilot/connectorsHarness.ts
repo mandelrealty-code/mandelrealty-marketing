@@ -674,4 +674,41 @@ resetBusinessFacts();
   if (!/call day_movements once/.test((await import("./agentChat.js")).agentSystem("", "2026-10-31"))) fail("the agent isn't told to use day_movements");
 }
 
+// ---------- "What did Rebecca mention about food in her thread? For raj unit": one thread, 1 tool call, no wandering ----------
+{
+  const world = worldAt("2026-10-31T12:00:00-04:00");
+  world.reservations = [
+    stay("rr", ID.blue, "Rebecca Roitz", "2026-10-21", "2026-10-25"),
+    stay("rs", ID.blue, "Rebecca Simpson", "2026-12-21", "2026-12-27"),
+  ];
+  world.reservations[0]!.messages = [{ id: "f1", at: "2026-10-19T18:00:00-04:00", role: "guest", name: "Rebecca", body: "We are vegetarian, could you leave a few snacks?" }];
+  world.reservations[1]!.messages = [{ id: "f2", at: "2026-10-30T18:00:00-04:00", role: "guest", name: "Rebecca", body: "Looking forward to December." }];
+  installWorld(world);
+  setParityClock(new Date("2026-10-31T16:00:00Z"));
+  const reads: Record<string, unknown>[] = [];
+  setHospitableLogger((line) => reads.push(line));
+  const lines: Record<string, unknown>[] = [];
+  setToolLogger((line) => lines.push(line as Record<string, unknown>));
+  setBrainModel(async (request) => {
+    if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+    const last = request.messages!.at(-1)!;
+    const input = { guest: "Rebecca", for: "raj" };
+    if (!Array.isArray(last.content)) return { text: "", toolUses: [{ id: "g1", name: "guest_thread", input }], blocks: [{ type: "tool_use", id: "g1", name: "guest_thread", input }], stop: "tool_use" };
+    const result = JSON.parse(last.content.map((block) => (block.type === "tool_result" ? block.content : "")).join("")) as { guest: string; messages: { body: string }[]; otherMatchesNotRead?: { guest: string }[] };
+    const text = `${result.guest} said: ${result.messages[0]!.body} (Also matched: ${result.otherMatchesNotRead?.map((row) => row.guest).join()}, not opened.)`;
+    return { text, toolUses: [], blocks: [{ type: "text", text }], stop: "end_turn" };
+  });
+  const turn = await runAgentTurn({ chatId: "c", text: "What did Rebecca mention about food in her thread? For raj unit" });
+  setBrainModel(null);
+  setToolLogger(null);
+  setHospitableLogger(null);
+  setParityClock(null);
+  const used = lines.filter((line) => line.agent === "tool");
+  if (used.length !== 1 || used[0]!.tool !== "guest_thread") fail(`the thread question took ${used.length} calls: ${JSON.stringify(used)}`);
+  if (!/Rebecca Roitz said: We are vegetarian/.test(turn.body) || !/Rebecca Simpson, not opened/.test(turn.body)) fail(`the answer: ${turn.body}`);
+  const threadReads = reads.filter((line) => /message/i.test(String(line.path)));
+  if (threadReads.length !== 1 || /Looking forward to December/.test(JSON.stringify(turn))) fail(`more than one thread was opened: ${JSON.stringify(threadReads)}`);
+  if (!/Never open another guest's thread/.test((await import("./agentChat.js")).agentSystem("", "2026-10-31"))) fail("the agent isn't told to stop after one thread");
+}
+
 console.log("Connectors harness passed.");

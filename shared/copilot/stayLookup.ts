@@ -117,7 +117,7 @@ export type FoundStay = { reservationId: string; guest: string; unit: string; pr
  * A guest's reservations by name, across every property Copilot reads: which unit they are at comes from the reservation, never
  * from a guess. Looks a month back to a year ahead by check-in and by checkout.
  */
-export async function findStays(input: { guest: string; checkIn?: string }, now: Date = new Date()): Promise<{ matches: FoundStay[]; searched: { properties: number; from: string; to: string }; note: string }> {
+export async function findStays(input: { guest: string; checkIn?: string; propertyIds?: string[] }, now: Date = new Date()): Promise<{ matches: FoundStay[]; searched: { properties: number; from: string; to: string }; note: string }> {
   const name = input.guest.trim().toLowerCase();
   if (name.length < 2) throw new Error("Say which guest to look for.");
   const properties = await scopedStayProperties().catch(() => [] as Readable[]);
@@ -139,6 +139,7 @@ export async function findStays(input: { guest: string; checkIn?: string }, now:
     const full = [String((row.raw.guest as Record<string, unknown> | undefined)?.first_name ?? ""), String((row.raw.guest as Record<string, unknown> | undefined)?.last_name ?? "")].join(" ").trim() || guest;
     if (!`${guest} ${full}`.toLowerCase().split(/\s+/).some((word) => word === name) && !full.toLowerCase().includes(name)) continue;
     if (input.checkIn && row.check_in !== input.checkIn) continue;
+    if (input.propertyIds?.length && !input.propertyIds.includes(row.property_id)) continue;
     matches.push({ reservationId: row.id, guest: full, unit: unit.get(row.property_id) ?? row.property_id, propertyId: row.property_id, checkIn: row.check_in, checkOut: row.check_out, status: row.status, platform: row.platform });
   }
   matches.sort((a, b) => a.checkIn.localeCompare(b.checkIn));
