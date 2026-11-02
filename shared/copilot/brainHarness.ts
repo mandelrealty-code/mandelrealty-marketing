@@ -4,7 +4,7 @@
  */
 
 import { agentSystem, agentTools, answerInChat, runAgentTurn, type AgentTool } from "./agentChat.js";
-import { metaModelFrom, brainAvailable, complete, diagnoseBrain, routePlan, setBrainFetch, setBrainLogger, setBrainModel, type BrainRequest } from "./brain.js";
+import { metaModelFrom, brainAvailable, complete, routePlan, setBrainFetch, setBrainModel, type BrainRequest } from "./brain.js";
 import { extractAndSaveFacts, listFacts, parseExtracted, recallFacts, resetBusinessFacts, saveFact } from "./businessFacts.js";
 import { callToolForChat } from "./toolServer.js";
 import { capturedCommits, capturedDrafts, capturedReports, resetCaptures } from "./parity/capture.js";
@@ -110,39 +110,14 @@ if (pieces.join("") !== "Let me check." || streamed?.text !== "Let me check.") f
 if (streamed.toolUses[0]?.name !== "list_stays" || (streamed.toolUses[0]?.input as { days_ahead?: number }).days_ahead !== 7 || streamed.stop !== "tool_use") fail(`stream tool ${JSON.stringify(streamed.toolUses)}`);
 setBrainFetch(null);
 
-// ---------- The log says who was tried, who answered, and the status code: never the key, never a body ----------
-const logged: Record<string, unknown>[] = [];
-setBrainLogger((line) => logged.push(line));
-setBrainFetch(asFetch((call) => (call.url.includes("meta.ai") ? new Response(JSON.stringify({ error: { type: "invalid_request_error", code: "model_not_found", message: "secret-body-text" } }), { status: 404 }) : ok("from anthropic"))));
-const viaLog = await complete(req());
-if (viaLog?.provider !== "anthropic") fail("setup for the log");
-const lines = logged.map((line) => JSON.stringify(line)).join("\n");
-if (!/"brain":"start"/.test(lines) || !/"provider":"meta"[^}]*"status":404/.test(lines) || !/"brain":"answered"[^}]*"provider":"anthropic"[^}]*"fellBack":true/.test(lines)) fail(`the log lacks the attempt, the status or the answer:\n${lines}`);
-if (lines.includes(META) || lines.includes(ANTH) || /secret-body-text|model_not_found/.test(lines)) fail("the log leaked a key or a response body");
-logged.length = 0;
-delete process.env.META_API_KEY;
-await complete(req());
-if (!/"noKey":\["meta"\]/.test(logged.map((line) => JSON.stringify(line)).join("\n"))) fail("a missing Meta key was not logged");
-process.env.META_API_KEY = META;
-// The diagnosis names the status for each Meta model name, and the same key never shows up in what it returns.
-setBrainFetch(asFetch((call) => {
-  if (!call.url.includes("meta.ai")) return ok("ok");
-  return call.body.model === "muse-spark" ? new Response("{}", { status: 404 }) : ok("ok");
-}));
-const probes = await diagnoseBrain();
-const versioned = probes.find((row) => row.provider === "meta");
-if (versioned?.model !== "muse-spark-1.3" || versioned.outcome !== "ok" || !versioned.keyPresent) fail(`diagnosis ${JSON.stringify(probes)}`);
+// ---------- Meta falls back to Anthropic on a 404, and is asked for the versioned standard model ----------
+setBrainFetch(asFetch((call) => (call.url.includes("meta.ai") ? new Response("{}", { status: 404 }) : ok("from anthropic"))));
+if ((await complete(req()))?.provider !== "anthropic") fail("a Meta 404 did not fall back to Anthropic");
 if (metaModelFrom(undefined) !== "muse-spark-1.3" || metaModelFrom("  muse-spark-1.4 ") !== "muse-spark-1.4" || metaModelFrom("muse-spark-1.3-contributor") !== "muse-spark-1.3" || metaModelFrom("MUSE-SPARK-1.3-Contributor") !== "muse-spark-1.3") fail("META_MODEL override or the contributor guard");
-// The router asks Meta for the versioned standard model, never the contributor tier, and never the old unversioned name.
 const metaAsked: string[] = [];
 setBrainFetch(asFetch((call) => { if (call.url.includes("meta.ai")) metaAsked.push(String(call.body.model)); return ok("ok"); }));
 await complete(req());
 if (metaAsked.join() !== "muse-spark-1.3") fail(`Meta was asked for ${metaAsked.join()}`);
-if (JSON.stringify(probes).includes(META) || JSON.stringify(probes).includes(ANTH)) fail("the diagnosis returned a key");
-delete process.env.META_API_KEY;
-if (!(await diagnoseBrain()).some((row) => row.provider === "meta" && row.outcome === "no key" && !row.keyPresent)) fail("a missing Meta key was not diagnosed");
-process.env.META_API_KEY = META;
-setBrainLogger(null);
 setBrainFetch(null);
 
 // Parity never calls out without a seam.

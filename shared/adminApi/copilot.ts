@@ -73,7 +73,6 @@ import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMc
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { adjustDraft, ADJUST_KINDS, type AdjustKind } from "../copilot/reviewAdjust.js";
 import { answerInChat, type AgentEvent } from "../copilot/agentChat.js";
-import { diagnoseBrain } from "../copilot/brain.js";
 import { actOnWatchItem, watchDecisions } from "../copilot/watch.js";
 import { resolveScope } from "../copilot/clientProperty.js";
 import { diagnoseStays } from "../copilot/stayLookup.js";
@@ -833,7 +832,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     if (op === "gmail-diagnose") return res.status(200).json(await diagnoseGmail(String(body.keywords ?? "")));
 
     // Temporary: one tiny call per brain provider, status codes only, to find out why one isn't answering.
-    if (op === "brain-diagnose") return res.status(200).json({ probes: await diagnoseBrain() });
 
     // The business agent: the brain reads the connected systems, calls tools mid-turn, and answers. Nothing here sends.
     // stream:true answers as server-sent events (step, text, done); otherwise one JSON reply like "send".

@@ -128,21 +128,6 @@ class CallFailed extends Error {
   }
 }
 
-type LogLine = Record<string, string | number | boolean | null | string[]>;
-let logger: ((line: LogLine) => void) | null = null;
-
-/** Tests read the log. Null restores the server log. */
-export function setBrainLogger(next: ((line: LogLine) => void) | null): void {
-  logger = next;
-}
-
-/** One line per step of a brain call: which provider was tried, how it ended (status code only), and who answered. */
-function brainLog(line: LogLine): void {
-  if (logger) return logger(line);
-  if (parityEnabled()) return;
-  console.log(`[brain] ${JSON.stringify(line)}`);
-}
-
 function bodyOf(request: BrainRequest, route: Route): string {
   const messages = request.messages?.length ? request.messages : [{ role: "user" as const, content: request.user ?? "" }];
   return JSON.stringify({
@@ -273,58 +258,21 @@ export async function complete(request: BrainRequest): Promise<BrainResult | nul
   }
   if (parityEnabled() && !fetcher) return null;
   const plan = routePlan(request.task);
-  const skipped = (["meta", "anthropic"] as const).filter((provider) => !keyOf(provider) && (ROUTES[request.task] ?? []).some((route) => route.provider === provider));
-  brainLog({ brain: "start", task: request.task, try: plan.map((route) => `${route.provider}:${route.model}`), noKey: skipped });
   const emitted = { any: false };
   for (const route of plan) {
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
         const result = await callOnce(request, route, emitted);
-        brainLog({ brain: "answered", task: request.task, provider: route.provider, model: route.model, attempt, fellBack: route !== plan[0] });
         return result;
       } catch (err) {
         const failed = err instanceof CallFailed ? err : new CallFailed(false, "network");
-        brainLog({ brain: "failed", task: request.task, provider: route.provider, model: route.model, attempt, outcome: failed.outcome, status: failed.status, retrying: failed.retry && attempt === 1 });
         // Once words have reached the person, a second provider would start the answer over.
         if (emitted.any) return null;
         if (!failed.retry) break;
       }
     }
   }
-  brainLog({ brain: "none", task: request.task, tried: plan.map((route) => route.provider) });
   return null;
-}
-
-export type BrainProbe = { provider: "meta" | "anthropic"; model: string; keyPresent: boolean; url: string; outcome: "ok" | "status" | "network" | "timeout" | "empty" | "no key"; status: number };
-
-/**
- * One tiny live call per provider and model, reported as status codes only. For finding out why a provider isn't answering:
- * is the key on the server, is the URL right, and does the model name exist. Never returns a key or a response body.
- * Meta is tried with the model the router uses and with the versioned names in Meta's docs.
- */
-export async function diagnoseBrain(): Promise<BrainProbe[]> {
-  const tries: Route[] = [
-    { provider: "meta", model: META_MODEL },
-    { provider: "anthropic", model: HAIKU },
-  ];
-  const out: BrainProbe[] = [];
-  for (const route of tries) {
-    const url = endpoint(route).url;
-    const keyPresent = Boolean(keyOf(route.provider));
-    if (!keyPresent) {
-      out.push({ provider: route.provider, model: route.model, keyPresent, url, outcome: "no key", status: 0 });
-      continue;
-    }
-    try {
-      await callOnce({ task: "simple", system: "Reply with the single word ok.", user: "ok?", maxTokens: 8 }, route, { any: false });
-      out.push({ provider: route.provider, model: route.model, keyPresent, url, outcome: "ok", status: 200 });
-    } catch (err) {
-      const failed = err instanceof CallFailed ? err : new CallFailed(false, "network");
-      out.push({ provider: route.provider, model: route.model, keyPresent, url, outcome: failed.outcome, status: failed.status });
-    }
-  }
-  brainLog({ brain: "diagnose", results: out.map((row) => `${row.provider}:${row.model}=${row.outcome}${row.status ? ` ${row.status}` : ""}`) });
-  return out;
 }
 
 /** The text of one plain call, for the many places that only need words back. */
