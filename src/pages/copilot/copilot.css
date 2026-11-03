@@ -9169,3 +9169,187 @@ html.cp-app[data-cp-theme="dark"] #root {
 @media (prefers-reduced-motion: reduce) {
   .cp-ov3-row.fresh { transition: none; }
 }
+
+/* ---------- Chat messages: type and spacing only (Copilot chat message refresh) ----------
+   Scoped to the message column. Tokens come from the design's palette; layout, sidebar and composer are untouched. */
+.cp .cp-thread {
+  --m-ink: #211b16;
+  --m-ink2: #4a423a;
+  --m-muted: #7a7067;
+  --m-tint: #efebe4;
+  --m-bubble: #ede8e0;
+  --m-line: #eae5dc;
+  --m-line2: #d9d2c7;
+  --m-accent: #c05a2e;
+}
+.cp[data-theme="dark"] .cp-thread {
+  --m-ink: #f0eae2;
+  --m-ink2: #cfc6bb;
+  --m-muted: #9c9186;
+  --m-tint: #2e2620;
+  --m-bubble: #352d26;
+  --m-line: #352d26;
+  --m-line2: #4a4037;
+  --m-accent: #d06a3c;
+}
+
+/* A calm rhythm: 24px inside a turn, 48px between turns, a 680px measure. */
+.cp .cp-thread { max-width: 712px; gap: 24px; }
+.cp .cp-thread > .cp-userwrap:not(:first-child) { margin-top: 24px; }
+
+/* The person's message keeps its right-aligned bubble. */
+.cp .cp-thread .cp-userwrap { max-width: 80%; }
+.cp .cp-thread .cp-user {
+  background: var(--m-bubble);
+  color: var(--m-ink);
+  border: none;
+  border-radius: 18px;
+  padding: 10px 16px;
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 24px;
+  text-wrap: pretty;
+}
+
+/* The answer sits on the page: no frame, 16/26, one paragraph at a time. */
+.cp .cp-thread .cp-bot { gap: 14px; }
+.cp .cp-thread .cp-bot > .cp-answer {
+  display: block;
+  gap: 0;
+  max-width: 680px;
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--m-ink);
+  text-wrap: pretty;
+  -webkit-font-smoothing: antialiased;
+}
+.cp .cp-thread .cp-bot > .cp-answer.cp-muted { color: var(--m-muted); }
+.cp .cp-thread .cp-answer .cp-ab { display: contents; }
+.cp .cp-thread .cp-answer p { margin: 0 0 16px; }
+.cp .cp-thread .cp-answer h2,
+.cp .cp-thread .cp-answer h3,
+.cp .cp-thread .cp-answer h4 {
+  margin: 28px 0 8px;
+  font-size: 17px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--m-ink);
+}
+.cp .cp-thread .cp-answer h2 { font-size: 19px; }
+.cp .cp-thread .cp-answer h4 { font-size: 16px; }
+.cp .cp-thread .cp-answer strong { font-weight: 600; }
+.cp .cp-thread .cp-answer ul,
+.cp .cp-thread .cp-answer ol { margin: 0 0 16px; padding-left: 22px; }
+.cp .cp-thread .cp-answer ol { padding-left: 24px; }
+.cp .cp-thread .cp-answer li { margin: 0 0 8px; padding-left: 4px; }
+.cp .cp-thread .cp-answer li:last-child { margin-bottom: 0; }
+.cp .cp-thread .cp-answer li::marker { color: var(--m-muted); }
+.cp .cp-thread .cp-answer blockquote {
+  margin: 0 0 16px;
+  padding: 2px 0 2px 18px;
+  border-left: 2px solid var(--m-line2);
+  color: var(--m-ink2);
+}
+.cp .cp-thread .cp-answer blockquote p:last-child { margin-bottom: 0; }
+.cp .cp-thread .cp-answer code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13.5px;
+  font-variant-ligatures: none;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--m-tint);
+  color: var(--m-ink2);
+}
+.cp .cp-thread .cp-answer pre {
+  margin: 0 0 16px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: var(--m-tint);
+  color: var(--m-ink2);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 22px;
+  overflow-x: auto;
+  white-space: pre;
+}
+.cp .cp-thread .cp-answer pre code { padding: 0; border-radius: 0; background: transparent; font-size: inherit; color: inherit; }
+.cp .cp-thread .cp-answer a {
+  color: var(--m-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--m-accent) 45%, transparent);
+}
+.cp .cp-thread .cp-answer a:hover { text-decoration-color: var(--m-accent); }
+/* No trailing gap under the last block. */
+.cp .cp-thread .cp-answer > :last-child,
+.cp .cp-thread .cp-answer > .cp-ab:last-child > :last-child { margin-bottom: 0; }
+.cp .cp-thread .cp-answer > :first-child,
+.cp .cp-thread .cp-answer > .cp-ab:first-child > :first-child { margin-top: 0; }
+
+/* Typing indicator: one thin caret at the end of the words so far; it is gone when the answer is complete. */
+.cp .cp-thread .cp-caret {
+  display: inline-block;
+  width: 2px;
+  height: 17px;
+  margin-left: 2px;
+  vertical-align: -3px;
+  border-radius: 1px;
+  background: var(--m-accent);
+  animation: cpCaret 1s steps(2, start) infinite;
+}
+@keyframes cpCaret { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
+@keyframes cpPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* What the agent did folds into one quiet line over the answer, open on tap. */
+.cp[data-theme] .cp-thread .cp-think { gap: 6px; }
+.cp[data-theme] .cp-thread .cp-think-head {
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 13px;
+  line-height: 20px;
+  max-width: 100%;
+}
+.cp[data-theme] .cp-thread .cp-think-head .label,
+.cp[data-theme] .cp-thread .cp-think-head.live .label {
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  animation: none;
+  color: var(--m-muted);
+  font-weight: 400;
+  text-align: left;
+}
+.cp[data-theme] .cp-thread .cp-think-head.live .label { color: var(--m-ink2); }
+.cp[data-theme] .cp-thread .cp-think-head.live::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--m-accent);
+  animation: cpPulse 1.2s ease-in-out infinite;
+}
+.cp[data-theme] .cp-thread .cp-think-head:not(.live) .count { display: none; }
+.cp[data-theme] .cp-thread .cp-think-head .count,
+.cp[data-theme] .cp-thread .cp-think-head svg { color: var(--m-muted); font-size: 13px; }
+.cp[data-theme] .cp-thread .cp-think-head:hover { opacity: 1; }
+.cp[data-theme] .cp-thread .cp-think-head:hover .label { color: var(--m-ink2); }
+.cp[data-theme] .cp-thread .cp-think-body {
+  gap: 6px;
+  margin: -4px 0 4px 1px;
+  padding: 0 0 0 14px;
+  border-left: 1px solid var(--m-line2);
+  font-size: 13px;
+  line-height: 20px;
+  max-height: none;
+}
+.cp[data-theme] .cp-thread .cp-think-body p,
+.cp[data-theme] .cp-thread .cp-think-step,
+.cp[data-theme] .cp-thread .cp-think-step .meta { color: var(--m-muted); }
+.cp .cp-thread .cp-think-step svg { display: none; }
+.cp .cp-thread .cp-think-step .cp-pulse { background: var(--m-accent); }
+@media (prefers-reduced-motion: reduce) {
+  .cp .cp-thread .cp-caret, .cp[data-theme] .cp-thread .cp-think-head.live::before { animation: none; }
+}

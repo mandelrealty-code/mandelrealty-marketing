@@ -11,7 +11,12 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Inline code is set apart first, so nothing inside it is read as emphasis or a link. */
 function inline(raw: string): string {
+  return raw.split(/(`[^`\n]+`)/).map((part, index) => (index % 2 ? `<code>${escapeHtml(part.slice(1, -1))}</code>` : inlineText(part))).join("");
+}
+
+function inlineText(raw: string): string {
   let text = escapeHtml(raw);
   text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, label: string, url: string) => {
     return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
@@ -36,17 +41,73 @@ function marker(line: string): { ordered: boolean; rest: string } | null {
   return null;
 }
 
+const FENCE = /^\s*```/;
+const HEADING = /^\s{0,3}(#{1,4})\s+(.+?)\s*#*\s*$/;
+const QUOTE = /^\s*>/;
+const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
+
+/**
+ * An answer cut into blocks at its blank lines (never inside a code fence). While an answer streams, every finished block
+ * stays exactly as it was and only the last one grows, so nothing already on screen is redrawn or repeated.
+ */
+export function splitAnswerBlocks(source: string): string[] {
+  const blocks: string[] = [];
+  let current: string[] = [];
+  let fenced = false;
+  for (const line of source.replace(/\r\n/g, "\n").split("\n")) {
+    if (FENCE.test(line)) fenced = !fenced;
+    if (!fenced && !line.trim() && !FENCE.test(line)) {
+      if (current.length) blocks.push(current.join("\n"));
+      current = [];
+      continue;
+    }
+    current.push(line);
+  }
+  if (current.length) blocks.push(current.join("\n"));
+  return blocks;
+}
+
 /** HTML for one answer or summary. Markup characters are not left in the text. */
 export function renderAnswer(source: string): string {
   const lines = source.replace(/\r\n/g, "\n").split("\n");
   const blocks: string[] = [];
   let index = 0;
+  const startsBlock = (line: string) => FENCE.test(line) || HEADING.test(line) || QUOTE.test(line) || RULE.test(line) || Boolean(marker(line));
   while (index < lines.length) {
-    if (!lines[index]?.trim()) {
+    const line = lines[index] ?? "";
+    if (!line.trim() || RULE.test(line)) {
       index += 1;
       continue;
     }
-    const first = marker(lines[index] ?? "");
+    if (FENCE.test(line)) {
+      const code: string[] = [];
+      index += 1;
+      while (index < lines.length && !FENCE.test(lines[index] ?? "")) {
+        code.push(lines[index] ?? "");
+        index += 1;
+      }
+      index += 1;
+      blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+    const heading = HEADING.exec(line);
+    if (heading) {
+      const level = heading[1]!.length;
+      const tag = level === 1 ? "h2" : level === 2 ? "h3" : "h4";
+      blocks.push(`<${tag}>${inline(heading[2]!)}</${tag}>`);
+      index += 1;
+      continue;
+    }
+    if (QUOTE.test(line)) {
+      const quoted: string[] = [];
+      while (index < lines.length && QUOTE.test(lines[index] ?? "")) {
+        quoted.push((lines[index] ?? "").replace(/^\s*>\s?/, ""));
+        index += 1;
+      }
+      blocks.push(`<blockquote>${renderAnswer(quoted.join("\n"))}</blockquote>`);
+      continue;
+    }
+    const first = marker(line);
     if (first) {
       const ordered = first.ordered;
       const items: string[] = [];
@@ -60,11 +121,11 @@ export function renderAnswer(source: string): string {
       continue;
     }
     const paragraph: string[] = [];
-    while (index < lines.length && lines[index]?.trim() && !marker(lines[index] ?? "")) {
+    while (index < lines.length && lines[index]?.trim() && !startsBlock(lines[index] ?? "")) {
       paragraph.push(lines[index] ?? "");
       index += 1;
     }
-    blocks.push(`<p>${paragraph.map((line) => inline(line)).join("<br>")}</p>`);
+    blocks.push(`<p>${paragraph.map((row) => inline(row)).join("<br>")}</p>`);
   }
   return blocks.join("");
 }

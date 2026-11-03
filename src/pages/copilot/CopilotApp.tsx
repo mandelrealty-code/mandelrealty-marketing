@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import type { BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, HospitableCard, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
 import { streamPiece, streamStart, streamStep } from "../../../shared/copilot/streamText";
@@ -24,7 +24,7 @@ import type { AccountSpend } from "../../../shared/copilot/models";
 import { BLANK, type NodeResult, type Workflow } from "../../../shared/copilot/workflow";
 import { workflowFromSkill } from "../../../shared/copilot/skillShape";
 import { runWhen } from "./skillsTime";
-import { renderAnswer } from "../../../shared/copilot/answerMarkup";
+import { renderAnswer, splitAnswerBlocks } from "../../../shared/copilot/answerMarkup";
 import {
   beginSession,
   keptSessions,
@@ -722,6 +722,38 @@ function ChatText({ text, muted }: { text: string; muted?: boolean }) {
   );
 }
 
+/** One finished block of an answer. Its text never changes again, so it is never redrawn while the next block streams. */
+const AnswerBlock = memo(function AnswerBlock({ html }: { html: string }) {
+  return <div className="cp-ab" dangerouslySetInnerHTML={{ __html: html }} />;
+});
+
+const CARET = '<span class="cp-caret" aria-hidden="true"></span>';
+
+/** An answer still arriving: finished blocks stay put, only the last grows, and a small caret shows it is working. */
+function StreamAnswer({ text }: { text: string }) {
+  const blocks = splitAnswerBlocks(text);
+  const last = blocks.length - 1;
+  return (
+    <div className="cp-answer streaming" aria-live="off">
+      {blocks.map((block, index) => {
+        const html = renderAnswer(block);
+        return <AnswerBlock key={index} html={index === last ? html.replace(/(<\/(?:p|li|h[2-4]|code)>)(?![\s\S]*<\/(?:p|li|h[2-4]|code)>)/, `${CARET}$1`) : html} />;
+      })}
+      {last < 0 ? <span className="cp-caret" aria-hidden="true" /> : null}
+    </div>
+  );
+}
+
+/** The quiet line over an answer: what was done, in the steps' own words, or what is happening now. */
+function quietLine(title: string, steps: { text: string }[], live?: boolean): { label: string; now: string } {
+  const texts = steps.map((step) => step.text.replace(/[.\s]+$/, "")).filter(Boolean);
+  if (live) return { label: "Working…", now: texts.at(-1) ?? "" };
+  if (!texts.length) return { label: title, now: "" };
+  const unique = texts.filter((text, index) => texts.indexOf(text) === index);
+  const joined = unique.map((text, index) => (index ? text.charAt(0).toLowerCase() + text.slice(1) : text)).join(", ");
+  return { label: joined.length > 78 ? `${joined.slice(0, 75).trimEnd()}…` : joined, now: "" };
+}
+
 function Address({ url }: { url: string }) {
   if (!/^https?:\/\//i.test(url)) return <span>Opening the browser</span>;
   try {
@@ -757,6 +789,7 @@ function Thinking({
   live?: boolean;
   onShowBrowser?: () => void;
 }) {
+  const quiet = quietLine(title, steps, live);
   return (
     <div className="cp-think">
       <div className="cp-think-row">
@@ -770,8 +803,8 @@ function Thinking({
           onToggle();
         }}
       >
-        <span className="label">{title}</span>
-        {summary ? <span className="count">{summary}</span> : null}
+        <span className="label">{quiet.label}</span>
+        {quiet.now ? <span className="count">{quiet.now}</span> : summary ? <span className="count">{summary}</span> : null}
         <ThinkChevron open={open} />
       </button>
       {onShowBrowser ? (
@@ -2939,13 +2972,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                         summary={(liveSteps.length + (liveThought ? 1 : 0)) === 1 ? "1 step" : `${liveSteps.length + (liveThought ? 1 : 0)} steps`}
                         thought={liveThought}
                         steps={liveSteps}
-                        live
+                        live={!streamText}
                         onShowBrowser={chatId && !stage && deskMemory.current[chatId]?.kind === "page" ? reopenBrowser : undefined}
                       />
                     ) : null}
                     {streamText ? (
                       <div className="cp-bot">
-                        <ChatText text={withoutFilesystemDetail(streamText, true)} />
+                        <StreamAnswer text={withoutFilesystemDetail(streamText, true)} />
                       </div>
                     ) : null}
                     {stopped && !pending && !thinking ? <p className="cp-muted">Stopped. Nothing was sent.</p> : null}

@@ -742,4 +742,28 @@ resetBusinessFacts();
   if (keepLines("Hello,\r\n\r\n\r\n\r\nA   b\n> quoted  line\nc ") !== "Hello,\n\nA b\n> quoted line\nc") fail(`line breaks: ${JSON.stringify(keepLines("Hello,\r\n\r\n\r\n\r\nA   b\n> quoted  line\nc "))}`);
 }
 
+// ---------- Chat answers: headings, lists, quotes and code render as structure; a stream only ever appends ----------
+{
+  const { renderAnswer, splitAnswerBlocks } = await import("./answerMarkup.js");
+  const md = "Two things.\n\n## Unit 4B: dishwasher\n\nThe repair is **booked** for Friday.\n\n- Okafor, unit 2A\n- Lindqvist, unit 3C\n\n> Hi Siobhan, thanks.\n> We'll text you.\n\nSaved as `HL-2291`.\n\n```\n=COUNTIFS(A:A, \"<\"&B1)\n```\n\n1. First\n2. Second";
+  const html = renderAnswer(md);
+  for (const [name, test] of [["heading", /<h3>Unit 4B: dishwasher<\/h3>/], ["bold", /<strong>booked<\/strong>/], ["list", /<ul><li>Okafor, unit 2A<\/li><li>Lindqvist, unit 3C<\/li><\/ul>/], ["quote", /<blockquote><p>Hi Siobhan, thanks\.<br>We'll text you\.<\/p><\/blockquote>/], ["code", /<code>HL-2291<\/code>/], ["fence", /<pre><code>=COUNTIFS\(A:A, &quot;&lt;&quot;&amp;B1\)<\/code><\/pre>/], ["ordered", /<ol><li>First<\/li><li>Second<\/li><\/ol>/]] as const) {
+    if (!test.test(html)) fail(`the ${name} did not render: ${html}`);
+  }
+  if (/[#>`]|\*\*/.test(html.replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, "").replace(/=COUNTIFS\(A:A, "<"&B1\)/, ""))) fail(`markup characters left in the text: ${html.replace(/<[^>]+>/g, "")}`);
+  if (renderAnswer("<script>alert(1)</script> `<b>`").includes("<script>") || /<b>/.test(renderAnswer("`<b>`"))) fail("html in an answer was not escaped");
+  if (splitAnswerBlocks("a\n\n```\nx\n\ny\n```\n\nb").length !== 3) fail("a blank line inside a code fence split the block");
+  // Streaming: after each chunk, every block that already has a later block is exactly what it will be at the end.
+  const final = splitAnswerBlocks(md).map(renderAnswer);
+  let shown = "";
+  for (const chunk of md.match(/.{1,7}/gs) ?? []) {
+    shown += chunk;
+    const blocks = splitAnswerBlocks(shown);
+    blocks.slice(0, -1).forEach((block, index) => {
+      if (renderAnswer(block) !== final[index]) fail(`block ${index} changed while streaming: ${renderAnswer(block)} vs ${final[index]}`);
+    });
+  }
+  if (splitAnswerBlocks(shown).map(renderAnswer).join("") !== final.join("")) fail("the finished stream differs from the finished answer");
+}
+
 console.log("Connectors harness passed.");
