@@ -12,7 +12,10 @@ import { parseListing, setListingClock, setListingFetcher, setListingSearcher, v
 import { capturedCommits, resetCaptures } from "./parity/capture.js";
 import { worldAt } from "./parity/catalog.js";
 import { installWorld } from "./parity/world.js";
-import { listMessages } from "./store.js";
+import { addMessage, listMessages } from "./store.js";
+import { answerInChat } from "./agentChat.js";
+import { streamAgentReply } from "../adminApi/copilot.js";
+import { finishedReplyAfter } from "./replyRecovery.js";
 import { allCardsLinked, boardPrompt, loadBoard } from "./furnitureBoard.js";
 
 function fail(label: string): never {
@@ -232,6 +235,45 @@ if ((await listMessages("furn-none")).some((row) => row.file)) fail("a report wa
   if (!/FURNITURE WORKING SET/.test(sawBoard) || !/slot "living-room-couch"/.test(sawBoard) || !/1\) KIVIK 3-seat sofa, gray/.test(sawBoard)) fail(`the agent wasn't shown the working set: ${sawBoard.slice(-400)}`);
   const planned = (await listMessages(chat)).find((row) => row.file);
   if (!planned || !/\$1,149\.00/.test(planned.body) || !/Not chosen yet, so not in the plan: Bedroom bed/.test(planned.body) || /\$449/.test(planned.body)) fail(`the plan from the choices: ${planned?.body}`);
+}
+
+// ---------- A screen that looked away still gets the finished answer ----------
+{
+  resetBusinessFacts();
+  setListingSearcher(async () => [{ url: "https://www.ikea.ca/p/kivik-sofa", title: "KIVIK" }]);
+  const chat = "recover-1";
+  await addMessage({ chatId: chat, role: "user", body: "find me a couch" });
+  let midway: unknown = "unset";
+  setBrainModel(async (request) => {
+    if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+    const used = request.messages!.flatMap((message) => (Array.isArray(message.content) ? message.content.filter((block) => block.type === "tool_use").map((block) => (block as { name: string }).name) : []));
+    if (!used.includes("find_furniture")) return { text: "", toolUses: [{ id: "f", name: "find_furniture", input: { room: "Living room", piece: "couch" } }], blocks: [{ type: "tool_use" as const, id: "f", name: "find_furniture", input: { room: "Living room", piece: "couch" } }], stop: "tool_use" as const };
+    midway = finishedReplyAfter(await listMessages(chat), "find me a couch");
+    return { text: "Here they are.", toolUses: [], blocks: [{ type: "text" as const, text: "Here they are." }], stop: "end_turn" as const };
+  });
+  await answerInChat({ chatId: chat, text: "find me a couch" });
+  setBrainModel(null);
+  const all = await listMessages(chat);
+  if (!all.some((row) => row.furniture)) fail("the cards were not posted");
+  if (midway !== null) fail(`product cards posted mid-run must not count as the finished answer: ${JSON.stringify(midway)}`);
+  const done = finishedReplyAfter(all, "find me a couch");
+  if (done?.body !== "Here they are." || done.turnDone !== true) fail(`the finished answer wasn't found: ${JSON.stringify(done)}`);
+  if (finishedReplyAfter(all, "something else") !== null || finishedReplyAfter([], "find me a couch") !== null) fail("a reply was matched to a message that wasn't sent");
+  // The same words asked twice: only the answer after the newest one counts.
+  await addMessage({ chatId: chat, role: "user", body: "find me a couch" });
+  if (finishedReplyAfter(await listMessages(chat), "find me a couch") !== null) fail("the old answer was taken for the new question");
+  // A run that fails still ends the turn in the chat, so a waiting screen is never left waiting.
+  const failChat = "recover-2";
+  await addMessage({ chatId: failChat, role: "user", body: "anything" });
+  setBrainModel(async () => {
+    throw new Error("the brain fell over");
+  });
+  const written: string[] = [];
+  const res = { setHeader() {}, status() { return this; }, write(chunk: string) { written.push(chunk); return true; }, end() {} };
+  await streamAgentReply(res as never, failChat, "anything");
+  setBrainModel(null);
+  const ended = finishedReplyAfter(await listMessages(failChat), "anything");
+  if (!ended || !/couldn't finish that reply/i.test(ended.body) || !written.some((chunk) => /event: error/.test(chunk))) fail(`a failed run left no finished message: ${JSON.stringify(ended)}`);
 }
 
 resetBusinessFacts();

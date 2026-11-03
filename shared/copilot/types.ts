@@ -135,6 +135,8 @@ export type CopilotMessage = {
   reminder?: ReminderMessage | null;
   /** The furniture working set as of this message, and which of its slots this message shows as product cards. */
   furniture?: FurnitureView | null;
+  /** Set on the last message of an agent turn: the run finished and this is its answer. */
+  turnDone?: boolean | null;
 };
 
 /** One product the agent found and verified live. Every card has its link. */

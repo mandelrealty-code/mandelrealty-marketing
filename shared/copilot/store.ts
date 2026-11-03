@@ -421,7 +421,7 @@ function asReportFile(value: unknown): { filename: string; mime: string; data: s
 }
 
 export function unpackMessage(row: CopilotMessage): CopilotMessage {
-  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean; memory_file?: { path: string; preview: string }; file?: { filename?: string; data?: string }; stay_rows?: CopilotMessage["stayRows"]; property?: CopilotMessage["property"]; checks_item?: CopilotMessage["checksItem"]; reminder?: CopilotMessage["reminder"]; furniture?: CopilotMessage["furniture"] }) | null;
+  const raw = row.draft as (CopilotDraft & { choices?: string[]; steps?: { text: string }[]; thought?: string; images?: { mimeType: string; data: string }[]; report?: CopilotReport; run_id?: string; picture?: boolean; memory_file?: { path: string; preview: string }; file?: { filename?: string; data?: string }; stay_rows?: CopilotMessage["stayRows"]; property?: CopilotMessage["property"]; checks_item?: CopilotMessage["checksItem"]; reminder?: CopilotMessage["reminder"]; furniture?: CopilotMessage["furniture"]; turn_done?: boolean }) | null;
   const choices = Array.isArray(raw?.choices) ? raw.choices : row.choices ?? null;
   const steps = Array.isArray(raw?.steps) ? raw.steps : row.steps ?? null;
   const thought = typeof raw?.thought === "string" ? raw.thought : row.thought ?? null;
@@ -436,9 +436,10 @@ export function unpackMessage(row: CopilotMessage): CopilotMessage {
   const checksItem = raw?.checks_item && typeof raw.checks_item === "object" && raw.checks_item.messageId ? raw.checks_item : row.checksItem ?? null;
   const reminder = raw?.reminder && typeof raw.reminder === "object" ? raw.reminder : row.reminder ?? null;
   const furniture = raw?.furniture && typeof raw.furniture === "object" && Array.isArray(raw.furniture.slots) ? raw.furniture : row.furniture ?? null;
-  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property, checksItem, reminder, furniture };
-  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, memory_file: _memoryFile, file: _file, stay_rows: _stays, property: _property, checks_item: _checksItem, reminder: _reminder, furniture: _furniture, ...draft } = raw;
-  return { ...row, draft, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property, checksItem, reminder, furniture };
+  const turnDone = raw?.turn_done === true || row.turnDone === true ? true : null;
+  if (!raw?.channel) return { ...row, draft: null, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property, checksItem, reminder, furniture, turnDone };
+  const { choices: _choices, steps: _steps, thought: _thought, images: _images, report: _report, run_id: _runId, picture: _picture, memory_file: _memoryFile, file: _file, stay_rows: _stays, property: _property, checks_item: _checksItem, reminder: _reminder, furniture: _furniture, turn_done: _turnDone, ...draft } = raw;
+  return { ...row, draft, choices, steps, thought, images, report, run_id, picture, memoryFile, file, stayRows, property, checksItem, reminder, furniture, turnDone };
 }
 
 export async function ensureLegacyPurchase(message: CopilotMessage): Promise<CopilotMessage> {
@@ -564,6 +565,7 @@ export async function addMessage(input: {
   checksItem?: CopilotMessage["checksItem"];
   reminder?: CopilotMessage["reminder"];
   furniture?: CopilotMessage["furniture"];
+  turnDone?: boolean;
 }): Promise<CopilotMessage> {
   const extra = {
     ...(input.choices?.length ? { choices: input.choices } : {}),
@@ -580,6 +582,7 @@ export async function addMessage(input: {
     ...(input.checksItem ? { checks_item: input.checksItem } : {}),
     ...(input.reminder ? { reminder: input.reminder } : {}),
     ...(input.furniture ? { furniture: input.furniture } : {}),
+    ...(input.turnDone ? { turn_done: true } : {}),
   };
   // A weekday beside a date is computed from the date, in the answer, the subject and the draft.
   const clock = parityNow() ?? new Date();

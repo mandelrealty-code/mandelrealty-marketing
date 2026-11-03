@@ -240,6 +240,8 @@ export async function streamAgentReply(res: VercelResponse, chatId: string, type
     const outcome = await answerInChat({ chatId, text: typed, onEvent: (event: AgentEvent) => emit(event.type, event) });
     emit("done", { chatId, body: outcome.body, steps: outcome.steps, drafted: outcome.drafted, messages: await listMessages(chatId), chats: await listChats(), pending: false });
   } catch {
+    // The run is over, so the chat says so too: a screen that looked away reads this back instead of waiting.
+    await addMessage({ chatId, role: "assistant", body: "I couldn't finish that reply. Nothing was sent. Try asking again.", turnDone: true }).catch(() => undefined);
     emit("error", { error: "Couldn't finish that reply. Nothing was sent." });
   }
   res.end();

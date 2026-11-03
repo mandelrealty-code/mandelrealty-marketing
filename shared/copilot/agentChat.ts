@@ -498,6 +498,6 @@ export async function answerInChat(input: { chatId: string; text: string; onEven
   const stored = await listMessages(input.chatId);
   const history = stored.slice(0, -1).filter((row) => row.body.trim()).map((row) => ({ role: row.role, text: row.body }));
   const outcome = await runAgentTurn({ chatId: input.chatId, text: input.text, history, ...(input.onEvent ? { onEvent: input.onEvent } : {}) });
-  await addMessage({ chatId: input.chatId, role: "assistant", body: outcome.body, steps: outcome.steps.map((text) => ({ text })) });
+  await addMessage({ chatId: input.chatId, role: "assistant", body: outcome.body, steps: outcome.steps.map((text) => ({ text })), turnDone: true });
   return outcome;
 }

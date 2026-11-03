@@ -25,6 +25,7 @@ import { BLANK, type NodeResult, type Workflow } from "../../../shared/copilot/w
 import { workflowFromSkill } from "../../../shared/copilot/skillShape";
 import { runWhen } from "./skillsTime";
 import { FurnitureCards } from "./furnitureUi";
+import { finishedReplyAfter } from "../../../shared/copilot/replyRecovery";
 import { renderAnswer, splitAnswerBlocks } from "../../../shared/copilot/answerMarkup";
 import {
   beginSession,
@@ -294,6 +295,19 @@ async function sendStreaming<T extends { chatId: string }>(body: Record<string, 
   let chatId = "";
   let finished: T | null = null;
   let failed = "";
+  const sent = String(body.text ?? "");
+  // Coming back to the tab: if the answer was finished while it was hidden, take it and stop waiting on a dead stream.
+  const onVisible = () => {
+    if (signal.aborted) document.removeEventListener("visibilitychange", onVisible);
+    if (document.visibilityState !== "visible" || !chatId || finished) return;
+    void readStored<T>(chatId, sent).then((reply) => {
+      if (reply && !finished) {
+        finished = reply;
+        void reader.cancel().catch(() => undefined);
+      }
+    });
+  };
+  document.addEventListener("visibilitychange", onVisible);
   const handle = (raw: string) => {
     const event = /^event:\s*(.+)$/m.exec(raw)?.[1]?.trim() ?? "";
     const data = raw.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("");
@@ -326,13 +340,38 @@ async function sendStreaming<T extends { chatId: string }>(body: Record<string, 
   } catch (err) {
     if (signal.aborted) throw err;
   }
+  document.removeEventListener("visibilitychange", onVisible);
   if (finished) return finished;
   if (chatId) {
-    // The stream dropped: the server keeps working, so read the chat back instead of showing nothing.
-    const stored = await api<{ messages: CopilotMessage[] }>(`messages&chatId=${encodeURIComponent(chatId)}`).catch(() => null);
-    if (stored?.messages.at(-1)?.role === "assistant") return { chatId, messages: stored.messages } as unknown as T;
+    // The stream dropped (a background tab's often does): the server keeps working and saves the answer, so wait for it
+    // and read it back. A finished run is never lost because the screen looked away.
+    const recovered = await recoverReply<T>(chatId, sent, signal);
+    if (recovered) return recovered;
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    throw new Error(failed || "Still working on that. Open this chat again in a moment: the answer is saved when it finishes.");
   }
   throw new Error(failed || "The reply was cut off. Check the chat in a moment.");
+}
+
+/** The chat as the server holds it: the finished answer to what was just sent, or null while the run is still going. */
+async function readStored<T extends { chatId: string }>(chatId: string, sent: string): Promise<T | null> {
+  const stored = await api<{ messages: CopilotMessage[] }>(`messages&chatId=${encodeURIComponent(chatId)}`).catch(() => null);
+  return stored && finishedReplyAfter(stored.messages, sent) ? ({ chatId, messages: stored.messages } as unknown as T) : null;
+}
+
+/** Waits for the run the screen lost sight of: reads the chat back every few seconds, up to four minutes. */
+async function recoverReply<T extends { chatId: string }>(chatId: string, sent: string, signal: AbortSignal): Promise<T | null> {
+  const deadline = Date.now() + 4 * 60_000;
+  for (;;) {
+    const reply = await readStored<T>(chatId, sent);
+    if (reply) return reply;
+    if (signal.aborted || Date.now() > deadline) return null;
+    try {
+      await pause(2500, signal);
+    } catch {
+      return null;
+    }
+  }
 }
 
 function pause(ms: number, signal: AbortSignal) {
