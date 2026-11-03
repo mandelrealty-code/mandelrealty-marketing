@@ -68,7 +68,7 @@ const GROUP_WORDS: Record<Group, RegExp> = {
   business: /\b(clean|unit|propert|revenue|client|owner|supply|supplies|stock|calendar|task|comps?|market|rate|earning|statement|contract)/i,
 };
 /** Read-only and always fine: what the business knows, what is connected, the public web. */
-const ALWAYS = ["recall_facts", "connector_status", "web_lookup", "post_report", "deliver_to_partners"];
+const ALWAYS = ["recall_facts", "connector_status", "web_lookup", "post_report", "deliver_to_partners", "find_furniture", "furniture_stores", "furniture_report"];
 /** Things a skill does inside the company on its own when it is told to handle it. Each still waits for Submit if it reaches anyone outside. */
 const INTERNAL_WRITES = ["add_reminder", "make_pdf", "sheet_write", "amend_contract", "assign_cleaner", "create_sop", "build_proposal", "edit_proposal", "send_proposal"];
 

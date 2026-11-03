@@ -10,6 +10,7 @@ import { answerOps } from "./ops.js";
 import { compLines, compSet, sizeOf } from "./compsAnswer.js";
 import { connectorRows } from "./connectorStatus.js";
 import { readThread } from "./guestInbox.js";
+import { furnitureTools } from "./furnitureTools.js";
 import { dayMovements, findStays, nextStays, readableUnit } from "./stayLookup.js";
 import { answerBuildingRegistrationItem } from "./buildingRegistration.js";
 import { unitFacts } from "./unitFacts.js";
@@ -62,6 +63,9 @@ export const STEP_LABELS: Record<string, string> = {
   guest_thread: "Read the guest's thread",
   find_stay: "Found the guest's reservation",
   building_email: "Drafted the building email",
+  find_furniture: "Searched stores and checked the listings",
+  furniture_stores: "Checked the preferred stores",
+  furniture_report: "Built the furnishing plan",
 };
 
 /** Which of the agent's tools use each connector, so "is it connected" and "can you use it" never disagree. */
@@ -398,7 +402,7 @@ export function agentTools(ctx: ToolContext = {}): AgentTool[] {
     }
     return { ...def, run };
   });
-  return [...named, ...ownTools(), ...(ctx.partnerText !== undefined ? [buildingEmailTool(ctx.partnerText)] : []), resolveClientTool(), ...(ctx.partnerText !== undefined ? [proposeSkillTool(ctx.partnerText)] : [])];
+  return [...named, ...ownTools(), ...furnitureTools(ctx.partnerText !== undefined), ...(ctx.partnerText !== undefined ? [buildingEmailTool(ctx.partnerText)] : []), resolveClientTool(), ...(ctx.partnerText !== undefined ? [proposeSkillTool(ctx.partnerText)] : [])];
 }
 
 export function agentSystem(facts: string, today: string): string {
@@ -412,6 +416,7 @@ export function agentSystem(facts: string, today: string): string {
     "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",
     "RESERVATIONS: for a unit's next reservation, who is in the house, or whether a date is free, call next_stays (it looks a year ahead). list_stays only looks 14 days. Never say a unit has no reservations from a short look: say what window you checked, or use next_stays.",
     "THREADS: for what a guest said, asked or sent, call guest_thread once with the guest (and the unit or dates if given): it finds the stay and reads the thread together. Answer from that one thread, then stop. Never open another guest's thread, a future stay or a second match unprompted; if other matches are listed, mention them in a clause and let the partner choose. If a read is rate-limited or fails, say so once and do not retry it.",
+    "FURNITURE: to furnish a unit, call find_furniture for each piece in each room (couch, bed, table, chairs, rug, lighting), with the style and budget the partner gave. Only pieces it returns are real: never write a product name, price or link yourself, and never recall one from memory. Choose from its candidates, then call furniture_report with the links. Preferred stores come from furniture_stores; change them only when the partner asks. A report is built from this unit's own choices: never copy another unit's or stay's report or facts. You never buy anything: the partner buys from the links.",
     "AGGREGATES: for how many or who is checking in or out on a date, call day_movements once: it reads every property together. Never read unit by unit, and answer from that one result.",
     "GUESTS: when the partner names a guest without a unit, call find_stay: the unit comes from their reservation, never from a guess or a default. For the building registration email call building_email with the guest: it reads the guest's whole thread for the car and puts the draft card in this chat. Never ask the partner for a car detail the thread holds, never search mail for the template yourself, and do not repeat the draft in your reply: say in a line that it is waiting for approval, and pass on any note it gives about missing details.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
