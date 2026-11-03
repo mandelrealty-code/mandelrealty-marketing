@@ -70,7 +70,7 @@ export type Candidate = Listing & { piece: string; preferred: boolean; fitsRoom?
  * Real candidates for one piece: web-search results from the preferred stores first and then the open web, each page
  * opened and read. Anything that can't be verified, isn't in CAD, is out of stock or is over budget is dropped.
  */
-export async function findFurniture(input: { room: string; piece: string; style?: string; budgetCad?: number; roomSize?: Size | null }): Promise<{ candidates: Candidate[]; searched: number; dropped: number; note: string }> {
+export async function findFurniture(input: { room: string; piece: string; style?: string; budgetCad?: number; roomSize?: Size | null; avoidStores?: string[]; excludeUrls?: string[] }): Promise<{ candidates: Candidate[]; searched: number; dropped: number; note: string }> {
   const stores = (await preferredStores()).slice(0, 4);
   const what = [input.style, input.piece, `for a ${input.room}`].filter(Boolean).join(" ");
   const queries = [...stores.map((host) => `${what} site:${host}`), `${what} buy online Canada price CAD`];
@@ -81,7 +81,7 @@ export async function findFurniture(input: { room: string; piece: string; style?
   const ranked = [...results].sort((a, b) => Number(stores.includes(storeOf(b.url))) - Number(stores.includes(storeOf(a.url))));
   for (const { url } of ranked) {
     const store = storeOf(url);
-    if (!store || seen.has(url) || (perStore.get(store) ?? 0) >= 3 || urls.length >= 12) continue;
+    if (!store || seen.has(url) || input.avoidStores?.includes(store) || input.excludeUrls?.includes(url) || (perStore.get(store) ?? 0) >= 3 || urls.length >= 12) continue;
     seen.add(url);
     perStore.set(store, (perStore.get(store) ?? 0) + 1);
     urls.push(url);

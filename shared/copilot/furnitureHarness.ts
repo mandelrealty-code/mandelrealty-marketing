@@ -13,6 +13,7 @@ import { capturedCommits, resetCaptures } from "./parity/capture.js";
 import { worldAt } from "./parity/catalog.js";
 import { installWorld } from "./parity/world.js";
 import { listMessages } from "./store.js";
+import { allCardsLinked, boardPrompt, loadBoard } from "./furnitureBoard.js";
 
 function fail(label: string): never {
   throw new Error(`Furniture harness failed: ${label}`);
@@ -34,6 +35,9 @@ const SITE: Record<string, { status: number; html: string }> = {
   "https://www.ikea.ca/p/gone": { status: 200, html: page("Gone chair", "99", "CAD").replace("InStock", "OutOfStock") },
   "https://www.ikea.ca/p/expensive": { status: 200, html: page("Luxury sectional", "4999", "CAD") },
   "https://www.ikea.ca/p/missing": { status: 404, html: "" },
+  "https://www.ikea.ca/p/malm-bed": { status: 200, html: page("MALM queen bed frame", "449", "CAD", JSON.stringify({ width: "160 cm", depth: "209 cm" })) },
+  "https://www.ikea.ca/p/kivik-gray": { status: 200, html: page("KIVIK 3-seat sofa, gray", "1149.00", "CAD", JSON.stringify({ width: { value: 228, unitCode: "CMT" }, depth: { value: 95, unitCode: "CMT" } })) },
+  "https://www.wayfair.ca/p/gray-sofa": { status: 200, html: page("Gray tufted sofa", "999.99") },
   "https://www.ikea.ca/c/sofas": { status: 200, html: "<html><title>Sofas</title><body>Category page</body></html>" },
 };
 let fetched: string[] = [];
@@ -153,6 +157,83 @@ if (none2.made || !/could be verified/.test(none2.note ?? "")) fail(`a plan of n
 if ((await listMessages("furn-none")).some((row) => row.file)) fail("a report was posted with no verified piece");
 
 // ---------- From chat and as a saved skill, on the same brain; nothing is bought ----------
+// ---------- Product cards in the chat, and talking about one card at a time ----------
+{
+  resetBusinessFacts();
+  await changeStores({ add: ["ikea.ca"] });
+  const queries: string[] = [];
+  setListingSearcher(async (query) => {
+    queries.push(query);
+    if (/bed/.test(query)) return [{ url: "https://www.ikea.ca/p/malm-bed", title: "MALM" }];
+    if (/gray/.test(query)) return [{ url: "https://www.ikea.ca/p/kivik-gray", title: "gray" }, { url: "https://www.wayfair.ca/p/gray-sofa", title: "gray" }, { url: "https://www.ikea.ca/p/kivik-sofa", title: "again" }];
+    return [{ url: "https://www.ikea.ca/p/kivik-sofa", title: "KIVIK" }, { url: "https://www.structube.com/p/oslo-sofa", title: "Oslo" }, { url: "https://www.wayfair.ca/p/loveseat", title: "Loveseat" }];
+  });
+  const chat = "board-1";
+  const t = agentTools({ partnerText: "furnish the unit" });
+  const tool = (name: string) => t.find((row) => row.name === name)!;
+  const boards = async () => (await listMessages(chat)).filter((row) => row.furniture);
+  await tool("find_furniture").run({ room: "Living room", piece: "couch", style: "modern", budget_cad: 1500, room_size: "12 x 14 ft", unit: "20 Blue Jays Way Unit 318" }, chat);
+  const first = (await boards()).at(-1)!.furniture!;
+  const couch = first.slots[0]!;
+  if (first.shown.join() !== "living-room-couch" || couch.cards.map((card) => card.n).join() !== "1,2,3" || first.unit !== "20 Blue Jays Way Unit 318") fail(`the first cards: ${JSON.stringify(first)}`);
+  for (const card of couch.cards) {
+    if (!/^https:\/\//.test(card.url) || !/^https:\/\//.test(card.image) || !card.name || card.priceCad <= 0 || !card.store || !card.why) fail(`a card is missing something: ${JSON.stringify(card)}`);
+  }
+  if (!allCardsLinked(first)) fail("every card must carry a live link");
+  if (!/within the \$1,500\.00 budget/.test(couch.cards[0]!.why) || !/preferred stores/.test(couch.cards[0]!.why)) fail(`the why line: ${couch.cards[0]!.why}`);
+  if (allCardsLinked({ ...first, slots: [{ ...couch, cards: [{ ...couch.cards[0]!, url: "http://x.com/p" }] }] })) fail("a card with no https link passed");
+  // A second piece joins the set; the first is untouched.
+  await tool("find_furniture").run({ room: "Bedroom", piece: "bed" }, chat);
+  const two = (await boards()).at(-1)!.furniture!;
+  if (two.slots.map((slot) => slot.id).join() !== "living-room-couch,bedroom-bed" || JSON.stringify(two.slots[0]) !== JSON.stringify(couch) || two.shown.join() !== "bedroom-bed") fail(`the second slot disturbed the first: ${JSON.stringify(two)}`);
+  const prompt = boardPrompt(await loadBoard(chat));
+  if (!/slot "living-room-couch"/.test(prompt) || !/1\) KIVIK 3-seat sofa/.test(prompt) || !/2\) Oslo sofa/.test(prompt) || !/slot "bedroom-bed"/.test(prompt)) fail(`the working set the agent is shown: ${prompt}`);
+  const bedBefore = JSON.stringify(two.slots[1]);
+  // "drop the Structube one"
+  await tool("furniture_revise").run({ slot: "living-room-couch", action: "drop", store: "structube" }, chat);
+  const dropped = (await boards()).at(-1)!.furniture!;
+  if (dropped.slots[0]!.cards.map((card) => card.name).join("|") !== "KIVIK 3-seat sofa|Grey loveseat" || dropped.slots[0]!.cards.map((card) => card.n).join() !== "1,2" || JSON.stringify(dropped.slots[1]) !== bedBefore) fail(`dropping one card: ${JSON.stringify(dropped.slots)}`);
+  // "go with the second one"
+  await tool("furniture_revise").run({ action: "choose", n: 2 }, chat);
+  const chose = (await boards()).at(-1)!.furniture!;
+  if (chose.slots[0]!.chosen !== "https://www.wayfair.ca/p/loveseat" || chose.shown.join() !== "living-room-couch") fail(`choosing: ${JSON.stringify(chose.slots[0])}`);
+  // "I like the first one but in gray, and under $1,200": re-search that slot only
+  queries.length = 0;
+  await tool("furniture_revise").run({ slot: "living-room-couch", action: "replace", like: 1, hint: "in gray", max_price_cad: 1200 }, chat);
+  const regray = (await boards()).at(-1)!.furniture!;
+  const names = regray.slots[0]!.cards.map((card) => card.name).join("|");
+  if (names !== "KIVIK 3-seat sofa, gray|Gray tufted sofa" || regray.slots[0]!.chosen || JSON.stringify(regray.slots[1]) !== bedBefore) fail(`re-searching one slot: ${names} / ${JSON.stringify(regray.slots[1])}`);
+  if (!queries.some((query) => /KIVIK 3-seat sofa in gray/.test(query))) fail(`the search didn't start from the liked card: ${queries.join(" // ")}`);
+  if (regray.slots[0]!.cards.some((card) => card.priceCad > 1200)) fail("the new price limit was ignored");
+  let refused = "";
+  for (const bad of [{ slot: "nope", action: "choose", n: 1 }, { action: "choose", n: 9 }, { action: "drop", store: "nowhere.com" }]) {
+    try {
+      await tool("furniture_revise").run(bad, chat);
+    } catch (err) {
+      refused += err instanceof Error ? err.message : "";
+    }
+  }
+  if (!/no slot "nope"/i.test(refused) || !/no card 9/.test(refused) || !/matches "nowhere.com"/.test(refused)) fail(`bad references: ${refused}`);
+  if ((await boards()).length !== 5) fail(`each revision shows once, not a restart: ${(await boards()).length} board messages`);
+
+  // Through the agent: it is shown the working set and revises one slot for "the first one"; the plan comes from the choices.
+  let sawBoard = "";
+  setBrainModel(async (request) => {
+    if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+    sawBoard = request.system ?? "";
+    const used = request.messages!.flatMap((message) => (Array.isArray(message.content) ? message.content.filter((block) => block.type === "tool_use").map((block) => (block as { name: string }).name) : []));
+    const call = (id: string, name: string, input: Record<string, unknown>) => ({ text: "", toolUses: [{ id, name, input }], blocks: [{ type: "tool_use" as const, id, name, input }], stop: "tool_use" as const });
+    if (!used.includes("furniture_revise")) return call("r1", "furniture_revise", { slot: "living-room-couch", action: "choose", n: 1 });
+    if (!used.includes("furniture_report")) return call("r2", "furniture_report", {});
+    return { text: "Done.", toolUses: [], blocks: [{ type: "text" as const, text: "Done." }], stop: "end_turn" as const };
+  });
+  await runAgentTurn({ chatId: chat, text: "the first one, and build the plan" });
+  setBrainModel(null);
+  if (!/FURNITURE WORKING SET/.test(sawBoard) || !/slot "living-room-couch"/.test(sawBoard) || !/1\) KIVIK 3-seat sofa, gray/.test(sawBoard)) fail(`the agent wasn't shown the working set: ${sawBoard.slice(-400)}`);
+  const planned = (await listMessages(chat)).find((row) => row.file);
+  if (!planned || !/\$1,149\.00/.test(planned.body) || !/Not chosen yet, so not in the plan: Bedroom bed/.test(planned.body) || /\$449/.test(planned.body)) fail(`the plan from the choices: ${planned?.body}`);
+}
+
 resetBusinessFacts();
 setListingSearcher(async () => [{ url: "https://www.ikea.ca/p/lack-table", title: "LACK" }]);
 setBrainModel(async (request) => {

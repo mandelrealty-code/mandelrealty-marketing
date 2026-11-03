@@ -11,6 +11,7 @@ import { compLines, compSet, sizeOf } from "./compsAnswer.js";
 import { connectorRows } from "./connectorStatus.js";
 import { readThread } from "./guestInbox.js";
 import { furnitureTools } from "./furnitureTools.js";
+import { boardPrompt, loadBoard } from "./furnitureBoard.js";
 import { dayMovements, findStays, nextStays, readableUnit } from "./stayLookup.js";
 import { answerBuildingRegistrationItem } from "./buildingRegistration.js";
 import { unitFacts } from "./unitFacts.js";
@@ -65,6 +66,7 @@ export const STEP_LABELS: Record<string, string> = {
   building_email: "Drafted the building email",
   find_furniture: "Searched stores and checked the listings",
   furniture_stores: "Checked the preferred stores",
+  furniture_revise: "Updated the furniture options",
   furniture_report: "Built the furnishing plan",
 };
 
@@ -416,7 +418,7 @@ export function agentSystem(facts: string, today: string): string {
     "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",
     "RESERVATIONS: for a unit's next reservation, who is in the house, or whether a date is free, call next_stays (it looks a year ahead). list_stays only looks 14 days. Never say a unit has no reservations from a short look: say what window you checked, or use next_stays.",
     "THREADS: for what a guest said, asked or sent, call guest_thread once with the guest (and the unit or dates if given): it finds the stay and reads the thread together. Answer from that one thread, then stop. Never open another guest's thread, a future stay or a second match unprompted; if other matches are listed, mention them in a clause and let the partner choose. If a read is rate-limited or fails, say so once and do not retry it.",
-    "FURNITURE: to furnish a unit, call find_furniture for each piece in each room (couch, bed, table, chairs, rug, lighting), with the style and budget the partner gave. Only pieces it returns are real: never write a product name, price or link yourself, and never recall one from memory. Choose from its candidates, then call furniture_report with the links. Preferred stores come from furniture_stores; change them only when the partner asks. A report is built from this unit's own choices: never copy another unit's or stay's report or facts. You never buy anything: the partner buys from the links.",
+    "FURNITURE: to furnish a unit, call find_furniture for each piece in each room (couch, bed, table, chairs, rug, lighting), with the style and budget the partner gave. Only pieces it returns are real: never write a product name, price or link yourself, and never recall one from memory. The partner sees the results as product cards in the chat, so do not list them again: say in a line what you found. When the partner talks about a card (\"the second one\", \"too expensive\", \"I like this one but in gray\", \"drop the Structube one\", \"go with that\"), work out which slot and card they mean from the WORKING SET below and call furniture_revise for that one slot only: everything else stays, and you never restart the search. If two slots are equally likely, ask one short question. When they have chosen, call furniture_report with no rooms to build the plan from their choices. Preferred stores come from furniture_stores; change them only when the partner asks. A report is built from this unit's own choices: never copy another unit's or stay's report or facts. You never buy anything: the partner buys from the links.",
     "AGGREGATES: for how many or who is checking in or out on a date, call day_movements once: it reads every property together. Never read unit by unit, and answer from that one result.",
     "GUESTS: when the partner names a guest without a unit, call find_stay: the unit comes from their reservation, never from a guess or a default. For the building registration email call building_email with the guest: it reads the guest's whole thread for the car and puts the draft card in this chat. Never ask the partner for a car detail the thread holds, never search mail for the template yourself, and do not repeat the draft in your reply: say in a line that it is waiting for approval, and pass on any note it gives about missing details.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
@@ -454,7 +456,8 @@ export async function runAgentTurn(input: {
   const tools = input.tools ?? agentTools({ partnerText: input.text });
   const known = await listFacts();
   const recalled = relevantFacts(known, `${input.text} ${(input.history ?? []).slice(-4).map((turn) => turn.text).join(" ")}`, 12);
-  const system = agentSystem(factsForPrompt(recalled), torontoToday());
+  const board = boardPrompt(await loadBoard(input.chatId));
+  const system = agentSystem([factsForPrompt(recalled), board].filter(Boolean).join("\n\n"), torontoToday());
   const messages: BrainMessage[] = [...(input.history ?? []).slice(-20).map((turn): BrainMessage => ({ role: turn.role, content: turn.text })), { role: "user", content: input.text }];
   const loop = await runLoop({
     system,

@@ -24,6 +24,7 @@ import type { AccountSpend } from "../../../shared/copilot/models";
 import { BLANK, type NodeResult, type Workflow } from "../../../shared/copilot/workflow";
 import { workflowFromSkill } from "../../../shared/copilot/skillShape";
 import { runWhen } from "./skillsTime";
+import { FurnitureCards } from "./furnitureUi";
 import { renderAnswer, splitAnswerBlocks } from "../../../shared/copilot/answerMarkup";
 import {
   beginSession,
@@ -2749,6 +2750,11 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             ))}
                             {message.body ? <span>{withoutFilesystemDetail(message.body, true)}</span> : null}
                           </div>
+                        </div>
+                      ) : message.furniture ? (
+                        <div key={message.id} id={`msg-${message.id}`} className="cp-bot">
+                          {message.body ? <ChatText text={withoutFilesystemDetail(message.body, true)} /> : null}
+                          <FurnitureCards view={message.furniture} />
                         </div>
                       ) : message.draft?.channel === "skill" ? (
                         <div key={message.id} id={`msg-${message.id}`} className="cp-bot">

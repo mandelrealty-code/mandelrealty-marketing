@@ -9353,3 +9353,93 @@ html.cp-app[data-cp-theme="dark"] #root {
 @media (prefers-reduced-motion: reduce) {
   .cp .cp-thread .cp-caret, .cp[data-theme] .cp-thread .cp-think-head.live::before { animation: none; }
 }
+
+/* ---------- Furniture product cards (in the chat's message column; same tokens as the message refresh) ---------- */
+.cp .cp-thread .cp-fcards { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.cp .cp-thread .cp-fslot h4 {
+  margin: 0 0 10px;
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--m-ink2);
+}
+.cp .cp-thread .cp-fslot h4 span { font-weight: 400; color: var(--m-muted); }
+.cp .cp-thread .cp-fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 12px; }
+.cp .cp-thread .cp-fcard {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--m-line2);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--m-ink);
+  font-family: "Instrument Sans", system-ui, sans-serif;
+}
+.cp .cp-thread .cp-fcard.chosen { border-color: var(--m-accent); box-shadow: 0 0 0 1px var(--m-accent); }
+.cp .cp-thread .cp-fimg {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  background: var(--m-tint);
+  color: var(--m-muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.cp .cp-thread .cp-fimg img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.cp .cp-thread .cp-fn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: var(--m-bubble);
+  color: var(--m-ink);
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+}
+.cp .cp-thread .cp-fbody { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px 14px; min-width: 0; }
+.cp .cp-thread .cp-fbody h5 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cp .cp-thread .cp-fbody p { margin: 0; }
+.cp .cp-thread .cp-fprice { display: flex; align-items: baseline; gap: 8px; font-size: 16px; line-height: 24px; font-weight: 600; }
+.cp .cp-thread .cp-fprice b { font-size: 12px; font-weight: 600; color: var(--m-accent); }
+.cp .cp-thread .cp-fstore { font-size: 12px; line-height: 18px; color: var(--m-muted); }
+.cp .cp-thread .cp-fwhy {
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--m-ink2);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cp .cp-thread .cp-flink {
+  margin-top: 6px;
+  align-self: flex-start;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--m-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.cp .cp-thread .cp-fcard a:focus-visible { outline: 2px solid var(--m-accent); outline-offset: 2px; }

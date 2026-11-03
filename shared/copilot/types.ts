@@ -133,7 +133,37 @@ export type CopilotMessage = {
   checksItem?: ChecksItemRef | null;
   /** A reminder card in chat, or a due-now message pointing at one reminder record. */
   reminder?: ReminderMessage | null;
+  /** The furniture working set as of this message, and which of its slots this message shows as product cards. */
+  furniture?: FurnitureView | null;
 };
+
+/** One product the agent found and verified live. Every card has its link. */
+export type FurnitureCard = {
+  n: number;
+  url: string;
+  store: string;
+  name: string;
+  priceCad: number;
+  image: string;
+  why: string;
+  preferred?: boolean;
+  widthCm?: number;
+  depthCm?: number;
+  heightCm?: number;
+};
+
+/** One thing to furnish: a piece in a room, its candidates, and the one the partner chose. */
+export type FurnitureSlot = {
+  id: string;
+  room: string;
+  piece: string;
+  cards: FurnitureCard[];
+  chosen?: string;
+  size?: string;
+  budgetCad?: number;
+};
+
+export type FurnitureView = { unit: string; style: string; budgetCad: number | null; slots: FurnitureSlot[]; shown: string[] };
 
 export type ReminderMessage = {
   card?: import("./reminderView.js").ReminderCardDraft & { superseded?: boolean };
