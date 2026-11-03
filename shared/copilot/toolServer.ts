@@ -1,3 +1,4 @@
+import { openMailLink } from "./linkOpen.js";
 import { hospitableRead } from "./hospitableConnection.js";
 import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { hospitableDraft, isHospitableWrite } from "./hospitableAgent.js";
@@ -209,9 +210,20 @@ const TOOLS: Record<string, Tool> = {
     readOnly: true,
     call: async (args) => latestSent({ mailbox: text(args.mailbox, 20) }),
   },
+  open_link: {
+    description:
+      "Opens one link from an email you read with read_mail and reads the page: use it for 'open the receipt', 'what does the View order link say'. Pass mailbox, id (the email's id) and url, copied exactly from that email's links list (the real link targets, not the words shown). It only opens links that are in that email AND on the sender's own domain, and never an unsubscribe or cancel link. A shortened link, or one that redirects to another domain, is not followed and says where it goes. If the page needs a sign-in it says so and stops: never ask the partner for a store password, say they can open it themselves. When the page is a receipt, receipt has the line items (name, qty, unit price, line total), subtotal, taxes and total: present them as a clean itemized list. Read only. Opens a page, buys nothing.",
+    inputSchema: {
+      type: "object",
+      properties: { mailbox: { type: "string", enum: ["gmail", "outlook"] }, id: { type: "string" }, url: { type: "string" }, include_airbnb: { type: "boolean" } },
+      required: ["mailbox", "id", "url"],
+    },
+    readOnly: true,
+    call: async (args) => openMailLink({ mailbox: text(args.mailbox), id: text(args.id), url: text(args.url, 1500), includeAirbnb: args.include_airbnb === true }),
+  },
   read_mail: {
     description:
-      "Read one message returned by search_mail. The result also lists every message in its thread and says which is the newest (thisIsTheNewest), so a later reply in the same chain is never missed. Pass mailbox and id. id may be the message id or the threadId from search_mail. Set include_airbnb only when the search did. Read only. This does not send.",
+      "Read one message returned by search_mail. links lists the web addresses in the email (the real link targets, with the words shown for each): to open one, use open_link. The result also lists every message in its thread and says which is the newest (thisIsTheNewest), so a later reply in the same chain is never missed. Pass mailbox and id. id may be the message id or the threadId from search_mail. Set include_airbnb only when the search did. Read only. This does not send.",
     inputSchema: {
       type: "object",
       properties: {

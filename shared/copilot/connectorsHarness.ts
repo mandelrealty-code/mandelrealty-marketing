@@ -32,6 +32,8 @@ import { listMessages } from "./store.js";
 import { answerBuildingRegistrationItem } from "./buildingRegistration.js";
 import { parityChecksMessages, resetParityChecksMessages } from "./parity/storeStub.js";
 import { searchMail } from "./mailSearch.js";
+import { setLinkFetcher, type Hop } from "./linkOpen.js";
+import { allowedToolNames } from "./skillPolicy.js";
 
 function fail(label: string): never {
   throw new Error(`Connectors harness failed: ${label}`);
@@ -764,6 +766,107 @@ resetBusinessFacts();
     });
   }
   if (splitAnswerBlocks(shown).map(renderAnswer).join("") !== final.join("")) fail("the finished stream differs from the finished answer");
+}
+
+// ---------- Open a link from an email: the receipt, read as line items; only on the sender's domain ----------
+{
+  const receiptHtml = `<html><head><title>Order receipt</title><style>.x{}</style><script>var a=1;</script></head><body><h1>Order receipt</h1><p>Order # 2884360750778919541</p><p>Placed Nov 2, 2026</p><table>
+    <tr><td>Great Value Whole Milk 4L</td><td>Qty: 2</td><td>$6.98</td></tr>
+    <tr><td>Bananas</td><td>1</td><td>$2.49</td></tr>
+    <tr><td>Kirkland Paper Towels 12 roll</td><td>3 x $4.00</td><td>$12.00</td></tr></table>
+    <table><tr><td>Subtotal</td><td>$21.47</td></tr><tr><td>Delivery fee</td><td>$3.99</td></tr><tr><td>HST</td><td>$2.79</td></tr><tr><td>Total</td><td>$28.25</td></tr></table>
+    <p>Paid with Visa ending in 4242</p></body></html>`;
+  const links = [
+    ["https://www.walmart.ca/orders/2884360750778919541?token=abc&amp;from=email", "View Receipt"],
+    ["https://www.walmart.ca/track/redirect-away", "Track package"],
+    ["https://www.walmart.ca/go/in-domain", "Reorder"],
+    ["https://www.walmart.ca/orders/login-needed", "Account"],
+    ["https://www.walmart.ca/orders/private", "Private"],
+    ["https://click.somethingelse.com/r/abc", "Offers"],
+    ["https://bit.ly/3abcdef", "Deal"],
+    ["https://www.walmart.ca/email/unsubscribe?u=1", "Unsubscribe"],
+  ];
+  const html = `<html><body><p>Thanks for your order!</p>${links.map(([href, label]) => `<a href="${href}" style="x">${label}</a>`).join(" ")}</body></html>`;
+  const world = worldAt("2026-11-02T12:00:00-05:00");
+  world.reservations = [];
+  world.outlook = [{ id: "wm-1", mailbox: "outlook", folder: "inbox", from: "Walmart Canada", email: "no-reply@e.walmart.ca", to: "info@mandelrealtygroup.com", date: "2026-11-02T10:00:00-05:00", subject: "Thanks for your order 2884360750778919541", snippet: "Your order is confirmed", body: "Thanks for your order! View Receipt", airbnb: false, html }];
+  installWorld(world);
+  const pageFor: Record<string, Hop> = {
+    "https://www.walmart.ca/orders/2884360750778919541?token=abc&from=email": { status: 200, url: "https://www.walmart.ca/orders/2884360750778919541?token=abc&from=email", html: receiptHtml },
+    "https://www.walmart.ca/track/redirect-away": { status: 302, url: "x", location: "https://evil.example.com/steal", html: "" },
+    "https://www.walmart.ca/go/in-domain": { status: 302, url: "x", location: "https://www.walmart.ca/orders/2884360750778919541?token=abc&from=email", html: "" },
+    "https://www.walmart.ca/orders/login-needed": { status: 302, url: "x", location: "https://www.walmart.ca/account/login?returnUrl=%2Forders", html: "" },
+    "https://www.walmart.ca/account/login?returnUrl=%2Forders": { status: 200, url: "https://www.walmart.ca/account/login?returnUrl=%2Forders", html: "<html><body><h1>Sign in</h1><input type='password'></body></html>" },
+    "https://www.walmart.ca/orders/private": { status: 403, url: "x", html: "" },
+  };
+  const opened: string[] = [];
+  setLinkFetcher(async (url) => {
+    opened.push(url);
+    return pageFor[url] ?? { status: 404, url, html: "" };
+  });
+  const t = agentTools({ partnerText: "open the receipt" });
+  const readMail = t.find((tool) => tool.name === "read_mail")!;
+  const open = t.find((tool) => tool.name === "open_link")!;
+  const email = (await readMail.run({ mailbox: "outlook", id: "wm-1" }, "c")) as { links: { url: string; text: string }[] };
+  const target = email.links.find((link) => link.text === "View Receipt");
+  if (target?.url !== "https://www.walmart.ca/orders/2884360750778919541?token=abc&from=email") fail(`the link target must be the href, decoded, not the words shown: ${JSON.stringify(email.links)}`);
+  type Out = { opened: boolean; reason?: string; note?: string; destination?: string; loginRequired?: boolean; receipt?: { items: { name: string; qty: number; unitPrice: number | null; lineTotal: number | null }[]; subtotal: number; total: number; taxes: { label: string; amount: number }[]; extras: { label: string; amount: number }[]; reconciles: boolean | null; orderNumber: string; itemized: string }; isReceipt?: boolean };
+  const go = async (url: string) => (await open.run({ mailbox: "outlook", id: "wm-1", url }, "c")) as Out;
+  const got = await go(target.url);
+  const rc = got.receipt;
+  if (!got.opened || !got.isReceipt || !rc || rc.items.length !== 3 || rc.orderNumber !== "2884360750778919541") fail(`the receipt: ${JSON.stringify(got)}`);
+  const milk = rc.items[0]!, bananas = rc.items[1]!, towels = rc.items[2]!;
+  if (milk.name !== "Great Value Whole Milk 4L" || milk.qty !== 2 || milk.lineTotal !== 6.98 || bananas.name !== "Bananas" || bananas.lineTotal !== 2.49 || towels.qty !== 3 || towels.unitPrice !== 4 || towels.lineTotal !== 12) fail(`line items: ${JSON.stringify(rc.items)}`);
+  if (rc.subtotal !== 21.47 || rc.total !== 28.25 || rc.taxes[0]?.amount !== 2.79 || rc.extras[0]?.amount !== 3.99 || rc.reconciles !== true) fail(`totals: ${JSON.stringify(rc)}`);
+  if (/Visa|4242/.test(rc.itemized) || !/• 2 × Great Value Whole Milk 4L — \$6\.98/.test(rc.itemized) || !/Total: \$28\.25/.test(rc.itemized)) fail(`the itemized list: ${rc.itemized}`);
+  // The same receipt laid out one value per line.
+  const { parseReceipt } = await import("./receipt.js");
+  const tall = parseReceipt("Order receipt\nGreat Value Milk\nQty: 2\n$6.98\nBananas\n$2.49\nSubtotal\n$9.47\nHST\n$1.23\nTotal\n$10.70");
+  if (tall?.items.map((row) => `${row.qty}|${row.name}|${row.lineTotal}`).join() !== "2|Great Value Milk|6.98,1|Bananas|2.49" || tall.subtotal !== 9.47 || tall.total !== 10.7 || tall.taxes[0]?.amount !== 1.23 || tall.reconciles !== true) fail(`a receipt with one value per line: ${JSON.stringify(tall)}`);
+  if (parseReceipt("Welcome to our store. Sign up for offers.") !== null) fail("a page that isn't a receipt parsed as one");
+  const off = parseReceipt("Order receipt\nMilk $3.00\nBread $2.00\nSubtotal $9.00\nTotal $9.00");
+  if (off?.reconciles !== false) fail("items that don't add up to the subtotal must say so");
+  // Where the link may not go.
+  const refused: [string, RegExp, string][] = [
+    ["https://click.somethingelse.com/r/abc", /other-domain/, "a link on another domain"],
+    ["https://bit.ly/3abcdef", /shortened/, "a shortened link"],
+    ["https://www.walmart.ca/email/unsubscribe?u=1", /action-link/, "an unsubscribe link"],
+    ["https://www.walmart.ca/orders/999999", /not-in-email/, "a link that isn't in the email"],
+  ];
+  const before = opened.length;
+  for (const [url, why, name] of refused) {
+    const out = await go(url);
+    if (out.opened || !why.test(`${out.reason}`)) fail(`${name} was not refused: ${JSON.stringify(out)}`);
+  }
+  if (opened.length !== before) fail(`a refused link was fetched: ${opened.slice(before).join()}`);
+  const away = await go("https://www.walmart.ca/track/redirect-away");
+  if (away.opened || away.reason !== "redirects-away" || !/evil\.example\.com/.test(away.destination ?? "") || !/did not follow/.test(away.note ?? "") || opened.includes("https://evil.example.com/steal")) fail(`a redirect off the domain: ${JSON.stringify(away)}`);
+  const within = await go("https://www.walmart.ca/go/in-domain");
+  if (!within.opened || within.receipt?.total !== 28.25) fail(`a redirect inside the domain should be followed: ${JSON.stringify(within)}`);
+  const login = await go("https://www.walmart.ca/orders/login-needed");
+  if (login.opened || !login.loginRequired || !/won't ask for a store password/.test(login.note ?? "") || /enter your password|type your password/i.test(login.note ?? "")) fail(`a login wall: ${JSON.stringify(login)}`);
+  const forbidden = await go("https://www.walmart.ca/orders/private");
+  if (forbidden.opened || !forbidden.loginRequired) fail(`a 403 page: ${JSON.stringify(forbidden)}`);
+  // From chat, through the agent, and for a saved skill.
+  setBrainModel(async (request) => {
+    if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
+    const used = request.messages!.flatMap((message) => (Array.isArray(message.content) ? message.content.filter((block) => block.type === "tool_use").map((block) => (block as { name: string }).name) : []));
+    const call = (id: string, name: string, input: Record<string, unknown>) => ({ text: "", toolUses: [{ id, name, input }], blocks: [{ type: "tool_use" as const, id, name, input }], stop: "tool_use" as const });
+    if (!used.includes("read_mail")) return call("m", "read_mail", { mailbox: "outlook", id: "wm-1" });
+    if (!used.includes("open_link")) return call("o", "open_link", { mailbox: "outlook", id: "wm-1", url: "https://www.walmart.ca/orders/2884360750778919541?token=abc&from=email" });
+    return { text: "Here is the receipt.", toolUses: [], blocks: [{ type: "text" as const, text: "Here is the receipt." }], stop: "end_turn" as const };
+  });
+  const turn = await runAgentTurn({ chatId: "receipt-chat", text: "can you open the receipt?" });
+  setBrainModel(null);
+  if (!/Here is the receipt/.test(turn.body) || !turn.steps.includes("Opened the link from the email")) fail(`the agent's turn: ${turn.body} / ${turn.steps.join()}`);
+  const names = agentTools({}).map((tool) => tool.name);
+  for (const handling of ["Handling: asks first.", "Handling: tells you only.", "Handling: handles it itself.", ""]) {
+    if (!allowedToolNames({ reads: "my Outlook inbox emails", drafts: handling }, names).includes("open_link")) fail(`a skill (${handling || "legacy"}) that reads email can't open a link`);
+  }
+  if (allowedToolNames({ reads: "guest messages in Hospitable", drafts: "Handling: tells you only." }, names).includes("open_link")) fail("a skill that doesn't read mail was given open_link");
+  if (!/LINKS IN EMAIL/.test((await import("./agentChat.js")).agentSystem("", "2026-11-02")) || !/never ask for a store password/.test((await import("./agentChat.js")).agentSystem("", "2026-11-02"))) fail("the agent isn't told the link rules");
+  if (capturedCommits().length) fail("opening a link sent something");
+  setLinkFetcher(null);
 }
 
 console.log("Connectors harness passed.");

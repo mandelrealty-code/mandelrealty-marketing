@@ -1,3 +1,4 @@
+import { extractLinks, type MailLink } from "../copilot/mailLinks.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
@@ -296,6 +297,16 @@ function decodePart(data: string): string {
   return Buffer.from(data, "base64url").toString("utf8");
 }
 
+function htmlText(part: { mimeType?: string; body?: { data?: string }; parts?: unknown[] } | undefined): string {
+  if (!part) return "";
+  if (part.mimeType === "text/html" && part.body?.data) return decodePart(part.body.data);
+  for (const child of part.parts ?? []) {
+    const text = htmlText(child as { mimeType?: string; body?: { data?: string }; parts?: unknown[] });
+    if (text) return text;
+  }
+  return "";
+}
+
 function plainText(part: { mimeType?: string; body?: { data?: string }; parts?: unknown[] } | undefined): string {
   if (!part) return "";
   if (part.mimeType === "text/plain" && part.body?.data) return decodePart(part.body.data);
@@ -321,7 +332,7 @@ export type GmailHit = {
   snippet: string;
 };
 
-export type GmailLetter = GmailHit & { body: string };
+export type GmailLetter = GmailHit & { body: string; links?: MailLink[] };
 
 function gmailQuery(folder: MailFolder, keywords: string, includeAirbnb: boolean, after = ""): string {
   const scope = folder === "sent" ? SENT : PRIMARY;
@@ -549,7 +560,8 @@ function gmailLetter(msg: GmailMessage): GmailLetter | null {
   const folder = gmailFolder(labels) ?? (set.has("SENT") ? "sent" : "inbox");
   const hit = gmailHit(msg, folder);
   if (!hit) return null;
-  return { ...hit, body: keepLines(plainText(msg.payload)).slice(0, 4000) };
+  const links = extractLinks(htmlText(msg.payload));
+  return { ...hit, body: keepLines(plainText(msg.payload)).slice(0, 4000), ...(links.length ? { links } : {}) };
 }
 
 /** The whole chain. A message id opens its thread. A thread id opens the chain when the message read misses. */

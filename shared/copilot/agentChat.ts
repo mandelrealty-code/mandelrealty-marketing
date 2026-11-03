@@ -30,7 +30,7 @@ import { torontoToday } from "./time.js";
 /** The tools the agent may call. Reads, drafts that wait for approval, a reminder, a PDF. Nothing that sends or commits. */
 export const AGENT_TOOLS = [
   "guest_inbox", "list_stays", "read_guest_messages", "guest_contacts",
-  "search_mail", "read_mail", "last_sent_email",
+  "search_mail", "read_mail", "open_link", "last_sent_email",
   "hospitable_read",
   "ops_clients", "ops_revenue", "cleaner_read",
   "research_web", "make_pdf", "add_reminder", "propose_draft",
@@ -66,14 +66,15 @@ export const STEP_LABELS: Record<string, string> = {
   building_email: "Drafted the building email",
   find_furniture: "Searched stores and checked the listings",
   furniture_stores: "Checked the preferred stores",
+  open_link: "Opened the link from the email",
   furniture_revise: "Updated the furniture options",
   furniture_report: "Built the furnishing plan",
 };
 
 /** Which of the agent's tools use each connector, so "is it connected" and "can you use it" never disagree. */
 const CONNECTOR_TOOLS: Record<string, string[]> = {
-  gmail: ["search_mail", "read_mail"],
-  outlook: ["search_mail", "read_mail"],
+  gmail: ["search_mail", "read_mail", "open_link"],
+  outlook: ["search_mail", "read_mail", "open_link"],
   hospitable: ["guest_inbox", "list_stays", "next_stays", "find_stay", "guest_thread", "day_movements", "read_guest_messages", "hospitable_read", "unit_facts", "guest_contacts"],
   airroi: ["market_comps"],
   cleaner: ["cleaner_read"],
@@ -415,6 +416,7 @@ export function agentSystem(facts: string, today: string): string {
     "READ BEFORE ANSWERING: use your tools to read the guest thread, the Knowledge Hub, Hospitable, Gmail and Outlook, the client list and the cleaner app instead of guessing. Use web_lookup when you do not know something or it may have changed. Say plainly once if a read failed.",
     "WHAT IS CONNECTED: for any question about whether a connector is connected, or when it was last checked, call connector_status and answer from it. Never answer from memory or business records, and never say a connector is connected without it. A connector that needs re-authorization is not connected. If a connector says none of your tools use it, say so plainly.",
     "EMAIL: every answer about an email names the mailbox it came from, in words (Gmail or Outlook). For the last email the partner sent, call last_sent_email: it reads Gmail Sent newest first. If its note says Gmail couldn't be read, say that plainly and say the answer is from Outlook. Never present one mailbox's mail as the other's, and never answer from memory.",
+    "LINKS IN EMAIL: to open a link from an email (a receipt, an order, a document), read the email with read_mail and call open_link with a url from its links list. You can only open links on the sender's own domain. If it redirects elsewhere or is shortened, say where it goes and that you did not follow it. If the page needs a sign-in, say so plainly and stop: never ask for a store password. Present a receipt as a clean itemized list with the subtotal, taxes and total.",
     "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",
     "RESERVATIONS: for a unit's next reservation, who is in the house, or whether a date is free, call next_stays (it looks a year ahead). list_stays only looks 14 days. Never say a unit has no reservations from a short look: say what window you checked, or use next_stays.",
     "THREADS: for what a guest said, asked or sent, call guest_thread once with the guest (and the unit or dates if given): it finds the stay and reads the thread together. Answer from that one thread, then stop. Never open another guest's thread, a future stay or a second match unprompted; if other matches are listed, mention them in a clause and let the partner choose. If a read is rate-limited or fails, say so once and do not retry it.",

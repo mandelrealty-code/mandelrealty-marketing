@@ -1,3 +1,4 @@
+import { extractLinks, type MailLink } from "../copilot/mailLinks.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getSessionFromRequest, verifyAdminSessionToken } from "../adminAuth.js";
@@ -253,7 +254,7 @@ export type OutlookHit = {
   snippet: string;
 };
 
-export type OutlookLetter = OutlookHit & { body: string };
+export type OutlookLetter = OutlookHit & { body: string; links?: MailLink[] };
 
 const OUTLOOK_SELECT = "id,conversationId,from,toRecipients,subject,bodyPreview,receivedDateTime,sentDateTime,inferenceClassification,parentFolderId";
 
@@ -375,6 +376,15 @@ async function outlookGet(token: string, id: string): Promise<OutlookMessage | n
   return (await res.json().catch(() => null)) as OutlookMessage | null;
 }
 
+async function outlookLinks(token: string, id: string): Promise<MailLink[]> {
+  const url = new URL(`https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(id)}`);
+  url.searchParams.set("$select", "body");
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.body-content-type="html"' } }).catch(() => null);
+  if (!res?.ok) return [];
+  const data = (await res.json().catch(() => null)) as { body?: { content?: string } } | null;
+  return extractLinks(data?.body?.content ?? "");
+}
+
 async function outlookConversation(token: string, conversationId: string): Promise<OutlookMessage[]> {
   const url = new URL("https://graph.microsoft.com/v1.0/me/messages");
   url.searchParams.set("$filter", `conversationId eq '${conversationId.replace(/'/g, "''")}'`);
@@ -408,7 +418,9 @@ export async function readOutlookThread(id: string, includeAirbnb: boolean): Pro
     if (!folder || (folder === "inbox" && !outlookInboxOk(item))) continue;
     const hit = outlookHit(item, folder);
     if (!hit || (!includeAirbnb && isAirbnbNotification(hit.email))) continue;
-    letters.push({ ...hit, body: outlookBody(item) });
+    // The plain-text read has no link addresses, so the message asked for is read once more as HTML for its links.
+    const links = item.id === id ? await outlookLinks(token, item.id) : [];
+    letters.push({ ...hit, body: outlookBody(item), ...(links.length ? { links } : {}) });
   }
   if (letters.length) return letters;
   if (opened) {

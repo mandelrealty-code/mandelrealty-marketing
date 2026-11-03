@@ -1,3 +1,4 @@
+import type { MailLink } from "./mailLinks.js";
 import { gmailConnected, latestSentGmail, readGmailThread, searchGmail } from "../adminApi/gmail.js";
 import { latestSentOutlook, outlookConnected, readOutlookThread, searchOutlook } from "../adminApi/outlook.js";
 import { mailKeywords, type MailFolder, type MailboxName } from "./mailScope.js";
@@ -17,7 +18,7 @@ export type MailHit = {
   snippet: string;
 };
 
-export type MailLetter = MailHit & { body: string };
+export type MailLetter = MailHit & { body: string; /** The real link targets in the email's HTML. */ links?: MailLink[] };
 
 /** "Tuesday, October 13, 2026 at 9:58 PM", Toronto, from any timestamp; the sender's clock never leaks through. */
 export function torontoWhen(date: string): string {

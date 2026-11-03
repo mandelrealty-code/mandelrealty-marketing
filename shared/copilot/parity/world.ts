@@ -1,3 +1,4 @@
+import { extractLinks } from "../mailLinks.js";
 import type { PmCommissionTerm, PmPropertyDetail, PmPropertyListItem } from "../../pm/types.js";
 import { captureCommit, markAccountWide, resetCaptures } from "./capture.js";
 import { resetOps } from "./opsState.js";
@@ -20,6 +21,8 @@ export type ParityMail = {
   snippet: string;
   body: string;
   airbnb: boolean;
+  /** The email's HTML, when a test needs its links. */
+  html?: string;
 };
 
 export type ParityMessage = {
@@ -708,6 +711,7 @@ export type ParityLetter = {
   subject: string;
   snippet: string;
   body: string;
+  links?: { url: string; text: string }[];
 };
 
 function letterOf(mail: ParityMail): ParityLetter {
@@ -722,6 +726,7 @@ function letterOf(mail: ParityMail): ParityLetter {
     subject: mail.subject,
     snippet: mail.snippet,
     body: mail.body,
+    ...(mail.html ? { links: extractLinks(mail.html) } : {}),
   };
 }
 
