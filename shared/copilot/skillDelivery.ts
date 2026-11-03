@@ -1,6 +1,5 @@
 import { sendGmailNew } from "../adminApi/gmail.js";
-import { sendTwilioSms } from "../twilioSms.js";
-import { twilioReady } from "./cleanText.js";
+import { sendPartnerText, setTextRecorder, textChannelReady } from "./partnerText.js";
 import { addMessage, flagChatNeedsYou, readGmailLogin } from "./store.js";
 import { captureDraft, captureReport } from "./parity/capture.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -61,10 +60,8 @@ async function mailbox(): Promise<string> {
   return login?.email?.trim() ?? "";
 }
 
-function textReady(): boolean {
-  if (parityEnabled()) return textConfigured;
-  return twilioReady();
-}
+// Parity records a text here instead of sending it; the harnesses read it back with capturedPartnerDeliveries.
+setTextRecorder((row) => deliveries.push({ channel: "text", to: row.to, subject: row.subject, body: row.body }), () => textConfigured);
 
 /**
  * Partner delivery only. A test run must not call this.
@@ -113,20 +110,16 @@ export async function deliverToPartners(input: {
     }
   }
   if (input.channels.includes("text")) {
-    if (!textReady()) notes.push(TEXT_MISSING);
+    if (!textChannelReady()) notes.push(TEXT_MISSING);
     else if (!input.skill.phone.trim()) notes.push("No partner number is on this skill, so nothing was texted.");
-    else if (parityEnabled()) {
-      deliveries.push({ channel: "text", to: input.skill.phone, subject: input.headline, body });
-      notes.push("Texted the partner.");
-    } else {
-      const sent = await sendTwilioSms({
-        accountSid: process.env.TWILIO_ACCOUNT_SID?.trim() ?? "",
-        authToken: process.env.TWILIO_AUTH_TOKEN?.trim() ?? "",
-        from: process.env.TWILIO_PHONE_NUMBER?.trim() ?? "",
-        to: input.skill.phone,
-        body: body.slice(0, 1400),
-      });
-      notes.push(sent.ok ? "Texted the partner." : sent.error || TEXT_MISSING);
+    else {
+      const sent = await sendPartnerText({ to: input.skill.phone, body: `${input.headline ? `${input.headline}: ` : ""}${body}`.slice(0, 600), skillId: input.skill.id });
+      if (sent.sent) notes.push("Texted the partner.");
+      else {
+        notes.push(sent.note);
+        // A night hold keeps the message in the app so it is there in the morning.
+        if (sent.reason === "quiet-hours" && input.skill.chat_id) await addMessage({ chatId: input.skill.chat_id, role: "assistant", body: `Held for the morning (quiet hours):\n${body.slice(0, 600)}` }).catch(() => undefined);
+      }
     }
   }
   return { notes };

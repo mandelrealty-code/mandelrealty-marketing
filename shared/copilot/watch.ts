@@ -21,7 +21,7 @@ import { sendReservationMessage } from "./hospitableAgent.js";
 import { deleteChat, listMessages } from "./store.js";
 import { boardPayload } from "./taskBoardApi.js";
 import { daysOutstanding, isOpen } from "./taskTypes.js";
-import { torontoToday } from "./time.js";
+import { quietHours, torontoHour, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
 
 export type WatchKind = "guest_waiting" | "commitment" | "incident" | "inquiry_deadline" | "cleaner" | "review" | "task";
@@ -110,17 +110,7 @@ export async function watchLedger(): Promise<LedgerRow[]> {
 
 // ---------- The clock ----------
 
-/** The Toronto hour, 0 to 23. */
-export function torontoHour(now: Date): number {
-  const hour = Number(new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", hourCycle: "h23" }).format(now));
-  return Number.isFinite(hour) ? hour : 12;
-}
-
-/** 10 PM to 8 AM, Toronto. */
-export function quietHours(now: Date): boolean {
-  const hour = torontoHour(now);
-  return hour >= 22 || hour < 8;
-}
+export { quietHours, torontoHour };
 
 // ---------- What there is to look at ----------
 

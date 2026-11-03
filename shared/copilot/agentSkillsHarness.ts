@@ -8,6 +8,7 @@ import { setBrainModel, type BrainRequest } from "./brain.js";
 import { resetBusinessFacts } from "./businessFacts.js";
 import { capturedCommits, capturedDrafts, resetCaptures } from "./parity/capture.js";
 import { installWorld } from "./parity/world.js";
+import { addTextNumber } from "./store.js";
 import { capturedPartnerDeliveries, resetPartnerDeliveries, setTextChannel } from "./skillDelivery.js";
 import { failure, failureText, fixFor } from "./skillFailure.js";
 import { stepOrder, stepsAfter } from "./skillAgent.js";
@@ -166,6 +167,7 @@ if ([...stepsAfter(wf, "n5")].join() !== "n6") fail("steps after the wait");
 const shuffled: Workflow = { ...wf, nodes: [wf.nodes[3]!, wf.nodes[0]!, wf.nodes[5]!, wf.nodes[1]!, wf.nodes[4]!, wf.nodes[2]!] };
 if (stepOrder(shuffled).map((node) => node.id).join() !== "n1,n2,n3,n4,n5,n6") fail("step order depends on how the steps were stored");
 setTextChannel(true);
+await addTextNumber("(917) 555-0142");
 const workflowSkill = await saveSkill({ ...SKILL, name: "Reply to waiting guests", reads: "Hospitable", drafts: "A draft reply", must_not: "Send anything", phone: "(917) 555-0142", workflow: wf });
 const stepsSeen: string[] = [];
 const offeredPerStep: Record<string, string[]> = {};
@@ -187,7 +189,7 @@ runBrain((request, step) => {
     }
     return { text: "Hi Eloise, yes, 1 PM works. See you then." };
   }
-  if (fn === "Text me") return isFollowUp ? { text: "Texted." } : { text: "", tool: { name: "deliver_to_partners", input: { headline: "Draft ready", text: "A reply to Eloise is waiting for your OK.", channels: ["text"] } } };
+  if (fn === "Text me") return isFollowUp ? { text: "Texted." } : { text: "", tool: { name: "send_text", input: { body: "A reply to Eloise is waiting for your OK." } } };
   return { text: `unexpected ${fn || step}` };
 });
 resetCaptures();
@@ -209,7 +211,7 @@ const second = await startSkillRun(workflowSkill.id, "manual");
 if (second.status !== "ok" || second.result?.paused) fail(`workflow resume: ${second.status} ${second.error} ${JSON.stringify(second.result?.paused)}`);
 if (stepsSeen.join() !== "Text me") fail(`the resume ran: ${stepsSeen.join()}`);
 const texts = capturedPartnerDeliveries();
-if (texts.length !== 1 || texts[0]!.channel !== "text" || texts[0]!.to !== "(917) 555-0142" || !/waiting for your OK/.test(texts[0]!.body)) fail(`the partner text: ${JSON.stringify(texts)}`);
+if (texts.length !== 1 || texts[0]!.channel !== "text" || texts[0]!.to !== "+19175550142" || !/waiting for your OK/.test(texts[0]!.body)) fail(`the partner text: ${JSON.stringify(texts)}`);
 
 // ---------- Failures: where, what it tried, what came back, a fix, and in Decisions ----------
 const failing = await saveSkill({ ...SKILL, name: "Inbox check", reads: "Hospitable", drafts: "A report", must_not: "Send anything", phone: "", workflow: { ...wf, id: "wf-fail", name: "Inbox check", nodes: wf.nodes.slice(0, 3), edges: wf.edges.slice(0, 2) } });

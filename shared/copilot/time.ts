@@ -40,3 +40,9 @@ export function greeting(now?: Date): { hello: string; line: string } {
   }
   return { hello: "Good evening, team.", line: "Here is what is still open tonight." };
 }
+
+/** 10 PM to 8 AM, Toronto. */
+export function quietHours(now: Date): boolean {
+  const hour = torontoHour(now);
+  return hour >= 22 || hour < 8;
+}

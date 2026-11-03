@@ -14,6 +14,7 @@ import { factsForPrompt, listFacts, relevantFacts } from "./businessFacts.js";
 import { failure, type Failure } from "./skillFailure.js";
 import { allowedToolNames, handlingOf, HANDLING_LINE } from "./skillPolicy.js";
 import { callToolForRun } from "./toolServer.js";
+import { sendTextTool } from "./partnerTextTools.js";
 import { torontoToday } from "./time.js";
 import type { WfNode, Workflow } from "./workflow.js";
 import type { CopilotRun, CopilotSkill } from "./types.js";
@@ -152,7 +153,7 @@ const STEP_TOOLS: Record<string, string[]> = {
   Read: READ_TOOLS,
   "Look on the web": ["web_lookup", "research_web", "recall_facts"],
   Write: [...READ_TOOLS, "propose_draft", "make_pdf", "furniture_report"],
-  "Text me": ["deliver_to_partners"],
+  "Text me": ["send_text"],
 };
 
 function stepInstruction(node: WfNode, context: string): string {
@@ -160,7 +161,7 @@ function stepInstruction(node: WfNode, context: string): string {
   if (node.fn === "Read") return `${carried}STEP: Read. Read: ${node.note}. Reads from: ${node.field || "whatever fits"}.\nUse your tools to read it for real. Answer with what you found: exact names, dates and quotes. If a read failed, say so plainly and do not guess.`;
   if (node.fn === "Look on the web") return `${carried}STEP: Look on the web. Find out: ${node.note}. Where to look: ${node.field || "wherever fits"}.\nUse web_lookup (and research_web for a specific page). Answer with what you found and where you found it. If you could not find it, say so.`;
   if (node.fn === "Write") return `${carried}STEP: Write. Write: ${node.note}. Tone: ${node.field || "short and plain"}.\nUse what the earlier steps found, nothing invented. If this is for a guest, a client, a building or anyone outside the company, call propose_draft so it waits for a partner to press Submit, then say it is waiting. If it is only for the partners, write it as your answer.`;
-  if (node.fn === "Text me") return `${carried}STEP: Text me. Text the partner, in under 300 characters, about: ${node.note}.\nCall deliver_to_partners once with channels ["text"], a short headline, and that text. This is a notice to a partner, not a message to a guest.`;
+  if (node.fn === "Text me") return `${carried}STEP: Text me. Text the partner, in under 300 characters, about: ${node.note}.\nCall send_text once with that text as the body. It texts the partner's number on file and says plainly if it could not. This is a notice to a partner, not a message to a guest.`;
   return `${carried}STEP: ${node.fn}. ${node.note}`;
 }
 
@@ -200,7 +201,8 @@ async function runWorkflowSteps(run: CopilotRun, skill: CopilotSkill, wf: Workfl
     const loop = await runLoop({
       system,
       messages: [{ role: "user", content: stepInstruction(node, carry(log)) }],
-      tools: all.filter((tool) => allowed.has(tool.name)),
+      // The Text me step texts the number it carries (or the skill's), and only if that is a partner number on file.
+      tools: node.fn === "Text me" ? [sendTextTool({ skill, forced: true, defaultTo: node.field.trim() || skill.phone.trim() })] : all.filter((tool) => allowed.has(tool.name)),
       chatId: skill.chat_id ?? "",
       task: "chat",
       maxRounds: STEP_ROUNDS,
@@ -209,9 +211,12 @@ async function runWorkflowSteps(run: CopilotRun, skill: CopilotSkill, wf: Workfl
       label: (name) => STEP_LABELS[name] ?? `Used ${name}`,
     });
     const failed = loop.calls.filter((call) => !call.ok);
-    const delivered = loop.calls.find((call) => call.tool === "deliver_to_partners" && call.ok);
-    const notes = delivered ? (JSON.parse(delivered.result || "{}") as { notes?: string[] }).notes ?? [] : [];
-    const textProblem = node.fn === "Text me" ? (!delivered ? "Nothing was texted: the step never delivered." : notes.find((note) => /nothing was texted|no partner number|not configured/i.test(note))) : undefined;
+    const delivered = loop.calls.find((call) => (call.tool === "deliver_to_partners" || call.tool === "send_text") && call.ok);
+    const notes = delivered ? (JSON.parse(delivered.result || "{}") as { notes?: string[]; sent?: boolean; note?: string; reason?: string }) : {};
+    const texted = delivered?.tool === "send_text" ? (notes.sent === true ? undefined : notes.note ?? "Nothing was texted.") : undefined;
+    // A night hold is not a failure: the text waits in the app, and the run says so.
+    const held = delivered?.tool === "send_text" && (notes as { reason?: string }).reason === "quiet-hours";
+    const textProblem = node.fn === "Text me" ? (!delivered ? "Nothing was texted: the step never delivered." : held ? undefined : texted ?? (delivered.tool === "deliver_to_partners" ? (notes.notes ?? []).find((note) => /nothing was texted|no partner number|not configured/i.test(note)) : undefined)) : undefined;
     const everyReadFailed = loop.calls.length > 0 && failed.length === loop.calls.length && node.fn !== "Write";
     if (loop.end !== "done" || textProblem || everyReadFailed) {
       const last = failed[failed.length - 1];

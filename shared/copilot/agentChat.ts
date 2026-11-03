@@ -11,6 +11,7 @@ import { compLines, compSet, sizeOf } from "./compsAnswer.js";
 import { connectorRows } from "./connectorStatus.js";
 import { readThread } from "./guestInbox.js";
 import { furnitureTools } from "./furnitureTools.js";
+import { sendTextTool, sentTextsTool } from "./partnerTextTools.js";
 import { boardPrompt, loadBoard } from "./furnitureBoard.js";
 import { dayMovements, findStays, nextStays, readableUnit } from "./stayLookup.js";
 import { answerBuildingRegistrationItem } from "./buildingRegistration.js";
@@ -67,6 +68,8 @@ export const STEP_LABELS: Record<string, string> = {
   find_furniture: "Searched stores and checked the listings",
   furniture_stores: "Checked the preferred stores",
   open_link: "Opened the link from the email",
+  send_text: "Texted the partner",
+  sent_texts: "Checked what was texted",
   furniture_revise: "Updated the furniture options",
   furniture_report: "Built the furnishing plan",
 };
@@ -80,7 +83,7 @@ const CONNECTOR_TOOLS: Record<string, string[]> = {
   cleaner: ["cleaner_read"],
   browser: ["research_web", "web_lookup"],
   ops: ["ops_clients", "ops_revenue"],
-  twilio: [],
+  twilio: ["send_text"],
 };
 
 export type { AgentTool };
@@ -405,7 +408,8 @@ export function agentTools(ctx: ToolContext = {}): AgentTool[] {
     }
     return { ...def, run };
   });
-  return [...named, ...ownTools(), ...furnitureTools(ctx.partnerText !== undefined), ...(ctx.partnerText !== undefined ? [buildingEmailTool(ctx.partnerText)] : []), resolveClientTool(), ...(ctx.partnerText !== undefined ? [proposeSkillTool(ctx.partnerText)] : [])];
+  const texting: AgentTool[] = [sentTextsTool(), ...(ctx.partnerText !== undefined ? [sendTextTool({ partnerText: ctx.partnerText })] : ctx.skill ? [sendTextTool({ skill: ctx.skill })] : [])];
+  return [...named, ...ownTools(), ...texting, ...furnitureTools(ctx.partnerText !== undefined), ...(ctx.partnerText !== undefined ? [buildingEmailTool(ctx.partnerText)] : []), resolveClientTool(), ...(ctx.partnerText !== undefined ? [proposeSkillTool(ctx.partnerText)] : [])];
 }
 
 export function agentSystem(facts: string, today: string): string {
@@ -417,6 +421,7 @@ export function agentSystem(facts: string, today: string): string {
     "WHAT IS CONNECTED: for any question about whether a connector is connected, or when it was last checked, call connector_status and answer from it. Never answer from memory or business records, and never say a connector is connected without it. A connector that needs re-authorization is not connected. If a connector says none of your tools use it, say so plainly.",
     "EMAIL: every answer about an email names the mailbox it came from, in words (Gmail or Outlook). For the last email the partner sent, call last_sent_email: it reads Gmail Sent newest first. If its note says Gmail couldn't be read, say that plainly and say the answer is from Outlook. Never present one mailbox's mail as the other's, and never answer from memory.",
     "LINKS IN EMAIL: to open a link from an email (a receipt, an order, a document), read the email with read_mail and call open_link with a url from its links list. You can only open links on the sender's own domain. If it redirects elsewhere or is shortened, say where it goes and that you did not follow it. If the page needs a sign-in, say so plainly and stop: never ask for a store password. Present a receipt as a clean itemized list with the subtotal, taxes and total.",
+    "TEXTING: you can text a partner's own phone with send_text. Use it only when the partner asks (\"text me\", \"send me the total\") or a saved skill says to: never unprompted, never from open chat on your own. It only texts the partners' numbers on file and refuses any other number: say so plainly if it does. Quiet hours (10 PM to 8 AM Toronto) hold a skill's non-urgent text until morning. You can never text a guest, a client or anyone else. To say what was texted, call sent_texts.",
     "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",
     "RESERVATIONS: for a unit's next reservation, who is in the house, or whether a date is free, call next_stays (it looks a year ahead). list_stays only looks 14 days. Never say a unit has no reservations from a short look: say what window you checked, or use next_stays.",
     "THREADS: for what a guest said, asked or sent, call guest_thread once with the guest (and the unit or dates if given): it finds the stay and reads the thread together. Answer from that one thread, then stop. Never open another guest's thread, a future stay or a second match unprompted; if other matches are listed, mention them in a clause and let the partner choose. If a read is rate-limited or fails, say so once and do not retry it.",

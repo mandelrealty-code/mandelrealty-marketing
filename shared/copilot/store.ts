@@ -1474,7 +1474,16 @@ export async function listOpenBrowsers(): Promise<{ chatId: string; row: StoredB
   return runs;
 }
 
+/** Parity keeps the partner numbers and the text log in memory, so a test run never touches a file and starts clean. */
+const parityTextNumbers: string[] = [];
+const parityTextLog: CopilotTextSend[] = [];
+export function resetParityText(): void {
+  parityTextNumbers.length = 0;
+  parityTextLog.length = 0;
+}
+
 export async function listTextNumbers(): Promise<string[]> {
+  if (parityEnabled()) return [...parityTextNumbers];
   const client = sb();
   if (!useFile && client) {
     const { data, error } = await client.from("copilot_text_numbers").select("phone").order("created_at", { ascending: true });
@@ -1489,6 +1498,10 @@ export async function listTextNumbers(): Promise<string[]> {
 export async function addTextNumber(phone: string): Promise<string[]> {
   const value = phone.trim();
   if (!value) return listTextNumbers();
+  if (parityEnabled()) {
+    if (!parityTextNumbers.includes(value)) parityTextNumbers.push(value);
+    return [...parityTextNumbers];
+  }
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_text_numbers").insert({ id: randomUUID(), phone: value });
@@ -1505,6 +1518,11 @@ export async function addTextNumber(phone: string): Promise<string[]> {
 
 export async function removeTextNumber(phone: string): Promise<string[]> {
   const value = phone.trim();
+  if (parityEnabled()) {
+    const at = parityTextNumbers.indexOf(value);
+    if (at >= 0) parityTextNumbers.splice(at, 1);
+    return [...parityTextNumbers];
+  }
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_text_numbers").delete().eq("phone", value);
@@ -1530,6 +1548,7 @@ export async function removeTextNumber(phone: string): Promise<string[]> {
 }
 
 export async function listTextLog(): Promise<CopilotTextSend[]> {
+  if (parityEnabled()) return [...parityTextLog].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 30);
   const client = sb();
   if (!useFile && client) {
     const { data, error } = await client
@@ -1566,6 +1585,10 @@ export async function addTextLog(input: Omit<CopilotTextSend, "id" | "created_at
     body: input.body,
     link: input.link,
   };
+  if (parityEnabled()) {
+    parityTextLog.unshift({ ...row, created_at: (parityNow() ?? new Date()).toISOString() });
+    return;
+  }
   const client = sb();
   if (!useFile && client) {
     const { error } = await client.from("copilot_text_log").insert(row);

@@ -82,11 +82,14 @@ export function touchGroups(reads: string): Set<Group> {
  * The tools a skill may call: the groups its "reads" names (everything it can read when it names none), plus handling.
  * A skill saved before handling existed ("") keeps every tool, as it always had.
  */
-export function allowedToolNames(skill: { reads: string; drafts: string }, available: string[]): string[] {
+export function allowedToolNames(skill: { reads: string; drafts: string; name?: string; when_text?: string }, available: string[]): string[] {
   const handling = handlingOf(skill);
   const groups = touchGroups(skill.reads);
   const reads = groups.size ? [...groups].flatMap((group) => GROUP_TOOLS[group]) : Object.values(GROUP_TOOLS).flat();
   const names = new Set<string>([...ALWAYS, ...reads]);
+  // A skill texts only when its own words say so; the tool refuses again on its own if they don't.
+  names.add("sent_texts");
+  if (/\btext\b|\bsms\b/i.test(`${skill.name ?? ""} ${skill.when_text ?? ""} ${skill.reads} ${skill.drafts}`)) names.add("send_text");
   if (handling !== "notify") names.add("propose_draft");
   if (handling === "autonomous" || handling === "") for (const name of INTERNAL_WRITES) names.add(name);
   if (handling === "") {
