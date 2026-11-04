@@ -58,7 +58,7 @@ type Group = "guests" | "mail" | "web" | "business";
 const GROUP_TOOLS: Record<Group, string[]> = {
   guests: ["guest_inbox", "list_stays", "next_stays", "read_guest_messages", "guest_contacts", "unit_facts", "hospitable_read"],
   mail: ["search_mail", "read_mail", "last_sent_email", "open_link"],
-  web: ["research_web"],
+  web: ["research_web", "shop_search"],
   business: ["ops_clients", "ops_revenue", "cleaner_read", "market_comps", "resolve_client", "sheet_read"],
 };
 const GROUP_WORDS: Record<Group, RegExp> = {

@@ -151,7 +151,7 @@ export function stepsAfter(wf: Workflow, id: string): Set<string> {
 const READ_TOOLS = ["guest_inbox", "list_stays", "read_guest_messages", "guest_contacts", "hospitable_read", "unit_facts", "search_mail", "read_mail", "open_link", "last_sent_email", "ops_clients", "ops_revenue", "cleaner_read", "market_comps", "resolve_client", "recall_facts", "connector_status", "web_lookup", "sheet_read", "find_furniture", "furniture_stores"];
 const STEP_TOOLS: Record<string, string[]> = {
   Read: READ_TOOLS,
-  "Look on the web": ["web_lookup", "research_web", "recall_facts"],
+  "Look on the web": ["web_lookup", "research_web", "shop_search", "recall_facts"],
   Write: [...READ_TOOLS, "propose_draft", "make_pdf", "furniture_report"],
   "Text me": ["send_text"],
 };

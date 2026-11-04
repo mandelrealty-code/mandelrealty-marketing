@@ -13,7 +13,7 @@ import type { Candidate } from "./watch.js";
 
 const PENDING = /request|pending|inquir|awaiting|pre-?approv/i;
 const ENDED = /cancel|declin|expire|denied|withdraw/i;
-const MAX_THREADS = 15;
+const MAX_THREADS = 8;
 
 /** The check-in time Hospitable has for a reservation, as HH:MM, or "" when it shows none. */
 export function reservationClock(raw: Record<string, unknown> | undefined): string {
@@ -91,8 +91,10 @@ export async function collectThreadGaps(now: Date): Promise<{ candidates: Candid
     let messages: ThreadMsg[] | null = null;
     try {
       messages = conv.inquiry ? conv.turns ?? [] : await readStayThread(conv.stay.id, now, conv.lastMessageAt);
-    } catch {
+    } catch (err) {
       failed.push("Guest threads");
+      // Hospitable said slow down: stop reading more threads this cycle instead of making it worse.
+      if (/\b429\b|too many|rate.?limit|throttl/i.test(err instanceof Error ? err.message : "")) break;
       continue;
     }
     for (const action of threadActions({ guest: conv.stay.guest, address: `${conv.address} ${conv.label}`, messages })) {

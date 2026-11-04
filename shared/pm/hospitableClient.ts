@@ -184,7 +184,14 @@ export async function hospitableFetch(
     body = JSON.stringify(init.body);
   }
 
-  const res = await fetch(url.toString(), { method, headers, body });
+  // Hospitable rate-limits bursts. A read that is told to slow down waits as long as it asks (never long) and tries again, so a
+  // busy minute doesn't turn into "couldn't read the thread". Writes are never repeated.
+  let res = await fetch(url.toString(), { method, headers, body });
+  for (let attempt = 1; method === "GET" && res.status === 429 && attempt <= 2; attempt += 1) {
+    const asked = Number(res.headers.get("retry-after"));
+    await new Promise((resolve) => setTimeout(resolve, Math.min(Number.isFinite(asked) && asked > 0 ? asked * 1000 : 1500 * attempt, 6000)));
+    res = await fetch(url.toString(), { method, headers, body });
+  }
 
   const text = await res.text();
   let json: unknown = null;

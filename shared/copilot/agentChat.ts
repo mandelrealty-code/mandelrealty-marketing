@@ -13,6 +13,7 @@ import { readThread } from "./guestInbox.js";
 import { furnitureTools } from "./furnitureTools.js";
 import { sendTextTool, sentTextsTool } from "./partnerTextTools.js";
 import { boardPrompt, loadBoard } from "./furnitureBoard.js";
+import { APPROX_PRICE, asksShopping, shopSearch, type ShopResult } from "./shopping.js";
 import { dayMovements, findStays, nextStays, readableUnit } from "./stayLookup.js";
 import { answerBuildingRegistrationItem } from "./buildingRegistration.js";
 import { unitFacts } from "./unitFacts.js";
@@ -68,6 +69,7 @@ export const STEP_LABELS: Record<string, string> = {
   find_furniture: "Searched stores and checked the listings",
   furniture_stores: "Checked the preferred stores",
   open_link: "Opened the link from the email",
+  shop_search: "Read the live listings",
   send_text: "Texted the partner",
   sent_texts: "Checked what was texted",
   furniture_revise: "Updated the furniture options",
@@ -96,9 +98,18 @@ function ownTools(): AgentTool[] {
       description: "Looks something up online and answers from what it found, with the source. Use it when you do not know something, or when it may have changed (a policy, a price, a rule, a place). Read only.",
       input_schema: { type: "object", properties: { question: { type: "string" } }, required: ["question"] },
       run: async (input) => {
-        const answer = await answerWebQuestion(String(input.question ?? "").slice(0, 400));
+        const question = String(input.question ?? "").slice(0, 400);
+        // Products and prices are never answered from a web search: they come from a live listing or not at all.
+        if (asksShopping(question)) throw new Error("That is a shopping question, and prices are never answered from a web search. Call shop_search: it reads the live listing and returns the link. If it says the store blocked it, say that in one line and stop.");
+        const answer = await answerWebQuestion(question);
         return { answer: answer.body };
       },
+    },
+    {
+      name: "shop_search",
+      description: "Finds products for sale and their live prices, each with its link. Use it for ANY question about a product, a price, 'a cheap option' or 'what does X cost', and whenever the partner names a store (Amazon, Walmart, Costco, IKEA...). Amazon.ca is read in a real browser because it blocks plain reads. The result lists each product with its name, its CAD price read from the page just now, and its link: name a product only from this list, always with its link, and give only these prices. If it says the store blocked you or nothing could be read, say that one line and STOP: never fall back to web_lookup, never give approximate prices. Read only. This never buys anything.",
+      input_schema: { type: "object", properties: { query: { type: "string", description: "The product, such as 'laundry pods'." }, store: { type: "string", description: "A store such as amazon.ca or walmart.ca, when the partner named one." }, limit: { type: "number" } }, required: ["query"] },
+      run: async (input) => shopSearch({ query: String(input.query ?? ""), store: String(input.store ?? "") || undefined, limit: typeof input.limit === "number" ? input.limit : undefined }),
     },
     {
       name: "connector_status",
@@ -426,6 +437,7 @@ export function agentSystem(facts: string, today: string): string {
     "RESERVATIONS: for a unit's next reservation, who is in the house, or whether a date is free, call next_stays (it looks a year ahead). list_stays only looks 14 days. Never say a unit has no reservations from a short look: say what window you checked, or use next_stays.",
     "THREADS: for what a guest said, asked or sent, call guest_thread once with the guest (and the unit or dates if given): it finds the stay and reads the thread together. Answer from that one thread, then stop. Never open another guest's thread, a future stay or a second match unprompted; if other matches are listed, mention them in a clause and let the partner choose. If a read is rate-limited or fails, say so once and do not retry it.",
     "FURNITURE: to furnish a unit, call find_furniture for each piece in each room (couch, bed, table, chairs, rug, lighting), with the style and budget the partner gave. Only pieces it returns are real: never write a product name, price or link yourself, and never recall one from memory. The partner sees the results as product cards in the chat, so do not list them again: say in a line what you found. When the partner talks about a card (\"the second one\", \"too expensive\", \"I like this one but in gray\", \"drop the Structube one\", \"go with that\"), work out which slot and card they mean from the WORKING SET below and call furniture_revise for that one slot only: everything else stays, and you never restart the search. If two slots are equally likely, ask one short question. When they have chosen, call furniture_report with no rooms to build the plan from their choices. Preferred stores come from furniture_stores; change them only when the partner asks. A report is built from this unit's own choices: never copy another unit's or stay's report or facts. You never buy anything: the partner buys from the links.",
+    "SHOPPING: for any product, price or \"where can I get\" question call shop_search, and name a product only from its results, each with its link as [name](url) and the price it returned. Never give a price from memory or a web search, never write \"around $X\", and never answer a shopping question with web_lookup. If shop_search says the store blocked it or found nothing, say that one line and stop: no approximate numbers, no other lookup.",
     "AGGREGATES: for how many or who is checking in or out on a date, call day_movements once: it reads every property together. Never read unit by unit, and answer from that one result.",
     "GUESTS: when the partner names a guest without a unit, call find_stay: the unit comes from their reservation, never from a guess or a default. For the building registration email call building_email with the guest: it reads the guest's whole thread for the car and puts the draft card in this chat. Never ask the partner for a car detail the thread holds, never search mail for the template yourself, and do not repeat the draft in your reply: say in a line that it is waiting for approval, and pass on any note it gives about missing details.",
     "NEVER INVENT fees, balances, dates, names or property facts. If you did not read it, say so.",
@@ -438,6 +450,34 @@ export function agentSystem(facts: string, today: string): string {
     "MEMORY: facts below are what the business already knows. Use them. If the partner corrects one, accept the correction plainly; it is saved over the old fact automatically.",
     facts,
   ].filter(Boolean).join("\n\n");
+}
+
+/**
+ * A shopping answer is listings with links and prices read from the page, or one line saying the store couldn't be read. A
+ * price the agent wasn't given is never allowed through, and a listing it was given never loses its link.
+ */
+export function shoppingGuard(body: string, asked: string, calls: { tool: string; ok: boolean; result: string }[]): string {
+  const results = calls.filter((call) => call.tool === "shop_search" && call.ok).flatMap((call) => {
+    try {
+      return [JSON.parse(call.result) as ShopResult];
+    } catch {
+      return [];
+    }
+  });
+  const read = results.filter((row): row is Extract<ShopResult, { ok: true }> => row.ok);
+  const blocked = results.filter((row): row is Extract<ShopResult, { ok: false }> => !row.ok);
+  if (!read.length && !blocked.length && !asksShopping(asked)) return body;
+  if (!read.length) {
+    // Nothing was read: whatever prices are in the answer are not facts.
+    if (!blocked.length && !APPROX_PRICE.test(body) && !/\$\s*\d/.test(body)) return body;
+    return blocked.at(-1)?.say ?? "I couldn't verify prices, so I'm not giving any.";
+  }
+  const items = read.flatMap((row) => row.items);
+  const listing = read.map((row) => row.markdown).join("\n");
+  // Approximate numbers are replaced by what was actually read; a missing link is put back.
+  if (APPROX_PRICE.test(body)) return `Here is what I read live:\n${listing}`;
+  if (items.length && !items.some((item) => body.includes(item.url))) return `${body.trim()}\n\nListings I read just now:\n${listing}`;
+  return body;
 }
 
 export type AgentEvent = { type: "step"; text: string } | { type: "text"; text: string };
@@ -484,7 +524,7 @@ export async function runAgentTurn(input: {
     if (!steps.length) emit({ type: "text", text: said });
     return { body: said, steps, drafted, remembered: [], usedBrain: false };
   }
-  let body = loop.text;
+  let body = shoppingGuard(loop.text, input.text, loop.calls);
   if (loop.end === "rounds") body = "I read what I could but ran out of steps before I could finish. Ask me again and I'll pick up from there.";
   const remembered: string[] = [];
   try {
