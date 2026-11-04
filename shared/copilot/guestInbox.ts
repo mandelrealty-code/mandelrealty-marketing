@@ -1,3 +1,4 @@
+import { parityNow } from "./parity/clock.js";
 import { copilotHospitableToken, copilotKeepsProperty } from "./hospitableConnection.js";
 import {
   listHospitableReservations,
@@ -126,7 +127,7 @@ async function upcoming(daysAhead: number, now: Date) {
 }
 
 /** Stays checked in now or arriving within `daysAhead` days. Read only. */
-export async function listStays(daysAhead = LOOKAHEAD_DAYS, now = new Date()): Promise<UpcomingStay[]> {
+export async function listStays(daysAhead = LOOKAHEAD_DAYS, now: Date = parityNow() ?? new Date()): Promise<UpcomingStay[]> {
   const { stays, unitFor } = await upcoming(Math.min(Math.max(daysAhead, 0), 60), now);
   return stays
     .map((stay) => ({

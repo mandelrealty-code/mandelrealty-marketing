@@ -428,11 +428,11 @@ export function OverviewV2({
       id: `watch:${row.key}`,
       back: "queue",
       title: "Review before it goes out",
-      sub: clean(`To ${row.draftTo || "the guest"}${row.property ? `, ${row.property}` : ""}`),
+      sub: clean(row.draftChannel === "email" ? `Email to ${row.draftTo}${row.draftSubject ? `. Subject: ${row.draftSubject}` : ""}` : `To ${row.draftTo || "the guest"}${row.property ? `, ${row.property}` : ""}`),
       incoming: row.reason,
       source: "Prepared by Copilot's watch. Nothing is sent until you press the button.",
       translation: "",
-      sendLabel: `Send to ${(row.draftTo || "the guest").split(/\s+/)[0]}`,
+      sendLabel: row.draftChannel === "email" ? "Send the email" : `Send to ${(row.draftTo || "the guest").split(/\s+/)[0]}`,
       text: row.draftBody,
       watch: { key: row.key, guest: row.draftTo, property: row.property },
     });

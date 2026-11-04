@@ -558,7 +558,20 @@ export async function answerBuildingRegistrationItem(text: string, context = "",
   return typeof body === "string" ? { body, item: null } : body;
 }
 
-async function registrationBody(asked: string, context: string, force = false, chatId = ""): Promise<string | { body: string; item: ChecksItemRef | null } | null> {
+export type DryRegistration = { kind: "none" | "sent" | "draft" | "no-template" | "unreadable" | "not-asked" | "blocked" | "other-building"; draft?: { to: string; subject: string; body: string; warnings: string[] }; note?: string };
+let dryOut: DryRegistration = { kind: "none" };
+
+/**
+ * What the building registration for one guest looks like right now, without saving anything: whether it was already sent,
+ * or the exact draft it would be. The watch loop uses this to find a registration that was never sent.
+ */
+export async function dryRegistration(guest: string): Promise<DryRegistration> {
+  dryOut = { kind: "none" };
+  await registrationBody(`building registration email for ${guest}`, "", true, "", true);
+  return dryOut;
+}
+
+async function registrationBody(asked: string, context: string, force = false, chatId = "", dry = false): Promise<string | { body: string; item: ChecksItemRef | null } | null> {
   if (!force && !asksBuildingRegistration(asked, context)) return null;
   const clock = parityNow() ?? new Date();
   const today = torontoToday(clock);
@@ -566,6 +579,7 @@ async function registrationBody(asked: string, context: string, force = false, c
   try {
     loaded = await loadRecentStays(clock);
   } catch {
+    dryOut = { kind: "unreadable" };
     return "Hospitable didn't return the reservations. I didn't draft the email.";
   }
   // The guest comes first, from the reservations: a guest named in the question (or earlier in the chat) is the one drafted
@@ -581,11 +595,15 @@ async function registrationBody(asked: string, context: string, force = false, c
   const guestNamed = live.find((row) => mentions(row, asked)) ?? live.find((row) => mentions(row, context));
   const placeText = guestNamed ? guestNamed.label : PLACE.test(asked) ? asked : PLACE.test(context) ? `${asked}\n${context}` : "20 Blue Jays Way 318";
   if (guestNamed && !/blue jays|\b318\b/i.test(placeText)) {
+    dryOut = { kind: "other-building" };
     return `I only have a building registration process for 20 Blue Jays Way, and ${firstName(guestNamed)}'s stay is at ${guestNamed.label}. I didn't draft one.`;
   }
   // The template is the most recent sent registration, read from the mailbox now; never asked for.
   const sent = await sentLetters(placeText);
-  if (!sent.letters.length) return sent.note;
+  if (!sent.letters.length) {
+    dryOut = { kind: "no-template", note: sent.note };
+    return sent.note;
+  }
   const template = sent.letters[0];
   if (!template) return sent.note;
   const upcoming = live
@@ -596,11 +614,15 @@ async function registrationBody(asked: string, context: string, force = false, c
     // Proof is only for a sent message that matches one of this property's stays.
     const stays = loaded.stays.filter((row) => samePlace(placeText, row) && !/cancel/.test(row.stay.status));
     const closed = sent.letters.find((letter) => stays.some((row) => registrationMatchesStay(letter, row.stay.checkIn, row.stay.checkOut)));
-    if (closed) return sentProof(closed, platesFrom(`${closed.subject}\n${closed.body}`));
+    if (closed) {
+      dryOut = { kind: "sent" };
+      return sentProof(closed, platesFrom(`${closed.subject}\n${closed.body}`));
+    }
     return "I didn't find an upcoming guest there whose registration hasn't been sent. I didn't draft one.";
   }
   // The whole thread is read (every page, one retry). A failed read never turns into "she hasn't sent a car".
   const read = await readFullThread({ id: next.stay.id, reservation: next.reservation ?? null }, clock);
+  if (!read.ok) dryOut = { kind: "unreadable" };
   if (!read.ok) return `I couldn't read ${next.stay.guest || "the guest"}'s messages (${read.reason.replace(/\.$/, "")}). I didn't draft the email or fill in a vehicle.`;
   const messages = read.messages;
   const guest = next.stay.guest || "";
@@ -622,16 +644,22 @@ async function registrationBody(asked: string, context: string, force = false, c
   // Nobody has asked this guest for their car: there is nothing to fill in, and a form of blanks would only look finished.
   const requested = messages.some((row) => row.role !== "guest" && /\b(car|vehicle|licen[cs]e|plate|parking)\b/i.test(row.body));
   if (!found.length && !noCar && !requested) {
+    dryOut = { kind: "not-asked" };
     return `I didn't draft the building email for ${guest || "the guest"}. I read ${messages.length === 1 ? "their 1 message" : `all ${messages.length} messages in their thread`} and nobody has asked them for car details yet (no check-in instructions requesting them have gone out), so there is nothing to put in it. Once they have been asked, or you tell me the car, I'll draft it. Nothing was sent.`;
   }
   const oldNames = loaded.stays
     .filter((row) => row.stay.id !== next.stay.id && row.stay.guest && registrationMatchesStay(template, row.stay.checkIn, row.stay.checkOut))
     .map((row) => row.stay.guest);
   const filled = fillFromTemplate(template, next.stay.checkIn, next.stay.checkOut, vehicles, readNote, { oldNames, noCar: Boolean(noCar) && !found.length });
+  if (filled.leaks.length) dryOut = { kind: "blocked" };
   if (filled.leaks.length) return `I didn't draft the building email: the last registration email I'd copy the layout from carries another stay's details (${filled.leaks.join(", ")}) that I couldn't remove cleanly, and I won't put them in ${guest || "this guest"}'s email. Nothing was sent.`;
   // The thread was read and the car isn't in it: said plainly above the card, whatever the template looks like.
   if (!found.length && !filled.warnings.some((warning) => warning.startsWith(readNote))) filled.warnings.unshift(`${readNote}, so the email says "no vehicle details provided yet".`);
   const lead = `Here is the vehicle registration email for ${guest || "the next guest"} at ${next.label} (${shortDate(next.stay.checkIn)} to ${shortDate(next.stay.checkOut)}), to the building. Nothing was sent.${filled.warnings.length ? `\n\nCheck before approving:\n${filled.warnings.map((warning) => `• ${warning}`).join("\n")}` : ""}`;
+  if (dry) {
+    dryOut = { kind: "draft", draft: { to: template.to, subject: filled.subject, body: filled.body, warnings: filled.warnings } };
+    return "";
+  }
   const saved = await leaveDraft({
     channel: "email",
     to: template.to,

@@ -14,8 +14,12 @@ import { listFacts, saveFact, subjectKey } from "./businessFacts.js";
 import { loadDayBoard } from "./dayBoard.js";
 import { dueQuestion } from "./dueFollowUps.js";
 import { loadGuestQueue } from "./guestMessaging.js";
+import { sendGmailReply } from "../adminApi/gmail.js";
 import { parityNow } from "./parity/clock.js";
+import { parityEnabled } from "./parity/flag.js";
 import { loadReviewQueue } from "./reviewsQueue.js";
+import { collectThreadGaps } from "./threadGaps.js";
+import { collectCommitmentGaps } from "./commitmentGaps.js";
 import { closeFollowUpEverywhere } from "./dueFollowUps.js";
 import { sendReservationMessage } from "./hospitableAgent.js";
 import { deleteChat, listMessages } from "./store.js";
@@ -24,7 +28,7 @@ import { daysOutstanding, isOpen } from "./taskTypes.js";
 import { quietHours, torontoHour, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
 
-export type WatchKind = "guest_waiting" | "commitment" | "incident" | "inquiry_deadline" | "cleaner" | "review" | "task";
+export type WatchKind = "guest_waiting" | "commitment" | "incident" | "inquiry_deadline" | "cleaner" | "review" | "task" | "thread_gap" | "commitment_gap";
 
 export type Candidate = {
   /** One item, one key: the same event never gets a second row. */
@@ -239,14 +243,25 @@ export async function collectCandidates(now: Date): Promise<{ candidates: Candid
     failed.push("Tasks");
   }
 
-  return { candidates: out.sort((a, b) => b.urgency - a.urgency), failed };
+  // The gaps between sources: what a thread implies that no record shows done, and what someone said would happen.
+  for (const [name, collect] of [["Thread gaps", collectThreadGaps], ["Commitment gaps", collectCommitmentGaps]] as const) {
+    try {
+      const gaps = await collect(now);
+      out.push(...gaps.candidates);
+      failed.push(...gaps.failed);
+    } catch {
+      failed.push(name);
+    }
+  }
+
+  return { candidates: out.sort((a, b) => b.urgency - a.urgency), failed: [...new Set(failed)] };
 }
 
 // ---------- The judgment ----------
 
 const JUDGE_SYSTEM = [
   "You decide what deserves a partner's attention right now at Mandel Realty Group, a short-term-rental management company. You are shown candidate items the system found. You may only choose from them.",
-  "Surface an item only if a partner must act and acting soon matters: a guest waiting on a reply, a check-in today with no cleaner, an inquiry near its deadline, a promise coming due, an incident in a thread, a flagged review, a task that is overdue and still open.",
+  "A gap item (kind thread_gap or commitment_gap) says a thread or a promise implies something that no record shows done, and quotes the line that triggered it: surface it unless it is clearly handled. Surface an item only if a partner must act and acting soon matters: a guest waiting on a reply, a check-in today with no cleaner, an inquiry near its deadline, a promise coming due, an incident in a thread, a flagged review, a task that is overdue and still open.",
   "Do NOT surface FYIs, quiet threads, anything already handled, or a kind of item the partner has been dismissing (see the learned notes). A false alarm costs more trust than a missed FYI. When unsure, do not surface it.",
   "Reply with JSON only: {\"items\":[{\"key\":\"\",\"surface\":true,\"reason\":\"one short sentence\"}]} listing every candidate key once, most urgent first.",
 ].join(" ");
@@ -351,13 +366,13 @@ export async function cleanupWatchChats(now: Date): Promise<number> {
   return cleaned;
 }
 
-export type DecisionRow = { key: string; kind: WatchKind; title: string; reason: string; property: string; urgency: number; at: string; hasDraft: boolean; draftBody: string; draftTo: string };
+export type DecisionRow = { key: string; kind: WatchKind; title: string; reason: string; property: string; urgency: number; at: string; hasDraft: boolean; draftBody: string; draftTo: string; draftSubject: string; draftChannel: string };
 
 /** What the Overview shows in Decisions for the watch loop: items surfaced and not dismissed or handled. */
 export async function watchDecisions(): Promise<DecisionRow[]> {
   return (await ledger())
     .filter((row) => row.status === "surfaced")
-    .map((row) => ({ key: row.key, kind: row.kind, title: row.title, reason: row.payload?.reason ?? row.title, property: row.property, urgency: row.payload?.urgency ?? 70, at: row.surfacedAt, hasDraft: Boolean(row.payload?.draft?.body), draftBody: row.payload?.draft?.body ?? "", draftTo: row.payload?.draft?.to ?? "" }))
+    .map((row) => ({ key: row.key, kind: row.kind, title: row.title, reason: row.payload?.reason ?? row.title, property: row.property, urgency: row.payload?.urgency ?? 70, at: row.surfacedAt, hasDraft: Boolean(row.payload?.draft?.body), draftBody: row.payload?.draft?.body ?? "", draftTo: row.payload?.draft?.to ?? "", draftSubject: row.payload?.draft?.subject ?? "", draftChannel: row.payload?.draft?.channel ?? "" }))
     .sort((a, b) => b.urgency - a.urgency || a.at.localeCompare(b.at));
 }
 
@@ -380,6 +395,20 @@ export async function actOnWatchItem(input: { key: string; action: "snooze" | "s
     return { ok: true, note: "Marked done." };
   }
   const draft = row.payload?.draft;
+  // An email to a building or anyone else goes out only here, when a partner presses Send on exactly what the item shows.
+  if (draft?.channel === "email" && draft.to) {
+    const body = (input.text?.trim() || draft.body).trim();
+    const blank = BLANK.exec(body);
+    if (blank) return { ok: false, note: `Fill in ${blank[0]} in the draft first. Nothing was sent.` };
+    try {
+      const sentId = await sendGmailReply({ to: draft.to, subject: draft.subject, body });
+      if (!sentId && !parityEnabled()) return { ok: false, note: "Gmail didn't confirm it was sent. Check Sent before trying again." };
+    } catch (err) {
+      return { ok: false, note: `${err instanceof Error ? err.message : "Gmail didn't send it."} Nothing went out.` };
+    }
+    await record({ ...row, status: "handled", resolvedAt: now.toISOString() });
+    return { ok: true, note: "Sent." };
+  }
   if (!draft || draft.channel !== "hospitable" || draft.hospitable?.tool !== "send-reservation-message") return { ok: false, note: "This one has no message to send. Nothing was sent." };
   const body = (input.text?.trim() || draft.body).trim();
   const blank = BLANK.exec(body);
