@@ -37,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.job === "watch") {
     return withCopilotScope(async () => {
       try {
-        return res.status(200).json({ ok: true, watch: await runWatch() });
+        return res.status(200).json({ ok: true, watch: await runWatch(undefined, { adaptive: true }) });
       } catch (err) {
         const error = err instanceof Error ? err.message : "The watch loop failed";
         console.error("[cron/follow-ups] watch", error);

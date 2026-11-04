@@ -76,7 +76,11 @@ async function candidateFor(conv: Conversation, action: ThreadAction, today: str
   };
 }
 
-export async function collectThreadGaps(now: Date): Promise<{ candidates: Candidate[]; failed: string[] }> {
+/**
+ * With a set of stay ids, only those threads are read: a thread with no new message and no check-in or check-out today isn't
+ * re-read at all, and the ids left alone are returned so their earlier items aren't taken for resolved.
+ */
+export async function collectThreadGaps(now: Date, only: Set<string> | null = null): Promise<{ candidates: Candidate[]; failed: string[]; unevaluated: string[] }> {
   const today = torontoToday(now);
   const out: Candidate[] = [];
   const failed: string[] = [];
@@ -87,7 +91,8 @@ export async function collectThreadGaps(now: Date): Promise<{ candidates: Candid
     .filter((conv) => !ENDED.test(conv.stay.status) && conv.stay.checkOut.slice(0, 10) >= today && Date.parse(`${conv.stay.checkIn.slice(0, 10)}T12:00:00Z`) <= reach)
     .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt))
     .slice(0, MAX_THREADS);
-  for (const conv of active) {
+  const unevaluated = only ? loaded.conversations.filter((conv) => !only.has(conv.stay.id)).map((conv) => conv.stay.id) : [];
+  for (const conv of only ? active.filter((row) => only.has(row.stay.id)) : active) {
     let messages: ThreadMsg[] | null = null;
     try {
       messages = conv.inquiry ? conv.turns ?? [] : await readStayThread(conv.stay.id, now, conv.lastMessageAt);
@@ -105,5 +110,5 @@ export async function collectThreadGaps(now: Date): Promise<{ candidates: Candid
       if (found) out.push(found);
     }
   }
-  return { candidates: out, failed: [...new Set(failed)] };
+  return { candidates: out, failed: [...new Set(failed)], unevaluated };
 }

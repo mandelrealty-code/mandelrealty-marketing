@@ -12,6 +12,7 @@ import { connectorRows } from "./connectorStatus.js";
 import { readThread } from "./guestInbox.js";
 import { furnitureTools } from "./furnitureTools.js";
 import { sendTextTool, sentTextsTool } from "./partnerTextTools.js";
+import { watchSpendReport } from "./watch.js";
 import { boardPrompt, loadBoard } from "./furnitureBoard.js";
 import { APPROX_PRICE, asksShopping, shopSearch, type ShopResult } from "./shopping.js";
 import { dayMovements, findStays, nextStays, readableUnit } from "./stayLookup.js";
@@ -72,6 +73,7 @@ export const STEP_LABELS: Record<string, string> = {
   open_receipt: "Opened the receipt",
   shop_search: "Read the live listings",
   send_text: "Texted the partner",
+  watch_spend: "Checked what the watch loop cost",
   sent_texts: "Checked what was texted",
   furniture_revise: "Updated the furniture options",
   furniture_report: "Built the furnishing plan",
@@ -111,6 +113,12 @@ function ownTools(): AgentTool[] {
       description: "Finds products for sale and their live prices, each with its link. Use it for ANY question about a product, a price, 'a cheap option' or 'what does X cost', and whenever the partner names a store (Amazon, Walmart, Costco, IKEA...). Amazon.ca is read in a real browser because it blocks plain reads. The result lists each product with its name, its CAD price read from the page just now, and its link: name a product only from this list, always with its link, and give only these prices. If it says the store blocked you or nothing could be read, say that one line and STOP: never fall back to web_lookup, never give approximate prices. Read only. This never buys anything.",
       input_schema: { type: "object", properties: { query: { type: "string", description: "The product, such as 'laundry pods'." }, store: { type: "string", description: "A store such as amazon.ca or walmart.ca, when the partner named one." }, limit: { type: "number" } }, required: ["query"] },
       run: async (input) => shopSearch({ query: String(input.query ?? ""), store: String(input.store ?? "") || undefined, limit: typeof input.limit === "number" ? input.limit : undefined }),
+    },
+    {
+      name: "watch_spend",
+      description: "What the background watch loop has cost, split by phase, for the last few days: how many cheap checks ran (no model, no cost), how many skipped the model because nothing changed, and how many model passes ran with their tokens and estimated cost. Use it when the partner asks what the loop or the agent has cost. Read only.",
+      input_schema: { type: "object", properties: { days: { type: "number" } } },
+      run: async (input) => watchSpendReport(undefined, Math.min(Math.max(typeof input.days === "number" ? Math.round(input.days) : 3, 1), 14)),
     },
     {
       name: "connector_status",

@@ -73,7 +73,7 @@ import { cleanMcpToken, verifyHospitableMcpToken } from "../copilot/hospitableMc
 import { copilotScopeActive, disconnectHospitable, hospitableCard, hospitablePage, saveHospitableSelection, saveHospitableToken, withCopilotScope } from "../copilot/hospitableConnection.js";
 import { adjustDraft, ADJUST_KINDS, type AdjustKind } from "../copilot/reviewAdjust.js";
 import { answerInChat, type AgentEvent } from "../copilot/agentChat.js";
-import { actOnWatchItem, watchDecisions } from "../copilot/watch.js";
+import { actOnWatchItem, watchDecisions, watchSpendReport } from "../copilot/watch.js";
 import { resolveScope } from "../copilot/clientProperty.js";
 import { diagnoseStays } from "../copilot/stayLookup.js";
 import { loadReviewQueue, regenerateFromConnection, skipReview, submitReviewReply, undoSkip } from "../copilot/reviewsQueue.js";
@@ -818,6 +818,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     // What the watch loop put in Decisions, and what a partner does with it. Items are never chats; snooze keeps one away until tomorrow.
     if (op === "watch-items") return res.status(200).json({ items: await watchDecisions() });
+    if (op === "watch-spend") return res.status(200).json(await watchSpendReport());
     if (op === "watch-act") {
       const action = body.action === "send" || body.action === "done" ? body.action : "snooze";
       return res.status(200).json(await actOnWatchItem({ key: String(body.key ?? ""), action, ...(typeof body.text === "string" ? { text: body.text } : {}) }));

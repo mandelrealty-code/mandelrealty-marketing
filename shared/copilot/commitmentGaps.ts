@@ -137,7 +137,9 @@ async function artifacts(now: Date): Promise<{ found: Artifacts; failed: string[
 
 const hash = (text: string) => [...text].reduce((n, char) => (n * 31 + char.charCodeAt(0)) >>> 0, 7).toString(36);
 
-export async function collectCommitmentGaps(now: Date): Promise<{ candidates: Candidate[]; failed: string[] }> {
+/** With run false nothing is read: no new mail, chat or task means no new commitment and no new outcome. */
+export async function collectCommitmentGaps(now: Date, run = true): Promise<{ candidates: Candidate[]; failed: string[]; skipped?: boolean }> {
+  if (!run) return { candidates: [], failed: [], skipped: true };
   const { said, failed } = await recentSaid(now);
   const commitments = extractCommitments(said).filter((c) => (now.getTime() - Date.parse(c.at)) / 3_600_000 >= GRACE_HOURS);
   if (!commitments.length) return { candidates: [], failed };

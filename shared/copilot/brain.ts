@@ -36,6 +36,8 @@ export type BrainResult = {
   stop: string;
   provider: "meta" | "anthropic" | "seam";
   model: string;
+  /** Tokens the provider counted, when it said (a plain call; a stream is not counted). */
+  usage?: { input: number; output: number };
 };
 
 export type Route = { provider: "meta" | "anthropic"; model: string };
@@ -215,6 +217,7 @@ async function callOnce(request: BrainRequest, route: Route, emitted: { any: boo
     if (!res.ok) throw new CallFailed(false, "status", res.status);
     let blocks: BrainBlock[];
     let stop = "end_turn";
+    let usage: { input: number; output: number } | undefined;
     if (request.onText && /event-stream/i.test(res.headers.get("content-type") ?? "")) {
       const piece = request.onText;
       const streamed = await readStream(res, (text) => {
@@ -224,7 +227,8 @@ async function callOnce(request: BrainRequest, route: Route, emitted: { any: boo
       blocks = streamed.blocks;
       stop = streamed.stop;
     } else {
-      const data = (await res.json().catch(() => ({}))) as { content?: BrainBlock[]; stop_reason?: string };
+      const data = (await res.json().catch(() => ({}))) as { content?: BrainBlock[]; stop_reason?: string; usage?: { input_tokens?: number; output_tokens?: number } };
+      if (data.usage) usage = { input: Number(data.usage.input_tokens) || 0, output: Number(data.usage.output_tokens) || 0 };
       blocks = (data.content ?? []).filter((block) => block.type === "text" || block.type === "tool_use");
       stop = data.stop_reason ?? "end_turn";
       const text = blocks.filter((block): block is Extract<BrainBlock, { type: "text" }> => block.type === "text").map((block) => block.text).join("");
@@ -236,7 +240,7 @@ async function callOnce(request: BrainRequest, route: Route, emitted: { any: boo
     const text = blocks.filter((block): block is Extract<BrainBlock, { type: "text" }> => block.type === "text").map((block) => block.text).join("").trim();
     const toolUses = blocks.filter((block): block is Extract<BrainBlock, { type: "tool_use" }> => block.type === "tool_use").map((block) => ({ id: block.id, name: block.name, input: block.input ?? {} }));
     if (!text && !toolUses.length) throw new CallFailed(true, "empty", res.status);
-    return { text, toolUses, blocks, stop, provider: route.provider, model: route.model };
+    return { text, toolUses, blocks, stop, provider: route.provider, model: route.model, ...(usage ? { usage } : {}) };
   } catch (err) {
     if (err instanceof CallFailed) throw err;
     throw new CallFailed(true, ctrl.signal.aborted ? "timeout" : "network");

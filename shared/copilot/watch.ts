@@ -20,12 +20,14 @@ import { parityEnabled } from "./parity/flag.js";
 import { loadReviewQueue } from "./reviewsQueue.js";
 import { collectThreadGaps } from "./threadGaps.js";
 import { collectCommitmentGaps } from "./commitmentGaps.js";
+import { addSpend, costOf, describeSpend, isMetaKey, readMeta, resetWatchMeta, spendFor, writeMeta, type DaySpend } from "./watchMeta.js";
+import { diffSnapshots, takeSnapshot, type Snapshot } from "./watchSnapshot.js";
 import { closeFollowUpEverywhere } from "./dueFollowUps.js";
 import { sendReservationMessage } from "./hospitableAgent.js";
 import { deleteChat, listMessages } from "./store.js";
 import { boardPayload } from "./taskBoardApi.js";
 import { daysOutstanding, isOpen } from "./taskTypes.js";
-import { quietHours, torontoHour, torontoToday } from "./time.js";
+import { addDays, quietHours, torontoHour, torontoToday } from "./time.js";
 import type { CopilotDraft } from "./types.js";
 
 export type WatchKind = "guest_waiting" | "commitment" | "incident" | "inquiry_deadline" | "cleaner" | "review" | "task" | "thread_gap" | "commitment_gap";
@@ -66,6 +68,7 @@ export type LedgerRow = {
 let volatile = new Map<string, LedgerRow>();
 export function resetWatch(): void {
   volatile = new Map();
+  resetWatchMeta();
 }
 
 const TABLE = "copilot_watch_items";
@@ -92,7 +95,8 @@ async function ledger(): Promise<LedgerRow[]> {
   if (!client) return [...volatile.values()];
   const { data, error } = await client.from(TABLE).select("*").order("surfaced_at", { ascending: false }).limit(2000);
   if (error) throw new Error("The watch ledger isn't set up. Run supabase/watch_v1.sql.");
-  return ((data ?? []) as Row[]).map(fromRow);
+  // The loop's own memory lives in the same table under meta: keys and is never an item.
+  return ((data ?? []) as Row[]).filter((row) => !isMetaKey(row.key)).map(fromRow);
 }
 
 /** Writes one ledger row. Also how the harness plants a row from before items stopped being chats. */
@@ -120,7 +124,8 @@ export { quietHours, torontoHour };
 
 const HOUR = 3_600_000;
 
-type Source = (now: Date) => Promise<{ candidates: Candidate[]; failed: string[] }>;
+export type Collected = { candidates: Candidate[]; failed: string[]; /** The first moment an item now below its floor would count (a guest waiting two hours, an inquiry six hours from expiring). */ nextReviewAt?: string; /** Items from earlier passes that were not re-evaluated this time, so they must not be taken for resolved. */ unevaluated?: { stays: string[]; commitments: boolean; guests?: boolean } };
+type Source = (now: Date) => Promise<Collected>;
 let source: Source | null = null;
 
 /** Tests hand the loop its candidates. Null restores the real look over the business. */
@@ -128,12 +133,15 @@ export function setWatchSource(next: Source | null): void {
   source = next;
 }
 
-export async function collectCandidates(now: Date): Promise<{ candidates: Candidate[]; failed: string[] }> {
+export async function collectCandidates(now: Date, opts: { threads?: Set<string> | null; commitments?: boolean; guests?: boolean } = {}): Promise<Collected> {
   const today = torontoToday(now);
   const out: Candidate[] = [];
   const failed: string[] = [];
+  let review = Infinity;
+  const unevaluated = { stays: [] as string[], commitments: false, guests: false };
 
-  try {
+  if (opts.guests === false) unevaluated.guests = true;
+  else try {
     const queue = await loadGuestQueue(now);
     if (!queue.connected) failed.push("Guest messages");
     else {
@@ -143,7 +151,11 @@ export async function collectCandidates(now: Date): Promise<{ candidates: Candid
         const hours = row.waitedMs / HOUR;
         const arrivesSoon = Boolean(row.checkIn) && row.checkIn.slice(0, 10) <= today;
         // A reply that has waited under two hours (under 30 minutes for a guest in the house or arriving) is not yet worth a partner.
-        if (hours < (arrivesSoon ? 0.5 : 2)) continue;
+        const floor = arrivesSoon ? 0.5 : 2;
+        if (hours < floor) {
+          review = Math.min(review, now.getTime() + (floor - hours) * HOUR);
+          continue;
+        }
         out.push({
           key: `guest:${row.id}:${row.activityAt || row.asked.slice(0, 60)}`,
           kind: "guest_waiting",
@@ -184,6 +196,7 @@ export async function collectCandidates(now: Date): Promise<{ candidates: Candid
           });
         } else if (row.kind === "inquiry" && row.expiresAt) {
           const left = (Date.parse(row.expiresAt) - now.getTime()) / HOUR;
+          if (left > 6) review = Math.min(review, Date.parse(row.expiresAt) - 6 * HOUR);
           if (left > 0 && left <= 6) {
             out.push({ key: `inquiry:${row.id}`, kind: "inquiry_deadline", native: true, title: `${row.guest}'s inquiry is about to expire`, reason: `Expires in ${Math.max(1, Math.round(left))}h.`, property: row.property, urgency: 90, guestWaiting: false });
           }
@@ -244,17 +257,24 @@ export async function collectCandidates(now: Date): Promise<{ candidates: Candid
   }
 
   // The gaps between sources: what a thread implies that no record shows done, and what someone said would happen.
-  for (const [name, collect] of [["Thread gaps", collectThreadGaps], ["Commitment gaps", collectCommitmentGaps]] as const) {
-    try {
-      const gaps = await collect(now);
-      out.push(...gaps.candidates);
-      failed.push(...gaps.failed);
-    } catch {
-      failed.push(name);
-    }
+  try {
+    const gaps = await collectThreadGaps(now, opts.threads ?? null);
+    out.push(...gaps.candidates);
+    failed.push(...gaps.failed);
+    unevaluated.stays.push(...gaps.unevaluated);
+  } catch {
+    failed.push("Thread gaps");
+  }
+  try {
+    const gaps = await collectCommitmentGaps(now, opts.commitments !== false);
+    out.push(...gaps.candidates);
+    failed.push(...gaps.failed);
+    if (gaps.skipped) unevaluated.commitments = true;
+  } catch {
+    failed.push("Commitment gaps");
   }
 
-  return { candidates: out.sort((a, b) => b.urgency - a.urgency), failed: [...new Set(failed)] };
+  return { candidates: out.sort((a, b) => b.urgency - a.urgency), failed: [...new Set(failed)], ...(Number.isFinite(review) ? { nextReviewAt: new Date(review).toISOString() } : {}), unevaluated };
 }
 
 // ---------- The judgment ----------
@@ -293,10 +313,11 @@ export function parseJudgment(text: string, keys: Set<string>): Judged[] | null 
  * The brain picks and orders from the candidates, and may drop any of them. It can never add one the system did not find.
  * Without a brain, or when it answers badly, the candidates stand in urgency order: they already passed the floors above.
  */
-export async function judge(candidates: Candidate[], notes: string[], now: Date): Promise<{ ordered: (Candidate & { why: string })[]; usedBrain: boolean }> {
+export async function judge(candidates: Candidate[], notes: string[], now: Date): Promise<{ ordered: (Candidate & { why: string })[]; usedBrain: boolean; usage?: { input: number; output: number; model: string }; judged?: Judged[] }> {
   if (!candidates.length) return { ordered: [], usedBrain: false };
   const keys = new Set(candidates.map((item) => item.key));
   let judged: Judged[] | null = null;
+  let usage: { input: number; output: number; model: string } | undefined;
   if (brainAvailable()) {
     const result = await complete({
       task: "chat",
@@ -309,11 +330,12 @@ export async function judge(candidates: Candidate[], notes: string[], now: Date)
       maxTokens: 1200,
     });
     judged = result ? parseJudgment(result.text, keys) : null;
+    if (result?.usage) usage = { ...result.usage, model: result.model };
   }
   if (!judged) return { ordered: candidates.map((item) => ({ ...item, why: item.reason })), usedBrain: false };
   const byKey = new Map(candidates.map((item) => [item.key, item]));
   const ordered = judged.filter((item) => item.surface).map((item) => ({ ...byKey.get(item.key)!, why: item.reason || byKey.get(item.key)!.reason }));
-  return { ordered, usedBrain: true };
+  return { ordered, usedBrain: true, ...(usage ? { usage } : {}), judged };
 }
 
 // ---------- Dismissals teach the judgment ----------
@@ -422,23 +444,129 @@ export async function actOnWatchItem(input: { key: string; action: "snooze" | "s
 }
 
 export type WatchItem = { key: string; kind: WatchKind; title: string; reason: string; urgency: number; property: string; delivered: boolean; native: boolean; resurfaced: boolean };
-export type WatchResult = { at: string; ranked: WatchItem[]; delivered: number; deferred: number; skipped: number; failed: string[]; usedBrain: boolean; cleaned: number; resolved: number };
+export type WatchResult = {
+  at: string;
+  ranked: WatchItem[];
+  delivered: number;
+  deferred: number;
+  skipped: number;
+  failed: string[];
+  usedBrain: boolean;
+  cleaned: number;
+  resolved: number;
+  /** What this pass did: "backoff" (not even checked), "no-change" (checked, model skipped) or "triaged" (the model ran). */
+  phase?: "backoff" | "no-change" | "triaged";
+  /** How long until the next check the loop is willing to do, in minutes. */
+  intervalMin?: number;
+  /** Why phase (a) said something changed. */
+  reasons?: string[];
+};
+
+// ---------- What the loop remembers, and its log ----------
+
+type LoopState = { snapshot: Snapshot | null; streak: number; intervalMin: number; nextDueAt: string; nextReviewAt: string; judged: Record<string, string> };
+const STATE_KEY = "meta:state";
+const FIRST: LoopState = { snapshot: null, streak: 0, intervalMin: 15, nextDueAt: "", nextReviewAt: "", judged: {} };
+
+type LogLine = Record<string, string | number | boolean | string[]>;
+let logger: ((line: LogLine) => void) | null = null;
+
+/** Tests read the log. Null restores the server log. */
+export function setWatchLogger(next: ((line: LogLine) => void) | null): void {
+  logger = next;
+}
+
+function watchLog(line: LogLine): void {
+  if (logger) return logger(line);
+  if (parityEnabled()) return;
+  console.log(`[watch] ${JSON.stringify(line)}`);
+}
+
+/** 15 minutes while things move; after two quiet passes in a row 30, after four 60. A change snaps it back to 15. */
+export function intervalFor(streak: number): number {
+  return streak >= 4 ? 60 : streak >= 2 ? 30 : 15;
+}
+
+const JITTER_MS = 2 * 60_000;
+const sig = (item: Candidate) => `${item.title}|${item.reason}|${Math.round(item.urgency / 10)}`;
 
 /**
- * One pass. Safe to run every 15 minutes. An item already waiting in Decisions isn't surfaced again, one dismissed today stays
- * away until tomorrow, and one that is no longer an issue leaves the queue on its own.
+ * One pass, in two phases. Phase (a) is deterministic and calls no model: it takes a cheap snapshot (reservations and their
+ * newest message times, check-ins and check-outs today, task and review counts, newest mail and chat) and compares it with the
+ * last pass. Phase (b), the looking over and the model's triage, runs only when (a) found a change or a time-based floor has
+ * passed. Without a change the pass costs nothing. With opts.adaptive the cadence backs off while it stays quiet.
  */
-export async function runWatch(now: Date = parityNow() ?? new Date()): Promise<WatchResult> {
+export async function runWatch(now: Date = parityNow() ?? new Date(), opts: { adaptive?: boolean } = {}): Promise<WatchResult> {
+  const today = day(now);
+  const empty = (phase: WatchResult["phase"], extra: Partial<WatchResult> = {}): WatchResult => ({ at: now.toISOString(), ranked: [], delivered: 0, deferred: 0, skipped: 0, failed: [], usedBrain: false, cleaned: 0, resolved: 0, phase, ...extra });
+  if (!opts.adaptive) return triage(now, null, empty("triaged"));
+  const state = (await readMeta<LoopState>(STATE_KEY)) ?? { ...FIRST };
+  if (state.nextDueAt && now.getTime() < Date.parse(state.nextDueAt)) {
+    await addSpend(today, { backedOff: 1 });
+    watchLog({ watch: "backoff", until: state.nextDueAt, intervalMin: state.intervalMin });
+    return empty("backoff", { intervalMin: state.intervalMin });
+  }
+  // Phase (a). A test hands the loop its candidates, so their signature stands in for the business's state.
+  let current: Snapshot | null;
+  let failedA: string[] = [];
+  if (source) {
+    const looked = await source(now);
+    current = { day: today, conv: {}, ins: [], outs: [], tasks: "", reviews: "", mail: looked.candidates.map((item) => `${item.key}|${sig(item)}`).sort().join(";"), chat: "" };
+  } else {
+    const taken = await takeSnapshot(now);
+    current = taken.snapshot;
+    failedA = taken.failed;
+  }
+  const change = current ? diffSnapshots(state.snapshot, current) : { changed: true, reasons: ["a source couldn't be read, so nothing can be confirmed unchanged"], threads: new Set<string>(), mailOrChat: true };
+  const timeDue = Boolean(state.nextReviewAt) && now.getTime() >= Date.parse(state.nextReviewAt);
+  if (timeDue) change.reasons.push("something that wasn't urgent yet has crossed its time floor");
+  const changed = change.changed || timeDue || failedA.length > 0;
+  await addSpend(today, { checks: 1 });
+  if (!changed) {
+    const streak = state.streak + 1;
+    const intervalMin = intervalFor(streak);
+    await writeMeta(STATE_KEY, { ...state, snapshot: current, streak, intervalMin, nextDueAt: intervalMin > 15 ? new Date(now.getTime() + intervalMin * 60_000 - JITTER_MS).toISOString() : "" } satisfies LoopState);
+    await addSpend(today, { skippedTriage: 1 });
+    watchLog({ watch: "no change, skipped triage", streak, nextIntervalMin: intervalMin });
+    return empty("no-change", { intervalMin });
+  }
+  watchLog({ watch: "change", reasons: change.reasons });
+  // Phase (b): only the threads a change points at are read deeply; everything else keeps what earlier passes found.
+  const readThreads = change.threads.size > 0 || timeDue || change.reasons.includes("a new day");
+  const result = await triage(now, { threads: change.threads, commitments: change.mailOrChat || timeDue, guests: readThreads, judged: state.judged }, empty("triaged", { reasons: change.reasons }));
+  const saved = await readMeta<LoopState>(STATE_KEY);
+  await writeMeta(STATE_KEY, { snapshot: current, streak: 0, intervalMin: 15, nextDueAt: "", nextReviewAt: result.nextReviewAt ?? "", judged: result.judged ?? saved?.judged ?? {} } satisfies LoopState);
+  delete result.nextReviewAt;
+  delete result.judged;
+  return { ...result, intervalMin: 15 };
+}
+
+type Phase = { threads: Set<string> | null; commitments: boolean; guests: boolean; judged: Record<string, string> };
+
+/**
+ * Phase (b): the full look over the business and the judgment. An item already waiting in Decisions isn't surfaced again, one
+ * dismissed today stays away until tomorrow, one that is no longer an issue leaves the queue on its own, and a candidate the
+ * judgment already decided against isn't judged again until it changes.
+ */
+async function triage(now: Date, phase: Phase | null, base: WatchResult): Promise<WatchResult & { nextReviewAt?: string; judged?: Record<string, string> }> {
   const cleaned = await cleanupWatchChats(now);
   const today = day(now);
-  const { candidates, failed } = await (source ?? collectCandidates)(now);
+  const collected = await (source ?? ((at: Date) => collectCandidates(at, phase ? { threads: phase.threads, commitments: phase.commitments, guests: phase.guests } : {})))(now);
+  const { candidates, failed } = collected;
   const open = new Set(candidates.map((item) => item.key));
   const rows = new Map((await ledger()).map((row) => [row.key, row]));
-  // An item whose issue has gone (the guest was answered, the task done) leaves Decisions. Only trusted when every read worked.
+  const skippedWork = collected.unevaluated;
+  const kept = (key: string) => Boolean(skippedWork) && (
+    (key.startsWith("gap:commit:") && skippedWork!.commitments)
+    || (key.startsWith("gap:") && skippedWork!.stays.some((id) => key.includes(`:${id}:`)))
+    || (Boolean(skippedWork!.guests) && /^(guest|followup|incident|inquiry):/.test(key))
+  );
+  // An item whose issue has gone (the guest was answered, the task done) leaves Decisions. Only trusted when every read worked,
+  // and never for an item whose source wasn't looked at this pass.
   let resolved = 0;
   if (!failed.length) {
     for (const row of rows.values()) {
-      if (row.status === "surfaced" && !open.has(row.key)) {
+      if (row.status === "surfaced" && !open.has(row.key) && !kept(row.key)) {
         await record({ ...row, status: "handled", resolvedAt: now.toISOString() });
         resolved += 1;
       }
@@ -447,13 +575,20 @@ export async function runWatch(now: Date = parityNow() ?? new Date()): Promise<W
   // New items, plus ones dismissed on an earlier day whose issue is still open: a new day is a new chance, not nagging.
   const fresh = candidates.filter((item) => {
     const row = rows.get(item.key);
-    if (!row) return true;
+    if (!row) return !phase || phase.judged[item.key] !== sig(item);
     return row.status === "dismissed" && row.dismissedOn < today;
   });
-  const { ordered, usedBrain } = await judge(fresh, await learnedNotes(), now);
   const quiet = quietHours(now);
+  // Overnight, only a guest actively waiting on a reply is worth the model; the rest wait for 8 AM unjudged.
+  const toJudge = phase && quiet ? fresh.filter((item) => item.guestWaiting) : fresh;
+  const { ordered, usedBrain, usage, judged: verdicts } = await judge(toJudge, await learnedNotes(), now);
+  if (usage) {
+    const cost = costOf(usage.model, usage.input, usage.output);
+    await addSpend(today, { triages: 1, modelCalls: 1, inputTokens: usage.input, outputTokens: usage.output, costUsd: cost.usd, unpricedTokens: cost.priced ? 0 : usage.input + usage.output });
+  } else if (usedBrain) await addSpend(today, { triages: 1, modelCalls: 1 });
+  else if (phase) await addSpend(today, { triages: 1 });
   const ranked: WatchItem[] = [];
-  let deferred = 0;
+  let deferred = fresh.length - toJudge.length;
   for (const item of ordered) {
     // Overnight, only a guest actively waiting on a reply. The rest wait for 8 AM and are not recorded, so they surface then.
     if (quiet && !item.guestWaiting) {
@@ -465,5 +600,25 @@ export async function runWatch(now: Date = parityNow() ?? new Date()): Promise<W
     await record({ key: item.key, kind: item.kind, title: item.title, property: item.property, chatId: "", status: item.native ? "native" : "surfaced", dismissedOn: "", surfacedAt: now.toISOString(), resolvedAt: "", payload: item.native ? null : payload });
     ranked.push({ key: item.key, kind: item.kind, title: item.title, reason: payload.reason, urgency: item.urgency, property: item.property, delivered: !item.native, native: item.native, resurfaced: before?.status === "dismissed" });
   }
-  return { at: now.toISOString(), ranked, delivered: ranked.filter((item) => item.delivered).length, deferred, skipped: candidates.length - fresh.length + (fresh.length - ordered.length), failed, usedBrain, cleaned, resolved };
+  // What the judgment turned down is remembered by its content, so the same candidate costs nothing next pass.
+  const decided: Record<string, string> = {};
+  if (phase) {
+    for (const item of candidates) if (phase.judged[item.key] === sig(item)) decided[item.key] = sig(item);
+    for (const row of verdicts ?? []) {
+      const item = candidates.find((candidate) => candidate.key === row.key);
+      if (item && !row.surface) decided[item.key] = sig(item);
+    }
+  }
+  return {
+    ...base, at: now.toISOString(), ranked, delivered: ranked.filter((item) => item.delivered).length, deferred, skipped: candidates.length - fresh.length + (fresh.length - ordered.length), failed, usedBrain, cleaned, resolved,
+    ...(collected.nextReviewAt ? { nextReviewAt: collected.nextReviewAt } : {}), ...(phase ? { judged: decided } : {}),
+  };
+}
+
+/** The watch loop's spend for the last few days, split by phase: what the empty checks cost (nothing) and what the model passes cost. */
+export async function watchSpendReport(now: Date = parityNow() ?? new Date(), days = 7): Promise<{ rows: DaySpend[]; text: string }> {
+  const rows: DaySpend[] = [];
+  for (let back = 0; back < days; back += 1) rows.push(await spendFor(addDays(day(now), -back)));
+  const used = rows.filter((row) => row.checks || row.backedOff || row.triages);
+  return { rows: used, text: used.length ? describeSpend(used) : "The watch loop hasn't run in that time." };
 }
