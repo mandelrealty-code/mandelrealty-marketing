@@ -8,6 +8,17 @@ type SubmitResult = { sent: boolean; reason: string; savedLine: string; failedLi
 type HubSave = (offer: { propertyId: string; property: string; title: string; content: string }) => Promise<{ saved: boolean; line: string }>;
 type HubOffer = HubProposal & { phase: "open" | "saving" | "saved" | "failed"; line: string };
 
+/** The exact words a follow-up stands on, shortened so a made-up one is easy to spot at a glance. */
+function quoteShort(quote: string): string {
+  const flat = quote.replace(/\s+/g, " ").trim();
+  return flat.length > 90 ? `${flat.slice(0, 87).trimEnd()}...` : flat;
+}
+
+function quoteDay(at: string): string {
+  const date = new Date(at);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Toronto" });
+}
+
 function submitProblem(result: SubmitResult): string {
   if (!result.sent && !result.pending) return result.reason || "It is not sent.";
   return result.failedLine || "";
@@ -211,7 +222,7 @@ function Queue({
               <Face name={row.guest} photo={row.guestPhoto} initials={row.initials} size={28} />
               {row.kind === "inquiry" ? <span className="cp-gq-tag">INQUIRY</span> : null}
               <span className="cp-gq-who"><strong>{row.guest}</strong><em> · {row.property}</em></span>
-              <span className="cp-gq-line">{row.line}{row.kind === "ask" && row.agreed ? ` · “${row.agreed}”` : ""}</span>
+              <span className="cp-gq-line">{row.line}{row.kind === "ask" && row.agreed ? ` · “${row.agreed}”` : ""}{row.kind !== "ask" && row.kind !== "inquiry" && row.grounding?.quote ? <em className="cp-gq-quote"> · “{quoteShort(row.grounding.quote)}”{row.grounding.at ? ` (${quoteDay(row.grounding.at)})` : ""}</em> : null}</span>
               <span className="cp-gq-due">{row.when}</span>
             </button>
           ))}

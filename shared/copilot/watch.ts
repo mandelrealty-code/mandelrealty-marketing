@@ -13,7 +13,7 @@ import { complete, brainAvailable } from "./brain.js";
 import { listFacts, saveFact, subjectKey } from "./businessFacts.js";
 import { loadDayBoard } from "./dayBoard.js";
 import { dueQuestion } from "./dueFollowUps.js";
-import { loadGuestQueue } from "./guestMessaging.js";
+import { loadGuestQueue, reverifyOpenFollowUps } from "./guestMessaging.js";
 import { sendGmailReply } from "../adminApi/gmail.js";
 import { parityNow } from "./parity/clock.js";
 import { parityEnabled } from "./parity/flag.js";
@@ -464,7 +464,8 @@ export type WatchResult = {
 
 // ---------- What the loop remembers, and its log ----------
 
-type LoopState = { snapshot: Snapshot | null; streak: number; intervalMin: number; nextDueAt: string; nextReviewAt: string; judged: Record<string, string> };
+type LoopState = { snapshot: Snapshot | null; streak: number; intervalMin: number; nextDueAt: string; nextReviewAt: string; judged: Record<string, string>; /** Which version of the follow-up checks last ran, so a change to them is applied on the very next pass. */ verified?: number };
+const VERIFY_VERSION = 2;
 const STATE_KEY = "meta:state";
 const FIRST: LoopState = { snapshot: null, streak: 0, intervalMin: 15, nextDueAt: "", nextReviewAt: "", judged: {} };
 
@@ -520,7 +521,9 @@ export async function runWatch(now: Date = parityNow() ?? new Date(), opts: { ad
   const change = current ? diffSnapshots(state.snapshot, current) : { changed: true, reasons: ["a source couldn't be read, so nothing can be confirmed unchanged"], threads: new Set<string>(), mailOrChat: true };
   const timeDue = Boolean(state.nextReviewAt) && now.getTime() >= Date.parse(state.nextReviewAt);
   if (timeDue) change.reasons.push("something that wasn't urgent yet has crossed its time floor");
-  const changed = change.changed || timeDue || failedA.length > 0;
+  const recheck = state.verified !== VERIFY_VERSION;
+  if (recheck) change.reasons.push("the follow-up checks were updated, so every open follow-up is checked again");
+  const changed = change.changed || timeDue || recheck || failedA.length > 0;
   await addSpend(today, { checks: 1 });
   if (!changed) {
     const streak = state.streak + 1;
@@ -532,10 +535,10 @@ export async function runWatch(now: Date = parityNow() ?? new Date(), opts: { ad
   }
   watchLog({ watch: "change", reasons: change.reasons });
   // Phase (b): only the threads a change points at are read deeply; everything else keeps what earlier passes found.
-  const readThreads = change.threads.size > 0 || timeDue || change.reasons.includes("a new day");
+  const readThreads = change.threads.size > 0 || timeDue || recheck || change.reasons.includes("a new day");
   const result = await triage(now, { threads: change.threads, commitments: change.mailOrChat || timeDue, guests: readThreads, judged: state.judged }, empty("triaged", { reasons: change.reasons }));
   const saved = await readMeta<LoopState>(STATE_KEY);
-  await writeMeta(STATE_KEY, { snapshot: current, streak: 0, intervalMin: 15, nextDueAt: "", nextReviewAt: result.nextReviewAt ?? "", judged: result.judged ?? saved?.judged ?? {} } satisfies LoopState);
+  await writeMeta(STATE_KEY, { snapshot: current, streak: 0, intervalMin: 15, nextDueAt: "", nextReviewAt: result.nextReviewAt ?? "", judged: result.judged ?? saved?.judged ?? {}, verified: VERIFY_VERSION } satisfies LoopState);
   delete result.nextReviewAt;
   delete result.judged;
   return { ...result, intervalMin: 15 };
@@ -550,6 +553,8 @@ type Phase = { threads: Set<string> | null; commitments: boolean; guests: boolea
  */
 async function triage(now: Date, phase: Phase | null, base: WatchResult): Promise<WatchResult & { nextReviewAt?: string; judged?: Record<string, string> }> {
   const cleaned = await cleanupWatchChats(now);
+  // Every open follow-up is checked against its own thread again: a quote that is no longer there closes it, and the log says why.
+  await reverifyOpenFollowUps(now).catch(() => undefined);
   const today = day(now);
   const collected = await (source ?? ((at: Date) => collectCandidates(at, phase ? { threads: phase.threads, commitments: phase.commitments, guests: phase.guests } : {})))(now);
   const { candidates, failed } = collected;

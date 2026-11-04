@@ -67,6 +67,8 @@ type Incident = {
   guestBody: string;
 };
 
+const EARLY_CHECKIN = /\bearly\s+(?:check[\s-]?in|arrival|arrive|access)\b|\bcheck[\s-]?in\s+(?:early|earlier)\b|\b(?:arrive|arrival|check[\s-]?in|come in|get in)\b[^.!?\n]{0,50}\b(?:before|earlier than|ahead of)\b[^.!?\n]{0,20}\b(?:\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|noon|check[\s-]?in time)|\bhome ready\b|\broom ready (?:early|by)\b/i;
+
 const TOPICS: Topic[] = [
   { id: "windows", label: "Window cleaning", test: (text) => /window/i.test(text) },
   { id: "key", label: "Extra key", test: (text) => /\bkeys?\b/i.test(text) },
@@ -76,7 +78,9 @@ const TOPICS: Topic[] = [
   { id: "suitcase", label: "Suitcase", test: (text) => /suitcase|luggage/i.test(text) },
   { id: "pan", label: "Frying pan", test: (text) => /frying pan|\bpan\b/i.test(text) },
   { id: "bags", label: "Garbage bags", test: (text) => /garbage bag|\bbags?\b/i.test(text) },
-  { id: "check-in", label: "Early check-in", test: (text) => /check-in|early arrival|home ready/i.test(text) },
+  // Only an early check-in. A bare "check-in" (instructions, the time, the code) is not a promise of an early one, and the
+  // same test judges the quote when the follow-up is re-checked, so a loose word here would vouch for itself.
+  { id: "check-in", label: "Early check-in", test: (text) => EARLY_CHECKIN.test(plain(text)) },
   { id: "recipe", label: "Recipe", test: (text) => /recipe/i.test(text) },
   { id: "play", label: "Pack ’n Play", test: (text) => /pack\s*'?n\s*play|playpen/i.test(text) },
 ];
@@ -293,7 +297,23 @@ export function detectFollowUps(stay: FollowUpStay, now: Date): { open: GuestFol
       grounding: { quote: ask.quote, at: ask.at, role: "guest", name: first },
     }), today, now)),
   ];
-  return { open, settled };
+  // A follow-up is created only on an exact quote and when it was said, and only if that quote stands in THIS stay's own thread
+  // and supports the wording. No quote, no timestamp, or a quote the thread doesn't hold: it is never created, never guessed.
+  const refused: { id: string; reason: string }[] = [];
+  const grounded = open.filter((card) => {
+    if (!card.grounding?.quote?.trim()) return refused.push({ id: card.id, reason: "no quote" }) < 0;
+    if (!card.grounding.at?.trim()) return refused.push({ id: card.id, reason: "no message timestamp" }) < 0;
+    const check = verifyFollowUp(card, turns);
+    return check.ok || refused.push({ id: card.id, reason: check.reason }) < 0;
+  });
+  lastRefused = refused;
+  return { open: grounded, settled };
+}
+
+let lastRefused: { id: string; reason: string }[] = [];
+/** The follow-ups the last detection refused to create, and why. For the log and the tests. */
+export function refusedFollowUps(): { id: string; reason: string }[] {
+  return lastRefused;
 }
 
 export function orderFollowUps(rows: GuestFollowUp[], now: Date): GuestFollowUp[] {

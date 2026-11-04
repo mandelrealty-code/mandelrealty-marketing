@@ -9443,3 +9443,6 @@ html.cp-app[data-cp-theme="dark"] #root {
   text-underline-offset: 3px;
 }
 .cp .cp-thread .cp-fcard a:focus-visible { outline: 2px solid var(--m-accent); outline-offset: 2px; }
+
+/* A follow-up shows the guest's own words it stands on, quietly, so a fake one is obvious. */
+.cp-gq-fu .cp-gq-quote { font-style: normal; color: var(--muted); }

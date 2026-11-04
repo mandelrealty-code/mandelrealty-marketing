@@ -1860,3 +1860,60 @@ function clip(value: string, max: number): string {
   const space = cut.lastIndexOf(" ");
   return `${(space > 40 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
+
+type FollowUpLog = Record<string, string | number | boolean>;
+let followUpLogger: ((line: FollowUpLog) => void) | null = null;
+
+/** Tests read the log. Null restores the server log. */
+export function setFollowUpLogger(next: ((line: FollowUpLog) => void) | null): void {
+  followUpLogger = next;
+}
+
+function followUpLog(line: FollowUpLog): void {
+  if (followUpLogger) return followUpLogger(line);
+  if (parityEnabled()) return;
+  console.log(`[followups] ${JSON.stringify(line)}`);
+}
+
+/**
+ * Every open follow-up is checked again against its own thread, on every pass that looks at the business: its exact quote must
+ * still be there, said by the same side, and still support the wording. One that fails closes itself, for good, and the log says
+ * why. A thread that can't be read keeps the follow-up for now (it can't be confirmed either way). Nothing from another thread
+ * is ever consulted, because only the follow-up's own reservation is read.
+ */
+export async function reverifyOpenFollowUps(now: Date): Promise<{ checked: number; closed: { id: string; guest: string; topic: string; reason: string }[]; unverifiable: number }> {
+  const queue = await readSavedGuestQueue();
+  const closed: { id: string; guest: string; topic: string; reason: string }[] = [];
+  let checked = 0;
+  let unverifiable = 0;
+  for (const row of queue?.followUps ?? []) {
+    if (row.kind === "inquiry") continue;
+    checked += 1;
+    const verdict = (thread: { at: string; role: string; name: string; body: string }[] | null) => (!row.grounding?.quote?.trim() ? { ok: false, reason: "it has no quote from the guest's thread" } : thread ? verifyFollowUp(row, thread) : null);
+    let check = verdict(await cachedThreadMessages(row.reservationId).catch(() => null));
+    // A stored thread can be behind. Nothing closes on its word alone: the live thread is read before a quote is called missing.
+    if (!check || !check.ok) {
+      const live = await readStayThread(row.reservationId, now).catch(() => null);
+      if (live) check = verdict(live);
+      else if (!check) {
+        unverifiable += 1;
+        continue;
+      }
+    }
+    if (check && !check.ok) {
+      await closeFollowUpEverywhere(row.id);
+      closed.push({ id: row.id, guest: row.guest, topic: row.topic, reason: check.reason });
+      followUpLog({ followUp: row.id, guest: row.guest, topic: row.topic, closed: true, why: /quote|no quote|isn't in/.test(check.reason) ? "quote not found on re-verify" : "quote does not support the follow-up on re-verify", reason: check.reason, quote: (row.grounding?.quote ?? "").slice(0, 100) });
+    }
+  }
+  if (closed.length && rememberedQueue) {
+    const gone = new Set(closed.map((row) => row.id));
+    rememberedQueue.followUps = (rememberedQueue.followUps ?? []).filter((row) => !gone.has(row.id));
+  }
+  return { checked, closed, unverifiable };
+}
+
+/** Test seam: the saved guest queue holds exactly these follow-ups. */
+export async function writeGuestQueueSnapshotForTest(followUps: GuestFollowUp[]): Promise<void> {
+  rememberedQueue = { connected: true, line: "", summaryLead: "", summaryRest: "", waiting: [], onGuest: [], held: [], thanks: [], failed: [], properties: [], followUps, closedFollowUps: [], answer: "" };
+}
