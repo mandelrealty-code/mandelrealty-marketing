@@ -475,7 +475,9 @@ setBrainModel(async (request) => {
   const text = `The next reservation at 20 Blue Jays Way is ${result.next[0]!.guest}, ${result.next[0]!.checkIn} to ${result.next[0]!.checkOut}, then ${result.next[1]!.guest} from ${result.next[1]!.checkIn}.`;
   return { text, toolUses: [], blocks: [{ type: "text", text }], stop: "end_turn" };
 });
+setParityClock(new Date("2026-10-31T16:00:00Z"));
 const nextAnswer = await runAgentTurn({ chatId: "c", text: "whats the next reservation for that unit" });
+setParityClock(null);
 if (!/Michelle Sanders, 2026-11-04 to 2026-11-07, then Mark Bixler from 2026-11-22/.test(nextAnswer.body)) fail(`the agent said: ${nextAnswer.body}`);
 setBrainModel(null);
 if (!/call next_stays/.test((await import("./agentChat.js")).agentSystem("", "2026-10-20"))) fail("the agent isn't told to use next_stays");
@@ -847,18 +849,48 @@ resetBusinessFacts();
   if (login.opened || !login.loginRequired || !/won't ask for a store password/.test(login.note ?? "") || /enter your password|type your password/i.test(login.note ?? "")) fail(`a login wall: ${JSON.stringify(login)}`);
   const forbidden = await go("https://www.walmart.ca/orders/private");
   if (forbidden.opened || !forbidden.loginRequired) fail(`a 403 page: ${JSON.stringify(forbidden)}`);
+  // The whole flow in one call: find the order email, pick the receipt link, open it, return the items.
+  const mailRow = (id: string, from: string, email: string, subject: string, link: string) => ({ id, mailbox: "outlook" as const, folder: "inbox" as const, from, email, to: "info@mandelrealtygroup.com", date: "2026-11-03T10:00:00-05:00", subject, snippet: "Your order is confirmed", body: "Thanks for your order", airbnb: false, html: `<a href="${link}">View Receipt</a> <a href="https://www.walmart.ca/x">x</a>`.replace("https://www.walmart.ca/x", `${link}-x`) });
+  const nextData = `<html><body><div id="root"></div><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { order: { orderNumber: "SH-5512", priceDetails: { subtotal: 21.47, totalTax: 2.79, orderTotal: 24.26 }, items: [{ productName: "Advil 200 ct", quantity: 1, priceInfo: { linePrice: { value: 14.99 } } }, { productName: "Tissues 6 pack", quantity: 2, priceInfo: { linePrice: { value: 6.48 } } }] } } })}</script></body></html>`;
+  world.outlook.push(
+    mailRow("sh-login", "Locked Store", "orders@e.lockedstore.ca", "Your Locked Store order 111222", "https://www.lockedstore.ca/orders/mine"),
+    mailRow("sh-js", "Script Store", "orders@e.scriptstore.ca", "Your Script Store order 333444", "https://www.scriptstore.ca/orders/mine"),
+    mailRow("sh-next", "Shoppers", "orders@e.shoppers.ca", "Your Shoppers order SH-5512", "https://www.shoppers.ca/orders/mine"),
+  );
+  installWorld(world);
+  Object.assign(pageFor, {
+    "https://www.lockedstore.ca/orders/mine": { status: 302, url: "x", location: "https://www.lockedstore.ca/account/login", html: "" },
+    "https://www.lockedstore.ca/account/login": { status: 200, url: "https://www.lockedstore.ca/account/login", html: "<html><h1>Sign in</h1><input type='password'></html>" },
+    "https://www.scriptstore.ca/orders/mine": { status: 200, url: "https://www.scriptstore.ca/orders/mine", html: "<html><body><div id='app'></div><script>load()</script></body></html>" },
+    "https://www.shoppers.ca/orders/mine": { status: 200, url: "https://www.shoppers.ca/orders/mine", html: nextData },
+  });
+  const receiptTool = t.find((tool) => tool.name === "open_receipt")!;
+  type Rc = { done: boolean; note?: string; loginRequired?: boolean; email?: { id: string; subject: string }; receipt?: { items: { name: string; qty: number; lineTotal: number | null }[]; subtotal: number; total: number; orderNumber: string }; itemized?: string };
+  const flow = async (input: Record<string, unknown>) => (await receiptTool.run(input, "c")) as Rc;
+  const walmartFlow = await flow({ store: "Walmart" });
+  if (!walmartFlow.done || walmartFlow.email?.id !== "wm-1" || walmartFlow.receipt?.items.length !== 3 || walmartFlow.receipt.total !== 28.25 || !/Total: \$28\.25/.test(walmartFlow.itemized ?? "")) fail(`one call, email to itemized costs: ${JSON.stringify(walmartFlow)}`);
+  if (!(await flow({ store: "Walmart", order_number: "2884360750778919541" })).done) fail("finding the email by its order number");
+  const noOrder = await flow({ store: "Walmart", order_number: "999999999" });
+  if (noOrder.done || !/couldn't find a Walmart order email/.test(noOrder.note ?? "")) fail(`an order that isn't in the inbox: ${JSON.stringify(noOrder)}`);
+  const locked = await flow({ store: "Locked Store" });
+  if (locked.done || !locked.loginRequired || !/sign in/i.test(locked.note ?? "") || /\n/.test(locked.note ?? "")) fail(`a login wall is one line: ${JSON.stringify(locked)}`);
+  const scripted = await flow({ store: "Script Store" });
+  if (scripted.done || !/loads its (?:receipt|content) with scripts/.test(scripted.note ?? "") || /\n/.test(scripted.note ?? "")) fail(`a page that loads with scripts: ${JSON.stringify(scripted)}`);
+  const data = await flow({ store: "Shoppers" });
+  if (!data.done || data.receipt?.items.map((row) => `${row.qty}|${row.name}|${row.lineTotal}`).join() !== "1|Advil 200 ct|14.99,2|Tissues 6 pack|6.48" || data.receipt.subtotal !== 21.47 || data.receipt.total !== 24.26 || data.receipt.orderNumber !== "SH-5512") fail(`a script-built receipt read from the page's own data: ${JSON.stringify(data)}`);
+  if (agentTools({ partnerText: "x" }).find((tool) => tool.name === "open_receipt") === undefined) fail("the agent has no open_receipt");
+
   // From chat, through the agent, and for a saved skill.
   setBrainModel(async (request) => {
     if (request.task === "extract") return { text: "{\"facts\":[]}", toolUses: [], blocks: [], stop: "end_turn" };
     const used = request.messages!.flatMap((message) => (Array.isArray(message.content) ? message.content.filter((block) => block.type === "tool_use").map((block) => (block as { name: string }).name) : []));
     const call = (id: string, name: string, input: Record<string, unknown>) => ({ text: "", toolUses: [{ id, name, input }], blocks: [{ type: "tool_use" as const, id, name, input }], stop: "tool_use" as const });
-    if (!used.includes("read_mail")) return call("m", "read_mail", { mailbox: "outlook", id: "wm-1" });
-    if (!used.includes("open_link")) return call("o", "open_link", { mailbox: "outlook", id: "wm-1", url: "https://www.walmart.ca/orders/2884360750778919541?token=abc&from=email" });
+    if (!used.includes("open_receipt")) return call("o", "open_receipt", { store: "Walmart" });
     return { text: "Here is the receipt.", toolUses: [], blocks: [{ type: "text" as const, text: "Here is the receipt." }], stop: "end_turn" as const };
   });
   const turn = await runAgentTurn({ chatId: "receipt-chat", text: "can you open the receipt?" });
   setBrainModel(null);
-  if (!/Here is the receipt/.test(turn.body) || !turn.steps.includes("Opened the link from the email")) fail(`the agent's turn: ${turn.body} / ${turn.steps.join()}`);
+  if (!/Here is the receipt/.test(turn.body) || !turn.steps.includes("Opened the receipt") || turn.steps.filter((step) => !/Remembered|Updated/.test(step)).length > 3) fail(`the agent's turn took too many steps: ${turn.body} / ${turn.steps.join()}`);
   const names = agentTools({}).map((tool) => tool.name);
   for (const handling of ["Handling: asks first.", "Handling: tells you only.", "Handling: handles it itself.", ""]) {
     if (!allowedToolNames({ reads: "my Outlook inbox emails", drafts: handling }, names).includes("open_link")) fail(`a skill (${handling || "legacy"}) that reads email can't open a link`);

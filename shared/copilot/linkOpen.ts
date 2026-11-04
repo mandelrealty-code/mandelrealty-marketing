@@ -4,9 +4,11 @@
  */
 
 import { parityEnabled } from "./parity/flag.js";
+import { searchGmail } from "../adminApi/gmail.js";
+import { searchOutlook } from "../adminApi/outlook.js";
 import { readMailThread } from "./mailSearch.js";
 import { ACTION_LINK, SHORTENERS, hostOf, onSenderDomain, registrable, senderDomain } from "./mailLinks.js";
-import { parseReceipt, type Receipt } from "./receipt.js";
+import { parseReceipt, receiptFromJson, type Receipt } from "./receipt.js";
 
 export type Hop = { status: number; url: string; location?: string; html: string };
 type Fetcher = (url: string) => Promise<Hop>;
@@ -54,7 +56,7 @@ export function looksLikeLogin(url: string, html: string, text: string): boolean
 }
 
 export type OpenResult =
-  | { opened: true; url: string; resolvedUrl: string; title: string; receipt: Receipt | null; isReceipt: boolean; text: string }
+  | { opened: true; url: string; resolvedUrl: string; title: string; receipt: Receipt | null; isReceipt: boolean; text: string; /** Why no receipt could be read, in one line. */ blocker?: string }
   | { opened: false; loginRequired?: boolean; reason: string; note: string; destination?: string };
 
 function refuse(reason: string, note: string, extra: { destination?: string; loginRequired?: boolean } = {}): OpenResult {
@@ -103,6 +105,7 @@ export async function openMailLink(input: { mailbox: string; id: string; url: st
   if (page.status === 401 || page.status === 403) return refuse("login", `The page needs you to sign in (${page.status}). I stopped there. I won't ask for a store password: open it yourself while signed in, or paste what it shows and I'll read it.`, { loginRequired: true });
   if (page.status >= 400) return refuse("error-page", `The page answered ${page.status}, so there was nothing to read.`);
   let text = readable(page.html);
+  let renderedHtml = "";
   if (looksLikeLogin(page.url, page.html, text)) return refuse("login", "The page asks you to sign in before it shows the receipt. I stopped there. I won't ask for a store password: open it yourself while signed in, or paste what it shows and I'll read it.", { loginRequired: true });
   if (text.length < 200 && !parityEnabled() && !fetcher) {
     // A page that fills itself in with scripts: the same address is opened in a real browser, and still only on the sender's domain.
@@ -110,11 +113,60 @@ export async function openMailLink(input: { mailbox: string; id: string; url: st
     const rendered = await researchWeb(page.url);
     if ("text" in rendered && registrable(hostOf(rendered.url)) === sender) {
       if (looksLikeLogin(rendered.url, "", rendered.text)) return refuse("login", "The page asks you to sign in before it shows the receipt. I stopped there. I won't ask for a store password.", { loginRequired: true });
-      text = rendered.text;
+      // A retailer page comes back from the browser as markup: read its words, and keep the markup for the data inside it.
+      renderedHtml = /<\w+[\s>]/.test(rendered.text) ? rendered.text : "";
+      text = renderedHtml ? readable(renderedHtml) : rendered.text;
     }
   }
-  if (!text) return refuse("empty", "The page had no readable content.");
+  // A page built by scripts still carries its order as data: read that before calling the page unreadable.
+  const fromData = receiptFromJson(`${page.html}${renderedHtml}`);
+  if (!text && !fromData) return refuse("script-only", "The page loads its content with scripts and I couldn't read it.");
   const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(page.html)?.[1]?.replace(/\s+/g, " ").trim() ?? "";
-  const receipt = parseReceipt(text);
-  return { opened: true, url: listed.url, resolvedUrl: page.url, title, receipt, isReceipt: Boolean(receipt), text: text.slice(0, receipt ? 1500 : 6000) };
+  const receipt = parseReceipt(text) ?? fromData;
+  const blocker = receipt ? undefined : text.length < 200 ? "The page loads its receipt with scripts and I couldn't read it." : "I opened the page but it isn't laid out as a receipt I can read.";
+  return { opened: true, url: listed.url, resolvedUrl: page.url, title, receipt, isReceipt: Boolean(receipt), text: text.slice(0, receipt ? 1500 : 3000), ...(blocker ? { blocker } : {}) };
+}
+
+const RECEIPT_MAIL = /\b(?:order|receipt|invoice|confirmation|purchase|thanks for your|thank you for your)\b/i;
+const RECEIPT_LINK = /\b(?:view|see|your)?\s*(?:receipt|order details|order status|view order|invoice|view your order)\b|\/(?:orders?|receipts?|invoices?)\b/i;
+
+export type ReceiptOutcome =
+  | { done: true; email: { mailbox: string; id: string; from: string; subject: string; date: string }; receipt: Receipt; itemized: string; url: string }
+  | { done: false; note: string; email?: { mailbox: string; id: string; from: string; subject: string; date: string }; loginRequired?: boolean };
+
+/**
+ * The whole receipt flow in one call: find the order email, pick its receipt link, open it on the sender's own domain and
+ * return the line items, subtotal, taxes and total. When it can't, one line says what is in the way, and it stops.
+ */
+export async function openReceipt(input: { store?: string; orderNumber?: string; mailbox?: string; id?: string }): Promise<ReceiptOutcome> {
+  let mailbox = input.mailbox === "outlook" || input.mailbox === "gmail" ? input.mailbox : "";
+  let id = input.id?.trim() ?? "";
+  if (!mailbox || !id) {
+    const store = (input.store ?? "").toLowerCase().replace(/[^a-z0-9 .]/g, "").trim();
+    const order = (input.orderNumber ?? "").replace(/\D/g, "");
+    const rows: { mailbox: "gmail" | "outlook"; id: string; from: string; email: string; subject: string; snippet: string; date: string }[] = [];
+    const gmail = await searchGmail({ keywords: "", where: "inbox", includeAirbnb: false, limit: 40 }).catch(() => []);
+    for (const row of gmail) rows.push({ mailbox: "gmail", id: row.id, from: row.from, email: row.email, subject: row.subject, snippet: row.snippet, date: row.date });
+    const outlook = await searchOutlook({ keywords: "", where: "inbox", includeAirbnb: false, limit: 25 }).catch(() => []);
+    for (const row of outlook) rows.push({ mailbox: "outlook", id: row.id, from: row.from, email: row.email, subject: row.subject, snippet: row.snippet, date: row.date });
+    const match = rows
+      .filter((row) => RECEIPT_MAIL.test(`${row.subject} ${row.snippet}`))
+      .filter((row) => !store || `${row.from} ${row.email} ${row.subject}`.toLowerCase().includes(store.split(/\s+/)[0]!))
+      .filter((row) => !order || `${row.subject} ${row.snippet}`.replace(/\D/g, "").includes(order))
+      .sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0))[0];
+    if (!match) return { done: false, note: `I couldn't find ${store ? `a ${input.store} ` : "an "}order email in the inbox, so there's no receipt to open.` };
+    mailbox = match.mailbox;
+    id = match.id;
+  }
+  const letters = await readMailThread({ mailbox, id }).catch(() => []);
+  const letter = letters.find((row) => row.id === id) ?? letters.at(-1);
+  if (!letter) return { done: false, note: "I couldn't read that email, so I didn't open anything." };
+  const email = { mailbox, id: letter.id, from: letter.from, subject: letter.subject, date: letter.date };
+  const links = (letter.links ?? []).filter((link) => onSenderDomain(link.url, letter.email) && !ACTION_LINK.test(link.url) && !ACTION_LINK.test(link.text));
+  const link = links.find((row) => RECEIPT_LINK.test(row.text)) ?? links.find((row) => RECEIPT_LINK.test(row.url));
+  if (!link) return { done: false, email, note: `The ${letter.from} email has no receipt link on ${senderDomain(letter.email) || "the sender's"} domain, so I have nothing to open.` };
+  const opened = await openMailLink({ mailbox, id: letter.id, url: link.url });
+  if (!opened.opened) return { done: false, email, note: opened.note, ...(opened.loginRequired ? { loginRequired: true } : {}) };
+  if (!opened.receipt) return { done: false, email, note: opened.blocker ?? "I couldn't read a receipt from that page." };
+  return { done: true, email, receipt: opened.receipt, itemized: opened.receipt.itemized, url: opened.url };
 }

@@ -32,7 +32,7 @@ import { torontoToday } from "./time.js";
 /** The tools the agent may call. Reads, drafts that wait for approval, a reminder, a PDF. Nothing that sends or commits. */
 export const AGENT_TOOLS = [
   "guest_inbox", "list_stays", "read_guest_messages", "guest_contacts",
-  "search_mail", "read_mail", "open_link", "last_sent_email",
+  "search_mail", "read_mail", "open_link", "open_receipt", "last_sent_email",
   "hospitable_read",
   "ops_clients", "ops_revenue", "cleaner_read",
   "research_web", "make_pdf", "add_reminder", "propose_draft",
@@ -69,6 +69,7 @@ export const STEP_LABELS: Record<string, string> = {
   find_furniture: "Searched stores and checked the listings",
   furniture_stores: "Checked the preferred stores",
   open_link: "Opened the link from the email",
+  open_receipt: "Opened the receipt",
   shop_search: "Read the live listings",
   send_text: "Texted the partner",
   sent_texts: "Checked what was texted",
@@ -78,8 +79,8 @@ export const STEP_LABELS: Record<string, string> = {
 
 /** Which of the agent's tools use each connector, so "is it connected" and "can you use it" never disagree. */
 const CONNECTOR_TOOLS: Record<string, string[]> = {
-  gmail: ["search_mail", "read_mail", "open_link"],
-  outlook: ["search_mail", "read_mail", "open_link"],
+  gmail: ["search_mail", "read_mail", "open_link", "open_receipt"],
+  outlook: ["search_mail", "read_mail", "open_link", "open_receipt"],
   hospitable: ["guest_inbox", "list_stays", "next_stays", "find_stay", "guest_thread", "day_movements", "read_guest_messages", "hospitable_read", "unit_facts", "guest_contacts"],
   airroi: ["market_comps"],
   cleaner: ["cleaner_read"],
@@ -431,6 +432,7 @@ export function agentSystem(facts: string, today: string): string {
     "READ BEFORE ANSWERING: use your tools to read the guest thread, the Knowledge Hub, Hospitable, Gmail and Outlook, the client list and the cleaner app instead of guessing. Use web_lookup when you do not know something or it may have changed. Say plainly once if a read failed.",
     "WHAT IS CONNECTED: for any question about whether a connector is connected, or when it was last checked, call connector_status and answer from it. Never answer from memory or business records, and never say a connector is connected without it. A connector that needs re-authorization is not connected. If a connector says none of your tools use it, say so plainly.",
     "EMAIL: every answer about an email names the mailbox it came from, in words (Gmail or Outlook). For the last email the partner sent, call last_sent_email: it reads Gmail Sent newest first. If its note says Gmail couldn't be read, say that plainly and say the answer is from Outlook. Never present one mailbox's mail as the other's, and never answer from memory.",
+    "RECEIPTS: for \"open the receipt\", \"what was on that order\" or the cost of an order from an email, call open_receipt ONCE: it finds the email, opens the receipt and returns the items parsed. Present them as given. If it says it couldn't, say that one line and stop: no more searching, no scraping the page yourself.",
     "LINKS IN EMAIL: to open a link from an email (a receipt, an order, a document), read the email with read_mail and call open_link with a url from its links list. You can only open links on the sender's own domain. If it redirects elsewhere or is shortened, say where it goes and that you did not follow it. If the page needs a sign-in, say so plainly and stop: never ask for a store password. Present a receipt as a clean itemized list with the subtotal, taxes and total.",
     "TEXTING: you can text a partner's own phone with send_text. Use it only when the partner asks (\"text me\", \"send me the total\") or a saved skill says to: never unprompted, never from open chat on your own. It only texts the partners' numbers on file and refuses any other number: say so plainly if it does. Quiet hours (10 PM to 8 AM Toronto) hold a skill's non-urgent text until morning. You can never text a guest, a client or anyone else. To say what was texted, call sent_texts.",
     "SKILLS: when the partner describes something to repeat or keep watching (\"check every morning if...\", \"tell me when...\", \"just handle...\"), call propose_skill. It leaves a card for them to save and runs nothing. Their words set how it behaves: \"every morning\" is a schedule, \"tell me when\" is notify only, \"just handle it\" is handle it within what it may touch, and when they don't say it asks first. A one-off question is not a skill: just answer it.",

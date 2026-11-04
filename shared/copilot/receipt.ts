@@ -102,3 +102,64 @@ export function parseReceipt(text: string): Receipt | null {
   ].join("\n");
   return { orderNumber, items, subtotal, taxes, extras, total, reconciles, itemized };
 }
+
+type Json = Record<string, unknown>;
+const num = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) return round(value);
+  if (typeof value === "string" && /^-?\$?\s?[\d,]+(?:\.\d+)?$/.test(value.trim())) return round(Number(value.replace(/[$,\s]/g, "")));
+  if (value && typeof value === "object") {
+    const row = value as Json;
+    return num(row.value ?? row.amount ?? row.price ?? row.linePrice ?? row.unitPrice);
+  }
+  return null;
+};
+const pick = (row: Json, keys: string[]): unknown => keys.map((key) => row[key]).find((value) => value !== undefined && value !== null);
+
+/**
+ * A receipt page that fills itself in with scripts still carries the order as data in the page (Next.js and similar). The line
+ * items and totals are read from that data; a number it doesn't hold is left empty.
+ */
+export function receiptFromJson(html: string): Receipt | null {
+  const blocks = [...html.matchAll(/<script[^>]*(?:id=["']__NEXT_DATA__["']|type=["']application\/(?:ld\+)?json["'])[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]!);
+  for (const block of blocks) {
+    let root: unknown;
+    try {
+      root = JSON.parse(block);
+    } catch {
+      continue;
+    }
+    const items: ReceiptItem[] = [];
+    const found: { subtotal: number | null; tax: number | null; total: number | null; order: string } = { subtotal: null, tax: null, total: null, order: "" };
+    const seen = new Set<unknown>();
+    const walk = (node: unknown, depth: number): void => {
+      if (!node || typeof node !== "object" || depth > 14 || seen.has(node)) return;
+      seen.add(node);
+      if (Array.isArray(node)) return node.forEach((item) => walk(item, depth + 1));
+      const row = node as Json;
+      const name = pick(row, ["productName", "itemName", "name", "title"]);
+      const line = num(pick(row, ["linePrice", "lineTotal", "totalPrice", "extendedPrice", "price", "priceInfo"]));
+      const qty = num(pick(row, ["quantity", "qty", "orderedQuantity", "orderQuantity"]));
+      if (typeof name === "string" && name.trim().length >= 3 && line != null && line > 0 && (qty != null || "priceInfo" in row || "linePrice" in row)) {
+        items.push({ name: name.trim().slice(0, 120), qty: qty && qty > 0 ? Math.round(qty) : 1, unitPrice: num(pick(row, ["unitPrice", "pricePerUnit"])), lineTotal: line });
+      }
+      found.subtotal ??= num(pick(row, ["subtotal", "subTotal", "itemsTotal", "merchandiseTotal"]));
+      found.tax ??= num(pick(row, ["totalTax", "taxTotal", "tax", "estimatedTax", "taxes"]));
+      found.total ??= num(pick(row, ["orderTotal", "grandTotal", "totalAmount", "total"]));
+      if (!found.order) found.order = String(pick(row, ["orderNumber", "orderId", "displayOrderId"]) ?? "").slice(0, 40);
+      for (const value of Object.values(row)) walk(value, depth + 1);
+    };
+    walk(root, 0);
+    const unique = items.filter((item, index) => items.findIndex((row) => row.name === item.name && row.lineTotal === item.lineTotal) === index);
+    if (!unique.length) continue;
+    const sum = round(unique.reduce((n, item) => n + (item.lineTotal ?? 0), 0));
+    const taxes = found.tax != null ? [{ label: "Tax", amount: found.tax }] : [];
+    const itemized = [
+      ...unique.map((item) => `• ${item.qty} × ${item.name} — ${item.lineTotal != null ? cad(item.lineTotal) : "price not shown"}`),
+      ...(found.subtotal != null ? [`Subtotal: ${cad(found.subtotal)}`] : []),
+      ...taxes.map((row) => `${row.label}: ${cad(row.amount)}`),
+      ...(found.total != null ? [`Total: ${cad(found.total)}`] : []),
+    ].join("\n");
+    return { orderNumber: found.order, items: unique, subtotal: found.subtotal, taxes, extras: [], total: found.total, reconciles: found.subtotal != null ? Math.abs(sum - found.subtotal) < 0.015 : null, itemized };
+  }
+  return null;
+}

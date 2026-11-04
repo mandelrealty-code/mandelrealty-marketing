@@ -1,4 +1,4 @@
-import { openMailLink } from "./linkOpen.js";
+import { openMailLink, openReceipt } from "./linkOpen.js";
 import { hospitableRead } from "./hospitableConnection.js";
 import { HUB_SECRET_NOTE, withoutHubSecrets } from "./hubSecrets.js";
 import { hospitableDraft, isHospitableWrite } from "./hospitableAgent.js";
@@ -210,9 +210,16 @@ const TOOLS: Record<string, Tool> = {
     readOnly: true,
     call: async (args) => latestSent({ mailbox: text(args.mailbox, 20) }),
   },
+  open_receipt: {
+    description:
+      "Opens the receipt for an order email and returns it itemized, in ONE call: it finds the order email in the inbox, picks its receipt link (only on the sender's own domain), opens it and returns the line items (name, quantity, price), subtotal, taxes and total, already parsed. Use it for 'open the receipt', 'what was on that order', 'how much was the Walmart order'. Pass store (such as Walmart) and order_number if the partner gave them; pass mailbox and id only if you already read the email. Present the itemized list as given. If it says it couldn't (a sign-in wall, a page that loads with scripts, no receipt link), say that one line and stop: do not search the mail again or scrape the page yourself, and never ask for a store password. Read only. Buys nothing.",
+    inputSchema: { type: "object", properties: { store: { type: "string" }, order_number: { type: "string" }, mailbox: { type: "string", enum: ["gmail", "outlook"] }, id: { type: "string" } } },
+    readOnly: true,
+    call: async (args) => openReceipt({ store: text(args.store, 60), orderNumber: text(args.order_number, 40), mailbox: text(args.mailbox), id: text(args.id) }),
+  },
   open_link: {
     description:
-      "Opens one link from an email you read with read_mail and reads the page: use it for 'open the receipt', 'what does the View order link say'. Pass mailbox, id (the email's id) and url, copied exactly from that email's links list (the real link targets, not the words shown). It only opens links that are in that email AND on the sender's own domain, and never an unsubscribe or cancel link. A shortened link, or one that redirects to another domain, is not followed and says where it goes. If the page needs a sign-in it says so and stops: never ask the partner for a store password, say they can open it themselves. When the page is a receipt, receipt has the line items (name, qty, unit price, line total), subtotal, taxes and total: present them as a clean itemized list. Read only. Opens a page, buys nothing.",
+      "For a receipt or order use open_receipt instead (one call). Opens one link from an email you read with read_mail and reads the page: use it for 'open the receipt', 'what does the View order link say'. Pass mailbox, id (the email's id) and url, copied exactly from that email's links list (the real link targets, not the words shown). It only opens links that are in that email AND on the sender's own domain, and never an unsubscribe or cancel link. A shortened link, or one that redirects to another domain, is not followed and says where it goes. If the page needs a sign-in it says so and stops: never ask the partner for a store password, say they can open it themselves. When the page is a receipt, receipt has the line items (name, qty, unit price, line total), subtotal, taxes and total: present them as a clean itemized list. Read only. Opens a page, buys nothing.",
     inputSchema: {
       type: "object",
       properties: { mailbox: { type: "string", enum: ["gmail", "outlook"] }, id: { type: "string" }, url: { type: "string" }, include_airbnb: { type: "boolean" } },

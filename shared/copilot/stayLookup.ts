@@ -4,6 +4,7 @@
  * An unreadable unit is said plainly. It is never reported as "no stays".
  */
 
+import { parityNow } from "./parity/clock.js";
 import { listHospitableReservations } from "../pm/hospitableClient.js";
 import { listPmProperties } from "../pm/propertyStore.js";
 import { scopedStayProperties } from "./dayBoard.js";
@@ -32,7 +33,7 @@ export type NextStay = { reservationId: string; guest: string; checkIn: string; 
  * The current guest and the next stays for one unit, looking a year ahead: by check-in for what is coming, by checkout for
  * whoever is in the house now. Says which property ids and dates it asked Hospitable about.
  */
-export async function nextStays(scope: Scope, count = 3, now: Date = new Date()): Promise<{
+export async function nextStays(scope: Scope, count = 3, now: Date = parityNow() ?? new Date()): Promise<{
   property: string;
   propertyIds: string[];
   read: { from: string; to: string; filters: string[] };
@@ -117,7 +118,7 @@ export type FoundStay = { reservationId: string; guest: string; unit: string; pr
  * A guest's reservations by name, across every property Copilot reads: which unit they are at comes from the reservation, never
  * from a guess. Looks a month back to a year ahead by check-in and by checkout.
  */
-export async function findStays(input: { guest: string; checkIn?: string; propertyIds?: string[] }, now: Date = new Date()): Promise<{ matches: FoundStay[]; searched: { properties: number; from: string; to: string }; note: string }> {
+export async function findStays(input: { guest: string; checkIn?: string; propertyIds?: string[] }, now: Date = parityNow() ?? new Date()): Promise<{ matches: FoundStay[]; searched: { properties: number; from: string; to: string }; note: string }> {
   const name = input.guest.trim().toLowerCase();
   if (name.length < 2) throw new Error("Say which guest to look for.");
   const properties = await scopedStayProperties().catch(() => [] as Readable[]);
@@ -162,7 +163,7 @@ export type StayProbe = {
  * Temporary: the unit's reservations from Hospitable across a wide window, next to what the 14-day look shows, so a stay the
  * Hospitable calendar has and Copilot doesn't is pinned to the step that dropped it. Shown to the signed-in partner only.
  */
-export async function diagnoseStays(scope: Scope, guestHint = "", now: Date = new Date()): Promise<StayProbe> {
+export async function diagnoseStays(scope: Scope, guestHint = "", now: Date = parityNow() ?? new Date()): Promise<StayProbe> {
   const notes: string[] = [];
   const pm = await listPmProperties().catch(() => []);
   const pmProperties = pm.map((row) => ({ name: row.name, address: row.address, hospitableId: row.hospitable_property_id ?? "", matchesUnit: scope.match.test(`${row.name} ${row.address}`) })).filter((row) => row.matchesUnit);
