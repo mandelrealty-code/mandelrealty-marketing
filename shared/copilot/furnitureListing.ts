@@ -21,6 +21,23 @@ export type Listing = {
 export type ListingCheck = { ok: true; listing: Listing } | { ok: false; url: string; reason: string };
 
 export type Page = { status: number; url: string; html: string };
+
+/** What the last parse saw on the page, for the log only: it changes nothing about what counts as a verified listing. */
+type Probe = { jsonLdProduct: boolean; offers: boolean; name: string; priceRead: string; currency: string; availability: string; ogPrice: boolean; htmlBytes: number };
+let lastProbe: Probe | null = null;
+type LogLine = Record<string, string | number | boolean | null | Record<string, unknown>[]>;
+let logger: ((line: LogLine) => void) | null = null;
+
+/** Tests read the log. Null restores the server log. */
+export function setListingLogger(next: ((line: LogLine) => void) | null): void {
+  logger = next;
+}
+
+function listingLog(line: LogLine): void {
+  if (logger) return logger(line);
+  if (parityEnabled()) return;
+  console.log(`[listing] ${JSON.stringify(line)}`);
+}
 type Fetcher = (url: string) => Promise<Page>;
 type Searcher = (query: string) => Promise<{ url: string; title: string }[]>;
 
@@ -146,6 +163,11 @@ export function parseListing(html: string, pageUrl: string): ListingCheck {
     currency = (meta(html, "product:price:currency") || meta(html, "og:price:currency") || currency).toUpperCase();
   }
   const url = pageUrl;
+  lastProbe = {
+    jsonLdProduct: Boolean(product), offers: Boolean(product?.offers), name: name.slice(0, 60),
+    priceRead: Number.isFinite(price) && price > 0 ? String(price) : "none", currency: currency || "none", availability: availability.replace(/^https?:\/\/schema\.org\//, "") || "unknown",
+    ogPrice: Boolean(meta(html, "product:price:amount") || meta(html, "og:price:amount")), htmlBytes: html.length,
+  };
   if (!name || !Number.isFinite(price) || price <= 0) return { ok: false, url, reason: "The page doesn't show a product with a price." };
   if (/OutOfStock|SoldOut|Discontinued/i.test(availability)) return { ok: false, url, reason: "The page says it is out of stock or discontinued." };
   if (currency ? currency !== "CAD" : !/\.ca$/i.test(storeOf(url))) return { ok: false, url, reason: `The price is not in Canadian dollars${currency ? ` (${currency})` : ""}.` };
@@ -218,21 +240,35 @@ export async function verifyListing(url: string): Promise<ListingCheck> {
   const hit = cache.get(asked);
   if (hit && now().getTime() - hit.at < FRESH_MS) return hit.check;
   let check: ListingCheck = { ok: false, url: asked, reason: "The page didn't open." };
+  // One entry per way the page was tried, so a drop can be traced to what was actually seen.
+  const tries: Record<string, unknown>[] = [];
+  const probeOf = () => (lastProbe ? { ...lastProbe } : {});
   try {
     if (fetcher) {
       const page = await fetcher(asked);
+      lastProbe = null;
       check = page.status >= 200 && page.status < 300 ? parseListing(page.html, page.url || asked) : { ok: false, url: asked, reason: `The store answered ${page.status}.` };
+      tries.push({ via: "fetch", status: page.status, ...probeOf() });
     } else if (!parityEnabled()) {
-      const page = await liveFetch(asked).catch(() => null);
+      let fetchError = "";
+      lastProbe = null;
+      const page = await liveFetch(asked).catch((err: unknown) => {
+        fetchError = err instanceof Error ? err.message.slice(0, 80) : "failed";
+        return null;
+      });
       if (page && page.status >= 200 && page.status < 300) check = parseListing(page.html, page.url || asked);
+      tries.push({ via: "fetch", status: page?.status ?? 0, ...(page && page.url !== asked ? { finalUrl: page.url } : {}), ...(fetchError ? { error: fetchError } : {}), ...probeOf() });
       if (!check.ok) {
+        lastProbe = null;
         const opened = await browserPage(asked);
         if (opened) check = parseListing(opened.html, opened.url);
+        tries.push({ via: "browser", opened: Boolean(opened), ...(process.env.BROWSERBASE_API_KEY?.trim() ? {} : { error: "no BROWSERBASE_API_KEY" }), ...probeOf() });
       }
     }
   } catch {
     check = { ok: false, url: asked, reason: "The page didn't open." };
   }
+  listingLog({ url: asked, ok: check.ok, ...(check.ok ? { price: check.listing.priceCad, name: check.listing.name.slice(0, 60) } : { reason: check.reason }), tries });
   cache.set(asked, { at: now().getTime(), check });
   return check;
 }

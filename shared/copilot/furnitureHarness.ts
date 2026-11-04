@@ -8,7 +8,7 @@ import { setBrainModel } from "./brain.js";
 import { listFacts, resetBusinessFacts } from "./businessFacts.js";
 import { allowedToolNames } from "./skillPolicy.js";
 import { buildPlan, changeStores, findFurniture, fitNotes, parseRoomSize, preferredStores } from "./furniture.js";
-import { parseListing, setListingClock, setListingFetcher, setListingSearcher, verifyListing, type Page } from "./furnitureListing.js";
+import { parseListing, setListingClock, setListingLogger, setListingFetcher, setListingSearcher, verifyListing, type Page } from "./furnitureListing.js";
 import { capturedCommits, resetCaptures } from "./parity/capture.js";
 import { worldAt } from "./parity/catalog.js";
 import { installWorld } from "./parity/world.js";
@@ -77,6 +77,26 @@ if (fetched.length !== 1) fail(`a fresh check should be reused, opened ${fetched
 clock = new Date("2026-11-02T17:11:00Z");
 await verifyListing("https://www.ikea.ca/p/kivik-sofa");
 if ((fetched.length as number) !== 2) fail("a check older than ten minutes was reused");
+
+// ---------- Every candidate leaves one log line: what was read, and exactly why it was dropped ----------
+{
+  serve();
+  const lines: Record<string, unknown>[] = [];
+  setListingLogger((line) => lines.push(line as Record<string, unknown>));
+  await verifyListing("https://www.usstore.com/p/usd-sofa");
+  await verifyListing("https://www.ikea.ca/p/gone");
+  await verifyListing("https://www.ikea.ca/c/sofas");
+  await verifyListing("https://www.ikea.ca/p/missing");
+  await verifyListing("https://www.ikea.ca/p/lack-table");
+  setListingLogger(null);
+  const tried = (line: Record<string, unknown>) => (line.tries as Record<string, unknown>[])[0]!;
+  if (lines.length !== 5) fail(`one line per candidate: ${lines.length}`);
+  if (tried(lines[0]!).currency !== "USD" || tried(lines[0]!).priceRead !== "500" || !/Canadian dollars \(USD\)/.test(String(lines[0]!.reason)) || lines[0]!.ok !== false) fail(`the USD line: ${JSON.stringify(lines[0])}`);
+  if (tried(lines[1]!).availability !== "OutOfStock" || !/out of stock/.test(String(lines[1]!.reason))) fail(`the stock line: ${JSON.stringify(lines[1])}`);
+  if (tried(lines[2]!).jsonLdProduct !== false || tried(lines[2]!).priceRead !== "none" || !/doesn't show a product with a price/.test(String(lines[2]!.reason))) fail(`the no-price line: ${JSON.stringify(lines[2])}`);
+  if (tried(lines[3]!).status !== 404 || !/answered 404/.test(String(lines[3]!.reason))) fail(`the 404 line: ${JSON.stringify(lines[3])}`);
+  if (lines[4]!.ok !== true || lines[4]!.price !== 49.99 || tried(lines[4]!).currency !== "CAD" || tried(lines[4]!).availability !== "InStock") fail(`the good line: ${JSON.stringify(lines[4])}`);
+}
 
 // ---------- Preferred stores the partner maintains ----------
 if ((await preferredStores()).length) fail("stores start empty");
