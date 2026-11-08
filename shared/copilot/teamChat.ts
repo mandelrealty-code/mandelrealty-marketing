@@ -8,9 +8,11 @@
 
 import { aiCall, type AgentId, type JobName } from "./aiGateway.js";
 import { parityNow } from "./parity/clock.js";
-import { AGENTS, addInbox, inboxFor, logTeamEvent, pricingProposal, updateInbox } from "./team.js";
+import { readSavedGuestQueue } from "./guestMessaging.js";
+import { loadReviewQueue } from "./reviewsQueue.js";
+import { ROYA_RULES, AGENTS, addInbox, inboxFor, logTeamEvent, pricingProposal, updateInbox } from "./team.js";
 import { instructionsFor, type SettingsAgent } from "./teamSettings.js";
-import { watchDecisions } from "./watch.js";
+import { watchDecisions, watchTodayCounts } from "./watch.js";
 import { readMeta, writeMeta } from "./watchMeta.js";
 
 export type ChatMsg = { role: "user" | "agent" | "note"; text: string; at: string; offer?: { to: SettingsAgent; question: string } };
@@ -44,19 +46,41 @@ export async function clearChat(agent: DeskAgent): Promise<void> {
 
 const jobOf = (agent: DeskAgent): JobName => (agent + "_chat") as JobName;
 
+/** Live facts for this member's job, each with where it came from. A source that cannot be read is said so, never guessed. */
+async function factsOf(agent: DeskAgent): Promise<string[]> {
+  const out: string[] = [];
+  try {
+    if (agent === "theo") {
+      const counts = await watchTodayCounts();
+      out.push(counts ? "Check-ins today: " + counts.ins + ". Check-outs today: " + counts.outs + ". (Source: Hospitable, at the last watch check.)" : "Today's check-ins and check-outs have not been read yet.");
+      const queue = await readSavedGuestQueue();
+      out.push(queue ? "Guests waiting for a reply: " + queue.waiting.length + (queue.waiting.length ? " (" + queue.waiting.slice(0, 6).map((r) => r.guest).join(", ") + ")" : "") + ". (Source: Hospitable guest inbox.)" : "The guest inbox has not been read yet.");
+    } else if (agent === "nora") {
+      const q = await loadReviewQueue();
+      out.push(q.connected ? "Reviews waiting for a reply: " + q.reviews.length + ". (Source: Hospitable reviews.)" : "Hospitable reviews could not be read just now.");
+    } else {
+      out.push("Roya is the owner of 1065 Shaw Street, which we manage for her. You price Shaw Street. Base price $" + ROYA_RULES.base + ", promotion $" + ROYA_RULES.promo + " from " + ROYA_RULES.from + " to " + ROYA_RULES.to + ", cleaning fee $" + ROYA_RULES.fee + " paid to the owner in full ($" + ROYA_RULES.floor + " only as a last resort for that window, with explicit approval, never below $" + ROYA_RULES.floor + "). Channel prices such as Booking.com are left alone. (Source: Penny's pricing rules, set by the partners.)");
+    }
+  } catch {
+    out.push("A live source could not be read just now, so say that plainly instead of guessing.");
+  }
+  return out;
+}
+
 async function contextOf(agent: DeskAgent): Promise<string> {
+  const facts = (await factsOf(agent)).map((f) => "- " + f).join("\n");
   if (agent === "penny") {
     const p = (await pricingProposal()).proposal;
-    return p ? "Open proposal: " + p.title + ". " + p.proposal + " " + p.why : "No price proposal is open right now.";
+    return "Live facts:\n" + facts + "\n" + (p ? "Open proposal: " + p.title + ". " + p.proposal + " " + p.why + " (Source: Hospitable calendar.)" : "No price proposal is open right now.");
   }
   const kinds = agent === "nora" ? ["review"] : ["guest_waiting", "thread_gap", "commitment_gap", "inquiry_deadline", "incident", "commitment"];
   const rows = (await watchDecisions()).filter((r) => kinds.includes(r.kind)).slice(0, 6);
-  return rows.length ? "Open items:\n" + rows.map((r) => "- " + r.title + " (" + r.reason.slice(0, 160) + ")").join("\n") : "Nothing is open for this member right now.";
+  return "Live facts:\n" + facts + "\n" + (rows.length ? "Open items:\n" + rows.map((r) => "- " + r.title + " (" + r.reason.slice(0, 160) + ")").join("\n") : "Nothing is open for this member right now.");
 }
 
 const SYSTEM = (name: string, role: string) =>
   "You are " + name + ", the " + role + " team member for Mandel Realty. Answer only about your own job, in two or three plain sentences. " +
-  "If the question is about something else, say whose job it is and stop. Never say you sent, posted, booked or changed anything: you only prepare things, and a partner presses Approve. No em dashes. If you do not know, say so.";
+  "If the question is about something else, say whose job it is and stop. Never say you sent, posted, booked or changed anything: you only prepare things, and a partner presses Approve. No em dashes. Use the live facts you are given and name their source in your answer. Only say you do not know when the facts do not cover the question, and then say which source would.";
 
 export async function askDesk(agent: DeskAgent, text: string, now: Date = nowOf()): Promise<ChatMsg[]> {
   const q = text.trim().slice(0, 600);

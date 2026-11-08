@@ -301,7 +301,9 @@ export async function teamBoard(now: Date = parityNow() ?? new Date(), light = f
     return { id, ...AGENTS[id], state, now: nowText, last: lastFor(id), error, needs: n, needsList: NEEDS[id] };
   });
   const fromLedger: Event[] = ledger.filter((r) => r.status !== "native").slice(0, 30).map((r) => ({ at: r.surfacedAt, agent: agentOfKind(r.kind), text: r.status === "surfaced" ? "Brought up: " + r.title : r.title, woken: r.kind.replace("_", " ") }));
-  const events = [...mem.events, ...fromLedger].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 40).map((e) => ({ ...e, name: AGENTS[e.agent].name }));
+  const plain = (t: string) => t.replace(/^(Brought up|Marked done|Sent after your approval|Held until tomorrow): /, "").toLowerCase().trim();
+  const seenEvent = new Set<string>();
+  const events = [...mem.events, ...fromLedger].sort((a, b) => b.at.localeCompare(a.at)).filter((e) => { const k = e.agent + "|" + plain(e.text); if (seenEvent.has(k)) return false; seenEvent.add(k); return true; }).slice(0, 40).map((e) => ({ ...e, name: AGENTS[e.agent].name }));
 
   const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   const week = mem.log.filter((x) => x.at >= weekAgo);
@@ -312,7 +314,8 @@ export async function teamBoard(now: Date = parityNow() ?? new Date(), light = f
     proposed: week.length + decisions.length, approved: week.filter((x) => x.outcome === "approved").length, edited: week.filter((x) => x.outcome === "edited").length, rejected: week.filter((x) => x.outcome === "notnow").length, handled,
     rated: rated.length, right, accuracy: rated.length ? right + " of " + rated.length + " rated right" : "Nothing rated yet", cost: "Not measured yet",
   };
-  const decided = week.filter((x) => x.at.slice(0, 10) === today).map((x) => ({ text: mem.events.find((e) => e.at === x.at)?.text ?? x.key, at: x.at }));
+  const seenDecided = new Set<string>();
+  const decided = week.filter((x) => x.at.slice(0, 10) === today).map((x) => ({ text: mem.events.find((e) => e.at === x.at)?.text ?? x.key, at: x.at })).filter((d) => { const k = plain(d.text); if (seenDecided.has(k)) return false; seenDecided.add(k); return true; });
 
   let waiting: number | null = null;
   if (light) return { asOf: now.toISOString(), costs, history: [], today: { ins: null, outs: null, waiting: null, revenue: null }, decisions, agents, events: events.slice(0, 5), decided: [], automation };
@@ -336,5 +339,5 @@ export async function teamBoard(now: Date = parityNow() ?? new Date(), light = f
     revenue = null;
   }
   const history = mem.log.slice(0, 40).map((x) => ({ key: x.key, agent: x.agent, at: x.at, outcome: x.outcome, rating: mem.ratings[x.key] ?? x.rating ?? ("" as const), text: mem.events.find((e) => e.at === x.at && e.agent === x.agent)?.text ?? x.key }));
-  return { asOf: now.toISOString(), costs, history, today: { ins: counts?.ins ?? null, outs: counts?.outs ?? null, waiting, revenue }, decisions, agents, events, decided, automation };
+  return { asOf: now.toISOString(), costs, history, today: { ins: counts?.ins ?? null, outs: counts?.outs ?? null, waiting, revenue }, decisions, agents, events: events.filter((e) => !seenDecided.has(plain(e.text))), decided, automation };
 }

@@ -292,10 +292,10 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
 
         <section aria-label="Today">
           <div className="strip">
-            <div className="st"><div className="stl">Check-ins today</div><div className="stv">{t.ins ?? "Unknown"}</div></div>
-            <div className="st"><div className="stl">Check-outs today</div><div className="stv">{t.outs ?? "Unknown"}</div></div>
-            <div className="st"><div className="stl">Messages waiting</div><div className="stv">{t.waiting ?? "Unknown"}</div></div>
-            <div className="st"><div className="stl">Revenue, month to date</div><div className="stv">{t.revenue ?? "Unknown"}</div></div>
+            <div className="st"><div className="stl">Check-ins today</div><div className="stv">{t.ins ?? "Unknown"}</div><div className="sts">From Hospitable</div></div>
+            <div className="st"><div className="stl">Check-outs today</div><div className="stv">{t.outs ?? "Unknown"}</div><div className="sts">From Hospitable</div></div>
+            <div className="st"><div className="stl">Messages waiting</div><div className="stv">{t.waiting ?? "Unknown"}</div><div className="sts">From Hospitable</div></div>
+            <div className="st"><div className="stl">Revenue, month to date</div><div className="stv">{t.revenue ?? "Unknown"}</div><div className="sts">From OPS</div></div>
           </div>
         </section>
 

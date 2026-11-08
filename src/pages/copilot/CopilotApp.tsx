@@ -2420,7 +2420,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                       <>
                         <div className="cp-sethead">
                           <h1>Billing</h1>
-                          <p>What these three accounts have used.</p>
+                          <p>What these accounts have used. Meta is tried first, Claude only for hard jobs.</p>
                         </div>
                         {(accounts ?? [
                           { id: "openai" as const, name: "OpenAI", spent: null, left: null, note: "Checking the account.", keyHint: null, addUrl: ACCOUNT_LINKS.openai },
@@ -2444,6 +2444,12 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                             <a className="cp-goldlink" href={row.addUrl} target="_blank" rel="noreferrer">Add funds</a>
                           </div>
                         ))}
+                        <div className="cp-bill">
+                          <strong>Meta</strong>
+                          <span className="split">Tried first for easy jobs</span>
+                          <span className="spent">{team?.costs.total.unpricedTokens ? `${team.costs.total.unpricedTokens.toLocaleString("en-US")} tokens counted this month, not priced yet` : "No Meta calls recorded this month"}</span>
+                          <span className="note">Routing: Meta first for easy jobs, Claude for hard jobs and as one fallback, then it stops. Meta has no spend feed here. Set the Meta prices (META_PRICE_IN_PER_MTOK and META_PRICE_OUT_PER_MTOK) so its dollars count toward the ceilings.</span>
+                        </div>
                         <p className="cp-note">Match the key ending to the key in that console. That is the account Copilot spends from. Add funds opens the page where the balance and the top-up live.</p>
                       </>
                     ) : null}

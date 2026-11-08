@@ -9450,3 +9450,5 @@ html.cp-app[data-cp-theme="dark"] #root {
 
 .cp-ov3-team { align-self: flex-start; border: none; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--muted); text-decoration: underline; cursor: pointer; }
 .cp-ov3-team:hover { color: var(--ink); }
+.cp-side > * { flex-shrink: 0; }
+.cp-side > .cp-chats { flex: 1 0 160px; }

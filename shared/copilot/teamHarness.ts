@@ -122,6 +122,13 @@ if (made() !== 2 || own.at(-1)!.role !== "agent" || own.some((m) => m.offer && m
 if ((await chatOf("theo")).length || (await chatOf("penny")).some((m) => m.role === "user")) fail("a question leaked into another desk's chat");
 if ((await askDesk("penny", "Any new reviews?", C0)).at(-1)!.offer?.to !== "nora" || (await askDesk("theo", "What should the price be?", C0)).at(-1)!.offer?.to !== "penny") fail("reverse routing");
 if ((await costViews(C0)).agents.nora.calls < 1) fail("desk chat calls are counted per agent");
+// Agents are given live facts and their sources, and Penny knows Shaw Street is hers.
+let seen = "";
+setBrainModel(async (req) => { seen = req.user ?? ""; return { text: "ok", toolUses: [], blocks: [], stop: "end_turn" }; });
+await askDesk("penny", "What should the nightly rate be for Nov 9 to 20?", new Date("2026-11-08T18:00:00Z"));
+if (!/Roya is the owner of 1065 Shaw Street/.test(seen) || !/\$148/.test(seen) || !/Source:/.test(seen)) fail("Penny was not given her facts: " + seen.slice(0, 300));
+await askDesk("theo", "How many check-outs are there today?", new Date("2026-11-08T18:00:00Z"));
+if (!/Live facts:/.test(seen) || !/Hospitable/.test(seen)) fail("Theo was not given live facts: " + seen.slice(0, 300));
 setBrainModel(null);
 
 console.log("Team harness passed.");
