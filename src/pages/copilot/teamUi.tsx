@@ -157,7 +157,7 @@ function DecisionCard({ d, busy, onAct, onReviews }: { d: TeamDecision; busy: bo
       {d.facts ? <dl className="tm-facts">{d.facts.map((f) => <div key={f.label}><dt>{f.label}</dt><dd>{f.value}</dd></div>)}</dl> : null}
       {d.proposal ? <div className="tm-draft">{d.draftTo ? <small>To {d.draftTo}</small> : null}<p>{d.proposal}</p></div> : null}
       <div className="tm-acts">
-        {d.elsewhere ? <button type="button" className="tm-go" onClick={onReviews}>Open in Reviews</button> : d.proposal ? <button type="button" className="tm-go" disabled={busy} onClick={() => onAct("approve")}>Approve</button> : <button type="button" className="tm-go" disabled={busy} onClick={() => onAct("done")}>Mark done</button>}
+        {d.elsewhere ? <button type="button" className="tm-go" onClick={onReviews}>Open in Reviews</button> : d.proposal ? <button type="button" className="tm-go" disabled={busy} onClick={() => onAct("approve")}>{d.agent === "penny" ? "Approve price proposal" : d.agent === "nora" ? "Approve reply" : "Approve and send message"}</button> : <button type="button" className="tm-go" disabled={busy} onClick={() => onAct("done")}>Mark done</button>}
         <button type="button" className="tm-quiet" disabled={busy} onClick={() => onAct("notnow")}>Not now</button>
         {d.checks.length ? <button type="button" className="tm-chip" aria-expanded={checks} onClick={() => setChecks(!checks)}>Checked {passed} of {d.checks.length}</button> : null}
       </div>

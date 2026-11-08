@@ -49,6 +49,13 @@ if (!/\$140/.test(JSON.stringify(pricing.facts)) || !/Booking\.com are left alon
 if (/[—–]/.test(pricing.proposal + pricing.title)) fail("em dash in a proposal");
 if (board.agents.find((a) => a.id === "penny")!.state !== "needs") fail("Penny should need me");
 
+// One decision per card: a price is only ever Penny's and never carries a message; a message is never Penny's.
+for (const d of board.decisions) {
+  if ((d.kind === "pricing") !== (d.agent === "penny")) fail("a decision under the wrong agent: " + d.key);
+  if (d.kind === "pricing" && (d.draftTo || d.channel)) fail("a price card carries a message");
+  if (d.kind !== "pricing" && (d.facts || /\$\d+ a night/.test(d.proposal))) fail("a message card carries a price: " + d.key);
+}
+
 // Approving a price changes nothing anywhere and is recorded; it does not come back.
 const before = capturedCommits().length;
 const approved = await actOnTeamDecision({ key: pricing.key, action: "approve" }, NOW);
