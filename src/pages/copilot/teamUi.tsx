@@ -123,7 +123,7 @@ export function Character({ who, size = 96, badge = 0, crop = false }: { who: Ag
   const bs = Math.max(18, Math.round(size * (cop ? 0.17 : 0.2)));
   const name = who === "copilot" ? "Copilot, chief of staff" : who === "theo" ? "Theo, Guest Messaging" : who === "nora" ? "Nora, Reviews" : "Penny, Pricing";
   return (
-    <span className="tm-ch" role="img" aria-label={name}>
+    <span className={crop ? "tm-ch crop" : "tm-ch"} role="img" aria-label={name}>
       <svg viewBox={vb} width={size} height={h} aria-hidden="true">{P[who]}</svg>
       {badge > 0 && !crop ? <span className="tm-badge" style={{ left: `${cop ? 80 : 79}%`, top: `${cop ? 68 : 66}%`, width: bs, height: bs, fontSize: Math.round(bs * 0.58) }}>{badge > 99 ? "99+" : badge}</span> : null}
     </span>

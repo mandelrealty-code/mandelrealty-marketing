@@ -9552,3 +9552,5 @@ html.cp-app[data-cp-theme="dark"] #root {
 .tm-edit small { color: var(--muted); }
 .tm-row { display: flex; gap: 8px; align-items: center; }
 .tm-edit input, .tm-edit textarea { flex: 1; font: inherit; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--canvas); color: var(--ink); width: 100%; }
+.tm-ch.crop { overflow: hidden; border-radius: 50%; background: var(--tint); }
+.tm-ch.crop svg { overflow: hidden; }
