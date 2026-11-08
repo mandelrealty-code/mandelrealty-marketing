@@ -11,6 +11,8 @@ import { ID, worldAt } from "./parity/catalog.js";
 import { installWorld } from "./parity/world.js";
 import { actOnTeamDecision, agentOfKind, messageChecks, rateDecision, teamBoard } from "./team.js";
 import { instructionsFor, saveSetting, settingsFor, undoSetting } from "./teamSettings.js";
+import { askDesk, chatOf, handOver, ownerOf } from "./teamChat.js";
+import { costViews } from "./aiGateway.js";
 import { resetWatch, runWatch, setWatchSource } from "./watch.js";
 
 function fail(label: string): never {
@@ -94,5 +96,33 @@ for (const bad of ["Send messages without asking me.", "Auto-send replies to gue
 if ((await saveSetting({ agent: "penny", section: "rules", value: ["Change the price directly when sure."] }, T0)).ok) fail("Penny must not be allowed to change prices");
 if ((await saveSetting({ agent: "theo", section: "locked", value: ["x"] }, T0)).ok || (await saveSetting({ agent: "theo", section: "limits", value: ["x"] }, T0)).ok) fail("approval rows and limits are not editable");
 if ((await settingsFor("penny", [], T0)).d.locked.length !== 5) fail("Penny's approval rows");
+
+// Desk chats: a member answers only its own job, offers a hand-over for anything else, and hands over only when told to.
+const calls = { n: 0 };
+const made = (): number => calls.n;
+setBrainModel(async () => { calls.n = made() + 1; return { text: "The base is $165 and the promo is $148.", toolUses: [], blocks: [], stop: "end_turn" }; });
+const C0 = new Date("2026-11-08T17:00:00Z");
+if (ownerOf("what should we charge, what is the price for Shaw", "nora").other !== "penny" || ownerOf("how are my reviews doing", "penny").other !== "nora" || ownerOf("did the guest message come in", "penny").other !== "theo" || !ownerOf("hello", "theo").own) fail("who owns which question");
+let nora = await askDesk("nora", "What price should I set for Shaw next week?", C0);
+const offer = nora.at(-1)!;
+if (made() !== 0 || offer.text !== "You should ask Penny about that. Want me to send Penny a message?" || offer.offer?.to !== "penny") fail("Nora must not answer pricing herself: " + JSON.stringify(offer));
+if ((await chatOf("penny")).length) fail("nothing may reach Penny before I say yes");
+if ((await teamBoard(C0)).decisions.some((d) => d.kind === "answer")) fail("a hand-over happened without a yes");
+const sent = await handOver({ from: "nora", to: "penny", question: offer.offer!.question }, C0);
+if (!sent.ok || made() !== 1) fail("the hand-over should make exactly one call: " + made());
+const afterBoard = await teamBoard(C0);
+const ask = afterBoard.decisions.find((d) => d.kind === "answer");
+if (!ask || ask.agent !== "penny" || !/Nora's question/.test(ask.title) || !/\$148/.test(ask.proposal)) fail("Penny's answer should wait in Decisions: " + JSON.stringify(ask));
+if (!afterBoard.events.some((e) => e.agent === "copilot" && /Nora asked Penny through Copilot, with your approval/.test(e.text))) fail("the hand-over must be an event through Copilot");
+if (!/Sent to Penny through Copilot/.test((await chatOf("nora")).at(-1)!.text) || !/Nora asked through Copilot/.test((await chatOf("penny")).at(-1)!.text)) fail("both desks should show the hand-over");
+const closed = await actOnTeamDecision({ key: ask.key, action: "approve" }, C0);
+if (!closed.ok || (await teamBoard(C0)).decisions.some((d) => d.kind === "answer")) fail("closing an answer");
+// Her own job is answered, on her own desk, and stays there.
+const own = await askDesk("nora", "How should I answer a 3 star review?", C0);
+if (made() !== 2 || own.at(-1)!.role !== "agent" || own.some((m) => m.offer && m.text.includes("how should i answer"))) fail("Nora should answer a review question herself");
+if ((await chatOf("theo")).length || (await chatOf("penny")).some((m) => m.role === "user")) fail("a question leaked into another desk's chat");
+if ((await askDesk("penny", "Any new reviews?", C0)).at(-1)!.offer?.to !== "nora" || (await askDesk("theo", "What should the price be?", C0)).at(-1)!.offer?.to !== "penny") fail("reverse routing");
+if ((await costViews(C0)).agents.nora.calls < 1) fail("desk chat calls are counted per agent");
+setBrainModel(null);
 
 console.log("Team harness passed.");

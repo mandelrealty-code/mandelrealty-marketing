@@ -1,3 +1,4 @@
+import { askDesk, chatOf, clearChat, handOver } from "../copilot/teamChat.js";
 import { saveSetting, settingsFor, undoSetting } from "../copilot/teamSettings.js";
 import { actOnTeamDecision, rateDecision, teamBoard } from "../copilot/team.js";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -820,10 +821,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     // What the watch loop put in Decisions, and what a partner does with it. Items are never chats; snooze keeps one away until tomorrow.
     if (op === "watch-items") return res.status(200).json({ items: await watchDecisions() });
-    if (op === "team") return res.status(200).json(await teamBoard());
+    if (op === "team") return res.status(200).json(await teamBoard(undefined, body.light === true));
     if (op === "team-act") {
       const action = body.action === "approve" || body.action === "done" ? body.action : "notnow";
       return res.status(200).json(await actOnTeamDecision({ key: String(body.key ?? ""), action, ...(typeof body.text === "string" ? { text: body.text } : {}) }));
+    }
+    if (op === "team-chat" || op === "team-chat-get" || op === "team-chat-clear" || op === "team-handoff") {
+      const asAgent = (v: unknown) => (v === "theo" || v === "nora" || v === "penny" ? v : null);
+      const agent = asAgent(body.agent ?? body.from);
+      if (!agent) return res.status(400).json({ error: "Unknown team member." });
+      if (op === "team-chat-get") return res.status(200).json({ messages: await chatOf(agent) });
+      if (op === "team-chat-clear") { await clearChat(agent); return res.status(200).json({ messages: [] }); }
+      if (op === "team-chat") return res.status(200).json({ messages: await askDesk(agent, String(body.text ?? "")) });
+      const to = asAgent(body.to);
+      if (!to) return res.status(400).json({ error: "Unknown team member." });
+      return res.status(200).json(await handOver({ from: agent, to, question: String(body.question ?? "") }));
     }
     if (op === "team-settings") {
       const agent = String(body.agent ?? "");

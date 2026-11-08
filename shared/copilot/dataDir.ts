@@ -4,7 +4,7 @@
  * Elsewhere they go under data/, which is created on save when it is missing.
  */
 
-import { mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -18,9 +18,16 @@ export function tempDataDir(): string {
   return safeTemp(path.join(tmpdir(), "mrg-copilot", "data"));
 }
 
+let testDir = "";
+
 export function runtimeDataDir(): string {
   const temp = tempDataDir();
   if (readOnlyRuntime()) return temp;
+  // Test runs never share state through the local file: each process gets its own empty folder, so a suite can't pass or fail on what an earlier run left.
+  if (process.env.COPILOT_PARITY === "1") {
+    if (!testDir) testDir = mkdtempSync(path.join(tmpdir(), "mrg-parity-"));
+    return testDir;
+  }
   const local = path.join(process.cwd(), "data");
   if (isTaskPath(local)) return temp;
   return local;

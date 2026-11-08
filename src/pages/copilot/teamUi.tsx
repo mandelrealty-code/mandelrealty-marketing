@@ -157,7 +157,7 @@ function DecisionCard({ d, busy, onAct, onReviews }: { d: TeamDecision; busy: bo
       {d.facts ? <dl className="tm-facts">{d.facts.map((f) => <div key={f.label}><dt>{f.label}</dt><dd>{f.value}</dd></div>)}</dl> : null}
       {d.proposal ? <div className="tm-draft">{d.draftTo ? <small>To {d.draftTo}</small> : null}<p>{d.proposal}</p></div> : null}
       <div className="tm-acts">
-        {d.elsewhere ? <button type="button" className="tm-go" onClick={onReviews}>Open in Reviews</button> : d.proposal ? <button type="button" className="tm-go" disabled={busy} onClick={() => onAct("approve")}>{d.agent === "penny" ? "Approve price proposal" : d.agent === "nora" ? "Approve reply" : "Approve and send message"}</button> : <button type="button" className="tm-go" disabled={busy} onClick={() => onAct("done")}>Mark done</button>}
+        {d.elsewhere ? <button type="button" className="tm-go" onClick={onReviews}>Open in Reviews</button> : d.proposal || d.kind === "answer" ? <button type="button" className="tm-go" disabled={busy} onClick={() => onAct("approve")}>{d.kind === "answer" ? "Got it" : d.agent === "penny" ? "Approve price proposal" : d.agent === "nora" ? "Approve reply" : "Approve and send message"}</button> : <button type="button" className="tm-go" disabled={busy} onClick={() => onAct("done")}>Mark done</button>}
         <button type="button" className="tm-quiet" disabled={busy} onClick={() => onAct("notnow")}>Not now</button>
         {d.checks.length ? <button type="button" className="tm-chip" aria-expanded={checks} onClick={() => setChecks(!checks)}>Checked {passed} of {d.checks.length}</button> : null}
       </div>
@@ -177,10 +177,11 @@ const NEEDS: Record<AgentId, { what: string; without: string }[]> = {
   penny: [{ what: "Hospitable write access and PriceLabs, later.", without: "Without it, I can only recommend a price." }],
 };
 
-export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () => void; onOpenReviews: () => void }) {
+export function TeamPage({ api, desk, onDesk, onBack, onOpenReviews, onOpenGuests, onChanged }: { api: Api; desk: AgentId | null; onDesk: (a: AgentId | null) => void; onBack: () => void; onOpenReviews: () => void; onOpenGuests: () => void; onChanged: () => void }) {
   const [board, setBoard] = useState<TeamBoard | null>(null);
   const [error, setError] = useState("");
-  const [desk, setDesk] = useState<AgentId | null>(null);
+  const setDesk = onDesk;
+  const [all, setAll] = useState(false);
   const [settings, setSettings] = useState(false);
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
@@ -188,6 +189,7 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
 
   const load = useCallback(() => api<TeamBoard>("team", {}).then((b) => { setBoard(b); setError(""); }).catch(() => setError("The team did not load. Nothing was changed.")), [api]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setSettings(false); }, [desk]);
 
   const act = async (key: string, action: "approve" | "notnow" | "done") => {
     setBusy(key);
@@ -196,6 +198,7 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
       const r = await api<{ ok: boolean; note: string }>("team-act", { key, action });
       setNote(r.note);
       await load();
+      onChanged();
     } catch {
       setNote("That did not go through. Nothing was sent.");
     }
@@ -216,7 +219,7 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
   return (
     <div className="tm">
       <div className="tm-main">
-        <nav className="tm-crumb"><button type="button" onClick={desk ? () => { setDesk(null); setSettings(false); } : onBack}>{desk ? "Team" : "Overview"}</button> / {desk && settings ? <><button type="button" onClick={() => setSettings(false)}>{agent!.name}</button> / <span>Settings</span></> : <span>{desk ? agent!.name : "Team"}</span>}</nav>
+        <nav className="tm-crumb"><button type="button" onClick={desk ? () => { setDesk(null); setSettings(false); } : onBack}>{desk ? "Team" : "Home"}</button> / {desk && settings ? <><button type="button" onClick={() => setSettings(false)}>{agent!.name}</button> / <span>Settings</span></> : <span>{desk ? agent!.name : "Team"}</span>}</nav>
         {note ? <p className="tm-note" role="status">{note}</p> : null}
 
         {agent && settings && agent.id !== "copilot" ? <SettingsPage api={api} agent={agent} /> : !agent ? (
@@ -251,7 +254,8 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
 
             <section className="tm-sec" aria-label="Decisions needing you">
               <h2 className="tm-h2">Decisions needing you</h2>
-              {board.decisions.length ? cards(board.decisions) : <p className="tm-empty">Nothing needs you right now.</p>}
+              {board.decisions.length ? cards(all ? board.decisions : board.decisions.slice(0, 5)) : <p className="tm-empty">Nothing needs you right now.</p>}
+              {board.decisions.length > 5 ? <button type="button" className="tm-link" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show all ${board.decisions.length}`}</button> : null}
             </section>
 
             <section className="tm-sec" aria-label="The team">
@@ -289,6 +293,9 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
                 </ul>
               ) : <p className="tm-empty">Nothing decided yet.</p>}
             </section>
+            {agent.id !== "copilot" ? <DeskChat api={api} agent={agent.id} name={agent.name} onHandOver={() => { void load(); onChanged(); }} /> : null}
+            {agent.id === "theo" ? <button type="button" className="tm-src" onClick={onOpenGuests}>Open the guest inbox</button> : null}
+            {agent.id === "nora" ? <button type="button" className="tm-src" onClick={onOpenReviews}>Open Reviews</button> : null}
             {agent.id !== "copilot" ? <button type="button" className="tm-src" onClick={() => setSettings(true)}>Open {agent.name}'s settings</button> : null}
           </>
         )}
@@ -417,3 +424,126 @@ function SettingsPage({ api, agent }: { api: Api; agent: AgentCard }) {
     </>
   );
 }
+
+// ---------- A desk's own chat ----------
+
+type ChatMsg = { role: "user" | "agent" | "note"; text: string; at: string; offer?: { to: "theo" | "nora" | "penny"; question: string } };
+const FIRST: Record<string, string> = { theo: "Ask Theo about a guest or a message", nora: "Ask Nora about a review", penny: "Ask Penny about a price" };
+
+function DeskChat({ api, agent, name, onHandOver }: { api: Api; agent: AgentId; name: string; onHandOver: () => void }) {
+  const [rows, setRows] = useState<ChatMsg[]>([]);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void api<{ messages: ChatMsg[] }>("team-chat-get", { agent }).then((r) => setRows(r.messages)).catch(() => undefined); }, [api, agent]);
+  const ask = async () => {
+    const q = text.trim();
+    if (!q || busy) return;
+    setBusy(true);
+    setText("");
+    setRows((r) => [...r, { role: "user", text: q, at: new Date().toISOString() }]);
+    try { setRows((await api<{ messages: ChatMsg[] }>("team-chat", { agent, text: q })).messages); } catch { setRows((r) => [...r, { role: "note", text: "That did not go through. Nothing was sent.", at: new Date().toISOString() }]); }
+    setBusy(false);
+  };
+  const send = async (m: ChatMsg) => {
+    if (!m.offer || busy) return;
+    setBusy(true);
+    try { setRows((await api<{ messages: ChatMsg[] }>("team-handoff", { from: agent, to: m.offer.to, question: m.offer.question })).messages); onHandOver(); } catch { /* the chat shows nothing was sent */ }
+    setBusy(false);
+  };
+  const last = rows.length ? rows[rows.length - 1] : null;
+  return (
+    <section className="tm-sec tm-chat" aria-label={`Ask ${name}`}>
+      <div className="tm-sh"><h2 className="tm-h2">Ask {name}</h2><span>This chat is only with {name}, and only about {name}'s job.</span>{rows.length ? <button type="button" className="tm-link" onClick={() => void api("team-chat-clear", { agent }).then(() => setRows([]))}>Clear this session</button> : null}</div>
+      {rows.length ? (
+        <ul className="tm-msgs">
+          {rows.map((m, i) => (
+            <li key={m.at + i} className={m.role}>
+              <p>{m.text}</p>
+              {m.offer && m === last ? <div className="tm-acts"><button type="button" className="tm-go" disabled={busy} onClick={() => void send(m)}>Yes, send it to {m.offer.to[0]!.toUpperCase() + m.offer.to.slice(1)}</button><button type="button" className="tm-quiet" disabled={busy} onClick={() => setRows((r) => [...r, { role: "note", text: "Okay. Nothing was sent to anyone.", at: new Date().toISOString() }])}>No</button></div> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <form className="tm-ask" onSubmit={(e) => { e.preventDefault(); void ask(); }}>
+        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={FIRST[agent] ?? "Ask"} aria-label={`Ask ${name}`} />
+        <button type="submit" className="tm-go" disabled={busy || !text.trim()}>{busy ? "Working" : "Ask"}</button>
+      </form>
+      {rows.some((m) => m.role === "note" && /^Sent to/.test(m.text)) ? <p className="tm-empty">Open the other desk from the team list to see the answer, or find it under Decisions.</p> : null}
+    </section>
+  );
+}
+
+// ---------- The main page ----------
+
+export function HomePage({ board, api, onDesk, onTeam, onChanged }: { board: TeamBoard | null; api: Api; onDesk: (a: AgentId) => void; onTeam: () => void; onChanged: () => void }) {
+  const [busy, setBusy] = useState("");
+  const [note, setNote] = useState("");
+  if (!board) return <div className="tm-home"><p className="cp-note">Loading the team.</p></div>;
+  const top = board.decisions.slice(0, 3);
+  const rest = board.decisions.length - top.length;
+  const act = async (key: string, action: "approve" | "notnow" | "done") => {
+    setBusy(key);
+    try { setNote((await api<{ note: string }>("team-act", { key, action })).note); } catch { setNote("That did not go through. Nothing was sent."); }
+    setBusy("");
+    onChanged();
+  };
+  const NOT_BUILT = ["Channels", "Cleaning and Operations", "Onboarding", "Acquisition", "Ads", "Finance", "Incident"];
+  return (
+    <div className="tm-home">
+      <header className="tm-hhead">
+        <Character who="copilot" size={104} badge={board.decisions.length} />
+        <div><h1>Copilot</h1><span>Chief of staff</span>
+          <p>{top[0] ? top[0].title : "Nothing needs you today."}</p></div>
+      </header>
+      <section className="tm-hteam" aria-label="The team">
+        {board.agents.filter((a) => a.id !== "copilot").map((a) => (
+          <button key={a.id} type="button" className="tm-hmember" onClick={() => onDesk(a.id)}>
+            <Character who={a.id} size={84} badge={a.needs} />
+            <b>{a.name}</b><span>{a.role}</span><span className="tm-st"><Dot state={a.state} /> {STATE[a.state]}</span>
+          </button>
+        ))}
+      </section>
+      <p className="tm-muted">{NOT_BUILT.map((n) => n + ", not built yet").join(" · ")}</p>
+      <section className="tm-hnote" aria-label="Notifications">
+        <h2 className="tm-h2">Notifications</h2>
+        {note ? <p className="tm-note" role="status">{note}</p> : null}
+        {top.length ? top.map((d) => (
+          <div key={d.key} className="tm-hrow">
+            <div><b>{d.title}</b><span>{d.byline}</span></div>
+            <div className="tm-acts">
+              {d.elsewhere ? <button type="button" className="tm-go" onClick={() => onDesk(d.agent)}>Open</button> : <button type="button" className="tm-go" disabled={busy === d.key} onClick={() => void act(d.key, d.proposal || d.kind === "answer" ? "approve" : "done")}>{d.kind === "answer" ? "Got it" : d.proposal ? "Approve" : "Mark done"}</button>}
+              <button type="button" className="tm-quiet" disabled={busy === d.key} onClick={() => void act(d.key, "notnow")}>Not now</button>
+            </div>
+          </div>
+        )) : <p className="tm-empty">Nothing needs you.</p>}
+        {rest > 0 ? <button type="button" className="tm-link" onClick={onTeam}>{rest} more</button> : null}
+      </section>
+    </div>
+  );
+}
+
+// ---------- The sidebar roster ----------
+
+const LATER = ["Channels", "Cleaning and Operations", "Onboarding", "Acquisition", "Ads", "Finance", "Incident"];
+
+export function Roster({ board, active, onOpen }: { board: TeamBoard | null; active: AgentId | null; onOpen: (a: AgentId) => void }) {
+  return (
+    <div className="tm-roster" aria-label="Team">
+      {(["copilot", "theo", "nora", "penny"] as AgentId[]).map((id) => {
+        const a = board?.agents.find((x) => x.id === id);
+        const meta = AGENT_NAMES[id];
+        return (
+          <button key={id} type="button" className={`tm-rrow${active === id ? " on" : ""}`} onClick={() => onOpen(id)}>
+            <Character who={id} size={28} crop />
+            <span className="tm-rname"><b>{meta.name}</b><small>{meta.role}</small></span>
+            {a ? <Dot state={a.state} /> : null}
+            {a && a.needs > 0 ? <span className="cp-ov-count">{a.needs}</span> : id === "copilot" && board && board.decisions.length ? <span className="cp-ov-count">{board.decisions.length}</span> : null}
+          </button>
+        );
+      })}
+      {LATER.map((n) => <div key={n} className="tm-rrow later"><span className="tm-rname"><b>{n}</b><small>Not built yet</small></span></div>)}
+    </div>
+  );
+}
+
+const AGENT_NAMES: Record<AgentId, { name: string; role: string }> = { copilot: { name: "Copilot", role: "Chief of staff" }, theo: { name: "Theo", role: "Guest Messaging" }, nora: { name: "Nora", role: "Reviews" }, penny: { name: "Penny", role: "Pricing" } };

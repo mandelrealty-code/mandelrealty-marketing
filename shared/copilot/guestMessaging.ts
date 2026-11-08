@@ -516,7 +516,7 @@ export type GuestSubmitResult = {
  */
 async function hubGapBeforeReply(reservationId: string, propertyId: string, guest: string): Promise<{ ask: string; items: HubItem[] } | null> {
   try {
-    const thread = await readStayThread(reservationId, new Date());
+    const thread = await readStayThread(reservationId, parityNow() ?? new Date());
     const spoken = thread.filter((turn) => (turn.role === "guest" || turn.role === "host") && turn.body.trim()).sort((a, b) => a.at.localeCompare(b.at));
     const lastHost = spoken.filter((turn) => turn.role === "host").map((turn) => turn.at).at(-1) ?? "";
     const ask = spoken.filter((turn) => turn.role === "guest" && turn.at > lastHost).map((turn) => turn.body.trim()).join(" ");
@@ -1277,7 +1277,7 @@ async function inquiryThread(id: string): Promise<{ at: string; role: string; na
  */
 export async function suggestReply(
   row: GuestRow,
-  now = new Date(),
+  now = parityNow() ?? new Date(),
   shown: { at: string; role: string; name: string; body: string }[] = [],
 ): Promise<string> {
   const [messages, hubRead, memory] = await Promise.all([
@@ -1340,7 +1340,7 @@ const liveProbed = new Map<string, number>();
  * The open conversation, re-read only when Hospitable's last message is newer than what is on screen.
  * Returns null when nothing new arrived, so the page can keep polling without replacing the thread.
  */
-export async function liveGuestUpdate(row: GuestRow, knownAt: string, now = new Date()): Promise<GuestDraftView | null> {
+export async function liveGuestUpdate(row: GuestRow, knownAt: string, now = parityNow() ?? new Date()): Promise<GuestDraftView | null> {
   if (!row.id) return null;
   if (row.inquiry) return openGuestAnswer(row, now, { live: true });
   const probed = await hospitableRead("get-reservation", { identifier: row.id }).catch(() => null);
@@ -1355,7 +1355,7 @@ export async function liveGuestUpdate(row: GuestRow, knownAt: string, now = new 
   return openGuestAnswer(row, now, { live: true });
 }
 
-export async function openGuestAnswer(row: GuestRow, now = new Date(), options: { live?: boolean } = {}): Promise<GuestDraftView> {
+export async function openGuestAnswer(row: GuestRow, now = parityNow() ?? new Date(), options: { live?: boolean } = {}): Promise<GuestDraftView> {
   // Opened from the inbox, a kept thread is used when it was read at or after the activity shown.
   // A live check asks the reservation for last_message_at first. The message list (limited to two
   // reads a minute) is fetched only when that time moved.

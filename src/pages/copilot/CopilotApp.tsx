@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import type { BriefPayload, ConnectorRow, CopilotChat, CopilotMessage, CopilotSkill, CopilotTextSend, HospitableCard, MemoryFileView, SkillRow } from "../../../shared/copilot/types";
 import { streamPiece, streamStart, streamStep } from "../../../shared/copilot/streamText";
@@ -33,7 +33,6 @@ import {
   pauseSession,
   readPage,
   resumeSession,
-  sidebarMark,
   skipStuck,
   stopAtLogin,
   takeOver,
@@ -41,7 +40,8 @@ import {
 } from "../../../shared/copilot/browserSession";
 import BrowserSurface, { SessionLine } from "./BrowserSurface";
 import { OverviewV2 } from "./OverviewV2";
-import { TeamPage } from "./teamUi";
+import { HomePage, Roster, TeamPage } from "./teamUi";
+import type { TeamBoard } from "../../../shared/copilot/team";
 import { TasksBoard, type BoardApi, type BoardPayload } from "../tasks/TasksBoard";
 import { withoutEmDashes } from "../../../shared/copilot/guestTranslate";
 
@@ -60,7 +60,7 @@ function signInSite(body: string): string {
   return named?.[1]?.trim() || "This site";
 }
 
-type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "guests" | "tasks" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "team" | "memory" | "memory-file";
+type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "guests" | "tasks" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "team" | "home" | "memory" | "memory-file";
 
 type Boot = {
   brief: BriefPayload;
@@ -936,11 +936,20 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     try {
       const asked = window.sessionStorage.getItem("cp-open") || new URLSearchParams(window.location.search).get("view") || "";
       window.sessionStorage.removeItem("cp-open");
-      return asked === "tasks" ? "tasks" : asked === "reviews" ? "reviews" : "brief";
+      return asked === "tasks" ? "tasks" : asked === "reviews" ? "reviews" : "home";
     } catch {
-      return "brief";
+      return "home";
     }
   });
+  const [team, setTeam] = useState<TeamBoard | null>(null);
+  const [teamDesk, setTeamDesk] = useState<"copilot" | "theo" | "nora" | "penny" | null>(null);
+  const refreshTeam = useCallback(() => api<TeamBoard>("team", { light: true }).then(setTeam).catch(() => undefined), []);
+  useEffect(() => {
+    void refreshTeam();
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refreshTeam(); }, 120_000);
+    return () => window.clearInterval(timer);
+  }, [refreshTeam]);
+  const openDesk = (id: "copilot" | "theo" | "nora" | "penny" | null) => { setTeamDesk(id === "copilot" ? null : id); setScreen("team"); setSheet(false); };
   const [tasksKept, setTasksKept] = useState(() => screen === "tasks");
   const [boardSeed, setBoardSeed] = useState<Workflow>(BLANK);
   const [boardSkillId, setBoardSkillId] = useState<string | null>(null);
@@ -1315,7 +1324,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   function goHome() {
     setChatId(null);
     setMessages([]);
-    setScreen("brief");
+    setScreen("home");
     setSheet(false);
     setReport(false);
     setReportDock(null);
@@ -1667,7 +1676,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     else if (screen === "twilio") setScreen("connectors");
     else if (screen === "memory" || screen === "skills" || screen === "connectors" || screen === "account" || screen === "billing") setScreen("settings");
     else {
-      setScreen("brief");
+      setScreen("home");
       setSheet(false);
     }
   }
@@ -1970,30 +1979,13 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   function sideList() {
     return (
     <>
-      <button type="button" className="cp-new" onClick={goEmpty}>
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
-          <path d="M8 3v10M3 8h10" />
-        </svg>
-        New chat
-      </button>
-      <button type="button" className={`cp-row${screen === "brief" ? " on" : ""}`} onClick={goHome}>
+      <Roster board={team} active={screen === "team" ? teamDesk ?? "copilot" : null} onOpen={openDesk} />
+      <button type="button" className={`cp-row${screen === "brief" ? " on" : ""}`} onClick={() => { setScreen("brief"); setSheet(false); }}>
         Overview
         {boot?.brief.overview?.count ? <span className="cp-ov-count">{boot.brief.overview.count}</span> : null}
       </button>
-      <button type="button" className={`cp-row${screen === "guests" ? " on" : ""}`} onClick={showGuests}>
-        <span>Guest messaging</span>
-        {guestQueue?.connected && guestQueue.waiting.length ? <span className="cp-ov-count">{guestQueue.waiting.length}</span> : null}
-      </button>
-      <button type="button" className={`cp-row${screen === "reviews" ? " on" : ""}`} onClick={() => { setScreen("reviews"); setSheet(false); void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch((err) => setReviewQueue({ connected: false, line: err instanceof Error ? err.message : "Hospitable is not connected.", reviews: [], postedToday: [] })); }}>
-        <span>Reviews</span>
-        {reviewQueue?.connected && reviewQueue.reviews.length ? <span className="cp-ov-count">{reviewQueue.reviews.length}</span> : null}
-      </button>
       <button type="button" className={`cp-row${screen === "tasks" ? " on" : ""}`} onClick={() => { setTasksKept(true); setScreen("tasks"); setSheet(false); }}>
         <span>Tasks</span>
-      </button>
-      <button type="button" className={`cp-row${screen === "browser" ? " on" : ""}`} onClick={() => { setScreen("browser"); setSheet(false); }}>
-        <span>Browser</span>
-        {sidebarMark(browserSession) ? <span className={`cp-br-nav${browserSession?.status === "stuck" ? " needs" : ""}`}>{sidebarMark(browserSession)}</span> : null}
       </button>
       <div className="cp-chats">
         {(boot?.chats ?? []).filter(listedChat).map((chat) => {
@@ -2723,7 +2715,8 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     <p className={error ? "cp-err" : "cp-note"}>{error ? withoutFilesystemDetail(error, true) : "Loading the overview."}</p>
                   </div>
                 ) : null}
-                {screen === "team" ? <TeamPage api={api} onBack={() => setScreen("brief")} onOpenReviews={() => { setScreen("reviews"); void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch(() => undefined); }} /> : null}
+                {screen === "team" ? <TeamPage api={api} desk={teamDesk} onDesk={setTeamDesk} onBack={() => setScreen("home")} onChanged={() => void refreshTeam()} onOpenGuests={showGuests} onOpenReviews={() => { setScreen("reviews"); void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch(() => undefined); }} /> : null}
+                {screen === "home" ? <HomePage board={team} api={api} onDesk={openDesk} onTeam={() => openDesk("copilot")} onChanged={() => void refreshTeam()} /> : null}
                 {screen === "brief" && boot ? (
                   <OverviewV2
                     brief={boot.brief}
@@ -3037,7 +3030,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   </div>
                 ) : null}
               </div>
-              {inSettings || screen === "reviews" || screen === "guests" || screen === "tasks" || screen === "team" ? null : (
+              {inSettings || screen === "reviews" || screen === "guests" || screen === "tasks" || screen === "team" || screen === "home" || screen === "brief" ? null : (
               <div className="cp-composer-wrap">
                 <div className="cp-confirm">Nothing goes out until you confirm.</div>
                 <div className="cp-pluswrap" data-plus="1">
