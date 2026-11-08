@@ -9,7 +9,6 @@
  */
 
 import { getSupabaseAdmin } from "../supabase.js";
-import { complete, brainAvailable } from "./brain.js";
 import { listFacts, saveFact, subjectKey } from "./businessFacts.js";
 import { loadDayBoard } from "./dayBoard.js";
 import { dueQuestion } from "./dueFollowUps.js";
@@ -20,6 +19,7 @@ import { parityEnabled } from "./parity/flag.js";
 import { loadReviewQueue } from "./reviewsQueue.js";
 import { collectThreadGaps } from "./threadGaps.js";
 import { collectCommitmentGaps } from "./commitmentGaps.js";
+import { aiCall } from "./aiGateway.js";
 import { addSpend, costOf, describeSpend, isMetaKey, readMeta, resetWatchMeta, spendFor, writeMeta, type DaySpend } from "./watchMeta.js";
 import { diffSnapshots, takeSnapshot, type Snapshot } from "./watchSnapshot.js";
 import { closeFollowUpEverywhere } from "./dueFollowUps.js";
@@ -318,19 +318,20 @@ export async function judge(candidates: Candidate[], notes: string[], now: Date)
   const keys = new Set(candidates.map((item) => item.key));
   let judged: Judged[] | null = null;
   let usage: { input: number; output: number; model: string } | undefined;
-  if (brainAvailable()) {
-    const result = await complete({
-      task: "chat",
-      system: JUDGE_SYSTEM,
-      user: [
-        `Now: ${now.toISOString()} (Toronto ${torontoToday(now)}, hour ${torontoHour(now)})`,
-        notes.length ? `Learned from what the partner dismissed before:\n${notes.map((line) => `- ${line}`).join("\n")}` : "",
-        `Candidates:\n${candidates.map((item) => `- key=${item.key} | ${item.kind} | urgency ${item.urgency} | ${item.title} | ${item.reason}`).join("\n")}`,
-      ].filter(Boolean).join("\n\n"),
-      maxTokens: 1200,
-    });
-    judged = result ? parseJudgment(result.text, keys) : null;
-    if (result?.usage) usage = { ...result.usage, model: result.model };
+  // Sorting is an easy job: it goes through the AI gateway (Meta first, one fallback, cached, capped, counted per agent).
+  const result = await aiCall({
+    job: "watch_triage",
+    event: "the watch loop found something new",
+    system: JUDGE_SYSTEM,
+    user: [
+      `Now: ${now.toISOString()} (Toronto ${torontoToday(now)}, hour ${torontoHour(now)})`,
+      notes.length ? `Learned from what the partner dismissed before:\n${notes.map((line) => `- ${line}`).join("\n")}` : "",
+      `Candidates:\n${candidates.map((item) => `- key=${item.key} | ${item.kind} | urgency ${item.urgency} | ${item.title} | ${item.reason}`).join("\n")}`,
+    ].filter(Boolean).join("\n\n"),
+  }, now);
+  if (result.ok) {
+    judged = parseJudgment(result.text, keys);
+    if (!result.cached && result.input + result.output > 0) usage = { input: result.input, output: result.output, model: result.model };
   }
   if (!judged) return { ordered: candidates.map((item) => ({ ...item, why: item.reason })), usedBrain: false };
   const byKey = new Map(candidates.map((item) => [item.key, item]));

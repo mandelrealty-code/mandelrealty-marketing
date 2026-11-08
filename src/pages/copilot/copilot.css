@@ -9542,3 +9542,6 @@ html.cp-app[data-cp-theme="dark"] #root {
 .tm-feed time { display: block; font-size: 12px; color: var(--muted); }
 .tm-feed small { display: block; color: var(--muted); }
 @media (max-width: 860px) { .tm { flex-direction: column; padding: 20px 16px 96px; } .tm-feed { position: static; flex-basis: auto; width: 100%; } .tm-strip { grid-template-columns: repeat(2, 1fr); } .tm-chief, .tm-who { flex-direction: column; align-items: flex-start; } }
+.tm-jobs { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tm-jobs th { text-align: left; font-weight: 500; color: var(--muted); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); }
+.tm-jobs td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); }

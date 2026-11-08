@@ -245,6 +245,8 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
 
             <p className="tm-auto"><b>Automation this week.</b> Proposed {a.proposed}. Approved as written {a.approved}. Approved after my edit {a.edited}. Rejected {a.rejected}. Handled without me {a.handled}. Accuracy: {a.accuracy}. Quiet-day cost: {a.cost}.</p>
 
+            <CostPanel board={board} />
+
             <section className="tm-sec" aria-label="Decisions needing you">
               <h2 className="tm-h2">Decisions needing you</h2>
               {board.decisions.length ? cards(board.decisions) : <p className="tm-empty">Nothing needs you right now.</p>}
@@ -270,6 +272,7 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
             </header>
             <section className="tm-sec"><h2 className="tm-h2">What I'm working on now</h2><p>{agent.error || agent.now}</p>{agent.error ? <p className="tm-err">{agent.error}</p> : null}</section>
             <section className="tm-sec"><h2 className="tm-h2">Outstanding</h2>{mine(agent.id).length ? cards(mine(agent.id)) : <p className="tm-empty">Nothing outstanding.</p>}</section>
+            <CostPanel board={board} id={agent.id} />
             {NEEDS[agent.id].length ? <section className="tm-sec"><h2 className="tm-h2">What I need from you</h2><ul className="tm-plain">{NEEDS[agent.id].map((n) => <li key={n.what}>{n.what} <span>{n.without}</span></li>)}</ul></section> : null}
             <section className="tm-sec">
               <h2 className="tm-h2">History</h2>
@@ -300,6 +303,38 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
         </ul>
       </aside>
     </div>
+  );
+}
+
+const usd = (v: number) => "$" + (v === 0 ? "0.00" : v < 0.1 ? v.toFixed(4) : v.toFixed(2));
+
+function CostPanel({ board, id }: { board: TeamBoard; id?: AgentId }) {
+  const v = id ? board.costs.agents[id] : null;
+  const t = board.costs.total;
+  const today = v ? v.today : t.today;
+  const month = v ? v.month : t.month;
+  const projection = v ? v.projection : t.projection;
+  const ceiling = v ? v.ceiling : t.ceiling;
+  const tokens = v ? v.unpricedTokens : t.unpricedTokens;
+  const jobs = v ? v.jobs : Object.values(board.costs.agents).flatMap((a) => a.jobs);
+  return (
+    <section className="tm-sec tm-cost" aria-label="Cost">
+      <h2 className="tm-h2">Cost</h2>
+      <dl className="tm-strip">
+        <div><dt>Today</dt><dd>{usd(today)}</dd></div>
+        <div><dt>This month</dt><dd>{usd(month)}</dd></div>
+        <div><dt>Month ceiling</dt><dd>{usd(ceiling).replace(".00", "")}</dd></div>
+        <div><dt>Projected this month</dt><dd>{usd(projection)}</dd></div>
+      </dl>
+      {v?.paused ? <p className="tm-err">Paused at its ceiling. It makes no AI calls until next month.</p> : null}
+      {tokens ? <p className="tm-empty">{tokens.toLocaleString("en-US")} tokens on Meta are counted but not priced yet, so the dollars above leave them out and the ceiling does not cover them.</p> : null}
+      {jobs.length ? (
+        <table className="tm-jobs">
+          <thead><tr><th>Job</th><th>Model</th><th>Calls</th><th>From cache</th><th>Cost per call</th></tr></thead>
+          <tbody>{jobs.map((j) => <tr key={j.job}><td>{j.label}</td><td>{j.model}</td><td>{j.calls}</td><td>{j.cached}</td><td>{j.perCall === null ? `${j.tokensPerCall} tokens` : usd(j.perCall)}</td></tr>)}</tbody>
+        </table>
+      ) : <p className="tm-empty">No AI calls yet this month.</p>}
+    </section>
   );
 }
 

@@ -4,6 +4,7 @@
  * Everything here is shadow mode: agents propose, a partner presses the button, and nothing external happens without it.
  */
 
+import { costViews, type AgentId, type CostView } from "./aiGateway.js";
 import { calendarNights } from "./calendarAdvice.js";
 import { parityNow } from "./parity/clock.js";
 import { managedReportProperties } from "./reportFigures.js";
@@ -11,7 +12,7 @@ import { addDays, torontoToday } from "./time.js";
 import { actOnWatchItem, watchDecisions, watchLedger, watchTodayCounts, type DecisionRow, type WatchKind } from "./watch.js";
 import { readMeta, writeMeta } from "./watchMeta.js";
 
-export type AgentId = "copilot" | "theo" | "nora" | "penny";
+export type { AgentId };
 export type AgentState = "idle" | "working" | "needs" | "retrying" | "stopped";
 
 export const AGENTS: Record<AgentId, { name: string; role: string; job: string; tagline: string }> = {
@@ -191,6 +192,7 @@ export type TeamBoard = {
   agents: AgentCard[];
   events: { at: string; agent: AgentId; name: string; text: string; woken?: string }[];
   decided: { text: string; at: string }[];
+  costs: Awaited<ReturnType<typeof costViews>>;
   history: { key: string; agent: AgentId; at: string; outcome: Outcome; rating: Rating | ""; text: string }[];
   automation: { proposed: number; approved: number; edited: number; rejected: number; handled: number; rated: number; right: number; accuracy: string; cost: string };
 };
@@ -217,6 +219,7 @@ export async function teamBoard(now: Date = parityNow() ?? new Date()): Promise<
       facts: [{ label: "Calendar", value: p.calendar.open + " open nights" }, { label: "Now", value: p.calendar.now }, { label: "Range", value: p.calendar.range }, { label: "Cleaning fee", value: p.fee }],
     });
   }
+  const costs = await costViews(now);
   const needs = (agent: AgentId) => decisions.filter((d) => d.agent === agent).length;
   const ledger = await watchLedger().catch(() => []);
   const lastFor = (agent: AgentId) => {
@@ -227,9 +230,10 @@ export async function teamBoard(now: Date = parityNow() ?? new Date()): Promise<
   };
   const agents: AgentCard[] = (["copilot", "theo", "nora", "penny"] as AgentId[]).map((id) => {
     const n = id === "copilot" ? 0 : needs(id);
-    const error = id === "penny" ? penny.error : "";
-    const state: AgentState = error ? "retrying" : n ? "needs" : "idle";
-    const nowText = error ? "Waiting to retry." : n ? n + (n === 1 ? " decision" : " decisions") + " waiting for you." : id === "copilot" ? "Watching the day." : "Nothing waiting.";
+    const cost: CostView = costs.agents[id];
+    const error = cost.paused ? "Paused: reached its $" + cost.ceiling + " monthly ceiling. It makes no AI calls until next month." : cost.failed ? "The AI did not answer. Nothing was sent. I will look again on the next change." : id === "penny" ? penny.error : "";
+    const state: AgentState = cost.paused ? "stopped" : error ? "retrying" : n ? "needs" : "idle";
+    const nowText = cost.paused ? "Paused." : error ? "Waiting to retry." : n ? n + (n === 1 ? " decision" : " decisions") + " waiting for you." : id === "copilot" ? "Watching the day." : "Nothing waiting.";
     return { id, ...AGENTS[id], state, now: nowText, last: lastFor(id), error, needs: n };
   });
   const fromLedger: Event[] = ledger.filter((r) => r.status !== "native").slice(0, 30).map((r) => ({ at: r.surfacedAt, agent: agentOfKind(r.kind), text: r.status === "surfaced" ? "Brought up: " + r.title : r.title, woken: r.kind.replace("_", " ") }));
@@ -267,5 +271,5 @@ export async function teamBoard(now: Date = parityNow() ?? new Date()): Promise<
     revenue = null;
   }
   const history = mem.log.slice(0, 40).map((x) => ({ key: x.key, agent: x.agent, at: x.at, outcome: x.outcome, rating: x.rating ?? ("" as const), text: mem.events.find((e) => e.at === x.at && e.agent === x.agent)?.text ?? x.key }));
-  return { asOf: now.toISOString(), history, today: { ins: counts?.ins ?? null, outs: counts?.outs ?? null, waiting, revenue }, decisions, agents, events, decided, automation };
+  return { asOf: now.toISOString(), costs, history, today: { ins: counts?.ins ?? null, outs: counts?.outs ?? null, waiting, revenue }, decisions, agents, events, decided, automation };
 }

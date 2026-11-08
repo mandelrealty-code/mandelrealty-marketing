@@ -26,6 +26,10 @@ export type BrainRequest = {
   messages?: BrainMessage[];
   tools?: BrainTool[];
   maxTokens?: number;
+  /** Team agents only (set by the AI gateway): never use Meta, for a hard job that belongs to Claude. */
+  claudeOnly?: boolean;
+  /** Team agents only: one attempt per provider, so a failure falls back once and then stops. */
+  once?: boolean;
   /** Called with each piece of text as it arrives. */
   onText?: (piece: string) => void;
 };
@@ -261,10 +265,10 @@ export async function complete(request: BrainRequest): Promise<BrainResult | nul
     return out ? { ...out, provider: "seam", model: "seam" } : null;
   }
   if (parityEnabled() && !fetcher) return null;
-  const plan = routePlan(request.task);
+  const plan = routePlan(request.task).filter((route) => !request.claudeOnly || route.provider === "anthropic");
   const emitted = { any: false };
   for (const route of plan) {
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
+    for (let attempt = 1; attempt <= (request.once ? 1 : 2); attempt += 1) {
       try {
         const result = await callOnce(request, route, emitted);
         return result;
