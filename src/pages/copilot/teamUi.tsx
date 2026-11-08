@@ -228,6 +228,7 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
   const [filter, setFilter] = useState<AgentId | "all">("all");
   const [paused, setPaused] = useState(false);
   const [all, setAll] = useState(false);
+  const [showFeed, setShowFeed] = useState(false);
 
   const load = useCallback(() => api<TeamBoard>("team", {}).then((b) => { setBoard(b); setError(""); }).catch(() => setError("The team did not load. Nothing was changed.")), [api]);
   useEffect(() => { void load(); }, [load]);
@@ -257,7 +258,8 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
 
   const a = board.automation;
   const decisions = all ? board.decisions : board.decisions.slice(0, 5);
-  const feed = board.events.filter((e) => filter === "all" || e.agent === filter);
+  const allFeed = board.events.filter((e) => filter === "all" || e.agent === filter);
+  const feed = showFeed ? allFeed : allFeed.slice(0, 10);
   const active = board.agents.filter((x) => x.id !== "copilot");
   const t = board.today;
   const rows = (["theo", "nora", "penny", "copilot"] as AgentId[]).map((id) => {
@@ -280,7 +282,7 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
           <div className="chbody">
             <div><h2 className="h2">Copilot</h2><div className="mut">Chief of staff</div></div>
             <div className="chcols">
-              <div><h3 className="h3">Decided today</h3><ul className="dl">{board.decided.length ? board.decided.map((d) => <li key={d.at}>{d.text}</li>) : <li>Nothing decided yet today.</li>}</ul></div>
+              <div><h3 className="h3">Decided today</h3><ul className="dl">{board.decided.length ? board.decided.slice(0, 4).map((d) => <li key={d.at}>{d.text}</li>) : <li>Nothing decided yet today.</li>}{board.decided.length > 4 ? <li className="mut">{board.decided.length - 4} more decided today</li> : null}</ul></div>
               <div><h3 className="h3">Waiting on you</h3>
                 {board.decisions.length ? <><div className="big">{board.decisions.length}</div><p className="p2">Most urgent: {board.decisions[0]!.title}</p></> : <p className="p2">Nothing needs you right now.</p>}
               </div>
@@ -362,6 +364,7 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
               </div>
             </div>
           )) : <p className="mut">Nothing yet.</p>}
+          {allFeed.length > 10 ? <a className="more" href="#" onClick={(e) => { e.preventDefault(); setShowFeed(!showFeed); }}>{showFeed ? "Show fewer" : `Show all ${allFeed.length}`}</a> : null}
         </div>
       </aside>
     </div></div></div>
