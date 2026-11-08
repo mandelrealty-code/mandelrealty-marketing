@@ -42,6 +42,7 @@ export const JOBS = {
   theo_complaint: { agent: "theo", tier: "hard", task: "hard", maxInputTokens: 6000, maxOutputTokens: 900, cacheDays: 7, label: "Answering a guest complaint" },
   nora_reply: { agent: "nora", tier: "easy", task: "draft", maxInputTokens: 2000, maxOutputTokens: 400, cacheDays: 30, label: "Drafting a review reply" },
   penny_explain: { agent: "penny", tier: "easy", task: "simple", maxInputTokens: 1500, maxOutputTokens: 300, cacheDays: 1, label: "Explaining a price proposal" },
+  copilot_chat: { agent: "copilot", tier: "easy", task: "simple", maxInputTokens: 3000, maxOutputTokens: 500, cacheDays: 1, label: "Answering a question to Copilot" },
   theo_chat: { agent: "theo", tier: "easy", task: "simple", maxInputTokens: 3000, maxOutputTokens: 500, cacheDays: 1, label: "Answering a question on Theo's desk" },
   nora_chat: { agent: "nora", tier: "easy", task: "simple", maxInputTokens: 3000, maxOutputTokens: 500, cacheDays: 1, label: "Answering a question on Nora's desk" },
   penny_chat: { agent: "penny", tier: "easy", task: "simple", maxInputTokens: 3000, maxOutputTokens: 500, cacheDays: 1, label: "Answering a question on Penny's desk" },

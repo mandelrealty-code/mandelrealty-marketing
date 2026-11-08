@@ -11,7 +11,7 @@ import { ID, worldAt } from "./parity/catalog.js";
 import { installWorld } from "./parity/world.js";
 import { actOnTeamDecision, agentOfKind, messageChecks, rateDecision, teamBoard } from "./team.js";
 import { instructionsFor, saveSetting, settingsFor, undoSetting } from "./teamSettings.js";
-import { askDesk, chatOf, handOver, ownerOf } from "./teamChat.js";
+import { askCopilot, askDesk, chatOf, handOver, ownerOf } from "./teamChat.js";
 import { costViews } from "./aiGateway.js";
 import { resetWatch, runWatch, setWatchSource } from "./watch.js";
 
@@ -129,6 +129,11 @@ await askDesk("penny", "What should the nightly rate be for Nov 9 to 20?", new D
 if (!/Roya is the owner of 1065 Shaw Street/.test(seen) || !/\$148/.test(seen) || !/Source:/.test(seen)) fail("Penny was not given her facts: " + seen.slice(0, 300));
 await askDesk("theo", "How many check-outs are there today?", new Date("2026-11-08T18:00:00Z"));
 if (!/Live facts:/.test(seen) || !/Hospitable/.test(seen)) fail("Theo was not given live facts: " + seen.slice(0, 300));
+// Copilot has its own chat, kept apart from the desks, and never hands anything over.
+setBrainModel(async (req) => { seen = req.user ?? ""; return { text: "Two guests are waiting.", toolUses: [], blocks: [], stop: "end_turn" }; });
+const cop = await askCopilot("What needs me first?", new Date("2026-11-08T18:00:00Z"));
+if (cop.at(-1)!.text !== "Two guests are waiting." || cop.some((m) => m.offer) || !/What needs a partner/.test(seen)) fail("Copilot's chat: " + JSON.stringify(cop));
+if ((await chatOf("theo")).some((m) => /What needs me first/.test(m.text))) fail("Copilot's question leaked into Theo's chat");
 setBrainModel(null);
 
 console.log("Team harness passed.");

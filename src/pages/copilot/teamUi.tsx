@@ -70,8 +70,8 @@ function buttonFor(d: TeamDecision): string {
   return d.agent === "penny" ? "Approve price proposal" : d.agent === "nora" ? "Approve reply" : "Approve and send message";
 }
 
-function Page({ children }: { children: ReactNode }) {
-  return <div className="tmx lt"><div className="stage"><div className="col">{children}</div></div></div>;
+function Page({ children, panel }: { children: ReactNode; panel?: ReactNode }) {
+  return <div className={`tmx lt${panel ? " split" : ""}`}><div className="stage"><div className="col">{children}</div></div>{panel}</div>;
 }
 
 // ---------- The roster (the sidebar) ----------
@@ -229,6 +229,9 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
   const [paused, setPaused] = useState(false);
   const [all, setAll] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(() => { try { return window.localStorage.getItem("tm-panel") !== "closed"; } catch { return true; } });
+  const [tick, setTick] = useState(0);
+  const setPanel = (v: boolean) => { setPanelOpen(v); try { window.localStorage.setItem("tm-panel", v ? "open" : "closed"); } catch { /* the choice just is not remembered */ } };
 
   const load = useCallback(() => api<TeamBoard>("team", {}).then((b) => { setBoard(b); setError(""); }).catch(() => setError("The team did not load. Nothing was changed.")), [api]);
   useEffect(() => { void load(); }, [load]);
@@ -250,11 +253,14 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
   if (!board) return <div className="tmx lt"><div className="stage"><p className="mut">{error || "Loading the team."}</p></div></div>;
   const agent = desk ? board.agents.find((a) => a.id === desk) ?? null : null;
 
+  const chatWho = agent ?? board.agents.find((x) => x.id === "copilot")!;
+  const panel = panelOpen && !(agent && settings) ? <SidePanel key={chatWho.id} api={api} agent={chatWho} onClose={() => setPanel(false)} onChanged={() => { setTick((n) => n + 1); void load(); onChanged(); }} /> : null;
+
   if (agent && settings && isAgent(agent.id)) return <Page><SettingsPage api={api} agent={agent} onBack={() => setSettings(false)} onTeam={() => onDesk(null)} /></Page>;
 
   const card = (d: TeamDecision, showDraft = true, open = false) => <DecisionCard key={d.key} d={d} busy={busy === d.key} showDraft={showDraft} open={open} onAct={(a) => void act(d.key, a)} onRate={(r) => void rate(d.key, r)} onReviews={onOpenReviews} />;
 
-  if (agent) return <Page><Desk board={board} agent={agent} api={api} note={note} card={card} onSettings={() => setSettings(true)} onGuests={onOpenGuests} onReviews={onOpenReviews} reload={() => { void load(); onChanged(); }} rate={rate} /></Page>;
+  if (agent) return <Page panel={panel}><Desk board={board} agent={agent} api={api} note={note} card={card} tick={tick} askOpen={panelOpen} onAsk={() => setPanel(!panelOpen)} onSettings={() => setSettings(true)} onGuests={onOpenGuests} onReviews={onOpenReviews} rate={rate} /></Page>;
 
   const a = board.automation;
   const decisions = all ? board.decisions : board.decisions.slice(0, 5);
@@ -269,10 +275,10 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
     return { id, name: board.agents.find((x) => x.id === id)!.name, models, calls: c.calls, cached: c.cached, per: c.calls ? (priced ? `${usd(c.month / c.calls)} per call` : `${Math.round(c.jobs.reduce((s, j) => s + j.tokensPerCall * j.calls, 0) / Math.max(1, c.calls))} tokens a call, not priced yet`) : "No calls yet", ceil: `$${c.ceiling}` };
   });
   return (
-    <div className="tmx lt"><div className="stage"><div className="cols">
+    <div className={`tmx lt${panel ? " split" : ""}`}><div className="stage"><div className="cols">
       <div className="main">
         <header>
-          <div className="hrow"><h1 className="title">Team</h1><span className="shadow"><span className="dot sm d-idle" />Shadow mode</span></div>
+          <div className="hrow"><h1 className="title">Team</h1><span style={{ display: "flex", gap: 12, alignItems: "center" }}><button className="tm-askbtn" type="button" onClick={() => setPanel(!panelOpen)}>{panelOpen ? "Hide chat" : "Ask Copilot"}</button><span className="shadow"><span className="dot sm d-idle" />Shadow mode</span></span></div>
           <p className="lede">Nothing goes out until Shane or Ryan presses Approve.</p>
         </header>
         {note ? <p className="mut" role="status">{note}</p> : null}
@@ -367,7 +373,7 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
           {allFeed.length > 10 ? <a className="more" href="#" onClick={(e) => { e.preventDefault(); setShowFeed(!showFeed); }}>{showFeed ? "Show fewer" : `Show all ${allFeed.length}`}</a> : null}
         </div>
       </aside>
-    </div></div></div>
+    </div></div>{panel}</div>
   );
 }
 
@@ -376,15 +382,14 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
 type ChatMsg = { role: "user" | "agent" | "note"; text: string; at: string; offer?: { to: "theo" | "nora" | "penny"; question: string } };
 type Call = { at: string; agent: string; job: string; provider: string; model: string; input: number; output: number; usd: number; priced: boolean; event: string; label: string };
 
-function Desk({ board, agent, api, note, card, onSettings, onGuests, onReviews, reload, rate }: { board: TeamBoard; agent: AgentCard; api: Api; note: string; card: (d: TeamDecision, showDraft?: boolean, open?: boolean) => ReactNode; onSettings: () => void; onGuests: () => void; onReviews: () => void; reload: () => void; rate: (key: string, r: "right" | "wrong" | "unneeded") => Promise<void> }) {
+function Desk({ board, agent, api, note, card, tick, askOpen, onAsk, onSettings, onGuests, onReviews, rate }: { board: TeamBoard; agent: AgentCard; api: Api; note: string; card: (d: TeamDecision, showDraft?: boolean, open?: boolean) => ReactNode; tick: number; askOpen: boolean; onAsk: () => void; onSettings: () => void; onGuests: () => void; onReviews: () => void; rate: (key: string, r: "right" | "wrong" | "unneeded") => Promise<void> }) {
   const mine = board.decisions.filter((d) => d.agent === agent.id);
   const prepared = mine.filter((d) => d.proposal).slice(0, 5);
   const history = board.history.filter((h) => h.agent === agent.id);
   const [chat, setChat] = useState<{ messages: ChatMsg[]; calls: Call[] }>({ messages: [], calls: [] });
   const refreshChat = useCallback(() => api<{ messages: ChatMsg[]; calls: Call[] }>("team-chat-get", { agent: agent.id }).then(setChat).catch(() => undefined), [api, agent.id]);
-  useEffect(() => { if (isAgent(agent.id)) void refreshChat(); }, [agent.id, refreshChat]);
+  useEffect(() => { if (isAgent(agent.id)) void refreshChat(); }, [agent.id, refreshChat, tick]);
   const incoming = chat.messages.filter((m) => m.role === "note" && /asked through Copilot/.test(m.text)).slice(-1)[0];
-  const stopped = agent.state === "stopped";
   const events = [
     ...chat.messages.map((m) => ({ at: m.at, tool: false as const, title: m.role === "user" ? `You asked: “${m.text}”` : m.role === "agent" ? `${agent.name} answered.` : m.text, asked: "", got: "" })),
     ...chat.calls.map((c) => ({ at: c.at, tool: true as const, title: c.label, asked: `${c.job}, woken by: ${c.event}`, got: `${c.provider === "meta" ? "Meta" : c.provider === "anthropic" ? "Claude" : c.provider} ${c.model}, ${c.input + c.output} tokens${c.priced ? `, ${usd(c.usd)}` : ", not priced"}` })),
@@ -401,7 +406,7 @@ function Desk({ board, agent, api, note, card, onSettings, onGuests, onReviews, 
             <p className="mut">{agent.tagline}</p>
             <div className="mst" style={{ marginTop: 4 }}><Dot state={agent.state} />{STATE[agent.state].label}</div>
           </div>
-          <span className="shadow" style={{ marginBottom: 8 }}><span className="dot sm d-idle" />Shadow mode</span>
+          <span style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>{isAgent(agent.id) ? <button className="tm-askbtn" type="button" onClick={onAsk}>{askOpen ? "Hide chat" : `Ask ${agent.name}`}</button> : null}<span className="shadow"><span className="dot sm d-idle" />Shadow mode</span></span>
         </div>
         {agent.error ? <div className="cerr" style={{ marginTop: 16 }}>{agent.error}</div> : null}
         {note ? <p className="mut" style={{ marginTop: 12 }} role="status">{note}</p> : null}
@@ -468,64 +473,100 @@ function Desk({ board, agent, api, note, card, onSettings, onGuests, onReviews, 
         {isAgent(agent.id) ? <a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onSettings(); }}>Open {agent.name}{"’"}s settings</a> : null}
       </section>
 
-      {isAgent(agent.id) ? <DeskChat api={api} agent={agent.id} name={agent.name} stopped={stopped} messages={chat.messages} setMessages={(m) => setChat((c) => ({ ...c, messages: m }))} onChanged={() => { void refreshChat(); reload(); }} /> : null}
     </>
   );
 }
 
-// ---------- The desk's own chat ----------
+// ---------- The side chat ----------
 
-const PLACEHOLDER: Record<string, string> = { theo: "Ask Theo about a guest or a message", nora: "Ask Nora about a review", penny: "Ask Penny about a price" };
+const PLACEHOLDER: Record<string, string> = { theo: "Ask Theo about a guest or a message", nora: "Ask Nora about a review", penny: "Ask Penny about a price", copilot: "Ask Copilot about the day" };
 const NAME: Record<string, string> = { theo: "Theo", nora: "Nora", penny: "Penny" };
 
-function DeskChat({ api, agent, name, stopped, messages, setMessages, onChanged }: { api: Api; agent: "theo" | "nora" | "penny"; name: string; stopped: boolean; messages: ChatMsg[]; setMessages: (m: ChatMsg[]) => void; onChanged: () => void }) {
+/** The chat beside a desk, from the design: only with this member, only about its job. */
+function SidePanel({ api, agent, onClose, onChanged }: { api: Api; agent: AgentCard; onClose: () => void; onChanged: () => void }) {
+  const who = agent.id;
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [text, setText] = useState("");
   const [state, setState] = useState<"idle" | "working" | "error">("idle");
-  const rows = useRef(messages);
-  rows.current = messages;
+  const [h, setH] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
+  const log = useRef<HTMLDivElement>(null);
+  const stopped = agent.state === "stopped";
+  const working = state === "working";
+  useEffect(() => { void api<{ messages: ChatMsg[] }>("team-chat-get", { agent: who }).then((r) => setMessages(r.messages)).catch(() => undefined); }, [api, who]);
+  useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [messages, state]);
+  // The panel is as tall as the area it sits in, so the messages scroll inside it and the page does not.
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    let p: HTMLElement | null = el.parentElement;
+    while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement;
+    const target = p ?? document.documentElement;
+    const measure = () => setH(target === document.documentElement ? window.innerHeight : target.clientHeight);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
   const ask = async () => {
     const q = text.trim();
-    if (!q || state === "working" || stopped) return;
+    if (!q || working || stopped) return;
     setText("");
     setState("working");
-    setMessages([...rows.current, { role: "user", text: q, at: new Date().toISOString() }]);
-    try { setMessages((await api<{ messages: ChatMsg[] }>("team-chat", { agent, text: q })).messages); setState("idle"); onChanged(); } catch { setState("error"); }
+    setMessages((m) => [...m, { role: "user", text: q, at: new Date().toISOString() }]);
+    try { setMessages((await api<{ messages: ChatMsg[] }>("team-chat", { agent: who, text: q })).messages); setState("idle"); onChanged(); } catch { setState("error"); }
   };
   const send = async (m: ChatMsg) => {
-    if (!m.offer || state === "working") return;
+    if (!m.offer || working || !isAgent(who)) return;
     setState("working");
-    try { setMessages((await api<{ messages: ChatMsg[] }>("team-handoff", { from: agent, to: m.offer.to, question: m.offer.question })).messages); setState("idle"); onChanged(); } catch { setState("error"); }
+    try { setMessages((await api<{ messages: ChatMsg[] }>("team-handoff", { from: who, to: m.offer.to, question: m.offer.question })).messages); setState("idle"); onChanged(); } catch { setState("error"); }
   };
   const lastIdx = messages.length - 1;
-  const off = stopped || state === "working";
+  const off = stopped || working;
   return (
-    <section className="chat" aria-label={`Ask ${name}`}>
-      <div className="sh" style={{ alignItems: "center" }}>
-        <h2 className="h2">Ask {name}</h2>
-        {messages.length ? <button className="del" type="button" onClick={() => void api("team-chat-clear", { agent }).then(() => { setMessages([]); onChanged(); })}>Clear this session</button> : null}
-        <span className="meta" style={{ fontSize: 12, color: "var(--muted)", flex: "1 1 100%", order: 3 }}>This chat is only with {name}, and only about {name}{"’"}s job.</span>
-      </div>
-      {stopped ? <div className="cerr">{name} paused: reached the monthly ceiling. Nothing is called until next month.</div> : null}
-      {messages.map((m, i) => (
-        <div key={m.at + i}>
-          {m.role === "user" ? <div style={{ display: "flex" }}><div className="bub" style={{ marginLeft: "auto" }}>{m.text}</div></div> : null}
-          {m.role === "agent" ? <div className="agt">{m.text}</div> : null}
-          {m.role === "note" ? <div className="sysn">{m.text}</div> : null}
-          {m.offer && i === lastIdx ? (
-            <div className="offr">
-              <button className="btn btn-p" type="button" disabled={off} onClick={() => void send(m)}>Yes, send it to {NAME[m.offer.to]}</button>
-              <button className="btn btn-s" type="button" disabled={off} onClick={() => setMessages([...messages, { role: "note", text: "Okay. Nothing was sent to anyone.", at: new Date().toISOString() }])}>No</button>
+    <div className="tm-panel" ref={box} style={h ? { height: h } : undefined}>
+      <aside className="pnl" aria-label={`Chat with ${agent.name}`}>
+        <div className="phd">
+          <div className="phrow">
+            <Character who={who} size={48} crop />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 16, lineHeight: "22px" }}>{agent.name}</div>
+              <div className="mut">{agent.role}</div>
+              <div className="mst" style={{ fontWeight: 500, marginTop: 2 }}><Dot state={agent.state} sm />{STATE[agent.state].label}</div>
             </div>
-          ) : null}
+            <button className="xbtn" type="button" aria-label="Close the chat" onClick={onClose}><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" /></svg></button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <span className="mut">Talking to {agent.name} only, about {agent.role}.</span>
+            {messages.length ? <button className="del" type="button" onClick={() => void api("team-chat-clear", { agent: who }).then(() => { setMessages([]); onChanged(); })}>Clear this session</button> : null}
+          </div>
         </div>
-      ))}
-      {state === "working" ? <div className="sysn" style={{ display: "flex", gap: 8, alignItems: "center" }}><span className="dot sm d-work" />Working</div> : null}
-      {state === "error" ? <div className="cerr">That did not go through. Nothing was sent.</div> : null}
-      <form className={`cin${off ? " off" : ""}`} onSubmit={(e) => { e.preventDefault(); void ask(); }}>
-        <input className="inp" type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder={PLACEHOLDER[agent]} aria-label={PLACEHOLDER[agent]} disabled={off} />
-        <button className="btn btn-p" type="submit" disabled={off || !text.trim()}>{state === "working" ? "Working" : "Ask"}</button>
-      </form>
-    </section>
+        <div className="pmsgs" role="log" aria-live="polite" ref={log}>
+          {stopped ? <div className="cerr">{agent.name} paused: reached the monthly ceiling. Nothing is called until next month.</div> : null}
+          {!messages.length && !stopped ? <div className="sysn">Ask {agent.name} a question. Nothing is sent to anyone from here.</div> : null}
+          {messages.map((m, i) => (
+            <div key={m.at + i}>
+              {m.role === "user" ? <div style={{ display: "flex" }}><div className="bub" style={{ marginLeft: "auto" }}>{m.text}</div></div> : null}
+              {m.role === "agent" ? <div className="agt">{m.text}</div> : null}
+              {m.role === "note" ? <div className="sysn">{m.text}</div> : null}
+              {m.offer && i === lastIdx ? (
+                <div className="offr">
+                  <button className="btn btn-p" type="button" disabled={off} onClick={() => void send(m)}>Yes, send it to {NAME[m.offer.to]}</button>
+                  <button className="btn btn-s" type="button" disabled={off} onClick={() => setMessages([...messages, { role: "note", text: "Okay. Nothing was sent to anyone.", at: new Date().toISOString() }])}>No</button>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+        <div className="pin">
+          {working ? <div className="pwork"><span className="dot sm d-work" />Working</div> : null}
+          {state === "error" ? <div className="cerr">That did not go through. Nothing was sent.</div> : null}
+          <form className={`pinrow${off ? " off" : ""}`} onSubmit={(e) => { e.preventDefault(); void ask(); }}>
+            <input className="inp" type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder={PLACEHOLDER[who]} aria-label={PLACEHOLDER[who]} disabled={off} />
+            <button className="btn btn-p" type="submit" disabled={off || !text.trim()} style={{ minWidth: 76 }}>Send</button>
+          </form>
+        </div>
+      </aside>
+    </div>
   );
 }
 

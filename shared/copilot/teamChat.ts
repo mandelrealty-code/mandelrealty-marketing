@@ -32,15 +32,16 @@ export function ownerOf(text: string, me: DeskAgent): { own: boolean; other: Des
   return { own: false, other: hits[0]! };
 }
 
-const KEY = (a: DeskAgent) => "meta:team:chat:" + a;
+type ChatAgent = DeskAgent | "copilot";
+const KEY = (a: ChatAgent) => "meta:team:chat:" + a;
 const nowOf = () => parityNow() ?? new Date();
-export async function chatOf(agent: DeskAgent): Promise<ChatMsg[]> {
+export async function chatOf(agent: ChatAgent): Promise<ChatMsg[]> {
   return (await readMeta<ChatMsg[]>(KEY(agent))) ?? [];
 }
-async function save(agent: DeskAgent, rows: ChatMsg[]) {
+async function save(agent: ChatAgent, rows: ChatMsg[]) {
   await writeMeta(KEY(agent), rows.slice(-40));
 }
-export async function clearChat(agent: DeskAgent): Promise<void> {
+export async function clearChat(agent: ChatAgent): Promise<void> {
   await writeMeta(KEY(agent), []);
 }
 
@@ -125,3 +126,20 @@ export async function handOver(input: { from: DeskAgent; to: DeskAgent; question
 
 export { inboxFor };
 export type { AgentId };
+
+/** Copilot's own chat: the chief of staff answers about the day and what needs a partner. It never takes another member's job. */
+export async function askCopilot(text: string, now: Date = nowOf()): Promise<ChatMsg[]> {
+  const q = text.trim().slice(0, 600);
+  const rows = await chatOf("copilot");
+  if (!q) return rows;
+  rows.push({ role: "user", text: q, at: now.toISOString() });
+  const open = (await watchDecisions()).slice(0, 8).map((r) => "- " + r.title + " (" + r.kind.replace("_", " ") + ")").join("\n") || "Nothing is open.";
+  const facts = [...(await factsOf("theo"))].map((f) => "- " + f).join("\n");
+  const recent = rows.slice(-6, -1).map((m) => (m.role === "user" ? "Partner: " : "Me: ") + m.text).join("\n");
+  const user = ["Live facts:\n" + facts, "What needs a partner, most urgent first:\n" + open, recent ? "Earlier in this chat:\n" + recent : "", "Question: " + q].filter(Boolean).join("\n\n");
+  const system = "You are Copilot, the chief of staff for Mandel Realty. Answer questions about the day and what needs a partner, in two or three plain sentences, using the live facts and naming their source. For detail about a guest, a review or a price, say which team member's desk to open (Theo, Nora or Penny). Never say you sent, posted, booked or changed anything: a partner presses Approve. No em dashes. Say plainly when a fact was not given.";
+  const r = await aiCall({ job: "copilot_chat", event: "a partner asked Copilot", system, user }, now);
+  rows.push({ role: "agent", text: r.ok ? r.text : r.note, at: now.toISOString() });
+  await save("copilot", rows);
+  return rows;
+}
