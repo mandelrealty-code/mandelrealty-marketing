@@ -41,6 +41,7 @@ import {
 } from "../../../shared/copilot/browserSession";
 import BrowserSurface, { SessionLine } from "./BrowserSurface";
 import { OverviewV2 } from "./OverviewV2";
+import { TeamPage } from "./teamUi";
 import { TasksBoard, type BoardApi, type BoardPayload } from "../tasks/TasksBoard";
 import { withoutEmDashes } from "../../../shared/copilot/guestTranslate";
 
@@ -59,7 +60,7 @@ function signInSite(body: string): string {
   return named?.[1]?.trim() || "This site";
 }
 
-type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "guests" | "tasks" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "memory" | "memory-file";
+type Screen = "brief" | "empty" | "chat" | "browser" | "reviews" | "guests" | "tasks" | "settings" | "skills" | "skill" | "connectors" | "twilio" | "account" | "billing" | "board" | "team" | "memory" | "memory-file";
 
 type Boot = {
   brief: BriefPayload;
@@ -1644,6 +1645,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     if (screen === "reviews") return "Reviews";
     if (screen === "guests") return "Guest messaging";
     if (screen === "tasks") return "Tasks";
+    if (screen === "team") return "Team";
     if (screen === "empty") return "New chat";
     return boot?.chats.find((c) => c.id === chatId)?.title || "New chat";
   }, [boot, chatId, screen]);
@@ -2721,6 +2723,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     <p className={error ? "cp-err" : "cp-note"}>{error ? withoutFilesystemDetail(error, true) : "Loading the overview."}</p>
                   </div>
                 ) : null}
+                {screen === "team" ? <TeamPage api={api} onBack={() => setScreen("brief")} onOpenReviews={() => { setScreen("reviews"); void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch(() => undefined); }} /> : null}
                 {screen === "brief" && boot ? (
                   <OverviewV2
                     brief={boot.brief}
@@ -2735,6 +2738,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     mainEl={mainEl}
                     api={api}
                     onOpenChat={(id) => void openChat(id)}
+                    onOpenTeam={() => { setScreen("team"); setSheet(false); }}
                     onOpenThread={(row) => {
                       setScreen("guests");
                       setSheet(false);
@@ -3033,7 +3037,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                   </div>
                 ) : null}
               </div>
-              {inSettings || screen === "reviews" || screen === "guests" || screen === "tasks" ? null : (
+              {inSettings || screen === "reviews" || screen === "guests" || screen === "tasks" || screen === "team" ? null : (
               <div className="cp-composer-wrap">
                 <div className="cp-confirm">Nothing goes out until you confirm.</div>
                 <div className="cp-pluswrap" data-plus="1">

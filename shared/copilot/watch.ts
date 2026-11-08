@@ -627,3 +627,10 @@ export async function watchSpendReport(now: Date = parityNow() ?? new Date(), da
   const used = rows.filter((row) => row.checks || row.backedOff || row.triages);
   return { rows: used, text: used.length ? describeSpend(used) : "The watch loop hasn't run in that time." };
 }
+
+/** Today's check-ins and check-outs as the last pass saw them. */
+export async function watchTodayCounts(): Promise<{ ins: number; outs: number } | null> {
+  const state = await readMeta<LoopState>(STATE_KEY);
+  const snapshot = state?.snapshot;
+  return snapshot ? { ins: snapshot.ins.length, outs: snapshot.outs.length } : null;
+}

@@ -107,6 +107,7 @@ export function OverviewV2({
   api,
   onOpenChat,
   onOpenThread,
+  onOpenTeam,
   onReconnect,
   onGuestQueue,
   onSkills,
@@ -124,6 +125,7 @@ export function OverviewV2({
   api: Api;
   onOpenChat: (id: string) => void;
   onOpenThread: (row: GuestRow) => void;
+  onOpenTeam?: () => void;
   onReconnect: (id: string) => void;
   onGuestQueue: (queue: GuestQueue) => void;
   onSkills: (skills: SkillRow[], connectors: ConnectorRow[]) => void;
@@ -575,6 +577,7 @@ export function OverviewV2({
         <header className="cp-ov3-head">
           <div>{dateLine}</div>
           <h1>{head.lead}<span>{head.rest}</span></h1>
+          {onOpenTeam ? <button type="button" className="cp-ov3-team" onClick={onOpenTeam}>Team</button> : null}
         </header>
         <section className="cp-ov3-sec" aria-label="Decisions">
           <div className="cp-ov3-sechead">

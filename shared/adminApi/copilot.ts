@@ -1,3 +1,4 @@
+import { actOnTeamDecision, rateDecision, teamBoard } from "../copilot/team.js";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   getSessionFromRequest,
@@ -818,6 +819,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     // What the watch loop put in Decisions, and what a partner does with it. Items are never chats; snooze keeps one away until tomorrow.
     if (op === "watch-items") return res.status(200).json({ items: await watchDecisions() });
+    if (op === "team") return res.status(200).json(await teamBoard());
+    if (op === "team-act") {
+      const action = body.action === "approve" || body.action === "done" ? body.action : "notnow";
+      return res.status(200).json(await actOnTeamDecision({ key: String(body.key ?? ""), action, ...(typeof body.text === "string" ? { text: body.text } : {}) }));
+    }
+    if (op === "team-rate") {
+      const rating = body.rating === "right" || body.rating === "wrong" ? body.rating : "unneeded";
+      return res.status(200).json(await rateDecision(String(body.key ?? ""), rating));
+    }
     if (op === "watch-spend") return res.status(200).json(await watchSpendReport());
     if (op === "watch-act") {
       const action = body.action === "send" || body.action === "done" ? body.action : "snooze";
