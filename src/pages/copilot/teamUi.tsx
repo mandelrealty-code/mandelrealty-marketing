@@ -1,475 +1,110 @@
-import { useCallback, useEffect, useState } from "react";
-import type { SettingsView, Editable } from "../../../shared/copilot/teamSettings";
-import type { TeamBoard, TeamDecision, AgentCard, AgentId, AgentState } from "../../../shared/copilot/team";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import "./teamDesign.css";
+import { ART, SKETCH_BASE, SKETCH_OVER } from "./teamArt";
+import type { Editable, SettingsView } from "../../../shared/copilot/teamSettings";
+import type { AgentCard, AgentId, AgentState, TeamBoard, TeamDecision } from "../../../shared/copilot/team";
+
+/**
+ * The Team experience, built frame for frame from the Mandel Copilot team design: roster, main page, Team page, desks with
+ * their own chat, and settings. Every class name below comes from the design (teamDesign.css, scoped under .tmx).
+ */
 
 type Api = <T>(op: string, body?: Record<string, unknown>) => Promise<T>;
 
-// ---------- The characters (drawn in the Team design) ----------
+// ---------- Characters ----------
 
-const P = {
-  theo: (
-    <g className="o">
-      <path d="M16 150 C16 114 34 98 60 98 C86 98 104 114 104 150 Z" fill="#F1E4CC" />
-      <path d="M16 150 C16 118 30 102 50 99 L58 150 Z" fill="#D8A24A" />
-      <path d="M104 150 C104 118 90 102 70 99 L62 150 Z" fill="#D8A24A" />
-      <path d="M52 84 H68 V99 Q60 106 52 99 Z" fill="#D49A6E" />
-      <path d="M60 104 L47 97 V111 Z" fill="#C05A2E" />
-      <path d="M60 104 L73 97 V111 Z" fill="#C05A2E" />
-      <circle cx="60" cy="104" r="3.2" fill="#A04A22" />
-      <circle cx="34" cy="53" r="5" fill="#D49A6E" />
-      <circle cx="86" cy="53" r="5" fill="#D49A6E" />
-      <ellipse cx="60" cy="51" rx="26" ry="28" fill="#D49A6E" />
-      <circle cx="36" cy="40" r="8" fill="#4B2F20" />
-      <circle cx="84" cy="40" r="8" fill="#4B2F20" />
-      <circle cx="42" cy="28" r="10" fill="#4B2F20" />
-      <circle cx="78" cy="28" r="10" fill="#4B2F20" />
-      <circle cx="60" cy="24" r="11" fill="#4B2F20" />
-      <circle cx="43" cy="62" r="4.5" fill="#C05A2E" fillOpacity=".28" stroke="none" />
-      <circle cx="77" cy="62" r="4.5" fill="#C05A2E" fillOpacity=".28" stroke="none" />
-      <ellipse cx="50" cy="52" rx="2.4" ry="3" fill="#2B1A10" stroke="none" />
-      <ellipse cx="70" cy="52" rx="2.4" ry="3" fill="#2B1A10" stroke="none" />
-      <path d="M44 45 Q50 41 56 45" fill="none" strokeWidth="1.6" />
-      <path d="M64 45 Q70 41 76 45" fill="none" strokeWidth="1.6" />
-      <path d="M60 55 Q57 61 61 61" fill="none" strokeWidth="1.4" />
-      <path d="M46 65 Q60 78 74 65" fill="none" strokeWidth="1.8" />
-      <path d="M8 138 H46 V143 H8 Z" fill="#B98530" />
-      <path d="M12 138 Q12 118 27 118 Q42 118 42 138 Z" fill="#E3B55E" />
-      <circle cx="27" cy="114.5" r="3" fill="#B98530" />
-      <circle cx="48" cy="140" r="6.5" fill="#D49A6E" />
-    </g>
-  ),
-  nora: (
-    <g className="o">
-      <path d="M26 150 C28 116 40 100 60 100 C80 100 92 116 94 150 Z" fill="#7A5238" />
-      <path d="M49 101 L60 130 L71 101 Z" fill="#F1E4CC" />
-      <path d="M60 130 V150" fill="none" strokeWidth="1.6" />
-      <circle cx="64" cy="138" r="1.6" fill="#4A3628" stroke="none" />
-      <circle cx="64" cy="146" r="1.6" fill="#4A3628" stroke="none" />
-      <path d="M35 50 C32 14 88 14 85 50 L89 104 L72 104 L72 58 L48 58 L48 104 L31 104 Z" fill="#3A2418" />
-      <path d="M54 82 H66 V101 Q60 106 54 101 Z" fill="#EFD3B0" />
-      <ellipse cx="60" cy="50" rx="22" ry="28" fill="#EFD3B0" />
-      <path d="M37 44 C38 22 62 18 82 32 C70 30 56 34 46 50 Z" fill="#3A2418" />
-      <circle cx="86" cy="22" r="9" fill="#3A2418" />
-      <circle cx="50" cy="52" r="8" fill="#FFF8EA" fillOpacity=".35" strokeWidth="1.8" />
-      <circle cx="70" cy="52" r="8" fill="#FFF8EA" fillOpacity=".35" strokeWidth="1.8" />
-      <path d="M58 51 Q60 49 62 51" fill="none" strokeWidth="1.6" />
-      <path d="M42 52 L37 50 M78 52 L83 50" fill="none" strokeWidth="1.6" />
-      <circle cx="50" cy="53" r="1.8" fill="#2B1A10" stroke="none" />
-      <circle cx="70" cy="53" r="1.8" fill="#2B1A10" stroke="none" />
-      <path d="M42 41 Q49 36 57 40" fill="none" strokeWidth="1.5" />
-      <path d="M64 42 Q71 40 78 43" fill="none" strokeWidth="1.5" />
-      <path d="M60 58 Q58 62 61 62" fill="none" strokeWidth="1.3" />
-      <path d="M54 68 Q60 69 66 67" fill="none" strokeWidth="1.5" />
-      <path d="M26 126 C18 106 6 94 6 74 C18 82 30 100 32 124 Z" fill="#E9D8B8" />
-      <path d="M6 74 L29 126" fill="none" strokeWidth="1.6" />
-      <circle cx="30" cy="130" r="6.5" fill="#EFD3B0" />
-    </g>
-  ),
-  penny: (
-    <g className="o">
-      <path d="M10 150 L14 114 Q17 98 36 97 L84 97 Q103 98 106 114 L110 150 Z" fill="#A85A34" />
-      <path d="M44 86 H76 L78 100 Q60 108 42 100 Z" fill="#A85A34" />
-      <path d="M33 62 C28 22 92 22 87 62 L88 80 Q86 84 79 82 L79 56 L41 56 L41 82 Q34 84 32 80 Z" fill="#B9773A" />
-      <path d="M37 36 Q37 26 60 26 Q83 26 83 36 L83 62 Q83 84 60 84 Q37 84 37 62 Z" fill="#8F5E3F" />
-      <path d="M38 40 Q40 28 60 28 Q80 28 82 40 Q82 46 80 46 L40 46 Q38 46 38 40 Z" fill="#B9773A" />
-      <path d="M31 38 Q60 26 89 38 L88 44 Q60 33 32 44 Z" fill="#EBD9B5" />
-      <path d="M32 43 Q60 33 88 43 L98 53 Q60 41 22 53 Z" fill="#D8A24A" fillOpacity=".9" />
-      <ellipse cx="51" cy="59" rx="2.4" ry="1.7" fill="#20130B" stroke="none" />
-      <ellipse cx="69" cy="59" rx="2.4" ry="1.7" fill="#20130B" stroke="none" />
-      <path d="M46 57 Q51 54 56 57 M64 57 Q69 54 74 57" fill="none" strokeWidth="1.5" />
-      <path d="M60 61 L58.5 68 H61.5" fill="none" strokeWidth="1.3" />
-      <path d="M53 74 H67" fill="none" strokeWidth="1.7" />
-      <rect x="6" y="110" width="40" height="32" rx="3" fill="#E7D5B5" />
-      <path d="M8 119 H44 M8 126 H44 M8 133 H44" fill="none" strokeWidth="1.2" />
-      {[[14, 119], [20, 119], [36, 119], [14, 126], [30, 126], [36, 126], [22, 133], [28, 133], [40, 133]].map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="3" fill="#C05A2E" strokeWidth="1.2" />)}
-      <circle cx="46" cy="144" r="6.5" fill="#8F5E3F" />
-    </g>
-  ),
-  copilot: (
-    <g className="o">
-      <path d="M10 200 C10 150 36 126 80 126 C124 126 150 150 150 200 Z" fill="#3A2F28" />
-      <path d="M70 106 H90 V132 Q80 140 70 132 Z" fill="#C08C64" />
-      <path d="M62 128 L80 166 L98 128 Z" fill="#F1E4CC" />
-      <path d="M56 130 L80 170 L64 184 L40 146 Z" fill="#4D3F35" />
-      <path d="M104 130 L80 170 L96 184 L120 146 Z" fill="#4D3F35" />
-      <path d="M75 140 H85 L83 148 H77 Z" fill="#C05A2E" />
-      <path d="M77 148 H83 L88 182 L80 190 L72 182 Z" fill="#C05A2E" />
-      <circle cx="49" cy="68" r="6" fill="#C08C64" />
-      <circle cx="111" cy="68" r="6" fill="#C08C64" />
-      <ellipse cx="80" cy="66" rx="30" ry="35" fill="#C08C64" />
-      <path d="M48 66 C40 20 120 12 112 66 C110 48 100 38 84 36 C66 36 52 46 48 66 Z" fill="#B9A284" />
-      <path d="M64 38 Q80 29 100 41" fill="none" strokeWidth="1.4" />
-      <path d="M112 62 L118 40" fill="none" stroke="#2B1A10" strokeWidth="3.4" />
-      <circle cx="68" cy="67" r="2.6" fill="#2B1A10" stroke="none" />
-      <circle cx="92" cy="67" r="2.6" fill="#2B1A10" stroke="none" />
-      <path d="M58 57 H76 M84 57 H102" fill="none" strokeWidth="1.8" />
-      <path d="M80 69 Q76 77 81 77" fill="none" strokeWidth="1.4" />
-      <path d="M70 85 Q80 91 90 85" fill="none" strokeWidth="1.8" />
-      <path d="M22 150 L70 146 L74 198 L26 200 Z" fill="#7A4A30" />
-      <path d="M22 150 L32 149 L36 199 L26 200 Z" fill="#5C3822" />
-      <path d="M70 146 L76 147 L80 197 L74 198 Z" fill="#EFE2C8" />
-      <path d="M42 162 L62 160.5 L63 176 L43 177.5 Z" fill="#EFE2C8" />
-      <path d="M46 168 L58 167 M46 172 L56 171.5" fill="none" strokeWidth="1.3" />
-      <path d="M54 147 L58 199" fill="none" stroke="#C05A2E" strokeWidth="4" />
-      <circle cx="76" cy="178" r="9" fill="#C08C64" />
-    </g>
-  ),
-} as const;
+const LABEL: Record<string, string> = { copilot: "Copilot, chief of staff", theo: "Theo, Guest Messaging", nora: "Nora, Reviews", penny: "Penny, Pricing" };
 
-export function Character({ who, size = 96, badge = 0, crop = false }: { who: AgentId; size?: number; badge?: number; crop?: boolean }) {
+export function Character({ who, size = 96, badge = 0, crop = false }: { who: string; size?: number; badge?: number; crop?: boolean }) {
   const cop = who === "copilot";
-  const vb = crop ? (cop ? "28 14 104 104" : "16 6 88 88") : cop ? "0 0 160 200" : "0 0 120 150";
-  const h = crop ? size : Math.round((size * (cop ? 200 : 150)) / (cop ? 160 : 120));
+  const sketch = /^s[1-7]$/.test(who);
+  const vw = cop ? 160 : 120;
+  const vh = cop ? 200 : 150;
+  const vb = crop ? (cop ? "28 14 104 104" : "16 6 88 88") : `0 0 ${vw} ${vh}`;
+  const h = crop ? size : Math.round((size * vh) / vw);
   const bs = Math.max(18, Math.round(size * (cop ? 0.17 : 0.2)));
-  const name = who === "copilot" ? "Copilot, chief of staff" : who === "theo" ? "Theo, Guest Messaging" : who === "nora" ? "Nora, Reviews" : "Penny, Pricing";
   return (
-    <span className={crop ? "tm-ch crop" : "tm-ch"} role="img" aria-label={name}>
-      <svg viewBox={vb} width={size} height={h} aria-hidden="true">{P[who]}</svg>
-      {badge > 0 && !crop ? <span className="tm-badge" style={{ left: `${cop ? 80 : 79}%`, top: `${cop ? 68 : 66}%`, width: bs, height: bs, fontSize: Math.round(bs * 0.58) }}>{badge > 99 ? "99+" : badge}</span> : null}
+    <span className={crop ? "cw crop" : "cw"} role="img" aria-label={LABEL[who] ?? "A teammate not built yet"}>
+      {sketch ? (
+        <>
+          <svg viewBox={vb} width={size} height={h} aria-hidden="true">{SKETCH_BASE}</svg>
+          <svg className="ov" viewBox={vb} width={size} height={h} aria-hidden="true">{SKETCH_OVER[who]}</svg>
+        </>
+      ) : (
+        <svg viewBox={vb} width={size} height={h} aria-hidden="true"><g className="o">{ART[who]}</g></svg>
+      )}
+      {badge > 0 && !crop && !sketch ? <span className="badge" style={{ left: `${cop ? 80 : 79}%`, top: `${cop ? 68 : 66}%`, width: bs, height: bs, fontSize: Math.round(bs * 0.58) }}>{badge > 99 ? "99+" : badge}</span> : null}
     </span>
   );
 }
 
-const STATE: Record<AgentState, string> = { idle: "Idle", working: "Working", needs: "Needs you", retrying: "Retrying", stopped: "Stopped" };
-export const Dot = ({ state }: { state: AgentState }) => <span className={`tm-dot ${state}`} aria-hidden="true" />;
+const STATE: Record<AgentState, { cls: string; label: string }> = {
+  idle: { cls: "d-idle", label: "Idle" },
+  working: { cls: "d-work", label: "Working" },
+  needs: { cls: "d-need", label: "Needs you" },
+  retrying: { cls: "d-retry", label: "Retrying" },
+  stopped: { cls: "d-stop", label: "Stopped" },
+};
+const Dot = ({ state, sm = false }: { state: AgentState; sm?: boolean }) => <span className={`dot${sm ? " sm" : ""} ${STATE[state].cls}`} />;
+
+const NOT_BUILT = [
+  { sk: "s1", area: "Channels" }, { sk: "s2", area: "Cleaning and Operations" }, { sk: "s3", area: "Onboarding" }, { sk: "s5", area: "Acquisition" }, { sk: "s6", area: "Ads" }, { sk: "s4", area: "Finance" }, { sk: "s7", area: "Incident" },
+];
 
 const when = (iso: string) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" });
 };
-
-// ---------- Decision card ----------
-
-function DecisionCard({ d, busy, onAct, onReviews }: { d: TeamDecision; busy: boolean; onAct: (action: "approve" | "notnow" | "done") => void; onReviews: () => void }) {
-  const [checks, setChecks] = useState(false);
-  const [source, setSource] = useState(false);
-  const passed = d.checks.filter((c) => c.ok).length;
-  return (
-    <article className="tm-dec">
-      <header>
-        <Character who={d.agent} size={44} crop />
-        <div>
-          <h3>{d.title}</h3>
-          <span>{d.byline}</span>
-        </div>
-      </header>
-      <p className="tm-why"><b>Why</b> {d.why}</p>
-      {d.facts ? <dl className="tm-facts">{d.facts.map((f) => <div key={f.label}><dt>{f.label}</dt><dd>{f.value}</dd></div>)}</dl> : null}
-      {d.proposal ? <div className="tm-draft">{d.draftTo ? <small>To {d.draftTo}</small> : null}<p>{d.proposal}</p></div> : null}
-      <div className="tm-acts">
-        {d.elsewhere ? <button type="button" className="tm-go" onClick={onReviews}>Open in Reviews</button> : d.proposal || d.kind === "answer" ? <button type="button" className="tm-go" disabled={busy} onClick={() => onAct("approve")}>{d.kind === "answer" ? "Got it" : d.agent === "penny" ? "Approve price proposal" : d.agent === "nora" ? "Approve reply" : "Approve and send message"}</button> : <button type="button" className="tm-go" disabled={busy} onClick={() => onAct("done")}>Mark done</button>}
-        <button type="button" className="tm-quiet" disabled={busy} onClick={() => onAct("notnow")}>Not now</button>
-        {d.checks.length ? <button type="button" className="tm-chip" aria-expanded={checks} onClick={() => setChecks(!checks)}>Checked {passed} of {d.checks.length}</button> : null}
-      </div>
-      {checks ? <ul className="tm-checks">{d.checks.map((c) => <li key={c.label} className={c.ok ? "" : "bad"}>{c.ok ? "Passed" : "Did not pass"}: {c.label}.{!c.ok && c.note ? ` ${c.note}` : ""}</li>)}</ul> : null}
-      <button type="button" className="tm-src" aria-expanded={source} onClick={() => setSource(!source)}>Source</button>
-      {source ? <div className="tm-sources"><ol>{d.sources.map((s) => <li key={s}>{s}</li>)}</ol><p>{d.agent === "penny" ? "A number with no source is not in the proposal." : "A fact with no source is not in the message."}</p></div> : null}
-    </article>
-  );
-}
-
-// ---------- The page ----------
-
-const NEEDS: Record<AgentId, { what: string; without: string }[]> = {
-  copilot: [],
-  theo: [{ what: "Your approval on every message.", without: "Without it, nothing is sent." }],
-  nora: [{ what: "Your approval on the exact text of every reply.", without: "Without it, nothing is posted." }],
-  penny: [{ what: "Hospitable write access and PriceLabs, later.", without: "Without it, I can only recommend a price." }],
+const clock = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" });
 };
-
-export function TeamPage({ api, desk, onDesk, onBack, onOpenReviews, onOpenGuests, onChanged }: { api: Api; desk: AgentId | null; onDesk: (a: AgentId | null) => void; onBack: () => void; onOpenReviews: () => void; onOpenGuests: () => void; onChanged: () => void }) {
-  const [board, setBoard] = useState<TeamBoard | null>(null);
-  const [error, setError] = useState("");
-  const setDesk = onDesk;
-  const [all, setAll] = useState(false);
-  const [settings, setSettings] = useState(false);
-  const [busy, setBusy] = useState("");
-  const [note, setNote] = useState("");
-  const [filter, setFilter] = useState<AgentId | "all">("all");
-
-  const load = useCallback(() => api<TeamBoard>("team", {}).then((b) => { setBoard(b); setError(""); }).catch(() => setError("The team did not load. Nothing was changed.")), [api]);
-  useEffect(() => { void load(); }, [load]);
-  useEffect(() => { setSettings(false); }, [desk]);
-
-  const act = async (key: string, action: "approve" | "notnow" | "done") => {
-    setBusy(key);
-    setNote("");
-    try {
-      const r = await api<{ ok: boolean; note: string }>("team-act", { key, action });
-      setNote(r.note);
-      await load();
-      onChanged();
-    } catch {
-      setNote("That did not go through. Nothing was sent.");
-    }
-    setBusy("");
-  };
-  const rate = async (key: string, rating: "right" | "wrong" | "unneeded") => {
-    await api("team-rate", { key, rating }).catch(() => undefined);
-    await load();
-  };
-
-  if (!board) return <div className="tm"><p className={error ? "cp-err" : "cp-note"}>{error || "Loading the team."}</p></div>;
-  const mine = (id: AgentId | null) => board.decisions.filter((d) => !id || d.agent === id);
-  const agent = desk ? board.agents.find((a) => a.id === desk)! : null;
-  const cards = (list: TeamDecision[]) => list.map((d) => <DecisionCard key={d.key} d={d} busy={busy === d.key} onAct={(a) => void act(d.key, a)} onReviews={onOpenReviews} />);
-  const feed = board.events.filter((e) => filter === "all" || e.agent === filter);
-  const a = board.automation;
-
-  return (
-    <div className="tm">
-      <div className="tm-main">
-        <nav className="tm-crumb"><button type="button" onClick={desk ? () => { setDesk(null); setSettings(false); } : onBack}>{desk ? "Team" : "Home"}</button> / {desk && settings ? <><button type="button" onClick={() => setSettings(false)}>{agent!.name}</button> / <span>Settings</span></> : <span>{desk ? agent!.name : "Team"}</span>}</nav>
-        {note ? <p className="tm-note" role="status">{note}</p> : null}
-
-        {agent && settings && agent.id !== "copilot" ? <SettingsPage api={api} agent={agent} /> : !agent ? (
-          <>
-            <header className="tm-head"><h1>Team</h1><span className="tm-pill">Shadow mode</span></header>
-            <p className="tm-lede">Your team reads, drafts and proposes. Nothing goes out, gets posted, or changes a price until you press the button.</p>
-            <ol className="tm-how"><li>The team watches your guests, reviews and calendar.</li><li>It brings you a draft or a proposal, with where each fact came from.</li><li>You press Approve or Not now, and tell it whether it was right.</li></ol>
-
-            <section className="tm-sec" aria-label="Chief of staff">
-              <div className="tm-chief">
-                <Character who="copilot" size={150} badge={board.decisions.length} />
-                <div>
-                  <h2>Copilot</h2>
-                  <span>Chief of staff</span>
-                  <p className="tm-big">{board.decisions.length}<small> waiting on you</small></p>
-                  <p>{board.decisions[0] ? board.decisions[0].title : "Nothing is waiting on you."}</p>
-                </div>
-              </div>
-              {board.decided.length ? <><h3 className="tm-h3">Decided today</h3><ul className="tm-plain">{board.decided.map((x) => <li key={x.at}>{x.text}</li>)}</ul></> : null}
-            </section>
-
-            <dl className="tm-strip" aria-label="Today">
-              <div><dt>Check-ins today</dt><dd>{board.today.ins ?? "Unknown"}</dd></div>
-              <div><dt>Check-outs today</dt><dd>{board.today.outs ?? "Unknown"}</dd></div>
-              <div><dt>Messages waiting</dt><dd>{board.today.waiting ?? "Unknown"}</dd></div>
-              <div><dt>Revenue, month to date</dt><dd>{board.today.revenue ?? "Unknown"}</dd></div>
-            </dl>
-
-            <p className="tm-auto"><b>Automation this week.</b> Proposed {a.proposed}. Approved as written {a.approved}. Approved after my edit {a.edited}. Rejected {a.rejected}. Handled without me {a.handled}. Accuracy: {a.accuracy}. Quiet-day cost: {a.cost}.</p>
-
-            <CostPanel board={board} />
-
-            <section className="tm-sec" aria-label="Decisions needing you">
-              <h2 className="tm-h2">Decisions needing you</h2>
-              {board.decisions.length ? cards(all ? board.decisions : board.decisions.slice(0, 5)) : <p className="tm-empty">Nothing needs you right now.</p>}
-              {board.decisions.length > 5 ? <button type="button" className="tm-link" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show all ${board.decisions.length}`}</button> : null}
-            </section>
-
-            <section className="tm-sec" aria-label="The team">
-              <h2 className="tm-h2">The team</h2>
-              <div className="tm-grid">
-                {board.agents.filter((x) => x.id !== "copilot").map((x) => <AgentTile key={x.id} a={x} onOpen={() => setDesk(x.id)} />)}
-              </div>
-            </section>
-          </>
-        ) : (
-          <>
-            <header className="tm-who">
-              <Character who={agent.id} size={150} badge={agent.needs} />
-              <div>
-                <h1>{agent.name}</h1>
-                <span>{agent.role}</span>
-                <p>{agent.tagline}</p>
-                <div className="tm-state"><Dot state={agent.state} /> {STATE[agent.state]} <span className="tm-pill">Shadow mode</span></div>
-              </div>
-            </header>
-            <section className="tm-sec"><h2 className="tm-h2">What I'm working on now</h2><p>{agent.error || agent.now}</p>{agent.error ? <p className="tm-err">{agent.error}</p> : null}</section>
-            <section className="tm-sec"><h2 className="tm-h2">Outstanding</h2>{mine(agent.id).length ? cards(mine(agent.id)) : <p className="tm-empty">Nothing outstanding.</p>}</section>
-            <CostPanel board={board} id={agent.id} />
-            {NEEDS[agent.id].length ? <section className="tm-sec"><h2 className="tm-h2">What I need from you</h2><ul className="tm-plain">{NEEDS[agent.id].map((n) => <li key={n.what}>{n.what} <span>{n.without}</span></li>)}</ul></section> : null}
-            <section className="tm-sec">
-              <h2 className="tm-h2">History</h2>
-              {board.history.filter((h) => h.agent === agent.id).length ? (
-                <ul className="tm-hist">
-                  {board.history.filter((h) => h.agent === agent.id).map((h) => (
-                    <li key={h.key + h.at}>
-                      <time>{when(h.at)}</time><span>{h.text}</span>
-                      <span className="tm-rate">{h.rating ? `Rated ${h.rating === "unneeded" ? "didn't need it" : h.rating}` : (["right", "wrong", "unneeded"] as const).map((r) => <button key={r} type="button" onClick={() => void rate(h.key, r)}>{r === "unneeded" ? "Didn't need it" : r === "right" ? "Right" : "Wrong"}</button>)}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="tm-empty">Nothing decided yet.</p>}
-            </section>
-            {agent.id !== "copilot" ? <DeskChat api={api} agent={agent.id} name={agent.name} onHandOver={() => { void load(); onChanged(); }} /> : null}
-            {agent.id === "theo" ? <button type="button" className="tm-src" onClick={onOpenGuests}>Open the guest inbox</button> : null}
-            {agent.id === "nora" ? <button type="button" className="tm-src" onClick={onOpenReviews}>Open Reviews</button> : null}
-            {agent.id !== "copilot" ? <button type="button" className="tm-src" onClick={() => setSettings(true)}>Open {agent.name}'s settings</button> : null}
-          </>
-        )}
-      </div>
-
-      <aside className="tm-feed" aria-label="Live activity">
-        <div className="tm-feedhead"><h2>Live activity</h2><button type="button" onClick={() => void load()}>Refresh</button></div>
-        <select value={filter} onChange={(e) => setFilter(e.target.value as AgentId | "all")} aria-label="Filter by team member">
-          <option value="all">All team members</option>
-          {board.agents.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-        </select>
-        <ul>
-          {feed.length ? feed.map((e) => <li key={e.at + e.text}><Character who={e.agent} size={28} crop /><div><time>{when(e.at)}</time><b>{e.name}</b> {e.text}{e.woken ? <small>Woken by: {e.woken}</small> : null}</div></li>) : <li className="tm-empty">Nothing yet.</li>}
-        </ul>
-      </aside>
-    </div>
-  );
-}
-
 const usd = (v: number) => "$" + (v === 0 ? "0.00" : v < 0.1 ? v.toFixed(4) : v.toFixed(2));
+const isAgent = (v: string): v is "theo" | "nora" | "penny" => v === "theo" || v === "nora" || v === "penny";
 
-function CostPanel({ board, id }: { board: TeamBoard; id?: AgentId }) {
-  const v = id ? board.costs.agents[id] : null;
-  const t = board.costs.total;
-  const today = v ? v.today : t.today;
-  const month = v ? v.month : t.month;
-  const projection = v ? v.projection : t.projection;
-  const ceiling = v ? v.ceiling : t.ceiling;
-  const tokens = v ? v.unpricedTokens : t.unpricedTokens;
-  const jobs = v ? v.jobs : Object.values(board.costs.agents).flatMap((a) => a.jobs);
-  return (
-    <section className="tm-sec tm-cost" aria-label="Cost">
-      <h2 className="tm-h2">Cost</h2>
-      <dl className="tm-strip">
-        <div><dt>Today</dt><dd>{usd(today)}</dd></div>
-        <div><dt>This month</dt><dd>{usd(month)}</dd></div>
-        <div><dt>Month ceiling</dt><dd>{usd(ceiling).replace(".00", "")}</dd></div>
-        <div><dt>Projected this month</dt><dd>{usd(projection)}</dd></div>
-      </dl>
-      {v?.paused ? <p className="tm-err">Paused at its ceiling. It makes no AI calls until next month.</p> : null}
-      {tokens ? <p className="tm-empty">{tokens.toLocaleString("en-US")} tokens on Meta are counted but not priced yet, so the dollars above leave them out and the ceiling does not cover them.</p> : null}
-      {jobs.length ? (
-        <table className="tm-jobs">
-          <thead><tr><th>Job</th><th>Model</th><th>Calls</th><th>From cache</th><th>Cost per call</th></tr></thead>
-          <tbody>{jobs.map((j) => <tr key={j.job}><td>{j.label}</td><td>{j.model}</td><td>{j.calls}</td><td>{j.cached}</td><td>{j.perCall === null ? `${j.tokensPerCall} tokens` : usd(j.perCall)}</td></tr>)}</tbody>
-        </table>
-      ) : <p className="tm-empty">No AI calls yet this month.</p>}
-    </section>
-  );
+function buttonFor(d: TeamDecision): string {
+  if (d.kind === "answer") return "Got it";
+  if (d.elsewhere) return "Open";
+  if (!d.proposal) return "Mark done";
+  return d.agent === "penny" ? "Approve price proposal" : d.agent === "nora" ? "Approve reply" : "Approve and send message";
 }
 
-function AgentTile({ a, onOpen }: { a: AgentCard; onOpen: () => void }) {
-  return (
-    <button type="button" className="tm-tile" onClick={onOpen}>
-      <Character who={a.id} size={96} badge={a.needs} />
-      <b>{a.name}</b><span>{a.role}</span>
-      <span className="tm-st"><Dot state={a.state} /> {STATE[a.state]}</span>
-      <small>Now: {a.now}</small><small>Last: {a.last}</small>
-      {a.error ? <small className="tm-err">{a.error}</small> : null}
-    </button>
-  );
+function Page({ children }: { children: ReactNode }) {
+  return <div className="tmx lt"><div className="stage"><div className="col">{children}</div></div></div>;
 }
 
-// ---------- An agent's settings ----------
+// ---------- The roster (the sidebar) ----------
 
-function ListEditor({ initial, noun, onSave, onCancel }: { initial: string[]; noun: string; onSave: (v: string[]) => void; onCancel: () => void }) {
-  const [rows, setRows] = useState(initial);
-  const [add, setAdd] = useState("");
+export function Roster({ board, active, onOpen, onOverview, onTasks }: { board: TeamBoard | null; active: string | null; onOpen: (a: AgentId) => void; onOverview: () => void; onTasks: () => void }) {
+  const ids: AgentId[] = ["copilot", "theo", "nora", "penny"];
   return (
-    <div className="tm-edit">
-      {rows.map((r, i) => <div key={i} className="tm-row"><input value={r} aria-label={noun} onChange={(e) => setRows(rows.map((x, j) => (j === i ? e.target.value : x)))} /><button type="button" className="tm-link" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button></div>)}
-      <input className="tm-add" value={add} placeholder={"Add one plain sentence"} aria-label={"New " + noun} onChange={(e) => setAdd(e.target.value)} />
-      <div className="tm-acts"><button type="button" className="tm-go" onClick={() => onSave(add.trim() ? [...rows, add.trim()] : rows)}>Save</button><button type="button" className="tm-quiet" onClick={onCancel}>Cancel</button></div>
-      <small>Takes effect on its next job once saved.</small>
+    <div className="tmx lt nobg">
+      <nav className="nside" aria-label="Team roster" style={{ width: "auto", background: "transparent", border: 0, padding: "4px 0 8px" }}>
+        {ids.map((id) => {
+          const a = board?.agents.find((x) => x.id === id);
+          const badge = id === "copilot" ? board?.decisions.length ?? 0 : a?.needs ?? 0;
+          return (
+            <a key={id} className={`sr${active === id ? " on" : ""}`} href="#" onClick={(e) => { e.preventDefault(); onOpen(id); }}>
+              <Character who={id} size={id === "copilot" ? 36 : 32} crop />
+              <span className="sn"><div className="nm">{a?.name ?? id}</div><div className="jb">{a?.role ?? ""}</div></span>
+              {a ? <span className={`dot ${STATE[a.state].cls}`} title={STATE[a.state].label} /> : null}
+              {badge > 0 ? <span className="nb" aria-label={`${badge} waiting`}>{badge}</span> : null}
+            </a>
+          );
+        })}
+        <div className="sgrp">Not built yet</div>
+        {NOT_BUILT.map((u) => (
+          <div key={u.sk} className="sr u">
+            <Character who={u.sk} size={28} />
+            <span className="sn"><div className="nm">{u.area}</div></span>
+          </div>
+        ))}
+        <div className="sep" />
+        <a className={`sr util${active === "overview" ? " on" : ""}`} href="#" onClick={(e) => { e.preventDefault(); onOverview(); }}><span className="sn"><div className="nm">Overview</div></span></a>
+        <a className={`sr util${active === "tasks" ? " on" : ""}`} href="#" onClick={(e) => { e.preventDefault(); onTasks(); }}><span className="sn"><div className="nm">Tasks</div></span></a>
+      </nav>
     </div>
-  );
-}
-
-const stamp = (iso?: string) => (iso ? `Last changed ${when(iso)}` : "Not changed yet");
-
-function SettingsPage({ api, agent }: { api: Api; agent: AgentCard }) {
-  const [v, setV] = useState<SettingsView | null>(null);
-  const [edit, setEdit] = useState<Editable | null>(null);
-  const [note, setNote] = useState("");
-  const [job, setJob] = useState("");
-  const id = agent.id as "theo" | "nora" | "penny";
-  const load = useCallback(() => api<SettingsView>("team-settings", { agent: id }).then(setV).catch(() => setNote("The settings did not load.")), [api, id]);
-  useEffect(() => { void load(); }, [load]);
-  if (!v) return <p className="cp-note">{note || "Loading the settings."}</p>;
-  const save = async (section: Editable, value: unknown) => {
-    const r = await api<{ ok: boolean; note: string }>("team-settings-save", { agent: id, section, value }).catch(() => ({ ok: false, note: "That did not save." }));
-    setNote(r.note);
-    if (r.ok) setEdit(null);
-    await load();
-  };
-  const undo = async () => { const r = await api<{ note: string }>("team-settings-undo", { agent: id }).catch(() => ({ note: "That did not undo." })); setNote(r.note); await load(); };
-  const head = (title: string, section?: Editable) => (
-    <div className="tm-sh"><h2 className="tm-h2">{title}</h2>{section && edit !== section ? <button type="button" className="tm-link" onClick={() => { setEdit(section); setJob(v.job); }}>Edit</button> : null}{section ? <span>{stamp(v.changed[section])}</span> : null}</div>
-  );
-  const list = (title: string, section: Editable, items: string[], noun: string, intro: string) => (
-    <section className="tm-sec" aria-label={title}>{head(title, section)}<p className="tm-empty">{intro}</p>
-      {edit === section ? <ListEditor initial={items} noun={noun} onSave={(x) => void save(section, x)} onCancel={() => setEdit(null)} /> : items.length ? <ul className="tm-plain">{items.map((x) => <li key={x}>{x}</li>)}</ul> : <p className="tm-empty">Nothing yet.</p>}
-    </section>
-  );
-  return (
-    <>
-      <header className="tm-who"><Character who={agent.id} size={64} crop /><div><h1>{agent.name}'s settings</h1><span>{v.d.role}</span><p className="tm-empty">Editable by a signed-in partner only.</p></div></header>
-      {note ? <p className="tm-note" role="status">{note}{v.canUndo ? <> <button type="button" className="tm-link" onClick={() => void undo()}>Undo last change</button> (available for 1 minute)</> : null}</p> : v.canUndo ? <p className="tm-note"><button type="button" className="tm-link" onClick={() => void undo()}>Undo last change</button> (available for 1 minute)</p> : null}
-      <section className="tm-sec" aria-label="Job">{head("Job", "job")}
-        {edit === "job" ? <div className="tm-edit"><textarea value={job} rows={4} onChange={(e) => setJob(e.target.value)} aria-label="Job" /><div className="tm-acts"><button type="button" className="tm-go" onClick={() => void save("job", job)}>Save</button><button type="button" className="tm-quiet" onClick={() => setEdit(null)}>Cancel</button></div><small>Takes effect on its next job once saved.</small></div> : <p>{v.job}</p>}
-      </section>
-      {list("Outcome", "outcome", v.outcome, "outcome check", v.d.outcomeIntro)}
-      {list("Rules", "rules", v.rules, "rule", "Hard rules " + agent.name + " must never break, one plain sentence each.")}
-      {list("Can do alone", "alone", v.alone, "action", "What " + agent.name + " may do without asking.")}
-      <section className="tm-sec" aria-label="Needs my approval"><div className="tm-sh"><h2 className="tm-h2">Needs my approval</h2></div><p className="tm-empty">What {agent.name} must never do alone. Nothing goes out until a partner presses Approve. These rows are fixed and cannot be changed here.</p>
-        <ul className="tm-plain">{v.d.locked.map((l) => <li key={l.t}><b>{l.t}</b> <span>{l.d} Always needs Approve.</span></li>)}</ul></section>
-      <section className="tm-sec" aria-label="Tools"><div className="tm-sh"><h2 className="tm-h2">Tools</h2></div><p className="tm-empty">Credentials are held separately and are never seen by {agent.name}. No secret is ever shown here.</p>
-        <ul className="tm-plain">{v.tools.map((t) => <li key={t.name}><b>{t.name}</b> <span>{t.state}. {t.line}</span></li>)}</ul></section>
-      <section className="tm-sec" aria-label="Context it is given"><div className="tm-sh"><h2 className="tm-h2">Context it is given</h2></div><p className="tm-empty">The materials {agent.name} uses, by name.</p><ul className="tm-plain">{v.d.context.map((c) => <li key={c}>{c}</li>)}</ul></section>
-      {list("Memory", "memory", v.memory, "memory", "The facts and corrections " + agent.name + " holds.")}
-      <p className="tm-empty">Proposed rules from corrections, waiting for approval: coming later. Nothing is remembered as a rule without your approval.</p>
-      <section className="tm-sec" aria-label="Limits"><div className="tm-sh"><h2 className="tm-h2">Limits</h2></div><p className="tm-empty">Fixed in code for now. Changing one is a change to the app, not a setting.</p>
-        <dl className="tm-facts">{v.d.limits.map((f) => <div key={f.l}><dt>{f.l}</dt><dd>{f.v}</dd></div>)}</dl></section>
-      <section className="tm-sec" aria-label="What I need from you"><div className="tm-sh"><h2 className="tm-h2">What I need from you</h2></div><p><b>{v.d.need}</b></p><p className="tm-empty">Without it: {v.d.needIf}</p>{v.d.later ? <p className="tm-empty">{v.d.later}</p> : null}</section>
-      <section className="tm-sec" aria-label="Test before it goes live"><div className="tm-sh"><h2 className="tm-h2">Test before it goes live</h2></div><p>{v.d.test}</p><p className="tm-empty"><b>Pass:</b> {v.d.pass}</p>{v.d.openQ ? <p className="tm-empty"><b>Open question.</b> {v.d.openQ}</p> : null}</section>
-    </>
-  );
-}
-
-// ---------- A desk's own chat ----------
-
-type ChatMsg = { role: "user" | "agent" | "note"; text: string; at: string; offer?: { to: "theo" | "nora" | "penny"; question: string } };
-const FIRST: Record<string, string> = { theo: "Ask Theo about a guest or a message", nora: "Ask Nora about a review", penny: "Ask Penny about a price" };
-
-function DeskChat({ api, agent, name, onHandOver }: { api: Api; agent: AgentId; name: string; onHandOver: () => void }) {
-  const [rows, setRows] = useState<ChatMsg[]>([]);
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { void api<{ messages: ChatMsg[] }>("team-chat-get", { agent }).then((r) => setRows(r.messages)).catch(() => undefined); }, [api, agent]);
-  const ask = async () => {
-    const q = text.trim();
-    if (!q || busy) return;
-    setBusy(true);
-    setText("");
-    setRows((r) => [...r, { role: "user", text: q, at: new Date().toISOString() }]);
-    try { setRows((await api<{ messages: ChatMsg[] }>("team-chat", { agent, text: q })).messages); } catch { setRows((r) => [...r, { role: "note", text: "That did not go through. Nothing was sent.", at: new Date().toISOString() }]); }
-    setBusy(false);
-  };
-  const send = async (m: ChatMsg) => {
-    if (!m.offer || busy) return;
-    setBusy(true);
-    try { setRows((await api<{ messages: ChatMsg[] }>("team-handoff", { from: agent, to: m.offer.to, question: m.offer.question })).messages); onHandOver(); } catch { /* the chat shows nothing was sent */ }
-    setBusy(false);
-  };
-  const last = rows.length ? rows[rows.length - 1] : null;
-  return (
-    <section className="tm-sec tm-chat" aria-label={`Ask ${name}`}>
-      <div className="tm-sh"><h2 className="tm-h2">Ask {name}</h2><span>This chat is only with {name}, and only about {name}'s job.</span>{rows.length ? <button type="button" className="tm-link" onClick={() => void api("team-chat-clear", { agent }).then(() => setRows([]))}>Clear this session</button> : null}</div>
-      {rows.length ? (
-        <ul className="tm-msgs">
-          {rows.map((m, i) => (
-            <li key={m.at + i} className={m.role}>
-              <p>{m.text}</p>
-              {m.offer && m === last ? <div className="tm-acts"><button type="button" className="tm-go" disabled={busy} onClick={() => void send(m)}>Yes, send it to {m.offer.to[0]!.toUpperCase() + m.offer.to.slice(1)}</button><button type="button" className="tm-quiet" disabled={busy} onClick={() => setRows((r) => [...r, { role: "note", text: "Okay. Nothing was sent to anyone.", at: new Date().toISOString() }])}>No</button></div> : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <form className="tm-ask" onSubmit={(e) => { e.preventDefault(); void ask(); }}>
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={FIRST[agent] ?? "Ask"} aria-label={`Ask ${name}`} />
-        <button type="submit" className="tm-go" disabled={busy || !text.trim()}>{busy ? "Working" : "Ask"}</button>
-      </form>
-      {rows.some((m) => m.role === "note" && /^Sent to/.test(m.text)) ? <p className="tm-empty">Open the other desk from the team list to see the answer, or find it under Decisions.</p> : null}
-    </section>
   );
 }
 
@@ -478,72 +113,541 @@ function DeskChat({ api, agent, name, onHandOver }: { api: Api; agent: AgentId; 
 export function HomePage({ board, api, onDesk, onTeam, onChanged }: { board: TeamBoard | null; api: Api; onDesk: (a: AgentId) => void; onTeam: () => void; onChanged: () => void }) {
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
-  if (!board) return <div className="tm-home"><p className="cp-note">Loading the team.</p></div>;
-  const top = board.decisions.slice(0, 3);
-  const rest = board.decisions.length - top.length;
-  const act = async (key: string, action: "approve" | "notnow" | "done") => {
-    setBusy(key);
-    try { setNote((await api<{ note: string }>("team-act", { key, action })).note); } catch { setNote("That did not go through. Nothing was sent."); }
+  if (!board) return <div className="tmx lt"><div className="stage"><p className="mut">Loading the team.</p></div></div>;
+  const items = board.decisions.slice(0, 3);
+  const rest = board.decisions.length - items.length;
+  const act = async (d: TeamDecision, action: "approve" | "notnow" | "done") => {
+    setBusy(d.key);
+    try { setNote((await api<{ note: string }>("team-act", { key: d.key, action })).note); } catch { setNote("That did not go through. Nothing was sent."); }
     setBusy("");
     onChanged();
   };
-  const NOT_BUILT = ["Channels", "Cleaning and Operations", "Onboarding", "Acquisition", "Ads", "Finance", "Incident"];
+  const trio = board.agents.filter((a) => a.id !== "copilot");
   return (
-    <div className="tm-home">
-      <header className="tm-hhead">
-        <Character who="copilot" size={104} badge={board.decisions.length} />
-        <div><h1>Copilot</h1><span>Chief of staff</span>
-          <p>{top[0] ? top[0].title : "Nothing needs you today."}</p></div>
-      </header>
-      <section className="tm-hteam" aria-label="The team">
-        {board.agents.filter((a) => a.id !== "copilot").map((a) => (
-          <button key={a.id} type="button" className="tm-hmember" onClick={() => onDesk(a.id)}>
-            <Character who={a.id} size={84} badge={a.needs} />
-            <b>{a.name}</b><span>{a.role}</span><span className="tm-st"><Dot state={a.state} /> {STATE[a.state]}</span>
-          </button>
-        ))}
+    <div className="tmx lt"><div className="stage"><div className="home">
+      <section className="copl" aria-label="Copilot">
+        <Character who="copilot" size={124} badge={board.decisions.length} />
+        <div>
+          <h1 className="title" style={{ fontSize: 24, lineHeight: "32px" }}>Copilot</h1>
+          <div className="mut">Chief of staff</div>
+          <p style={{ marginTop: 8 }}>{items[0] ? `Most urgent: ${items[0].title}` : "Nothing needs you today."}</p>
+        </div>
       </section>
-      <p className="tm-muted">{NOT_BUILT.map((n) => n + ", not built yet").join(" · ")}</p>
-      <section className="tm-hnote" aria-label="Notifications">
-        <h2 className="tm-h2">Notifications</h2>
-        {note ? <p className="tm-note" role="status">{note}</p> : null}
-        {top.length ? top.map((d) => (
-          <div key={d.key} className="tm-hrow">
-            <div><b>{d.title}</b><span>{d.byline}</span></div>
-            <div className="tm-acts">
-              {d.elsewhere ? <button type="button" className="tm-go" onClick={() => onDesk(d.agent)}>Open</button> : <button type="button" className="tm-go" disabled={busy === d.key} onClick={() => void act(d.key, d.proposal || d.kind === "answer" ? "approve" : "done")}>{d.kind === "answer" ? "Got it" : d.proposal ? "Approve" : "Mark done"}</button>}
-              <button type="button" className="tm-quiet" disabled={busy === d.key} onClick={() => void act(d.key, "notnow")}>Not now</button>
+
+      <section aria-label="The team">
+        <div className="trio">
+          {trio.map((m) => (
+            <a key={m.id} className="t1" href="#" onClick={(e) => { e.preventDefault(); onDesk(m.id); }}>
+              <Character who={m.id} size={76} badge={m.needs} />
+              <div style={{ fontWeight: 600, marginTop: 6 }}>{m.name}</div>
+              <div className="mut">{m.role}</div>
+              <div className="mst" style={{ fontWeight: 500 }}><Dot state={m.state} />{STATE[m.state].label}</div>
+            </a>
+          ))}
+        </div>
+        <p className="mut" style={{ marginTop: 16 }}>Not built yet: {NOT_BUILT.map((u) => u.area).join(", ")}.</p>
+      </section>
+
+      <section aria-label="Needs you">
+        <h2 className="h2" style={{ marginBottom: 8 }}>Needs you</h2>
+        {note ? <p className="mut" role="status">{note}</p> : null}
+        {!items.length ? <p className="mut" style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>Nothing needs you today.</p> : null}
+        {items.map((d) => (
+          <div key={d.key} className="nrow">
+            <div className="nt">
+              <div style={{ fontWeight: 600 }}>{d.title}</div>
+              <div className="nf"><Character who={d.agent} size={24} crop />From {board.agents.find((a) => a.id === d.agent)?.name}</div>
+            </div>
+            <div className="acts">
+              {d.elsewhere ? <button className="btn btn-p" type="button" onClick={() => onDesk(d.agent)}>Open</button> : <button className="btn btn-p" type="button" disabled={busy === d.key} onClick={() => void act(d, d.proposal || d.kind === "answer" ? "approve" : "done")}>{buttonFor(d)}</button>}
+              {d.elsewhere ? null : <button className="btn btn-s" type="button" disabled={busy === d.key} onClick={() => void act(d, "notnow")}>Not now</button>}
             </div>
           </div>
-        )) : <p className="tm-empty">Nothing needs you.</p>}
-        {rest > 0 ? <button type="button" className="tm-link" onClick={onTeam}>{rest} more</button> : null}
+        ))}
+        {rest > 0 ? <div style={{ borderTop: "1px solid var(--line)", paddingTop: 4 }}><a className="more" href="#" onClick={(e) => { e.preventDefault(); onTeam(); }}>{rest} more</a></div> : null}
       </section>
-    </div>
+    </div></div></div>
   );
 }
 
-// ---------- The sidebar roster ----------
+// ---------- A decision card ----------
 
-const LATER = ["Channels", "Cleaning and Operations", "Onboarding", "Acquisition", "Ads", "Finance", "Incident"];
-
-export function Roster({ board, active, onOpen }: { board: TeamBoard | null; active: AgentId | null; onOpen: (a: AgentId) => void }) {
+function DecisionCard({ d, busy, showDraft = true, open = false, onAct, onRate, onReviews }: { d: TeamDecision; busy: boolean; showDraft?: boolean; open?: boolean; onAct: (a: "approve" | "notnow" | "done") => void; onRate: (r: "right" | "wrong" | "unneeded") => void; onReviews: () => void }) {
+  const passed = d.checks.filter((c) => c.ok).length;
+  const draft = showDraft && (d.proposal || d.headline);
   return (
-    <div className="tm-roster" aria-label="Team">
-      {(["copilot", "theo", "nora", "penny"] as AgentId[]).map((id) => {
-        const a = board?.agents.find((x) => x.id === id);
-        const meta = AGENT_NAMES[id];
-        return (
-          <button key={id} type="button" className={`tm-rrow${active === id ? " on" : ""}`} onClick={() => onOpen(id)}>
-            <Character who={id} size={28} crop />
-            <span className="tm-rname"><b>{meta.name}</b><small>{meta.role}</small></span>
-            {a ? <Dot state={a.state} /> : null}
-            {a && a.needs > 0 ? <span className="cp-ov-count">{a.needs}</span> : id === "copilot" && board && board.decisions.length ? <span className="cp-ov-count">{board.decisions.length}</span> : null}
-          </button>
-        );
-      })}
-      {LATER.map((n) => <div key={n} className="tm-rrow later"><span className="tm-rname"><b>{n}</b><small>Not built yet</small></span></div>)}
-    </div>
+    <article className="card">
+      <div className="chead">
+        <Character who={d.agent} size={44} crop />
+        <div><h3 className="ctitle">{d.title}</h3><div className="mut">{d.byline}</div></div>
+      </div>
+      <p className="why"><span className="lbl">Why</span>{d.why}</p>
+      {draft ? (
+        <div className="draft">
+          <div className="lbl">{d.label || "Draft"}</div>
+          {d.headline ? <><div className="ppbig">{d.headline}</div><p className="dtxt">{d.proposal}</p></> : <p className="dtxt">{d.proposal}</p>}
+        </div>
+      ) : null}
+      <div className="acts">
+        <button className="btn btn-p" type="button" disabled={busy} onClick={() => (d.elsewhere ? onReviews() : onAct(d.proposal || d.kind === "answer" ? "approve" : "done"))}>{buttonFor(d)}</button>
+        {d.elsewhere ? null : <button className="btn btn-s" type="button" disabled={busy} onClick={() => onAct("notnow")}>Not now</button>}
+        {d.checks.length && d.kind !== "answer" ? (
+          <span className="rates">
+            <span className="rl">Shadow mode</span>
+            {(["right", "wrong", "unneeded"] as const).map((r) => <button key={r} className="rt" type="button" style={d.rating === r ? { fontWeight: 700, color: "var(--ink)" } : undefined} onClick={() => onRate(r)}>{r === "right" ? "Right" : r === "wrong" ? "Wrong" : "Didn’t need it"}</button>)}
+          </span>
+        ) : null}
+      </div>
+      {d.checks.length ? (
+        <details className="chd" open={open}>
+          <summary><span className="chip">Checked {passed} of {d.checks.length}</span></summary>
+          <ul className="cl">
+            {d.checks.map((c) => (
+              <li key={c.label} className={c.ok ? "" : "fail"}>
+                {c.ok
+                  ? <svg className="cm" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5" /></svg>
+                  : <svg className="cm cf" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5" /><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" /></svg>}
+                <span>{c.ok ? c.label : `${c.label}${c.note ? `: ${c.note}` : ""}`}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </article>
   );
 }
 
-const AGENT_NAMES: Record<AgentId, { name: string; role: string }> = { copilot: { name: "Copilot", role: "Chief of staff" }, theo: { name: "Theo", role: "Guest Messaging" }, nora: { name: "Nora", role: "Reviews" }, penny: { name: "Penny", role: "Pricing" } };
+// ---------- The Team page and the desks ----------
+
+export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onChanged }: { api: Api; desk: AgentId | null; onDesk: (a: AgentId | null) => void; onOpenReviews: () => void; onOpenGuests: () => void; onChanged: () => void }) {
+  const [board, setBoard] = useState<TeamBoard | null>(null);
+  const [error, setError] = useState("");
+  const [settings, setSettings] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [note, setNote] = useState("");
+  const [filter, setFilter] = useState<AgentId | "all">("all");
+  const [paused, setPaused] = useState(false);
+  const [all, setAll] = useState(false);
+
+  const load = useCallback(() => api<TeamBoard>("team", {}).then((b) => { setBoard(b); setError(""); }).catch(() => setError("The team did not load. Nothing was changed.")), [api]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setSettings(false); }, [desk]);
+  useEffect(() => {
+    if (paused) return undefined;
+    const t = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 30_000);
+    return () => window.clearInterval(t);
+  }, [paused, load]);
+
+  const act = async (key: string, action: "approve" | "notnow" | "done") => {
+    setBusy(key);
+    setNote("");
+    try { setNote((await api<{ note: string }>("team-act", { key, action })).note); await load(); onChanged(); } catch { setNote("That did not go through. Nothing was sent."); }
+    setBusy("");
+  };
+  const rate = async (key: string, rating: "right" | "wrong" | "unneeded") => { await api("team-rate", { key, rating }).catch(() => undefined); await load(); };
+
+  if (!board) return <div className="tmx lt"><div className="stage"><p className="mut">{error || "Loading the team."}</p></div></div>;
+  const agent = desk ? board.agents.find((a) => a.id === desk) ?? null : null;
+
+  if (agent && settings && isAgent(agent.id)) return <Page><SettingsPage api={api} agent={agent} onBack={() => setSettings(false)} onTeam={() => onDesk(null)} /></Page>;
+
+  const card = (d: TeamDecision, showDraft = true, open = false) => <DecisionCard key={d.key} d={d} busy={busy === d.key} showDraft={showDraft} open={open} onAct={(a) => void act(d.key, a)} onRate={(r) => void rate(d.key, r)} onReviews={onOpenReviews} />;
+
+  if (agent) return <Page><Desk board={board} agent={agent} api={api} note={note} card={card} onSettings={() => setSettings(true)} onGuests={onOpenGuests} onReviews={onOpenReviews} reload={() => { void load(); onChanged(); }} rate={rate} /></Page>;
+
+  const a = board.automation;
+  const decisions = all ? board.decisions : board.decisions.slice(0, 5);
+  const feed = board.events.filter((e) => filter === "all" || e.agent === filter);
+  const active = board.agents.filter((x) => x.id !== "copilot");
+  const t = board.today;
+  const rows = (["theo", "nora", "penny", "copilot"] as AgentId[]).map((id) => {
+    const c = board.costs.agents[id];
+    const models = [...new Set(c.jobs.map((j) => j.model))].join(" and ") || "No calls yet";
+    const priced = c.jobs.length > 0 && c.jobs.every((j) => j.perCall !== null);
+    return { id, name: board.agents.find((x) => x.id === id)!.name, models, calls: c.calls, cached: c.cached, per: c.calls ? (priced ? `${usd(c.month / c.calls)} per call` : `${Math.round(c.jobs.reduce((s, j) => s + j.tokensPerCall * j.calls, 0) / Math.max(1, c.calls))} tokens a call, not priced yet`) : "No calls yet", ceil: `$${c.ceiling}` };
+  });
+  return (
+    <div className="tmx lt"><div className="stage"><div className="cols">
+      <div className="main">
+        <header>
+          <div className="hrow"><h1 className="title">Team</h1><span className="shadow"><span className="dot sm d-idle" />Shadow mode</span></div>
+          <p className="lede">Nothing goes out until Shane or Ryan presses Approve.</p>
+        </header>
+        {note ? <p className="mut" role="status">{note}</p> : null}
+
+        <section className="chief" aria-label="Chief of staff">
+          <div><Character who="copilot" size={150} badge={board.decisions.length} /></div>
+          <div className="chbody">
+            <div><h2 className="h2">Copilot</h2><div className="mut">Chief of staff</div></div>
+            <div className="chcols">
+              <div><h3 className="h3">Decided today</h3><ul className="dl">{board.decided.length ? board.decided.map((d) => <li key={d.at}>{d.text}</li>) : <li>Nothing decided yet today.</li>}</ul></div>
+              <div><h3 className="h3">Waiting on you</h3>
+                {board.decisions.length ? <><div className="big">{board.decisions.length}</div><p className="p2">Most urgent: {board.decisions[0]!.title}</p></> : <p className="p2">Nothing needs you right now.</p>}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section aria-label="Today">
+          <div className="strip">
+            <div className="st"><div className="stl">Check-ins today</div><div className="stv">{t.ins ?? "Unknown"}</div></div>
+            <div className="st"><div className="stl">Check-outs today</div><div className="stv">{t.outs ?? "Unknown"}</div></div>
+            <div className="st"><div className="stl">Messages waiting</div><div className="stv">{t.waiting ?? "Unknown"}</div></div>
+            <div className="st"><div className="stl">Revenue, month to date</div><div className="stv">{t.revenue ?? "Unknown"}</div></div>
+          </div>
+        </section>
+
+        <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <h3 className="h3" style={{ margin: 0 }}>Automation this week</h3>
+          <p className="autoln">
+            <span>Items proposed <b>{a.proposed}</b></span><span>Approved as written <b>{a.approved}</b></span><span>Approved after my edit <b>{a.edited}</b></span><span>Rejected <b>{a.rejected}</b></span><span>Handled without me <b>{a.handled}</b></span><span>Accuracy <b>{a.accuracy}</b></span><span>Quiet-day cost <b>{a.cost}</b></span>
+          </p>
+        </section>
+
+        <section className="sec" aria-label="Decisions needing you">
+          <h2 className="h2">Decisions needing you</h2>
+          {board.decisions.length ? decisions.map((d) => card(d)) : <div className="card" style={{ alignItems: "flex-start", gap: 6 }}><div className="ctitle">Nothing needs you right now.</div><p className="mut">When the team has something for you, it shows here and on the team member{"’"}s badge.</p></div>}
+          {board.decisions.length > 5 ? <div><a className="more" href="#" onClick={(e) => { e.preventDefault(); setAll(!all); }}>{all ? "Show fewer" : `Show all ${board.decisions.length}`}</a></div> : null}
+        </section>
+
+        <section className="sec" aria-label="Cost">
+          <h2 className="h2">Cost</h2>
+          <div className="figs">
+            <div><div className="stl">Today</div><div className="fv">{usd(board.costs.total.today)}</div></div>
+            <div><div className="stl">This month</div><div className="fv">{usd(board.costs.total.month)}</div></div>
+            <div><div className="stl">Team ceiling</div><div className="fv">${board.costs.total.ceiling}</div></div>
+            <div><div className="stl">Projected this month</div><div className="fv">{usd(board.costs.total.projection)}</div></div>
+          </div>
+          <div>{rows.map((r) => <div key={r.id} className="cl2"><b>{r.name}</b><span>{r.models}</span><span>{r.calls} calls</span><span>{r.cached} from cache</span><span>{r.per}</span><span>Ceiling {r.ceil}</span></div>)}</div>
+          {board.costs.total.unpricedTokens ? <div className="pnote">Meta prices are not set yet. Meta tokens are counted but not priced yet, so dollars leave them out and the ceiling does not cover them.</div> : null}
+          <p className="mut">New team members show {"“"}Not set yet{"”"} until you set a ceiling.</p>
+        </section>
+
+        <section className="sec" aria-label="The team">
+          <h2 className="h2">The team</h2>
+          <div className="grid3">
+            {active.map((m) => (
+              <a key={m.id} className={m.error ? "mem err" : "mem"} href="#" onClick={(e) => { e.preventDefault(); onDesk(m.id); }}>
+                <div className="mfig"><Character who={m.id} size={96} badge={m.needs} /><div><div className="mname">{m.name}</div><div className="mut">{m.role}</div></div></div>
+                <div className="mst"><Dot state={m.state} />{STATE[m.state].label}</div>
+                <div className="mnl"><b>Now:</b> {m.now}</div>
+                <div className="mnl"><b>Last:</b> {m.last}</div>
+                {m.error ? <div className="errtx">{m.error}</div> : null}
+              </a>
+            ))}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+            <h3 className="h3" style={{ margin: 0 }}>Not built yet</h3>
+            <div className="skgrid">{NOT_BUILT.map((k) => <div key={k.sk} className="sk"><Character who={k.sk} size={72} /><span>{k.area}</span><span>Not built yet</span></div>)}</div>
+          </div>
+        </section>
+      </div>
+
+      <aside className="feedcol" aria-label="Live activity">
+        <div className="feed">
+          <div className="fh"><h2 className="h2">Live activity</h2><button className="qbtn" type="button" onClick={() => setPaused(!paused)}>{paused ? "Resume feed" : "Pause feed"}</button></div>
+          <div style={{ marginBottom: 4 }}>
+            <select className="qbtn" value={filter} onChange={(e) => setFilter(e.target.value as AgentId | "all")} aria-label="Filter by team member">
+              <option value="all">All team members</option>
+              {board.agents.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+          </div>
+          {feed.length ? feed.map((e) => (
+            <div key={e.at + e.text} className="ev">
+              <div className="evt">{clock(e.at)}</div>
+              <div className="evb">
+                <div className="evw"><Character who={e.agent} size={26} crop />{e.name}</div>
+                <p className="evx">{e.text}</p>
+                {e.woken ? <div className="evk">Woken by: {e.woken}</div> : null}
+              </div>
+            </div>
+          )) : <p className="mut">Nothing yet.</p>}
+        </div>
+      </aside>
+    </div></div></div>
+  );
+}
+
+// ---------- A desk ----------
+
+type ChatMsg = { role: "user" | "agent" | "note"; text: string; at: string; offer?: { to: "theo" | "nora" | "penny"; question: string } };
+type Call = { at: string; agent: string; job: string; provider: string; model: string; input: number; output: number; usd: number; priced: boolean; event: string; label: string };
+
+function Desk({ board, agent, api, note, card, onSettings, onGuests, onReviews, reload, rate }: { board: TeamBoard; agent: AgentCard; api: Api; note: string; card: (d: TeamDecision, showDraft?: boolean, open?: boolean) => ReactNode; onSettings: () => void; onGuests: () => void; onReviews: () => void; reload: () => void; rate: (key: string, r: "right" | "wrong" | "unneeded") => Promise<void> }) {
+  const mine = board.decisions.filter((d) => d.agent === agent.id);
+  const prepared = mine.filter((d) => d.proposal).slice(0, 5);
+  const history = board.history.filter((h) => h.agent === agent.id);
+  const [chat, setChat] = useState<{ messages: ChatMsg[]; calls: Call[] }>({ messages: [], calls: [] });
+  const refreshChat = useCallback(() => api<{ messages: ChatMsg[]; calls: Call[] }>("team-chat-get", { agent: agent.id }).then(setChat).catch(() => undefined), [api, agent.id]);
+  useEffect(() => { if (isAgent(agent.id)) void refreshChat(); }, [agent.id, refreshChat]);
+  const incoming = chat.messages.filter((m) => m.role === "note" && /asked through Copilot/.test(m.text)).slice(-1)[0];
+  const stopped = agent.state === "stopped";
+  const events = [
+    ...chat.messages.map((m) => ({ at: m.at, tool: false as const, title: m.role === "user" ? `You asked: “${m.text}”` : m.role === "agent" ? `${agent.name} answered.` : m.text, asked: "", got: "" })),
+    ...chat.calls.map((c) => ({ at: c.at, tool: true as const, title: c.label, asked: `${c.job}, woken by: ${c.event}`, got: `${c.provider === "meta" ? "Meta" : c.provider === "anthropic" ? "Claude" : c.provider} ${c.model}, ${c.input + c.output} tokens${c.priced ? `, ${usd(c.usd)}` : ", not priced"}` })),
+  ].sort((x, y) => x.at.localeCompare(y.at));
+  const lastEvent = events.length ? events[events.length - 1]! : null;
+  return (
+    <>
+      <section aria-label="Who they are">
+        <div className="deskhd">
+          <Character who={agent.id} size={150} badge={agent.needs} />
+          <div style={{ flex: "1 1 280px", display: "flex", flexDirection: "column", gap: 6, paddingBottom: 8 }}>
+            <h1 className="title">{agent.name}</h1>
+            <div style={{ fontWeight: 600 }}>{agent.role}</div>
+            <p className="mut">{agent.tagline}</p>
+            <div className="mst" style={{ marginTop: 4 }}><Dot state={agent.state} />{STATE[agent.state].label}</div>
+          </div>
+          <span className="shadow" style={{ marginBottom: 8 }}><span className="dot sm d-idle" />Shadow mode</span>
+        </div>
+        {agent.error ? <div className="cerr" style={{ marginTop: 16 }}>{agent.error}</div> : null}
+        {note ? <p className="mut" style={{ marginTop: 12 }} role="status">{note}</p> : null}
+      </section>
+
+      <section className="dsec" aria-label="What I am working on now"><h2 className="h2">What I{"’"}m working on now</h2><div><p>{agent.now}</p><p className="mut">Last: {agent.last}</p></div></section>
+
+      <section className="dsec" aria-label="Outstanding">
+        <h2 className="h2">Outstanding</h2>
+        {incoming ? <div className="incn"><div className="lbl">Incoming</div>{incoming.text}</div> : null}
+        {mine.length ? mine.slice(0, 5).map((d) => card(d, false, true)) : <p className="mut">Nothing outstanding.</p>}
+        {mine.length > 5 ? <p className="mut">{mine.length - 5} more are in Decisions on the Team page.</p> : null}
+      </section>
+
+      <section className="dsec" aria-label="What I need from you">
+        <h2 className="h2">What I need from you</h2>
+        <div>{agent.needsList.map((n) => <div key={n.t} className="nd"><p><strong>{n.t}</strong></p><p className="if">Without it: {n.iff}</p></div>)}</div>
+      </section>
+
+      <section className="dsec" aria-label="Prepared work, ready to send">
+        <h2 className="h2">Prepared work, ready to send</h2>
+        {prepared.length ? prepared.map((d) => (
+          <div key={d.key} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="draft"><div className="lbl">{d.label || "Draft"}</div>{d.headline ? <><div className="ppbig">{d.headline}</div><p className="dtxt">{d.proposal}</p></> : <p className="dtxt">{d.proposal}</p>}</div>
+            <details className="src" open>
+              <summary>Source</summary>
+              <ol>{d.sources.map((s) => <li key={s}>{s}</li>)}</ol>
+              <p>{d.agent === "penny" ? "A number with no source is not in the proposal." : "A fact with no source is not in the message."}</p>
+            </details>
+          </div>
+        )) : <p className="mut">Nothing is prepared right now.</p>}
+      </section>
+
+      <section className="dsec" aria-label="History">
+        <h2 className="h2">History</h2>
+        {history.length ? <div>{history.map((h) => (
+          <div key={h.key + h.at} className="hr">
+            <div className="hrt">{when(h.at)}</div>
+            <div className="hrm">{h.text}</div>
+            {h.rating ? <div className="hrc">Rated {h.rating === "unneeded" ? "didn’t need it" : h.rating}</div> : <div className="rates" style={{ marginLeft: 0 }}><span className="rl">Shadow mode</span>{(["right", "wrong", "unneeded"] as const).map((r) => <button key={r} className="rt" type="button" onClick={() => void rate(h.key, r)}>{r === "right" ? "Right" : r === "wrong" ? "Wrong" : "Didn’t need it"}</button>)}</div>}
+          </div>
+        ))}</div> : <p className="mut">Nothing decided yet.</p>}
+      </section>
+
+      <section className="dsec" aria-label="Sessions">
+        <h2 className="h2">Sessions</h2>
+        <p className="mut">One saved session per desk chat. Read only.</p>
+        {lastEvent ? (
+          <details className="sx">
+            <summary className="sxs"><span className="sxn">Desk chat</span><span className="tag">Open</span><span className="mut">{lastEvent.title} {"·"} {when(lastEvent.at)}</span></summary>
+            <div className="tl">
+              {events.map((e, i) => e.tool
+                ? <details key={i} className="tc"><summary><time className="mut">{clock(e.at)}</time>{e.title}</summary><div className="tcb">Asked: {e.asked}<br />Got: {e.got}</div></details>
+                : <div key={i} className="te"><time>{clock(e.at)}</time>{e.title}</div>)}
+              <div><button className="del" type="button" onClick={() => void api("team-chat-clear", { agent: agent.id }).then(refreshChat)}>Delete session</button> <span className="mut">Removes it and its events everywhere.</span></div>
+            </div>
+          </details>
+        ) : <p className="mut">No sessions yet.</p>}
+      </section>
+
+      <section className="dsec" aria-label="Settings">
+        {agent.id === "theo" ? <a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onGuests(); }}>Open the guest inbox</a> : null}
+        {agent.id === "nora" ? <a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onReviews(); }}>Open Reviews</a> : null}
+        {isAgent(agent.id) ? <a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onSettings(); }}>Open {agent.name}{"’"}s settings</a> : null}
+      </section>
+
+      {isAgent(agent.id) ? <DeskChat api={api} agent={agent.id} name={agent.name} stopped={stopped} messages={chat.messages} setMessages={(m) => setChat((c) => ({ ...c, messages: m }))} onChanged={() => { void refreshChat(); reload(); }} /> : null}
+    </>
+  );
+}
+
+// ---------- The desk's own chat ----------
+
+const PLACEHOLDER: Record<string, string> = { theo: "Ask Theo about a guest or a message", nora: "Ask Nora about a review", penny: "Ask Penny about a price" };
+const NAME: Record<string, string> = { theo: "Theo", nora: "Nora", penny: "Penny" };
+
+function DeskChat({ api, agent, name, stopped, messages, setMessages, onChanged }: { api: Api; agent: "theo" | "nora" | "penny"; name: string; stopped: boolean; messages: ChatMsg[]; setMessages: (m: ChatMsg[]) => void; onChanged: () => void }) {
+  const [text, setText] = useState("");
+  const [state, setState] = useState<"idle" | "working" | "error">("idle");
+  const rows = useRef(messages);
+  rows.current = messages;
+  const ask = async () => {
+    const q = text.trim();
+    if (!q || state === "working" || stopped) return;
+    setText("");
+    setState("working");
+    setMessages([...rows.current, { role: "user", text: q, at: new Date().toISOString() }]);
+    try { setMessages((await api<{ messages: ChatMsg[] }>("team-chat", { agent, text: q })).messages); setState("idle"); onChanged(); } catch { setState("error"); }
+  };
+  const send = async (m: ChatMsg) => {
+    if (!m.offer || state === "working") return;
+    setState("working");
+    try { setMessages((await api<{ messages: ChatMsg[] }>("team-handoff", { from: agent, to: m.offer.to, question: m.offer.question })).messages); setState("idle"); onChanged(); } catch { setState("error"); }
+  };
+  const lastIdx = messages.length - 1;
+  const off = stopped || state === "working";
+  return (
+    <section className="chat" aria-label={`Ask ${name}`}>
+      <div className="sh" style={{ alignItems: "center" }}>
+        <h2 className="h2">Ask {name}</h2>
+        {messages.length ? <button className="del" type="button" onClick={() => void api("team-chat-clear", { agent }).then(() => { setMessages([]); onChanged(); })}>Clear this session</button> : null}
+        <span className="meta" style={{ fontSize: 12, color: "var(--muted)", flex: "1 1 100%", order: 3 }}>This chat is only with {name}, and only about {name}{"’"}s job.</span>
+      </div>
+      {stopped ? <div className="cerr">{name} paused: reached the monthly ceiling. Nothing is called until next month.</div> : null}
+      {messages.map((m, i) => (
+        <div key={m.at + i}>
+          {m.role === "user" ? <div style={{ display: "flex" }}><div className="bub" style={{ marginLeft: "auto" }}>{m.text}</div></div> : null}
+          {m.role === "agent" ? <div className="agt">{m.text}</div> : null}
+          {m.role === "note" ? <div className="sysn">{m.text}</div> : null}
+          {m.offer && i === lastIdx ? (
+            <div className="offr">
+              <button className="btn btn-p" type="button" disabled={off} onClick={() => void send(m)}>Yes, send it to {NAME[m.offer.to]}</button>
+              <button className="btn btn-s" type="button" disabled={off} onClick={() => setMessages([...messages, { role: "note", text: "Okay. Nothing was sent to anyone.", at: new Date().toISOString() }])}>No</button>
+            </div>
+          ) : null}
+        </div>
+      ))}
+      {state === "working" ? <div className="sysn" style={{ display: "flex", gap: 8, alignItems: "center" }}><span className="dot sm d-work" />Working</div> : null}
+      {state === "error" ? <div className="cerr">That did not go through. Nothing was sent.</div> : null}
+      <form className={`cin${off ? " off" : ""}`} onSubmit={(e) => { e.preventDefault(); void ask(); }}>
+        <input className="inp" type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder={PLACEHOLDER[agent]} aria-label={PLACEHOLDER[agent]} disabled={off} />
+        <button className="btn btn-p" type="submit" disabled={off || !text.trim()}>{state === "working" ? "Working" : "Ask"}</button>
+      </form>
+    </section>
+  );
+}
+
+// ---------- Settings ----------
+
+const LOCK = <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg>;
+const CHECK = <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: "none", marginTop: 3 }}><path d="M3 8.5l3.2 3L13 4.5" /></svg>;
+
+function SettingsPage({ api, agent, onBack, onTeam }: { api: Api; agent: AgentCard; onBack: () => void; onTeam: () => void }) {
+  const id = agent.id as "theo" | "nora" | "penny";
+  const [v, setV] = useState<SettingsView | null>(null);
+  const [edit, setEdit] = useState<Editable | null>(null);
+  const [rows, setRows] = useState<string[]>([]);
+  const [add, setAdd] = useState("");
+  const [job, setJob] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = useCallback(() => api<SettingsView>("team-settings", { agent: id }).then(setV).catch(() => setMsg({ ok: false, text: "The settings did not load." })), [api, id]);
+  useEffect(() => { void load(); }, [load]);
+  if (!v) return <p className="mut">{msg?.text ?? "Loading the settings."}</p>;
+
+  const open = (s: Editable) => { setEdit(s); setMsg(null); setAdd(""); if (s === "job") setJob(v.job); else setRows([...(v[s] as string[])]); };
+  const save = async () => {
+    if (!edit) return;
+    const value = edit === "job" ? job : add.trim() ? [...rows, add.trim()] : rows;
+    const r = await api<{ ok: boolean; note: string }>("team-settings-save", { agent: id, section: edit, value }).catch(() => ({ ok: false, note: "That did not save." }));
+    setMsg({ ok: r.ok, text: r.note });
+    if (r.ok) setEdit(null);
+    await load();
+  };
+  const undo = async () => { const r = await api<{ note: string }>("team-settings-undo", { agent: id }).catch(() => ({ note: "That did not undo." })); setMsg({ ok: true, text: r.note }); await load(); };
+  const last = (s: Editable) => (v.changed[s] ? `Last changed ${when(v.changed[s]!)}` : "Not changed yet");
+  const head = (title: string, s?: Editable) => <div className="sh"><h2 className="h2">{title}</h2>{s && edit !== s ? <button className="etx" type="button" onClick={() => open(s)}>Edit</button> : null}{s ? <span className="meta">{last(s)}</span> : null}</div>;
+  const after = (s: Editable) => (msg && !edit && v.changed[s] && msg.ok ? <div className="after"><span>{msg.text}</span>{v.canUndo ? <><button className="sbtn" type="button" onClick={() => void undo()}>Undo last change</button><span>Available for 1 minute.</span></> : null}</div> : null);
+  const editor = (label: string, noun: string) => (
+    <div className="edbox">
+      <div className="lbl" style={{ margin: 0 }}>{label}</div>
+      <div>{rows.map((r, i) => <div key={i} className="rw"><input className="inp" style={{ flex: "1 1 280px", width: "auto" }} value={r} aria-label={noun} onChange={(e) => setRows(rows.map((x, j) => (j === i ? e.target.value : x)))} /><button className="sbtn" type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button></div>)}</div>
+      <input className="inp" type="text" placeholder="Add one plain sentence" aria-label={`New ${noun}`} value={add} onChange={(e) => setAdd(e.target.value)} />
+      <div className="acts"><button className="btn btn-p" type="button" onClick={() => void save()}>Save</button><button className="btn btn-s" type="button" onClick={() => setEdit(null)}>Cancel</button></div>
+      <div className="after">Takes effect on its next job once saved.</div>
+      {msg && !msg.ok ? <div className="warn"><div>{msg.text}</div></div> : null}
+    </div>
+  );
+  const listSection = (title: string, s: Editable, items: string[], noun: string, intro: string, showCheck = false) => (
+    <section className="ssec" aria-label={title}>
+      {head(title, s)}
+      <p className="mut">{intro}</p>
+      {edit === s ? editor(`Editing ${title.toLowerCase()}`, noun) : showCheck
+        ? <ul className="ck">{items.map((o) => <li key={o}>{CHECK}<span>{o}</span></li>)}</ul>
+        : <div>{items.map((r) => <div key={r} className="rw"><div className="r1">{r}</div></div>)}</div>}
+      {after(s)}
+    </section>
+  );
+  return (
+    <>
+      <header>
+        <div className="crumb"><a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onTeam(); }}>Team</a><span>/</span><a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onBack(); }}>{agent.name}</a><span>/</span><span>Settings</span></div>
+        <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 8 }}>
+          <Character who={id} size={64} crop />
+          <div><h1 className="title">{agent.name}{"’"}s settings</h1><div className="mut">{v.d.role}</div></div>
+        </div>
+        <p className="lk" style={{ marginTop: 10, fontSize: 13 }}>{LOCK}Editable by a signed-in partner only</p>
+      </header>
+
+      <section className="ssec" aria-label="Job">
+        {head("Job", "job")}
+        {edit === "job"
+          ? <div className="edbox"><textarea className="inp" rows={4} value={job} onChange={(e) => setJob(e.target.value)} aria-label="Job" /><div className="acts"><button className="btn btn-p" type="button" onClick={() => void save()}>Save</button><button className="btn btn-s" type="button" onClick={() => setEdit(null)}>Cancel</button></div><div className="after">Takes effect on its next job once saved.</div>{msg && !msg.ok ? <div className="warn"><div>{msg.text}</div></div> : null}</div>
+          : <p>{v.job}</p>}
+        {after("job")}
+      </section>
+
+      {listSection("Outcome", "outcome", v.outcome, "outcome check", v.d.outcomeIntro, true)}
+      {listSection("Rules", "rules", v.rules, "rule", `Hard rules ${agent.name} must never break, one plain sentence each.`)}
+      {listSection("Can do alone", "alone", v.alone, "action", `What ${agent.name} may do without asking.`)}
+
+      <section className="ssec" aria-label="Needs my approval">
+        <div className="sh"><h2 className="h2">Needs my approval</h2></div>
+        <p className="mut">What {agent.name} must never do alone. These rows are fixed and can{"’"}t be edited here.</p>
+        <div>{v.d.locked.map((l) => <div key={l.t} className="rw"><div className="r1">{l.t}<div className="r2">{l.d}</div></div><span className="lk">{LOCK}Always needs Approve</span></div>)}</div>
+      </section>
+
+      <section className="ssec" aria-label="Tools">
+        <div className="sh"><h2 className="h2">Tools</h2></div>
+        <p className="mut">Credentials are held separately and are never seen by {agent.name}. No secret is ever shown here.</p>
+        <div>{v.tools.map((t) => (
+          <div key={t.name} className={t.state === "Needs reconnecting" ? "rw recon" : "rw"}>
+            <div className="r1"><strong>{t.name}</strong><div className="r2">{t.line}</div></div>
+            <span className="mst" style={{ fontWeight: 500 }}><span className={`dot sm ${t.state === "Needs reconnecting" ? "d-retry" : "d-idle"}`} />{t.state}</span>
+          </div>
+        ))}</div>
+      </section>
+
+      <section className="ssec" aria-label="Context it is given">
+        <div className="sh"><h2 className="h2">Context it is given</h2></div>
+        <p className="mut">The materials {agent.name} uses, by name.</p>
+        <div>{v.d.context.map((c) => <div key={c} className="rw"><div className="r1">{c}</div></div>)}</div>
+      </section>
+
+      <section className="ssec" aria-label="Memory">
+        {head("Memory", "memory")}
+        <p className="mut">The facts and corrections {agent.name} holds.</p>
+        {edit === "memory" ? editor("Editing memory", "memory") : <div>{v.memory.map((m) => <div key={m} className="rw"><div className="r1">{m}</div></div>)}</div>}
+        {after("memory")}
+        <div className="panel"><strong style={{ color: "var(--ink2)" }}>Proposed rules from my corrections, waiting for approval</strong><div className="tag" style={{ display: "inline-block", marginLeft: 8 }}>Coming later</div><p style={{ marginTop: 6 }}>Nothing waiting. Nothing becomes a rule without a partner{"’"}s approval.</p></div>
+      </section>
+
+      <section className="ssec" aria-label="Limits">
+        <div className="sh"><h2 className="h2">Limits</h2></div>
+        <p className="mut">Fixed in the app for now.</p>
+        <div className="fgrid">{v.d.limits.map((f) => <div key={f.l} className="fld"><span className="fl">{f.l}</span><div className="inp" style={{ height: "auto" }}>{f.v}</div></div>)}</div>
+      </section>
+
+      <section className="ssec" aria-label="What I need from you">
+        <div className="sh"><h2 className="h2">What I need from you</h2></div>
+        <div className="nd" style={{ borderTop: 0, paddingTop: 0 }}><p><strong>{v.d.need}</strong></p><p className="if">Without it: {v.d.needIf}</p></div>
+        {v.d.later ? <p className="mut">{v.d.later}</p> : null}
+      </section>
+
+      <section className="ssec" aria-label="Test before it goes live">
+        <div className="sh"><h2 className="h2">Test before it goes live</h2></div>
+        <p>{v.d.test}</p>
+        <p className="mut"><strong style={{ color: "var(--ink2)" }}>Pass:</strong> {v.d.pass}</p>
+        {v.d.openQ ? <div className="panel"><strong style={{ color: "var(--ink2)" }}>Open question.</strong> {v.d.openQ}</div> : null}
+      </section>
+    </>
+  );
+}

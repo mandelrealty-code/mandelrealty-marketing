@@ -1,3 +1,4 @@
+import { callsFor } from "../copilot/aiGateway.js";
 import { askDesk, chatOf, clearChat, handOver } from "../copilot/teamChat.js";
 import { saveSetting, settingsFor, undoSetting } from "../copilot/teamSettings.js";
 import { actOnTeamDecision, rateDecision, teamBoard } from "../copilot/team.js";
@@ -830,7 +831,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const asAgent = (v: unknown) => (v === "theo" || v === "nora" || v === "penny" ? v : null);
       const agent = asAgent(body.agent ?? body.from);
       if (!agent) return res.status(400).json({ error: "Unknown team member." });
-      if (op === "team-chat-get") return res.status(200).json({ messages: await chatOf(agent) });
+      if (op === "team-chat-get") return res.status(200).json({ messages: await chatOf(agent), calls: await callsFor(agent) });
       if (op === "team-chat-clear") { await clearChat(agent); return res.status(200).json({ messages: [] }); }
       if (op === "team-chat") return res.status(200).json({ messages: await askDesk(agent, String(body.text ?? "")) });
       const to = asAgent(body.to);

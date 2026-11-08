@@ -222,3 +222,8 @@ export async function costReport(now: Date = nowOf()): Promise<string> {
   });
   return lines.length ? lines.join("\n") : "No AI calls yet this month.";
 }
+
+/** The model calls one agent made this month, newest first, for the "tool calls" in its session timeline. */
+export async function callsFor(agent: AgentId, now: Date = nowOf()): Promise<(CallLog & { label: string })[]> {
+  return (await readMonth(now)).log.filter((c) => c.agent === agent).slice(0, 12).map((c) => ({ ...c, label: (JOBS as Record<string, Job>)[c.job]?.label ?? c.job }));
+}

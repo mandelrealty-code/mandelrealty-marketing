@@ -582,7 +582,7 @@ function Switcher({ onModeChange }: { onModeChange: (mode: AdminProductMode) => 
     <div className="cp-switch">
       <button type="button" onClick={() => onModeChange("crm")}>CRM</button>
       <button type="button" onClick={() => onModeChange("ops")}>OPS</button>
-      <button type="button" className="on">Copilot</button>
+      <button type="button" className="on">Team</button>
     </div>
   );
 }
@@ -1979,14 +1979,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   function sideList() {
     return (
     <>
-      <Roster board={team} active={screen === "team" ? teamDesk ?? "copilot" : null} onOpen={openDesk} />
-      <button type="button" className={`cp-row${screen === "brief" ? " on" : ""}`} onClick={() => { setScreen("brief"); setSheet(false); }}>
-        Overview
-        {boot?.brief.overview?.count ? <span className="cp-ov-count">{boot.brief.overview.count}</span> : null}
-      </button>
-      <button type="button" className={`cp-row${screen === "tasks" ? " on" : ""}`} onClick={() => { setTasksKept(true); setScreen("tasks"); setSheet(false); }}>
-        <span>Tasks</span>
-      </button>
+      <Roster board={team} active={screen === "team" ? teamDesk ?? "copilot" : screen === "brief" ? "overview" : screen === "tasks" ? "tasks" : null} onOpen={openDesk} onOverview={() => { setScreen("brief"); setSheet(false); }} onTasks={() => { setTasksKept(true); setScreen("tasks"); setSheet(false); }} />
       <div className="cp-chats">
         {(boot?.chats ?? []).filter(listedChat).map((chat) => {
           const active = chat.id === chatId && screen === "chat";
@@ -2715,7 +2708,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
                     <p className={error ? "cp-err" : "cp-note"}>{error ? withoutFilesystemDetail(error, true) : "Loading the overview."}</p>
                   </div>
                 ) : null}
-                {screen === "team" ? <TeamPage api={api} desk={teamDesk} onDesk={setTeamDesk} onBack={() => setScreen("home")} onChanged={() => void refreshTeam()} onOpenGuests={showGuests} onOpenReviews={() => { setScreen("reviews"); void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch(() => undefined); }} /> : null}
+                {screen === "team" ? <TeamPage api={api} desk={teamDesk} onDesk={setTeamDesk} onChanged={() => void refreshTeam()} onOpenGuests={showGuests} onOpenReviews={() => { setScreen("reviews"); void api<ReviewQueuePayload>("reviews-queue", {}).then(setReviewQueue).catch(() => undefined); }} /> : null}
                 {screen === "home" ? <HomePage board={team} api={api} onDesk={openDesk} onTeam={() => openDesk("copilot")} onChanged={() => void refreshTeam()} /> : null}
                 {screen === "brief" && boot ? (
                   <OverviewV2

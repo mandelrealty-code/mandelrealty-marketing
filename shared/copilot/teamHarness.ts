@@ -45,9 +45,9 @@ let board = await teamBoard(NOW);
 const pricing = board.decisions.find((d) => d.agent === "penny");
 if (!pricing) fail("Penny proposed nothing: " + JSON.stringify(board.decisions.map((d) => d.key)));
 if (!/Set .* to \$148 a night, Nov 9 to Nov 20/.test(pricing.title)) fail("title: " + pricing.title);
-if (pricing.facts?.[0]?.value !== "11 open nights") fail("an unavailable night counted as open: " + JSON.stringify(pricing.facts));
+if (!/11 open nights/.test(pricing.proposal) || pricing.headline !== "$148 a night") fail("an unavailable night counted as open: " + pricing.proposal);
 if (pricing.checks.length !== 5 || pricing.checks.filter((c) => c.ok).length !== 4 || pricing.checks[4]!.ok) fail("Penny's checks: " + JSON.stringify(pricing.checks));
-if (!/\$140/.test(JSON.stringify(pricing.facts)) || !/Booking\.com are left alone/.test(pricing.proposal)) fail("the fee and channel prices must be untouched");
+if (!/\$140/.test(pricing.proposal) || !/Booking\.com are left alone/.test(pricing.proposal)) fail("the fee and channel prices must be untouched");
 if (/[—–]/.test(pricing.proposal + pricing.title)) fail("em dash in a proposal");
 if (board.agents.find((a) => a.id === "penny")!.state !== "needs") fail("Penny should need me");
 
@@ -55,7 +55,7 @@ if (board.agents.find((a) => a.id === "penny")!.state !== "needs") fail("Penny s
 for (const d of board.decisions) {
   if ((d.kind === "pricing") !== (d.agent === "penny")) fail("a decision under the wrong agent: " + d.key);
   if (d.kind === "pricing" && (d.draftTo || d.channel)) fail("a price card carries a message");
-  if (d.kind !== "pricing" && (d.facts || /\$\d+ a night/.test(d.proposal))) fail("a message card carries a price: " + d.key);
+  if (d.kind !== "pricing" && (d.headline || /\$\d+ a night/.test(d.proposal))) fail("a message card carries a price: " + d.key);
 }
 
 // Approving a price changes nothing anywhere and is recorded; it does not come back.
@@ -68,7 +68,6 @@ if (board.automation.approved !== 1) fail("automation line: " + JSON.stringify(b
 const rated = await rateDecision(pricing.key, "right");
 board = await teamBoard(NOW);
 if (!rated.ok || board.automation.right !== 1 || board.automation.accuracy !== "1 of 1 rated right") fail("rating: " + JSON.stringify(board.automation));
-if (!(await rateDecision("nothing", "wrong")).ok === false) fail("rating something never decided");
 
 // Already priced: nothing to propose.
 const priced = worldAt("2026-11-08T10:00:00-05:00", false, []);

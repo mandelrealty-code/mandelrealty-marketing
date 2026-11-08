@@ -89,7 +89,7 @@ export function ModeSwitcher({
             : "text-[#9a9590] hover:text-[#f5f5f5]"
         }`}
       >
-        Copilot
+        Team
       </button>
     </div>
   );

@@ -15,6 +15,13 @@ import { readMeta, writeMeta } from "./watchMeta.js";
 export type { AgentId };
 export type AgentState = "idle" | "working" | "needs" | "retrying" | "stopped";
 
+const NEEDS: Record<AgentId, { t: string; iff: string }[]> = {
+  copilot: [],
+  theo: [{ t: "A house-rules text per unit, if the Knowledge Hub lacks one.", iff: "I will hold new-guest drafts and say why." }],
+  nora: [{ t: "The star or score line that counts as a flag.", iff: "I will flag anything under 5 stars." }],
+  penny: [{ t: "The price range for any other unit.", iff: "I can't propose for that unit and will say so." }],
+};
+
 export const AGENTS: Record<AgentId, { name: string; role: string; job: string; tagline: string }> = {
   copilot: { name: "Copilot", role: "Chief of staff", job: "Reads everything, hands work to the team, and brings you only what needs you.", tagline: "One calm place for the day." },
   theo: { name: "Theo", role: "Guest messaging", job: "Reads guest threads and drafts the next message in your voice.", tagline: "Every guest answered, nothing sent without you." },
@@ -118,13 +125,15 @@ export type Rating = "right" | "wrong" | "unneeded";
 type LogRow = { key: string; agent: AgentId; at: string; outcome: Outcome; rating?: Rating };
 type Event = { at: string; agent: AgentId; text: string; woken?: string };
 export type InboxItem = { id: string; from: AgentId; to: AgentId; question: string; context: string; at: string; status: "working" | "answered" | "blocked" | "closed"; answer: string };
-type Mem = { log: LogRow[]; events: Event[]; pennyDay: Record<string, string>; pennyDone: Record<string, string>; inbox: InboxItem[] };
+type Mem = { log: LogRow[]; events: Event[]; pennyDay: Record<string, string>; pennyDone: Record<string, string>; inbox: InboxItem[]; ratings: Record<string, Rating> };
 
 const MEM = "meta:team";
-const load = async (): Promise<Mem> => ({ log: [], events: [], pennyDay: {}, pennyDone: {}, inbox: [], ...((await readMeta<Mem>(MEM)) ?? {}) });
+const load = async (): Promise<Mem> => ({ log: [], events: [], pennyDay: {}, pennyDone: {}, inbox: [], ratings: {}, ...((await readMeta<Mem>(MEM)) ?? {}) });
 
 async function logOutcome(row: LogRow, text: string, now: Date) {
   const mem = await load();
+  const earlier = mem.ratings[row.key];
+  if (earlier) row.rating = earlier;
   mem.log = [row, ...mem.log.filter((x) => !(x.key === row.key && x.outcome === row.outcome))].slice(0, 500);
   mem.events = [{ at: row.at, agent: row.agent, text }, ...mem.events].slice(0, 80);
   await writeMeta(MEM, mem);
@@ -156,10 +165,11 @@ export async function inboxFor(agent: AgentId): Promise<InboxItem[]> {
 
 /** Shadow mode: a partner marks a decision Right, Wrong, or Didn't need it. */
 export async function rateDecision(key: string, rating: Rating): Promise<{ ok: boolean; note: string }> {
+  if (!key) return { ok: false, note: "Nothing to rate." };
   const mem = await load();
+  mem.ratings[key] = rating;
   const hit = mem.log.find((x) => x.key === key);
-  if (!hit) return { ok: false, note: "Decide it first, then rate it." };
-  hit.rating = rating;
+  if (hit) hit.rating = rating;
   await writeMeta(MEM, mem);
   return { ok: true, note: "Noted." };
 }
@@ -210,14 +220,19 @@ export type TeamDecision = {
   sources: string[];
   /** The message or proposal exactly as it would go out. */
   proposal: string;
-  facts?: { label: string; value: string }[];
+  /** What the draft box is called, such as "Message to Dana, exactly as it will go out". */
+  label: string;
+  /** A big line above the text, used for a price. */
+  headline: string;
+  property: string;
+  rating: Rating | "";
   /** Reviews are approved on the Reviews page, where the exact text is shown. */
   elsewhere?: boolean;
   urgency: number;
   at: string;
 };
 
-export type AgentCard = { id: AgentId; name: string; role: string; job: string; tagline: string; state: AgentState; now: string; last: string; error: string; needs: number };
+export type AgentCard = { id: AgentId; name: string; role: string; job: string; tagline: string; state: AgentState; now: string; last: string; error: string; needs: number; needsList: { t: string; iff: string }[] };
 
 export type TeamBoard = {
   asOf: string;
@@ -241,24 +256,25 @@ export async function teamBoard(now: Date = parityNow() ?? new Date(), light = f
   const decisions: TeamDecision[] = rows.map((row) => {
     const agent = agentOfKind(row.kind);
     const nora = agent === "nora";
+    const who = row.draftTo ? (row.draftChannel === "email" ? "Email to " : "Message to ") + row.draftTo + ", exactly as it will go out" : "Draft, exactly as it will go out";
     return {
-      key: row.key, agent, title: row.title, byline: AGENTS[agent].name + " · " + AGENTS[agent].role, why: row.reason, draftTo: row.draftTo, channel: row.draftChannel, kind: row.kind,
-      checks: nora ? [] : messageChecks(row), sources: sourcesOf(row), proposal: row.draftBody, ...(nora ? { elsewhere: true } : {}), urgency: row.urgency, at: row.at,
+      key: row.key, agent, title: row.title, byline: "Raised by " + AGENTS[agent].name + (row.property ? " \u00b7 " + row.property : ""), why: row.reason, draftTo: row.draftTo, channel: row.draftChannel, kind: row.kind,
+      checks: nora ? [] : messageChecks(row), sources: sourcesOf(row), proposal: row.draftBody, label: row.draftBody ? who : "", headline: "", property: row.property, rating: mem.ratings[row.key] ?? "", ...(nora ? { elsewhere: true } : {}), urgency: row.urgency, at: row.at,
     };
   });
   const penny = await pricingProposal(now);
   const p = penny.proposal;
   if (p && !mem.pennyDone[p.key] && mem.pennyDay[p.key] !== today) {
     decisions.push({
-      key: p.key, agent: "penny", title: p.title, byline: AGENTS.penny.name + " · " + AGENTS.penny.role, why: p.why, draftTo: "", channel: "", kind: "pricing", checks: p.checks, sources: p.sources, proposal: p.proposal, urgency: 85, at: now.toISOString(),
-      facts: [{ label: "Calendar", value: p.calendar.open + " open nights" }, { label: "Now", value: p.calendar.now }, { label: "Range", value: p.calendar.range }, { label: "Cleaning fee", value: p.fee }],
+      key: p.key, agent: "penny", title: p.title, byline: "Raised by Penny \u00b7 " + p.property, why: p.why + " Today's price: " + p.calendar.now + ". Your range is " + p.calendar.range + ".", draftTo: "", channel: "", kind: "pricing", checks: p.checks, sources: p.sources,
+      proposal: p.proposal + " " + p.fee, label: "Proposed price", headline: "$" + ROYA_RULES.promo + " a night", property: p.property, rating: mem.ratings[p.key] ?? "", urgency: 85, at: now.toISOString(),
     });
   }
   const costs = await costViews(now);
   for (const item of mem.inbox.filter((x) => x.status === "answered" || x.status === "blocked")) {
     decisions.push({
-      key: "ask:" + item.id, agent: item.to, title: AGENTS[item.to].name + (item.status === "answered" ? " answers " : " could not yet answer ") + AGENTS[item.from].name + "'s question", byline: AGENTS[item.to].name + " · " + AGENTS[item.to].role,
-      why: "Asked through Copilot: " + item.question, draftTo: "", channel: "", kind: "answer", checks: [], sources: [item.context || "No extra context was passed."], proposal: item.answer, urgency: 80, at: item.at,
+      key: "ask:" + item.id, agent: item.to, title: AGENTS[item.to].name + (item.status === "answered" ? " answers " : " could not yet answer ") + AGENTS[item.from].name + "'s question", byline: "Raised by " + AGENTS[item.to].name + " \u00b7 asked through Copilot",
+      why: "Asked through Copilot: \u201c" + item.question + "\u201d", draftTo: "", channel: "", kind: "answer", checks: [], sources: [item.context || "No extra context was passed."], proposal: item.answer, label: AGENTS[item.to].name + "\u2019s answer", headline: "", property: "", rating: mem.ratings["ask:" + item.id] ?? "", urgency: 80, at: item.at,
     });
   }
   const seen = new Set<string>();
@@ -282,7 +298,7 @@ export async function teamBoard(now: Date = parityNow() ?? new Date(), light = f
     const error = cost.paused ? "Paused: reached its $" + cost.ceiling + " monthly ceiling. It makes no AI calls until next month." : cost.failed ? "The AI did not answer. Nothing was sent. I will look again on the next change." : id === "penny" ? penny.error : "";
     const state: AgentState = cost.paused ? "stopped" : error ? "retrying" : n ? "needs" : "idle";
     const nowText = cost.paused ? "Paused." : error ? "Waiting to retry." : n ? n + (n === 1 ? " decision" : " decisions") + " waiting for you." : id === "copilot" ? "Watching the day." : "Nothing waiting.";
-    return { id, ...AGENTS[id], state, now: nowText, last: lastFor(id), error, needs: n };
+    return { id, ...AGENTS[id], state, now: nowText, last: lastFor(id), error, needs: n, needsList: NEEDS[id] };
   });
   const fromLedger: Event[] = ledger.filter((r) => r.status !== "native").slice(0, 30).map((r) => ({ at: r.surfacedAt, agent: agentOfKind(r.kind), text: r.status === "surfaced" ? "Brought up: " + r.title : r.title, woken: r.kind.replace("_", " ") }));
   const events = [...mem.events, ...fromLedger].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 40).map((e) => ({ ...e, name: AGENTS[e.agent].name }));
@@ -319,6 +335,6 @@ export async function teamBoard(now: Date = parityNow() ?? new Date(), light = f
   } catch {
     revenue = null;
   }
-  const history = mem.log.slice(0, 40).map((x) => ({ key: x.key, agent: x.agent, at: x.at, outcome: x.outcome, rating: x.rating ?? ("" as const), text: mem.events.find((e) => e.at === x.at && e.agent === x.agent)?.text ?? x.key }));
+  const history = mem.log.slice(0, 40).map((x) => ({ key: x.key, agent: x.agent, at: x.at, outcome: x.outcome, rating: mem.ratings[x.key] ?? x.rating ?? ("" as const), text: mem.events.find((e) => e.at === x.at && e.agent === x.agent)?.text ?? x.key }));
   return { asOf: now.toISOString(), costs, history, today: { ins: counts?.ins ?? null, outs: counts?.outs ?? null, waiting, revenue }, decisions, agents, events, decided, automation };
 }
