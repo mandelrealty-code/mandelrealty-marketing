@@ -10,6 +10,7 @@ import { capturedCommits, resetCaptures } from "./parity/capture.js";
 import { ID, worldAt } from "./parity/catalog.js";
 import { installWorld } from "./parity/world.js";
 import { actOnTeamDecision, agentOfKind, messageChecks, rateDecision, teamBoard } from "./team.js";
+import { instructionsFor, saveSetting, settingsFor, undoSetting } from "./teamSettings.js";
 import { resetWatch, runWatch, setWatchSource } from "./watch.js";
 
 function fail(label: string): never {
@@ -69,5 +70,22 @@ if ((await teamBoard(NOW)).decisions.some((d) => d.agent === "penny")) fail("pro
 
 // Once the window has passed there is nothing to propose.
 if ((await teamBoard(new Date("2026-11-21T15:00:00Z"))).decisions.some((d) => d.agent === "penny")) fail("proposed after the window");
+
+// Settings: edits are saved with a time, reach the next job, and can be undone for one minute.
+const T0 = new Date("2026-11-08T16:00:00Z");
+let cfg = await settingsFor("theo", [{ id: "hospitable", status: "connected" }], T0);
+if (cfg.rules.length !== 9 || cfg.tools.find((t) => t.name === "Gmail")!.ok || !cfg.tools.find((t) => t.name === "Hospitable")!.ok) fail("settings defaults and live tool state");
+const rules = [...cfg.rules, "Say hello to returning guests by name."];
+if (!(await saveSetting({ agent: "theo", section: "rules", value: rules }, T0)).ok) fail("saving a rule");
+if (!/returning guests by name/.test(await instructionsFor("theo"))) fail("a saved rule must reach the next job");
+cfg = await settingsFor("theo", [], T0);
+if (!cfg.changed.rules || !cfg.canUndo || Object.keys(cfg.changed).join() !== "rules") fail("the change is stamped: " + JSON.stringify(cfg.changed));
+if (!(await undoSetting("theo", new Date(T0.getTime() + 30_000))).ok || (await settingsFor("theo", [], T0)).rules.length !== 9) fail("undo within a minute");
+await saveSetting({ agent: "theo", section: "rules", value: rules }, T0);
+if ((await undoSetting("theo", new Date(T0.getTime() + 61_000))).ok) fail("undo after a minute");
+for (const bad of ["Send messages without asking me.", "Auto-send replies to guests.", "Use an em dash \u2014 here."]) if ((await saveSetting({ agent: "theo", section: "rules", value: [bad] }, T0)).ok) fail("accepted: " + bad);
+if ((await saveSetting({ agent: "penny", section: "rules", value: ["Change the price directly when sure."] }, T0)).ok) fail("Penny must not be allowed to change prices");
+if ((await saveSetting({ agent: "theo", section: "locked", value: ["x"] }, T0)).ok || (await saveSetting({ agent: "theo", section: "limits", value: ["x"] }, T0)).ok) fail("approval rows and limits are not editable");
+if ((await settingsFor("penny", [], T0)).d.locked.length !== 5) fail("Penny's approval rows");
 
 console.log("Team harness passed.");

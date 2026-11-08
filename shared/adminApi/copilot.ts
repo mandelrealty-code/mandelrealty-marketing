@@ -1,3 +1,4 @@
+import { saveSetting, settingsFor, undoSetting } from "../copilot/teamSettings.js";
 import { actOnTeamDecision, rateDecision, teamBoard } from "../copilot/team.js";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
@@ -824,6 +825,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const action = body.action === "approve" || body.action === "done" ? body.action : "notnow";
       return res.status(200).json(await actOnTeamDecision({ key: String(body.key ?? ""), action, ...(typeof body.text === "string" ? { text: body.text } : {}) }));
     }
+    if (op === "team-settings") {
+      const agent = String(body.agent ?? "");
+      if (agent !== "theo" && agent !== "nora" && agent !== "penny") return res.status(400).json({ error: "Unknown team member." });
+      return res.status(200).json(await settingsFor(agent, await connectors().catch(() => [])));
+    }
+    if (op === "team-settings-save") return res.status(200).json(await saveSetting({ agent: String(body.agent ?? ""), section: String(body.section ?? ""), value: body.value }));
+    if (op === "team-settings-undo") return res.status(200).json(await undoSetting(String(body.agent ?? "")));
     if (op === "team-rate") {
       const rating = body.rating === "right" || body.rating === "wrong" ? body.rating : "unneeded";
       return res.status(200).json(await rateDecision(String(body.key ?? ""), rating));

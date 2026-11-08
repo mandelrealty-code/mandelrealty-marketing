@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { SettingsView, Editable } from "../../../shared/copilot/teamSettings";
 import type { TeamBoard, TeamDecision, AgentCard, AgentId, AgentState } from "../../../shared/copilot/team";
 
 type Api = <T>(op: string, body?: Record<string, unknown>) => Promise<T>;
@@ -180,6 +181,7 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
   const [board, setBoard] = useState<TeamBoard | null>(null);
   const [error, setError] = useState("");
   const [desk, setDesk] = useState<AgentId | null>(null);
+  const [settings, setSettings] = useState(false);
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
   const [filter, setFilter] = useState<AgentId | "all">("all");
@@ -214,10 +216,10 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
   return (
     <div className="tm">
       <div className="tm-main">
-        <nav className="tm-crumb"><button type="button" onClick={desk ? () => setDesk(null) : onBack}>{desk ? "Team" : "Overview"}</button> / <span>{desk ? agent!.name : "Team"}</span></nav>
+        <nav className="tm-crumb"><button type="button" onClick={desk ? () => { setDesk(null); setSettings(false); } : onBack}>{desk ? "Team" : "Overview"}</button> / {desk && settings ? <><button type="button" onClick={() => setSettings(false)}>{agent!.name}</button> / <span>Settings</span></> : <span>{desk ? agent!.name : "Team"}</span>}</nav>
         {note ? <p className="tm-note" role="status">{note}</p> : null}
 
-        {!agent ? (
+        {agent && settings && agent.id !== "copilot" ? <SettingsPage api={api} agent={agent} /> : !agent ? (
           <>
             <header className="tm-head"><h1>Team</h1><span className="tm-pill">Shadow mode</span></header>
             <p className="tm-lede">Your team reads, drafts and proposes. Nothing goes out, gets posted, or changes a price until you press the button.</p>
@@ -287,7 +289,7 @@ export function TeamPage({ api, onBack, onOpenReviews }: { api: Api; onBack: () 
                 </ul>
               ) : <p className="tm-empty">Nothing decided yet.</p>}
             </section>
-            <p className="tm-soon">Settings for {agent.name} are coming next.</p>
+            {agent.id !== "copilot" ? <button type="button" className="tm-src" onClick={() => setSettings(true)}>Open {agent.name}'s settings</button> : null}
           </>
         )}
       </div>
@@ -347,5 +349,71 @@ function AgentTile({ a, onOpen }: { a: AgentCard; onOpen: () => void }) {
       <small>Now: {a.now}</small><small>Last: {a.last}</small>
       {a.error ? <small className="tm-err">{a.error}</small> : null}
     </button>
+  );
+}
+
+// ---------- An agent's settings ----------
+
+function ListEditor({ initial, noun, onSave, onCancel }: { initial: string[]; noun: string; onSave: (v: string[]) => void; onCancel: () => void }) {
+  const [rows, setRows] = useState(initial);
+  const [add, setAdd] = useState("");
+  return (
+    <div className="tm-edit">
+      {rows.map((r, i) => <div key={i} className="tm-row"><input value={r} aria-label={noun} onChange={(e) => setRows(rows.map((x, j) => (j === i ? e.target.value : x)))} /><button type="button" className="tm-link" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button></div>)}
+      <input className="tm-add" value={add} placeholder={"Add one plain sentence"} aria-label={"New " + noun} onChange={(e) => setAdd(e.target.value)} />
+      <div className="tm-acts"><button type="button" className="tm-go" onClick={() => onSave(add.trim() ? [...rows, add.trim()] : rows)}>Save</button><button type="button" className="tm-quiet" onClick={onCancel}>Cancel</button></div>
+      <small>Takes effect on its next job once saved.</small>
+    </div>
+  );
+}
+
+const stamp = (iso?: string) => (iso ? `Last changed ${when(iso)}` : "Not changed yet");
+
+function SettingsPage({ api, agent }: { api: Api; agent: AgentCard }) {
+  const [v, setV] = useState<SettingsView | null>(null);
+  const [edit, setEdit] = useState<Editable | null>(null);
+  const [note, setNote] = useState("");
+  const [job, setJob] = useState("");
+  const id = agent.id as "theo" | "nora" | "penny";
+  const load = useCallback(() => api<SettingsView>("team-settings", { agent: id }).then(setV).catch(() => setNote("The settings did not load.")), [api, id]);
+  useEffect(() => { void load(); }, [load]);
+  if (!v) return <p className="cp-note">{note || "Loading the settings."}</p>;
+  const save = async (section: Editable, value: unknown) => {
+    const r = await api<{ ok: boolean; note: string }>("team-settings-save", { agent: id, section, value }).catch(() => ({ ok: false, note: "That did not save." }));
+    setNote(r.note);
+    if (r.ok) setEdit(null);
+    await load();
+  };
+  const undo = async () => { const r = await api<{ note: string }>("team-settings-undo", { agent: id }).catch(() => ({ note: "That did not undo." })); setNote(r.note); await load(); };
+  const head = (title: string, section?: Editable) => (
+    <div className="tm-sh"><h2 className="tm-h2">{title}</h2>{section && edit !== section ? <button type="button" className="tm-link" onClick={() => { setEdit(section); setJob(v.job); }}>Edit</button> : null}{section ? <span>{stamp(v.changed[section])}</span> : null}</div>
+  );
+  const list = (title: string, section: Editable, items: string[], noun: string, intro: string) => (
+    <section className="tm-sec" aria-label={title}>{head(title, section)}<p className="tm-empty">{intro}</p>
+      {edit === section ? <ListEditor initial={items} noun={noun} onSave={(x) => void save(section, x)} onCancel={() => setEdit(null)} /> : items.length ? <ul className="tm-plain">{items.map((x) => <li key={x}>{x}</li>)}</ul> : <p className="tm-empty">Nothing yet.</p>}
+    </section>
+  );
+  return (
+    <>
+      <header className="tm-who"><Character who={agent.id} size={64} crop /><div><h1>{agent.name}'s settings</h1><span>{v.d.role}</span><p className="tm-empty">Editable by a signed-in partner only.</p></div></header>
+      {note ? <p className="tm-note" role="status">{note}{v.canUndo ? <> <button type="button" className="tm-link" onClick={() => void undo()}>Undo last change</button> (available for 1 minute)</> : null}</p> : v.canUndo ? <p className="tm-note"><button type="button" className="tm-link" onClick={() => void undo()}>Undo last change</button> (available for 1 minute)</p> : null}
+      <section className="tm-sec" aria-label="Job">{head("Job", "job")}
+        {edit === "job" ? <div className="tm-edit"><textarea value={job} rows={4} onChange={(e) => setJob(e.target.value)} aria-label="Job" /><div className="tm-acts"><button type="button" className="tm-go" onClick={() => void save("job", job)}>Save</button><button type="button" className="tm-quiet" onClick={() => setEdit(null)}>Cancel</button></div><small>Takes effect on its next job once saved.</small></div> : <p>{v.job}</p>}
+      </section>
+      {list("Outcome", "outcome", v.outcome, "outcome check", v.d.outcomeIntro)}
+      {list("Rules", "rules", v.rules, "rule", "Hard rules " + agent.name + " must never break, one plain sentence each.")}
+      {list("Can do alone", "alone", v.alone, "action", "What " + agent.name + " may do without asking.")}
+      <section className="tm-sec" aria-label="Needs my approval"><div className="tm-sh"><h2 className="tm-h2">Needs my approval</h2></div><p className="tm-empty">What {agent.name} must never do alone. Nothing goes out until a partner presses Approve. These rows are fixed and cannot be changed here.</p>
+        <ul className="tm-plain">{v.d.locked.map((l) => <li key={l.t}><b>{l.t}</b> <span>{l.d} Always needs Approve.</span></li>)}</ul></section>
+      <section className="tm-sec" aria-label="Tools"><div className="tm-sh"><h2 className="tm-h2">Tools</h2></div><p className="tm-empty">Credentials are held separately and are never seen by {agent.name}. No secret is ever shown here.</p>
+        <ul className="tm-plain">{v.tools.map((t) => <li key={t.name}><b>{t.name}</b> <span>{t.state}. {t.line}</span></li>)}</ul></section>
+      <section className="tm-sec" aria-label="Context it is given"><div className="tm-sh"><h2 className="tm-h2">Context it is given</h2></div><p className="tm-empty">The materials {agent.name} uses, by name.</p><ul className="tm-plain">{v.d.context.map((c) => <li key={c}>{c}</li>)}</ul></section>
+      {list("Memory", "memory", v.memory, "memory", "The facts and corrections " + agent.name + " holds.")}
+      <p className="tm-empty">Proposed rules from corrections, waiting for approval: coming later. Nothing is remembered as a rule without your approval.</p>
+      <section className="tm-sec" aria-label="Limits"><div className="tm-sh"><h2 className="tm-h2">Limits</h2></div><p className="tm-empty">Fixed in code for now. Changing one is a change to the app, not a setting.</p>
+        <dl className="tm-facts">{v.d.limits.map((f) => <div key={f.l}><dt>{f.l}</dt><dd>{f.v}</dd></div>)}</dl></section>
+      <section className="tm-sec" aria-label="What I need from you"><div className="tm-sh"><h2 className="tm-h2">What I need from you</h2></div><p><b>{v.d.need}</b></p><p className="tm-empty">Without it: {v.d.needIf}</p>{v.d.later ? <p className="tm-empty">{v.d.later}</p> : null}</section>
+      <section className="tm-sec" aria-label="Test before it goes live"><div className="tm-sh"><h2 className="tm-h2">Test before it goes live</h2></div><p>{v.d.test}</p><p className="tm-empty"><b>Pass:</b> {v.d.pass}</p>{v.d.openQ ? <p className="tm-empty"><b>Open question.</b> {v.d.openQ}</p> : null}</section>
+    </>
   );
 }

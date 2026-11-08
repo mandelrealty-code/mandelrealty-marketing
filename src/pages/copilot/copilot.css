@@ -9545,3 +9545,10 @@ html.cp-app[data-cp-theme="dark"] #root {
 .tm-jobs { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tm-jobs th { text-align: left; font-weight: 500; color: var(--muted); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); }
 .tm-jobs td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); }
+.tm-sh { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.tm-sh span { font-size: 12px; color: var(--muted); }
+.tm-link { border: none; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--accent-ink); text-decoration: underline; cursor: pointer; }
+.tm-edit { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line2); border-radius: 10px; padding: 12px; background: var(--surface); }
+.tm-edit small { color: var(--muted); }
+.tm-row { display: flex; gap: 8px; align-items: center; }
+.tm-edit input, .tm-edit textarea { flex: 1; font: inherit; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--canvas); color: var(--ink); width: 100%; }
