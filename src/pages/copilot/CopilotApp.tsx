@@ -1979,7 +1979,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   function sideList() {
     return (
     <>
-      <Roster board={team} active={screen === "team" ? teamDesk ?? "copilot" : screen === "brief" ? "overview" : screen === "tasks" ? "tasks" : null} onOpen={openDesk} onOverview={() => { setScreen("brief"); setSheet(false); }} onTasks={() => { setTasksKept(true); setScreen("tasks"); setSheet(false); }} />
+      <Roster board={team} active={screen === "team" ? teamDesk ?? "copilot" : screen === "home" ? "overview" : screen === "tasks" ? "tasks" : null} onOpen={openDesk} onOverview={() => { setScreen("home"); setSheet(false); }} onTasks={() => { setTasksKept(true); setScreen("tasks"); setSheet(false); }} />
       <div className="cp-chats">
         {(boot?.chats ?? []).filter(listedChat).map((chat) => {
           const active = chat.id === chatId && screen === "chat";

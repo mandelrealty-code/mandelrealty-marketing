@@ -81,6 +81,7 @@ export function Roster({ board, active, onOpen, onOverview, onTasks }: { board: 
   return (
     <div className="tmx lt nobg">
       <nav className="nside" aria-label="Team roster" style={{ width: "auto", background: "transparent", border: 0, padding: "4px 0 8px" }}>
+        <a className={`sr util${active === "overview" ? " on" : ""}`} href="#" onClick={(e) => { e.preventDefault(); onOverview(); }}><span className="sn"><div className="nm">Overview</div></span></a>
         {ids.map((id) => {
           const a = board?.agents.find((x) => x.id === id);
           const badge = id === "copilot" ? board?.decisions.length ?? 0 : a?.needs ?? 0;
@@ -101,7 +102,6 @@ export function Roster({ board, active, onOpen, onOverview, onTasks }: { board: 
           </div>
         ))}
         <div className="sep" />
-        <a className={`sr util${active === "overview" ? " on" : ""}`} href="#" onClick={(e) => { e.preventDefault(); onOverview(); }}><span className="sn"><div className="nm">Overview</div></span></a>
         <a className={`sr util${active === "tasks" ? " on" : ""}`} href="#" onClick={(e) => { e.preventDefault(); onTasks(); }}><span className="sn"><div className="nm">Tasks</div></span></a>
       </nav>
     </div>
@@ -113,9 +113,12 @@ export function Roster({ board, active, onOpen, onOverview, onTasks }: { board: 
 export function HomePage({ board, api, onDesk, onTeam, onChanged }: { board: TeamBoard | null; api: Api; onDesk: (a: AgentId) => void; onTeam: () => void; onChanged: () => void }) {
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
+  const [ask, setAsk] = useState("");
+  const [panel, setPanel] = useState<{ q: string } | null>(null);
   if (!board) return <div className="tmx lt"><div className="stage"><p className="mut">Loading the team.</p></div></div>;
   const items = board.decisions.slice(0, 3);
   const rest = board.decisions.length - items.length;
+  const cop = board.agents.find((a) => a.id === "copilot")!;
   const act = async (d: TeamDecision, action: "approve" | "notnow" | "done") => {
     setBusy(d.key);
     try { setNote((await api<{ note: string }>("team-act", { key: d.key, action })).note); } catch { setNote("That did not go through. Nothing was sent."); }
@@ -124,24 +127,30 @@ export function HomePage({ board, api, onDesk, onTeam, onChanged }: { board: Tea
   };
   const trio = board.agents.filter((a) => a.id !== "copilot");
   return (
-    <div className="tmx lt"><div className="stage"><div className="home">
-      <section className="copl" aria-label="Copilot">
-        <Character who="copilot" size={124} badge={board.decisions.length} />
-        <div>
+    <div className={`tmx lt${panel ? " split" : ""}`}><div className="stage"><div className="ov2">
+      <section className="cop2" aria-label="Copilot">
+        <Character who="copilot" size={120} badge={board.decisions.length} />
+        <div style={{ flex: 1, minWidth: 0 }}>
           <h1 className="title" style={{ fontSize: 24, lineHeight: "32px" }}>Copilot</h1>
           <div className="mut">Chief of staff</div>
           <p style={{ marginTop: 8 }}>{items[0] ? `Most urgent: ${items[0].title}` : "Nothing needs you today."}</p>
+          <p className="mut">Working on: {cop.now}</p>
+          <form className="askrow" onSubmit={(e) => { e.preventDefault(); const q = ask.trim(); if (q) { setPanel({ q }); setAsk(""); } }}>
+            <input className="inp" type="text" value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Ask Copilot about the day" aria-label="Ask Copilot about the day" />
+            <button className="btn btn-p" type="submit" disabled={!ask.trim()}>Ask</button>
+          </form>
         </div>
       </section>
 
       <section aria-label="The team">
-        <div className="trio">
+        <div className="team2">
           {trio.map((m) => (
-            <a key={m.id} className="t1" href="#" onClick={(e) => { e.preventDefault(); onDesk(m.id); }}>
-              <Character who={m.id} size={76} badge={m.needs} />
-              <div style={{ fontWeight: 600, marginTop: 6 }}>{m.name}</div>
+            <a key={m.id} className="guy" href="#" onClick={(e) => { e.preventDefault(); onDesk(m.id); }}>
+              <Character who={m.id} size={84} badge={m.needs} />
+              <div className="gn">{m.name}</div>
               <div className="mut">{m.role}</div>
               <div className="mst" style={{ fontWeight: 500 }}><Dot state={m.state} />{STATE[m.state].label}</div>
+              <div className="mnl"><b>Working on:</b> {m.now}</div>
             </a>
           ))}
         </div>
@@ -155,7 +164,7 @@ export function HomePage({ board, api, onDesk, onTeam, onChanged }: { board: Tea
         {items.map((d) => (
           <div key={d.key} className="nrow">
             <div className="nt">
-              <div style={{ fontWeight: 600 }}>{d.title}</div>
+              <div className="ttl">{d.title}</div>
               <div className="nf"><Character who={d.agent} size={24} crop />From {board.agents.find((a) => a.id === d.agent)?.name}</div>
             </div>
             <div className="acts">
@@ -166,7 +175,36 @@ export function HomePage({ board, api, onDesk, onTeam, onChanged }: { board: Tea
         ))}
         {rest > 0 ? <div style={{ borderTop: "1px solid var(--line)", paddingTop: 4 }}><a className="more" href="#" onClick={(e) => { e.preventDefault(); onTeam(); }}>{rest} more</a></div> : null}
       </section>
-    </div></div></div>
+    </div></div>
+    {panel ? <SidePanel api={api} agent={cop} initialAsk={panel.q} onClose={() => setPanel(null)} onChanged={onChanged} /> : null}
+    </div>
+  );
+}
+
+// ---------- Done today, collapsed by default ----------
+
+function DoneToday({ board }: { board: TeamBoard }) {
+  const [open, setOpen] = useState(false);
+  const rows = [...board.decided].sort((a, b) => b.at.localeCompare(a.at));
+  const hour = (iso: string) => new Date(iso).toLocaleString("en-US", { hour: "numeric", timeZone: "America/Toronto" });
+  const byAgent = new Map<string, typeof rows>();
+  for (const r of rows) { const e = board.history.find((h) => h.at === r.at); const who = e?.agent ?? "copilot"; byAgent.set(who, [...(byAgent.get(who) ?? []), r]); }
+  return (
+    <div>
+      <div className="donehd"><h3 className="h3">Done today</h3>{rows.length > 3 ? <button className="qbtn" type="button" onClick={() => setOpen(!open)}>{open ? "Show fewer" : "Show all"}</button> : null}</div>
+      <p className="p2">{rows.length} done today</p>
+      {!open ? rows.slice(0, 3).map((r) => <div key={r.at + r.text} className="donerow"><time>{clock(r.at)}</time>{r.text}</div>) : (
+        <div className="donescroll">
+          {[...byAgent.entries()].map(([who, list]) => (
+            <div key={who}>
+              <div className="dgh"><Character who={who} size={24} crop />{LABEL[who]?.split(",")[0] ?? who} {"\u00b7"} {list.length}</div>
+              {list.map((r, i) => <div key={r.at + r.text}>{i === 0 || hour(list[i - 1]!.at) !== hour(r.at) ? <div className="dhh">{hour(r.at)}</div> : null}<div className="dgrow">{r.text}</div></div>)}
+            </div>
+          ))}
+        </div>
+      )}
+      {!rows.length ? <p className="mut">Nothing is done yet today.</p> : null}
+    </div>
   );
 }
 
@@ -228,7 +266,6 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
   const [filter, setFilter] = useState<AgentId | "all">("all");
   const [paused, setPaused] = useState(false);
   const [all, setAll] = useState(false);
-  const [showFeed, setShowFeed] = useState(false);
   const [panelOpen, setPanelOpen] = useState(() => { try { return window.localStorage.getItem("tm-panel") !== "closed"; } catch { return true; } });
   const [tick, setTick] = useState(0);
   const setPanel = (v: boolean) => { setPanelOpen(v); try { window.localStorage.setItem("tm-panel", v ? "open" : "closed"); } catch { /* the choice just is not remembered */ } };
@@ -265,7 +302,7 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
   const a = board.automation;
   const decisions = all ? board.decisions : board.decisions.slice(0, 5);
   const allFeed = board.events.filter((e) => filter === "all" || e.agent === filter);
-  const feed = showFeed ? allFeed : allFeed.slice(0, 10);
+  const feed = allFeed;
   const active = board.agents.filter((x) => x.id !== "copilot");
   const t = board.today;
   const rows = (["theo", "nora", "penny", "copilot"] as AgentId[]).map((id) => {
@@ -288,7 +325,7 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
           <div className="chbody">
             <div><h2 className="h2">Copilot</h2><div className="mut">Chief of staff</div></div>
             <div className="chcols">
-              <div><h3 className="h3">Decided today</h3><ul className="dl">{board.decided.length ? board.decided.slice(0, 4).map((d) => <li key={d.at}>{d.text}</li>) : <li>Nothing decided yet today.</li>}{board.decided.length > 4 ? <li className="mut">{board.decided.length - 4} more decided today</li> : null}</ul></div>
+              <DoneToday board={board} />
               <div><h3 className="h3">Waiting on you</h3>
                 {board.decisions.length ? <><div className="big">{board.decisions.length}</div><p className="p2">Most urgent: {board.decisions[0]!.title}</p></> : <p className="p2">Nothing needs you right now.</p>}
               </div>
@@ -360,7 +397,7 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
               {board.agents.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
           </div>
-          {feed.length ? feed.map((e) => (
+          <div className="feedscroll">{feed.length ? feed.map((e) => (
             <div key={e.at + e.text} className="ev">
               <div className="evt">{clock(e.at)}</div>
               <div className="evb">
@@ -369,8 +406,7 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
                 {e.woken ? <div className="evk">Woken by: {e.woken}</div> : null}
               </div>
             </div>
-          )) : <p className="mut">Nothing yet.</p>}
-          {allFeed.length > 10 ? <a className="more" href="#" onClick={(e) => { e.preventDefault(); setShowFeed(!showFeed); }}>{showFeed ? "Show fewer" : `Show all ${allFeed.length}`}</a> : null}
+          )) : <p className="mut">Nothing yet.</p>}</div>
         </div>
       </aside>
     </div></div>{panel}</div>
@@ -483,7 +519,7 @@ const PLACEHOLDER: Record<string, string> = { theo: "Ask Theo about a guest or a
 const NAME: Record<string, string> = { theo: "Theo", nora: "Nora", penny: "Penny" };
 
 /** The chat beside a desk, from the design: only with this member, only about its job. */
-function SidePanel({ api, agent, onClose, onChanged }: { api: Api; agent: AgentCard; onClose: () => void; onChanged: () => void }) {
+function SidePanel({ api, agent, onClose, onChanged, initialAsk }: { api: Api; agent: AgentCard; onClose: () => void; onChanged: () => void; initialAsk?: string }) {
   const who = agent.id;
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [text, setText] = useState("");
@@ -507,8 +543,8 @@ function SidePanel({ api, agent, onClose, onChanged }: { api: Api; agent: AgentC
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, []);
-  const ask = async () => {
-    const q = text.trim();
+  const ask = async (given?: string) => {
+    const q = (given ?? text).trim();
     if (!q || working || stopped) return;
     setText("");
     setState("working");
@@ -520,6 +556,9 @@ function SidePanel({ api, agent, onClose, onChanged }: { api: Api; agent: AgentC
     setState("working");
     try { setMessages((await api<{ messages: ChatMsg[] }>("team-handoff", { from: who, to: m.offer.to, question: m.offer.question })).messages); setState("idle"); onChanged(); } catch { setState("error"); }
   };
+  const started = useRef(false);
+  useEffect(() => { if (initialAsk && !started.current) { started.current = true; void ask(initialAsk); } // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const lastIdx = messages.length - 1;
   const off = stopped || working;
   return (

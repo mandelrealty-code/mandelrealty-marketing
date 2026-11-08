@@ -303,7 +303,17 @@ export async function teamBoard(now: Date = parityNow() ?? new Date(), light = f
   const fromLedger: Event[] = ledger.filter((r) => r.status !== "native").slice(0, 30).map((r) => ({ at: r.surfacedAt, agent: agentOfKind(r.kind), text: r.status === "surfaced" ? "Brought up: " + r.title : r.title, woken: r.kind.replace("_", " ") }));
   const plain = (t: string) => t.replace(/^(Brought up|Marked done|Sent after your approval|Held until tomorrow): /, "").toLowerCase().trim();
   const seenEvent = new Set<string>();
-  const events = [...mem.events, ...fromLedger].sort((a, b) => b.at.localeCompare(a.at)).filter((e) => { const k = e.agent + "|" + plain(e.text); if (seenEvent.has(k)) return false; seenEvent.add(k); return true; }).slice(0, 40).map((e) => ({ ...e, name: AGENTS[e.agent].name }));
+  const events = [...mem.events, ...fromLedger].sort((a, b) => b.at.localeCompare(a.at)).filter((e) => { const k = e.agent + "|" + plain(e.text); if (seenEvent.has(k)) return false; seenEvent.add(k); return true; }).slice(0, 60).map((e) => ({ ...e, name: AGENTS[e.agent].name }));
+  // A run of "Marked done" from one member in the same hour reads as one line.
+  const grouped: typeof events = [];
+  for (const e of events) {
+    const prev = grouped[grouped.length - 1];
+    const done = /^Marked done: /.test(e.text) || /^Marked \d+ tasks done$/.test(e.text);
+    if (prev && done && /^Marked (done: |\d+ tasks done)/.test(prev.text) && prev.agent === e.agent && prev.at.slice(0, 13) === e.at.slice(0, 13)) {
+      const n = (/^Marked (\d+) tasks done$/.exec(prev.text)?.[1] ? Number(/^Marked (\d+) tasks done$/.exec(prev.text)![1]) : 1) + 1;
+      grouped[grouped.length - 1] = { ...prev, text: "Marked " + n + " tasks done" };
+    } else grouped.push(e);
+  }
 
   const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   const week = mem.log.filter((x) => x.at >= weekAgo);
@@ -318,7 +328,7 @@ export async function teamBoard(now: Date = parityNow() ?? new Date(), light = f
   const decided = week.filter((x) => x.at.slice(0, 10) === today).map((x) => ({ text: mem.events.find((e) => e.at === x.at)?.text ?? x.key, at: x.at })).filter((d) => { const k = plain(d.text); if (seenDecided.has(k)) return false; seenDecided.add(k); return true; });
 
   let waiting: number | null = null;
-  if (light) return { asOf: now.toISOString(), costs, history: [], today: { ins: null, outs: null, waiting: null, revenue: null }, decisions, agents, events: events.slice(0, 5), decided: [], automation };
+  if (light) return { asOf: now.toISOString(), costs, history: [], today: { ins: null, outs: null, waiting: null, revenue: null }, decisions, agents, events: grouped.slice(0, 5), decided: [], automation };
   try {
     const { readSavedGuestQueue } = await import("./guestMessaging.js");
     const queue = await readSavedGuestQueue();
@@ -339,5 +349,5 @@ export async function teamBoard(now: Date = parityNow() ?? new Date(), light = f
     revenue = null;
   }
   const history = mem.log.slice(0, 40).map((x) => ({ key: x.key, agent: x.agent, at: x.at, outcome: x.outcome, rating: mem.ratings[x.key] ?? x.rating ?? ("" as const), text: mem.events.find((e) => e.at === x.at && e.agent === x.agent)?.text ?? x.key }));
-  return { asOf: now.toISOString(), costs, history, today: { ins: counts?.ins ?? null, outs: counts?.outs ?? null, waiting, revenue }, decisions, agents, events: events.filter((e) => !seenDecided.has(plain(e.text))), decided, automation };
+  return { asOf: now.toISOString(), costs, history, today: { ins: counts?.ins ?? null, outs: counts?.outs ?? null, waiting, revenue }, decisions, agents, events: grouped.filter((e) => !seenDecided.has(plain(e.text))), decided, automation };
 }
