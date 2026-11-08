@@ -1,6 +1,6 @@
 import { callsFor } from "../copilot/aiGateway.js";
 import { askCopilot, askDesk, chatOf, clearChat, handOver } from "../copilot/teamChat.js";
-import { saveSetting, settingsFor, undoSetting } from "../copilot/teamSettings.js";
+import { addKnowledge, removeKnowledge, saveSetting, settingsFor, undoSetting } from "../copilot/teamSettings.js";
 import { actOnTeamDecision, rateDecision, teamBoard } from "../copilot/team.js";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
@@ -849,6 +849,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       return res.status(200).json(await settingsFor(agent, await connectors().catch(() => [])));
     }
     if (op === "team-settings-save") return res.status(200).json(await saveSetting({ agent: String(body.agent ?? ""), section: String(body.section ?? ""), value: body.value }));
+    if (op === "team-knowledge-add") return res.status(200).json(await addKnowledge({ agent: String(body.agent ?? ""), title: String(body.title ?? ""), text: String(body.text ?? "") }));
+    if (op === "team-knowledge-remove") return res.status(200).json(await removeKnowledge(String(body.agent ?? ""), String(body.id ?? "")));
     if (op === "team-settings-undo") return res.status(200).json(await undoSetting(String(body.agent ?? "")));
     if (op === "team-rate") {
       const rating = body.rating === "right" || body.rating === "wrong" ? body.rating : "unneeded";

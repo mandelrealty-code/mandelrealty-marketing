@@ -96,7 +96,7 @@ export async function askDesk(agent: DeskAgent, text: string, now: Date = nowOf(
     return rows;
   }
   const recent = rows.slice(-6, -1).map((m) => (m.role === "user" ? "Partner: " : "Me: ") + m.text).join("\n");
-  const user = [await contextOf(agent), await instructionsFor(agent), recent ? "Earlier in this chat:\n" + recent : "", "Question: " + q].filter(Boolean).join("\n\n");
+  const user = [await contextOf(agent), await instructionsFor(agent, q), recent ? "Earlier in this chat:\n" + recent : "", "Question: " + q].filter(Boolean).join("\n\n");
   const r = await aiCall({ job: jobOf(agent), event: "a partner asked on " + AGENTS[agent].name + "'s desk", system: SYSTEM(AGENTS[agent].name, AGENTS[agent].role), user }, now);
   rows.push({ role: "agent", text: r.ok ? r.text : r.note, at: now.toISOString() });
   await save(agent, rows);
@@ -113,7 +113,7 @@ export async function handOver(input: { from: DeskAgent; to: DeskAgent; question
   const id = from + to + now.getTime().toString(36);
   await logTeamEvent("copilot", AGENTS[from].name + " asked " + AGENTS[to].name + " through Copilot, with your approval: " + question, "a hand-over you approved", now);
   await addInbox({ id, from, to, question, context, at: now.toISOString(), status: "working", answer: "" });
-  const r = await aiCall({ job: jobOf(to), event: AGENTS[from].name + " handed over a question you approved", system: SYSTEM(AGENTS[to].name, AGENTS[to].role), user: [await contextOf(to), await instructionsFor(to), "Handed over by " + AGENTS[from].name + " through Copilot. What " + AGENTS[from].name + " already knows:\n" + context, "Question: " + question].join("\n\n") }, now);
+  const r = await aiCall({ job: jobOf(to), event: AGENTS[from].name + " handed over a question you approved", system: SYSTEM(AGENTS[to].name, AGENTS[to].role), user: [await contextOf(to), await instructionsFor(to, question), "Handed over by " + AGENTS[from].name + " through Copilot. What " + AGENTS[from].name + " already knows:\n" + context, "Question: " + question].join("\n\n") }, now);
   await updateInbox(id, r.ok ? { status: "answered", answer: r.text } : { status: "blocked", answer: r.note });
   await logTeamEvent(to, r.ok ? "Answered " + AGENTS[from].name + "'s question. It is in Decisions for you." : "Could not answer " + AGENTS[from].name + "'s question yet: " + r.note, "a hand-over through Copilot", now);
   mine.push({ role: "note", text: "Sent to " + AGENTS[to].name + " through Copilot. " + AGENTS[to].name + (r.ok ? " has answered. You will find it in Decisions and on " + AGENTS[to].name + "'s desk." : " could not answer yet. It will wait in Decisions."), at: now.toISOString() });

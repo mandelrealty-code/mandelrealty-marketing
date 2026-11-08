@@ -10,7 +10,7 @@ import { capturedCommits, resetCaptures } from "./parity/capture.js";
 import { ID, worldAt } from "./parity/catalog.js";
 import { installWorld } from "./parity/world.js";
 import { actOnTeamDecision, agentOfKind, messageChecks, rateDecision, teamBoard } from "./team.js";
-import { instructionsFor, saveSetting, settingsFor, undoSetting } from "./teamSettings.js";
+import { addKnowledge, instructionsFor, knowledgeFor, removeKnowledge, saveSetting, settingsFor, undoSetting } from "./teamSettings.js";
 import { askCopilot, askDesk, chatOf, handOver, ownerOf } from "./teamChat.js";
 import { costViews } from "./aiGateway.js";
 import { resetWatch, runWatch, setWatchSource } from "./watch.js";
@@ -134,6 +134,19 @@ setBrainModel(async (req) => { seen = req.user ?? ""; return { text: "Two guests
 const cop = await askCopilot("What needs me first?", new Date("2026-11-08T18:00:00Z"));
 if (cop.at(-1)!.text !== "Two guests are waiting." || cop.some((m) => m.offer) || !/What needs a partner/.test(seen)) fail("Copilot's chat: " + JSON.stringify(cop));
 if ((await chatOf("theo")).some((m) => /What needs me first/.test(m.text))) fail("Copilot's question leaked into Theo's chat");
+// Knowledge: exactly what was given, and a plain "I do not have that" when it does not cover the question.
+const doc = "Hormozi frameworks\n\nThe value equation: dream outcome times perceived likelihood, divided by time delay and effort.\n\nOffers: stack the bonuses so the price feels small.";
+const added = await addKnowledge({ agent: "penny", title: "Offer notes", text: doc }, T0);
+if (!added.ok) fail("adding knowledge: " + added.note);
+const hit = await knowledgeFor("penny", "How does the value equation work for an offer?");
+if (!hit.includes("dream outcome times perceived likelihood") || !/use exactly this/.test(hit)) fail("the given text must come back as written: " + hit);
+const miss = await knowledgeFor("penny", "What is the weather in Lisbon?");
+if (!/nothing on this question/.test(miss) || miss.includes("dream outcome")) fail("a question the knowledge does not cover: " + miss);
+if ((await knowledgeFor("theo", "anything about the value equation")) !== "") fail("one agent's knowledge reached another");
+if ((await addKnowledge({ agent: "penny", title: "x", text: "y".repeat(20_001) }, T0)).ok) fail("an oversized document was accepted");
+const kid = (await settingsFor("penny", [], T0)).knowledge[0]!.id;
+if (!(await removeKnowledge("penny", kid, T0)).ok || (await knowledgeFor("penny", "value equation")) !== "") fail("removing knowledge");
+if (!(await saveSetting({ agent: "theo", section: "howToAct", value: "Short and warm. Never mention the cleaner." }, T0)).ok || !/How to act: Short and warm/.test(await instructionsFor("theo"))) fail("how to act reaches the next job");
 setBrainModel(null);
 
 console.log("Team harness passed.");
