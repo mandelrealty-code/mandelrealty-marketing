@@ -8,6 +8,7 @@
 import { CEILINGS, type AgentId } from "./aiGateway.js";
 import { parityNow } from "./parity/clock.js";
 import { ROYA_RULES } from "./team.js";
+import { checkAll, looksLikeAPrompt } from "./ruleCheck.js";
 import { readMeta, writeMeta } from "./watchMeta.js";
 
 export type Editable = "rules" | "howToAct";
@@ -88,6 +89,10 @@ export type SettingsView = {
   knowledge: { id: string; title: string; chars: number; at: string }[];
   changed: Partial<Record<Editable | "knowledge", string>>;
   canUndo: boolean;
+  /** When the one-minute undo ends, and which section it would restore. */
+  undoUntil: string;
+  undoSection: Editable | "";
+  limits: { docs: number; chars: number };
   tools: ToolState[];
 };
 
@@ -100,7 +105,8 @@ export async function settingsFor(agent: SettingsAgent, connectors: { id: string
     const ok = t.connector ? found?.status === "connected" : true;
     return { name: t.name, line: t.access + " \u00b7 Credentials held separately, never seen by the agent", state: ok ? "Connected" : "Needs reconnecting", ok, later: false };
   });
-  return { agent, d, rules: s.rules ?? d.rules, howToAct: s.howToAct ?? d.act, knowledge: (s.knowledge ?? []).map((k) => ({ id: k.id, title: k.title, chars: k.text.length, at: k.at })), changed: s.changed, canUndo: Boolean(s.undo && now.getTime() - Date.parse(s.undo.at) < 60_000), tools };
+  const live = Boolean(s.undo && now.getTime() - Date.parse(s.undo.at) < 60_000);
+  return { agent, d, rules: (s.rules ?? d.rules).filter((r) => !looksLikeAPrompt(r)), howToAct: s.howToAct ?? d.act, knowledge: (s.knowledge ?? []).map((k) => ({ id: k.id, title: k.title, chars: k.text.length, at: k.at })), changed: s.changed, canUndo: live, undoUntil: live ? new Date(Date.parse(s.undo!.at) + 60_000).toISOString() : "", undoSection: live ? s.undo!.section : "", limits: { docs: MAX_DOCS, chars: MAX_CHARS }, tools };
 }
 
 // ---------- Knowledge: exactly what a partner gave the agent ----------
@@ -172,10 +178,9 @@ export async function saveSetting(input: { agent: string; section: string; value
   const text = section === "howToAct";
   const value = text ? (typeof input.value === "string" ? input.value.trim() : "") : Array.isArray(input.value) ? input.value.map((x) => String(x).trim()).filter(Boolean) : null;
   if (value === null || (text && !value) || (!text && !(value as string[]).length)) return { ok: false, note: "Nothing was saved: it can't be empty." };
-  // Rules and memory are never allowed to relax the fixed approval rows: an item that asks to skip approval is refused.
-  const joined = Array.isArray(value) ? value.join("\n") : value;
-  if (/without (asking|approval|my approval)|no approval|skip approval|auto[- ]?(send|post|approve)/i.test(joined) || (agent === "penny" && /change (a|the) price (itself|directly)|set (the )?price (itself|directly)/i.test(joined))) return { ok: false, note: "Nothing was saved. Send, post, price and money actions always need Approve, and that can't be changed here." };
-  if (/[—–]/.test(joined)) return { ok: false, note: "Nothing was saved. Use a plain hyphen or a full stop: no em dashes." };
+  // The same check the page runs as you type: a rule that skips approval, lets Penny change a price, or is only a question is never stored.
+  const verdict = checkAll(Array.isArray(value) ? value : [value as string], agent);
+  if (!verdict.ok) return { ok: false, note: verdict.why };
   const all = await loadAll();
   const saved: Saved = all[agent] ?? { changed: {} };
   saved.undo = { section, before: (saved[section] as string | string[] | undefined) ?? null, at: now.toISOString() };

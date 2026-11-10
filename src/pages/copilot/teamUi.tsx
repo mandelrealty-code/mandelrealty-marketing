@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import "./teamDesign.css";
+import { checkAll, checkRule } from "../../../shared/copilot/ruleCheck";
 import { ART, SKETCH_BASE, SKETCH_OVER } from "./teamArt";
 import type { Editable, SettingsView } from "../../../shared/copilot/teamSettings";
 import type { AgentCard, AgentId, AgentState, TeamBoard, TeamDecision } from "../../../shared/copilot/team";
@@ -293,7 +294,7 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
   const chatWho = agent ?? board.agents.find((x) => x.id === "copilot")!;
   const panel = panelOpen && !(agent && settings) ? <SidePanel key={chatWho.id} api={api} agent={chatWho} onClose={() => setPanel(false)} onChanged={() => { setTick((n) => n + 1); void load(); onChanged(); }} /> : null;
 
-  if (agent && settings && isAgent(agent.id)) return <Page><SettingsPage api={api} agent={agent} onBack={() => setSettings(false)} onTeam={() => onDesk(null)} /></Page>;
+  if (agent && settings && isAgent(agent.id)) return <div className="tmx lt"><div className="stage set2stage"><SettingsPage api={api} agent={agent} onBack={() => setSettings(false)} onTeam={() => onDesk(null)} /></div></div>;
 
   const card = (d: TeamDecision, showDraft = true, open = false) => <DecisionCard key={d.key} d={d} busy={busy === d.key} showDraft={showDraft} open={open} onAct={(a) => void act(d.key, a)} onRate={(r) => void rate(d.key, r)} onReviews={onOpenReviews} />;
 
@@ -613,6 +614,17 @@ function SidePanel({ api, agent, onClose, onChanged, initialAsk }: { api: Api; a
 
 const LOCK = <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg>;
 
+/** The one-minute undo, with its countdown. It disappears when the minute is up. */
+function UndoBar({ until, onUndo }: { until: string; onUndo: () => void }) {
+  const [left, setLeft] = useState(() => Math.max(0, Math.ceil((Date.parse(until) - Date.now()) / 1000)));
+  useEffect(() => {
+    const t = window.setInterval(() => setLeft(Math.max(0, Math.ceil((Date.parse(until) - Date.now()) / 1000))), 500);
+    return () => window.clearInterval(t);
+  }, [until]);
+  if (left <= 0) return null;
+  return <div className="after"><span>Saved. Takes effect on its next job.</span><button className="btn btn-s" type="button" style={{ minHeight: 36 }} onClick={onUndo}>Undo, {left}s left</button></div>;
+}
+
 function SettingsPage({ api, agent, onBack, onTeam }: { api: Api; agent: AgentCard; onBack: () => void; onTeam: () => void }) {
   const id = agent.id as "theo" | "nora" | "penny";
   const [v, setV] = useState<SettingsView | null>(null);
@@ -620,31 +632,34 @@ function SettingsPage({ api, agent, onBack, onTeam }: { api: Api; agent: AgentCa
   const [rows, setRows] = useState<string[]>([]);
   const [add, setAdd] = useState("");
   const [act, setAct] = useState("");
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [msg, setMsg] = useState<string>("");
   const [kTitle, setKTitle] = useState("");
   const [kText, setKText] = useState("");
   const [kMsg, setKMsg] = useState("");
-  const load = useCallback(() => api<SettingsView>("team-settings", { agent: id }).then(setV).catch(() => setMsg({ ok: false, text: "The settings did not load." })), [api, id]);
+  const [kOpen, setKOpen] = useState(false);
+  const load = useCallback(() => api<SettingsView>("team-settings", { agent: id }).then(setV).catch(() => setMsg("The settings did not load.")), [api, id]);
   useEffect(() => { void load(); }, [load]);
-  if (!v) return <p className="mut">{msg?.text ?? "Loading the settings."}</p>;
+  if (!v) return <p className="mut">{msg || "Loading the settings."}</p>;
 
-  const open = (s: Editable) => { setEdit(s); setMsg(null); setAdd(""); if (s === "howToAct") setAct(v.howToAct); else setRows([...v.rules]); };
+  const open = (s: Editable) => { setEdit(s); setMsg(""); setAdd(""); if (s === "howToAct") setAct(v.howToAct); else setRows([...v.rules]); };
+  // The refusal shows while you type, before anything is saved.
+  const verdict = edit === "howToAct" ? checkAll([act], id) : edit === "rules" ? checkAll([...rows, add], id) : ({ ok: true } as const);
   const save = async () => {
-    if (!edit) return;
+    if (!edit || !verdict.ok) return;
     const value = edit === "howToAct" ? act : add.trim() ? [...rows, add.trim()] : rows;
     const r = await api<{ ok: boolean; note: string }>("team-settings-save", { agent: id, section: edit, value }).catch(() => ({ ok: false, note: "That did not save." }));
-    setMsg({ ok: r.ok, text: r.note });
-    if (r.ok) setEdit(null);
+    if (r.ok) { setEdit(null); setMsg(""); } else setMsg(r.note);
     await load();
   };
-  const undo = async () => { const r = await api<{ note: string }>("team-settings-undo", { agent: id }).catch(() => ({ note: "That did not undo." })); setMsg({ ok: true, text: r.note }); await load(); };
+  const undo = async () => { const r = await api<{ note: string }>("team-settings-undo", { agent: id }).catch(() => ({ note: "That did not undo." })); setMsg(r.note === "Undone." ? "" : r.note); await load(); };
   const last = (s: Editable | "knowledge") => (v.changed[s] ? `Last changed ${when(v.changed[s]!)}` : "Not changed yet");
-  const after = (s: Editable) => (msg && !edit && v.changed[s] && msg.ok ? <div className="after"><span>{msg.text}</span>{v.canUndo ? <><button className="sbtn" type="button" onClick={() => void undo()}>Undo last change</button><span>Available for 1 minute.</span></> : null}</div> : null);
+  const undoFor = (s: Editable) => (v.undoSection === s && v.undoUntil && edit !== s ? <UndoBar key={v.undoUntil} until={v.undoUntil} onUndo={() => void undo()} /> : null);
+  const refusal = !verdict.ok ? <div className="warn" role="alert"><div>{verdict.why}</div></div> : msg && edit ? <div className="warn" role="alert"><div>{msg}</div></div> : null;
   const buttons = (
     <>
-      <div className="acts"><button className="btn btn-p" type="button" onClick={() => void save()}>Save</button><button className="btn btn-s" type="button" onClick={() => setEdit(null)}>Cancel</button></div>
+      {refusal}
+      <div className="acts"><button className="btn btn-p" type="button" disabled={!verdict.ok} onClick={() => void save()}>Save</button><button className="btn btn-s" type="button" onClick={() => setEdit(null)}>Cancel</button></div>
       <div className="after">Takes effect on its next job once saved.</div>
-      {msg && !msg.ok ? <div className="warn"><div>{msg.text}</div></div> : null}
     </>
   );
   const addDoc = async () => {
@@ -660,62 +675,62 @@ function SettingsPage({ api, agent, onBack, onTeam }: { api: Api; agent: AgentCa
     setKMsg("");
   };
   return (
-    <>
-      <header>
+    <div className="set2">
+      <header className="set2head">
         <div className="crumb"><a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onTeam(); }}>Team</a><span>/</span><a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onBack(); }}>{agent.name}</a><span>/</span><span>Settings</span></div>
-        <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 8 }}>
-          <Character who={id} size={64} crop />
-          <div><h1 className="title">{agent.name}{"\u2019"}s settings</h1><div className="mut">{v.d.role}</div></div>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <Character who={id} size={44} crop />
+          <div><h1 className="title" style={{ fontSize: 22, lineHeight: "28px" }}>{agent.name}{"\u2019"}s settings</h1><div className="mut">{v.d.role}</div></div>
+          <p className="lk" style={{ marginLeft: "auto", fontSize: 12 }}>{LOCK}Editable by a signed-in partner only</p>
         </div>
-        <p className="lk" style={{ marginTop: 10, fontSize: 13 }}>{LOCK}Editable by a signed-in partner only</p>
       </header>
 
-      <section className="ssec" aria-label="Rules">
-        <div className="sh"><h2 className="h2">Rules</h2>{edit !== "rules" ? <button className="etx" type="button" onClick={() => open("rules")}>Edit</button> : null}<span className="meta">{last("rules")}</span></div>
-        <p className="mut">What {agent.name} must never break, in plain sentences.</p>
-        {edit === "rules" ? (
-          <div className="edbox">
-            <div className="lbl" style={{ margin: 0 }}>Editing rules</div>
-            <div>{rows.map((r, i) => <div key={i} className="rw"><input className="inp" style={{ flex: "1 1 280px", width: "auto" }} value={r} aria-label="rule" onChange={(e) => setRows(rows.map((x, j) => (j === i ? e.target.value : x)))} /><button className="sbtn" type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button></div>)}</div>
-            <input className="inp" type="text" placeholder="Add one plain sentence" aria-label="New rule" value={add} onChange={(e) => setAdd(e.target.value)} />
-            {buttons}
-          </div>
-        ) : <div>{v.rules.map((r) => <div key={r} className="rw"><div className="r1">{r}</div></div>)}</div>}
-        {after("rules")}
-        <h3 className="h3" style={{ marginTop: 8 }}>Needs my approval</h3>
-        <p className="mut">What {agent.name} must never do alone. Nothing goes out until a partner presses Approve. These rows are fixed.</p>
-        <div>{v.d.locked.map((l) => <div key={l.t} className="rw"><div className="r1">{l.t}<div className="r2">{l.d}</div></div><span className="lk">{LOCK}Always needs Approve</span></div>)}</div>
-      </section>
+      <div className="set2cols">
+        <section className="set2col" aria-label="Rules">
+          <div className="sh"><h2 className="h2">Rules</h2>{edit !== "rules" ? <button className="etx" type="button" onClick={() => open("rules")}>Edit</button> : null}<span className="meta">{last("rules")}</span></div>
+          <p className="mut">What {agent.name} must never break, in plain sentences.</p>
+          {edit === "rules" ? (
+            <div className="edbox">
+              <div className="set2scroll">{rows.map((r, i) => <div key={i}><div className="rw"><input className="inp" style={{ flex: "1 1 240px", width: "auto" }} value={r} aria-label="rule" onChange={(e) => setRows(rows.map((x, j) => (j === i ? e.target.value : x)))} /><button className="sbtn" type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button></div>{!checkRule(r, id).ok ? <p className="mut" style={{ color: "var(--acci)" }}>{(checkRule(r, id) as { why: string }).why}</p> : null}</div>)}</div>
+              <input className="inp" type="text" placeholder="Add one plain sentence" aria-label="New rule" value={add} onChange={(e) => setAdd(e.target.value)} />
+              {buttons}
+            </div>
+          ) : <div>{v.rules.map((r) => <div key={r} className="rw"><div className="r1">{r}</div></div>)}</div>}
+          {undoFor("rules")}
+          <h3 className="h3" style={{ marginTop: 6 }}>Needs my approval</h3>
+          <p style={{ fontSize: 13, lineHeight: "20px" }}><span className="lk" style={{ marginRight: 6 }}>{LOCK}Always needs Approve:</span>{v.d.locked.map((l, i) => <span key={l.t} title={l.d}>{i ? " \u00b7 " : ""}{l.t}</span>)}. Fixed here. Nothing goes out until a partner presses Approve.</p>
+        </section>
 
-      <section className="ssec" aria-label="Brain">
-        <div className="sh"><h2 className="h2">Brain</h2></div>
-        <p className="mut">How {agent.name} thinks and what it can use.</p>
+        <section className="set2col" aria-label="Brain">
+          <div className="sh"><h2 className="h2">Brain</h2></div>
+          <p className="mut">How {agent.name} thinks and what it can use.</p>
 
-        <h3 className="h3" style={{ marginTop: 8 }}>Connectors</h3>
-        <p className="mut">The services {agent.name} can use. Credentials are held separately and are never seen by {agent.name}.</p>
-        <div>{v.tools.map((t) => (
-          <div key={t.name} className={t.state === "Needs reconnecting" ? "rw recon" : "rw"}>
-            <div className="r1"><strong>{t.name}</strong><div className="r2">{t.line}</div></div>
-            <span className="mst" style={{ fontWeight: 500 }}><span className={`dot sm ${t.state === "Needs reconnecting" ? "d-retry" : "d-idle"}`} />{t.state}</span>
-          </div>
-        ))}</div>
+          <h3 className="h3">Connectors</h3>
+          <p className="mut">Credentials are held separately and never seen by {agent.name}.</p>
+          <div>{v.tools.map((t) => (
+            <div key={t.name} className={t.state === "Needs reconnecting" ? "rw recon" : "rw"}>
+              <div className="r1"><strong>{t.name}</strong> <span className="r2" style={{ display: "inline" }}>{"\u00b7"} {t.line.replace(/ \u00b7 Credentials held.*$/, "")}</span></div>
+              <span className="mst" style={{ fontWeight: 500 }}><span className={`dot sm ${t.state === "Needs reconnecting" ? "d-retry" : "d-idle"}`} />{t.state}</span>
+            </div>
+          ))}</div>
 
-        <h3 className="h3" style={{ marginTop: 16 }}>Knowledge</h3>
-        <p className="mut">Any document or text you give {agent.name}, pasted in or uploaded as a text file. {agent.name} uses exactly what you give, says so when it does not have the knowledge, and never invents it. {last("knowledge")}.</p>
-        {v.knowledge.length ? <div>{v.knowledge.map((k) => <div key={k.id} className="rw"><div className="r1">{k.title}<div className="r2">{k.chars.toLocaleString("en-US")} characters, added {when(k.at)}</div></div><button className="sbtn" type="button" onClick={() => void api("team-knowledge-remove", { agent: id, id: k.id }).then(load)}>Remove</button></div>)}</div> : <p className="mut">Nothing given yet.</p>}
-        <div className="edbox">
-          <div className="lbl" style={{ margin: 0 }}>Add knowledge</div>
-          <input className="inp" type="text" placeholder="Name it, for example Offer frameworks" aria-label="Knowledge name" value={kTitle} onChange={(e) => setKTitle(e.target.value)} />
-          <textarea className="inp" rows={5} placeholder="Paste the text here" aria-label="Knowledge text" value={kText} onChange={(e) => setKText(e.target.value)} />
-          <div className="acts"><button className="btn btn-p" type="button" disabled={!kText.trim()} onClick={() => void addDoc()}>Add</button><label className="etx" style={{ cursor: "pointer" }}>Or upload a text file<input type="file" accept=".txt,.md,.markdown,.csv,.json,text/*" style={{ display: "none" }} onChange={(e) => void readFile(e.target.files?.[0])} /></label></div>
-          {kMsg ? <div className="after">{kMsg}</div> : null}
-        </div>
+          <h3 className="h3" style={{ marginTop: 6 }}>Knowledge</h3>
+          <p className="mut">{v.knowledge.length} of {v.limits.docs} documents, up to {v.limits.chars.toLocaleString("en-US")} characters each, text files only, no PDF yet. {agent.name} uses exactly what you give, says so when it does not have the knowledge, and never invents it.</p>
+          {v.knowledge.length ? <div>{v.knowledge.map((k) => <div key={k.id} className="rw"><div className="r1">{k.title} <span className="r2" style={{ display: "inline" }}>{"\u00b7"} {k.chars.toLocaleString("en-US")} characters</span></div><button className="btn btn-s" type="button" style={{ minHeight: 32, padding: "0 12px" }} onClick={() => void api("team-knowledge-remove", { agent: id, id: k.id }).then(load)}>Remove</button></div>)}</div> : null}
+          {kOpen ? (
+            <div className="edbox" style={{ padding: 12, gap: 8 }}>
+              <input className="inp" type="text" placeholder="Name it, for example Offer frameworks" aria-label="Knowledge name" value={kTitle} onChange={(e) => setKTitle(e.target.value)} style={{ minHeight: 36 }} />
+              <textarea className="inp" rows={3} placeholder="Paste the text here" aria-label="Knowledge text" value={kText} onChange={(e) => setKText(e.target.value)} />
+              <div className="acts"><button className="btn btn-p" type="button" style={{ minHeight: 36 }} disabled={!kText.trim() || v.knowledge.length >= v.limits.docs} onClick={() => void addDoc().then(() => setKOpen(false))}>Add knowledge</button><label className="etx" style={{ cursor: "pointer", minHeight: 36 }}>Or upload a text file<input type="file" accept=".txt,.md,.markdown,.csv,.json,text/*" style={{ display: "none" }} onChange={(e) => void readFile(e.target.files?.[0])} /></label><button className="sbtn" type="button" onClick={() => setKOpen(false)}>Cancel</button></div>
+              {kMsg ? <div className="after">{kMsg}</div> : null}
+            </div>
+          ) : <div className="acts"><button className="btn btn-s" type="button" style={{ minHeight: 36 }} onClick={() => { setKOpen(true); setKMsg(""); }}>Add knowledge</button>{kMsg ? <span className="after">{kMsg}</span> : null}</div>}
 
-        <div className="sh" style={{ marginTop: 16 }}><h3 className="h3" style={{ margin: 0 }}>How to act</h3>{edit !== "howToAct" ? <button className="etx" type="button" onClick={() => open("howToAct")}>Edit</button> : null}<span className="meta">{last("howToAct")}</span></div>
-        <p className="mut">How you want {agent.name} to behave, in plain English.</p>
-        {edit === "howToAct" ? <div className="edbox"><textarea className="inp" rows={4} value={act} onChange={(e) => setAct(e.target.value)} aria-label="How to act" />{buttons}</div> : <p>{v.howToAct}</p>}
-        {after("howToAct")}
-      </section>
-    </>
+          <div className="sh" style={{ marginTop: 6 }}><h3 className="h3" style={{ margin: 0 }}>How to act</h3>{edit !== "howToAct" ? <button className="etx" type="button" onClick={() => open("howToAct")}>Edit</button> : null}<span className="meta">{last("howToAct")}</span></div>
+          {edit === "howToAct" ? <div className="edbox"><textarea className="inp" rows={3} value={act} onChange={(e) => setAct(e.target.value)} aria-label="How to act" />{buttons}</div> : <p>{v.howToAct}</p>}
+          {undoFor("howToAct")}
+        </section>
+      </div>
+    </div>
   );
 }

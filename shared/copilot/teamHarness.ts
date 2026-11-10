@@ -11,8 +11,10 @@ import { ID, worldAt } from "./parity/catalog.js";
 import { installWorld } from "./parity/world.js";
 import { actOnTeamDecision, agentOfKind, messageChecks, rateDecision, teamBoard } from "./team.js";
 import { addKnowledge, instructionsFor, knowledgeFor, removeKnowledge, saveSetting, settingsFor, undoSetting } from "./teamSettings.js";
+import { checkRule } from "./ruleCheck.js";
 import { askCopilot, askDesk, chatOf, handOver, ownerOf } from "./teamChat.js";
 import { costViews } from "./aiGateway.js";
+import { writeMeta } from "./watchMeta.js";
 import { resetWatch, runWatch, setWatchSource } from "./watch.js";
 
 function fail(label: string): never {
@@ -147,6 +149,25 @@ if ((await addKnowledge({ agent: "penny", title: "x", text: "y".repeat(20_001) }
 const kid = (await settingsFor("penny", [], T0)).knowledge[0]!.id;
 if (!(await removeKnowledge("penny", kid, T0)).ok || (await knowledgeFor("penny", "value equation")) !== "") fail("removing knowledge");
 if (!(await saveSetting({ agent: "theo", section: "howToAct", value: "Short and warm. Never mention the cleaner." }, T0)).ok || !/How to act: Short and warm/.test(await instructionsFor("theo"))) fail("how to act reaches the next job");
+// Settings page fixes: a visible refusal before saving, a timed undo, the knowledge limit, and a prompt left in as a rule.
+const skip = checkRule("Send messages without asking me.", "theo");
+if (skip.ok || !/This rule cannot be saved, it tries to skip approval\. Nothing was saved\./.test(skip.why)) fail("the refusal wording: " + JSON.stringify(skip));
+const pennyPrice = checkRule("Change the price directly when sure.", "penny");
+if (pennyPrice.ok || !/lets Penny change a price/.test(pennyPrice.why)) fail("Penny's refusal: " + JSON.stringify(pennyPrice));
+if (checkRule("Change the price directly when sure.", "theo").ok === false && !/skip approval|em dash|question/.test((checkRule("Change the price directly when sure.", "theo") as { why: string }).why)) fail("Penny's rule applied to Theo");
+if (checkRule("Ask: What will Theo never do?", "theo").ok || checkRule("What must Theo always do?", "theo").ok) fail("a question was accepted as a rule");
+if (!checkRule("Never mention the cleaner to a guest.", "theo").ok) fail("a good rule was refused");
+const T1 = new Date("2026-11-09T20:00:00Z");
+await saveSetting({ agent: "theo", section: "rules", value: ["Never mention the cleaner to a guest."] }, T1);
+const live = await settingsFor("theo", [], new Date(T1.getTime() + 2_000));
+if (live.undoSection !== "rules" || Date.parse(live.undoUntil) !== T1.getTime() + 60_000 || !live.canUndo) fail("the undo window: " + JSON.stringify([live.undoSection, live.undoUntil]));
+const gone = await settingsFor("theo", [], new Date(T1.getTime() + 61_000));
+if (gone.canUndo || gone.undoUntil) fail("the undo should be gone after a minute");
+if (live.limits.docs !== 20 || live.limits.chars !== 20_000) fail("the knowledge limit shown on the page");
+await writeMeta("meta:team:settings", { nora: { rules: ["Never post publicly without approval.", "Ask: What will Nora never do? What must Nora always do?"], changed: {} } });
+const cleaned = await settingsFor("nora", [], T1);
+if (cleaned.rules.length !== 1 || /Ask:/.test(await instructionsFor("nora"))) fail("a prompt left in as a rule must not show or reach the agent: " + JSON.stringify(cleaned.rules));
+for (const a of ["theo", "nora", "penny"] as const) if ((await settingsFor(a, [], T1)).d.rules.some((r) => /\?\s*$/.test(r) || /^ask:/i.test(r))) fail(a + " ships a prompt as a default rule");
 setBrainModel(null);
 
 console.log("Team harness passed.");
