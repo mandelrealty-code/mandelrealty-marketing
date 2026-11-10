@@ -942,14 +942,14 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
     }
   });
   const [team, setTeam] = useState<TeamBoard | null>(null);
-  const [teamDesk, setTeamDesk] = useState<"copilot" | "theo" | "nora" | "penny" | null>(null);
+  const [teamDesk, setTeamDesk] = useState<string | null>(null);
   const refreshTeam = useCallback(() => api<TeamBoard>("team", { light: true }).then(setTeam).catch(() => undefined), []);
   useEffect(() => {
     void refreshTeam();
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refreshTeam(); }, 120_000);
     return () => window.clearInterval(timer);
   }, [refreshTeam]);
-  const openDesk = (id: "copilot" | "theo" | "nora" | "penny" | null) => { setTeamDesk(id === "copilot" ? null : id); setScreen("team"); setSheet(false); };
+  const openDesk = (id: string | null) => { setTeamDesk(id === "copilot" ? null : id); setScreen("team"); setSheet(false); };
   const [tasksKept, setTasksKept] = useState(() => screen === "tasks");
   const [boardSeed, setBoardSeed] = useState<Workflow>(BLANK);
   const [boardSkillId, setBoardSkillId] = useState<string | null>(null);
@@ -1979,6 +1979,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   function sideList() {
     return (
     <>
+      <div className="cp-sidescroll">
       <Roster board={team} active={screen === "team" ? teamDesk ?? "copilot" : screen === "home" ? "overview" : screen === "tasks" ? "tasks" : null} onOpen={openDesk} onOverview={() => { setScreen("home"); setSheet(false); }} onTasks={() => { setTasksKept(true); setScreen("tasks"); setSheet(false); }} />
       <div className="cp-chats">
         {(boot?.chats ?? []).filter(listedChat).map((chat) => {
@@ -2058,6 +2059,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
             </div>
           );
         })}
+      </div>
       </div>
       <div className="cp-sidefoot">
         <button type="button" className={`cp-footbtn${inSettings ? " on" : ""}`} onClick={() => { setScreen("settings"); setSheet(false); }}>

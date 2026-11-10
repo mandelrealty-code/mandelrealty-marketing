@@ -197,7 +197,7 @@
   flex-direction: column;
   padding: 14px 10px;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .cp-new {
@@ -9452,3 +9452,7 @@ html.cp-app[data-cp-theme="dark"] #root {
 .cp-ov3-team:hover { color: var(--ink); }
 .cp-side > * { flex-shrink: 0; }
 .cp-side > .cp-chats { flex: 1 0 160px; }
+.cp-sidescroll { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; scrollbar-width: thin; }
+.cp-sidescroll > * { flex-shrink: 0; }
+.cp-sidescroll > .cp-chats { flex: 0 0 auto; }
+.cp-sidefoot { flex: none; }

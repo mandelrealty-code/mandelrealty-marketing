@@ -4,6 +4,7 @@ import "./teamDesign.css";
 import { checkAll, checkRule } from "../../../shared/copilot/ruleCheck";
 import { ART, SKETCH_BASE, SKETCH_OVER } from "./teamArt";
 import type { Editable, SettingsView } from "../../../shared/copilot/teamSettings";
+import { PLANNED, plannedById, type Planned } from "./teamPlanned";
 import type { AgentCard, AgentId, AgentState, TeamBoard, TeamDecision } from "../../../shared/copilot/team";
 
 /**
@@ -26,7 +27,7 @@ export function Character({ who, size = 96, badge = 0, crop = false }: { who: st
   const h = crop ? size : Math.round((size * vh) / vw);
   const bs = Math.max(18, Math.round(size * (cop ? 0.17 : 0.2)));
   return (
-    <span className={crop ? "cw crop" : "cw"} role="img" aria-label={LABEL[who] ?? "A teammate not built yet"}>
+    <span className={crop ? "cw crop" : "cw"} role="img" aria-label={LABEL[who] ?? (plannedById(who) ? `${plannedById(who)!.name}, ${plannedById(who)!.area}, not built yet` : "A teammate not built yet")}>
       {sketch ? (
         <>
           <svg viewBox={vb} width={size} height={h} aria-hidden="true">{SKETCH_BASE}</svg>
@@ -49,9 +50,6 @@ const STATE: Record<AgentState, { cls: string; label: string }> = {
 };
 const Dot = ({ state, sm = false }: { state: AgentState; sm?: boolean }) => <span className={`dot${sm ? " sm" : ""} ${STATE[state].cls}`} />;
 
-const NOT_BUILT = [
-  { sk: "s1", area: "Channels" }, { sk: "s2", area: "Cleaning and Operations" }, { sk: "s3", area: "Onboarding" }, { sk: "s5", area: "Acquisition" }, { sk: "s6", area: "Ads" }, { sk: "s4", area: "Finance" }, { sk: "s7", area: "Incident" },
-];
 
 const when = (iso: string) => {
   const d = new Date(iso);
@@ -77,7 +75,7 @@ function Page({ children, panel }: { children: ReactNode; panel?: ReactNode }) {
 
 // ---------- The roster (the sidebar) ----------
 
-export function Roster({ board, active, onOpen, onOverview, onTasks }: { board: TeamBoard | null; active: string | null; onOpen: (a: AgentId) => void; onOverview: () => void; onTasks: () => void }) {
+export function Roster({ board, active, onOpen, onOverview, onTasks }: { board: TeamBoard | null; active: string | null; onOpen: (a: string) => void; onOverview: () => void; onTasks: () => void }) {
   const ids: AgentId[] = ["copilot", "theo", "nora", "penny"];
   return (
     <div className="tmx lt nobg">
@@ -96,11 +94,11 @@ export function Roster({ board, active, onOpen, onOverview, onTasks }: { board: 
           );
         })}
         <div className="sgrp">Not built yet</div>
-        {NOT_BUILT.map((u) => (
-          <div key={u.sk} className="sr u">
-            <Character who={u.sk} size={28} />
-            <span className="sn"><div className="nm">{u.area}</div></span>
-          </div>
+        {PLANNED.map((u) => (
+          <a key={u.id} className={`sr u${active === u.id ? " on" : ""}`} href="#" onClick={(e) => { e.preventDefault(); onOpen(u.id); }}>
+            <span style={{ opacity: 0.7, display: "inline-flex" }}><Character who={u.id} size={32} crop /></span>
+            <span className="sn"><div className="nm">{u.name}</div><div className="jb">{u.area} {"\u00b7"} Not built yet</div></span>
+          </a>
         ))}
         <div className="sep" />
         <a className={`sr util${active === "tasks" ? " on" : ""}`} href="#" onClick={(e) => { e.preventDefault(); onTasks(); }}><span className="sn"><div className="nm">Tasks</div></span></a>
@@ -155,7 +153,7 @@ export function HomePage({ board, api, onDesk, onTeam, onChanged }: { board: Tea
             </a>
           ))}
         </div>
-        <p className="mut" style={{ marginTop: 16 }}>Not built yet: {NOT_BUILT.map((u) => u.area).join(", ")}.</p>
+        <p className="mut" style={{ marginTop: 16 }}>Not built yet: {PLANNED.map((u) => u.area).join(", ")}.</p>
       </section>
 
       <section aria-label="Needs you">
@@ -258,7 +256,7 @@ function DecisionCard({ d, busy, showDraft = true, open = false, onAct, onRate, 
 
 // ---------- The Team page and the desks ----------
 
-export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onChanged }: { api: Api; desk: AgentId | null; onDesk: (a: AgentId | null) => void; onOpenReviews: () => void; onOpenGuests: () => void; onChanged: () => void }) {
+export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onChanged }: { api: Api; desk: string | null; onDesk: (a: string | null) => void; onOpenReviews: () => void; onOpenGuests: () => void; onChanged: () => void }) {
   const [board, setBoard] = useState<TeamBoard | null>(null);
   const [error, setError] = useState("");
   const [settings, setSettings] = useState(false);
@@ -289,6 +287,11 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
   const rate = async (key: string, rating: "right" | "wrong" | "unneeded") => { await api("team-rate", { key, rating }).catch(() => undefined); await load(); };
 
   if (!board) return <div className="tmx lt"><div className="stage"><p className="mut">{error || "Loading the team."}</p></div></div>;
+  const planned = plannedById(desk);
+  if (planned) {
+    if (settings) return <div className="tmx lt"><div className="stage set2stage"><PlannedSettings p={planned} onBack={() => setSettings(false)} onTeam={() => onDesk(null)} /></div></div>;
+    return <Page panel={panelOpen ? <PlannedPanel p={planned} onClose={() => setPanel(false)} /> : null}><PlannedDesk p={planned} askOpen={panelOpen} onAsk={() => setPanel(!panelOpen)} onSettings={() => setSettings(true)} /></Page>;
+  }
   const agent = desk ? board.agents.find((a) => a.id === desk) ?? null : null;
 
   const chatWho = agent ?? board.agents.find((x) => x.id === "copilot")!;
@@ -384,7 +387,7 @@ export function TeamPage({ api, desk, onDesk, onOpenReviews, onOpenGuests, onCha
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
             <h3 className="h3" style={{ margin: 0 }}>Not built yet</h3>
-            <div className="skgrid">{NOT_BUILT.map((k) => <div key={k.sk} className="sk"><Character who={k.sk} size={72} /><span>{k.area}</span><span>Not built yet</span></div>)}</div>
+            <div className="skgrid">{PLANNED.map((k) => <a key={k.id} className="sk" href="#" onClick={(e) => { e.preventDefault(); onDesk(k.id); }}><span style={{ opacity: 0.7, display: "inline-flex" }}><Character who={k.id} size={72} /></span><b>{k.name}</b><span>{k.area}</span><span>Not built yet</span></a>)}</div>
           </div>
         </section>
       </div>
@@ -729,6 +732,93 @@ function SettingsPage({ api, agent, onBack, onTeam }: { api: Api; agent: AgentCa
           <div className="sh" style={{ marginTop: 6 }}><h3 className="h3" style={{ margin: 0 }}>How to act</h3>{edit !== "howToAct" ? <button className="etx" type="button" onClick={() => open("howToAct")}>Edit</button> : null}<span className="meta">{last("howToAct")}</span></div>
           {edit === "howToAct" ? <div className="edbox"><textarea className="inp" rows={3} value={act} onChange={(e) => setAct(e.target.value)} aria-label="How to act" />{buttons}</div> : <p>{v.howToAct}</p>}
           {undoFor("howToAct")}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// ---------- The seven not built yet: tabs, desks and a settings shell only ----------
+
+const NB = "Not built yet. Nothing is running: no live data, no decisions, no cost and no AI calls.";
+
+function PlannedDesk({ p, askOpen, onAsk, onSettings }: { p: Planned; askOpen: boolean; onAsk: () => void; onSettings: () => void }) {
+  return (
+    <>
+      <section aria-label="Who they are">
+        <div className="deskhd">
+          <Character who={p.id} size={150} />
+          <div style={{ flex: "1 1 280px", display: "flex", flexDirection: "column", gap: 6, paddingBottom: 8 }}>
+            <h1 className="title">{p.name}</h1>
+            <div style={{ fontWeight: 600 }}>{p.area}</div>
+            <p className="mut">{p.tag}</p>
+          </div>
+          <span style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}><button className="tm-askbtn" type="button" onClick={onAsk}>{askOpen ? "Hide chat" : `Ask ${p.name}`}</button><span className="shadow">Not built yet</span></span>
+        </div>
+        <div className="incn" style={{ marginTop: 16 }}><div className="lbl">Not built yet</div>{p.name} is a tab, a desk and a settings shell for now. {NB}</div>
+      </section>
+      <section className="dsec" aria-label="What I am working on now"><h2 className="h2">What I{"\u2019"}m working on now</h2><p className="mut">Not built yet. Nothing is running.</p></section>
+      <section className="dsec" aria-label="Outstanding"><h2 className="h2">Outstanding</h2><p className="mut">Nothing outstanding.</p></section>
+      <section className="dsec" aria-label="What I need from you"><h2 className="h2">What I need from you</h2><div className="nd"><p><strong>{p.need.t}</strong></p><p className="if">Without it: {p.need.iff}</p></div></section>
+      <section className="dsec" aria-label="Prepared work, ready to send"><h2 className="h2">Prepared work, ready to send</h2><p className="mut">Nothing is prepared. {p.name} is not built yet.</p></section>
+      <section className="dsec" aria-label="History"><h2 className="h2">History</h2><p className="mut">Nothing yet.</p></section>
+      <section className="dsec" aria-label="Sessions"><h2 className="h2">Sessions</h2><p className="mut">No sessions yet.</p></section>
+      <section className="dsec" aria-label="Settings"><a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onSettings(); }}>Open {p.name}{"\u2019"}s settings</a></section>
+    </>
+  );
+}
+
+/** The chat beside a not-built desk: the same panel, switched off. It never calls anything. */
+function PlannedPanel({ p, onClose }: { p: Planned; onClose: () => void }) {
+  return (
+    <div className="tm-panel">
+      <aside className="pnl" aria-label={`Chat with ${p.name}`}>
+        <div className="phd">
+          <div className="phrow">
+            <Character who={p.id} size={48} crop />
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: 16, lineHeight: "22px" }}>{p.name}</div><div className="mut">{p.area}</div><div className="mut" style={{ marginTop: 2 }}>Not built yet</div></div>
+            <button className="xbtn" type="button" aria-label="Close the chat" onClick={onClose}><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" /></svg></button>
+          </div>
+          <div className="mut">Talking to {p.name} only, about {p.area}.</div>
+        </div>
+        <div className="pmsgs" role="log"><div className="sysn">{p.name} is not built yet, so there is nothing to ask. No AI is called from here.</div></div>
+        <div className="pin"><form className="pinrow off" onSubmit={(e) => e.preventDefault()}><input className="inp" type="text" placeholder={`${p.name} is not built yet`} aria-label={`${p.name} is not built yet`} disabled /><button className="btn btn-p" type="submit" disabled style={{ minWidth: 76 }}>Send</button></form></div>
+      </aside>
+    </div>
+  );
+}
+
+function PlannedSettings({ p, onBack, onTeam }: { p: Planned; onBack: () => void; onTeam: () => void }) {
+  return (
+    <div className="set2">
+      <header className="set2head">
+        <div className="crumb"><a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onTeam(); }}>Team</a><span>/</span><a className="lnk" href="#" onClick={(e) => { e.preventDefault(); onBack(); }}>{p.name}</a><span>/</span><span>Settings</span></div>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <Character who={p.id} size={44} crop />
+          <div><h1 className="title" style={{ fontSize: 22, lineHeight: "28px" }}>{p.name}{"\u2019"}s settings</h1><div className="mut">{p.area} {"\u00b7"} Not built yet</div></div>
+          <p className="lk" style={{ marginLeft: "auto", fontSize: 12 }}>{LOCK}Editable by a signed-in partner only</p>
+        </div>
+        <div className="incn"><div className="lbl">Not built yet</div>This is a shell. {p.name} can be edited here once it is built. Nothing is connected and nothing runs.</div>
+      </header>
+      <div className="set2cols">
+        <section className="set2col" aria-label="Rules">
+          <div className="sh"><h2 className="h2">Rules</h2></div>
+          <p className="mut">What {p.name} must never break, in plain sentences.</p>
+          <div>{p.rules.map((r) => <div key={r} className="rw"><div className="r1">{r}</div></div>)}</div>
+          <h3 className="h3" style={{ marginTop: 6 }}>Needs my approval</h3>
+          <p style={{ fontSize: 13, lineHeight: "20px" }}><span className="lk" style={{ marginRight: 6 }}>{LOCK}Always needs Approve:</span>{p.locked.map((l, i) => <span key={l.t} title={l.d}>{i ? " \u00b7 " : ""}{l.t}</span>)}. Fixed here. Nothing goes out until a partner presses Approve.</p>
+        </section>
+        <section className="set2col" aria-label="Brain">
+          <div className="sh"><h2 className="h2">Brain</h2></div>
+          <p className="mut">How {p.name} will think and what it will be able to use.</p>
+          <h3 className="h3">Connectors</h3>
+          <p className="mut">None are connected. Credentials will be held separately and never seen by {p.name}.</p>
+          <div>{p.tools.map((t) => <div key={t.name} className="rw"><div className="r1"><strong>{t.name}</strong> <span className="r2" style={{ display: "inline" }}>{"\u00b7"} {t.access || "Not set"} when connected</span></div><span className="mst" style={{ fontWeight: 500 }}>Not connected yet</span></div>)}</div>
+          <h3 className="h3" style={{ marginTop: 6 }}>Knowledge</h3>
+          <p className="mut">0 of 20 documents, up to 20,000 characters each, text files only, no PDF yet. {p.name} will use exactly what you give it, say so when it does not have the knowledge, and never invent it.</p>
+          <div className="acts"><button className="btn btn-s" type="button" style={{ minHeight: 36 }} disabled>Add knowledge</button></div>
+          <h3 className="h3" style={{ marginTop: 6 }}>How to act</h3>
+          <p>{p.job}</p>
         </section>
       </div>
     </div>
