@@ -8,7 +8,7 @@ import {
   type AdminProductMode,
 } from "../pages/clients/mode";
 
-export type CrmTab = "contacts" | "pipeline" | "knowledge" | "settings";
+export type CrmTab = "contacts" | "knowledge" | "settings";
 export type OpsTab =
   | "tasks"
   | "reviews"
@@ -35,7 +35,7 @@ export type AdminRoute = {
   sopSlug?: string | null;
 };
 
-const CRM_TABS: CrmTab[] = ["contacts", "pipeline", "knowledge", "settings"];
+const CRM_TABS: CrmTab[] = ["contacts", "knowledge", "settings"];
 const OPS_TABS: OpsTab[] = [
   "tasks",
   "reviews",

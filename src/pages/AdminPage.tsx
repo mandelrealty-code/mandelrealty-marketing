@@ -4,7 +4,6 @@ import {
   LEAD_STATUSES,
   OFFER_PATH_LABEL,
   OFFER_PATHS,
-  PIPELINE_STATUSES,
   STATUS_JOURNEY,
   STATUS_LABEL,
   type LeadStatus,
@@ -79,7 +78,7 @@ type KnowledgeDoc = {
   created_at: string;
 };
 
-type Tab = "contacts" | "pipeline" | "knowledge" | "settings";
+type Tab = "contacts" | "knowledge" | "settings";
 
 const STAGE_LABEL: Record<string, string> = {
   own_ready: "Owns property — ready",
@@ -314,7 +313,6 @@ export function AdminPage() {
   const [filterBookedWeek, setFilterBookedWeek] = useState(false);
   const [inboxChip, setInboxChip] = useState<"all" | "review">("all");
   const [sortBy, setSortBy] = useState<"inbox" | "newest" | "oldest">("inbox");
-  const [pipelineStage, setPipelineStage] = useState<LeadStatus | "all">("all");
   const [actionLeadId, setActionLeadId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [copyFlash, setCopyFlash] = useState<string | null>(null);
@@ -697,18 +695,6 @@ export function AdminPage() {
   );
   const inboxLeadCount = filteredLeads.length;
   const totalLeadCount = leadStats.total || leads.length;
-
-  const pipelineLeads = useMemo(() => {
-    const list =
-      pipelineStage === "all"
-        ? leads
-        : leads.filter((l) => l.status === pipelineStage);
-    return [...list].sort((a, b) => {
-      const at = a.last_activity_at || a.created_at;
-      const bt = b.last_activity_at || b.created_at;
-      return new Date(bt).getTime() - new Date(at).getTime();
-    });
-  }, [leads, pipelineStage]);
 
   const actionLead = useMemo(
     () => leads.find((l) => l.id === actionLeadId) ?? null,
@@ -3208,9 +3194,6 @@ export function AdminPage() {
                 </span>
               </div>
             )}
-            {tab === "pipeline" && (
-              <span className="text-[12.5px] text-[#6f6a65]">Sorted by activity</span>
-            )}
             <button
               type="button"
               onClick={() => softRefresh().catch(() => undefined)}
@@ -3228,7 +3211,6 @@ export function AdminPage() {
           {(
             [
               ["contacts", "Inbox"],
-              ["pipeline", "Pipeline"],
               ["knowledge", "Knowledge"],
               ["settings", "Settings"],
             ] as const
@@ -3341,90 +3323,6 @@ export function AdminPage() {
               </div>
               <div className="hidden min-h-0 min-w-0 flex-1 flex-col lg:flex">{desktopThread}</div>
               {desktopDetails}
-            </motion.div>
-          )}
-
-          {tab === "pipeline" && (
-            <motion.div
-              key="pipeline"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.25, ease: easeOut }}
-              className="crm-scroll-pane flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto px-4 py-4 lg:px-8"
-            >
-              <div className="-mx-4 flex gap-2 overflow-x-auto border-b border-white/[0.06] px-4 pb-2.5 lg:mx-0 lg:flex-wrap lg:border-0 lg:px-0 lg:pb-0">
-                <button
-                  type="button"
-                  onClick={() => setPipelineStage("all")}
-                  className={`flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] border px-3 text-[12.5px] lg:h-9 lg:rounded-[10px] lg:px-3.5 lg:text-[13px] ${
-                    pipelineStage === "all"
-                      ? "border-[#c4a35a]/45 bg-[#c4a35a]/12 font-semibold text-[#dcc084]"
-                      : "border-white/10 bg-[#141414] font-medium text-[#cfcac4] hover:border-[#c4a35a]/40"
-                  }`}
-                >
-                  All
-                  <span className={pipelineStage === "all" ? "text-[#8a7c5f]" : "text-[#5e5a56]"}>
-                    {leads.length}
-                  </span>
-                </button>
-                {PIPELINE_STATUSES.map((status) => {
-                  const count = leads.filter((l) => l.status === status).length;
-                  const active = pipelineStage === status;
-                  return (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() => setPipelineStage(status)}
-                      className={`flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] border px-3 text-[12.5px] lg:h-9 lg:rounded-[10px] lg:px-3.5 lg:text-[13px] ${
-                        active
-                          ? "border-[#c4a35a]/45 bg-[#c4a35a]/12 font-semibold text-[#dcc084]"
-                          : "border-white/10 bg-[#141414] font-medium text-[#cfcac4] hover:border-[#c4a35a]/40"
-                      }`}
-                    >
-                      {STATUS_LABEL[status]}
-                      <span className={active ? "text-[#8a7c5f]" : "text-[#5e5a56]"}>{count}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="overflow-hidden rounded-none lg:rounded-[18px] lg:border lg:border-white/8 lg:bg-[#111]">
-                {pipelineLeads.length === 0 ? (
-                  <p className="px-4 py-12 text-center text-sm text-[#9a9590]">
-                    No leads in this stage.
-                  </p>
-                ) : (
-                  pipelineLeads.map((lead, i) => (
-                    <motion.button
-                      key={lead.id}
-                      type="button"
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.22, delay: Math.min(i * 0.02, 0.2), ease: easeOut }}
-                      onClick={() => openLead(lead.id)}
-                      className="flex w-full items-center gap-3 border-b border-white/[0.06] px-1 py-3.5 text-left last:border-b-0 hover:bg-[#161616] lg:grid lg:grid-cols-[1fr_260px_150px_90px] lg:gap-4 lg:px-5 lg:py-4"
-                    >
-                      <div className="min-w-0 flex-1 lg:contents">
-                        <p className="truncate text-[15px] font-semibold leading-snug text-[#f0eeea]">
-                          {lead.name || "Unnamed"}
-                        </p>
-                        <p className="truncate text-[13.5px] leading-snug text-[#9a9590] lg:block">
-                          {lead.whats_next?.trim() || STATUS_JOURNEY[lead.status]}
-                        </p>
-                        <p className="truncate text-[11.5px] text-[#6f6a65] lg:text-[12.5px]">
-                          {[OFFER_PATH_LABEL[lead.offer_path], lead.address || null]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-[11.5px] text-[#5e5a56] lg:text-right lg:text-[12.5px]">
-                        {leadActivityTime(lead)}
-                      </span>
-                    </motion.button>
-                  ))
-                )}
-              </div>
             </motion.div>
           )}
 
@@ -4260,11 +4158,10 @@ export function AdminPage() {
       </AnimatePresence>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-white/8 bg-[rgba(12,12,12,0.94)] pb-[max(1.1rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-[12px] lg:hidden">
-        <div className="mx-auto grid max-w-[1000px] grid-cols-4 lg:flex lg:justify-center">
+        <div className="mx-auto grid max-w-[1000px] grid-cols-3 lg:flex lg:justify-center">
           {(
             [
               ["contacts", "Inbox"],
-              ["pipeline", "Pipeline"],
               ["knowledge", "Knowledge"],
               ["settings", "Settings"],
             ] as const
