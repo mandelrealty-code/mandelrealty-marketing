@@ -435,6 +435,7 @@ export async function addUnit(
     existingAirbnbUrl?: string;
     buildingName?: string;
     unitFloor?: string;
+    startedOn?: string;
   },
   today: string,
 ): Promise<{ id: string; notified: Notified }> {
@@ -446,13 +447,14 @@ export async function addUnit(
   const planTier = str(input.planTier);
   const furniture = str(input.furniture) || "none";
   const active = flowFor(plan, planTier, furniture);
+  const startedOn = str(input.startedOn) || today;
 
   const insert: Record<string, unknown> = {
     address,
     unit_type: str(input.type),
     owner_name: str(input.owner),
     assignee,
-    started_on: today,
+    started_on: startedOn,
     plan: plan || null,
     plan_tier: planTier || null,
     furniture,
@@ -492,7 +494,7 @@ export async function addUnit(
         stage: t.stage,
         label: t.label,
         assignee: assigneeFor(t.default_type, roster, assignee),
-        due_on: dueFor(today, t.stage, n, active),
+        due_on: dueFor(startedOn, t.stage, n, active),
         sort: t.sort,
       };
     });
@@ -558,12 +560,14 @@ export async function flagUnit(unitId: string) {
   await logHistory(unitId, out.reason ? "Flagged" : "Flag cleared", out.reason || undefined);
 }
 
-export async function requestChangesOnUnit(unitId: string) {
+export async function requestChangesOnUnit(unitId: string, note?: string) {
   const active = await activeStagesOf(unitId);
   const before = await stagesOf(unitId, active);
   const i = before.findIndex((s) => s !== "done");
   await saveStages(unitId, requestChanges(before), active);
-  await logHistory(unitId, "Changes requested", i >= 0 ? active[i] : undefined);
+  const stage = i >= 0 ? active[i] : undefined;
+  const detail = [stage, str(note)].filter(Boolean).join(" · ") || undefined;
+  await logHistory(unitId, "Changes requested", detail);
 }
 
 /** The assignee says the stage is finished: it waits for a partner's approval. Only when every task of the stage is checked. */
@@ -654,6 +658,66 @@ export async function addDoc(unitId: string, name: string, url: string, docType:
   });
   if (error) throw missing(error);
   await logHistory(unitId, "Document added", str(name), uploadedBy);
+}
+
+export async function addCustomTask(
+  unitId: string,
+  input: { stage: string; label: string; assignee: string; dueOn?: string },
+): Promise<{ id: string }> {
+  const stage = str(input.stage);
+  const label = str(input.label);
+  if (!stage || !label) throw new Error("stage and label required.");
+  const { data: existing } = await db()
+    .from("onboarding_tasks")
+    .select("sort")
+    .eq("unit_id", unitId)
+    .eq("stage", stage)
+    .order("sort", { ascending: false })
+    .limit(1);
+  const sort = Number((existing as { sort?: number }[] | null)?.[0]?.sort ?? 0) + 1;
+  const { data, error } = await db()
+    .from("onboarding_tasks")
+    .insert({
+      unit_id: unitId,
+      stage,
+      label,
+      assignee: str(input.assignee) || "Admin",
+      due_on: str(input.dueOn) || null,
+      sort,
+      done: false,
+    })
+    .select("id")
+    .single();
+  if (error) throw missing(error);
+  await logHistory(unitId, "Task added", label);
+  return { id: String((data as { id: string }).id) };
+}
+
+export async function addScheduleItem(input: {
+  unitId: string;
+  who: string;
+  stage: string;
+  task: string;
+  start: string;
+  span?: number;
+  status?: string;
+}): Promise<{ id: string }> {
+  const { data, error } = await db()
+    .from("onboarding_schedule")
+    .insert({
+      unit_id: input.unitId,
+      assignee: str(input.who),
+      stage: str(input.stage),
+      task: str(input.task),
+      start_on: str(input.start),
+      span_days: Math.max(1, Math.min(14, Math.floor(input.span ?? 1))),
+      status: str(input.status) || "Scheduled",
+    })
+    .select("id")
+    .single();
+  if (error) throw missing(error);
+  await logHistory(input.unitId, "Schedule added", str(input.task));
+  return { id: String((data as { id: string }).id) };
 }
 
 export async function removeDoc(docId: string) {

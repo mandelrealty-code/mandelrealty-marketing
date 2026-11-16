@@ -110,7 +110,11 @@ const NAME_TO_STAGE = {
   'Procurement':'procurement','Photography':'photo','Install':'install','App Setup':'app',
   'Benchmark':'benchmark','Benchmark Setup':'benchmark','Software':'software','Software Setup':'software','Live':'live'
 };
-const STAGE_TO_NAME = Object.fromEntries(Object.entries(NAME_TO_STAGE).map(([n,i])=>[i,n]));
+const STAGE_TO_NAME = {
+  audit:'Audit', furniture:'Furniture', client:'Client Approval', procurement:'Procurement',
+  photo:'Photography', install:'Install', app:'App Setup', benchmark:'Benchmark',
+  software:'Software', live:'Live'
+};
 
 function teamKeyFromName(name){
   if(!name) return 'admin';
@@ -323,6 +327,13 @@ function act(op, payload){
 }
 
 
+
+const readFileDataUrl = (file) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result || ''));
+  r.onerror = () => reject(r.error || new Error('read failed'));
+  r.readAsDataURL(file);
+});
 
 /* Plan-based flow: which stages apply to a unit */
 const FULL_FLOW = ['audit','furniture','client','procurement','photo','install','app','software','live'];
@@ -1150,7 +1161,7 @@ document.addEventListener('click', e=>{
         events=events.filter(ev=>ev.cid!==cid);
         refreshStatus(u); renderAll(); toast('Task removed'); return;
       }
-      case 'deliverTo': u.deliverTo=a.dataset.v; renderPipeline(); toast(`Deliveries go to ${a.textContent}`); return;
+      case 'deliverTo': u.deliverTo=a.dataset.v; act('update_unit', { unit_id: u.id, deliver_to: a.dataset.v }); toast(`Deliveries go to ${a.textContent}`); return;
       case 'clearFilters': ui.f={stage:'',who:'',plan:'',attn:false}; renderPipeline(); return;
       case 'toDocs': root.querySelector(`.tablebox #docs-${id}, [data-card="${id}"] #docs-${id}`)?.scrollIntoView({behavior:'smooth',block:'center'}); return;
       case 'histAll': ui.histAll.has(id)?ui.histAll.delete(id):ui.histAll.add(id); renderPipeline(); return;
@@ -1306,18 +1317,18 @@ function saveNewTask(id, sid){
   const who=box.querySelector('[data-k=atWho]').value;
   const dRaw=box.querySelector('[data-k=atDue]').value.trim(), d=dRaw?parseDate(dRaw):null;
   if(dRaw && !d){ box.querySelector('[data-k=atDue]').focus(); toast('Couldn’t read that date — try “fri” or “nov 20”'); return; }
-  const t={name, who, due:d?iso(d):null, done:false, custom:true, cid:++taskCid};
   const st=STAGES[SIDX[sid]];
-  if(sid===STAGES[u.stage].id){
-    u.tasks.push(t);
-    if(d && SCHED_TEAM.includes(who)) events.push({id:++evId, cid:t.cid, who, unit:u.id, task:name, stage:sid, start:t.due, span:1, st:'Scheduled'});
-    refreshStatus(u);
-  } else {
-    u.extra=u.extra||{}; (u.extra[sid]=u.extra[sid]||[]).push(t);
-  }
-  renderAll();
-  toast(`Added to ${st.name}${who==='owner'?' · waiting on owner':` · ${TEAM[who].name}`}${t.due?` · due ${fmt(t.due)}`:''}`);
-  // stay in add mode so several tasks can be entered in a row
+  const whoName=who==='owner'?'owner':((TEAM[who]&&TEAM[who].name)||who);
+  const stageName=STAGE_TO_NAME[sid]||st.name;
+  const due=d?iso(d):null;
+  nameEl.value='';
+  act('add_task', { unit_id: u.id, stage: stageName, label: name, assignee: whoName, due_on: due || undefined })
+    .then(()=>{
+      if(due && SCHED_TEAM.includes(who)){
+        return act('add_schedule', { unit_id: u.id, who: whoName, stage: stageName, task: name, start: due, span: 1, status: 'Scheduled' });
+      }
+    })
+    .then(()=> toast(`Added to ${st.name}${who==='owner'?' · waiting on owner':` · ${whoName}`}${due?` · due ${fmt(due)}`:''}`));
   root.querySelector(`[data-detail="${id}"] [data-k=atName]`)?.focus();
 }
 function sendChanges(id){
@@ -1358,13 +1369,14 @@ document.addEventListener('change', e=>{
   if(t.dataset.k==='docUp'){
     const u=unitById(t.dataset.id), files=[...t.files];
     const pdfs=files.filter(f=>/\.pdf$/i.test(f.name)||f.type==='application/pdf');
-    pdfs.forEach(f=>{
-      const url=URL.createObjectURL(f);
+    Promise.all(pdfs.map(f=>readFileDataUrl(f).then(url=>{
       const tag=/management|agreement|contract/i.test(f.name)?'agreement':'upload';
-      act('add_doc', { unit_id: u.id, name: f.name, url, doc_type: tag });
+      return act('add_doc', { unit_id: u.id, name: f.name, url, doc_type: tag });
+    }))).then(()=>{
+      if(pdfs.length) toast(pdfs.length===1?`Uploaded ${pdfs[0].name}`:`Uploaded ${pdfs.length} PDFs`);
     });
-    if(pdfs.length) toast(pdfs.length===1?`Uploaded ${pdfs[0].name}`:`Uploaded ${pdfs.length} PDFs`);
     if(files.length>pdfs.length) toast('Only PDF files can be uploaded');
+    t.value='';
     return;
   }
   if(t.dataset.k==='deliver'){
@@ -1586,10 +1598,11 @@ $('#qaForm').onsubmit=e=>{
   if(!d){ $('#qaDue').focus(); return; }
   const u=unitById($('#qaProp').value), who=$('#qaWho').value, due=iso(d);
   const clean = name.charAt(0).toUpperCase()+name.slice(1);
-  u.tasks.push({name:clean, who, due, done:false});
-  if(SCHED_TEAM.includes(who)) events.push({id:++evId, who, unit:u.id, task:clean, stage:STAGES[u.stage].id, start:due, span:1, st:'Scheduled'});
+  const whoName=(TEAM[who]&&TEAM[who].name)||who;
+  const stageName=STAGE_TO_NAME[STAGES[u.stage].id]||STAGES[u.stage].name;
   $('#qaTask').value=''; $('#qaForm').hidden=true; $('#qaBtn').setAttribute('aria-expanded','false');
-  renderAll(); toast(`Assigned to ${TEAM[who].name} · due ${fmt(due)}`);
+  act('add_schedule', { unit_id: u.id, who: whoName, stage: stageName, task: clean, start: due, span: 1, status: 'Scheduled' })
+    .then(()=> toast(`Assigned to ${whoName} · due ${fmt(due)}`));
 };
 
 /* =========================================================
@@ -1656,13 +1669,50 @@ $('#unitForm').onsubmit=e=>{
   const pl=$('#fPlan').value, tierBox = pl==='Growth' ? $('#fGrowthTier') : pl==='Essentials' ? $('#fEssTier') : null;
   root.querySelectorAll('.tierset [data-req]').forEach(x=>x.hidden=true);
   if(tierBox && !tierBox.querySelector('input:checked')){ tierBox.querySelector('[data-req]').hidden=false; tierBox.scrollIntoView({block:'center',behavior:'smooth'}); tierBox.querySelector('input').focus({preventScroll:true}); return; }
+  const start = parseDate($('#fStart').value) || TODAY;
   const beds=$('#fBeds').value, t=$('#fType').value.replace('Condo/Apartment','Condo');
   const whoKey=$('#fWho').value;
   const assigneeName=(TEAM[whoKey]&&TEAM[whoKey].name)||whoKey;
   const planTier = pl==='Essentials' ? radioVal('fETier') : pl==='Growth' ? radioVal('fGTier') : undefined;
   const furniture = furnVal();
   const furnitureBudget = furniture==='client' ? (parseFloat($('#furnWrap [data-k=furnBudget]').value.replace(/[^0-9.]/g,''))||0) : undefined;
+  const alarmRaw = ($('#hAlarm').value||'').trim();
+  const handoffPatch = {
+    access_method: $('#hAccess').value || null,
+    alarm_type: !alarmRaw || /^none$/i.test(alarmRaw) ? 'none' : 'Has alarm',
+    alarm_instructions: !alarmRaw || /^none$/i.test(alarmRaw) ? null : alarmRaw,
+    parking_spot: ($('#hParking').value||'').trim() || null,
+    wifi_name: ($('#hWifi').value||'').trim() || null,
+    wifi_password: ($('#hWifiPw').value||'').trim() || null,
+    known_issues: ($('#hIssues').value||'').trim().replace(/\s+/g,' ') || null,
+  };
+  const noteText = ($('#fNotes').value||'').trim();
+  const contractFile = ($('#fContract').files||[])[0] || null;
   const c=$('#mCreate'); c.disabled=true; c.classList.remove('primary'); c.classList.add('ok','pushed'); c.querySelector('.swap').classList.add('on'); c.firstChild.textContent='Created ';
+  const finish = (res) => {
+    closeModal();
+    if(res && res.unit_id){ ui.open.add(res.unit_id); flashUnit(res.unit_id); }
+    toast(`${addr} added at Audit`);
+  };
+  const resetBtn = () => {
+    c.disabled=false; c.classList.add('primary'); c.classList.remove('ok','pushed');
+    const sw=c.querySelector('.swap'); if(sw) sw.classList.remove('on');
+    c.firstChild.textContent='Create Unit';
+  };
+  const afterCreate = (res) => {
+    const id = res && res.unit_id;
+    if(!id) return Promise.resolve(res);
+    const chain = [];
+    const hasHandoff = Object.values(handoffPatch).some(v => v!=null && v!=='' && v!=='none');
+    if(hasHandoff) chain.push(() => act('update_handoff', { unit_id: id, patch: handoffPatch }));
+    if(noteText) chain.push(() => act('add_note', { unit_id: id, text: noteText, stage: 'Audit' }));
+    const run = (i) => i>=chain.length ? Promise.resolve(res) : chain[i]().then(() => run(i+1));
+    const withDoc = () => {
+      if(!contractFile) return run(0);
+      return readFileDataUrl(contractFile).then(url => act('add_doc', { unit_id: id, name: contractFile.name, url, doc_type: 'agreement' })).then(() => run(0));
+    };
+    return withDoc().then(() => res);
+  };
   act('add_unit', {
     address: addr,
     type: `${beds} ${t}`,
@@ -1673,17 +1723,10 @@ $('#unitForm').onsubmit=e=>{
     furniture,
     furniture_budget: furnitureBudget,
     owner_phone: cleanPhone($('#fPhone').value).v,
-    str_licence: $('#fStr').value.trim().toUpperCase(),
+    str_licence: $('#fStr').value.trim().toUpperCase() || undefined,
     str_permit_status: $('#fPermit').value || undefined,
-  }).then(function(res){
-    closeModal();
-    if(res && res.unit_id){ ui.open.add(res.unit_id); flashUnit(res.unit_id); }
-    toast(`${addr} added at Audit`);
-  }).finally(function(){
-    c.disabled=false; c.classList.add('primary'); c.classList.remove('ok','pushed');
-    const sw=c.querySelector('.swap'); if(sw) sw.classList.remove('on');
-    c.firstChild.textContent='Create Unit';
-  });
+    started_on: iso(start),
+  }).then(afterCreate).then(finish).finally(resetBtn);
 };
 
 /* =========================================================

@@ -1,7 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { handlePlacesOp } from "../googlePlaces.js";
 import {
+  addCustomTask as addOnboardingCustomTask,
   addDoc as addOnboardingDoc,
+  addScheduleItem as addOnboardingScheduleItem,
   addUnit as addOnboardingUnit,
   advanceUnit as advanceOnboardingUnit,
   flagUnit as flagOnboardingUnit,
@@ -1577,6 +1579,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               existingAirbnbUrl: str(body.existing_airbnb_url) || undefined,
               buildingName: str(body.building_name) || undefined,
               unitFloor: str(body.unit_floor) || undefined,
+              startedOn: str(body.started_on) || undefined,
             },
             torontoToday(),
           );
@@ -1588,7 +1591,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         if (op === "advance") { await advanceOnboardingUnit(unit, torontoToday()); return res.status(200).json({ ok: true }); }
         if (op === "flag") { await flagOnboardingUnit(unit); return res.status(200).json({ ok: true }); }
-        if (op === "request_changes") { await requestChangesOnUnit(unit); return res.status(200).json({ ok: true }); }
+        if (op === "request_changes") {
+          await requestChangesOnUnit(unit, str(body.note) || undefined);
+          return res.status(200).json({ ok: true });
+        }
         if (op === "submit") { await submitOnboardingStage(unit); return res.status(200).json({ ok: true }); }
         if (op === "skip_stage") {
           await skipOnboardingStage(unit, str(body.stage), "Admin");
@@ -1655,6 +1661,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const patch = (body.patch && typeof body.patch === "object" ? body.patch : {}) as Record<string, unknown>;
           const notified = await updateScheduleItem(str(body.id), { ...(patch.who !== undefined ? { who: str(patch.who) } : {}), ...(patch.start ? { start: str(patch.start) } : {}), ...(patch.span ? { span: Number(patch.span) } : {}), ...(patch.time !== undefined ? { time: str(patch.time) } : {}), ...(patch.status ? { status: str(patch.status) } : {}) });
           return res.status(200).json({ ok: true, notified });
+        }
+        if (op === "add_schedule") {
+          if (!unit) return res.status(400).json({ error: "unit_id required." });
+          const made = await addOnboardingScheduleItem({
+            unitId: unit,
+            who: str(body.who),
+            stage: str(body.stage),
+            task: str(body.task),
+            start: str(body.start),
+            span: typeof body.span === "number" ? body.span : undefined,
+            status: str(body.status) || undefined,
+          });
+          return res.status(200).json({ ok: true, id: made.id });
+        }
+        if (op === "add_task") {
+          if (!unit) return res.status(400).json({ error: "unit_id required." });
+          const made = await addOnboardingCustomTask(unit, {
+            stage: str(body.stage),
+            label: str(body.label) || str(body.task),
+            assignee: str(body.assignee) || str(body.who),
+            dueOn: str(body.due_on) || str(body.due) || undefined,
+          });
+          return res.status(200).json({ ok: true, id: made.id });
         }
       }
 
