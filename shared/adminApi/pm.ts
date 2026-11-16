@@ -1,6 +1,22 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { handlePlacesOp } from "../googlePlaces.js";
-import { addUnit as addOnboardingUnit, advanceUnit as advanceOnboardingUnit, flagUnit as flagOnboardingUnit, onboardingSnapshot, requestChangesOnUnit, submitStage as submitOnboardingStage, toggleTask as toggleOnboardingTask, updateScheduleItem } from "../pm/onboardingStore.js";
+import {
+  addDoc as addOnboardingDoc,
+  addUnit as addOnboardingUnit,
+  advanceUnit as advanceOnboardingUnit,
+  flagUnit as flagOnboardingUnit,
+  markTaskNa as markOnboardingTaskNa,
+  onboardingSnapshot,
+  removeDoc as removeOnboardingDoc,
+  requestChangesOnUnit,
+  skipStage as skipOnboardingStage,
+  submitStage as submitOnboardingStage,
+  toggleTask as toggleOnboardingTask,
+  updateScheduleItem,
+  updateUnitFields as updateOnboardingUnitFields,
+  upsertHandoff as upsertOnboardingHandoff,
+  type HandoffRow,
+} from "../pm/onboardingStore.js";
 import { torontoToday } from "../copilot/time.js";
 import { boardAction, boardOpen, boardPayload, TasksNotReady } from "../copilot/taskBoardApi.js";
 import {
@@ -1540,14 +1556,87 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resource === "onboarding") {
         const unit = str(body.unit_id);
         if (op === "add_unit") {
-          const made = await addOnboardingUnit({ address: str(body.address), type: str(body.type), owner: str(body.owner), assignee: str(body.assignee) }, torontoToday());
+          const made = await addOnboardingUnit(
+            {
+              address: str(body.address),
+              type: str(body.type),
+              owner: str(body.owner),
+              assignee: str(body.assignee),
+              plan: str(body.plan) || undefined,
+              planTier: str(body.plan_tier) || undefined,
+              furniture: str(body.furniture) || undefined,
+              furnitureBudget: typeof body.furniture_budget === "number" ? body.furniture_budget : undefined,
+              strLicence: str(body.str_licence) || undefined,
+              strPermitStatus: str(body.str_permit_status) || undefined,
+              contractStatus: str(body.contract_status) || undefined,
+              ownerPhone: str(body.owner_phone) || undefined,
+              ownerWhatsapp: str(body.owner_whatsapp) || undefined,
+              feeStatus: str(body.onboarding_fee_status) || undefined,
+              feeAmount: typeof body.onboarding_fee_amount === "number" ? body.onboarding_fee_amount : undefined,
+              existingAirbnbUrl: str(body.existing_airbnb_url) || undefined,
+              buildingName: str(body.building_name) || undefined,
+              unitFloor: str(body.unit_floor) || undefined,
+            },
+            torontoToday(),
+          );
           return res.status(200).json({ unit_id: made.id, notified: made.notified });
         }
-        if (op === "toggle_task") { await toggleOnboardingTask(str(body.id), body.done === true); return res.status(200).json({ ok: true }); }
+        if (op === "toggle_task") {
+          await toggleOnboardingTask(str(body.id), body.done === true, str(body.done_by) || undefined);
+          return res.status(200).json({ ok: true });
+        }
         if (op === "advance") { await advanceOnboardingUnit(unit, torontoToday()); return res.status(200).json({ ok: true }); }
         if (op === "flag") { await flagOnboardingUnit(unit); return res.status(200).json({ ok: true }); }
         if (op === "request_changes") { await requestChangesOnUnit(unit); return res.status(200).json({ ok: true }); }
         if (op === "submit") { await submitOnboardingStage(unit); return res.status(200).json({ ok: true }); }
+        if (op === "skip_stage") {
+          await skipOnboardingStage(unit, str(body.stage), "Admin");
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "na_task") {
+          await markOnboardingTaskNa(str(body.id), body.na === true);
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "update_handoff") {
+          const patch = (body.patch && typeof body.patch === "object" ? body.patch : {}) as Partial<HandoffRow>;
+          await upsertOnboardingHandoff(unit, patch);
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "add_doc") {
+          await addOnboardingDoc(unit, str(body.name), str(body.url), str(body.doc_type), "Admin");
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "remove_doc") {
+          await removeOnboardingDoc(str(body.doc_id));
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "update_unit") {
+          const allowed = [
+            "plan",
+            "plan_tier",
+            "furniture",
+            "furniture_budget",
+            "str_licence",
+            "str_permit_status",
+            "contract_status",
+            "hospitable_property_id",
+            "airbnb_url",
+            "deliver_to",
+            "owner_phone",
+            "owner_whatsapp",
+            "onboarding_fee_status",
+            "onboarding_fee_amount",
+            "existing_airbnb_url",
+            "building_name",
+            "unit_floor",
+          ];
+          const patch: Record<string, unknown> = {};
+          for (const k of allowed) {
+            if (body[k] !== undefined) patch[k] = body[k];
+          }
+          if (Object.keys(patch).length) await updateOnboardingUnitFields(unit, patch);
+          return res.status(200).json({ ok: true });
+        }
         if (op === "update_schedule") {
           const patch = (body.patch && typeof body.patch === "object" ? body.patch : {}) as Record<string, unknown>;
           const notified = await updateScheduleItem(str(body.id), { ...(patch.who !== undefined ? { who: str(patch.who) } : {}), ...(patch.start ? { start: str(patch.start) } : {}), ...(patch.span ? { span: Number(patch.span) } : {}), ...(patch.time !== undefined ? { time: str(patch.time) } : {}), ...(patch.status ? { status: str(patch.status) } : {}) });
