@@ -26,6 +26,7 @@ import { setCurrentPlaybookStep, type PlaybookStep } from "../../shared/playbook
 
 const ClientsApp = lazy(() => import("./clients/ClientsApp"));
 const CopilotApp = lazy(() => import("./copilot/CopilotApp"));
+const OnboardingApp = lazy(() => import("./onboarding/OnboardingApp"));
 const EmployeeTasksApp = lazy(() => import("./tasks/EmployeeTasksApp"));
 
 type Lead = {
@@ -609,7 +610,7 @@ export function AdminPage() {
       meta.content = "noindex, nofollow";
       document.head.appendChild(meta);
     }
-    if (route.mode === "copilot") {
+    if (route.mode === "copilot" || route.mode === "onboarding") {
       void fetch("/api/admin/session?op=check", { method: "POST", credentials: "include" })
         .then((res) => setAuthed(res.ok))
         .catch(() => setAuthed(false));
@@ -1666,6 +1667,14 @@ export function AdminPage() {
         }
       >
         <CopilotApp onModeChange={switchProduct} />
+      </Suspense>
+    );
+  }
+
+  if (authed !== false && productMode === "onboarding") {
+    return (
+      <Suspense fallback={<div className="flex min-h-dvh items-center justify-center bg-[#ffffff] text-[#6b6b66]">Loading Onboarding…</div>}>
+        <OnboardingApp onModeChange={switchProduct} />
       </Suspense>
     );
   }

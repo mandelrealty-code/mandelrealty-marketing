@@ -8,10 +8,15 @@ function db() {
   return sb;
 }
 
+export const STAFF_TYPES = ["onboarder", "va", "software", "operations", "partner"] as const;
+export type StaffType = (typeof STAFF_TYPES)[number] | "";
+
 export type PmTeamMember = {
   id: string;
   created_at: string;
   name: string;
+  /** What kind of team member this is. Empty until a partner sets it. */
+  staff_type: StaffType;
 };
 
 function str(v: unknown): string {
@@ -23,6 +28,7 @@ function mapMember(row: Record<string, unknown>): PmTeamMember {
     id: String(row.id),
     created_at: String(row.created_at || ""),
     name: str(row.name),
+    staff_type: (STAFF_TYPES as readonly string[]).includes(str(row.staff_type)) ? (str(row.staff_type) as StaffType) : "",
   };
 }
 
@@ -84,4 +90,24 @@ export async function createPmTeamMember(input: {
 export async function deletePmTeamMember(id: string): Promise<void> {
   const { error } = await db().from("pm_team_members").delete().eq("id", id);
   if (error) throw error;
+}
+
+/** Sets what kind of team member someone is. The roster row is created first when the name is not on it yet. */
+export async function setPmTeamMemberType(input: { name: string; staff_type: string }): Promise<PmTeamMember> {
+  const type = str(input.staff_type);
+  if (type && !(STAFF_TYPES as readonly string[]).includes(type)) throw new Error("Unknown staff type.");
+  const member = await createPmTeamMember({ name: str(input.name) });
+  const { data, error } = await db()
+    .from("pm_team_members")
+    .update({ staff_type: type })
+    .eq("id", member.id)
+    .select("*")
+    .single();
+  if (error) {
+    if (/staff_type/i.test(error.message || "")) {
+      throw new Error("Staff type column missing. Run supabase/onboarding_v1.sql in Supabase, then retry.");
+    }
+    throw error;
+  }
+  return mapMember(data as Record<string, unknown>);
 }

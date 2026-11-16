@@ -581,6 +581,7 @@ function Switcher({ onModeChange }: { onModeChange: (mode: AdminProductMode) => 
   return (
     <div className="cp-switch">
       <button type="button" onClick={() => onModeChange("crm")}>CRM</button>
+      <button type="button" onClick={() => onModeChange("onboarding")}>Onboarding</button>
       <button type="button" onClick={() => onModeChange("ops")}>OPS</button>
       <button type="button" className="on">Team</button>
     </div>

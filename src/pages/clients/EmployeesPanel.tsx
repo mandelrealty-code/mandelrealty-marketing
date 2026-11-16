@@ -600,7 +600,91 @@ export function EmployeesPanel({
           })}
         </ul>
       )}
+      <StaffTypes onError={onError} />
       {inviteSheet}
+    </div>
+  );
+}
+
+const STAFF_TYPE_LABEL: Record<string, string> = {
+  "": "Not set",
+  onboarder: "Onboarder",
+  va: "VA",
+  software: "Software",
+  operations: "Operations",
+  partner: "Partner",
+};
+
+type RosterRow = { id: string; name: string; staff_type: string };
+
+/** What kind of team member each person is. Onboarding hands out tasks by this, so it lists everyone on the roster. */
+function StaffTypes({ onError }: { onError: (msg: string) => void }) {
+  const [rows, setRows] = useState<RosterRow[]>([]);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState("");
+
+  const load = useCallback(async () => {
+    const data = await pmGet<{ members: RosterRow[] }>("team_members");
+    setRows(data.members ?? []);
+  }, []);
+  useEffect(() => {
+    load().catch((e) => onError(e instanceof Error ? e.message : "Could not load the team list."));
+  }, [load, onError]);
+
+  const setType = async (memberName: string, staff_type: string) => {
+    setSaving(memberName);
+    try {
+      await pmPost("team_members", { op: "set_type", name: memberName, staff_type });
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not save the type.");
+    }
+    setSaving("");
+  };
+
+  return (
+    <div className="mt-8 border-t border-white/8 px-4 pt-6 lg:px-0">
+      <h2 className="text-[15px] font-semibold text-[#f5f5f5]">Team types</h2>
+      <p className="mt-1 text-[13px] text-[#9a9590]">
+        What kind of team member each person is. Onboarding gives each task to someone of the type that usually does it.
+      </p>
+      <ul className="mt-3 divide-y divide-white/8 border-t border-white/8">
+        {rows.map((r) => (
+          <li key={r.id} className="flex items-center justify-between gap-3 py-3">
+            <span className="text-[14px] text-[#f5f5f5]">{r.name}</span>
+            <select
+              aria-label={`Type for ${r.name}`}
+              value={r.staff_type}
+              disabled={saving === r.name}
+              onChange={(e) => void setType(r.name, e.target.value)}
+              className="rounded-lg border border-white/10 bg-[#1c1c1c] px-3 py-2 text-[14px] text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
+            >
+              {Object.entries(STAFF_TYPE_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="mt-3 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const n = name.trim();
+          if (!n) return;
+          setName("");
+          void setType(n, "");
+        }}
+      >
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Add a name that has no login, for example a partner"
+          aria-label="Add a team member"
+          className="flex-1 rounded-lg border border-white/10 bg-[#1c1c1c] px-3 py-2 text-[14px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
+        />
+        <button type="submit" className="rounded-lg border border-white/10 px-4 py-2 text-[14px] font-semibold text-[#f5f5f5]">Add</button>
+      </form>
     </div>
   );
 }

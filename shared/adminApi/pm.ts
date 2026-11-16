@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { addUnit as addOnboardingUnit, advanceUnit as advanceOnboardingUnit, flagUnit as flagOnboardingUnit, onboardingSnapshot, requestChangesOnUnit, submitStage as submitOnboardingStage, toggleTask as toggleOnboardingTask, updateScheduleItem } from "../pm/onboardingStore.js";
+import { torontoToday } from "../copilot/time.js";
 import { boardAction, boardOpen, boardPayload, TasksNotReady } from "../copilot/taskBoardApi.js";
 import {
   getSessionFromRequest,
@@ -123,6 +125,7 @@ import {
 } from "../pm/opsWorkflows.js";
 import {
   createPmTeamMember,
+  setPmTeamMemberType,
   deletePmTeamMember,
   listPmTeamMembers,
 } from "../pm/teamStore.js";
@@ -546,6 +549,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           task_type: task_type || undefined,
         });
         return res.status(200).json({ tasks });
+      }
+      if (resource === "onboarding") {
+        return res.status(200).json(await onboardingSnapshot(torontoToday()));
       }
       if (resource === "team_members") {
         const members = await listPmTeamMembers();
@@ -1529,7 +1535,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
+      if (resource === "onboarding") {
+        const unit = str(body.unit_id);
+        if (op === "add_unit") return res.status(200).json({ unit_id: await addOnboardingUnit({ address: str(body.address), type: str(body.type), owner: str(body.owner), assignee: str(body.assignee) }, torontoToday()) });
+        if (op === "toggle_task") { await toggleOnboardingTask(str(body.id), body.done === true); return res.status(200).json({ ok: true }); }
+        if (op === "advance") { await advanceOnboardingUnit(unit, torontoToday()); return res.status(200).json({ ok: true }); }
+        if (op === "flag") { await flagOnboardingUnit(unit); return res.status(200).json({ ok: true }); }
+        if (op === "request_changes") { await requestChangesOnUnit(unit); return res.status(200).json({ ok: true }); }
+        if (op === "submit") { await submitOnboardingStage(unit); return res.status(200).json({ ok: true }); }
+        if (op === "update_schedule") {
+          const patch = (body.patch && typeof body.patch === "object" ? body.patch : {}) as Record<string, unknown>;
+          await updateScheduleItem(str(body.id), { ...(patch.who !== undefined ? { who: str(patch.who) } : {}), ...(patch.start ? { start: str(patch.start) } : {}), ...(patch.span ? { span: Number(patch.span) } : {}), ...(patch.time !== undefined ? { time: str(patch.time) } : {}), ...(patch.status ? { status: str(patch.status) } : {}) });
+          return res.status(200).json({ ok: true });
+        }
+      }
+
       if (resource === "team_members") {
+        if (op === "set_type") {
+          const member = await setPmTeamMemberType({ name: str(body.name), staff_type: str(body.staff_type) });
+          return res.status(200).json({ member });
+        }
         if (op === "create") {
           const member = await createPmTeamMember({ name: str(body.name) });
           return res.status(200).json({ member });

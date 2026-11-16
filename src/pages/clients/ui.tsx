@@ -53,8 +53,8 @@ export function ModeSwitcher({
   mode,
   onChange,
 }: {
-  mode: "crm" | "ops" | "copilot";
-  onChange: (mode: "crm" | "ops" | "copilot") => void;
+  mode: "crm" | "onboarding" | "ops" | "copilot";
+  onChange: (mode: "crm" | "onboarding" | "ops" | "copilot") => void;
 }) {
   return (
     <div className="flex gap-0.5 rounded-lg border border-white/8 bg-[#1a1a1a] p-0.5">
@@ -68,6 +68,17 @@ export function ModeSwitcher({
         }`}
       >
         CRM
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("onboarding")}
+        className={`rounded-md px-3 py-1 text-xs font-semibold ${
+          mode === "onboarding"
+            ? "bg-[#c4a35a] text-[#0a0a0a]"
+            : "text-[#9a9590] hover:text-[#f5f5f5]"
+        }`}
+      >
+        Onboarding
       </button>
       <button
         type="button"
