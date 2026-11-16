@@ -239,6 +239,19 @@ export async function deleteStaffUser(id: string): Promise<void> {
   }
 }
 
+/** Takes an employee out: the login stops working and they leave the lists, but their hours and history stay. */
+export async function deactivateStaffUser(id: string): Promise<StaffUser | null> {
+  const clean = id.trim();
+  if (!clean) throw new Error("id required.");
+  const { data, error } = await db().from("staff_users").update({ active: false, updated_at: new Date().toISOString() }).eq("id", clean).select("*").maybeSingle();
+  if (error) {
+    const mapped = missingTableError(error);
+    if (mapped) throw mapped;
+    throw error;
+  }
+  return (data as StaffUser | null) ?? null;
+}
+
 export function publicStaffUser(user: StaffUser) {
   return {
     id: user.id,

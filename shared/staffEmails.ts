@@ -194,3 +194,47 @@ export async function sendStaffInviteEmail(input: {
     },
   });
 }
+
+export type AssignedTask = { label: string; due: string };
+
+/** Tells an employee which onboarding tasks were given to them, for one unit, with their due dates. */
+export async function sendTaskAssignedEmail(input: {
+  to: string;
+  firstName: string;
+  slug: string;
+  unit: string;
+  tasks: AssignedTask[];
+}): Promise<{ ok: boolean; message?: string }> {
+  const apiKey = process.env.RESEND_API_KEY?.trim() || "";
+  if (!apiKey) return { ok: false, message: "RESEND_API_KEY not configured." };
+  const from = process.env.RESEND_FROM?.trim() || "Mandel Realty Group <info@mandelrealtygroup.com>";
+  const replyTo = process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com";
+  const portal = teamPortalUrl(input.slug);
+  const many = input.tasks.length > 1;
+  const subject = many ? `${input.tasks.length} tasks for you: ${input.unit}` : `A task for you: ${input.unit}`;
+  const rows = input.tasks
+    .map((t) => `<tr><td style="padding:8px 0;border-bottom:1px solid #2a2a2a;font-family:Helvetica,Arial,sans-serif;font-size:15px;color:#f5f5f5;">${esc(t.label)}</td><td style="padding:8px 0 8px 16px;border-bottom:1px solid #2a2a2a;font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#b4aea8;white-space:nowrap;">${t.due ? "Due " + esc(t.due) : ""}</td></tr>`)
+    .join("");
+  const html = emailShell(`
+    <div style="font-family:Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;line-height:1.25;color:#f5f5f5;padding-bottom:10px;">
+      ${esc(many ? "New tasks for you" : "A new task for you")}
+    </div>
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#b4aea8;margin:0 0 16px;">
+      Hi ${esc(input.firstName)}, you have been given ${many ? "these tasks" : "this task"} for <strong style="color:#f5f5f5;">${esc(input.unit)}</strong>.
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows}</table>
+    ${goldButton(portal, "Open the team portal")}
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0;">Questions? Reply to this email. It goes to ${esc(replyTo)}.</p>
+  `);
+  const text = [
+    `Hi ${input.firstName},`,
+    "",
+    `You have been given ${many ? "these tasks" : "this task"} for ${input.unit}:`,
+    ...input.tasks.map((t) => `- ${t.label}${t.due ? " (due " + t.due + ")" : ""}`),
+    "",
+    `Team portal: ${portal}`,
+    `Questions? Reply to this email (${replyTo}).`,
+    "— Mandel Realty Group",
+  ].join("\n");
+  return sendResendEmail({ apiKey, from, to: [input.to], subject, html, text, replyTo });
+}

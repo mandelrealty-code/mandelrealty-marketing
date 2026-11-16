@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { handlePlacesOp } from "../googlePlaces.js";
 import { addUnit as addOnboardingUnit, advanceUnit as advanceOnboardingUnit, flagUnit as flagOnboardingUnit, onboardingSnapshot, requestChangesOnUnit, submitStage as submitOnboardingStage, toggleTask as toggleOnboardingTask, updateScheduleItem } from "../pm/onboardingStore.js";
 import { torontoToday } from "../copilot/time.js";
 import { boardAction, boardOpen, boardPayload, TasksNotReady } from "../copilot/taskBoardApi.js";
@@ -132,6 +133,7 @@ import {
 import {
   createOrRefreshStaffInvite,
   deleteStaffUser,
+  deactivateStaffUser,
   listStaffUsers,
   publicStaffUser,
 } from "../pm/staffUserStore.js";
@@ -1537,7 +1539,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (resource === "onboarding") {
         const unit = str(body.unit_id);
-        if (op === "add_unit") return res.status(200).json({ unit_id: await addOnboardingUnit({ address: str(body.address), type: str(body.type), owner: str(body.owner), assignee: str(body.assignee) }, torontoToday()) });
+        if (op === "add_unit") {
+          const made = await addOnboardingUnit({ address: str(body.address), type: str(body.type), owner: str(body.owner), assignee: str(body.assignee) }, torontoToday());
+          return res.status(200).json({ unit_id: made.id, notified: made.notified });
+        }
         if (op === "toggle_task") { await toggleOnboardingTask(str(body.id), body.done === true); return res.status(200).json({ ok: true }); }
         if (op === "advance") { await advanceOnboardingUnit(unit, torontoToday()); return res.status(200).json({ ok: true }); }
         if (op === "flag") { await flagOnboardingUnit(unit); return res.status(200).json({ ok: true }); }
@@ -1545,8 +1550,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (op === "submit") { await submitOnboardingStage(unit); return res.status(200).json({ ok: true }); }
         if (op === "update_schedule") {
           const patch = (body.patch && typeof body.patch === "object" ? body.patch : {}) as Record<string, unknown>;
-          await updateScheduleItem(str(body.id), { ...(patch.who !== undefined ? { who: str(patch.who) } : {}), ...(patch.start ? { start: str(patch.start) } : {}), ...(patch.span ? { span: Number(patch.span) } : {}), ...(patch.time !== undefined ? { time: str(patch.time) } : {}), ...(patch.status ? { status: str(patch.status) } : {}) });
-          return res.status(200).json({ ok: true });
+          const notified = await updateScheduleItem(str(body.id), { ...(patch.who !== undefined ? { who: str(patch.who) } : {}), ...(patch.start ? { start: str(patch.start) } : {}), ...(patch.span ? { span: Number(patch.span) } : {}), ...(patch.time !== undefined ? { time: str(patch.time) } : {}), ...(patch.status ? { status: str(patch.status) } : {}) });
+          return res.status(200).json({ ok: true, notified });
         }
       }
 
@@ -1599,7 +1604,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
+      if (resource === "places") {
+        return handlePlacesOp({ action: str(body.action), input: str(body.input), placeId: str(body.placeId) }, res);
+      }
+
       if (resource === "staff_users") {
+        if (op === "deactivate") {
+          const id = str(body.id);
+          if (!id) return res.status(400).json({ error: "id required." });
+          const user = await deactivateStaffUser(id);
+          // They also leave the assignee roster. Tasks already given to the name keep it.
+          if (user) {
+            const roster = await listPmTeamMembers();
+            const hit = roster.find((m) => m.name.trim().toLowerCase() === user.display_name.trim().toLowerCase());
+            if (hit) await deletePmTeamMember(hit.id);
+          }
+          return res.status(200).json({ ok: true });
+        }
         if (op === "delete") {
           const id = str(body.id);
           if (!id) return res.status(400).json({ error: "id required." });

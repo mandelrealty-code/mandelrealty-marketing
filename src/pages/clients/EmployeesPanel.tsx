@@ -166,7 +166,7 @@ export function EmployeesPanel({
       pmGet<{ users: StaffRow[] }>("staff_users"),
       pmGet<{ entries: TimeRow[]; since: string }>("time_entries"),
     ]);
-    setUsers(staff.users ?? []);
+    setUsers((staff.users ?? []).filter((u) => u.active !== false));
     setWeekEntries(hours.entries ?? []);
     setWeekSince(hours.since || "");
   }, []);
@@ -600,7 +600,7 @@ export function EmployeesPanel({
           })}
         </ul>
       )}
-      <StaffTypes onError={onError} loginNames={users.map((u) => u.display_name)} />
+      <StaffTypes onError={onError} logins={users.map((u) => ({ id: u.id, name: u.display_name }))} onInvite={(n) => { setDisplayName(n); setEmail(""); setInviteOpen(true); }} onChanged={() => void loadList()} />
       {inviteSheet}
     </div>
   );
@@ -618,7 +618,7 @@ const STAFF_TYPE_LABEL: Record<string, string> = {
 type RosterRow = { id: string; name: string; staff_type: string };
 
 /** What kind of team member each person is. Onboarding hands out tasks by this, so it lists everyone on the roster. */
-function StaffTypes({ onError, loginNames }: { onError: (msg: string) => void; loginNames: string[] }) {
+function StaffTypes({ onError, logins, onInvite, onChanged }: { onError: (msg: string) => void; logins: { id: string; name: string }[]; onInvite: (name: string) => void; onChanged: () => void }) {
   const [rows, setRows] = useState<RosterRow[]>([]);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState("");
@@ -642,29 +642,36 @@ function StaffTypes({ onError, loginNames }: { onError: (msg: string) => void; l
     setSaving("");
   };
 
+  const loginOf = (name: string) => logins.find((l) => l.name.trim().toLowerCase() === name.trim().toLowerCase());
   const remove = async (r: RosterRow) => {
-    if (!window.confirm(`Remove ${r.name} from this list? Tasks already given to ${r.name} keep the name, and nothing else changes.`)) return;
+    const login = loginOf(r.name);
+    const text = login
+      ? `Remove ${r.name}? Their login stops working and they leave this list. Their hours and past tasks stay.`
+      : `Remove ${r.name} from this list? Tasks already given to ${r.name} keep the name.`;
+    if (!window.confirm(text)) return;
     setSaving(r.name);
     try {
-      await pmPost("team_members", { op: "delete", id: r.id });
+      if (login) await pmPost("staff_users", { op: "deactivate", id: login.id });
+      else await pmPost("team_members", { op: "delete", id: r.id });
       await load();
+      onChanged();
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Could not remove the name.");
+      onError(e instanceof Error ? e.message : "Could not remove them.");
     }
     setSaving("");
   };
-  const hasLogin = (name: string) => loginNames.some((n) => n.trim().toLowerCase() === name.trim().toLowerCase());
+  const hasLogin = (name: string) => Boolean(loginOf(name));
 
   return (
     <div className="mt-8 border-t border-white/8 px-4 pt-6 lg:px-0">
       <h2 className="text-[15px] font-semibold text-[#f5f5f5]">Team types</h2>
       <p className="mt-1 text-[13px] text-[#9a9590]">
-        What kind of team member each person is. Onboarding gives each task to someone of the type that usually does it.
+        What kind of team member each person is. Everyone except the partners needs a login. Onboarding gives each task to someone of the type that usually does it.
       </p>
       <ul className="mt-3 divide-y divide-white/8 border-t border-white/8">
         {rows.map((r) => (
           <li key={r.id} className="flex items-center justify-between gap-3 py-3">
-            <span className="text-[14px] text-[#f5f5f5]">{r.name}<span className="ml-2 text-[12px] text-[#6f6a65]">{hasLogin(r.name) ? "Has a login" : "No login"}</span></span>
+            <span className="text-[14px] text-[#f5f5f5]">{r.name}<span className="ml-2 text-[12px] text-[#6f6a65]">{hasLogin(r.name) ? "Has a login" : r.staff_type === "partner" ? "Partner, no login needed" : "Needs a login"}</span></span>
             <span className="flex items-center gap-2">
             <select
               aria-label={`Type for ${r.name}`}
@@ -677,9 +684,10 @@ function StaffTypes({ onError, loginNames }: { onError: (msg: string) => void; l
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
-            {hasLogin(r.name) ? null : (
-              <button type="button" disabled={saving === r.name} onClick={() => void remove(r)} className="rounded-lg border border-white/10 px-3 py-2 text-[13px] text-[#9a9590] hover:text-[#f5f5f5]">Remove</button>
-            )}
+            {!hasLogin(r.name) && r.staff_type !== "partner" ? (
+              <button type="button" onClick={() => onInvite(r.name)} className="rounded-lg border border-[#c4a35a]/40 px-3 py-2 text-[13px] font-semibold text-[#c4a35a]">Send login</button>
+            ) : null}
+            <button type="button" disabled={saving === r.name} onClick={() => void remove(r)} className="rounded-lg border border-white/10 px-3 py-2 text-[13px] text-[#9a9590] hover:text-[#f5f5f5]">Remove</button>
             </span>
           </li>
         ))}
@@ -691,13 +699,13 @@ function StaffTypes({ onError, loginNames }: { onError: (msg: string) => void; l
           const n = name.trim();
           if (!n) return;
           setName("");
-          void setType(n, "");
+          void setType(n, "partner");
         }}
       >
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Add a name that has no login, for example a partner"
+          placeholder="Add a partner. Only partners can go without a login"
           aria-label="Add a team member"
           className="flex-1 rounded-lg border border-white/10 bg-[#1c1c1c] px-3 py-2 text-[14px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
         />

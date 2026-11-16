@@ -16,6 +16,8 @@ const FONT = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;70
 export default function OnboardingApp({ onModeChange }: { onModeChange: (mode: AdminProductMode) => void }) {
   const holder = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+  const warnedPlaces = useRef(false);
   const [ready, setReady] = useState(false);
   const modeRef = useRef(onModeChange);
   modeRef.current = onModeChange;
@@ -47,6 +49,23 @@ export default function OnboardingApp({ onModeChange }: { onModeChange: (mode: A
           act: (op: string, payload: Record<string, unknown>) => pmPost<Data>("onboarding", { op, ...payload }),
           go: (mode: string) => modeRef.current(mode as AdminProductMode),
           onError: (e: unknown) => setError(e instanceof Error ? e.message : "That did not work."),
+          suggest: async (q: string) => {
+            const r = await pmPost<{ predictions?: { description: string }[]; errorCode?: string }>("places", { action: "autocomplete", input: q });
+            if (r.errorCode === "MISSING_GOOGLE_MAPS_API_KEY" && !warnedPlaces.current) {
+              warnedPlaces.current = true;
+              setNote("Address suggestions are not set up yet: GOOGLE_MAPS_API_KEY is missing on the server. You can still type the address.");
+            }
+            return r.predictions ?? [];
+          },
+          onNote: (res: { notified?: { emailed: string[]; failed: { name: string; why: string }[]; noLogin: string[] } } | null) => {
+            const n = res?.notified;
+            if (!n) return;
+            const parts: string[] = [];
+            if (n.emailed.length) parts.push(`Emailed ${n.emailed.join(", ")} about their tasks.`);
+            if (n.noLogin.length) parts.push(`No employee login for ${n.noLogin.join(", ")}, so no email was sent. Add a login under OPS, Team.`);
+            for (const f of n.failed) parts.push(`The email to ${f.name} did not send: ${f.why}`);
+            if (parts.length) setNote(parts.join(" "));
+          },
         };
         mounted = mountOnboarding(root, host);
         setReady(true);
@@ -63,6 +82,12 @@ export default function OnboardingApp({ onModeChange }: { onModeChange: (mode: A
       {error ? (
         <div role="alert" style={{ padding: "12px 20px", background: "#fdf3e3", color: "#7a4b00", fontFamily: "Inter, system-ui, sans-serif", fontSize: 14 }}>
           {error}
+        </div>
+      ) : null}
+      {note ? (
+        <div role="status" style={{ padding: "12px 20px", background: "#f2f2ef", color: "#18181b", fontFamily: "Inter, system-ui, sans-serif", fontSize: 14, display: "flex", gap: 12, justifyContent: "space-between" }}>
+          <span>{note}</span>
+          <button type="button" onClick={() => setNote("")} style={{ border: 0, background: "none", cursor: "pointer", color: "#55554f", fontSize: 13 }}>Dismiss</button>
         </div>
       ) : null}
       {!ready && !error ? <div style={{ padding: 24, fontFamily: "Inter, system-ui, sans-serif", color: "#6b6b66" }}>Loading Onboarding…</div> : null}

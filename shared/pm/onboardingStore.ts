@@ -1,6 +1,8 @@
 /** The onboarding pipeline in Supabase: units, their seven stages, their tasks and the schedule. Run supabase/onboarding_v1.sql first. */
 
 import { getSupabaseAdmin } from "../supabase.js";
+import { sendTaskAssignedEmail, type AssignedTask } from "../staffEmails.js";
+import { listStaffUsers } from "./staffUserStore.js";
 import { listPmTeamMembers } from "./teamStore.js";
 import { STAGES, advance, allTasksDone, assigneeFor, dueFor, mondayOf, peopleFrom, requestChanges, scheduleFromTasks, toggleFlag, type SchedItem, type Stage, type StageStatus } from "./onboardingLogic.js";
 
@@ -15,6 +17,25 @@ const missing = (e: { message?: string } | null) =>
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim());
 const daysBetween = (a: string, b: string) => Math.max(0, Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 86_400_000));
+
+export type Notified = { emailed: string[]; failed: { name: string; why: string }[]; noLogin: string[] };
+
+const prettyDue = (iso: string) => (iso ? new Date(iso + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "");
+
+/** One email per person listing the tasks just given to them. A name with no employee login cannot be emailed, and is reported. */
+export async function notifyAssignees(unit: string, byPerson: Record<string, AssignedTask[]>): Promise<Notified> {
+  const out: Notified = { emailed: [], failed: [], noLogin: [] };
+  const staff = (await listStaffUsers().catch(() => [])).filter((u) => u.active);
+  for (const [name, tasks] of Object.entries(byPerson)) {
+    if (!name || !tasks.length) continue;
+    const user = staff.find((u) => u.display_name.trim().toLowerCase() === name.trim().toLowerCase());
+    if (!user || !user.email) { out.noLogin.push(name); continue; }
+    const r = await sendTaskAssignedEmail({ to: user.email, firstName: user.first_name || name.split(" ")[0] || "there", slug: user.slug, unit, tasks: tasks.map((t) => ({ label: t.label, due: prettyDue(t.due) })) }).catch((e) => ({ ok: false, message: e instanceof Error ? e.message : "Email failed" }));
+    if (r.ok) out.emailed.push(name);
+    else out.failed.push({ name, why: r.message || "Email failed" });
+  }
+  return out;
+}
 
 export type OnboardingTask = { id: string; label: string; who: string; due: string; done: boolean };
 export type OnboardingSnapshot = {
@@ -55,10 +76,13 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
   const handScheduled: SchedItem[] = ((sched.data ?? []) as Record<string, unknown>[]).map((r) => ({
     id: String(r.id), unit: String(r.unit_id), who: str(r.assignee), stage: str(r.stage), task: str(r.task), start: String(r.start_on), span: Number(r.span_days) || 1, time: str(r.start_time), status: str(r.status) as SchedItem["status"],
   }));
+  const logins = new Set((await listStaffUsers().catch(() => [])).filter((u) => u.active).map((u) => u.display_name.trim().toLowerCase()));
+  // Only people who can be given work: a partner, or an employee with a login.
+  const assignable = roster.filter((r) => r.staff_type === "partner" || logins.has(r.name.trim().toLowerCase()));
   const rosterRows = roster.map((r) => ({ name: r.name, staff_type: r.staff_type }));
   return {
     units: outUnits, tasks: byUnit, sched: [...handScheduled, ...scheduleFromTasks(taskRows, statusByUnit, today)],
-    team: roster.map((r) => r.name), people: peopleFrom(rosterRows), today, base: mondayOf(today),
+    team: assignable.map((r) => r.name), people: peopleFrom(rosterRows), today, base: mondayOf(today),
   };
 }
 
@@ -76,7 +100,7 @@ async function saveStages(unitId: string, stages: StageStatus[]) {
   if (error) throw missing(error);
 }
 
-export async function addUnit(input: { address: string; type: string; owner: string; assignee: string }, today: string): Promise<string> {
+export async function addUnit(input: { address: string; type: string; owner: string; assignee: string }, today: string): Promise<{ id: string; notified: Notified }> {
   const address = str(input.address);
   if (!address) throw new Error("Address is required.");
   const roster = (await listPmTeamMembers()).map((r) => ({ name: r.name, staff_type: r.staff_type }));
@@ -96,7 +120,9 @@ export async function addUnit(input: { address: string; type: string; owner: str
     const { error: ie } = await db().from("onboarding_tasks").insert(rows);
     if (ie) throw missing(ie);
   }
-  return id;
+  const byPerson: Record<string, AssignedTask[]> = {};
+  for (const r of rows) (byPerson[r.assignee] ??= []).push({ label: r.label, due: r.due_on });
+  return { id, notified: await notifyAssignees(address, byPerson) };
 }
 
 export async function toggleTask(id: string, done: boolean) {
@@ -135,8 +161,9 @@ export async function submitStage(unitId: string) {
 }
 
 /** An edit made on the schedule: a task-derived item changes its task; a hand-scheduled one changes its own row. */
-export async function updateScheduleItem(id: string, patch: { who?: string; start?: string; span?: number; time?: string; status?: string }) {
+export async function updateScheduleItem(id: string, patch: { who?: string; start?: string; span?: number; time?: string; status?: string }): Promise<Notified | null> {
   if (id.startsWith("t:")) {
+    const { data: before } = await db().from("onboarding_tasks").select("assignee, label, due_on, unit_id").eq("id", id.slice(2)).maybeSingle();
     const change: Record<string, unknown> = {};
     if (patch.who !== undefined) change.assignee = str(patch.who);
     if (patch.start) change.due_on = str(patch.start);
@@ -144,10 +171,15 @@ export async function updateScheduleItem(id: string, patch: { who?: string; star
       change.done = patch.status === "Done";
       change.done_at = patch.status === "Done" ? new Date().toISOString() : null;
     }
-    if (!Object.keys(change).length) return;
+    if (!Object.keys(change).length) return null;
     const { error } = await db().from("onboarding_tasks").update(change).eq("id", id.slice(2));
     if (error) throw missing(error);
-    return;
+    const old = before as { assignee: string; label: string; due_on: string | null; unit_id: string } | null;
+    if (old && change.assignee !== undefined && str(change.assignee) && str(change.assignee) !== old.assignee) {
+      const { data: unit } = await db().from("onboarding_units").select("address").eq("id", old.unit_id).maybeSingle();
+      return notifyAssignees(str((unit as { address?: string } | null)?.address) || "a unit", { [str(change.assignee)]: [{ label: old.label, due: str(change.start) || old.due_on || "" }] });
+    }
+    return null;
   }
   const change: Record<string, unknown> = {};
   if (patch.who !== undefined) change.assignee = str(patch.who);
@@ -155,7 +187,8 @@ export async function updateScheduleItem(id: string, patch: { who?: string; star
   if (patch.span) change.span_days = Math.max(1, Math.min(14, Math.floor(patch.span)));
   if (patch.time !== undefined) change.start_time = str(patch.time);
   if (patch.status) change.status = str(patch.status);
-  if (!Object.keys(change).length) return;
+  if (!Object.keys(change).length) return null;
   const { error } = await db().from("onboarding_schedule").update(change).eq("id", id);
   if (error) throw missing(error);
+  return null;
 }
