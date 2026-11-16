@@ -600,7 +600,7 @@ export function EmployeesPanel({
           })}
         </ul>
       )}
-      <StaffTypes onError={onError} />
+      <StaffTypes onError={onError} loginNames={users.map((u) => u.display_name)} />
       {inviteSheet}
     </div>
   );
@@ -618,7 +618,7 @@ const STAFF_TYPE_LABEL: Record<string, string> = {
 type RosterRow = { id: string; name: string; staff_type: string };
 
 /** What kind of team member each person is. Onboarding hands out tasks by this, so it lists everyone on the roster. */
-function StaffTypes({ onError }: { onError: (msg: string) => void }) {
+function StaffTypes({ onError, loginNames }: { onError: (msg: string) => void; loginNames: string[] }) {
   const [rows, setRows] = useState<RosterRow[]>([]);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState("");
@@ -642,6 +642,19 @@ function StaffTypes({ onError }: { onError: (msg: string) => void }) {
     setSaving("");
   };
 
+  const remove = async (r: RosterRow) => {
+    if (!window.confirm(`Remove ${r.name} from this list? Tasks already given to ${r.name} keep the name, and nothing else changes.`)) return;
+    setSaving(r.name);
+    try {
+      await pmPost("team_members", { op: "delete", id: r.id });
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not remove the name.");
+    }
+    setSaving("");
+  };
+  const hasLogin = (name: string) => loginNames.some((n) => n.trim().toLowerCase() === name.trim().toLowerCase());
+
   return (
     <div className="mt-8 border-t border-white/8 px-4 pt-6 lg:px-0">
       <h2 className="text-[15px] font-semibold text-[#f5f5f5]">Team types</h2>
@@ -651,7 +664,8 @@ function StaffTypes({ onError }: { onError: (msg: string) => void }) {
       <ul className="mt-3 divide-y divide-white/8 border-t border-white/8">
         {rows.map((r) => (
           <li key={r.id} className="flex items-center justify-between gap-3 py-3">
-            <span className="text-[14px] text-[#f5f5f5]">{r.name}</span>
+            <span className="text-[14px] text-[#f5f5f5]">{r.name}<span className="ml-2 text-[12px] text-[#6f6a65]">{hasLogin(r.name) ? "Has a login" : "No login"}</span></span>
+            <span className="flex items-center gap-2">
             <select
               aria-label={`Type for ${r.name}`}
               value={r.staff_type}
@@ -663,6 +677,10 @@ function StaffTypes({ onError }: { onError: (msg: string) => void }) {
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
+            {hasLogin(r.name) ? null : (
+              <button type="button" disabled={saving === r.name} onClick={() => void remove(r)} className="rounded-lg border border-white/10 px-3 py-2 text-[13px] text-[#9a9590] hover:text-[#f5f5f5]">Remove</button>
+            )}
+            </span>
           </li>
         ))}
       </ul>
