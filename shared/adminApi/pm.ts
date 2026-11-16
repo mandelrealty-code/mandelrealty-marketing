@@ -12,6 +12,7 @@ import {
   skipStage as skipOnboardingStage,
   submitStage as submitOnboardingStage,
   toggleTask as toggleOnboardingTask,
+  logHistory as logOnboardingHistory,
   updateScheduleItem,
   updateUnitFields as updateOnboardingUnitFields,
   upsertHandoff as upsertOnboardingHandoff,
@@ -1629,12 +1630,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             "existing_airbnb_url",
             "building_name",
             "unit_floor",
+            "building_manager",
+            "elevator_booking_required",
+            "moving_hours",
+            "coi_required",
+            "building_notes",
+            "assignee",
           ];
           const patch: Record<string, unknown> = {};
           for (const k of allowed) {
             if (body[k] !== undefined) patch[k] = body[k];
           }
           if (Object.keys(patch).length) await updateOnboardingUnitFields(unit, patch);
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "add_note") {
+          const text = str(body.text);
+          if (!unit || !text) return res.status(400).json({ error: "unit_id and text required." });
+          const stage = str(body.stage);
+          await logOnboardingHistory(unit, "Note", stage ? `${stage}: ${text}` : text, "Admin");
           return res.status(200).json({ ok: true });
         }
         if (op === "update_schedule") {
