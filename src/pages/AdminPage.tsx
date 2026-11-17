@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, startTransition, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   LEAD_STATUSES,
@@ -615,7 +615,10 @@ export function AdminPage() {
   }, [loadLeads, loadFollowups, searchDebounced, selectedId]);
 
   useEffect(() => {
-    document.title = "CRM | Mandel Realty Group";
+    /* Mode apps set their own tab titles; only pin a CRM default for the legacy CRM chrome. */
+    if (!CRM_HUB && route.mode === "crm") {
+      document.title = "CRM | Mandel Realty Group";
+    }
     const robots = document.querySelector('meta[name="robots"]');
     if (robots) robots.setAttribute("content", "noindex, nofollow");
     else {
@@ -913,11 +916,13 @@ export function AdminPage() {
   };
   const crmTab = tab;
 
+  /* Keep productMode in lockstep with setRoute so mode switches never paint a blank frame
+     (route updated in a transition while productMode still pointed at the previous app). */
   const switchProduct = (mode: AdminProductMode, patch?: Partial<AdminRoute>) => {
     writeStoredAdminMode(mode);
-    startTransition(() => {
-      setRoute({ ...emptyAdminRoute(mode), ...patch, mode }, { push: true });
-    });
+    const next = { ...emptyAdminRoute(mode), ...patch, mode };
+    setProductMode(mode);
+    setRoute(next, { push: true });
   };
 
   /* The CRM and Onboarding link both ways: a lead opens its unit, a sold lead starts onboarding, a unit opens its lead. */

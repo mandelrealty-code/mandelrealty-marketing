@@ -585,7 +585,7 @@ export function PortalCard({
               <i key={x} className={idx > 0 && i <= idx ? "on" : undefined} />
             ))}
           </div>
-          <div className="tracklab">
+          <div className="tracklab tracklab-readable">
             {["Not invited", "Invited", "Opened", "Signed", "Portal live"].map((x, i) => (
               <span key={x} className={i === idx ? "on" : undefined}>
                 {x}

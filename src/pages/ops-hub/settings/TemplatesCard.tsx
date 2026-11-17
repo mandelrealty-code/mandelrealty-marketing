@@ -249,37 +249,42 @@ export function TemplatesCard({
             <span className="meta">Upload a PDF to use it when sending a contract from Clients.</span>
           </div>
         ) : (
-          templates.map((t) => (
-            <div key={t.id} className="lrow2 tm-tpl-row">
-              <span className="kic">
-                <Icon name="file" className="i sm" />
-              </span>
-              <div className="t">
-                <b>{t.label}</b>
-                <span className="meta">
-                  {t.filename}
-                  {fmtDate(t.updated_at) ? ` · Uploaded ${fmtDate(t.updated_at)}` : ""}
+          templates.map((t) => {
+            const title = t.filename || t.label;
+            return (
+              <div key={t.id} className="lrow2 tm-tpl-row">
+                <span className="kic">
+                  <Icon name="file" className="i sm" />
+                </span>
+                <div className="t">
+                  <b>{title}</b>
+                  <span className="meta">
+                    {t.label && t.label !== title ? `${t.label} · ` : ""}
+                    {fmtDate(t.updated_at) ? `Uploaded ${fmtDate(t.updated_at)}` : ""}
+                  </span>
+                </div>
+                <span className="tm-tpl-acts">
+                  <button type="button" className="btn sm" onClick={() => void openFile(t.id)}>
+                    View
+                  </button>
+                  <button type="button" className="btn sm" disabled={busy} onClick={() => void archive(t)}>
+                    Archive
+                  </button>
+                  <button
+                    type="button"
+                    className="btn sm"
+                    title={`Delete ${title}`}
+                    aria-label={`Delete ${title}`}
+                    disabled={busy}
+                    onClick={() => setDeleting(t)}
+                  >
+                    <Icon name="trash" className="i xs" />
+                    Delete
+                  </button>
                 </span>
               </div>
-              <span className="tm-tpl-acts">
-                <button type="button" className="btn sm" onClick={() => void openFile(t.id)}>
-                  View
-                </button>
-                <button type="button" className="btn sm" disabled={busy} onClick={() => void archive(t)}>
-                  Archive
-                </button>
-                <button
-                  type="button"
-                  className="iconbtn"
-                  aria-label={`Delete ${t.label}`}
-                  disabled={busy}
-                  onClick={() => setDeleting(t)}
-                >
-                  <Icon name="trash" className="i sm" />
-                </button>
-              </span>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
       {upload ? <UploadForm phone={phone} busy={busy} onClose={() => setUpload(false)} onSave={(l, f) => void create(l, f)} /> : null}
@@ -287,7 +292,7 @@ export function TemplatesCard({
         <ConfirmModal
           phone={phone}
           busy={busy}
-          title={`Delete ${deleting.label}?`}
+          title={`Delete ${deleting.filename || deleting.label}?`}
           body="The template PDF is removed. Contracts already sent with it are not affected."
           confirmLabel="Delete template"
           onCancel={() => setDeleting(null)}

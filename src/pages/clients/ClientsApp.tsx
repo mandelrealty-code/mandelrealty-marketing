@@ -2453,15 +2453,19 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
     onModeChange(mode, patch);
   };
 
+  /* Prefer the URL tab so a lagged local `tab` state never leaves HubShell with null children
+     (blank white main) between navigateHub and the appliedOpsKey effect. */
+  const hubTab: Tab = route.mode === "ops" ? route.opsTab : tab;
+
   /* Persistent OPS shell: one HubShell for every hub tab so the sidebar never remounts,
      crunches, or flashes white between SOPs / Clients / Properties / Revenue / Team / Settings. */
   const opsHubTab =
-    (SOPS_HUB && tab === "sops") ||
-    (CLIENTS_HUB && tab === "clients") ||
-    (PROPERTIES_HUB && tab === "properties") ||
-    (REVENUE_HUB && tab === "month") ||
-    (TEAM_HUB && tab === "employees") ||
-    (SETTINGS_HUB && tab === "settings");
+    (SOPS_HUB && hubTab === "sops") ||
+    (CLIENTS_HUB && hubTab === "clients") ||
+    (PROPERTIES_HUB && hubTab === "properties") ||
+    (REVENUE_HUB && hubTab === "month") ||
+    (TEAM_HUB && hubTab === "employees") ||
+    (SETTINGS_HUB && hubTab === "settings");
 
   if (opsHubTab) {
     const hubHost = { route, setRoute, onModeChange: hubModeChange };
@@ -2469,11 +2473,11 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
       <>
         <div className={`mrgc${hubPhone ? " is-phone" : ""}`}>
           <HubShell
-            active={hubActiveFromOpsTab(tab)}
+            active={hubActiveFromOpsTab(hubTab)}
             onNavigate={(id) => navigateHub(hubHost, id)}
             phone={hubPhone}
           >
-            {SOPS_HUB && tab === "sops" ? (
+            {SOPS_HUB && hubTab === "sops" ? (
               <SopsHubApp
                 embedded
                 route={route}
@@ -2486,19 +2490,19 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
                 }}
               />
             ) : null}
-            {CLIENTS_HUB && tab === "clients" ? (
+            {CLIENTS_HUB && hubTab === "clients" ? (
               <ClientsHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
             ) : null}
-            {PROPERTIES_HUB && tab === "properties" ? (
+            {PROPERTIES_HUB && hubTab === "properties" ? (
               <PropertiesHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
             ) : null}
-            {REVENUE_HUB && tab === "month" ? (
+            {REVENUE_HUB && hubTab === "month" ? (
               <RevenueHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
             ) : null}
-            {TEAM_HUB && tab === "employees" ? (
+            {TEAM_HUB && hubTab === "employees" ? (
               <TeamHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
             ) : null}
-            {SETTINGS_HUB && tab === "settings" ? (
+            {SETTINGS_HUB && hubTab === "settings" ? (
               <SettingsHubApp
                 embedded
                 route={route}

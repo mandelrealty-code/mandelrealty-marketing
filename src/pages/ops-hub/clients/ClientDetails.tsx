@@ -92,49 +92,39 @@ export function ClientDetails({
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
             />
           </div>
-          <div
-            className="field full"
-            style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}
-          >
-            <div style={{ flex: 1 }}>
-              <label>Status</label>
-              <div className="aiseg" style={{ maxWidth: phone ? "none" : 260 }}>
-                <button
-                  type="button"
-                  className={form.status === "active" ? "on" : undefined}
-                  disabled={busy}
-                  onClick={() => setForm({ ...form, status: "active" })}
-                >
-                  Active
-                </button>
-                <button
-                  type="button"
-                  className={form.status === "paused" ? "on" : undefined}
-                  disabled={busy}
-                  onClick={() => setForm({ ...form, status: "paused" })}
-                >
-                  Paused
-                </button>
-              </div>
-            </div>
-            {phone ? null : (
-              <button type="button" className="btn primary" disabled={busy || !form.name.trim()} onClick={onSave}>
-                {saving ? "Saving…" : "Save"}
+          <div className="field full">
+            <label>Status</label>
+            <div className="aiseg" style={{ maxWidth: phone ? "none" : 260 }}>
+              <button
+                type="button"
+                className={form.status === "active" ? "on" : undefined}
+                disabled={busy}
+                onClick={() => setForm({ ...form, status: "active" })}
+              >
+                Active
               </button>
-            )}
+              <button
+                type="button"
+                className={form.status === "paused" ? "on" : undefined}
+                disabled={busy}
+                onClick={() => setForm({ ...form, status: "paused" })}
+              >
+                Paused
+              </button>
+            </div>
           </div>
         </div>
-        {phone ? (
+        <div className={`form-acts${phone ? " phone" : ""}`}>
           <button
             type="button"
             className="btn primary"
-            style={{ width: "100%", height: 44, marginTop: 14 }}
+            style={phone ? { width: "100%", height: 44 } : undefined}
             disabled={busy || !form.name.trim()}
             onClick={onSave}
           >
             {saving ? "Saving…" : "Save"}
           </button>
-        ) : null}
+        </div>
       </div>
     </div>
   );
@@ -262,7 +252,7 @@ export function ClientDetails({
       </div>
       <div className="content" style={{ overflow: "auto" }}>
         {banner}
-        <div className="cgrid">
+        <div className="cgrid fill-grid">
           <div className="col">
             {detailsCard}
             {linksCard}

@@ -53,6 +53,10 @@ export function ClientsHubApp({ route, setRoute, onModeChange, embedded = false 
   }, []);
 
   useEffect(() => {
+    document.title = "Clients | Mandel Realty Group";
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(t);

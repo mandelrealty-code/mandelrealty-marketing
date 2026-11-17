@@ -78,6 +78,10 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
   }, []);
 
   useEffect(() => {
+    document.title = "Settings | Mandel Realty Group";
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(t);
@@ -334,7 +338,7 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
       </div>
       <div className="content" style={{ paddingTop: 16, overflow: "auto" }}>
         {banner}
-        <div className="pgrid2">
+        <div className="pgrid2 fill-grid">
           <div className="col">
             {defaultsCard}
             {hospCard}

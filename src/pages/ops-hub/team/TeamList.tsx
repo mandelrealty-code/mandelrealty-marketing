@@ -278,14 +278,14 @@ export function TeamList({
   ) : (
     <>
       <div className="card" style={{ overflow: "hidden" }}>
-        <table>
+        <table className="hub-table team-logins-table">
           <thead>
             <tr>
-              <th>Staff member</th>
-              <th className="tm-portal-col">Portal</th>
-              <th>Last sign-in</th>
-              <th className="r">Hours this week</th>
-              <th style={{ width: 44 }} />
+              <th className="col-grow">Staff member</th>
+              <th className="tm-portal-col col-portal">Portal</th>
+              <th className="col-signin">Last sign-in</th>
+              <th className="r col-hours">Hours this week</th>
+              <th className="col-chev" />
             </tr>
           </thead>
           <tbody>

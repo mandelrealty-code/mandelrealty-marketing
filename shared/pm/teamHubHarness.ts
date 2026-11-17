@@ -142,12 +142,18 @@ if (!settingsApp.includes("ConnectHospitableSheet")) {
   fail("Settings must reuse ConnectHospitableSheet from properties");
 }
 
-/* CRM Settings stays distinct from OPS Settings */
-if (!crmEngine.includes("CRM Settings")) {
-  fail("CRM sidebar Settings must be labelled CRM Settings to distinguish from OPS Settings");
+/* Sidebar Settings → OPS; CRM Settings is its own Jump-to / tablist entry */
+if (!crmEngine.includes("label: 'Settings'")) {
+  fail("CRM sidebar footer must be labelled Settings (OPS settings)");
 }
-if (!/id === 'settings'[\s\S]{0,80}setTab\('settings'\)/.test(crmEngine)) {
-  fail("CRM Settings must still open the CRM settings tab, not /ops/settings");
+if (!crmEngine.includes("'CRM Settings'")) {
+  fail("CRM Settings must remain a distinct label in the CRM tablist / Jump to");
+}
+if (!/id === 'settings'[\s\S]{0,120}opsTab:\s*'settings'/.test(crmEngine)) {
+  fail("CRM sidebar Settings must open /ops/settings via host.go");
+}
+if (!crmEngine.includes("go:ops:settings") || !crmEngine.includes("tab:settings")) {
+  fail("Jump to must expose both Settings (ops) and CRM Settings (tab)");
 }
 
 console.log("team-hub-harness passed");

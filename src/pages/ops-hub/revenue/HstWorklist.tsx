@@ -8,6 +8,7 @@ import {
 } from "../../clients/monthCloseText";
 import { Icon } from "../clients/icons";
 import { Avatar, ErrorBanner, MonthPicker } from "../clients/uiBits";
+import { formatListingName } from "../properties/propertyBits";
 import { CopyBtn, copyText, useCopied } from "./revenueBits";
 
 export function HstWorklist({
@@ -186,7 +187,7 @@ export function HstWorklist({
                             onClick={() => onOpenProperty(u.property_id)}
                           >
                             <div className="t">
-                              <b>{u.property_name}</b>
+                              <b>{formatListingName(u.property_name)}</b>
                               <span className="meta">
                                 Fee {feeOf(u.mrg_commission_cents ?? unitMrgTake(u))} · HST {feeOf(u.hst_invoice_cents)}
                               </span>
@@ -340,7 +341,7 @@ export function HstWorklist({
                               <Icon name="building" className="i sm" />
                             </span>
                             <div className="t">
-                              <b>{u.property_name}</b>
+                              <b>{formatListingName(u.property_name)}</b>
                               <span className="meta">Opens the property</span>
                             </div>
                             {narrow ? null : (

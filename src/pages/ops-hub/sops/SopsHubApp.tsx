@@ -75,6 +75,10 @@ export function SopsHubApp({ route, setRoute, onModeChange, onOpenVideoStudio, r
   }, []);
 
   useEffect(() => {
+    document.title = "SOPs | Mandel Realty Group";
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(t);

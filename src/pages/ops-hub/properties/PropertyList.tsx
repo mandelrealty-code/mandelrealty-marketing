@@ -1,7 +1,16 @@
 import type { ClientRow, PropertyRow } from "../../clients/api";
 import { Icon } from "../clients/icons";
 import { ErrorBanner, formatHeadDate } from "../clients/uiBits";
-import { ActiveChip, CoverThumb, DealPill, LinkedChip, SpanBtn, isActive, isLinked } from "./propertyBits";
+import {
+  ActiveChip,
+  CoverThumb,
+  DealPill,
+  LinkedChip,
+  SpanBtn,
+  formatListingName,
+  isActive,
+  isLinked,
+} from "./propertyBits";
 
 export type StatusFilter = "all" | "active" | "paused";
 
@@ -174,7 +183,7 @@ export function PropertyList({
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="l1">
-                          <b>{p.name}</b>
+                          <b>{formatListingName(p.name)}</b>
                           <Icon name="next" className="i sm" />
                         </div>
                         <span className="sub" style={{ margin: "1px 0 2px" }}>
@@ -307,7 +316,7 @@ export function PropertyList({
                               <CoverThumb url={p.cover_image_url} width={64} height={44} />
                             </td>
                             <td>
-                              <b style={{ color: "var(--ink)", display: "block" }}>{p.name}</b>
+                              <b style={{ color: "var(--ink)", display: "block" }}>{formatListingName(p.name)}</b>
                               <span className="meta" style={{ fontSize: "var(--t-sm)" }}>
                                 {p.address || "No address"}
                               </span>

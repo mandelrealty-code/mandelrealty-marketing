@@ -67,6 +67,10 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
   }, []);
 
   useEffect(() => {
+    document.title = "Team | Mandel Realty Group";
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     // Invite toasts carry the temporary password, so they stay up longer.
     const t = window.setTimeout(() => setToast(""), toast.length > 60 ? 9000 : 3200);

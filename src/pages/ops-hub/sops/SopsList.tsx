@@ -37,17 +37,25 @@ function rowKey(sop: SopItem): string {
 }
 
 function ImportButton({ onImport, small }: { onImport: (file: File) => void; small?: boolean }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const onChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) onImport(file);
     e.target.value = "";
   };
   return (
-    <label className={`btn${small ? " sm" : ""} sp-import`} style={small ? { height: 40 } : undefined}>
-      <Icon name="import" className={small ? "i xs" : "i sm"} />
-      Import backup
-      <input type="file" accept="application/json" onChange={onChange} />
-    </label>
+    <>
+      <button
+        type="button"
+        className={`btn${small ? " sm" : ""}`}
+        style={small ? { height: 40 } : undefined}
+        onClick={() => inputRef.current?.click()}
+      >
+        <Icon name="import" className={small ? "i xs" : "i sm"} />
+        Import backup
+      </button>
+      <input ref={inputRef} type="file" accept="application/json" hidden onChange={onChange} />
+    </>
   );
 }
 
@@ -289,13 +297,13 @@ export function SopsList(p: ListProps) {
     </>
   ) : (
     <>
-      <div className="listhead">
+      <div className="listhead sp-listhead">
         <span>
           <b style={{ color: "var(--ink)" }}>
             {filtered.length} {filtered.length === 1 ? "SOP" : "SOPs"}
           </b>
+          <span className="meta sp-copy-hint"> · Copy Link copies the public link</span>
         </span>
-        <span className="meta">Copy Link copies the public link</span>
       </div>
       <div className="card" style={{ overflow: "hidden" }}>
         <table className="sopt">
@@ -314,15 +322,17 @@ export function SopsList(p: ListProps) {
               return (
                 <tr key={rowKey(sop)}>
                   <td className="soptitle">
-                    <b>
-                      {sop.title || "Untitled SOP"}
-                      {!sop.is_published ? <span className="gapchip">Draft</span> : null}
-                      <VideoTag sop={sop} />
-                    </b>
-                    <span className="meta" style={{ fontSize: "var(--t-sm)" }}>
-                      {categoryLabel(sop.category)}
-                      <span className="sp-upd-fold"> · {fmtUpdated(sop.updated_at)}</span>
-                    </span>
+                    <button type="button" className="soptitle-btn" onClick={() => p.onEdit(sop)}>
+                      <b>
+                        {sop.title || "Untitled SOP"}
+                        {!sop.is_published ? <span className="gapchip">Draft</span> : null}
+                        <VideoTag sop={sop} />
+                      </b>
+                      <span className="meta" style={{ fontSize: "var(--t-sm)" }}>
+                        {categoryLabel(sop.category)}
+                        <span className="sp-upd-fold"> · {fmtUpdated(sop.updated_at)}</span>
+                      </span>
+                    </button>
                   </td>
                   <td>
                     <RoleChip role={sop.target_role} />
@@ -406,8 +416,9 @@ export function SopsList(p: ListProps) {
       <div className="head">
         <div>
           <div className="date">{formatHeadDate()}</div>
-          <h1 style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-            SOPs <Counts stats={p.stats} />
+          <h1 className="sp-heading">
+            SOPs
+            <Counts stats={p.stats} />
           </h1>
         </div>
         <div className="headacts">

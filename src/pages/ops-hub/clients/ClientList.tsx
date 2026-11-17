@@ -129,14 +129,14 @@ export function ClientList({
               <span className="meta">Preview opens the host portal as that client sees it, in a new tab</span>
             </div>
             <div className="card list-table" style={{ overflow: "hidden" }}>
-              <table>
+              <table className="hub-table clients-table">
                 <thead>
                   <tr>
-                    <th>Client</th>
-                    <th>Units</th>
-                    <th>Status</th>
-                    <th className="r">Host portal</th>
-                    <th style={{ width: 44 }} />
+                    <th className="col-grow">Client</th>
+                    <th className="col-units">Units</th>
+                    <th className="col-status">Status</th>
+                    <th className="r col-portal-btn">Host portal</th>
+                    <th className="col-chev" />
                   </tr>
                 </thead>
                 <tbody>

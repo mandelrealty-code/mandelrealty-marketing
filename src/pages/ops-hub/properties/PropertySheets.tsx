@@ -3,7 +3,7 @@ import type { ClientRow, PropertyDetail } from "../../clients/api";
 import { formatDisplayDate, todayInputValue } from "../../clients/format";
 import { Icon } from "../clients/icons";
 import { Avatar } from "../clients/uiBits";
-import { CoverThumb, pctLabel } from "./propertyBits";
+import { CoverThumb, formatListingName, pctLabel } from "./propertyBits";
 
 export type HospitableUnit = { id: string; name: string; address: string };
 
@@ -383,7 +383,7 @@ export function ImportSheet({
                         <span className={`radio${on ? " on" : ""}`} />
                         <CoverThumb width={44} height={32} radius={6} />
                         <div className="t">
-                          <b>{u.name || "Untitled listing"}</b>
+                          <b>{formatListingName(u.name || "Untitled listing")}</b>
                           <span className="meta">{u.address || "No address"}</span>
                         </div>
                         {done ? <span className="meta">Already imported</span> : null}
@@ -932,7 +932,7 @@ export function AppLinksSheet({
               <option value="">Pick from Hospitable…</option>
               {hospitableUnits.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.name}
+                  {formatListingName(u.name)}
                   {u.address ? `, ${u.address}` : ""}
                 </option>
               ))}

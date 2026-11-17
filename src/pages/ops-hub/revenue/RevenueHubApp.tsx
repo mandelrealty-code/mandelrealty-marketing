@@ -94,6 +94,10 @@ export function RevenueHubApp({ route, setRoute, onModeChange, embedded = false 
   }, []);
 
   useEffect(() => {
+    document.title = "Revenue | Mandel Realty Group";
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(t);

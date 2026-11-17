@@ -6,7 +6,16 @@ import { Icon } from "../clients/icons";
 import { Chip, ErrorBanner } from "../clients/uiBits";
 import { BillingCard, type TermsPatch } from "./BillingCard";
 import { EarningsCards } from "./EarningsCard";
-import { ActiveChip, CoverThumb, LinkedChip, copyText, dealPill, isActive, isLinked } from "./propertyBits";
+import {
+  ActiveChip,
+  CoverThumb,
+  LinkedChip,
+  copyText,
+  dealPill,
+  formatListingName,
+  isActive,
+  isLinked,
+} from "./propertyBits";
 
 type AppRow = {
   key: string;
@@ -152,6 +161,7 @@ export function PropertyDetails({
 
   /* ---------- cards ---------- */
 
+  const hasCover = Boolean(property.cover_image_url);
   const cover = (
     <div className="covercard">
       <input
@@ -165,28 +175,9 @@ export function PropertyDetails({
           e.target.value = "";
         }}
       />
-      {property.cover_image_url ? (
-        <CoverThumb url={property.cover_image_url} width="100%" height="100%" radius={0} />
-      ) : (
-        <span
-          className="cov none"
-          style={{
-            width: "100%",
-            height: "100%",
-            flexDirection: "column",
-            gap: 6,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Icon name="img" />
-          <b style={{ fontSize: "var(--t-sm)", color: "var(--ink)" }}>No cover photo</b>
-          <span className="meta">Shows on the property list</span>
-        </span>
-      )}
+      <CoverThumb url={property.cover_image_url} width="100%" height="100%" radius={0} hero />
       <div className="coveracts">
-        {property.cover_image_url ? (
+        {hasCover ? (
           <>
             <button type="button" className="btn sm" disabled={busy} onClick={() => coverRef.current?.click()}>
               <Icon name="upload" className="i xs" />
@@ -494,7 +485,7 @@ export function PropertyDetails({
           Properties
         </button>
         <div className="ptitle" style={{ marginBottom: 4 }}>
-          <h1>{property.name}</h1>
+          <h1>{formatListingName(property.name)}</h1>
           <button type="button" className="btn sm" disabled={busy} onClick={onEdit}>
             <Icon name="edit" className="i xs" />
             Edit
@@ -534,7 +525,7 @@ export function PropertyDetails({
             Properties
           </button>
           <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {property.name} <LinkedChip linked={linked} />
+            {formatListingName(property.name)} <LinkedChip linked={linked} />
             <ActiveChip active={active} />
           </h1>
           <div className="meta" style={{ fontSize: "var(--t-sm)", marginTop: 2 }}>
@@ -553,10 +544,10 @@ export function PropertyDetails({
           </button>
         </div>
       </div>
-      <div className="content" style={{ overflow: "auto", paddingTop: 20 }}>
+      <div className="content prop-detail-content" style={{ overflow: "auto" }}>
         {banner}
         {pausedBar}
-        <div className="pgrid2">
+        <div className="pgrid2 fill-grid">
           <div className="col">
             {cover}
             {apps}

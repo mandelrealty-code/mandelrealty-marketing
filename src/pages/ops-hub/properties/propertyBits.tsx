@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { PropertyRow } from "../../clients/api";
 import { Icon } from "../clients/icons";
 import { Chip } from "../clients/uiBits";
@@ -16,14 +16,24 @@ export function pctLabel(bps: number): string {
   return `${Number.isInteger(pct) ? pct : pct.toFixed(2).replace(/0+$/, "")}%`;
 }
 
-/** Short deal label for the list: `20% · HST invoice`, or null when no commission is set. */
-export function dealPill(p: Pick<PropertyRow, "current_rate_bps" | "hst_mode">): string | null {
-  if (p.current_rate_bps == null) return null;
-  const mode = p.hst_mode === "invoice" ? "invoice" : "cohost";
-  return `${pctLabel(p.current_rate_bps)} · HST ${mode}`;
+/** Display-only: "1,100SqFt." → "1,100 SqFt." */
+export function formatListingName(name: string): string {
+  return String(name || "").replace(/(\d)\s*[Ss]q\.?\s*[Ff]t\.?/g, "$1 SqFt.");
 }
 
-export function DealPill({ p }: { p: Pick<PropertyRow, "current_rate_bps" | "hst_mode"> }) {
+type DealSource = Pick<PropertyRow, "current_rate_bps" | "hst_mode"> & {
+  current_term?: { rate_bps: number } | null;
+};
+
+/** Short deal label for the list: `20% · HST invoice`, or null when no commission is set. */
+export function dealPill(p: DealSource): string | null {
+  const rate = p.current_rate_bps ?? p.current_term?.rate_bps ?? null;
+  if (rate == null) return null;
+  const mode = p.hst_mode === "invoice" ? "invoice" : "cohost";
+  return `${pctLabel(rate)} · HST ${mode}`;
+}
+
+export function DealPill({ p }: { p: DealSource }) {
   const label = dealPill(p);
   return label ? <span className="deal">{label}</span> : <span className="gapchip">No billing terms</span>;
 }
@@ -57,19 +67,64 @@ export function CoverThumb({
   width,
   height,
   radius = 8,
+  hero,
 }: {
   url?: string | null;
   width: number | string;
   height: number | string;
   radius?: number;
+  /** Larger empty-state copy for the property detail cover card. */
+  hero?: boolean;
 }) {
-  if (url) {
+  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+    setLoaded(false);
+  }, [url]);
+  const showImg = Boolean(url) && !failed;
+
+  if (showImg) {
     return (
-      <span className="cov" style={{ width, height, borderRadius: radius }}>
-        <img src={url} alt="" loading="lazy" />
+      <span className={`cov${loaded ? "" : " pending"}`} style={{ width, height, borderRadius: radius }}>
+        <img
+          src={url!}
+          alt=""
+          loading="lazy"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+        />
+        {!loaded ? (
+          <span className="cov-ph" aria-hidden>
+            <Icon name="img" className="i sm" />
+          </span>
+        ) : null}
       </span>
     );
   }
+
+  if (hero) {
+    return (
+      <span
+        className="cov none"
+        style={{
+          width,
+          height,
+          borderRadius: radius,
+          flexDirection: "column",
+          gap: 6,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon name="img" />
+        <b style={{ fontSize: "var(--t-sm)", color: "var(--ink)" }}>No cover photo</b>
+        <span className="meta">Shows on the property list</span>
+      </span>
+    );
+  }
+
   return (
     <span className="cov none" style={{ width, height, borderRadius: radius }}>
       <Icon name="img" className="i sm" />

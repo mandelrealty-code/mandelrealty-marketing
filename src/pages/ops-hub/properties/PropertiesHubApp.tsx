@@ -104,6 +104,10 @@ export function PropertiesHubApp({ route, setRoute, onModeChange, embedded = fal
   }, []);
 
   useEffect(() => {
+    document.title = "Properties | Mandel Realty Group";
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(t);

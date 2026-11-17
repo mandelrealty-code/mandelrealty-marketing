@@ -112,6 +112,11 @@ export function parseAdminRoute(
     return emptyAdminRoute("onboarding");
   }
 
+  /* Bare /settings always opens OPS settings — never CRM. */
+  if (parts[0] === "settings") {
+    return { ...emptyAdminRoute("ops"), opsTab: "settings" };
+  }
+
   if (parts[0] === "ops") {
     const base = emptyAdminRoute("ops");
     if (parts[1] === "properties" && parts[2]) {

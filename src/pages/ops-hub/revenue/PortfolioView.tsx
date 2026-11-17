@@ -3,7 +3,7 @@ import type { CompanyMonthPnl } from "../../clients/CompanyPnl";
 import { moneyExact, unitMrgTake, type MonthPortfolio, type PortfolioUnit } from "../../clients/monthCloseText";
 import { Icon } from "../clients/icons";
 import { ErrorBanner, MonthPicker, formatHeadDate } from "../clients/uiBits";
-import { SpanBtn } from "../properties/propertyBits";
+import { SpanBtn, formatListingName } from "../properties/propertyBits";
 import { CompanyStripCard } from "./CompanyStripCard";
 import {
   DealShort,
@@ -27,11 +27,6 @@ const FILTERS: Array<{ id: SyncFilter; label: string }> = [
   { id: "ready", label: "Ready" },
 ];
 
-function joinNames(names: string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
 
 export function PortfolioView({
   phone,
@@ -126,11 +121,20 @@ export function PortfolioView({
     banners.push(
       <div key="stale" className="banner warn">
         <Icon name="alert" className="i sm" />
-        <span>
+        <span className="banner-body">
           <b>Sync needing attention.</b>{" "}
-          {phone
-            ? `${staleUnits.length} unit${staleUnits.length === 1 ? " is" : "s are"} stale.`
-            : `${joinNames(staleUnits.map((u) => u.property_name))} ${staleUnits.length === 1 ? "needs" : "need"} a sync.`}
+          {phone ? (
+            `${staleUnits.length} unit${staleUnits.length === 1 ? " is" : "s are"} stale.`
+          ) : (
+            <>
+              {staleUnits.length === 1 ? "Needs" : "Need"} a sync:
+              <ul className="banner-units">
+                {staleUnits.map((u) => (
+                  <li key={u.property_id}>{formatListingName(u.property_name)}</li>
+                ))}
+              </ul>
+            </>
+          )}
         </span>
         <button type="button" className="btn sm" onClick={() => onSyncAll(true)}>
           <RIcon name="sync" className="i xs" />
@@ -364,7 +368,7 @@ export function PortfolioView({
                         }}
                       >
                         <div className="l1">
-                          <b>{u.property_name}</b>
+                          <b>{formatListingName(u.property_name)}</b>
                           {rowAction(u, st.kind)}
                           <Icon name="next" className="i sm" />
                         </div>
@@ -446,7 +450,7 @@ export function PortfolioView({
           </button>
         </div>
       </div>
-      <div className="content" style={{ paddingTop: 18 }}>
+      <div className="content rev-content" style={{ paddingTop: 18 }}>
         {strip}
         {mid ? (
           <div className="rev-actions">
@@ -485,7 +489,7 @@ export function PortfolioView({
                   <tr>
                     <th>Unit</th>
                     <th className="col-deal">Deal</th>
-                    <th>Sync</th>
+                    <th className="col-sync">Sync</th>
                     <th className="r">Net to host</th>
                     <th className="r">MRG fee</th>
                     <th className="r">HST on invoice</th>
@@ -525,7 +529,9 @@ export function PortfolioView({
                             onClick={() => onOpenProperty(u.property_id)}
                           >
                             <td>
-                              <b style={{ color: "var(--ink)", display: "block" }}>{u.property_name}</b>
+                              <b style={{ color: "var(--ink)", display: "block" }}>
+                                {formatListingName(u.property_name)}
+                              </b>
                               <span className="meta" style={{ fontSize: "var(--t-sm)" }}>
                                 {u.client_name}
                               </span>
@@ -538,7 +544,7 @@ export function PortfolioView({
                             <td className="col-deal">
                               <DealShort unit={u} />
                             </td>
-                            <td>
+                            <td className="col-sync">
                               <SyncChip kind={st.kind} meta={st.meta} />
                             </td>
                             <td className="r num" style={{ color: "var(--ink)", fontWeight: 600 }}>

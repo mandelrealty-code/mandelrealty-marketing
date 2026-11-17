@@ -99,7 +99,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
       link.href = FONT;
       document.head.appendChild(link);
     }
-    document.title = "CRM | Mandel Realty Group";
+    document.title = "CRM inbox | Mandel Realty Group";
     if (!holder.current) return;
 
     const call = async <T extends Data = Data>(url: string, init?: RequestInit): Promise<T> => {

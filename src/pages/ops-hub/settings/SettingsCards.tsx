@@ -81,9 +81,6 @@ function DefaultInput({
           </span>
         ) : null}
       </div>
-      <div className="hint">
-        Saves when you leave the field. Applies to new properties only; existing properties keep their terms.
-      </div>
     </div>
   );
 }
@@ -116,6 +113,10 @@ export function DefaultsCard({
         </h3>
       </div>
       <div className="cardbody" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="hint" style={{ marginTop: 0 }}>
+          Applies to new properties when no contract is set. Existing properties keep their terms. Saves when you leave
+          a field.
+        </div>
         <DefaultInput
           label="Default commission %"
           value={commission}

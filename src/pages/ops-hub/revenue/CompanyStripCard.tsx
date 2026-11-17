@@ -18,11 +18,17 @@ export function CompanyStripCard({
   onAddAdsCost: () => void;
   onOpenSubscriptions: () => void;
 }) {
-  const stats: Array<{ label: string; icon: string; cents: number; link: boolean }> = [
+  const stats: Array<{
+    label: string;
+    icon: string;
+    cents: number;
+    link: boolean;
+    breakdown?: boolean;
+  }> = [
     { label: "Net earnings (company)", icon: "chart", cents: company.net_earnings_cents, link: true },
     { label: "MRG fees", icon: "brief", cents: company.management_fees_cents, link: false },
     { label: "Company costs", icon: "receipt", cents: company.costs_cents, link: true },
-    { label: "HST to remit", icon: "hst", cents: company.hst_to_remit_cents, link: false },
+    { label: "HST to remit", icon: "hst", cents: company.hst_to_remit_cents, link: false, breakdown: true },
   ];
 
   const showPrompts =
@@ -30,8 +36,29 @@ export function CompanyStripCard({
 
   return (
     <>
-      <div className="card cstrip">
+      <div className="card cstrip cstrip-fill">
         {stats.map((s) => {
+          const label = (
+            <span className="l">
+              {s.label}
+              {s.breakdown ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="lnk cstrip-bd"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenPnl();
+                    }}
+                  >
+                    Breakdown
+                    <Icon name="arrow" className="i xs" />
+                  </button>
+                </>
+              ) : null}
+            </span>
+          );
           const inner = (
             <>
               <span className="ic">
@@ -43,7 +70,7 @@ export function CompanyStripCard({
                 ) : (
                   <b className="num">{moneyExact(s.cents, currency)}</b>
                 )}
-                <span className="l">{s.label}</span>
+                {label}
               </div>
             </>
           );
@@ -57,18 +84,6 @@ export function CompanyStripCard({
             </div>
           );
         })}
-        <span className="bd">
-          <button
-            type="button"
-            className="lnk"
-            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-            onClick={onOpenPnl}
-          >
-            <RIcon name="pl" className="i xs" />
-            Breakdown
-            <Icon name="arrow" className="i xs" />
-          </button>
-        </span>
       </div>
       {showPrompts ? (
         <div className="prompts">
