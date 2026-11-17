@@ -30,6 +30,10 @@ const ClientsApp = lazy(() => import("./clients/ClientsApp"));
 const CopilotApp = lazy(() => import("./copilot/CopilotApp"));
 const OnboardingApp = lazy(() => import("./onboarding/OnboardingApp"));
 const EmployeeTasksApp = lazy(() => import("./tasks/EmployeeTasksApp"));
+const CrmApp = lazy(() => import("./crm-hub/CrmApp"));
+
+/** The light CRM hub (crm-hub/). The dark CRM below stays in place behind this flag until the hub has fully replaced it. */
+const CRM_HUB = true;
 
 type Lead = {
   id: string;
@@ -619,7 +623,7 @@ export function AdminPage() {
       meta.content = "noindex, nofollow";
       document.head.appendChild(meta);
     }
-    if (route.mode === "copilot" || route.mode === "onboarding") {
+    if (CRM_HUB || route.mode === "copilot" || route.mode === "onboarding") {
       void fetch("/api/admin/session?op=check", { method: "POST", credentials: "include" })
         .then((res) => setAuthed(res.ok))
         .catch(() => setAuthed(false));
@@ -631,11 +635,11 @@ export function AdminPage() {
   }, [loadLeads, loadSettings]);
 
   useEffect(() => {
-    if (authed && productMode === "crm") loadLeads(searchDebounced).catch(() => undefined);
+    if (!CRM_HUB && authed && productMode === "crm") loadLeads(searchDebounced).catch(() => undefined);
   }, [searchDebounced, authed, loadLeads, productMode]);
 
   useEffect(() => {
-    if (authed && productMode === "crm") loadSettings().catch(() => undefined);
+    if (!CRM_HUB && authed && productMode === "crm") loadSettings().catch(() => undefined);
   }, [authed, productMode, loadSettings]);
 
   useEffect(() => {
@@ -648,12 +652,12 @@ export function AdminPage() {
   }, [leads, searchDebounced]);
 
   useEffect(() => {
-    if (authed && tab === "knowledge") loadDocs().catch(() => undefined);
+    if (!CRM_HUB && authed && tab === "knowledge") loadDocs().catch(() => undefined);
   }, [authed, tab, loadDocs]);
 
   // Live poll contacts + open thread
   useEffect(() => {
-    if (!authed || productMode !== "crm") return;
+    if (CRM_HUB || !authed || productMode !== "crm") return;
     const id = window.setInterval(() => {
       loadLeads(searchDebounced).catch(() => undefined);
       if (selectedId) loadFollowups(selectedId).catch(() => undefined);
@@ -728,6 +732,7 @@ export function AdminPage() {
   );
 
   useEffect(() => {
+    if (CRM_HUB) return;
     if (!selectedId) {
       setFollowups([]);
       setSmsMessages([]);
@@ -930,8 +935,9 @@ export function AdminPage() {
     switchProduct("crm");
     setNewLeadOpen(true);
   };
+  const onCrmNewLeadHandled = useCallback(() => setNewLeadOpen(false), []);
 
-  const convertLeadToOpsClient = (lead: Lead) => {
+  const convertLeadToOpsClient = (lead: Pick<Lead, "id" | "name" | "email" | "phone">) => {
     try {
       sessionStorage.setItem(
         "mrg_prefill_client_lead",
@@ -1777,6 +1783,41 @@ export function AdminPage() {
           route={route}
           setRoute={setRoute}
           onModeChange={switchProduct}
+        />
+      </Suspense>
+    );
+  }
+
+  if (CRM_HUB) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex min-h-dvh items-center justify-center bg-white text-[#6b6b66]">
+            Loading CRM…
+          </div>
+        }
+      >
+        <CrmApp
+          initialTab={route.crmTab}
+          initialLeadId={route.leadId}
+          openNewLead={newLeadOpen}
+          onNewLeadHandled={onCrmNewLeadHandled}
+          onModeChange={switchProduct}
+          onRouteChange={({ tab: nextTab, leadId }) =>
+            setRoute({ ...emptyAdminRoute("crm"), crmTab: nextTab, leadId }, { push: true })
+          }
+          onOpenOnboardingUnit={openOnboardingUnit}
+          onStartOnboarding={(leadId) => {
+            const lead = leads.find((l) => l.id === leadId);
+            startOnboardingFromLead(lead ?? { id: leadId });
+          }}
+          onConvertLeadToOpsClient={convertLeadToOpsClient}
+          onUnauthorized={() => setAuthed(false)}
+          onLoggedOut={() => {
+            setAuthed(false);
+            setLeads([]);
+            setSelectedId(null);
+          }}
         />
       </Suspense>
     );

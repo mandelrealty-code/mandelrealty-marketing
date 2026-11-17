@@ -1,0 +1,228 @@
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import type { AdminProductMode } from "../clients/mode";
+import type { CrmTab } from "../../lib/adminRoute";
+import { LEAD_STATUSES, OFFER_PATH_LABEL, OFFER_PATHS, STATUS_JOURNEY, STATUS_LABEL } from "../../../shared/crmTypes";
+import { isBookedThisWeek, NEEDS_YOU_LABEL } from "../../../shared/crmInboxTypes";
+import { LEAD_SOURCES } from "../../../shared/pm/onboardingLogic";
+import { CONTRACT_OPTIONS, PLAN_OPTIONS } from "../crm/LeadSale";
+import { CRM_CSS, mountCrm } from "./engine";
+
+/**
+ * The CRM, built from the CRM design file (markup, colours and phone layout) with every lead, message, document and
+ * setting read from and written to the same admin endpoints the old CRM used. The design runs inside its own shadow
+ * root, so its colours and class names cannot touch the rest of the admin.
+ */
+
+type Data = Record<string, unknown>;
+
+const FONT = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap";
+
+const PROCESS_LABEL: Record<string, string> = {
+  own_ready: "Owns property, ready",
+  buying: "Buying / renovating",
+  researching: "Just researching",
+};
+const PERMIT_LABEL: Record<string, string> = {
+  have: "Has STR permit",
+  applying: "Applying",
+  unknown: "Doesn't know if needed",
+  not_planning: "Not planning one",
+};
+const STR_LABEL: Record<string, string> = {
+  yes: "STR allowed",
+  no: "STR not allowed",
+  unsure: "STR unsure",
+};
+
+export type CrmRoute = { tab: CrmTab; leadId: string | null; newLead?: boolean };
+export type CrmLeadForClient = { id: string; name: string; email: string; phone: string };
+export type CrmAppHandle = { openLead: (leadId: string) => void; openNewLead: () => void };
+
+type Mounted = CrmAppHandle & { destroy: () => void; applyRoute: (route: CrmRoute) => void };
+
+class HttpError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.includes(",") ? result.split(",")[1] : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+export type CrmAppProps = {
+  onModeChange: (mode: AdminProductMode) => void;
+  /** The tab and lead in the URL. */
+  initialTab?: CrmTab;
+  initialLeadId?: string | null;
+  /** Open the + Lead form (set when Onboarding asks for it). */
+  openNewLead?: boolean;
+  onNewLeadHandled?: () => void;
+  onRouteChange: (route: { tab: CrmTab; leadId: string | null }) => void;
+  onOpenOnboardingUnit: (unitId: string) => void;
+  onStartOnboarding: (leadId: string) => void;
+  onConvertLeadToOpsClient: (lead: CrmLeadForClient) => void;
+  /** The session cookie is gone or was rejected. */
+  onUnauthorized?: () => void;
+  onLoggedOut: () => void;
+};
+
+const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref) {
+  const holder = useRef<HTMLDivElement>(null);
+  const mounted = useRef<Mounted | null>(null);
+  const [error, setError] = useState("");
+  const [ready, setReady] = useState(false);
+  const propsRef = useRef(props);
+  propsRef.current = props;
+  const routeRef = useRef<CrmRoute>({ tab: props.initialTab ?? "contacts", leadId: props.initialLeadId ?? null, newLead: Boolean(props.openNewLead) });
+  routeRef.current = { tab: props.initialTab ?? "contacts", leadId: props.initialLeadId ?? null, newLead: Boolean(props.openNewLead) };
+
+  useImperativeHandle(ref, () => ({
+    openLead: (id: string) => mounted.current?.openLead(id),
+    openNewLead: () => mounted.current?.openNewLead(),
+  }), []);
+
+  useEffect(() => {
+    if (!document.querySelector(`link[href="${FONT}"]`)) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = FONT;
+      document.head.appendChild(link);
+    }
+    document.title = "CRM | Mandel Realty Group";
+    if (!holder.current) return;
+
+    const call = async <T extends Data = Data>(url: string, init?: RequestInit): Promise<T> => {
+      const res = await fetch(url, {
+        credentials: "include",
+        ...init,
+        headers: init?.body ? { "Content-Type": "application/json", ...(init.headers || {}) } : init?.headers,
+      });
+      const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+      if (res.status === 401) propsRef.current.onUnauthorized?.();
+      if (!res.ok) throw new HttpError(String(data.error || "Request failed."), res.status);
+      return data;
+    };
+    const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) });
+    const patchLead = (body: Data) => call("/api/admin/leads", json("PATCH", body));
+
+    const host = {
+      vocab: {
+        STATUS_LABEL,
+        STATUS_JOURNEY,
+        OFFER_PATH_LABEL,
+        LEAD_STATUSES,
+        OFFER_PATHS,
+        NEEDS_YOU_LABEL,
+        isBookedThisWeek,
+        PLAN_OPTIONS,
+        CONTRACT_OPTIONS,
+        LEAD_SOURCES,
+        PROCESS_LABEL,
+        PERMIT_LABEL,
+        STR_LABEL,
+      },
+      go: (mode: string) => propsRef.current.onModeChange(mode as AdminProductMode),
+      onError: (e: unknown) => setError(e instanceof Error ? e.message : "That did not work."),
+      getRoute: () => routeRef.current,
+      setRoute: (next: { tab?: CrmTab; leadId?: string | null }) => {
+        const cur = routeRef.current;
+        const route = { tab: next.tab ?? cur.tab, leadId: next.leadId === undefined ? cur.leadId : next.leadId };
+        routeRef.current = { ...route, newLead: false };
+        propsRef.current.onRouteChange(route);
+      },
+      openOnboardingUnit: (unitId: string) => propsRef.current.onOpenOnboardingUnit(unitId),
+      startOnboarding: (leadId: string) => propsRef.current.onStartOnboarding(leadId),
+      convertLeadToOpsClient: (lead: CrmLeadForClient) => propsRef.current.onConvertLeadToOpsClient(lead),
+      logout: async () => {
+        await fetch("/api/admin/session?op=logout", { method: "POST", credentials: "include" });
+        propsRef.current.onLoggedOut();
+      },
+
+      loadLeads: (q?: string) => call(`/api/admin/leads${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+      loadFollowups: (leadId: string) => call(`/api/admin/leads?followups=${encodeURIComponent(leadId)}`),
+      loadSettings: () => call("/api/admin/settings"),
+      loadDocs: () => call("/api/admin/knowledge"),
+      loadDoc: (id: string) => call(`/api/admin/knowledge?id=${encodeURIComponent(id)}`),
+
+      patchLead,
+      deleteLead: (id: string) => call("/api/admin/leads", json("DELETE", { id })),
+      createLead: (body: Data) => call("/api/admin/leads", json("POST", { ...body, createLead: true })),
+      sendSms: (id: string, text: string) => patchLead({ id, smsReply: text }),
+      draftAction: (id: string, action: "approve" | "discard" | "save", draftId: string, draftBody?: string) =>
+        patchLead({ id, draftAction: action, draftId, ...(draftBody !== undefined ? { draftBody } : {}) }),
+      startCall: (id: string) => patchLead({ id, startCall: true }),
+      markBooked: (id: string) => patchLead({ id, markBooked: true }),
+      markRead: (id: string) => patchLead({ id, markRead: true }),
+      aiNudge: (id: string, playbookSteps?: unknown[]) => patchLead({ id, aiNudge: true, ...(playbookSteps ? { playbookSteps } : {}) }),
+      aiSendFirst: (id: string) => patchLead({ id, aiSendFirst: true }),
+      playbookAction: (id: string, action: "complete" | "skip") => patchLead({ id, playbookAction: action }),
+
+      patchSettings: (body: Data) => call("/api/admin/settings", json("PATCH", body)),
+
+      knowledgeUpload: async (input: { file?: File; text?: string; title?: string }) => {
+        if (input.file) {
+          const contentBase64 = await fileToBase64(input.file);
+          return call("/api/admin/knowledge", json("POST", {
+            filename: input.file.name,
+            title: (input.title || "").trim() || input.file.name,
+            mime: input.file.type || "application/octet-stream",
+            contentBase64,
+          }));
+        }
+        return call("/api/admin/knowledge", json("POST", { title: (input.title || "").trim(), text: input.text || "" }));
+      },
+      knowledgePatch: (body: Data) => call("/api/admin/knowledge", json("PATCH", body)),
+      knowledgeDelete: (id: string) => call("/api/admin/knowledge", json("DELETE", { id })),
+      previewPaste: (paste: string) => call("/api/admin/leads", json("POST", { paste, parseOnly: true })),
+      importPaste: (paste: string) => call("/api/admin/leads", json("POST", { paste })),
+    };
+
+    const shadow = holder.current.shadowRoot ?? holder.current.attachShadow({ mode: "open" });
+    shadow.innerHTML = "";
+    const style = document.createElement("style");
+    style.textContent = CRM_CSS;
+    const root = document.createElement("div");
+    root.className = "crm";
+    shadow.append(style, root);
+    mounted.current = mountCrm(root, host) as Mounted;
+    setReady(true);
+    if (routeRef.current.newLead) propsRef.current.onNewLeadHandled?.();
+    return () => {
+      mounted.current?.destroy();
+      mounted.current = null;
+    };
+  }, []);
+
+  /* The URL changed outside the CRM (back button, a link from Onboarding): show that tab and lead. */
+  const { initialTab, initialLeadId, openNewLead, onNewLeadHandled } = props;
+  useEffect(() => {
+    mounted.current?.applyRoute({ tab: initialTab ?? "contacts", leadId: initialLeadId ?? null, newLead: Boolean(openNewLead) });
+    if (openNewLead) onNewLeadHandled?.();
+  }, [initialTab, initialLeadId, openNewLead, onNewLeadHandled]);
+
+  return (
+    <div style={{ background: "#ffffff", minHeight: "100dvh" }}>
+      {error ? (
+        <div role="alert" style={{ padding: "12px 20px", background: "#fdf3e3", color: "#7a4b00", fontFamily: "Inter, system-ui, sans-serif", fontSize: 14, display: "flex", gap: 12, justifyContent: "space-between" }}>
+          <span>{error}</span>
+          <button type="button" onClick={() => setError("")} style={{ border: 0, background: "none", cursor: "pointer", color: "#7a4b00", fontSize: 13 }}>Dismiss</button>
+        </div>
+      ) : null}
+      {!ready && !error ? <div style={{ padding: 24, fontFamily: "Inter, system-ui, sans-serif", color: "#6b6b66" }}>Loading CRM…</div> : null}
+      <div ref={holder} />
+    </div>
+  );
+});
+
+export default CrmApp;
