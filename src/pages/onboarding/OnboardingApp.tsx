@@ -75,7 +75,7 @@ export default function OnboardingApp({ onModeChange, onOpenLead, onNewLead }: {
         const shadow = holder.current.shadowRoot ?? holder.current.attachShadow({ mode: "open" });
         shadow.innerHTML = "";
         const style = document.createElement("style");
-        style.textContent = ONBOARDING_CSS + "\n:host{display:block}";
+        style.textContent = ONBOARDING_CSS;
         const root = document.createElement("div");
         root.className = "onb";
         shadow.append(style, root);
@@ -110,21 +110,29 @@ export default function OnboardingApp({ onModeChange, onOpenLead, onNewLead }: {
   }, []);
 
   return (
-    <div style={{ background: "#ffffff", minHeight: "100dvh" }}>
+    <div
+      style={{
+        background: "#ffffff",
+        height: "100dvh",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {error ? (
-        <div role="alert" style={{ padding: "12px 20px", background: "#fdf3e3", color: "#7a4b00", fontFamily: "Inter, system-ui, sans-serif", fontSize: 14, display: "flex", gap: 12, justifyContent: "space-between" }}>
+        <div role="alert" style={{ padding: "12px 20px", background: "#fdf3e3", color: "#7a4b00", fontFamily: "Inter, system-ui, sans-serif", fontSize: 14, display: "flex", gap: 12, justifyContent: "space-between", flex: "none" }}>
           <span>{error}</span>
           <button type="button" onClick={() => setError("")} style={{ border: 0, background: "none", cursor: "pointer", color: "#7a4b00", fontSize: 13 }}>Dismiss</button>
         </div>
       ) : null}
       {note ? (
-        <div role="status" style={{ padding: "12px 20px", background: "#f2f2ef", color: "#18181b", fontFamily: "Inter, system-ui, sans-serif", fontSize: 14, display: "flex", gap: 12, justifyContent: "space-between" }}>
+        <div role="status" style={{ padding: "12px 20px", background: "#f2f2ef", color: "#18181b", fontFamily: "Inter, system-ui, sans-serif", fontSize: 14, display: "flex", gap: 12, justifyContent: "space-between", flex: "none" }}>
           <span>{note}</span>
           <button type="button" onClick={() => setNote("")} style={{ border: 0, background: "none", cursor: "pointer", color: "#55554f", fontSize: 13 }}>Dismiss</button>
         </div>
       ) : null}
       {!ready && !error ? <div style={{ padding: 24, fontFamily: "Inter, system-ui, sans-serif", color: "#6b6b66" }}>Loading Onboarding…</div> : null}
-      <div ref={holder} />
+      <div ref={holder} style={{ flex: 1, minHeight: 0, height: "100%" }} />
     </div>
   );
 }

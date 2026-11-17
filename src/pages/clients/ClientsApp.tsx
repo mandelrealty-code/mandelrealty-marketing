@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
   openHostPortalPreview,
   pmGet,
@@ -235,6 +235,8 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
   const hubPhone = useIsPhone();
   const coverInputRef = useRef<HTMLInputElement>(null);
   const appliedOpsKey = useRef("");
+  /* OPS hubs stay mounted after first visit so tab switches don't white-flash. */
+  const visitedHubs = useRef<Set<Tab>>(new Set([route.opsTab]));
 
   const [crmLeads, setCrmLeads] = useState<CrmLead[]>([]);
   const [crmLeadsLoading, setCrmLeadsLoading] = useState(false);
@@ -312,6 +314,20 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
     const t = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (route.mode !== "ops") return;
+    const titles: Partial<Record<Tab, string>> = {
+      sops: "SOPs",
+      clients: "Clients",
+      properties: "Properties",
+      month: "Revenue",
+      employees: "Team",
+      settings: "Settings",
+    };
+    const label = titles[route.opsTab];
+    if (label) document.title = `${label} | Mandel Realty Group`;
+  }, [route.mode, route.opsTab]);
 
   const navOps = useCallback(
     (
@@ -2456,6 +2472,7 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
   /* Prefer the URL tab so a lagged local `tab` state never leaves HubShell with null children
      (blank white main) between navigateHub and the appliedOpsKey effect. */
   const hubTab: Tab = route.mode === "ops" ? route.opsTab : tab;
+  if (route.mode === "ops") visitedHubs.current.add(hubTab);
 
   /* Persistent OPS shell: one HubShell for every hub tab so the sidebar never remounts,
      crunches, or flashes white between SOPs / Clients / Properties / Revenue / Team / Settings. */
@@ -2469,48 +2486,89 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
 
   if (opsHubTab) {
     const hubHost = { route, setRoute, onModeChange: hubModeChange };
+    const pane = (id: Tab, node: ReactNode) =>
+      visitedHubs.current.has(id) ? (
+        <div className={hubTab === id ? undefined : "hub-pane-off"} aria-hidden={hubTab !== id}>
+          {node}
+        </div>
+      ) : null;
     return (
       <>
         <div className={`mrgc${hubPhone ? " is-phone" : ""}`}>
           <HubShell
             active={hubActiveFromOpsTab(hubTab)}
-            onNavigate={(id) => navigateHub(hubHost, id)}
+            onNavigate={(id) => {
+              setTab(
+                id === "team"
+                  ? "employees"
+                  : id === "revenue"
+                    ? "month"
+                    : id === "dashboard" || id === "sops"
+                      ? "sops"
+                      : id === "properties"
+                        ? "properties"
+                        : id === "clients"
+                          ? "clients"
+                          : id === "settings"
+                            ? "settings"
+                            : hubTab,
+              );
+              navigateHub(hubHost, id);
+            }}
             phone={hubPhone}
           >
-            {SOPS_HUB && hubTab === "sops" ? (
-              <SopsHubApp
-                embedded
-                route={route}
-                setRoute={setRoute}
-                onModeChange={hubModeChange}
-                refreshTrigger={sopsRefreshTrigger}
-                onOpenVideoStudio={(sopToEdit?: SopItem) => {
-                  setEditingVideoSop(sopToEdit || null);
-                  setVideoStudioOpen(true);
-                }}
-              />
-            ) : null}
-            {CLIENTS_HUB && hubTab === "clients" ? (
-              <ClientsHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
-            ) : null}
-            {PROPERTIES_HUB && hubTab === "properties" ? (
-              <PropertiesHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
-            ) : null}
-            {REVENUE_HUB && hubTab === "month" ? (
-              <RevenueHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
-            ) : null}
-            {TEAM_HUB && hubTab === "employees" ? (
-              <TeamHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
-            ) : null}
-            {SETTINGS_HUB && hubTab === "settings" ? (
-              <SettingsHubApp
-                embedded
-                route={route}
-                setRoute={setRoute}
-                onModeChange={hubModeChange}
-                onLogout={onLogout}
-              />
-            ) : null}
+            {SOPS_HUB
+              ? pane(
+                  "sops",
+                  <SopsHubApp
+                    embedded
+                    route={route}
+                    setRoute={setRoute}
+                    onModeChange={hubModeChange}
+                    refreshTrigger={sopsRefreshTrigger}
+                    onOpenVideoStudio={(sopToEdit?: SopItem) => {
+                      setEditingVideoSop(sopToEdit || null);
+                      setVideoStudioOpen(true);
+                    }}
+                  />,
+                )
+              : null}
+            {CLIENTS_HUB
+              ? pane(
+                  "clients",
+                  <ClientsHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />,
+                )
+              : null}
+            {PROPERTIES_HUB
+              ? pane(
+                  "properties",
+                  <PropertiesHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />,
+                )
+              : null}
+            {REVENUE_HUB
+              ? pane(
+                  "month",
+                  <RevenueHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />,
+                )
+              : null}
+            {TEAM_HUB
+              ? pane(
+                  "employees",
+                  <TeamHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />,
+                )
+              : null}
+            {SETTINGS_HUB
+              ? pane(
+                  "settings",
+                  <SettingsHubApp
+                    embedded
+                    route={route}
+                    setRoute={setRoute}
+                    onModeChange={hubModeChange}
+                    onLogout={onLogout}
+                  />,
+                )
+              : null}
           </HubShell>
         </div>
         {SOPS_HUB ? (

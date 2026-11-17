@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, startTransition, type FormEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   LEAD_STATUSES,
@@ -916,13 +916,16 @@ export function AdminPage() {
   };
   const crmTab = tab;
 
-  /* Keep productMode in lockstep with setRoute so mode switches never paint a blank frame
-     (route updated in a transition while productMode still pointed at the previous app). */
+  /* Mode switches (OPS ↔ CRM ↔ Onboarding ↔ Copilot): update productMode + route together
+     inside startTransition so React keeps the previous shell painted until the next app is ready —
+     never a blank white frame that needs a refresh. */
   const switchProduct = (mode: AdminProductMode, patch?: Partial<AdminRoute>) => {
     writeStoredAdminMode(mode);
     const next = { ...emptyAdminRoute(mode), ...patch, mode };
-    setProductMode(mode);
-    setRoute(next, { push: true });
+    startTransition(() => {
+      setProductMode(mode);
+      setRoute(next, { push: true });
+    });
   };
 
   /* The CRM and Onboarding link both ways: a lead opens its unit, a sold lead starts onboarding, a unit opens its lead. */
