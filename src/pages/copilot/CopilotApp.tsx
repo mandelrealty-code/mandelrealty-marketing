@@ -1664,7 +1664,7 @@ export default function CopilotApp({
     if (screen === "tasks") return "Tasks";
     if (screen === "team") return "Team";
     if (screen === "empty") return "New chat";
-    return boot?.chats.find((c) => c.id === chatId)?.title || "New chat";
+    return boot?.chats?.find((c) => c.id === chatId)?.title || "New chat";
   }, [boot, chatId, screen]);
 
   const backLabel =

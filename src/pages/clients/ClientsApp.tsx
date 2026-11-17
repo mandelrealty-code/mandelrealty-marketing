@@ -11,6 +11,7 @@ import {
 } from "./api";
 import CrmApp, { type CrmLeadForClient } from "../crm-hub/CrmApp";
 import OnboardingApp from "../onboarding/OnboardingApp";
+import { PaneBoundary } from "../ops-hub/clients/PaneBoundary";
 
 const CopilotApp = lazy(() => import("../copilot/CopilotApp"));
 import {
@@ -338,6 +339,24 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout, cr
       setLoadError(err instanceof Error ? err.message : "Could not load."),
     );
   }, [loadLists]);
+
+  /* Pages stay mounted in the hub shell, so their own on-mount title goes stale when you switch. Set it on every switch. */
+  const activeHubPage = hubActiveFromRoute(route);
+  useEffect(() => {
+    const names: Record<string, string> = {
+      crm: "CRM inbox",
+      onboarding: "Onboarding",
+      copilot: "Copilot",
+      clients: "Clients",
+      properties: "Properties",
+      revenue: "Revenue",
+      team: "Team",
+      settings: "Settings",
+      sops: "SOPs",
+    };
+    const name = names[activeHubPage];
+    if (name) document.title = `${name} | Mandel Realty Group`;
+  }, [activeHubPage]);
 
   useEffect(() => {
     if (route.opsTab !== "properties") return;
@@ -2537,13 +2556,13 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout, cr
           className={`hub-pane${opsOn && hubTab === id ? "" : " hub-pane-off"}`}
           aria-hidden={!(opsOn && hubTab === id)}
         >
-          {node}
+          <PaneBoundary name={id}>{node}</PaneBoundary>
         </div>
       ) : null;
     const modePane = (id: ShellModePane, node: ReactNode) =>
       visitedModes.current.has(id) ? (
-        <div className={`hub-pane${route.mode === id ? "" : " hub-pane-off"}`} aria-hidden={route.mode !== id}>
-          {node}
+        <div className={`hub-pane hub-pane-engine${route.mode === id ? "" : " hub-pane-off"}`} aria-hidden={route.mode !== id}>
+          <PaneBoundary name={id}>{node}</PaneBoundary>
         </div>
       ) : null;
     return (

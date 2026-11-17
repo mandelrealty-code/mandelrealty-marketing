@@ -38,6 +38,10 @@
 .mrgc .hub-pane-off{display:none!important}
 .mrgc .pbody{display:flex;flex-direction:column}
 .mrgc .pbody > .hub-pane{flex:1;min-height:0}
+/* Phone: pin the shell to the screen so the bottom nav stays at the bottom and each page scrolls inside it. */
+.mrgc.is-phone .phn{height:100dvh;overflow:hidden}
+/* CRM, Onboarding and Copilot pad their own pages, so the phone body adds none around them. */
+.mrgc.is-phone .pbody:has(> .hub-pane-engine:not(.hub-pane-off)){padding:0}
 .mrgc *,.mrgc *::before,.mrgc *::after{box-sizing:border-box}
 .mrgc .content{overflow:auto}
 .mrgc .app{height:100dvh}
