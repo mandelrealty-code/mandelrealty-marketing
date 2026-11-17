@@ -548,12 +548,80 @@
 .mrgc .prop-table-wrap table{width:100%}
 .mrgc .prop-detail-content{padding-top:20px}
 
+/* ===================== Revenue additions ===================== */
+.mrgc .cstrip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;align-items:center;padding:6px;gap:6px;margin-bottom:14px}
+.mrgc .cstrip .stat{cursor:pointer;border:0;background:none;text-align:left;width:100%}
+.mrgc .cstrip .stat.lk b{text-decoration:underline;text-decoration-color:rgb(0 0 0 / .2);text-underline-offset:4px}
+.mrgc .cstrip .bd{padding:0 12px}
+.mrgc .prompts{display:flex;gap:8px;flex-wrap:wrap;margin:-6px 0 14px}
+.mrgc .prompt{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 6px 0 11px;border-radius:var(--r-pill);background:oklch(0.6 0.14 65 / .12);color:var(--ink);font-size:var(--t-xs);font-weight:600}
+.mrgc .prompt svg{color:var(--amberink)}
+.mrgc .prompt .btn{height:24px;font-size:11px;padding:0 9px;border-radius:99px}
+.mrgc .sbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.mrgc .banner{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:12px;font-size:var(--t-sm);color:var(--ink);margin-bottom:10px}
+.mrgc .banner span{flex:1}
+.mrgc .banner.warn{background:oklch(0.6 0.14 65 / .1);border:1px solid oklch(0.6 0.14 65 / .3)}
+.mrgc .banner.warn>svg{color:var(--amberink)}
+.mrgc .banner.bad{background:oklch(0.6 0.19 25 / .08);border:1px solid oklch(0.6 0.19 25 / .28)}
+.mrgc .banner.bad>svg{color:var(--redink)}
+.mrgc .banner.info{background:var(--panel)}
+.mrgc .prog{height:6px;border-radius:3px;background:oklch(0.9 0.003 285);overflow:hidden;width:180px}
+.mrgc .prog i{display:block;height:100%;background:var(--ink);border-radius:3px}
+.mrgc .syn{display:inline-flex;flex-direction:column;gap:1px;align-items:flex-start}
+.mrgc .syn .meta{font-size:11px}
+.mrgc tr.dim td{opacity:.45}
+.mrgc tr.total td{background:var(--panel);font-weight:650;color:var(--ink)}
+.mrgc .grp{border-bottom:1px solid var(--line-2)}
+.mrgc .grp:last-child{border-bottom:0}
+.mrgc .grph{display:flex;align-items:center;gap:12px;padding:12px 16px;font-size:var(--t-sm);width:100%;text-align:left;background:none;border:0}
+.mrgc .grph .t{flex:1;min-width:0}
+.mrgc .grph .t b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-base)}
+.mrgc .grph .v{font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums;min-width:90px;text-align:right}
+.mrgc .grp.open .grph{background:oklch(0.985 0.002 95)}
+.mrgc .urow2{display:flex;align-items:center;gap:12px;padding:10px 16px 10px 52px;border-top:1px solid var(--line-2);font-size:var(--t-sm)}
+.mrgc .urow2 .t{flex:1;min-width:0}
+.mrgc .urow2 .t b{display:block;color:var(--ink);font-weight:600}
+.mrgc .urow2 .c{min-width:110px;text-align:right;font-variant-numeric:tabular-nums}
+.mrgc .btn.copied{background:oklch(0.94 0.05 155);border-color:oklch(0.6 0.13 155 / .35);color:var(--greenink)}
+.mrgc .plsec{margin-top:16px}
+.mrgc .plsec h4{font-size:var(--t-xs);font-weight:700;color:var(--muted);letter-spacing:.4px;text-transform:uppercase;margin:0 0 6px;display:flex;justify-content:space-between}
+.mrgc .plline{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.mrgc .plline .t{flex:1;min-width:0}
+.mrgc .plline .t b{display:block;color:var(--ink);font-weight:600}
+.mrgc .plline .v{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.mrgc .plline .acts{display:flex;gap:4px}
+.mrgc .lbtn{font-size:var(--t-xs);font-weight:600;color:var(--tealink);background:none;border:0;padding:4px 6px;border-radius:6px;white-space:nowrap;cursor:pointer}
+.mrgc .lbtn.dng{color:var(--redink)}
+.mrgc .plnet{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:12px;background:var(--panel);font-weight:700;font-size:var(--t-md);color:var(--ink);margin-top:14px}
+.mrgc .subrow{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.mrgc .subrow .t{flex:1;min-width:0}
+.mrgc .subrow .t b{display:block;color:var(--ink);font-weight:600}
+.mrgc .subrow.off .t,.mrgc .subrow.off .v{opacity:.5}
+.mrgc .subrow .v{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}
+.mrgc .ucard{border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px;background:#fff}
+.mrgc .ucard .l1{display:flex;align-items:center;gap:8px}
+.mrgc .ucard .l1 b{flex:1;min-width:0;color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrgc .ucard .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
+.mrgc .ucard .nums span{font-size:11px;color:var(--muted);font-weight:500}
+.mrgc .ucard .nums b{display:block;font-size:var(--t-sm);color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.mrgc .phn .cstrip{grid-template-columns:1fr 1fr}
+.mrgc .phn .cstrip .stat+.stat{box-shadow:none}
+.mrgc .phn .cstrip .bd{grid-column:1 / -1;padding:2px 10px 6px}
+.mrgc .phn .stat b{font-size:17px}
+.mrgc .phn .grph{padding:12px 14px}
+.mrgc .phn .urow2{padding:10px 14px}
+.mrgc .rev-actions{display:flex;gap:8px;margin-bottom:12px}
+.mrgc .hst-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:6px;gap:6px;margin-bottom:14px}
+
 /* Breakpoints from the design table */
 @media (max-width:1239px){
   .mrgc .cgrid{grid-template-columns:minmax(0,1fr)}
   .mrgc .pgrid2{grid-template-columns:minmax(0,1fr)}
   .mrgc .filters.prop-filt{flex-direction:column;align-items:stretch}
   .mrgc .prop-table-wrap th.col-client, .mrgc .prop-table-wrap td.col-client{display:none}
+  .mrgc .sbar{flex-direction:column;align-items:stretch}
+  .mrgc .rev-table th.col-deal, .mrgc .rev-table td.col-deal{display:none}
+  .mrgc .hst-table th.col-fee, .mrgc .hst-table td.col-fee{display:none}
   .mrgc .head{padding:24px 24px 0}
   .mrgc .subnav{padding:16px 24px 0}
   .mrgc .content{padding:16px 24px 28px;overflow:auto}
@@ -574,6 +642,10 @@
   .mrgc .plhint{display:none}
   .mrgc .prop-table-wrap th.col-deal, .mrgc .prop-table-wrap td.col-deal,
   .mrgc .prop-table-wrap th.col-hosp, .mrgc .prop-table-wrap td.col-hosp{display:none}
+  .mrgc .cstrip{grid-template-columns:1fr 1fr}
+  .mrgc .cstrip .bd{grid-column:1 / -1}
+  .mrgc .headacts.rev-head{display:none}
+  .mrgc .rev-actions{display:flex}
   .mrgc .tool .tlbl{ /* keep labels at 900 */ }
 }
 @media (max-width:767px){

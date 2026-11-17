@@ -1,0 +1,1306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandel Realty: Revenue design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================
+   Tokens: same as the hub (OKLCH palette, alpha borders, one type scale)
+   ========================================================= */
+:root{
+  --bg:#ffffff; --panel:#f2f2ef;
+  --ink: oklch(0.21 0.006 285); --ink2: oklch(0.32 0.006 285); --muted: oklch(0.45 0.008 285);
+  --line: rgb(0 0 0 / 0.11); --line-2: rgb(0 0 0 / 0.06); --hover: rgb(0 0 0 / 0.04); --press: rgb(0 0 0 / 0.07);
+  --gold:#c4a35a; --primary:#18181b;
+  --blue: oklch(0.6 0.15 255); --amber: oklch(0.6 0.14 65); --red: oklch(0.6 0.19 25); --grey: oklch(0.6 0.015 270);
+  --teal: oklch(0.6 0.11 185); --green: oklch(0.6 0.13 155);
+  --redink: oklch(0.48 0.17 25); --amberink: oklch(0.47 0.12 60); --greenink: oklch(0.42 0.1 155); --tealink: oklch(0.42 0.09 185);
+  --t-xs:12px; --t-sm:13px; --t-base:14px; --t-md:16px; --t-lg:24px;
+  --r-card:16px; --r-ctl:10px; --r-pill:999px;
+  --ease: cubic-bezier(.65,0,.35,1); --fast:110ms; --med:180ms;
+}
+*{box-sizing:border-box}
+html,body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:var(--t-base);line-height:1.5;color:var(--ink2);-webkit-font-smoothing:antialiased}
+body{background:#e6e6e2}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+h1,h2,h3,h4,h5,h6{margin:0;color:var(--ink)}
+svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+svg.i.sm{width:16px;height:16px}
+svg.i.xs{width:14px;height:14px}
+
+/* ===================== Design board ===================== */
+.boardbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 24px;background:rgb(255 255 255 / .88);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+.boardbar h1{font-size:var(--t-md);font-weight:650;display:flex;align-items:center;gap:10px}
+.boardbar h1 img{width:26px;height:26px}
+.boardbar .sp{flex:1}
+.boardbar .toc{display:flex;gap:4px;flex-wrap:wrap}
+.boardbar a{font-size:var(--t-xs);font-weight:600;color:var(--ink2);text-decoration:none;padding:5px 9px;border-radius:8px}
+.boardbar a:hover{background:var(--hover)}
+.zoom{display:inline-flex;background:var(--panel);border-radius:10px;padding:3px}
+.zoom button{border:0;background:none;border-radius:7px;height:28px;padding:0 10px;font-size:var(--t-xs);font-weight:600;color:var(--ink2)}
+.zoom button.on{background:#fff;color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.board{zoom:var(--z,.5);padding:48px}
+.sect{margin:0 0 120px}
+.sect>h2{font-size:44px;font-weight:700;letter-spacing:-.8px;margin:0 0 8px}
+.sect>p{font-size:22px;margin:0 0 40px;max-width:1400px;color:var(--ink2)}
+.state{margin:0 0 72px}
+.state>h3{font-size:28px;font-weight:650;margin:0 0 6px}
+.state>p{font-size:19px;margin:0 0 22px;max-width:1500px}
+.row{display:flex;gap:56px;align-items:flex-start;flex-wrap:nowrap}
+.fwrap>span{display:block;font-size:18px;font-weight:600;color:var(--muted);margin:0 0 10px}
+.frame{position:relative;overflow:hidden;background:var(--bg);border-radius:14px;box-shadow:0 1px 0 rgb(0 0 0 / .04),0 18px 50px rgb(0 0 0 / .12)}
+.frame.d{width:1440px;height:960px}
+.frame.p{width:390px;height:844px;border-radius:40px;box-shadow:0 0 0 10px #18181b,0 24px 60px rgb(0 0 0 / .2);margin:10px}
+
+/* ===================== Shared UI (matches hub) ===================== */
+.card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r-card)}
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:var(--r-ctl);padding:0 14px;height:40px;font-size:var(--t-sm);font-weight:500;border:1px solid var(--line);background:var(--bg);color:var(--ink);white-space:nowrap}
+.btn.sm{height:32px;padding:0 11px;font-size:var(--t-xs);border-radius:8px}
+.btn.primary{background:var(--primary);border-color:transparent;color:#fff;font-weight:600}
+.btn.primary svg.i{stroke-width:2.1}
+.btn.ghost{border-color:transparent;background:none;color:var(--ink2)}
+.btn.danger{background:oklch(0.55 0.17 25);border-color:transparent;color:#fff;font-weight:600}
+.btn.dangerline{color:var(--redink);border-color:oklch(0.6 0.19 25 / .35)}
+.btn.ok{background:oklch(0.94 0.05 155);border-color:oklch(0.6 0.13 155 / .35);color:var(--greenink)}
+.btn[disabled]{opacity:.5}
+.iconbtn{position:relative;width:36px;height:36px;border-radius:9px;border:1px solid transparent;background:none;display:inline-grid;place-items:center;color:var(--ink2);flex:none}
+.iconbtn.bd{border-color:var(--line)}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:var(--r-pill);padding:2px 9px;font-size:var(--t-xs);font-weight:600;white-space:nowrap;line-height:1.4}
+.count{font-size:var(--t-xs);font-weight:600;color:var(--ink2);background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-pill);padding:1px 8px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.meta{color:var(--muted);font-size:var(--t-xs);font-weight:500}
+.gap{color:var(--amberink);font-weight:600}
+.gapchip{display:inline-flex;align-items:center;gap:4px;border-radius:var(--r-pill);padding:1px 8px;font-size:11px;font-weight:600;background:oklch(0.6 0.14 65 / .14);color:var(--amberink)}
+.input{border:1px solid var(--line);border-radius:var(--r-ctl);padding:0 12px;height:40px;font-size:var(--t-sm);background:var(--bg);width:100%;color:var(--ink)}
+select.input{-webkit-appearance:none;appearance:none;padding-right:34px;background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2352525b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 11px center/16px}
+textarea.input{height:auto;min-height:84px;padding:10px 12px;resize:none;line-height:1.5}
+.input.ph{color:oklch(0.55 0.008 285)}
+.input.focus{border-color:oklch(0.6 0.15 255 / .6);box-shadow:0 0 0 3px oklch(0.6 0.15 255 / .12)}
+.input.warn{border-color:oklch(0.6 0.14 65 / .7);box-shadow:0 0 0 3px oklch(0.6 0.14 65 / .14)}
+.field label,.flabel{display:block;font-size:var(--t-xs);font-weight:600;color:var(--ink);margin-bottom:5px}
+.field label em{font-style:normal;font-weight:500;color:var(--muted)}
+.hint{font-size:var(--t-xs);font-weight:500;color:var(--muted);margin-top:5px;display:flex;gap:5px;align-items:center}
+.hint.bad{color:var(--redink)} .hint.warn{color:var(--amberink)} .hint.good{color:var(--greenink)}
+.switch{position:relative;width:44px;height:26px;flex:none;display:inline-block}
+.switch i{position:absolute;inset:0;border-radius:var(--r-pill);background:oklch(0.82 0.005 285)}
+.switch i::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgb(0 0 0 / .2)}
+.switch.on i{background:var(--primary)} .switch.on i::after{left:21px}
+.seg{display:inline-flex;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;padding:3px}
+.seg span{display:inline-flex;align-items:center;gap:6px;border-radius:9px;height:32px;padding:0 14px;font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.seg span.on{background:var(--bg);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.av{width:36px;height:36px;border-radius:50%;display:inline-grid;place-items:center;font-size:12px;font-weight:600;color:#fff;flex:none}
+.av.sm{width:28px;height:28px;font-size:11px}
+.frost{background:rgb(255 255 255 / .86);backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--line);box-shadow:0 12px 40px rgb(0 0 0 / .12)}
+.scrim{position:absolute;inset:0;background:rgb(20 20 25 / .2);backdrop-filter:blur(3px);z-index:40;display:flex;align-items:center;justify-content:center}
+.scrim.bottom{align-items:flex-end}
+.modal{border-radius:20px;padding:24px;width:540px}
+.modal h2{font-size:20px;font-weight:650}
+.modal .lede{font-size:var(--t-sm);margin:4px 0 18px}
+.mfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.sheet{width:100%;border-radius:20px 20px 0 0;padding:20px 18px 28px}
+.toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:var(--primary);color:#fff;border-radius:12px;padding:0 16px;height:44px;font-size:var(--t-sm);font-weight:500;display:flex;align-items:center;gap:8px;white-space:nowrap;z-index:60}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fgrid .full{grid-column:1 / -1}
+
+/* ===================== App shell (desktop) ===================== */
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);height:100%}
+.side{border-right:1px solid var(--line);display:flex;flex-direction:column;padding:20px 12px 14px}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px}
+.brand img{width:34px;height:34px}
+.brand b{flex:1;font-size:var(--t-md);font-weight:650;color:var(--ink);white-space:nowrap}
+.jump{display:flex;align-items:center;gap:10px;margin:18px 0 6px;height:40px;padding:0 10px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);color:var(--ink2)}
+.jump span{flex:1}
+kbd{font:600 11px/1 Inter,sans-serif;color:var(--ink2);background:#fff;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:3px 5px}
+.ng{margin-top:16px}
+.ng h4{font-size:var(--t-xs);font-weight:600;color:var(--muted);padding:0 12px 4px}
+.nb{display:flex;align-items:center;gap:11px;height:40px;padding:0 12px;border-radius:10px;border:1px solid transparent;font-size:var(--t-base);font-weight:500;color:var(--ink2);position:relative}
+.nb.on{border-color:rgb(0 0 0 / .1);background:rgb(0 0 0 / .045);color:var(--ink);font-weight:600}
+.nb.on::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--gold)}
+.nb.on svg.i{stroke-width:2.1}
+.side .spc{flex:1}
+.me{display:flex;align-items:center;gap:10px;padding:12px 12px 0;border-top:1px solid var(--line-2);margin-top:8px;font-size:var(--t-sm);color:var(--ink);font-weight:500}
+.me small{display:block;color:var(--muted);font-size:var(--t-xs);font-weight:400}
+.main{min-width:0;display:flex;flex-direction:column;height:100%;overflow:hidden}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:26px 32px 0}
+.head .date{color:var(--muted);font-size:var(--t-sm);font-weight:500}
+.head h1{font-size:var(--t-lg);font-weight:700;letter-spacing:-.4px;line-height:1.25}
+.headacts{display:flex;gap:8px;align-items:center}
+.aipill{display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.subnav{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 32px 0}
+.content{flex:1;min-height:0;padding:16px 32px 28px;overflow:hidden}
+
+/* ===================== Inbox ===================== */
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:6px;gap:6px;margin-bottom:14px}
+.stat{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px}
+.stat+.stat{box-shadow:-7px 0 0 -6px var(--line)}
+.stat .ic{width:34px;height:34px;border-radius:50%;background:var(--panel);display:grid;place-items:center;color:var(--ink2)}
+.stat b{display:block;font-size:20px;font-weight:650;color:var(--ink);line-height:1.15}
+.stat span.l{font-size:var(--t-xs);font-weight:500;color:var(--muted)}
+.filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.search{position:relative;flex:1 1 280px;max-width:420px}
+.search svg{position:absolute;left:12px;top:12px;color:var(--muted)}
+.search .input{padding-left:38px}
+.fsel{position:relative}
+.fsel .input{height:36px;font-size:var(--t-sm);width:auto;min-width:0}
+.fsel.on .input,.ftog.on{background-color:oklch(0.6 0.11 185 / .1);border-color:oklch(0.6 0.11 185 / .55);box-shadow:inset 0 -2px 0 var(--teal);color:var(--ink);font-weight:600}
+.ftog{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r-ctl);font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.ftog .switch{transform:scale(.75);margin:0 -5px}
+.ftog.on .switch i{background:var(--teal)}
+.chipseg{display:inline-flex;gap:4px}
+.chipseg span{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.chipseg span.on{background:var(--primary);color:#fff;border-color:transparent;font-weight:600}
+.chipseg span.on .count{background:rgb(255 255 255 / .18);color:#fff;border-color:transparent}
+.clear{color:var(--tealink);font-size:var(--t-sm);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.listhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px;font-size:var(--t-sm);color:var(--ink2)}
+.refreshing{display:inline-flex;align-items:center;gap:6px;color:var(--ink2);font-size:var(--t-xs);font-weight:600}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid oklch(0.85 0.005 285);border-top-color:var(--ink);display:inline-block}
+table{width:100%;border-collapse:collapse}
+th{background:var(--panel);text-align:left;font-size:var(--t-xs);font-weight:600;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+td{padding:11px 12px;border-bottom:1px solid var(--line-2);vertical-align:middle;font-size:var(--t-sm)}
+tr:last-child td{border-bottom:0}
+tr.sel td{background:oklch(0.975 0.003 95)}
+.lead{display:flex;gap:11px;align-items:flex-start;min-width:0}
+.lead .t{min-width:0;flex:1}
+.lead .nm{display:flex;align-items:center;gap:7px;font-weight:600;color:var(--ink);font-size:var(--t-base)}
+.lead .sub{display:block;color:var(--ink2);font-size:var(--t-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:330px}
+.lead .reasons{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.unread{width:8px;height:8px;border-radius:50%;background:var(--blue);flex:none}
+.reason{display:inline-flex;align-items:center;gap:4px;border-radius:var(--r-pill);padding:1px 8px;font-size:11px;font-weight:600}
+.aim{display:inline-flex;align-items:center;gap:5px;font-size:var(--t-xs);font-weight:600;color:var(--ink2);white-space:nowrap}
+.time{font-size:var(--t-xs);font-weight:500;color:var(--muted);white-space:nowrap}
+.onb a,.lnk{color:var(--tealink);font-weight:600;text-decoration:none;font-size:var(--t-sm)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:56px 24px;color:var(--ink2)}
+.empty .eic{width:52px;height:52px;border-radius:50%;background:var(--panel);display:grid;place-items:center;color:var(--ink2);margin-bottom:6px}
+.empty b{font-size:var(--t-md);color:var(--ink)}
+
+/* compact list (when a lead is open) */
+.clist{display:flex;flex-direction:column}
+.crow{display:flex;gap:11px;padding:11px 12px;border-bottom:1px solid var(--line-2);position:relative}
+.crow.sel{background:oklch(0.975 0.003 95)}
+.crow.sel::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--ink)}
+.crow .t{flex:1;min-width:0}
+.crow .l1{display:flex;align-items:center;gap:6px}
+.crow .l1 b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);font-weight:600}
+.crow .sub{display:block;font-size:var(--t-sm);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crow .l3{display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap}
+
+/* ===================== Lead panel ===================== */
+.split{display:grid;grid-template-columns:400px minmax(0,1fr);gap:16px;height:100%}
+.lpanel{display:grid;grid-template-columns:minmax(0,1fr) 352px;height:100%;overflow:hidden}
+.lph{grid-column:1 / -1;display:flex;align-items:center;gap:12px;padding:12px 14px 12px 16px;border-bottom:1px solid var(--line-2)}
+.lph .t{flex:1;min-width:0}
+.lph .t b{display:block;font-size:var(--t-md);color:var(--ink);font-weight:600}
+.lph .t span{display:flex;gap:10px;align-items:center;font-size:var(--t-xs)}
+.thread{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line-2)}
+.msgs{flex:1;min-height:0;overflow:hidden;padding:16px;display:flex;flex-direction:column;gap:4px;justify-content:flex-end}
+.daysep{align-self:center;font-size:11px;font-weight:600;color:var(--muted);margin:4px 0 8px}
+.bub{max-width:82%;padding:9px 13px;border-radius:16px;font-size:var(--t-sm);line-height:1.45;color:var(--ink)}
+.bub.out{align-self:flex-end;background:oklch(0.94 0.004 285);border-bottom-right-radius:6px}
+.bub.in{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:6px}
+.bmeta{font-size:11px;font-weight:500;color:var(--muted);margin:2px 4px 10px}
+.bmeta.r{align-self:flex-end} .bmeta.l{align-self:flex-start}
+.draft{margin:0 16px 10px;border-radius:14px;border:1.5px dashed oklch(0.6 0.14 65 / .55);background:oklch(0.6 0.14 65 / .06);padding:12px 14px}
+.draft .dh{display:flex;align-items:center;gap:8px;font-size:var(--t-xs);font-weight:600;color:var(--amberink);margin-bottom:6px}
+.draft p{margin:0 0 10px;font-size:var(--t-sm);color:var(--ink)}
+.draft .da{display:flex;gap:6px;flex-wrap:wrap}
+.fup{display:flex;align-items:center;gap:10px;margin:0 16px 10px;padding:10px 12px;border-radius:12px;background:var(--panel);font-size:var(--t-sm);color:var(--ink)}
+.fup span{flex:1}
+.composer{display:flex;gap:8px;align-items:flex-end;padding:10px 16px 14px;border-top:1px solid var(--line-2)}
+.composer .input{min-height:44px;height:44px;border-radius:22px;padding:11px 16px;resize:none}
+.sendbtn{width:44px;height:44px;border-radius:50%;background:var(--primary);color:#fff;border:0;display:grid;place-items:center;flex:none}
+.sendbtn.off{background:oklch(0.85 0.005 285)}
+.firsttext{margin:auto;max-width:340px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px}
+.firsttext .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.details{overflow:hidden;padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px;background:#fff}
+.dsec{border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.dsec h5{font-size:var(--t-xs);font-weight:600;color:var(--ink2);margin:0 0 8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dsec.hl{background:var(--panel);border-color:transparent}
+.kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:7px 10px;font-size:var(--t-sm)}
+.kv dt{color:var(--muted);font-weight:500}
+.kv dd{margin:0;color:var(--ink);font-weight:500;min-width:0;overflow-wrap:anywhere}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.aiseg{display:grid;grid-template-columns:1fr 1fr;background:var(--panel);border-radius:10px;padding:3px}
+.aiseg span{display:flex;align-items:center;justify-content:center;height:32px;border-radius:8px;font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.aiseg span.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.aiexp{font-size:var(--t-xs);color:var(--ink2);margin-top:6px}
+.steps{list-style:none;margin:0;padding:0}
+.steps li{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line-2);font-size:var(--t-sm);color:var(--ink)}
+.steps li:last-child{border-bottom:0}
+.steps li span{flex:1}
+.steps li.done span{color:var(--muted);text-decoration:line-through}
+.steps li.skip span{color:var(--muted);text-decoration:line-through;text-decoration-color:rgb(0 0 0 / .3)}
+.cbx{width:18px;height:18px;border-radius:6px;border:1.5px solid rgb(0 0 0 / .28);flex:none;display:grid;place-items:center}
+.cbx.on{background:var(--primary);border-color:transparent;color:#fff}
+.warnbox{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border-radius:10px;background:oklch(0.6 0.14 65 / .12);color:var(--ink);font-size:var(--t-sm);margin-top:8px}
+.warnbox svg{color:var(--amberink);margin-top:2px}
+.warnbox b{color:var(--amberink)}
+.okbox{display:flex;gap:8px;align-items:center;padding:9px 11px;border-radius:10px;background:oklch(0.6 0.13 155 / .1);font-size:var(--t-sm);color:var(--ink);margin-top:8px}
+.menu{position:absolute;z-index:30;width:250px;border-radius:14px;padding:6px}
+.menu div{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:9px;font-size:var(--t-sm);font-weight:500;color:var(--ink)}
+.menu div.hov{background:var(--press)}
+.menu div.dng{color:var(--redink)}
+.menu hr{border:0;border-top:1px solid var(--line-2);margin:4px 6px}
+
+/* ===================== Knowledge + Settings ===================== */
+.krow{display:grid;grid-template-columns:36px minmax(0,1fr) 190px 120px 40px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line-2)}
+.krow:last-child{border-bottom:0}
+.kic{width:36px;height:36px;border-radius:10px;background:var(--panel);display:grid;place-items:center;color:var(--ink2)}
+.krow b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-sm)}
+.kst{display:inline-flex;align-items:center;gap:7px;font-size:var(--t-xs);font-weight:600}
+.cardhead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line-2)}
+.cardhead h3{font-size:var(--t-md);font-weight:600;display:flex;align-items:center;gap:8px}
+.cardbody{padding:14px 16px}
+.setgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.setrow{display:flex;align-items:center;gap:12px;justify-content:space-between}
+.setrow b{display:block;color:var(--ink);font-weight:600}
+.ptable{width:100%;border:1px solid var(--line-2);border-radius:12px;overflow:hidden;font-size:var(--t-sm)}
+.ptable div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;padding:8px 12px;border-bottom:1px solid var(--line-2)}
+.ptable div:last-child{border-bottom:0}
+.ptable dt{color:var(--muted);font-weight:500}
+.ptable dd{margin:0;color:var(--ink);font-weight:500}
+.people{list-style:none;margin:0;padding:0}
+.people li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.people li:last-child{border-bottom:0}
+.people li .t{flex:1;min-width:0}
+.people li .t b{display:block;color:var(--ink);font-weight:600}
+.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--t-sm);font-weight:600;color:var(--ink);letter-spacing:.5px;margin-right:10px}
+.pastebox{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.55;color:var(--ink2);white-space:pre-wrap}
+
+/* ===================== Phone ===================== */
+.phn{display:flex;flex-direction:column;height:100%;position:relative}
+.phn .status{height:44px;flex:none}
+.ptop{display:flex;align-items:center;justify-content:space-between;gap:8px;height:52px;padding:0 12px 0 16px;border-bottom:1px solid var(--line-2);flex:none}
+.ptop .brand{padding:0}
+.ptop .brand img{width:30px;height:30px}
+.pbody{flex:1;min-height:0;overflow:hidden;padding:12px 16px 16px}
+.ptitle{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.ptitle h1{font-size:22px;font-weight:700;letter-spacing:-.3px}
+.pseg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--panel);border-radius:12px;padding:3px;margin-bottom:12px}
+.pseg span{display:flex;align-items:center;justify-content:center;height:36px;border-radius:9px;font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.pseg span.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.pseg.two{grid-template-columns:1fr 1fr}
+.bnav{display:flex;flex:none;border-top:1px solid var(--line);padding:4px 6px 20px;background:rgb(255 255 255 / .96)}
+.bnav span{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:500;color:var(--ink2);min-height:50px;border-radius:12px}
+.bnav span.on{color:var(--ink);font-weight:600;background:rgb(0 0 0 / .045);box-shadow:inset 0 0 0 1px rgb(0 0 0 / .1)}
+.fab{position:absolute;right:16px;bottom:92px;z-index:20;height:52px;padding:0 20px;border-radius:var(--r-pill);background:var(--primary);color:#fff;font-weight:600;font-size:var(--t-base);display:flex;align-items:center;gap:8px;box-shadow:0 6px 20px rgb(0 0 0 / .18)}
+.mcard{border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px;background:#fff}
+.mcard .l1{display:flex;align-items:center;gap:7px}
+.mcard .l1 b{flex:1;min-width:0;color:var(--ink);font-weight:600;font-size:var(--t-base);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcard .sub{display:block;font-size:var(--t-sm);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 8px}
+.mcard .chips{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.mcard .ml{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2);font-size:var(--t-xs);font-weight:500}
+.pfilters{display:flex;gap:6px;overflow:hidden;margin-bottom:10px}
+.pfilters span{flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.pfilters span.on{background:var(--primary);color:#fff;border-color:transparent;font-weight:600}
+.pfilters span.tf{background-color:oklch(0.6 0.11 185 / .1);border-color:oklch(0.6 0.11 185 / .55);color:var(--ink);font-weight:600}
+.plead{display:flex;flex-direction:column;height:100%}
+.plh{display:flex;align-items:center;gap:8px;height:60px;padding:0 8px;border-bottom:1px solid var(--line-2);flex:none}
+.plh .t{flex:1;min-width:0}
+.plh .t b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-base);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plseg{padding:8px 12px;flex:none;border-bottom:1px solid var(--line-2)}
+.plbody{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.plbody.pad{padding:12px;gap:10px}
+.phn .msgs{padding:12px}
+.phn .draft,.phn .fup{margin:0 12px 8px}
+.phn .composer{padding:8px 12px 24px}
+.phn .kv{grid-template-columns:100px minmax(0,1fr)}
+.phn .krow{grid-template-columns:36px minmax(0,1fr) 44px;row-gap:6px}
+.phn .krow .kst{grid-column:2 / -1}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:var(--t-xs);font-weight:500}
+.bpcard{font-size:19px}
+.bpcard table td,.bpcard table th{font-size:17px;padding:12px 16px}
+/* ===================== Clients additions (same tokens) ===================== */
+.backlink{display:inline-flex;align-items:center;gap:4px;font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.head h1 .chip{font-size:var(--t-xs);letter-spacing:0}
+.cgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.client{display:flex;gap:11px;align-items:center;min-width:0}
+.client b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-base)}
+.client span.e{display:block;color:var(--ink2);font-size:var(--t-sm)}
+.ext{display:inline-flex}
+td.r,th.r{text-align:right}
+.num{font-variant-numeric:tabular-nums}
+.linkrow{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);font-size:var(--t-sm);color:var(--ink);margin-top:10px}
+.linkrow span.u{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.track{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:2px}
+.track i{height:4px;border-radius:2px;background:oklch(0.9 0.003 285)}
+.track i.on{background:var(--ink)}
+.tracklab{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:6px;font-size:11px;font-weight:500;color:var(--muted)}
+.tracklab span.on{color:var(--ink);font-weight:600}
+.pdesc{margin:10px 0 0;font-size:var(--t-sm);color:var(--ink)}
+.pbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.lrow2{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.lrow2:last-child{border-bottom:0}
+.lrow2 .t{flex:1;min-width:0}
+.lrow2 .t b{display:block;color:var(--ink);font-weight:600}
+.chk{list-style:none;margin:0;padding:0}
+.chk li{display:flex;gap:10px;padding:9px 16px;border-bottom:1px solid var(--line-2);align-items:flex-start}
+.chk li:last-child{border-bottom:0}
+.chk .ck{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;margin-top:1px}
+.chk .ck.on{background:oklch(0.6 0.13 155 / .16);color:var(--greenink)}
+.chk .ck.off{border:1.5px dashed rgb(0 0 0 / .28)}
+.chk b{display:block;font-size:var(--t-sm);font-weight:600;color:var(--ink)}
+.chk li.open b{color:var(--ink2);font-weight:500}
+.errbanner{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:12px;background:oklch(0.6 0.19 25 / .09);border:1px solid oklch(0.6 0.19 25 / .28);color:var(--ink);font-size:var(--t-sm);margin-bottom:14px}
+.errbanner>svg{color:var(--redink)}
+.errbanner span{flex:1}
+.errbanner b{color:var(--redink)}
+.skel{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,oklch(0.93 0.003 285),oklch(0.96 0.002 285),oklch(0.93 0.003 285))}
+.mp{display:inline-flex;align-items:center;gap:4px}
+.mp .btn{min-width:170px;font-weight:600}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.toolbar .acts{display:flex;gap:8px;flex-wrap:wrap}
+.stats.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.yg{position:absolute;z-index:35;width:300px;border-radius:16px;padding:12px}
+.yg .yh{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.yg .yh b{font-size:var(--t-sm);font-weight:600;color:var(--ink)}
+.yg .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.yg .grid span{height:40px;border-radius:10px;display:grid;place-items:center;font-size:var(--t-sm);font-weight:500;color:var(--ink)}
+.yg .grid span.sel{background:var(--ink);color:#fff;font-weight:600}
+.yg .grid span.cur{box-shadow:inset 0 0 0 1px var(--line);font-weight:700}
+.yg .grid span.dis{color:oklch(0.78 0.004 285)}
+.dp{width:296px;border-radius:16px;padding:10px}
+.dphead{display:flex;align-items:center;justify-content:space-between;padding:0 0 6px}
+.dphead b{font-size:var(--t-sm);font-weight:600;color:var(--ink)}
+.dpgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.dpwd span{text-align:center;font-size:11px;font-weight:600;color:var(--muted);padding:4px 0}
+.dpgrid b{height:36px;border-radius:10px;display:grid;place-items:center;font-size:var(--t-sm);font-weight:500;color:var(--ink);position:relative}
+.dpgrid b.out{color:oklch(0.62 0.006 285)}
+.dpgrid b.today{font-weight:700}
+.dpgrid b.today::after{content:"";position:absolute;left:50%;bottom:5px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:currentColor}
+.dpgrid b.sel{background:var(--ink);color:#fff;font-weight:600}
+.dpfoot{display:flex;gap:6px;padding-top:8px;margin-top:6px;border-top:1px solid var(--line-2)}
+.dpfoot .btn{flex:1;padding:0 6px}
+.drop{display:flex;align-items:center;gap:10px;border:1.5px dashed var(--line);border-radius:12px;padding:12px 14px;font-size:var(--t-sm);color:var(--ink2)}
+.drop b{color:var(--ink);font-weight:600}
+.opt{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.opt div{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:var(--t-sm);color:var(--ink2);display:flex;gap:10px;align-items:flex-start}
+.opt div b{display:block;color:var(--ink);font-weight:600}
+.opt div.on{border-color:rgb(0 0 0 / .4);box-shadow:inset 0 0 0 1px rgb(0 0 0 / .4)}
+.radio{width:18px;height:18px;border-radius:50%;border:1.5px solid rgb(0 0 0 / .3);flex:none;margin-top:1px}
+.radio.on{border:5px solid var(--primary)}
+.cbrow{display:flex;align-items:center;gap:9px;font-size:var(--t-sm);color:var(--ink);margin-top:10px}
+.picker{border-radius:14px;padding:8px;margin-top:6px}
+.picker .pi{display:flex;align-items:center;gap:10px;height:48px;padding:0 8px;border-radius:10px}
+.picker .pi.hov{background:var(--press)}
+.picker .pi .t{flex:1;min-width:0}
+.picker .pi b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-sm);line-height:1.3}
+.side-sheet{position:absolute;top:0;right:0;bottom:0;width:500px;border-radius:20px 0 0 20px;padding:24px;display:flex;flex-direction:column}
+.side-sheet .sbody{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:14px}
+.side-sheet h2{font-size:20px;font-weight:650}
+.leadbox{background:var(--panel);border-radius:14px;padding:12px 14px}
+.leadbox h5{margin:0 0 8px;font-size:var(--t-xs);font-weight:600;color:var(--ink2);display:flex;align-items:center;justify-content:space-between}
+.fakesel{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff}
+/* field placement */
+.pl{display:flex;flex-direction:column;height:100%;background:var(--panel)}
+.pltop{display:flex;align-items:center;gap:12px;padding:12px 20px;background:#fff;border-bottom:1px solid var(--line-2);flex:none}
+.pltop .t{flex:1;min-width:0}
+.pltop .t b{display:block;font-size:var(--t-md);font-weight:650;color:var(--ink)}
+.pltools{display:flex;align-items:center;gap:8px;padding:10px 20px;background:#fff;border-bottom:1px solid var(--line);flex:none}
+.tool{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2);background:#fff;white-space:nowrap;flex:none}
+.tool.on{border-color:rgb(0 0 0 / .38);background:rgb(0 0 0 / .045);color:var(--ink);font-weight:600}
+.vsep{width:1px;height:24px;background:var(--line);flex:none;margin:0 4px}
+.who{display:inline-flex;background:var(--panel);border-radius:11px;padding:3px;flex:none}
+.who span{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:8px;font-size:var(--t-sm);font-weight:500;color:var(--ink2);white-space:nowrap}
+.who span.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.who i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.plcanvas{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:20px;gap:10px}
+.page{position:relative;width:560px;height:724px;background:#fff;box-shadow:0 1px 3px rgb(0 0 0 / .1),0 10px 28px rgb(0 0 0 / .07);border-radius:4px;padding:52px 56px;flex:none}
+.page h6{font-size:15px;font-weight:700;color:var(--ink);margin:0 0 18px}
+.page .ln{height:7px;border-radius:4px;background:oklch(0.92 0.003 285);margin-bottom:11px}
+.page .sl{position:absolute;height:1px;background:oklch(0.7 0.004 285)}
+.page .slab{position:absolute;font-size:10px;font-weight:600;color:var(--muted)}
+.fld{position:absolute;border:1.5px solid;border-radius:6px;display:flex;align-items:center;gap:6px;padding:0 8px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.fld.h{border-color:oklch(0.6 0.15 255 / .8);background:oklch(0.6 0.15 255 / .09);color:oklch(0.45 0.13 255)}
+.fld.m{border-color:oklch(0.55 0.15 300 / .8);background:oklch(0.55 0.15 300 / .09);color:oklch(0.42 0.14 300)}
+.fld.sel{border-style:solid;box-shadow:0 0 0 3px oklch(0.55 0.15 300 / .18)}
+.fld .hd{position:absolute;width:9px;height:9px;background:#fff;border:1.5px solid currentColor;border-radius:2px}
+.fld .del{position:absolute;top:-12px;right:-12px;width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center}
+.fld.ghost{border-style:dashed;opacity:.7}
+.plhint{display:flex;align-items:center;gap:8px;font-size:var(--t-xs);font-weight:500;color:var(--ink2)}
+.need{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-xs);font-weight:600}
+.need.ok{color:var(--greenink)} .need.no{color:var(--amberink)}
+.sendwrap{display:flex;align-items:center;gap:12px}
+.pad{border-radius:12px;border:1px solid var(--line);background:#fff;height:200px;position:relative}
+.pad .base{position:absolute;left:24px;right:24px;bottom:44px;border-top:1px dashed oklch(0.75 0.004 285)}
+.pad .x{position:absolute;left:26px;bottom:50px;font-size:14px;color:var(--muted)}
+/* statement */
+.stmt{display:flex;flex-direction:column;height:100%;background:var(--panel)}
+.stmtbar{display:flex;align-items:center;gap:12px;padding:12px 24px;background:rgb(255 255 255 / .9);border-bottom:1px solid var(--line);flex:none}
+.paper{width:820px;margin:20px auto 0;background:#fff;border-radius:6px;box-shadow:0 1px 3px rgb(0 0 0 / .08),0 12px 32px rgb(0 0 0 / .06);padding:36px 44px;font-size:var(--t-sm);color:var(--ink)}
+.paper .ph1{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.paper h4{font-size:var(--t-xs);font-weight:700;color:var(--muted);letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px}
+.paper table td,.paper table th{padding:6px 8px;font-size:12.5px}
+.paper th{background:none;border-bottom:1px solid var(--line)}
+.paper .tot td{font-weight:700;border-top:1px solid var(--line);border-bottom:0}
+.paper .net{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:12px 14px;border-radius:10px;background:var(--panel);font-weight:700;font-size:var(--t-md)}
+.phn .paper{width:auto;margin:0;padding:18px 16px;border-radius:12px}
+.phn .paper table td,.phn .paper table th{padding:5px 4px;font-size:12px}
+.backrow{display:flex;align-items:center;gap:4px;font-size:var(--t-sm);font-weight:500;color:var(--ink2);margin:0 0 6px -2px;height:28px}
+.phn .ptitle h1{font-size:21px}
+.phn .card{margin-bottom:12px}
+.phn .cardhead{padding:12px 14px}
+.phn .cardbody{padding:12px 14px}
+.phn .lrow2{padding:10px 14px}
+.phn .chk li{padding:9px 14px}
+.phn .stats.four{grid-template-columns:1fr 1fr}
+.phn .stats.four .stat+.stat{box-shadow:none}
+.phn .stat{padding:8px 10px}
+.phn .stat b{font-size:17px}
+.urow{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line-2)}
+.urow:last-child{border-bottom:0}
+.urow .t{flex:1;min-width:0}
+.urow .t b{display:block;font-size:var(--t-sm);color:var(--ink);font-weight:600}
+.urow .v{text-align:right;font-size:var(--t-sm);font-weight:600;color:var(--ink)}
+
+/* ===================== Properties additions (same tokens) ===================== */
+.cov{display:inline-grid;place-items:center;flex:none;overflow:hidden;position:relative}
+.cov svg.house{width:44%;height:auto;opacity:.75}
+.cov.none{background:var(--panel);color:var(--muted);border:1.5px dashed rgb(0 0 0 / .14)}
+tr.faded td>*,.mcard.faded>*{opacity:.5}
+.deal{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:var(--r-pill);border:1px solid var(--line);font-size:var(--t-xs);font-weight:600;color:var(--ink2);white-space:nowrap;background:#fff}
+.mk{display:inline-flex;align-items:center;gap:5px;font-size:var(--t-xs);font-weight:600;color:var(--ink2);white-space:nowrap}
+.pgrid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.covercard{position:relative;height:190px;border-radius:var(--r-card);overflow:hidden;border:1px solid var(--line)}
+.covercard .cov{width:100%;height:100%;border-radius:0}
+.covercard .cov.none{border:0}
+.coveracts{position:absolute;right:12px;bottom:12px;display:flex;gap:6px}
+.coveracts .btn{background:rgb(255 255 255 / .9);backdrop-filter:blur(10px)}
+.appic{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff;flex:none}
+.idtxt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--ink2)}
+.cardfoot{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line-2);align-items:center}
+.kv2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;font-size:var(--t-sm)}
+.kv2 dt{color:var(--muted);font-weight:500;font-size:var(--t-xs)}
+.kv2 dd{margin:0;color:var(--ink);font-weight:500}
+.hist{list-style:none;margin:0;padding:0}
+.hist li{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:var(--t-sm);color:var(--ink);border-bottom:1px solid var(--line-2)}
+.hist li:last-child{border-bottom:0}
+.hist li i{width:8px;height:8px;border-radius:50%;background:oklch(0.8 0.004 285);flex:none}
+.hist li.cur i{background:var(--ink)}
+.hist li span.m{margin-left:auto}
+.qrow{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.qrow:last-child{border-bottom:0}
+.qrow .t{flex:1;min-width:0}
+.qrow .t b{display:block;color:var(--ink);font-weight:600}
+.syncline{display:flex;align-items:center;gap:8px;font-size:var(--t-xs);font-weight:600;color:var(--ink2)}
+.etot{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:6px;background:var(--panel);border-radius:12px;margin:12px 0}
+.etot div{padding:6px 8px}
+.etot b{display:block;font-size:15px;font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums}
+.etot span{font-size:11px;font-weight:500;color:var(--muted)}
+.etot div.net{background:#fff;border-radius:8px;box-shadow:0 0 0 1px var(--line)}
+.stay{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.stay:last-child{border-bottom:0}
+.stay .t{flex:1;min-width:0}
+.stay .t b{display:block;color:var(--ink);font-weight:600}
+.stay .v{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.exp{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.exp:last-child{border-bottom:0}
+.exp .t{flex:1;min-width:0}
+.exp .t b{display:block;color:var(--ink);font-weight:600}
+.exp .v{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.exp.ask{background:oklch(0.6 0.19 25 / .07)}
+.cchips{display:flex;gap:6px;flex-wrap:wrap}
+.cchips span{display:inline-flex;align-items:center;height:34px;padding:0 12px;border-radius:var(--r-pill);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2);background:#fff}
+.cchips span.on{border-color:rgb(0 0 0 / .4);box-shadow:inset 0 0 0 1px rgb(0 0 0 / .4);color:var(--ink);font-weight:600}
+.clientchips{display:flex;gap:6px;flex-wrap:wrap}
+.clientchips span{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:var(--r-pill);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2);background:#fff;white-space:nowrap}
+.clientchips span.on{border-color:rgb(0 0 0 / .4);box-shadow:inset 0 0 0 1px rgb(0 0 0 / .4);color:var(--ink);font-weight:600}
+.sel-list{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.sel-list>div{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.sel-list>div:last-child{border-bottom:0}
+.sel-list>div.on{background:oklch(0.975 0.003 95);box-shadow:inset 3px 0 0 var(--ink)}
+.sel-list>div.dis{opacity:.5}
+.sel-list .t{flex:1;min-width:0}
+.sel-list .t b{display:block;color:var(--ink);font-weight:600}
+.stepper{display:flex;align-items:center;gap:8px;font-size:var(--t-xs);font-weight:600;color:var(--muted);margin:2px 0 14px}
+.stepper b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--panel);color:var(--ink2);font-size:11px}
+.stepper .on{color:var(--ink)} .stepper .on b{background:var(--ink);color:#fff}
+.stepper .done b{background:oklch(0.6 0.13 155 / .16);color:var(--greenink)}
+.stepper hr{flex:0 0 28px;border:0;border-top:1px solid var(--line);margin:0}
+.inconfirm{border-radius:12px;padding:12px 14px;background:oklch(0.6 0.19 25 / .08);border:1px solid oklch(0.6 0.19 25 / .25);font-size:var(--t-sm);color:var(--ink)}
+.inconfirm b{color:var(--redink)}
+.masked{letter-spacing:2px;color:var(--ink)}
+.infobar{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:var(--panel);font-size:var(--t-sm);color:var(--ink);margin-bottom:14px}
+.phn .etot{grid-template-columns:repeat(2,minmax(0,1fr))}
+.phn .etot div.net{grid-column:1 / -1}
+.phn .kv2{gap:8px 12px}
+.phn .exp,.phn .qrow{padding:10px 14px}
+.phn .covercard{height:150px;margin-bottom:12px}
+.phn .cardfoot{padding:10px 14px}
+.side-sheet .sbody.scroll{overflow:hidden}
+
+/* ===================== Revenue additions (same tokens) ===================== */
+.cstrip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;align-items:center;padding:6px;gap:6px;margin-bottom:14px}
+.cstrip .stat{cursor:pointer}
+.cstrip .stat.lk b{text-decoration:underline;text-decoration-color:rgb(0 0 0 / .2);text-underline-offset:4px}
+.cstrip .bd{padding:0 12px}
+.prompts{display:flex;gap:8px;flex-wrap:wrap;margin:-6px 0 14px}
+.prompt{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 6px 0 11px;border-radius:var(--r-pill);background:oklch(0.6 0.14 65 / .12);color:var(--ink);font-size:var(--t-xs);font-weight:600}
+.prompt svg{color:var(--amberink)}
+.prompt .btn{height:24px;font-size:11px;padding:0 9px;border-radius:99px}
+.sbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.banner{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:12px;font-size:var(--t-sm);color:var(--ink);margin-bottom:10px}
+.banner span{flex:1}
+.banner.warn{background:oklch(0.6 0.14 65 / .1);border:1px solid oklch(0.6 0.14 65 / .3)}
+.banner.warn>svg{color:var(--amberink)}
+.banner.bad{background:oklch(0.6 0.19 25 / .08);border:1px solid oklch(0.6 0.19 25 / .28)}
+.banner.bad>svg{color:var(--redink)}
+.banner.info{background:var(--panel)}
+.prog{height:6px;border-radius:3px;background:oklch(0.9 0.003 285);overflow:hidden;width:180px}
+.prog i{display:block;height:100%;background:var(--ink);border-radius:3px}
+.syn{display:inline-flex;flex-direction:column;gap:1px}
+.syn .meta{font-size:11px}
+tr.dim td{opacity:.45}
+tr.total td{background:var(--panel);font-weight:650;color:var(--ink)}
+.grp{border-bottom:1px solid var(--line-2)}
+.grp:last-child{border-bottom:0}
+.grph{display:flex;align-items:center;gap:12px;padding:12px 16px;font-size:var(--t-sm)}
+.grph .t{flex:1;min-width:0}
+.grph .t b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-base)}
+.grph .v{font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums;min-width:90px;text-align:right}
+.grp.open .grph{background:oklch(0.985 0.002 95)}
+.urow2{display:flex;align-items:center;gap:12px;padding:10px 16px 10px 52px;border-top:1px solid var(--line-2);font-size:var(--t-sm)}
+.urow2 .t{flex:1;min-width:0}
+.urow2 .t b{display:block;color:var(--ink);font-weight:600}
+.urow2 .c{min-width:110px;text-align:right;font-variant-numeric:tabular-nums}
+.btn.copied{background:oklch(0.94 0.05 155);border-color:oklch(0.6 0.13 155 / .35);color:var(--greenink)}
+.plsec{margin-top:16px}
+.plsec h4{font-size:var(--t-xs);font-weight:700;color:var(--muted);letter-spacing:.4px;text-transform:uppercase;margin:0 0 6px;display:flex;justify-content:space-between}
+.plline{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.plline .t{flex:1;min-width:0}
+.plline .t b{display:block;color:var(--ink);font-weight:600}
+.plline .v{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.plline .acts{display:flex;gap:4px}
+.lbtn{font-size:var(--t-xs);font-weight:600;color:var(--tealink);background:none;border:0;padding:4px 6px;border-radius:6px;white-space:nowrap}
+.lbtn.dng{color:var(--redink)}
+.plnet{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:12px;background:var(--panel);font-weight:700;font-size:var(--t-md);color:var(--ink);margin-top:14px}
+.subrow{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.subrow .t{flex:1;min-width:0}
+.subrow .t b{display:block;color:var(--ink);font-weight:600}
+.subrow.off .t,.subrow.off .v{opacity:.5}
+.subrow .v{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}
+.ucard{border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px;background:#fff}
+.ucard .l1{display:flex;align-items:center;gap:8px}
+.ucard .l1 b{flex:1;min-width:0;color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ucard .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
+.ucard .nums span{font-size:11px;color:var(--muted);font-weight:500}
+.ucard .nums b{display:block;font-size:var(--t-sm);color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.phn .cstrip{grid-template-columns:1fr 1fr}
+.phn .cstrip .stat+.stat{box-shadow:none}
+.phn .cstrip .bd{grid-column:1 / -1;padding:2px 10px 6px}
+.phn .stat b{font-size:17px}
+.phn .grph{padding:12px 14px}
+.phn .urow2{padding:10px 14px 10px 14px}
+.syn{align-items:flex-start}
+</style>
+</head>
+<body>
+<div class="boardbar">
+  <h1><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAOXElEQVR42u2dechsZR3HP7+Zea95s1y4lQsIZQUVSqiFLWTbtUVpw5IKRFuEJCXUNpJItCjLpCJMrKtiSSlmtlkSec2l/Z8W6Y80sKwgXNrU3ndmfv1xnsf7cJzzLGfOnHnOzHngct935p0z5zzPb/n+djnwwEOGFGtCv9ZpDQFGzgv7AANAa1xMan4u5Rpi/l/096zqss8thtkfcQlgClwHHA6MDSH0q1tLHSaZ9bs95xHwe+A4YDBy/vhg4KB+H9diPWB/cFXApqGQaS8BVnbZs92cRQDiHHxPAKu7Bq5q6A96zdcoAWD0q5vIP5oAZJ4L9av7EkA9psWpxnQYGiDRL7J28IyBE4CPGpt/OK8K+DXw235vO7UOi1HfsQTweENFo14CkLsTaGTMvL1jVYBGfsHEWA19zCBvF7N19U6TbcJ+zc2FnbIAUvwAvRm4ogQ5WIKp10uczCSARlCMZCoqJbcN7bIE6JoK8IGuRTi1dNUDA9LrRtYyMqQreJD9IUfu4aDBVKte73ZQog0yF589Jy+YSWJVgPQcuboYoOscKQmE2RNyaT9iXcG5i2L1EILMwDlaU8TKgrGKtE2cgzk2owsgaJavQBKeq/z5RTrLbBBnQsuewJzFoiS+rxHc5UqLEHerR3WUJYvOmcQxAfYFjqjI6V84BtCMubvqoDTiYELFEpIgknUBXDgEtszh3wQcb75nmJMrWDIU81WEoB59GiNRJKCLJUFvhw5hwxz+04CfAM/HKdpoOxgkmVoeoRKoRRGaJpRgUTMf83/Ai83hH8Ge0q2lxAK0JZ0+bigRRRuwVqquoQsmSpu29TrgRuAQQwyDZbiC25AAA0PdLwHOMUQgc0bmmkDuREQU1QMcU9PBxDn8U4EbKKqypw3o/IWCQG1IHw2ATwMXGSII1SFKA6AnRcJJ4Po6B+IXpy7vbGBXBrWYEmsGNiUdbLLiWcC3gO2GEEY1I34SQRAacAD59LlWmItSkgwayWhbwIXAZ8xeyAIPP8uEkIHDBa8HbjEIeDMB/IRs8qr3UqwCKYl2n/mokYUaClwJvL9BHFRXmklqShgLqEgaA0cBdxhsYIlAEpG6BBB7U+7ZOvtkbfz9DNg72ZF40qWkUFnATY2MGHwK8CMDijZrgEP1EEaVKgipFG3ATz8yh38ocDNFR45x22ZeaM+WHQwaOrbvLuCCCHAoEVwviRFADXgbfUQmHjPvCOBW4LkZHf5jQKAu2bc/cADiR4BrKMqaqjZMAxzq8++nRPOUsFvaZ+O/ynD+oebZcjv8rFLCxAFLbwZ2UxQ3zgKHUuJqqWH7zw2eSgCxfPgnAt8GDghV566bBNBIcPg8IzpfOgMc6gy9rsTF7WPvRwNmolYQ8CZwBnAthZ9/mvHhPyoBcov1W3B4EPBD4BQPOJRIsZ3K7eKRjOqx8c8HPu8UZg4qGjXR1ZQwWmxyMDVcdHkJHA4TgjcxJmVdZ5Oa/bP3dRlwruPgEU+XrqxUAJnnK1pweC3wBMNpowiOjhXvUrP6yGKWJwLfAd5lfh9WXNOW1/8CuK8F3CWpKiDXhE+70ScaVP30GeBQZmCCEIfrHA4ka+MfYu7p+IDVYoHgVcCru1gb2NaaBMDhkcBtwCtK4DAEAjXCL6AVnC8VZt7hFHH8IyNM1iFFEOxk9iSC5FAvIKkZQbrgmxp6ONP1HN4InOaAw4EHD8SKeKnAFbPMvGPZE8eosvGnzjVPBz7ghIOnXesPoAu8KfvaP4CvOvcxDXgOLzVcNXZ0r69DdpX4j0nsdOP4b6HI3dvfY+Nbff8Q8CbgEmAvc/1prmbgsnMDN4zJ924HLU8C4PAcA8AOqACHvpBwLMG7cfyzgG8EbHxLjPcaVXUDsM283vnKoEWHKHcAX6YInPzVAYA+cHgChefwmRFhZfVk+s7CBq6N/wmKRBafjT922rEfC/zMHP5WF0rD2hjWoBGdyIbAj4EXALc7ANAHDg83f/uaQFhZPPq9LCEGTqHGpcCHA6lsVgLtpkj0vMtIivGSnGzSVUfQxOjLe4wI3eUAQB843AF8zwCuzYrnq0rpKksGK122A980gNMXxx+bw77GEOGD5vdJ7hXFuTqCxo6t/U7DfUOnfKoKHCrwRQp3LB5w6JNC9nt3GLD3Ro/zSR0r4GLgJIrs3lHm/RR1mV3CSBhuIIaTPmnQ9D89uGDgpJ2fAXzfAw59+GATeIYx817ocHeVT38IfNAAxJGTAb1STaKW+RATA6SuN7r1Dx5cIM57x1FEFJ8TmXNo92Kn0ePP9jh43K6pp1Akem4wf41gtlaAZqAStgG/A15EEWsP4YKxOcTbKFy1mx4/vfUX7G3Ux8GOKK8y8+4zxHKlubcJ3etoIl2aGGJF8f0UGcWfcg506gGH+wHfBd5n1IFWgEOM4+Y4ChfvXjOkjJUId1Eksu7O2cZv0hGUSwm5BVwj4EMUiaSPeJxGQ8f7drGxKIYV4NBigD87nD1ywKU9/F8aG//OmoefA9aSVAmwjNRxHzhUs/lXAK80h+ZzGllweCpFksmBHs+hVR+nUAxcGDivX0+RpXSvY+N3ufGVDjra9k0dXHC7Qeu3OIenHnD4MopahCMrwKFrfZwPvN3ggS8ZS+SRDph50X0XcusPoDVxwV+M2L6kNA21Chw+1VgIJ1WAQ2t9bABXA0cD73Eqm6Yr0j5OV6Fd/MTR1acDZwaGW9i/3Q58nSLbqAocWiK4MwA4V6JZtGZwUzIHLsCohC8YXPD3gNPIcvkFhssfV2H3T5zJKrqKbeJWpS2riwtuMf6CnwecRpZA3mo+c5gHF6zsvIA2zUBp0Wl0t0HsV0c6jY424PDYhELVrquA7JNC5w0mbRoUf24gmGQJ5MkUhaqneSKKKysBpKPNn6Ui4ueacx+nyCr+twcXDJ0sn0sNltAaEcWVBoGamQqwHL1VcUhuMOk6wsEkN93svcAPgCclRBTpcrPorkkAe78XGV3vOySLC35jwOGNHlzggsOdBhccFRlRlI6125W2k0KlYeKdAMdQpJCFGky4waTXAp+NCCaNKQpRdgNvC0QU2xy8tbS5gTkCxX+Zh90FfM7J4xsGgklnA+/AH0yyTqN9gK9RxAa2MqzxWzgGaCsaqDWridVw55kUadj7elSCG0y6nCLv8E+RTqPzDKHtVaPjh3a5PFwz9gSqo7e3KLpvuplAg4DT6A6DC24KBJOGTkTRdv7YzFgSSI4JIYuWIBtOmvhthhgmnkOyuOBvBhfEBpOOMUS2s1QC1umEkFVxBI2c1mxnRDSUdGv7bDBpGsAFtvvXhR11EyfHAiRDM1ADjafUOH5ICCZtGAfQToqkj2HFAduQ8H8yTghZiazgeSqWpUZNgHUa3UyRZHKrJ/4/yHz/sjQD2x5CrXMkn94DvJyivi8mD0A6OHep9ergruCMiWPq3RvZEFq7jgHWamJmQmXStlWehtp2MKhrG9nlLCDNsU+g0A+Wzs4RJP0waNZ6drD24+D74dFNzNTpxWyfELKSKkBXWaUNVnRodK+qVqw/QK7EJV0nrkFDs/l6Pd9hR1BXwV8PSHsV0EuUtjuFyhpybdNWgPYTQ/q1tgSgvcjuth9AM9xMyYQ4ZB1AoGSYE9h7AtccA2gmKkC7mkK9jC4ebmmVOm3ctGb61rhU6DlxkjxpID0s5vqScP9j53nFeY0G08y1SQJoCgNs83znjkSJZO9pf6fer/xc+zWwkft6rn9ATYmyw3MW29uUXKOWMICl9Lspiil0xkyfh80/SczZ+wpFfx9Xqtif70zkzFn3fBXwqxK32uvfk8gc9jnPo+hLPGuo5E8b6kamOakAe1h/pGitTs3R8LMO6LIInJOS0q2le76iIXe6vd+HgI81cM+dxABD9tTXzyrA3KpZDygVqsrV0xIYFFn1/kagH8CkYkqZr2BlI8As0xqTTOdWASkX1sQbkhKA8s3mDW1i+fVJgkQpj5HTCjWnpRY0sZusFQRV/r5xCxaPLiIcXIUHpMSFvn4CGlF1JBHULJ6/lcBA6Vnzg6uegTlG00uDAHphKkBrFodqBEhUzyFrwth3jbymzODAWfMCQwQqkc+ac7VQtAqQOcVJefKmeICVeD4rM64xS0f7RHrMZ5rYSPVIEx9BaU19Ps9nFuYJnHXwUlOsV4neKnFf5mL16H7ftbWhTl/iwRVSIX18fQukLYkyaCAA4qNuiRT5saogBo+ox4GlCYetka8JcVggpe9Sa1ladawADWy+BMRV1ec1YfJ3KmFIBGeGDkwj+hHEeE1D6ixW/Gub08NDKkAiNyok9mK7kUlJzGvg0HWG5AqBX/EccJUU9KkFTdzH1hpEaM2L6xyiMeY9iaRo8ZhtEnmode5bEvBC7L2lhJ5lmYUhKaKqirPFo7vncZBoosgmAqeoZ+5wU/kD6iHohSWfjBrs0yMB33rIPJIIkzEW4KkHVEqCStJARFQjTFsCOEMjo67akAVTyw9QtTkxNq5EijCdcW0iCCOGMDWhsVQTOlojcUZdM08bAIm1wsExJp1UeOJCphoeMzIUGwhxYyzXp+b8SeT3auR1NQEXSMQ5tN4fwGcChsy/EDpXz0NrQksXqdEeRiNNVR+jSMBVriwhH3GUABZtKLdfea9hoKV9LQzwX/a0Ye9X3svmVDzcpAQ4imKu3qhmpooGAjepCD0meic13chS817q3K8GME/s3pUlwBbwrBhfR+wIlMt7xuq0SqjED6O+Opi1rkQe9c2h6ItD+7W+azQjYrWKQ5L79dgzfgwGGNXosd+vbgLCUZkABHjQ/BvPaCApCe7GVFMvxlXbRHWyzpEBTaIpRoLbu43noDQe54EyCBTgDSVQqBGpXXgCNhoRXdOEBJNUUNokIdX1NcQSfcpBN5E48iiTuxjg/l5Crp86+D9qbdaBTsRvDgAAAABJRU5ErkJggg==" alt="">Revenue · design</h1>
+  <nav class="toc"><a href="#s-mc">Month close</a><a href="#s-hst">HST worklist</a><a href="#s-pl">Company P&amp;L</a><a href="#s-subs">Subscriptions and costs</a><a href="#s-bp">Breakpoints</a></nav>
+  <span class="sp"></span>
+  <span class="meta">Zoom</span>
+  <div class="zoom" id="zoom"><button data-z=".35">35%</button><button data-z=".5" class="on">50%</button><button data-z=".75">75%</button><button data-z="1">100%</button></div>
+</div>
+<div class="board" id="board"></div>
+<script>
+(function(){
+const LOGO = 'data:image/png;base64,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';
+/* ---------------- icons (same line set as the hub) ---------------- */
+const I = {
+  home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>',
+  users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18 14.3c2.1.7 3.5 2.6 3.5 5.7"/>',
+  clip:'<rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3" rx="1"/><path d="M9 11h6M9 15h4"/>',
+  building:'<rect x="4" y="3" width="11" height="18" rx="1"/><path d="M15 9h5v12h-5"/><path d="M8 7h3M8 11h3M8 15h3"/>',
+  team:'<circle cx="12" cy="7" r="3"/><circle cx="5" cy="10" r="2.2"/><circle cx="19" cy="10" r="2.2"/><path d="M6.5 20c0-3.3 2.4-5.5 5.5-5.5s5.5 2.2 5.5 5.5"/><path d="M1.5 19c0-2.3 1.4-3.9 3.5-4.2M22.5 19c0-2.3-1.4-3.9-3.5-4.2"/>',
+  brief:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M3 12.5h18"/>',
+  chart:'<path d="M4 4v16h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
+  spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  search:'<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  chev:'<path d="m6 9 6 6 6-6"/>',
+  back:'<path d="m15 6-6 6 6 6"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  check:'<path d="m5 12 5 5 9-10"/>',
+  phone:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  pin:'<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  refresh:'<path d="M20 11a8 8 0 0 0-14.9-3.6M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3.6M20 20v-4h-4"/>',
+  more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  up:'<path d="M12 19V5M6 11l6-6 6 6"/>',
+  copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  trash:'<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  upload:'<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
+  file:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  text:'<path d="M5 6h14M5 10h14M5 14h10M5 18h7"/>',
+  bell:'<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/>',
+  out:'<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5M5 12h11"/>',
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/>',
+  pause:'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+  play:'<path d="M7 5v14l11-7z"/>',
+  alert:'<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16h0"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  inbox:'<path d="M3 13h5l2 3h4l2-3h5"/><path d="M5 5h14l2 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/>',
+  book:'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/>',
+  sms:'<path d="M4 5h16v11H9l-5 4z"/>',
+  rec:'<circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9"/>',
+  arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'
+};
+const ic=(n,c='')=>`<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true">${I[n]}</svg>`;
+const ok=(h,c,L=.6,a)=>`oklch(${L} ${c} ${h}${a!=null?` / ${a}`:''})`;
+const tone=(h,c)=>({bg:ok(h,c,.6,.15),t:ok(h,c*.9,.45)});
+const chip=(txt,h,c)=>{const t=tone(h,c);return `<span class="chip" style="background:${t.bg};color:${t.t}">${txt}</span>`;};
+
+/* ---------------- vocab from the current CRM ---------------- */
+const STAGE={ 'New':[255,.14],'Engaging':[185,.11],'Nurturing':[300,.12],'Interested':[65,.14],'Booked':[275,.15],'Call done':[88,.11],'Won':[155,.13],'Low fit':[270,.02],'Skip':[270,.02] };
+const stageChip=s=>chip(s,...STAGE[s]);
+const REASON={draft:['Draft to review',65,.14],replied:['They replied',255,.14],noreply:['No reply',270,.02],booked:['Booked this week',275,.15]};
+const reason=k=>{const [t,h,c]=REASON[k];const x=tone(h,c);return `<span class="reason" style="background:${x.bg};color:${x.t}">${t}</span>`;};
+const AIM={live:['AI live','var(--green)'],paused:['AI paused','var(--amber)'],off:['AI off','oklch(0.75 0.005 285)']};
+const aim=k=>`<span class="aim"><i class="dot" style="background:${AIM[k][1]}"></i>${AIM[k][0]}</span>`;
+const CONTRACT={signed:['Signed',155,.13],sent:['Sent, awaiting signature',65,.14],not_sent:['Not sent',25,.18]};
+const conChip=c=>c?chip(...CONTRACT[c]):'<span class="gapchip">Not recorded</span>';
+const nr=v=>v?v:'<span class="gapchip">Not recorded</span>';
+const AVC=['255','300','155','355','65','185','275','25','210'];
+const av=(ini,i,cls='')=>`<span class="av ${cls}" style="background:oklch(0.5 0.11 ${AVC[i%AVC.length]})">${ini}</span>`;
+const NAV=[[null,[['home','Dashboard']]],['Operations',[['clip','Onboarding'],['building','Properties'],['team','Team']]],['Business',[['users','CRM'],['brief','Clients'],['chart','Revenue']]],['Assistant',[['spark','Copilot']]]];
+
+I.ext='<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>';
+I.next='<path d="m9 6 6 6-6 6"/>';
+I.user='<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>';
+I.move='<path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>';
+I.sign='<path d="M3 17c3-1 4-8 6-8s-1 8 2 8 3-5 5-5 1 4 3 4h2"/><path d="M3 21h18"/>';
+I.font='<path d="M5 20 11 4h2l6 16"/><path d="M8 13h8"/>';
+I.box='<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>';
+I.down='<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>';
+I.hst='<path d="M7 4h10v16l-2-1.5L13 20l-1-1.5L11 20l-2-1.5L7 20z"/><path d="M10 9h4M10 13h4"/>';
+I.cloud='<path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/><path d="m4 4 16 16"/>';
+
+/* ---------------- placeholder clients (all fake; listed in the notes file) ---------------- */
+const C=[
+ {ini:'HS',name:'Harper Sample',email:'harper.sample@example.com',phone:'(403) 555-0210',units:2,active:true,portal:'live',chk:[1,1,1,1,1]},
+ {ini:'RE',name:'Rowan Example',email:'rowan.example@example.com',phone:'(403) 555-0221',units:1,active:true,portal:'opened',chk:[1,0,1,1,0]},
+ {ini:'LM',name:'Logan Mock',email:'logan.mock@example.com',phone:'(587) 555-0232',units:3,active:true,portal:'live',chk:[1,1,1,1,1]},
+ {ini:'EP',name:'Emery Placeholder',email:'emery.placeholder@example.com',phone:'(403) 555-0243',units:1,active:true,portal:'none',chk:[1,0,0,0,0]},
+ {ini:'PD',name:'Parker Demo',email:'parker.demo@example.com',phone:'(825) 555-0254',units:1,active:true,portal:'signed',chk:[1,1,1,1,0]},
+ {ini:'RF',name:'Reese Fake',email:'reese.fake@example.com',phone:'(403) 555-0265',units:0,active:false,portal:'none',chk:[1,0,0,0,0]}
+];
+const actChip=a=>a?chip('Active',155,.13):chip('Paused',270,.02);
+const units=n=>`${n} ${n===1?'unit':'units'}`;
+const PS={none:['Not invited',270,.02,'No portal invite has been sent.'],invited:['Invited',255,.14,'Invite sent just now. Not opened yet.'],opened:['Opened',65,.14,'Invite opened Nov 15. Contract awaiting the host’s signature.'],signed:['Signed',185,.11,'Contract signed Nov 12. Host has not signed in yet.'],live:['Portal live',155,.13,'Contract signed Oct 2. Host signed in Oct 3.']};
+const ORDER=['none','invited','opened','signed','live'];
+const CHK=[['Client record created','Created Sep 28'],['Management agreement signed','Signed in the portal'],['Portal invite sent','Sent to the host’s email'],['First property linked','Linked from Properties'],['Host signed in to the portal','First sign-in to the host portal']];
+const CHK_OPEN=['','Waiting on the host’s signature','No invite sent yet','No property linked yet','Not signed in yet'];
+const CONTRACTS={HS:[['Management agreement','Oct 2, 2026'],['Furniture addendum','Oct 9, 2026']],RE:[],LM:[['Management agreement','Aug 21, 2026']],EP:[],PD:[['Management agreement','Nov 12, 2026']],RF:[]};
+
+/* ---------------- shell ---------------- */
+function sidebar(){
+  return `<aside class="side"><div class="brand"><img src="${LOGO}" alt=""><b>Mandel Realty</b><span class="iconbtn">${ic('back','sm')}</span></div>
+    <div class="jump">${ic('search','sm')}<span>Jump to…</span><kbd>Ctrl K</kbd></div>
+    ${NAV.map(([t,items])=>`<div class="ng">${t?`<h4>${t}</h4>`:''}${items.map(([i,l])=>`<div class="nb ${l==='Revenue'?'on':''}">${ic(i)}${l}</div>`).join('')}</div>`).join('')}
+    <div class="spc"></div><div class="nb">${ic('gear')}Settings</div>
+    <div class="me"><span class="av sm" style="background:oklch(0.38 0.02 270)">AD</span><div>Admin<small>Shared account</small></div></div></aside>`;
+}
+const listHeader=()=>`<div class="head"><div><div class="date">Monday, November 16, 2026</div><h1>Clients</h1></div>
+  <div class="headacts"><button class="btn primary">${ic('plus','sm')}Add client</button></div></div>`;
+const clientHeader=(c,tab,o={})=>`<div class="head"><div><div class="backlink">${ic('back','xs')}Clients</div><h1 style="display:flex;align-items:center;gap:10px">${c.name} ${actChip(c.active)}</h1></div>
+  <div class="headacts">${o.acts||''}</div></div>
+  <div class="subnav"><div class="seg"><span class="${tab==='d'?'on':''}">${ic('user','sm')}Details</span><span class="${tab==='m'?'on':''}">${ic('chart','sm')}Month earnings</span></div>${o.right||''}</div>`;
+const desk=(head,content,o={})=>`<div class="app">${sidebar()}<main class="main">${head}<div class="content" ${o.cs?`style="${o.cs}"`:''}>${content}</div></main></div>${o.overlay||''}`;
+function phone(content,o={}){
+  return `<div class="phn"><div class="status"></div>
+   ${o.bare?content:`<div class="ptop"><div class="brand"><img src="${LOGO}" alt=""><b>Mandel Realty</b></div><span class="iconbtn">${ic('search')}</span></div>
+   <div class="pbody">${content}</div>
+   ${o.fab?`<div class="fab">${ic('plus')}${o.fab}</div>`:''}
+   <div class="bnav">${[['home','Dashboard'],['users','CRM'],['clip','Onboarding'],['team','Team'],['gear','Settings']].map(([i,l])=>`<span>${ic(i)}${l}</span>`).join('')}</div>`}
+   ${o.overlay||''}</div>`;
+}
+const pList=()=>`<div class="ptitle"><h1>Clients</h1><span class="meta">${C.length} clients</span></div>`;
+const pClient=(c,tab)=>`<div class="backrow">${ic('back','sm')}Clients</div><div class="ptitle"><h1>${c.name}</h1>${actChip(c.active)}</div>
+  <div class="pseg two"><span class="${tab==='d'?'on':''}">Details</span><span class="${tab==='m'?'on':''}">Month earnings</span></div>`;
+
+/* ---------------- 1. client list ---------------- */
+const cTable=(rows,o={})=>`<div class="card" style="overflow:hidden"><table><thead><tr><th>Client</th><th>Units</th><th>Status</th><th class="r">Host portal</th><th style="width:44px"></th></tr></thead><tbody>
+ ${rows.map((c,i)=>`<tr class="${o.hov===i?'sel':''}"><td><div class="client">${av(c.ini,i)}<div><b>${c.name}</b><span class="e">${c.email}</span></div></div></td>
+  <td class="num">${units(c.units)}</td><td>${actChip(c.active)}</td>
+  <td class="r"><button class="btn sm">${ic('ext','xs')}Preview</button></td><td><span class="iconbtn">${ic('next','sm')}</span></td></tr>`).join('')}
+ </tbody></table></div>`;
+const listMeta=(n=C.length)=>`<div class="listhead"><span><b style="color:var(--ink)">${n} clients</b> <span class="meta">· ${C.filter(c=>c.active).length} active, ${C.filter(c=>!c.active).length} paused</span></span><span class="meta">Preview opens the host portal as that client sees it, in a new tab</span></div>`;
+const pCard=(c,i)=>`<div class="mcard"><div class="l1">${av(c.ini,i,'sm')}<b>${c.name}</b>${ic('next','sm')}</div>
+  <span class="sub" style="margin-left:35px">${c.email}</span>
+  <div class="ml" style="margin-top:2px"><span class="chips" style="display:flex;gap:6px;align-items:center"><span class="count">${units(c.units)}</span>${actChip(c.active)}</span><button class="btn sm">${ic('ext','xs')}Preview</button></div></div>`;
+const emptyList=(ph)=>`<div class="${ph?'':'card'}"><div class="empty" style="padding:${ph?'80px 12px':'110px 24px'}"><span class="eic">${ic('brief')}</span><b>No clients yet</b><span style="max-width:320px">Add a client to set up their host portal, contracts and month earnings.</span><button class="btn primary" style="margin-top:12px">${ic('plus','sm')}Add client</button></div></div>`;
+const errBanner=(t,ph)=>`<div class="errbanner">${ic('alert','sm')}<span><b>${t}</b>${ph?'':' Check your connection and try again.'}</span><button class="btn sm">Retry</button><span class="iconbtn" style="width:32px;height:32px">${ic('x','sm')}</span></div>`;
+
+/* ---------------- 2. add client ---------------- */
+const WON=[['JP','Jordan Placeholder','(403) 555-0161 · Won',3],['TT','Taylor Test','(587) 555-0118 · Won',4],['SD','Sky Dummy','(403) 555-0133 · Booked',7],['QF','Quinn Fake','(825) 555-0109 · Nurturing',6]];
+function addForm(o={}){
+  const f=o.filled;
+  const sv=o.saving;
+  const leadbox=`<div class="leadbox"><h5><span>Start from a CRM lead</span>${f?'<span class="clear" style="font-size:var(--t-xs)">Clear</span>':''}</h5>
+    <div class="input fakesel ${o.pick?'focus':''}">${f?`<span style="display:flex;align-items:center;gap:8px;color:var(--ink);font-weight:500">${av('JP',3,'sm')}Jordan Placeholder</span>`:`<span style="color:oklch(0.55 0.008 285)">Choose a lead…</span>`}${ic('chev','sm')}</div>
+    ${o.pick?`<div class="picker frost"><div class="search" style="max-width:none;margin-bottom:6px">${ic('search','sm')}<input class="input ph" value="Search leads by name or phone"></div>
+      ${WON.slice(0,o.ph?3:4).map(([ini,n,s,k],j)=>`<div class="pi ${j===0?'hov':''}">${av(ini,k,'sm')}<div class="t"><b>${n}</b><span class="meta">${s}</span></div></div>`).join('')}</div>`:''}
+    ${f?`<div class="hint good">${ic('check','xs')}Filled from the lead. You can still edit every field.</div>`:''}</div>`;
+  const dis=sv?'disabled':'';
+  const fields=`<div class="fgrid">
+    <div class="field full"><label>Name <em>(required)</em></label><input class="input ${f?'':'ph'}" ${dis} value="${f?'Jordan Placeholder':'Full name'}"></div>
+    <div class="field ${o.ph?'full':''}"><label>Email</label><input class="input ${f?'':'ph'}" ${dis} value="${f?'jordan.placeholder@example.com':'name@example.com'}"></div>
+    <div class="field ${o.ph?'full':''}"><label>Phone</label><input class="input ${f?'':'ph'}" ${dis} value="${f?'(403) 555-0161':'(000) 000-0000'}"></div>
+    <div class="field full"><label>Status</label><div class="aiseg" style="max-width:${o.ph?'none':'260px'}"><span class="on">Active</span><span>Paused</span></div></div></div>`;
+  const foot=`<div class="mfoot" style="${o.ph?'position:sticky;bottom:-28px;margin:16px -18px -28px;padding:12px 18px 24px;background:oklch(98% 0 0 / .94);border-top:1px solid var(--line-2);flex-direction:column-reverse;gap:8px':'margin-top:auto;padding-top:16px;border-top:1px solid var(--line-2)'}">
+     <button class="btn" ${dis} ${o.ph?'style="height:44px"':''}>Cancel</button><button class="btn" ${dis} ${o.ph?'style="height:44px"':''}>Save client only</button>
+     <button class="btn primary" ${o.ph?'style="height:48px"':''}>${sv?'<i class="spin" style="border-color:rgb(255 255 255 / .3);border-top-color:#fff"></i>Saving…':`Save &amp; send contract${ic('arrow','sm')}`}</button></div>`;
+  return `<h2 style="font-size:20px;font-weight:650">Add client</h2><p class="lede" style="font-size:var(--t-sm);margin:4px 0 0">Save &amp; send contract saves the client, then opens the portal invite.</p>
+    ${o.ph?`<div style="display:flex;flex-direction:column;gap:14px;margin-top:14px">${leadbox}${o.pick?'':fields}</div>`:`<div class="sbody" style="margin-top:16px">${leadbox}${fields}</div>`}${o.pick&&o.ph?'':foot}`;
+}
+const addSheetD=o=>`<div class="scrim" style="justify-content:flex-end"><div class="side-sheet frost">${addForm(o)}</div></div>`;
+const addSheetP=o=>`<div class="scrim bottom"><div class="sheet frost" style="max-height:790px;overflow:auto">${addForm({...o,ph:true})}</div></div>`;
+
+/* ---------------- 3. client details ---------------- */
+function detailsCard(c,o={}){
+  return `<div class="card"><div class="cardhead"><h3>${ic('user','sm')}Details</h3>${o.saving?'<span class="refreshing"><i class="spin"></i>Saving…</span>':''}</div><div class="cardbody">
+   <div class="fgrid">
+    <div class="field full"><label>Name <em>(required)</em></label><input class="input" value="${c.name}"></div>
+    <div class="field ${o.ph?'full':''}"><label>Email</label><input class="input" value="${c.email}"></div>
+    <div class="field ${o.ph?'full':''}"><label>Phone</label><input class="input" value="${c.phone}"></div>
+    <div class="field full" style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px"><div style="flex:1"><label>Status</label><div class="aiseg" style="max-width:${o.ph?'none':'260px'}"><span class="${c.active?'on':''}">Active</span><span class="${c.active?'':'on'}">Paused</span></div></div>
+     ${o.ph?'':`<button class="btn primary" ${o.saving?'disabled':''}>${o.saving?'Saving…':'Save'}</button>`}</div>
+   </div>${o.ph?`<button class="btn primary" style="width:100%;height:44px;margin-top:14px">Save</button>`:''}</div></div>`;
+}
+const linksCard=(c)=>`<div class="card">
+  <div class="lrow2"><span class="kic">${ic('chart','sm')}</span><div class="t"><b>Month earnings</b><span class="meta">Totals, units and the owner statement</span></div><span class="lnk">Open ${ic('arrow','xs')}</span></div>
+  <div class="lrow2"><span class="kic">${ic('building','sm')}</span><div class="t"><b>Properties</b><span class="meta">${units(c.units)} · opens Properties filtered to ${c.name.split(' ')[0]}</span></div><span class="lnk">View ${ic('arrow','xs')}</span></div></div>`;
+const chkCard=(c)=>`<div class="card"><div class="cardhead"><h3>${ic('clip','sm')}Onboarding checklist</h3><span class="meta">${c.chk.filter(Boolean).length} of 5 done · read only</span></div>
+  <ul class="chk">${CHK.map(([t,n],i)=>`<li class="${c.chk[i]?'':'open'}"><span class="ck ${c.chk[i]?'on':'off'}">${c.chk[i]?ic('check','xs'):''}</span><div><b>${t}</b><span class="meta">${c.chk[i]?n:CHK_OPEN[i]||n}</span></div></li>`).join('')}</ul></div>`;
+function portalCard(c,o={}){
+  const s=o.status||c.portal; const [t,h,cc,desc]=PS[s]; const idx=ORDER.indexOf(s);
+  const awaiting=s==='invited'||s==='opened';
+  return `<div class="card"><div class="cardhead"><h3>${ic('key','sm')}Host portal and contract</h3>${chip(t,h,cc)}</div><div class="cardbody">
+   <div class="track">${ORDER.map((x,i)=>`<i class="${idx>0&&i<=idx?'on':''}"></i>`).join('')}</div>
+   <div class="tracklab">${['Not invited','Invited','Opened','Signed','Portal live'].map((x,i)=>`<span class="${i===idx?'on':''}">${x}</span>`).join('')}</div>
+   <p class="pdesc">${desc}</p>
+   ${s!=='none'?`<div class="linkrow">${ic('link','sm')}<span class="u">portal.example.com/host/placeholder-${c.ini.toLowerCase()}</span><span class="iconbtn" style="width:32px;height:32px">${ic('copy','sm')}</span></div>`:''}
+   <div class="pbtns">
+    ${s!=='none'?`<button class="btn">${ic('eye','sm')}Preview as host</button>`:''}
+    ${awaiting?`<button class="btn">${ic('file','sm')}Replace contract</button><button class="btn">${ic('edit','sm')}Edit boxes only</button>`:''}
+    <button class="btn ${s==='none'?'primary':''}">${ic('mail','sm')}${s==='none'?'Send portal invite':'Resend invite'}</button>
+   </div>
+   <div class="hint" style="margin-top:10px">${ic('mail','xs')}Sends a real email to the host. It only goes out from the invite form.</div>
+  </div></div>`;
+}
+const contractsCard=(c)=>{const L=CONTRACTS[c.ini];return `<div class="card"><div class="cardhead"><h3>${ic('file','sm')}Contracts</h3><button class="btn sm">${ic('upload','xs')}Upload</button></div>
+  ${L.length?L.map(([t,d])=>`<div class="lrow2"><span class="kic">${ic('file','sm')}</span><div class="t"><b>${t}.pdf</b><span class="meta">Signed ${d}</span></div><button class="btn sm">Open</button><span class="iconbtn">${ic('trash','sm')}</span></div>`).join('')
+   :`<div class="empty" style="padding:22px 16px"><b style="font-size:var(--t-sm)">No signed contracts yet</b><span class="meta">Upload a signed PDF, or send a contract from the portal invite.</span></div>`}</div>`;};
+const dangerCard=()=>`<div class="card"><div class="lrow2"><div class="t"><b>Delete client</b><span class="meta">Also removes their host portal, properties and contracts.</span></div><button class="btn dangerline">${ic('trash','sm')}Delete client</button></div></div>`;
+const deskClient=(c,o={})=>desk(clientHeader(c,'d'),`${o.banner||''}<div class="cgrid"><div class="col">${o.left?o.left(c):`${detailsCard(c,o)}${linksCard(c)}${chkCard(c)}`}</div><div class="col">${portalCard(c,o)}${contractsCard(c)}${dangerCard()}</div></div>`,{overlay:o.overlay});
+const phoneClient=(c,o={})=>phone(`${pClient(c,'d')}${o.banner||''}${(o.order||['details','links','portal','contracts','chk','danger']).map(k=>({details:detailsCard(c,{...o,ph:true}),links:linksCard(c),portal:portalCard(c,o),contracts:contractsCard(c),chk:chkCard(c),danger:dangerCard()})[k]).join('')}`,{overlay:o.overlay});
+
+/* confirm modals */
+const confirmD=(t,p,b)=>`<div class="scrim"><div class="modal frost" style="width:460px"><h2>${t}</h2><p class="lede">${p}</p><div class="mfoot"><button class="btn">Cancel</button><button class="btn danger">${ic('trash','sm')}${b}</button></div></div></div>`;
+const confirmP=(t,p,b)=>`<div class="scrim bottom"><div class="sheet frost"><h2 style="font-size:18px;font-weight:650">${t}</h2><p class="lede" style="font-size:var(--t-sm);margin:6px 0 16px">${p}</p><div style="display:flex;flex-direction:column;gap:8px"><button class="btn danger" style="height:48px">${b}</button><button class="btn" style="height:48px">Cancel</button></div></div></div>`;
+
+/* upload contract + date picker */
+const DAYS=(()=>{const a=[];const pre=[26,27,28,29,30,31];pre.forEach(d=>a.push([d,'out']));for(let d=1;d<=30;d++)a.push([d,d===12?'sel':d===16?'today':'']);for(let d=1;a.length<42;d++)a.push([d,'out']);return a;})();
+const datePicker=()=>`<div class="dp frost"><div class="dphead"><span class="iconbtn">${ic('back','sm')}</span><b>November 2026</b><span class="iconbtn">${ic('next','sm')}</span></div>
+  <div class="dpgrid dpwd"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
+  <div class="dpgrid">${DAYS.map(([d,c])=>`<b class="${c}">${d}</b>`).join('')}</div>
+  <div class="dpfoot"><button class="btn sm">Today</button></div></div>`;
+const uploadForm=(ph)=>`<h2 style="font-size:${ph?18:20}px;font-weight:650">Upload signed contract</h2><p class="lede" style="font-size:var(--t-sm);margin:4px 0 16px">Adds a signed PDF to this client. Nothing is sent.</p>
+  <div style="display:flex;flex-direction:column;gap:14px">
+   <div class="field"><label>Title</label><input class="input" value="Management agreement"></div>
+   <div class="field" style="position:relative"><label>Signed on</label><div class="input focus fakesel"><span>Nov 12, 2026</span>${ic('cal','sm')}</div>${ph?'':`<div style="position:absolute;left:0;top:72px;z-index:5">${datePicker()}</div>`}</div>
+   <div class="field"><label>File</label><div class="drop">${ic('file')}<div><b>signed-agreement-placeholder.pdf</b><div class="meta">PDF · 412 KB</div></div><span class="lnk" style="margin-left:auto">Change</span></div></div>
+  </div>
+  <div class="mfoot" ${ph?'style="flex-direction:column-reverse;gap:8px"':''}><button class="btn" ${ph?'style="height:44px"':''}>Cancel</button><button class="btn primary" ${ph?'style="height:48px"':''}>${ic('upload','sm')}Upload</button></div>`;
+
+/* ---------------- 4. portal invite ---------------- */
+function inviteForm(c,mode,o={}){
+  const ph=o.ph;
+  const opt=`<div class="opt" ${ph?'style="grid-template-columns:1fr"':''}>
+    <div class="${mode==='a'?'on':''}"><span class="radio ${mode==='a'?'on':''}"></span><span><b>Existing host</b>Already signed. Gives them portal access.</span></div>
+    <div class="${mode==='b'?'on':''}"><span class="radio ${mode==='b'?'on':''}"></span><span><b>New, sign contract</b>Place fields on a contract, then invite them to sign.</span></div></div>`;
+  const who=`<div class="fgrid" ${ph?'style="grid-template-columns:1fr"':''}><div class="field full"><label>Name</label><input class="input" value="${c.name}"></div>
+    <div class="field"><label>Email</label><input class="input" value="${c.email}"></div><div class="field"><label>Phone</label><input class="input" value="${c.phone}"></div></div>`;
+  const a=`<div class="field" style="margin-top:14px"><label>Signed contract PDF <em>(optional)</em></label><div class="drop">${ic('upload')}<div><b>Choose a PDF</b><div class="meta">Saved to this client’s contracts</div></div></div></div>`;
+  const b=`<div class="field" style="margin-top:14px"><label>Agreement template</label><select class="input"><option>Management agreement, Standard</option></select></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px"><span class="meta">or</span><button class="btn sm">${ic('upload','xs')}Or upload PDF…</button></div>
+    <label class="cbrow"><span class="cbx"></span>Also save to Contract templates</label>`;
+  return `<h2 style="font-size:${ph?18:20}px;font-weight:650">${c.portal==='none'?'Send portal invite':'Resend invite'}</h2>
+   <p class="lede" style="font-size:var(--t-sm);margin:4px 0 16px">This sends a real email to the host.</p>${opt}${who}${mode==='a'?a:b}
+   <div class="mfoot" ${ph?'style="flex-direction:column-reverse;gap:8px"':''}><button class="btn" ${ph?'style="height:44px"':''}>Cancel</button><button class="btn primary" ${ph?'style="height:48px"':''}>${mode==='a'?`${ic('mail','sm')}Send portal access`:`Next: place fields &amp; sign${ic('arrow','sm')}`}</button></div>`;
+}
+
+/* field placement */
+const SCRIB='<svg viewBox="0 0 160 40" style="width:150px;height:34px" fill="none" stroke="oklch(0.3 0.08 270)" stroke-width="2" stroke-linecap="round"><path d="M6 28c8-14 14-22 18-20s-8 22-2 22 10-18 16-18-2 14 4 14 8-10 14-10 2 8 8 8 10-6 16-12 6 10 12 8 12-8 20-10"/></svg>';
+function pageInner(o={}){
+  const lines=w=>`<div class="ln" style="width:${w}%"></div>`;
+  return `<h6>Section 9. Signatures</h6>${[100,96,100,88,100,72].map(lines).join('')}<div style="height:14px"></div>${[100,92,100,64].map(lines).join('')}
+   <span class="sl" style="left:56px;width:200px;top:520px"></span><span class="slab" style="left:56px;top:526px">Host signature</span>
+   <span class="sl" style="left:304px;width:200px;top:520px"></span><span class="slab" style="left:304px;top:526px">Date</span>
+   <span class="sl" style="left:56px;width:200px;top:624px"></span><span class="slab" style="left:56px;top:630px">For Mandel Realty Group</span>
+   <span class="sl" style="left:304px;width:200px;top:624px"></span><span class="slab" style="left:304px;top:630px">Date</span>
+   <div class="fld h" style="left:56px;top:478px;width:200px;height:40px">${ic('sign','xs')}Host signature</div>
+   <div class="fld h" style="left:304px;top:478px;width:120px;height:40px">${ic('cal','xs')}Date</div>
+   <div class="fld h" style="left:56px;top:430px;width:200px;height:32px">${ic('font','xs')}Name</div>
+   ${o.mrg?`<div class="fld m ${o.sel?'sel':''}" style="left:56px;top:574px;width:200px;height:48px;padding:0 6px">${o.signed?SCRIB:`${ic('sign','xs')}MRG signature · double-click to sign`}
+      ${o.sel?'<span class="hd" style="left:-5px;top:-5px"></span><span class="hd" style="right:-5px;top:-5px"></span><span class="hd" style="left:-5px;bottom:-5px"></span><span class="hd" style="right:-5px;bottom:-5px"></span><span class="del">'+ic('x','xs')+'</span>':''}</div>
+      <div class="fld m" style="left:304px;top:582px;width:120px;height:40px">${ic('cal','xs')}Nov 16, 2026</div>`:`<div class="fld m ghost" style="left:56px;top:574px;width:200px;height:48px">${ic('sign','xs')}Click to place</div>`}`;
+}
+function placeD(o={}){
+  const on=o.mrg;
+  return `<div class="pl"><div class="pltop"><button class="btn">${ic('back','sm')}Back</button><div class="t"><b>Place fields and sign</b><span class="meta">Management agreement, Standard · ${o.replace?'Rowan Example':'Emery Placeholder'} · page 6 of 6</span></div>
+   <div class="sendwrap"><span class="need ok">${ic('check','xs')}Host signature</span><span class="need ${on?'ok':'no'}">${ic(on?'check':'alert','xs')}MRG signature</span>
+   <button class="btn primary" ${on?'':'disabled'}>${ic('mail','sm')}${o.replace?'Replace &amp; resend':'Send invite'}</button></div></div>
+   ${on?'':`<div style="background:oklch(0.6 0.14 65 / .1);border-bottom:1px solid oklch(0.6 0.14 65 / .25);padding:8px 20px;font-size:var(--t-sm);color:var(--ink);display:flex;gap:8px;align-items:center">${ic('alert','sm')}<span><b style="color:var(--amberink)">Send is off until both signature boxes are placed.</b> Add an MRG signature: pick MRG fills now, then Signature, then click the page.</span></div>`}
+   <div class="pltools"><span class="tool ${o.tool==='move'?'on':''}">${ic('move','sm')}Move</span><span class="vsep"></span>
+    <span class="meta" style="margin-right:2px;white-space:nowrap">Who fills it</span><div class="who"><span class="${on?'':'on'}"><i style="background:oklch(0.6 0.15 255)"></i>Host fills later</span><span class="${on?'on':''}"><i style="background:oklch(0.55 0.15 300)"></i>MRG fills now</span></div><span class="vsep"></span>
+    ${[['sign','Signature'],['font','Name'],['cal','Date'],['text','Text'],['box','Checkbox']].map(([i,l])=>`<span class="tool ${o.tool===l?'on':''}">${ic(i,'sm')}${l}</span>`).join('')}
+    <span style="flex:1"></span></div><div class="plhint" style="padding:8px 20px 0;justify-content:center">${ic('alert','xs')}Click the page to place. Drag to move, pull a corner to resize, × to delete. Double-click an MRG signature to sign it.</div>
+   <div class="plcanvas"><div class="page">${pageInner(o)}</div></div></div>${o.overlay||''}`;
+}
+function placeP(o={}){
+  const on=o.mrg;
+  return `<div class="pl" style="height:calc(100% - 44px)"><div class="pltop" style="padding:8px 10px;gap:6px"><span class="iconbtn">${ic('back')}</span><div class="t"><b style="font-size:var(--t-base)">Place fields</b><span class="meta">Page 6 of 6</span></div>
+    <button class="btn primary" ${on?'':'disabled'} style="height:40px">${o.replace?'Resend':'Send invite'}</button></div>
+   <div style="background:${on?'oklch(0.6 0.13 155 / .1)':'oklch(0.6 0.14 65 / .1)'};padding:8px 14px;font-size:var(--t-xs);font-weight:500;color:var(--ink);display:flex;gap:8px;align-items:center">${on?`<span class="need ok">${ic('check','xs')}Host signature</span><span class="need ok">${ic('check','xs')}MRG signature</span><span>Ready to send</span>`:`${ic('alert','sm')}<span><b style="color:var(--amberink)">Send is off.</b> Place an MRG signature box too.</span>`}</div>
+   <div class="plcanvas" style="padding:14px 0;align-items:center"><div style="width:350px;height:452px;overflow:hidden;flex:none"><div class="page" style="transform:scale(.625);transform-origin:0 0">${pageInner(o)}</div></div></div>
+   <div style="background:#fff;border-top:1px solid var(--line);padding:10px 12px 26px;flex:none">
+    <div class="who" style="display:flex;margin-bottom:8px"><span class="${on?'':'on'}" style="flex:1;justify-content:center;height:36px"><i style="background:oklch(0.6 0.15 255)"></i>Host fills later</span><span class="${on?'on':''}" style="flex:1;justify-content:center;height:36px"><i style="background:oklch(0.55 0.15 300)"></i>MRG fills now</span></div>
+    <div style="display:flex;gap:6px;overflow:hidden">${[['move','Move'],['sign','Signature'],['font','Name'],['cal','Date'],['text','Text'],['box','Checkbox']].map(([i,l])=>`<span class="tool ${o.tool===l||(o.tool==='move'&&i==='move')?'on':''}" style="height:44px;flex-direction:column;gap:2px;padding:0 9px;font-size:11px;justify-content:center">${ic(i,'sm')}${l}</span>`).join('')}</div></div></div>${o.overlay||''}`;
+}
+const sigPad=(ph)=>`<div class="scrim ${ph?'bottom':''}"><div class="${ph?'sheet':'modal'} frost" ${ph?'':'style="width:520px"'}><h2 style="font-size:${ph?18:20}px;font-weight:650">Sign for Mandel Realty Group</h2><p class="lede" style="font-size:var(--t-sm);margin:4px 0 14px">Draw with your mouse or finger. This fills the MRG signature box.</p>
+  <div class="pad"><span class="x">×</span><span class="base"></span><div style="position:absolute;left:40px;top:40px"><svg viewBox="0 0 160 40" style="width:${ph?280:380}px;height:${ph?70:96}px" fill="none" stroke="oklch(0.3 0.08 270)" stroke-width="1.6" stroke-linecap="round"><path d="M6 28c8-14 14-22 18-20s-8 22-2 22 10-18 16-18-2 14 4 14 8-10 14-10 2 8 8 8 10-6 16-12 6 10 12 8 12-8 20-10"/></svg></div></div>
+  <div class="mfoot" style="justify-content:space-between"><button class="btn ghost">Clear</button><span style="display:flex;gap:8px"><button class="btn">Cancel</button><button class="btn primary">Use signature</button></span></div></div></div>`;
+
+/* ---------------- 5. month earnings ---------------- */
+const UNITS={
+ HS:[['Sample Loft','10 Sample St SW, Calgary',4,'4,000.00','1,000.00','50.00','150.00'],['Example Suite','20 Example Ave NE, Calgary',2,'2,000.00','500.00',null,'50.00']],
+ LM:[['Mock Studio','30 Mock Rd SW, Calgary',2,'1,000.00','250.00',null,'0.00'],['Mock Townhome','32 Mock Rd SW, Calgary',3,'2,000.00','500.00',null,'50.00'],['Mock Basement Suite','34 Mock Rd SW, Calgary',4,'3,000.00','750.00',null,'0.00']],
+ PD:[['Demo Condo','40 Demo Way SE, Calgary',0,'0.00','0.00',null,'0.00']]
+};
+const TOT={HS:['6,000.00','1,500.00','50.00','200.00'],LM:['6,000.00','1,500.00','0.00','50.00'],PD:['0.00','0.00','0.00','0.00']};
+const money=v=>`$${v}`;
+const monthPicker=(m='October 2026')=>`<div class="mp"><span class="iconbtn bd">${ic('back','sm')}</span><button class="btn">${ic('cal','sm')}${m}${ic('chev','sm')}</button><span class="iconbtn bd">${ic('next','sm')}</span></div>`;
+const totals=(k,o={})=>{const t=TOT[k];const L=[['Net to host','user'],['MRG fees','brief'],['HST on the invoice','hst'],['Host charges','file']];
+  return `<div class="card stats four">${L.map(([l,i],j)=>`<div class="stat"><span class="ic">${ic(i,'sm')}</span><div>${o.loading?`<span class="skel" style="width:90px;height:18px;margin:3px 0 6px"></span>`:`<b class="num">${money(t[j])}</b>`}<span class="l">${l}</span></div></div>`).join('')}</div>`;};
+const unitTable=(k,o={})=>`<div class="card" style="overflow:hidden"><table><thead><tr><th>Unit</th><th class="r">Stays</th><th class="r">Net to host</th><th class="r">MRG fees</th><th class="r">HST on invoice</th><th class="r">Host charges</th><th style="width:44px"></th></tr></thead><tbody>
+  ${o.loading?[1,2,3].map(()=>`<tr><td><span class="skel" style="width:180px;margin-bottom:6px"></span><span class="skel" style="width:120px;height:10px"></span></td>${[30,70,60,50,60].map(w=>`<td class="r"><span class="skel" style="width:${w}px;margin-left:auto"></span></td>`).join('')}<td></td></tr>`).join('')
+  :UNITS[k].map(u=>`<tr><td><div class="client"><span class="kic">${ic('building','sm')}</span><div><b style="font-size:var(--t-sm)">${u[0]}</b><span class="meta">${u[1]}</span></div></div></td><td class="r num">${u[2]}</td><td class="r num" style="color:var(--ink);font-weight:600">${money(u[3])}</td><td class="r num">${money(u[4])}</td><td class="r num">${u[5]?money(u[5]):'<span class="meta">Not on invoice</span>'}</td><td class="r num">${money(u[6])}</td><td><span class="iconbtn">${ic('next','sm')}</span></td></tr>`).join('')}</tbody></table></div>
+  ${o.loading?'':`<div class="meta" style="margin-top:8px">Each row opens that property.</div>`}`;
+const monthActs=(o={})=>`<div class="acts"><button class="btn">${ic('eye','sm')}Preview statement</button><button class="btn">${ic('hst','sm')}HST worklist${ic('ext','xs')}</button><button class="btn" ${o.nohst||o.loading?'disabled':''}>${ic('copy','sm')}Copy HST text</button></div>`;
+const noStays=(ph)=>`<div class="card"><div class="empty" style="padding:${ph?'36px 16px':'64px 24px'}"><span class="eic">${ic('cal')}</span><b>No stays in October 2026</b><span>Demo Condo had no checkouts this month, so there is nothing to total. Try another month.</span></div></div>`;
+const hstCard=(k,o={})=>`<div class="card"><div class="cardhead"><h3>${ic('hst','sm')}HST for QuickBooks</h3><button class="btn sm" ${o.nohst?'disabled':''}>${ic('copy','xs')}Copy</button></div><div class="cardbody">
+  ${o.nohst?`<span style="font-size:var(--t-sm)">No units invoice HST this month, so there is nothing to copy.</span>`:`<div class="pastebox" style="background:var(--panel);border-radius:10px;padding:10px 12px">Harper Sample, October 2026\nSample Loft: MRG fees $1,000.00, HST $50.00\nTotal HST on the invoice: $50.00</div>`}
+  <div class="lnk" style="margin-top:10px;display:flex;align-items:center;gap:6px">HST worklist${ic('ext','xs')}</div></div></div>`;
+const deskMonth=(c,k,o={})=>desk(clientHeader(c,'m',{acts:''}),`<div class="toolbar"><div style="display:flex;align-items:center;gap:12px">${monthPicker(o.month)}${o.loading?'<span class="refreshing"><i class="spin"></i>Loading…</span>':''}</div>${monthActs(o)}</div>
+  ${totals(k,o)}${o.nostays?noStays():unitTable(k,o)}${o.nohst?`<div class="warnbox" style="background:var(--panel);margin-top:12px">${ic('alert','sm')}<span>No units invoice HST this month. <span class="meta">Copy HST text is off. The HST worklist still opens.</span></span></div>`:''}`,{overlay:o.overlay});
+const phoneMonth=(c,k,o={})=>phone(`${pClient(c,'m')}<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${monthPicker(o.month||'Oct 2026').replace('min-width:170px','')}${o.loading?'<i class="spin"></i>':''}</div>
+  ${totals(k,o)}
+  ${o.nostays?noStays(true):o.loading?`<div class="card">${[1,2].map(()=>`<div class="urow"><div class="t"><span class="skel" style="width:140px;margin-bottom:6px"></span><span class="skel" style="width:90px;height:10px"></span></div><span class="skel" style="width:60px"></span></div>`).join('')}</div>`
+   :`<div class="card">${UNITS[k].map(u=>`<div class="urow"><span class="kic">${ic('building','sm')}</span><div class="t"><b>${u[0]}</b><span class="meta">${u[2]} stays · fees ${money(u[4])}${u[5]?` · HST ${money(u[5])}`:''}</span></div><div class="v num">${money(u[3])}<div class="meta">net</div></div>${ic('next','sm')}</div>`).join('')}</div>`}
+  ${o.loading||o.nostays?'':hstCard(k,o)}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn" style="height:44px">${ic('eye','sm')}Preview statement</button><button class="btn" style="height:44px">${ic('hst','sm')}HST worklist</button></div>`,{overlay:o.overlay});
+const yearGrid=(st)=>`<div class="yg frost" style="${st}"><div class="yh"><span class="iconbtn">${ic('back','sm')}</span><b>2026</b><span class="iconbtn">${ic('next','sm')}</span></div>
+  <div class="grid">${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((m,i)=>`<span class="${i===9?'sel':i===10?'cur':i===11?'dis':''}">${m}</span>`).join('')}</div></div>`;
+
+/* ---------------- 6. statement ---------------- */
+const STAYS=[['Sample Loft','Oct 2 to Oct 5',3,'Guest A','1,200.00'],['Sample Loft','Oct 7 to Oct 10',3,'Guest B','1,300.00'],['Sample Loft','Oct 13 to Oct 17',4,'Guest C','1,500.00'],['Sample Loft','Oct 20 to Oct 23',3,'Guest D','1,200.00'],['Example Suite','Oct 4 to Oct 8',4,'Guest E','1,350.00'],['Example Suite','Oct 14 to Oct 17',3,'Guest F','1,200.00']];
+function paper(ph){
+  const row=(cells,cls='')=>`<tr class="${cls}">${cells.map((c,i)=>`<td class="${i===cells.length-1?'r num':''}">${c}</td>`).join('')}</tr>`;
+  return `<div class="paper"><div class="ph1"><div style="display:flex;gap:10px;align-items:center"><img src="${LOGO}" style="width:${ph?28:34}px;height:${ph?28:34}px"><div><b style="font-size:${ph?14:16}px">Owner statement</b><div class="meta">Mandel Realty Group</div></div></div>
+    <div style="text-align:right"><b>Harper Sample</b><div class="meta">October 2026</div></div></div>
+   <h4>Stays</h4><table><thead><tr><th>${ph?'Unit, dates':'Unit'}</th>${ph?'':'<th>Dates</th><th>Nights</th><th>Guest</th>'}<th class="r">Payout</th></tr></thead><tbody>
+    ${STAYS.map(s=>ph?row([`${s[0]}<div class="meta">${s[1]} · ${s[2]} nights</div>`,'$'+s[4]]):row([s[0],s[1],s[2],s[3],'$'+s[4]])).join('')}
+    ${row(ph?['Total payout','$7,750.00']:['Total payout','','','','$7,750.00'],'tot')}</tbody></table>
+   <h4>Fees</h4><table><tbody>${row(['MRG fee, Sample Loft','$1,000.00'])}${row(['MRG fee, Example Suite','$500.00'])}${row(['Total fees','$1,500.00'],'tot')}</tbody></table>
+   <h4>HST</h4><table><tbody>${row(['HST on MRG fee, Sample Loft','$50.00'])}${row(['Example Suite: HST not on invoice','$0.00'])}</tbody></table>
+   <h4>Expenses</h4><table><tbody>${row(['Cleaning supplies, Sample Loft','$100.00'])}${row(['Linen replacement, Sample Loft','$50.00'])}${row(['Cleaning supplies, Example Suite','$50.00'])}${row(['Total expenses','$200.00'],'tot')}</tbody></table>
+   <div class="net"><span>Net to host</span><span class="num">$6,000.00</span></div></div>`;
+}
+const stmtD=()=>`<div class="stmt"><div class="stmtbar"><button class="btn">${ic('back','sm')}Back</button><b style="color:var(--ink);font-size:var(--t-md)">Owner statement · Harper Sample</b><span style="flex:1"></span>${monthPicker()}<button class="btn primary">${ic('down','sm')}Download PDF</button></div>
+  <div style="flex:1;min-height:0;overflow:hidden">${paper()}</div></div>`;
+const stmtP=()=>`<div class="stmt" style="height:calc(100% - 44px)"><div class="stmtbar" style="padding:8px 10px;gap:6px"><span class="iconbtn">${ic('back')}</span><b style="color:var(--ink);flex:1">Owner statement</b><button class="btn primary" style="height:40px">${ic("down","sm")}Download PDF</button></div>
+  <div style="padding:10px 12px 0;display:flex;justify-content:center">${monthPicker('Oct 2026').replace('min-width:170px','')}</div><div style="padding:10px 12px;flex:1;min-height:0;overflow:hidden">${paper(true)}</div></div>`;
+
+
+I.hosp='<path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M9 20v-5h6v5"/>';
+I.img='<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/>';
+I.lock='<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>';
+I.star='<path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.3L12 16l-4.9 2.6L8.2 13.3l-4-3.7 5.4-.6z"/>';
+I.receipt='<path d="M7 3h10v18l-2.5-1.5L12 21l-2.5-1.5L7 21z"/><path d="M10 8h4M10 12h4"/>';
+I.permit='<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>';
+I.tax='<path d="M5 19 19 5"/><circle cx="7" cy="7" r="2.2"/><circle cx="17" cy="17" r="2.2"/>';
+I.import='<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>';
+const HOUSE='<svg class="house" viewBox="0 0 64 48" fill="#fff"><path d="M8 24 32 6l24 18v20H8z" opacity=".9"/><rect x="26" y="30" width="12" height="14" fill="oklch(0.4 0.03 270 / .35)"/><rect x="14" y="27" width="8" height="7" fill="oklch(0.4 0.03 270 / .25)"/><rect x="42" y="27" width="8" height="7" fill="oklch(0.4 0.03 270 / .25)"/></svg>';
+
+/* ---------------- placeholder properties (all fake; listed in the notes file) ---------------- */
+const PR=[
+ {name:'Sample Loft',addr:'10 Sample St SW, Calgary',client:'Harper Sample',comm:20,hst:'Invoice',linked:true,active:true,h:220,cover:true,uuid:'00000000-0000-4000-8000-000000000101'},
+ {name:'Example Suite',addr:'20 Example Ave NE, Calgary',client:'Harper Sample',comm:20,hst:'Cohost',linked:true,active:true,h:150,cover:true},
+ {name:'Example Cottage',addr:'50 Example Cres NW, Calgary',client:'Rowan Example',comm:18,hst:'Invoice',linked:true,active:true,h:190,cover:true},
+ {name:'Mock Studio',addr:'30 Mock Rd SW, Calgary',client:'Logan Mock',comm:25,hst:'Cohost',linked:true,active:true,h:40,cover:true},
+ {name:'Mock Townhome',addr:'32 Mock Rd SW, Calgary',client:'Logan Mock',comm:25,hst:'Cohost',linked:true,active:true,h:280,cover:true},
+ {name:'Mock Basement Suite',addr:'34 Mock Rd SW, Calgary',client:'Logan Mock',comm:25,hst:'Cohost',linked:true,active:false,h:100,cover:true,uuid:'00000000-0000-4000-8000-000000000105'},
+ {name:'Demo Condo',addr:'40 Demo Way SE, Calgary',client:'Parker Demo',comm:20,hst:'Invoice',linked:true,active:true,h:320,cover:true},
+ {name:'Placeholder Flat',addr:'60 Placeholder Rd SE, Calgary',client:'Emery Placeholder',comm:0,hst:'',linked:false,active:true,h:0,cover:false}
+];
+const SL=PR[0],MB=PR[5],PF=PR[7];
+const CLIENTS=['Harper Sample','Rowan Example','Logan Mock','Emery Placeholder','Parker Demo','Reese Fake'];
+const cov=(p,w,h,r=8)=>p.cover?`<span class="cov" style="width:${w}px;height:${h}px;border-radius:${r}px;background:linear-gradient(140deg,oklch(0.86 0.045 ${p.h}),oklch(0.64 0.07 ${p.h+30}))">${HOUSE}</span>`:`<span class="cov none" style="width:${w}px;height:${h}px;border-radius:${r}px">${ic('img','sm')}</span>`;
+const deal=p=>p.comm?`<span class="deal">${p.comm}% · HST ${p.hst.toLowerCase()}</span>`:'<span class="gapchip">No billing terms</span>';
+const linkMk=l=>l?chip('Linked',185,.11):chip('Not linked',65,.14);
+const actMk=a=>a?chip('Active',155,.13):chip('Paused',270,.02);
+const toast=(t,ph)=>`<div class="toast" ${ph?'style="bottom:96px"':''}>${ic('check','sm')}${t}</div>`;
+
+/* ---------------- shell (Properties active) ---------------- */
+const pSidebar=sidebar;
+const pDesk=(head,content,o={})=>`<div class="app">${pSidebar()}<main class="main">${head}<div class="content" ${o.cs?`style="${o.cs}"`:''}>${content}</div></main></div>${o.overlay||''}`;
+const pListHead=()=>`<div class="head"><div><div class="date">Monday, November 16, 2026</div><h1>Properties</h1></div>
+  <div class="headacts"><button class="btn">${ic('import','sm')}Import</button><button class="btn primary">${ic('plus','sm')}Add</button></div></div>`;
+
+/* ---------------- 1. list ---------------- */
+const filt=(o={})=>`<div class="filters" style="justify-content:space-between">
+  <div class="clientchips"><span class="${o.client?'':'on'}">All clients</span>${CLIENTS.map(c=>`<span class="${o.client===c?'on':''}">${c}</span>`).join('')}</div>
+  <div class="chipseg">${['All','Active','Paused'].map(x=>`<span class="${(o.st||'All')===x?'on':''}">${x}</span>`).join('')}</div></div>`;
+const pTable=(rows,o={})=>`<div class="card" style="overflow:hidden"><table><thead><tr><th style="width:88px"></th><th>Property</th><th>Client</th><th>Deal</th><th>Hospitable</th><th>Status</th><th style="width:44px"></th></tr></thead><tbody>
+ ${o.loading?[1,2,3,4,5].map(()=>`<tr><td><span class="skel" style="width:64px;height:44px;border-radius:8px"></span></td><td><span class="skel" style="width:160px;margin-bottom:6px"></span><span class="skel" style="width:200px;height:10px"></span></td><td><span class="skel" style="width:100px"></span></td><td><span class="skel" style="width:110px;height:22px;border-radius:99px"></span></td><td><span class="skel" style="width:70px;height:20px;border-radius:99px"></span></td><td><span class="skel" style="width:60px;height:20px;border-radius:99px"></span></td><td></td></tr>`).join('')
+ :rows.map(p=>`<tr class="${p.active?'':'faded'}"><td>${cov(p,64,44)}</td><td><b style="color:var(--ink);display:block">${p.name}</b><span class="meta" style="font-size:var(--t-sm)">${p.addr}</span></td><td>${p.client}</td><td>${deal(p)}</td><td>${linkMk(p.linked)}</td><td>${actMk(p.active)}</td><td><span class="iconbtn">${ic('next','sm')}</span></td></tr>`).join('')}</tbody></table></div>`;
+const pMeta=(n,o={})=>`<div class="listhead"><span><b style="color:var(--ink)">${n} properties</b>${o.of?' <span class="meta">of 8</span>':''}</span><span class="meta">Paused rows are faded</span></div>`;
+const pmCard=p=>`<div class="mcard ${p.active?'':'faded'}" style="display:flex;gap:12px;align-items:flex-start"><div>${cov(p,72,72,12)}</div><div style="flex:1;min-width:0"><div class="l1"><b>${p.name}</b>${ic('next','sm')}</div><span class="sub" style="margin:1px 0 2px">${p.addr}</span><span class="meta" style="display:block;margin-bottom:7px">${p.client}</span><div class="chips">${deal(p)}${linkMk(p.linked)}${actMk(p.active)}</div></div></div>`;
+const pPhoneFilt=(o={})=>`<div class="pseg" style="margin-bottom:8px">${['All','Active','Paused'].map(x=>`<span class="${(o.st||'All')===x?'on':''}">${x}</span>`).join('')}</div>
+  <div class="pfilters"><span class="${o.client?'':'on'}">All clients</span>${CLIENTS.slice(0,3).map(c=>`<span class="${o.client===c?'on':''}">${c}</span>`).join('')}</div>`;
+const pTitleP=()=>`<div class="ptitle"><h1>Properties</h1><button class="btn sm">${ic('import','xs')}Import</button></div>`;
+const emptyProps=(ph)=>`<div class="${ph?'':'card'}"><div class="empty" style="padding:${ph?'70px 12px':'110px 24px'}"><span class="eic">${ic('building')}</span><b>No properties yet</b><span style="max-width:340px">Import your listings from Hospitable, or add a property by hand.</span><div style="display:flex;gap:8px;margin-top:12px;${ph?'flex-direction:column;width:100%':''}"><button class="btn primary" ${ph?'style="height:44px"':''}>${ic('import','sm')}Import from Hospitable</button><button class="btn" ${ph?'style="height:44px"':''}>${ic('plus','sm')}Add property</button></div></div></div>`;
+const noRes=(ph)=>`<div class="${ph?'':'card'}"><div class="empty" style="padding:${ph?'56px 12px':'90px 24px'}"><span class="eic">${ic('search')}</span><b>No paused properties for Parker Demo</b><span>Pick All, or another client.</span></div></div>`;
+const listD=(o={})=>pDesk(pListHead(),o.empty?emptyProps():`${filt(o)}${o.nores?`${pMeta(0,{of:true})}${noRes()}`:`${pMeta(o.loading?'…':PR.length)}${pTable(PR,o)}`}`,{overlay:o.overlay});
+const listP=(o={})=>phone(`${pTitleP()}${o.empty?emptyProps(true):`${pPhoneFilt(o)}${o.nores?noRes(true):o.loading?[1,2,3].map(()=>`<div class="mcard" style="display:flex;gap:12px"><span class="skel" style="width:72px;height:72px;border-radius:12px"></span><div style="flex:1"><span class="skel" style="width:120px;margin:6px 0 8px"></span><span class="skel" style="width:170px;height:10px;margin-bottom:8px"></span><span class="skel" style="width:140px;height:20px;border-radius:99px"></span></div></div>`).join(''):PR.slice(0,5).map(pmCard).join('')}`}`,{fab:'Add',overlay:o.overlay});
+
+/* ---------------- sheets ---------------- */
+const sheetD=(inner,w=500)=>`<div class="scrim" style="justify-content:flex-end"><div class="side-sheet frost" style="width:${w}px">${inner}</div></div>`;
+const sheetP=(inner)=>`<div class="scrim bottom"><div class="sheet frost" style="max-height:790px;overflow:hidden">${inner}</div></div>`;
+const shHead=(t,l,ph)=>`<div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:1"><h2 style="font-size:${ph?18:20}px;font-weight:650">${t}</h2>${l?`<p class="lede" style="font-size:var(--t-sm);margin:4px 0 0">${l}</p>`:''}</div><span class="iconbtn">${ic('x')}</span></div>`;
+const foot=(btns,ph)=>`<div class="mfoot" style="${ph?'flex-direction:column-reverse;gap:8px;margin-top:16px':'margin-top:auto;padding-top:16px;border-top:1px solid var(--line-2)'}">${btns.map(([t,c,dis])=>`<button class="btn ${c||''}" ${dis?'disabled':''} ${ph?`style="height:${c==='primary'?48:44}px"`:''}>${t}</button>`).join('')}</div>`;
+const fld=(l,v,o={})=>`<div class="field ${o.full?'full':''}"><label>${l}${o.opt?' <em>(optional)</em>':''}${o.req?' <em>(required)</em>':''}</label>${o.raw||`<input class="input ${o.ph?'ph':''} ${o.focus?'focus':''}" value="${v}">`}${o.hint?`<div class="hint ${o.hc||''}">${o.hint}</div>`:''}</div>`;
+const selF=(v)=>`<select class="input"><option>${v}</option></select>`;
+const dateF=(v)=>`<div class="input fakesel"><span>${v}</span>${ic('cal','sm')}</div>`;
+const body=(x,ph)=>`<div style="display:flex;flex-direction:column;gap:14px;margin-top:16px;${ph?'':'flex:1;min-height:0'}">${x}</div>`;
+
+function addProp(ph){return shHead('Add property','Adds a unit by hand. Import pulls it from Hospitable instead.',ph)+body(`
+  ${fld('Name','Placeholder Townhouse',{})}${fld('Client','',{req:true,raw:selF('Emery Placeholder')})}
+  ${fld('Address','70 Placeholder Ave NW, Calgary',{})}${fld('Hospitable ID','Paste the listing UUID',{opt:true,ph:true,hint:'Leave empty to link later.'})}`,ph)+foot([['Cancel'],[`${ic('check','sm')}Save property`,'primary']],ph);}
+const LISTINGS=[['Placeholder Townhouse','70 Placeholder Ave NW, Calgary',0],['Sample Row House','80 Sample Blvd SE, Calgary',0],['Sample Loft','10 Sample St SW, Calgary',1],['Mock Studio','30 Mock Rd SW, Calgary',1]];
+function import1(ph){return shHead('Import from Hospitable','Pick a listing, then the client it belongs to.',ph)+body(`
+  <div class="stepper"><span class="on"><b>1</b> Listing</span><hr><span><b>2</b> Client</span></div>
+  <div class="search" style="max-width:none;flex:none">${ic('search','sm')}<input class="input ph" value="Search listings"></div>
+  <div class="sel-list">${LISTINGS.map(([n,a,done],i)=>`<div class="${i===0?'on':''} ${done?'dis':''}"><span class="radio ${i===0?'on':''}"></span>${cov({cover:true,h:60+i*70},44,32,6)}<div class="t"><b>${n}</b><span class="meta">${a}</span></div>${done?'<span class="meta">Already imported</span>':''}</div>`).join('')}</div>`,ph)+foot([['Cancel'],[`Continue${ic('arrow','sm')}`,'primary']],ph);}
+function import2(ph){return shHead('Import from Hospitable','Placeholder Townhouse · 70 Placeholder Ave NW',ph)+body(`
+  <div class="stepper"><span class="done"><b>${ic('check','xs')}</b> Listing</span><hr><span class="on"><b>2</b> Client</span></div>
+  <div class="sel-list">${CLIENTS.slice(0,ph?4:6).map((c,i)=>`<div class="${i===3?'on':''}"><span class="radio ${i===3?'on':''}"></span>${av(c.split(' ').map(x=>x[0]).join(''),i,'sm')}<div class="t"><b>${c}</b></div></div>`).join('')}</div>`,ph)+foot([[`${ic('back','sm')}Back`],[`${ic('import','sm')}Import unit`,'primary']],ph);}
+function connect(ph){return shHead('Connect Hospitable','Import needs a Hospitable connection first. Tokens are stored for the app, not shown again.',ph)+body(`
+  ${fld('Personal access token','',{raw:`<div class="input fakesel focus"><span class="masked">••••••••••••••••••••</span>${ic('eye','sm')}</div>`,hint:'From Hospitable, Settings, API access.'})}
+  ${fld('MCP token','',{raw:`<div class="input fakesel"><span class="masked">••••••••••••••••</span>${ic('eye','sm')}</div>`})}`,ph)+foot([['Cancel'],[`${ic('link','sm')}Save &amp; connect`,'primary']],ph);}
+function editProp(p,o={}){const ph=o.ph;return shHead(`Edit ${p.name}`,'',ph)+body(`
+  ${fld('Name',p.name,{})}${fld('Client','',{raw:selF(p.client)})}${fld('Address',p.addr,{})}
+  <div class="flabel" style="margin:4px 0 -6px">STR compliance</div>
+  <div class="fgrid">${fld('Permit number','PLCH-STR-0001',{})}${fld('Municipality','Calgary',{})}${fld('Applied','',{raw:dateF('Aug 2, 2026')})}${fld('Issued','',{raw:dateF('Aug 20, 2026')})}${fld('Day cap','No cap',{full:true})}</div>
+  <label class="cbrow" style="margin-top:0"><span class="cbx on">${ic('check','xs')}</span>MAT required</label>
+  ${o.confirm?`<div class="inconfirm"><b>Deactivate ${p.name}?</b><div style="margin:4px 0 10px">It will be hidden from month close. It stays in the list as Paused.</div><div style="display:flex;gap:8px"><button class="btn sm">Keep active</button><button class="btn sm danger">Deactivate</button></div></div>`:''}`,ph)+
+  `<div class="mfoot" style="${ph?'flex-direction:column-reverse;gap:8px;margin-top:16px':'margin-top:auto;padding-top:16px;border-top:1px solid var(--line-2);justify-content:space-between'}"><button class="btn dangerline" ${o.confirm?'disabled':''} ${ph?'style="height:44px"':''}>Deactivate</button><span style="display:flex;gap:8px;${ph?'flex-direction:column-reverse':''}"><button class="btn" ${ph?'style="height:44px"':''}>Cancel</button><button class="btn primary" ${ph?'style="height:48px"':''}>Save</button></span></div>`;}
+function changeRate(ph){return shHead('Change rate','Sample Loft is at 20% since Sep 1, 2026.',ph)+body(`
+  ${fld('New commission %','22',{focus:true})}${fld('Applies from','',{raw:dateF('Dec 1, 2026'),hint:'Stays before Dec 1, 2026 keep 20%. The change is added to the rate history.'})}`,ph)+foot([['Cancel'],[`${ic('check','sm')}Confirm change`,'primary']],ph);}
+function linkSheet(p,ph){return shHead('Link Hospitable',`Connects ${p.name} to its Hospitable listing so earnings can sync.`,ph)+body(`
+  ${fld('Hospitable UUID','00000000-0000-4000-8000-000000000108',{focus:true,hint:'Paste the listing UUID from Hospitable.'})}`,ph)+foot([['Cancel'],['Save','primary']],ph);}
+const APPS=[['Hospitable','H',255,'00000000-0000-4000-8000-000000000101'],['Cleaner Hub','C',185,'CH-PLACEHOLDER-01'],['Guidebook','G',65,'GB-SAMPLE-01'],['Cohost','Co',300,'']];
+function appSheet(ph){return shHead('App links','One ID per app. Copy and Open use these.',ph)+body(APPS.map(([n,,,id])=>fld(`${n} ID`,id||'Not set',{ph:!id,opt:!id})).join(''),ph)+foot([['Cancel'],['Save links','primary']],ph);}
+
+/* ---------------- detail cards ---------------- */
+const coverCard=p=>`<div class="covercard">${p.cover?cov(p,'',190,0).replace('width:px;',''):`<span class="cov none" style="width:100%;height:100%;flex-direction:column;gap:6px;display:flex;align-items:center;justify-content:center">${ic('img')}<b style="font-size:var(--t-sm);color:var(--ink)">No cover photo</b><span class="meta">Shows on the property list</span></span>`}
+  <div class="coveracts">${p.cover?`<button class="btn sm">${ic('upload','xs')}Replace</button><button class="btn sm">${ic('trash','xs')}Remove</button>`:`<button class="btn sm primary" style="background:var(--primary)">${ic('upload','xs')}Upload</button>`}</div></div>`;
+const appsCard=p=>`<div class="card"><div class="cardhead"><h3>${ic('link','sm')}App links</h3><button class="btn sm">${ic('edit','xs')}Edit links</button></div>
+  ${APPS.map(([n,l,h,id],i)=>{const v=i===0?(p.linked?id:''):(p.linked?id:'');return `<div class="lrow2"><span class="appic" style="background:oklch(0.5 0.1 ${h})">${l}</span><div class="t"><b>${n}</b>${v?`<span class="idtxt">${v}</span>`:'<span class="meta">Not set</span>'}</div><span class="iconbtn" ${v?'':'style="opacity:.4"'}>${ic('copy','sm')}</span><button class="btn sm" ${v?'':'disabled'}>Open${ic('ext','xs')}</button></div>`;}).join('')}
+  <div class="cardfoot"><button class="btn sm" ${p.linked?'':'disabled'}>${ic('brief','xs')}Create / open in Cleaner Hub</button><button class="btn sm">${ic('star','xs')}Create ≤4★ review tasks</button>${p.linked?'':`<span class="hint warn" style="margin:0">${ic('alert','xs')}Cleaner Hub needs Hospitable linked first</span>`}</div></div>`;
+function billingCard(p,o={}){
+  const hist=`<div style="margin-top:12px"><div class="flabel">Rate history</div><ul class="hist"><li class="cur"><i></i>${p.comm}%<span class="meta">from Sep 1, 2026</span><span class="m meta">Current</span></li><li><i></i>18%<span class="meta">Jan 1, 2026 to Aug 31, 2026</span></li></ul></div>`;
+  if(o.locked) return `<div class="card"><div class="cardhead"><h3>${ic('lock','sm')}Billing terms</h3><span class="meta">Locked</span></div><div class="cardbody">
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--panel);border-radius:12px"><div style="flex:1"><span class="meta">Commission</span><b style="display:block;font-size:20px;color:var(--ink)">${p.comm}%</b></div><button class="btn">${ic('edit','sm')}Change</button></div>
+    <dl class="kv2" style="margin:12px 0 0"><div><dt>Fee base</dt><dd>Nightly − fee</dd></div><div><dt>Cleaning</dt><dd>MRG</dd></div><div><dt>HST mode</dt><dd>${p.hst}</dd></div><div><dt>HST %</dt><dd>${p.hst==='Invoice'?'5':'0'}%</dd></div></dl>${hist}</div></div>`;
+  const inv=o.flip||p.hst==='Invoice';
+  return `<div class="card"><div class="cardhead"><h3>${ic('tax','sm')}Billing terms</h3>${o.flip?'<span class="meta">Unsaved changes</span>':''}</div><div class="cardbody">
+   <div class="fgrid" ${o.ph?'style="grid-template-columns:1fr"':''}>
+    ${fld('Commission %',p.comm||'',{ph:!p.comm,raw:p.comm?null:`<input class="input ph" value="e.g. 20">`})}
+    <div class="field"><label>Fee base</label><div class="aiseg"><span class="${inv?'on':''}">Nightly</span><span class="${inv?'':'on'}">Nightly − fee</span></div></div>
+    <div class="field"><label>Cleaning</label><div class="aiseg"><span class="on">MRG</span><span>Host</span></div></div>
+    <div class="field"><label>HST mode</label><div class="aiseg"><span class="${inv?'':'on'}">Cohost</span><span class="${inv?'on':''}">Invoice</span></div></div>
+    ${fld('HST %',inv?'5':'0',{hint:'0 to 20',focus:o.flip})}
+   </div>
+   ${o.flip?`<div class="warnbox" style="background:oklch(0.6 0.15 255 / .08)">${ic('refresh','sm')}<span>HST mode changed to Invoice, so Fee base and HST % switched to the Invoice defaults. Check them before saving.</span></div>`:''}
+   <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn primary" ${o.ph?'style="width:100%;height:44px"':''}>Save billing terms</button></div>
+   ${p.comm?hist:''}</div></div>`;
+}
+const strCard=p=>`<div class="card"><div class="cardhead"><h3>${ic('permit','sm')}STR compliance</h3><button class="btn sm">${ic(p.linked?'edit':'plus','xs')}${p.linked?'Edit permit':'Add permit'}</button></div><div class="cardbody">
+  ${p.linked?`<dl class="kv2" style="margin:0"><div><dt>Permit number</dt><dd class="idtxt" style="color:var(--ink)">PLCH-STR-0001</dd></div><div><dt>Municipality</dt><dd>Calgary</dd></div><div><dt>Applied</dt><dd>Aug 2, 2026</dd></div><div><dt>Issued</dt><dd>Aug 20, 2026</dd></div><div><dt>Day cap</dt><dd>No cap</dd></div></dl>`
+  :`<span style="font-size:var(--t-sm)">No permit on file.</span>`}</div></div>`;
+const Q=[['Q1 2026','Jan to Mar',0],['Q2 2026','Apr to Jun',0],['Q3 2026','Jul to Sep',1],['Q4 2026','Oct to Dec',0]];
+function matCard(p,o={}){
+  if(!o.mat) return `<div class="card"><div class="cardhead"><h3>${ic('receipt','sm')}MAT</h3><button class="btn sm">Enable MAT</button></div><div class="cardbody" style="font-size:var(--t-sm)">MAT is off for this property.</div></div>`;
+  return `<div class="card"><div class="cardhead"><h3>${ic('receipt','sm')}MAT</h3>${chip('Enabled',155,.13)}</div>
+   ${o.sql?`<div class="cardbody" style="padding-bottom:0"><div class="warnbox" style="margin:0">${ic('alert','sm')}<span><b>SQL not run.</b> The MAT tables aren’t set up yet, so filings can’t be saved. Run the MAT SQL, then reload.</span></div></div>`:''}
+   ${Q.map(([q,r,f])=>`<div class="qrow" ${o.sql?'style="opacity:.55"':''}><div class="t"><b>${q}</b><span class="meta">${r}${f&&!o.sql?' · Filed Oct 10, 2026':''}</span></div>${f&&!o.sql?chip('Filed',155,.13)+`<button class="btn sm" ${o.sql?'disabled':''}>Undo filed</button>`:`<button class="btn sm" ${o.sql?'disabled':''}>${ic('check','xs')}Mark filed</button>`}</div>`).join('')}</div>`;
+}
+const pContracts=(p,o={})=>`<div class="card"><div class="cardhead"><h3>${ic('file','sm')}Contracts</h3><button class="btn sm">${ic('upload','xs')}Upload</button></div>
+  ${p.linked?[['Management agreement','Oct 2, 2026'],['Furniture addendum','Oct 9, 2026']].map(([t,d])=>`<div class="lrow2"><span class="kic">${ic('file','sm')}</span><div class="t"><b>${t}.pdf</b><span class="meta">Signed ${d}</span></div><button class="btn sm">Open</button><span class="iconbtn">${ic('trash','sm')}</span></div>`).join('')
+  :`<div class="empty" style="padding:22px 16px"><b style="font-size:var(--t-sm)">No signed contracts yet</b><span class="meta">Upload a signed PDF with its title and date.</span></div>`}</div>`;
+const STAYP=[['Guest A','Oct 2 to Oct 5 · 3 nights','1,200.00'],['Guest B','Oct 7 to Oct 10 · 3 nights','1,300.00'],['Guest C','Oct 13 to Oct 17 · 4 nights','1,500.00'],['Guest D','Oct 20 to Oct 23 · 3 nights','1,200.00']];
+function earnCard(p,o={}){
+  const s=o.sync||(p.linked?'ok':'none');
+  const head=`<div class="cardhead"><h3>${ic('chart','sm')}Earnings</h3><span style="display:flex;gap:6px"><button class="btn sm" ${s==='none'||s==='syncing'?'disabled':''}>${s==='syncing'?'<i class="spin"></i>Refreshing…':`${ic('refresh','xs')}Refresh`}</button><button class="btn sm" ${s==='none'?'disabled':''}>${ic('file','xs')}Statement${ic('ext','xs')}</button></span></div>`;
+  const mp=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">${monthPicker(o.ph?'Oct 2026':'October 2026').replace('min-width:170px','')}${s==='ok'?`<span class="syncline"><i class="dot" style="background:var(--green)"></i>Synced 4 min ago</span>`:s==='syncing'?`<span class="syncline"><i class="spin"></i>Pulling bookings from Hospitable…</span>`:s==='failed'?`<span class="syncline" style="color:var(--redink)"><i class="dot" style="background:var(--red)"></i>Last sync failed</span>`:''}</div>`;
+  if(s==='none') return `<div class="card">${head}<div class="cardbody">${mp}<div class="empty" style="padding:30px 12px"><span class="eic">${ic('hosp')}</span><b>Not linked to Hospitable</b><span>Earnings come from Hospitable bookings. Link this property to pull them.</span><button class="btn primary" style="margin-top:10px">${ic('link','sm')}Link Hospitable</button></div></div></div>`;
+  const tot=`<div class="etot">${[['Payout','5,200.00'],['MRG fee','1,000.00'],['HST','50.00'],['Expenses','150.00'],['Net to host','4,000.00']].map(([l,v],i)=>`<div class="${i===4?'net':''}">${s==='syncing'?`<span class="skel" style="width:70px;height:15px;margin:3px 0 5px"></span>`:`<b>$${v}</b>`}<span>${l}</span></div>`).join('')}</div>`;
+  const fail=s==='failed'?`<div class="errbanner" style="margin:12px 0 0">${ic('alert','sm')}<span><b>Sync failed.</b> Hospitable didn’t respond. Showing the last sync from Oct 31.</span><button class="btn sm">Retry</button></div>`:'';
+  const stays=`<div class="flabel" style="margin-top:2px">Stays <span class="meta">· ${s==='syncing'?'updating':'4 this month'}</span></div>${STAYP.map(([g,d,v])=>`<div class="stay" ${s==='syncing'?'style="opacity:.45"':''}><span class="kic">${ic('cal','sm')}</span><div class="t"><b>${g}</b><span class="meta">${d}</span></div><span class="v">$${v}</span></div>`).join('')}`;
+  return `<div class="card">${head}<div class="cardbody">${mp}${fail}${tot}${stays}</div></div>`;
+}
+const EXP=[['Cleaning supplies','Supplies','Oct 6, 2026','100.00'],['Linen replacement','Linens','Oct 18, 2026','50.00']];
+function expCard(p,o={}){
+  const form=o.add?`<div style="padding:14px 16px;border-bottom:1px solid var(--line-2);background:oklch(0.985 0.002 95)"><div class="fgrid" ${o.ph?'style="grid-template-columns:1fr 1fr"':''}>
+    ${fld('Amount','$ 85.00',{focus:true})}${fld('Date','',{raw:dateF('Nov 16, 2026')})}
+    <div class="field full"><label>Category</label><div class="cchips">${['Cleaning','Supplies','Linens','Repairs','Other'].map((c,i)=>`<span class="${i===3?'on':''}">${c}</span>`).join('')}</div></div>
+    ${fld('Description','Faucet cartridge',{full:true})}${fld('Note','Visible on the statement',{full:true,opt:true,ph:true})}
+    <div class="field full"><label>Receipt <em>(optional)</em></label><div class="drop" style="padding:9px 12px">${ic('upload','sm')}<b>Upload receipt</b><span class="meta">Photo or PDF</span></div></div></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn">Cancel</button><button class="btn primary">Save</button></div></div>`:'';
+  return `<div class="card" style="overflow:hidden"><div class="cardhead"><h3>${ic("receipt","sm")}Expenses</h3>${o.add?'':`<button class="btn sm">${ic('plus','xs')}Add expense</button>`}</div>${form}
+   ${p.linked?EXP.map(([t,c,d,v],i)=>o.ask===i?`<div class="exp ask"><div class="t"><b>Delete ${t}, $${v}?</b><span class="meta">It comes off the owner statement.</span></div><button class="btn sm">Keep</button><button class="btn sm danger">Delete</button></div>`
+     :`<div class="exp"><span class="kic">${ic('receipt','sm')}</span><div class="t"><b>${t}</b><span class="meta">${c} · ${d}</span></div><span class="lnk" style="font-size:var(--t-xs)">Receipt</span><span class="v">$${v}</span><span class="iconbtn">${ic('trash','sm')}</span></div>`).join('')
+     +`<div class="exp" style="background:var(--panel)"><div class="t"><b>October total</b><span class="meta">Charged to the owner on the statement</span></div><span class="v">$150.00</span></div>`
+   :`<div class="empty" style="padding:22px 16px"><b style="font-size:var(--t-sm)">No expenses this month</b><span class="meta">Expenses are charged to the owner on the statement.</span></div>`}</div>`;
+}
+
+/* ---------------- detail page ---------------- */
+const dHead=(p)=>`<div class="head"><div><div class="backlink">${ic('back','xs')}Properties</div><h1 style="display:flex;align-items:center;gap:10px">${p.name} ${linkMk(p.linked)}${actMk(p.active)}</h1><div class="meta" style="font-size:var(--t-sm);margin-top:2px">${p.addr} · <span class="lnk">${p.client}</span> · ${p.comm?`${p.comm}% · HST ${p.hst.toLowerCase()}`:'No billing terms yet'}</div></div>
+  <div class="headacts">${p.linked?`<button class="btn">${ic('copy','sm')}Copy UUID</button>`:`<button class="btn">${ic('link','sm')}Link Hospitable</button>`}<button class="btn primary">${ic('edit','sm')}Edit</button></div></div>`;
+function cards(p,o){return {cover:coverCard(p),apps:appsCard(p),bill:billingCard(p,o),str:strCard(p),mat:matCard(p,o),contracts:pContracts(p,o),earn:earnCard(p,o),exp:expCard(p,o)};}
+const pausedBar=p=>p.active?'':`<div class="infobar">${ic('pause','sm')}<span><b style="color:var(--ink)">Paused.</b> Hidden from month close. Turn it back on from Edit.</span></div>`;
+function deskDetail(p,o={}){const c=cards(p,o);const left=(o.left||['cover','apps','bill']).map(k=>c[k]).join('');const right=(o.right||['earn','exp']).map(k=>c[k]).join('');
+  return pDesk(dHead(p),`${pausedBar(p)}<div class="pgrid2"><div class="col">${left}</div><div class="col">${right}</div></div>`,{overlay:o.overlay,cs:'padding-top:20px'});}
+const pdHead=(p)=>`<div class="backrow">${ic('back','sm')}Properties</div><div class="ptitle" style="margin-bottom:4px"><h1>${p.name}</h1><button class="btn sm">${ic('edit','xs')}Edit</button></div>
+  <div class="meta" style="font-size:var(--t-sm);margin-bottom:8px">${p.addr} · ${p.client}</div>
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap">${linkMk(p.linked)}${actMk(p.active)}<span style="flex:1"></span>${p.linked?`<button class="btn sm">${ic('copy','xs')}Copy UUID</button>`:`<button class="btn sm">${ic('link','xs')}Link Hospitable</button>`}</div>`;
+function phoneDetail(p,o={}){const c=cards(p,{...o,ph:true});return phone(`${o.nohead?'':pdHead(p)}${pausedBar(p)}${(o.order||['cover','apps','bill']).map(k=>c[k]).join('')}`,{overlay:o.overlay});}
+
+
+I.sync=I.refresh;
+I.csv='<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9 14l3 3 3-3"/>';
+I.pl='<path d="M4 19h16"/><path d="M7 15V9M12 15V5M17 15v-3"/>';
+I.sub='<path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2"/>';
+
+/* ---------------- placeholder month close (all fake; listed in the notes file) ---------------- */
+// [name, client, deal, sync, net, fee, hst|null, charges, syncMeta]
+const MC=[
+ ['Sample Loft','Harper Sample','20% · HST invoice','synced','4,000.00','1,000.00','50.00','150.00','2 h ago'],
+ ['Example Suite','Harper Sample','20% · HST cohost','synced','2,000.00','500.00',null,'50.00','2 h ago'],
+ ['Example Cottage','Rowan Example','18% · HST invoice','synced','2,460.00','540.00','27.00','0.00','2 h ago'],
+ ['Mock Studio','Logan Mock','25% · HST cohost','synced','1,000.00','250.00',null,'0.00','2 h ago'],
+ ['Mock Townhome','Logan Mock','25% · HST cohost','synced','2,000.00','500.00',null,'50.00','2 h ago'],
+ ['Demo Condo','Parker Demo','20% · HST invoice','synced','0.00','0.00','0.00','0.00','2 h ago'],
+ ['Placeholder Flat','Emery Placeholder','No billing terms','unlinked','','','','','']
+];
+const MTOT=['11,460.00','2,790.00','77.00','250.00'];
+const SYN={synced:['Synced',155,.13],stale:['Stale',65,.14],failed:['Failed',25,.18],unlinked:['Unlinked',270,.02],syncing:['Syncing',255,.14],queued:['Queued',270,.02]};
+const synChip=(s,m)=>`<span class="syn">${s==='syncing'?`<span class="chip" style="background:${tone(255,.14).bg};color:${tone(255,.14).t}"><i class="spin" style="width:10px;height:10px;border-width:1.5px"></i>Syncing</span>`:chip(...SYN[s])}${m?`<span class="meta">${m}</span>`:''}</span>`;
+function rowsFor(mode){
+  return MC.map((r,i)=>{const x=[...r];
+    if(mode==='fail'){ if(i===4){x[3]='failed';x[8]='Hospitable timed out';} if(i===2||i===5){x[3]='stale';x[8]='Last sync Oct 28';} }
+    if(mode==='sync'){ if(i<4){x[8]='just now';} else if(i===4){x[3]='syncing';x[8]='';} else if(i===5){x[3]='queued';x[8]='';} }
+    if(mode==='nostays'){ if(i<6){x[4]=x[5]=x[7]='0.00';x[6]=x[6]===null?null:'0.00';} }
+    return x;});
+}
+const rvSidebar=sidebar;
+const rvHead=(o={})=>`<div class="head"><div><div class="date">Monday, November 16, 2026</div><h1>Revenue</h1></div>
+  <div class="headacts"><button class="btn">${ic('csv','sm')}Export CSV</button><button class="btn">${ic('hst','sm')}HST worklist</button>
+  <button class="btn primary" ${o.syncing?'disabled':''}>${o.syncing?'<i class="spin" style="border-color:rgb(255 255 255 / .3);border-top-color:#fff"></i>Syncing 4 of 6':`${ic('sync','sm')}Sync all`}</button></div></div>`;
+const rvDesk=(head,content,o={})=>`<div class="app">${rvSidebar()}<main class="main">${head}<div class="content" style="padding-top:18px">${content}</div></main></div>${o.overlay||''}`;
+
+/* company strip */
+const CS={oct:['1,200.00','2,790.00','1,590.00','77.00'],nov:['1,040.00','1,180.00','140.00','31.00'],sep:['0.00','0.00','1,590.00','0.00'],empty:['0.00','0.00','0.00','0.00']};
+function strip(k='oct',o={}){const v=CS[k];const L=[['Net earnings','chart',1],['MRG fees','brief',0],['Company costs','receipt',1],['HST to remit','hst',0]];
+  return `<div class="card cstrip">${L.map(([l,i,lk],j)=>`<div class="stat ${lk?'lk':''}"><span class="ic">${ic(i,'sm')}</span><div>${o.loading?`<span class="skel" style="width:90px;height:18px;margin:3px 0 6px"></span>`:`<b class="num">$${v[j]}</b>`}<span class="l">${l}${j===0?' (company)':''}</span></div></div>`).join('')}
+   <span class="bd"><span class="lnk" style="display:inline-flex;align-items:center;gap:4px">${ic('pl','xs')}Breakdown${ic('arrow','xs')}</span></span></div>
+   ${o.prompts?`<div class="prompts"><span class="prompt">${ic('alert','xs')}Meta ads $0<button class="btn">Add cost</button></span><span class="prompt">${ic('alert','xs')}No subscriptions<button class="btn">Add subscriptions</button></span></div>`:''}`;}
+const counts=(mode)=>mode==='fail'?[7,2,1,3]:[7,0,1,6];
+const fchips=(mode,on='All')=>{const c=counts(mode);return `<div class="chipseg">${['All','Stale','Unlinked','Ready'].map((x,i)=>`<span class="${on===x?'on':''}">${x} <span class="count">${c[i]}</span></span>`).join('')}</div>`;};
+function mcTable(mode,o={}){
+  let rows=rowsFor(mode);
+  if(o.filter==='Unlinked') rows=rows.filter(r=>r[3]==='unlinked');
+  const td=v=>v===null?'<span class="meta">Not on invoice</span>':v===''?'<span class="meta">No data</span>':`$${v}`;
+  return `<div class="card" style="overflow:hidden"><table><thead><tr><th>Unit</th><th>Deal</th><th>Sync</th><th class="r">Net to host</th><th class="r">MRG fee</th><th class="r">HST on invoice</th><th class="r">Host charges</th><th style="width:120px"></th></tr></thead><tbody>
+  ${o.loading?[1,2,3,4,5].map(()=>`<tr><td><span class="skel" style="width:150px;margin-bottom:6px"></span><span class="skel" style="width:100px;height:10px"></span></td><td><span class="skel" style="width:110px;height:22px;border-radius:99px"></span></td><td><span class="skel" style="width:64px;height:20px;border-radius:99px"></span></td>${[70,60,50,60].map(w=>`<td class="r"><span class="skel" style="width:${w}px;margin-left:auto"></span></td>`).join('')}<td></td></tr>`).join('')
+  :rows.map(r=>{const act=r[3]==='stale'?`<button class="btn sm">${ic('sync','xs')}Sync</button>`:r[3]==='failed'?`<button class="btn sm dangerline">${ic('sync','xs')}Retry</button>`:'';
+    return `<tr class="${r[3]==='queued'?'dim':''}"><td><b style="color:var(--ink);display:block">${r[0]}</b><span class="meta" style="font-size:var(--t-sm)">${r[1]}</span></td><td>${r[2]==='No billing terms'?'<span class="gapchip">No billing terms</span>':`<span class="deal">${r[2]}</span>`}</td><td>${synChip(r[3],r[8])}</td>
+     <td class="r num" style="color:var(--ink);font-weight:600">${td(r[4])}</td><td class="r num">${td(r[5])}</td><td class="r num">${td(r[6])}</td><td class="r num">${td(r[7])}</td><td class="r"><span style="display:inline-flex;gap:4px;align-items:center">${act}<span class="iconbtn">${ic('next','sm')}</span></span></td></tr>`;}).join('')}
+  ${o.loading||o.filter?'':`<tr class="total"><td>Total <span class="meta">· 6 linked units</span></td><td></td><td></td><td class="r num">$${mode==='nostays'?'0.00':MTOT[0]}</td><td class="r num">$${mode==='nostays'?'0.00':MTOT[1]}</td><td class="r num">$${mode==='nostays'?'0.00':MTOT[2]}</td><td class="r num">$${mode==='nostays'?'0.00':MTOT[3]}</td><td></td></tr>`}
+  </tbody></table></div>${o.loading||o.filter?'':`<div class="meta" style="margin-top:8px">Each row opens the property. Paused properties are hidden from month close.</div>`}`;
+}
+const banners=(mode,ph)=>mode==='fail'?`<div class="banner warn">${ic('alert','sm')}<span><b>Sync needing attention.</b> ${ph?'2 units are stale.':'Example Cottage and Demo Condo haven’t synced since Oct 28.'}</span></div>
+  <div class="banner bad">${ic('alert','sm')}<span><b>1 sync failed.</b> ${ph?'':'Mock Townhome: Hospitable timed out.'}</span><button class="btn sm">${ic('sync','xs')}Retry 1</button></div>`
+ :mode==='sync'?`<div class="banner info"><i class="spin"></i><span><b>Syncing 4 of 6 linked units</b> from Hospitable${ph?'':'. You can keep working; rows update as they finish'}.</span><span class="prog" style="flex:none;${ph?'width:80px':''}"><i style="width:66%"></i></span></div>`
+ :mode==='nostays'?`<div class="banner info">${ic('cal','sm')}<span><b>No stays in September 2026.</b> Every linked unit synced with no checkouts this month.</span></div>`:'';
+function mcD(o={}){const mode=o.mode||'ok';
+  const month=o.month||'October 2026';
+  return rvDesk(rvHead({syncing:mode==='sync'}),`${strip(o.strip||'oct',o)}${o.noUnits?'':banners(mode)}
+   <div class="sbar">${monthPicker(month)}${o.noUnits?'':fchips(mode,o.filter||'All')}</div>
+   ${o.noUnits?`<div class="card"><div class="empty" style="padding:80px 24px"><span class="eic">${ic('building')}</span><b>No units in month close</b><span style="max-width:380px">Add or import properties in Properties. Active units show here each month.</span><button class="btn" style="margin-top:10px">Go to Properties${ic('arrow','sm')}</button></div></div>`
+   :o.filter==='Unlinked'?mcTable(mode,o)+`<div class="meta" style="margin-top:8px">Unlinked units can’t sync. Open the unit and use Link Hospitable.</div>`:mcTable(mode,o)}`,{overlay:o.overlay});}
+
+/* phone */
+const rvTitleP=(o={})=>`<div class="ptitle"><h1>Revenue</h1><button class="btn sm primary" ${o.syncing?'disabled':''}>${o.syncing?'<i class="spin" style="width:12px;height:12px;border-color:rgb(255 255 255 / .3);border-top-color:#fff"></i>4 of 6':`${ic('sync','xs')}Sync all`}</button></div>`;
+function uCard(r){const act=r[3]==='stale'?`<button class="btn sm">${ic('sync','xs')}Sync</button>`:r[3]==='failed'?`<button class="btn sm dangerline">${ic('sync','xs')}Retry</button>`:'';
+  const v=x=>x===null?'<span class="meta" style="font-weight:500">Not on inv.</span>':x===''?'No data':`$${x}`;
+  return `<div class="ucard" ${r[3]==='queued'?'style="opacity:.5"':''}><div class="l1"><b>${r[0]}</b>${act}${ic('next','sm')}</div><span class="meta" style="font-size:var(--t-sm)">${r[1]}</span>
+   <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">${r[2]==='No billing terms'?'<span class="gapchip">No billing terms</span>':`<span class="deal">${r[2]}</span>`}${synChip(r[3]).replace('class="syn"','class="syn" style="flex-direction:row"')}${r[8]?`<span class="meta">${r[8]}</span>`:''}</div>
+   ${r[3]==='unlinked'?'':`<div class="nums"><div><span>Net</span><b>${v(r[4])}</b></div><div><span>MRG fee</span><b>${v(r[5])}</b></div><div><span>HST</span><b>${v(r[6])}</b></div></div>`}</div>`;}
+function mcP(o={}){const mode=o.mode||'ok';let rows=rowsFor(mode);if(o.filter==='Unlinked')rows=rows.filter(r=>r[3]==='unlinked');if(o.order)rows=o.order.map(i=>rows[i]);
+  return phone(`${rvTitleP({syncing:mode==='sync'})}<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${monthPicker(o.mshort||'Oct 2026').replace('min-width:170px','')}</div>
+   ${o.hideStrip?'':strip(o.strip||'oct',o)}${o.noUnits?'':banners(mode,true)}
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px"><button class="btn sm" style="height:40px">${ic('hst','xs')}HST worklist</button><button class="btn sm" style="height:40px">${ic('csv','xs')}Export CSV</button></div>
+   ${o.noUnits?`<div class="empty" style="padding:40px 12px"><span class="eic">${ic('building')}</span><b>No units in month close</b><span>Add or import properties in Properties.</span></div>`
+   :`<div class="pfilters">${['All','Stale','Unlinked','Ready'].map((x,i)=>`<span class="${(o.filter||'All')===x?'on':''}">${x} <span class="count" ${(o.filter||'All')===x?'style="background:rgb(255 255 255 / .18);color:#fff;border-color:transparent"':''}>${counts(mode)[i]}</span></span>`).join('')}</div>
+   ${o.loading?[1,2].map(()=>`<div class="ucard"><span class="skel" style="width:140px;margin-bottom:8px"></span><span class="skel" style="width:90px;height:10px;margin-bottom:10px"></span><span class="skel" style="width:200px;height:20px;border-radius:99px"></span></div>`).join(''):rows.map(uCard).join('')}`}`,{overlay:o.overlay});}
+
+/* ---------------- HST worklist ---------------- */
+const HC=[['Harper Sample','HS',0,[['Sample Loft','1,000.00','50.00']],'50.00'],['Rowan Example','RE',1,[['Example Cottage','540.00','27.00']],'27.00'],['Parker Demo','PD',4,[['Demo Condo','0.00','0.00']],'0.00']];
+const cbtn=(t,copied,sm=true)=>`<button class="btn ${sm?'sm':''} ${copied?'copied':''}">${ic(copied?'check':'copy','xs')}${copied?'Copied':t}</button>`;
+function hstD(o={}){
+  const groups=o.one?HC.slice(0,1):HC;
+  const open=o.one?[0]:(o.open||[0,1]);
+  return rvDesk(`<div class="head"><div><div class="backlink">${ic('back','xs')}Revenue · October 2026</div><h1>HST worklist</h1></div>
+   <div class="headacts">${o.empty?'':`${cbtn('Copy month summary',o.copied==='month',false)}${cbtn('Copy total',o.copied==='total',false)}`}</div></div>`,
+  `<div class="sbar"><div style="display:flex;align-items:center;gap:12px">${monthPicker()}${o.one?`<span class="clientchips"><span class="on">Harper Sample <span class="iconbtn" style="width:20px;height:20px">${ic('x','xs')}</span></span></span><span class="meta">Opened from Harper Sample. Other clients are hidden.</span>`:''}</div>
+   ${o.empty?'':`<span class="meta">Only units that put HST on the invoice. Copy puts text on the clipboard for QuickBooks; nothing is sent.</span>`}</div>
+   ${o.empty?`<div class="card"><div class="empty" style="padding:90px 24px"><span class="eic">${ic('hst')}</span><b>Every unit is on cohost HST, nothing to invoice.</b><span>Nothing to copy for October 2026.</span></div></div>`
+   :`<div class="card stats" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="stat"><span class="ic">${ic('users','sm')}</span><div><b>${groups.length}</b><span class="l">Clients</span></div></div><div class="stat"><span class="ic">${ic('building','sm')}</span><div><b>${groups.length}</b><span class="l">Invoice-HST units</span></div></div><div class="stat"><span class="ic">${ic('hst','sm')}</span><div><b>$${o.one?'50.00':'77.00'}</b><span class="l">Total HST on invoices</span></div></div></div>
+   <div class="card" style="overflow:hidden">${groups.map(([n,ini,k,units,t],gi)=>{const op=open.includes(gi);return `<div class="grp ${op?'open':''}"><div class="grph"><span class="iconbtn">${ic(op?'chev':'next','sm')}</span>${av(ini,k,'sm')}<div class="t"><b>${n}</b><span class="meta">${units.length} unit · MRG fees $${units[0][1]}</span></div><span class="v">$${t}<div class="meta" style="text-align:right">HST</div></span>${cbtn('Copy client summary',o.copied==='client'&&gi===0)}</div>
+     ${op?units.map(([u,f,h])=>`<div class="urow2"><span class="kic">${ic('building','sm')}</span><div class="t"><b>${u}</b><span class="meta">Opens the property</span></div><span class="c">MRG fee $${f}</span><span class="c" style="color:var(--ink);font-weight:600">HST $${h}</span>${cbtn('Copy unit summary',o.copied==='unit'&&gi===0)}<span class="iconbtn">${ic('next','sm')}</span></div>`).join(''):''}</div>`;}).join('')}</div>`}`,{overlay:o.overlay});
+}
+function hstP(o={}){
+  const groups=o.one?HC.slice(0,1):HC; const open=o.one?[0]:(o.open||[0]);
+  return phone(`<div class="backrow">${ic('back','sm')}Revenue</div><div class="ptitle"><h1>HST worklist</h1></div>
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${monthPicker('Oct 2026').replace('min-width:170px','')}</div>
+   ${o.one?`<div class="clientchips" style="margin-bottom:10px"><span class="on">Harper Sample ${ic('x','xs')}</span><span class="meta" style="border:0;padding:0">Others hidden</span></div>`:''}
+   ${o.empty?`<div class="empty" style="padding:50px 12px"><span class="eic">${ic('hst')}</span><b>Every unit is on cohost HST, nothing to invoice.</b></div>`
+   :`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">${cbtn('Copy month summary',o.copied==='month').replace('btn sm','btn sm" style="height:40px')}${cbtn('Copy total',o.copied==='total').replace('btn sm','btn sm" style="height:40px')}</div>
+   <div class="card" style="overflow:hidden">${groups.map(([n,ini,k,units,t],gi)=>{const op=open.includes(gi);return `<div class="grp ${op?'open':''}"><div class="grph">${ic(op?'chev':'next','sm')}<div class="t"><b>${n}</b><span class="meta">HST $${t}</span></div>${cbtn('Copy',o.copied==='client'&&gi===0)}</div>
+    ${op?units.map(([u,f,h])=>`<div class="urow2"><div class="t"><b>${u}</b><span class="meta">Fee $${f} · HST $${h}</span></div>${cbtn('Copy',o.copied==='unit'&&gi===0)}${ic('next','sm')}</div>`).join(''):''}</div>`;}).join('')}</div>
+   <div class="meta" style="margin-top:8px">Copy puts text on the clipboard for QuickBooks. Nothing is sent.</div>`}`,{overlay:o.overlay});
+}
+
+/* ---------------- Company P&L ---------------- */
+const COSTS={
+ oct:[['Software',[['Hospitable plan','Subscription','300.00'],['Cleaner Hub','Subscription','90.00'],['Guidebook','Subscription · $720.00 yearly','60.00']]],['Marketing',[['Meta ads','Monthly cost','350.00']]],['Office',[['Coworking desk','Subscription','250.00']]],['Photography',[['Sample Loft photo refresh','One-off · Oct 12','400.00']]],['Supplies',[['Lockbox batch','One-off · Oct 3','140.00']]]],
+ nov:[['Marketing',[['Meta ads','No cost recorded','0.00']]],['Supplies',[['Lockbox batch','One-off · Nov 4','140.00']]]]
+};
+function plInner(k='oct',o={}){const ph=o.ph;const m=k==='oct'?'October':'November';const c=CS[k];
+  return `${shHead(`Company P&L · ${m} 2026`,'Revenue, company costs by category, and net.',ph)}
+  <div style="flex:1;min-height:0;overflow:hidden">
+   ${k==='nov'?`<div class="warnbox" style="margin-top:14px">${ic('alert','sm')}<span><b>Meta ads is $0 for November.</b> Add the spend as a cost if there was any. <span class="lnk">Add cost</span></span></div><div class="warnbox">${ic('alert','sm')}<span><b>No subscriptions yet.</b> Recurring costs like software aren’t counted. <span class="lnk">Add subscriptions</span></span></div>`:''}
+   <div class="plsec"><h4><span>Revenue</span></h4><div class="plline"><div class="t"><b>MRG fees</b><span class="meta">From month close</span></div><span class="v">$${c[1]}</span></div></div>
+   ${COSTS[k].map(([cat,lines])=>`<div class="plsec"><h4><span>${cat}</span><span>$${cat==='Software'&&k==='oct'?'450.00':lines.reduce((a,l)=>a+parseFloat(l[2].replace(',','')),0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')}</span></h4>
+     ${lines.map(([n,t,v])=>{const one=t.startsWith('One-off');const ov=o.override===n;return `<div class="plline" style="${ov?'flex-wrap:wrap':''}"><div class="t"><b>${n}</b><span class="meta">${t}</span></div>
+      ${ov?'':`<span class="acts"><button class="lbtn">Override for ${m}</button>${one?'<button class="lbtn dng">Remove</button>':''}</span><span class="v">$${v}</span>`}
+      ${ov?`<div style="flex-basis:100%;display:flex;gap:8px;align-items:center;margin-top:6px"><input class="input focus" style="width:140px;height:36px" value="$ 380.00"><span class="meta" style="flex:1">Only ${m} changes. The subscription stays $${v}.</span><button class="btn sm">Cancel</button><button class="btn sm primary">Save</button></div>`:''}</div>`;}).join('')}</div>`).join('')}
+   <div class="plnet"><span>Net</span><span class="num">$${c[0]}</span></div>
+   ${o.short?'':`<div class="meta" style="margin-top:6px">Revenue $${c[1]} less company costs $${c[2]}.</div>`}
+  </div>
+  <div class="mfoot" style="${ph?'flex-direction:column-reverse;gap:8px;margin-top:14px':'margin-top:12px;padding-top:14px;border-top:1px solid var(--line-2);justify-content:space-between'}"><button class="btn" ${ph?'style="height:44px"':''}>Close</button><span style="display:flex;gap:8px;${ph?'flex-direction:column-reverse':''}"><button class="btn" ${ph?'style="height:44px"':''}>${ic('sub','sm')}Manage subscriptions</button><button class="btn primary" ${ph?'style="height:48px"':''}>${ic('plus','sm')}Add cost</button></span></div>`;}
+const plD=(k,o={})=>`<div class="scrim" style="justify-content:flex-end"><div class="side-sheet frost" style="width:560px">${plInner(k,o)}</div></div>`;
+const plP=(k,o={})=>`<div class="scrim bottom"><div class="sheet frost" style="max-height:800px;overflow:hidden;display:flex;flex-direction:column">${plInner(k,{...o,ph:true,short:true})}</div></div>`;
+
+/* ---------------- Subscriptions ---------------- */
+const SUBS=[['Hospitable plan','300.00','Monthly','Software',1],['Cleaner Hub','90.00','Monthly','Software',1],['Guidebook','720.00','Yearly','Software',1],['Coworking desk','250.00','Monthly','Office',1],['Domain and email','240.00','Yearly','Software',0]];
+function subsInner(o={}){const ph=o.ph;
+  const form=o.add?`<div style="border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:14px;background:#fff"><div class="flabel" style="font-size:var(--t-sm);margin-bottom:10px">New subscription</div><div class="fgrid" ${ph?'style="grid-template-columns:1fr 1fr"':''}>
+    ${fld('Name','Placeholder CRM',{full:true,focus:true})}${fld('Amount','$ 45.00',{})}
+    <div class="field"><label>Cadence</label><div class="aiseg"><span class="on">Monthly</span><span>Yearly</span></div></div>
+    ${fld('Category','',{raw:selF('Software')})}${fld('Start month','',{raw:`<div class="input fakesel"><span>December 2026</span>${ic('cal','sm')}</div>`})}
+    <div class="field full" style="display:flex;align-items:center;justify-content:space-between"><label style="margin:0">Active</label><span class="switch on"><i></i></span></div></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn">Cancel</button><button class="btn primary">Save</button></div></div>`:'';
+  return `${shHead('Subscriptions','Recurring company costs. Shared with Settings.',ph)}
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px"><span class="meta">${o.empty?'No subscriptions':`${SUBS.length} subscriptions · 4 active`}</span>${o.add?'':`<button class="btn sm">${ic('plus','xs')}Add</button>`}</div>${form}
+   <div style="flex:1;min-height:0;overflow:hidden;margin-top:6px">${o.empty&&!o.add?`<div class="empty" style="padding:50px 12px"><span class="eic">${ic('sub')}</span><b>No subscriptions yet</b><span>Add recurring costs like software so they count in Company P&amp;L every month.</span><button class="btn primary" style="margin-top:10px">${ic('plus','sm')}Add</button></div>`
+   :o.empty?'':SUBS.map(([n,a,c,cat,on])=>`<div class="subrow ${on?'':'off'}"><div class="t"><b>${n}</b><span class="meta">${c} · ${cat}</span></div><span class="v">$${a}<div class="meta">${c==='Yearly'?'/yr':'/mo'}</div></span><span class="switch ${on?'on':''}" style="transform:scale(.8)"><i></i></span><span class="iconbtn">${ic('edit','sm')}</span><span class="iconbtn">${ic('trash','sm')}</span></div>`).join('')}</div>
+   <div class="mfoot" style="${ph?'margin-top:14px':'margin-top:12px;padding-top:14px;border-top:1px solid var(--line-2)'}"><button class="btn" ${ph?'style="height:44px;width:100%"':''}>Done</button></div>`;}
+const subsD=(o={})=>`<div class="scrim" style="justify-content:flex-end"><div class="side-sheet frost" style="width:540px">${subsInner(o)}</div></div>`;
+const subsP=(o={})=>`<div class="scrim bottom"><div class="sheet frost" style="max-height:800px;overflow:hidden;display:flex;flex-direction:column">${subsInner({...o,ph:true})}</div></div>`;
+
+/* ---------------- Add company cost ---------------- */
+function costInner(ph){return shHead('Add company cost','A one-off cost for October 2026. It shows in Company P&L with Remove.',ph)+body(`
+  ${fld('Amount','$ 400.00',{focus:true})}${fld('Label','Sample Loft photo refresh',{})}
+  ${fld('Category','',{raw:selF('Photography')})}${fld('Date','',{raw:dateF('Oct 12, 2026')})}
+  ${fld('Note','Anything to remember',{opt:true,ph:true,raw:`<textarea class="input ph" style="min-height:70px">Anything to remember</textarea>`})}`,ph)+foot([['Cancel'],[`${ic('plus','sm')}Add to October`,'primary']],ph);}
+
+/* ================= BOARD ================= */
+const fr=(label,cls,html)=>`<div class="fwrap"><span>${label}</span><div class="frame ${cls}">${html}</div></div>`;
+const st=(id,title,desc,frames)=>`<div class="state" id="${id}"><h3>${title}</h3><p>${desc}</p><div class="row" style="flex-wrap:wrap;row-gap:40px">${frames.join('')}</div></div>`;
+const sect=(id,title,desc,states)=>`<section class="sect" id="${id}"><h2>${title}</h2><p>${desc}</p>${states.join('')}</section>`;
+const out=[];const D='Desktop 1440',P='Phone 390';
+const confirmBoth=(t,p,b)=>[confirmD(t,p,b),confirmP(t,p,b)];
+
+out.push(sect('s-mc','1. Month close','The main Revenue page. Company strip on top, then one row per active unit. Sync all stays in the title row on phone.',[
+ st('st-ok','Normal month','October 2026. Every linked unit synced; Placeholder Flat is unlinked.',[fr(D,'d',mcD()),fr(P,'p',mcP()),fr(P+' · further down','p',mcP({hideStrip:true,order:[3,4,5,6]}))]),
+ st('st-sync','Mid-sync with progress','Sync all pulls every linked unit from Hospitable. Progress shows 4 of 6; rows update as they finish.',[fr(D,'d',mcD({mode:'sync'})),fr(P,'p',mcP({mode:'sync',hideStrip:true,order:[3,4,5,6]}))]),
+ st('st-fail','Failed syncs and stale units','Two banners: Sync needing attention for stale units, and Retry 1 for the failed sync. Rows get Sync or Retry.',[fr(D,'d',mcD({mode:'fail'})),fr(P,'p',mcP({mode:'fail',hideStrip:true,order:[4,2,5,0]}))]),
+ st('st-unl','Unlinked filter','Only units with no Hospitable link.',[fr(D,'d',mcD({filter:'Unlinked'})),fr(P,'p',mcP({filter:'Unlinked'}))]),
+ st('st-load','Loading','Skeletons in the strip and rows.',[fr(D,'d',mcD({loading:true})),fr(P,'p',mcP({loading:true}))]),
+ st('st-nostays','No stays this month','September 2026. Units synced, nothing checked out. Company costs still count.',[fr(D,'d',mcD({mode:'nostays',month:'September 2026',strip:'sep'})),fr(P,'p',mcP({mode:'nostays',mshort:'Sep 2026',strip:'sep'}))]),
+ st('st-empty','No units','Nothing in Properties yet.',[fr(D,'d',mcD({noUnits:true,strip:'empty'})),fr(P,'p',mcP({noUnits:true,strip:'empty'}))]),
+ st('st-year','Month picker: year grid','Same picker as Clients and Properties. Future months are off.',[fr(D,'d',mcD({overlay:yearGrid('left:264px;top:330px')})),fr(P,'p',mcP({overlay:`<div class="scrim bottom">${yearGrid('position:relative;width:100%;border-radius:20px 20px 0 0;padding:16px 16px 28px')}</div>`}))]),
+ st('st-toast','Toasts','After Export CSV and after Sync all finishes.',[fr(D,'d',mcD({overlay:toast('October 2026 CSV downloaded')})),fr(P,'p',mcP({overlay:toast('Synced 6 of 6 units',true)}))])
+]));
+
+out.push(sect('s-hst','2. HST worklist','For QuickBooks. Clients grouped, invoice-HST units only. Every Copy puts text on the clipboard; nothing is sent.',[
+ st('st-hall','All clients','Harper Sample and Rowan Example expanded. Unit rows open the property.',[fr(D,'d',hstD()),fr(P,'p',hstP())]),
+ st('st-hone','One client','Opened from Harper Sample’s HST worklist link in Clients. That client is expanded and the others are hidden.',[fr(D,'d',hstD({one:true})),fr(P,'p',hstP({one:true}))]),
+ st('st-hcopied','Copied state','The pressed button turns to Copied for a moment, with a toast.',[fr(D,'d',hstD({copied:'client',overlay:toast('Client summary copied for QuickBooks')})),fr(P,'p',hstP({copied:'month',overlay:toast('Month summary copied',true)}))]),
+ st('st-hempty','Empty','No unit puts HST on the invoice this month.',[fr(D,'d',hstD({empty:true})),fr(P,'p',hstP({empty:true}))])
+]));
+
+out.push(sect('s-pl','3. Company P&L','A drawer on desktop, a bottom sheet on phone. Opens from net earnings, company costs or Breakdown.',[
+ st('st-pl','October P&L','Revenue, cost lines by category, net. Each line can be overridden for the month; one-off costs can be removed.',[fr(D,'d',mcD({overlay:plD('oct')})),fr(P,'p',mcP({overlay:plP('oct')}))]),
+ st('st-plover','Override for October','Changes this month only. The subscription keeps its amount.',[fr(D,'d',mcD({overlay:plD('oct',{override:'Hospitable plan'})})),fr(P,'p',mcP({overlay:plP('oct',{override:'Meta ads'})}))]),
+ st('st-plmiss','Missing Meta ads and subscriptions','November 2026. The strip shows both prompts, and the P&L explains them.',[fr(D+' · strip','d',mcD({strip:'nov',prompts:true,month:'November 2026'})),fr(D+' · P&L','d',mcD({strip:'nov',prompts:true,month:'November 2026',overlay:plD('nov')})),fr(P,'p',mcP({strip:'nov',prompts:true,mshort:'Nov 2026',overlay:plP('nov')})),fr(P+' · strip','p',mcP({strip:'nov',prompts:true,mshort:'Nov 2026'}))]),
+ st('st-plrm','Remove one-off cost: confirm (new)','Today Remove has no confirm. This adds one.',[fr(D,'d',mcD({overlay:plD('oct')+confirmD('Remove Lockbox batch?','The $140.00 one-off cost comes off October 2026. It can’t be undone.','Remove cost')})),fr(P,'p',mcP({overlay:plP('oct')+confirmP('Remove Lockbox batch?','The $140.00 one-off cost comes off October 2026.','Remove cost')}))])
+]));
+
+out.push(sect('s-subs','4. Subscriptions and costs','Subscriptions is the same sheet as in Settings. Add company cost adds a one-off to the month.',[
+ st('st-subs','Subscriptions','Name, amount, cadence, category, active switch, Edit and Delete.',[fr(D,'d',mcD({overlay:subsD()})),fr(P,'p',mcP({overlay:subsP()}))]),
+ st('st-subadd','Add a subscription','Name, amount, cadence, category, active and start month.',[fr(D,'d',mcD({overlay:subsD({add:true})})),fr(P,'p',mcP({overlay:subsP({add:true})}))]),
+ st('st-subempty','Empty subscriptions','Nothing recurring yet.',[fr(D,'d',mcD({strip:'nov',prompts:true,month:'November 2026',overlay:subsD({empty:true})})),fr(P,'p',mcP({strip:'nov',overlay:subsP({empty:true})}))]),
+ st('st-subdel','Delete subscription: confirm (new)','Today Delete has no confirm. This adds one.',[fr(D,'d',mcD({overlay:subsD()+confirmD('Delete Cleaner Hub?','It stops counting in Company P&amp;L from this month. Past months keep their numbers.','Delete subscription')})),fr(P,'p',mcP({overlay:subsP()+confirmP('Delete Cleaner Hub?','It stops counting in Company P&amp;L from this month. Past months keep their numbers.','Delete subscription')}))]),
+ st('st-cost','Add company cost','Amount, label, category, date, note, then Add to October.',[fr(D,'d',mcD({overlay:`<div class="scrim" style="justify-content:flex-end"><div class="side-sheet frost">${costInner()}</div></div>`})),fr(P,'p',mcP({overlay:sheetP(costInner(true))}))]),
+ st('st-costtoast','Cost added: toast','Back in the P&L with the new line.',[fr(D,'d',mcD({overlay:plD('oct')+toast('Sample Loft photo refresh added to October')})),fr(P,'p',mcP({overlay:toast('Cost added to October',true)}))])
+]));
+
+out.push(`<section class="sect" id="s-bp"><h2>Breakpoints</h2><div class="card bpcard" style="max-width:1500px;overflow:hidden"><table><thead><tr><th>Width</th><th>Month close</th><th>HST worklist</th><th>P&amp;L, subscriptions, costs</th></tr></thead><tbody>
+ <tr><td><b>1240 and up</b></td><td>Header buttons, four-number strip with Breakdown, month picker and filter chips on one row, full unit table (as drawn).</td><td>Grouped table with fee, HST and copy per unit.</td><td>Right drawer (P&amp;L 560px, sheets 500 to 540px).</td></tr>
+ <tr><td><b>900 to 1239</b></td><td>Filter chips move under the month picker. Deal column folds under the unit name.</td><td>MRG fee column hides; HST and Copy stay.</td><td>Right drawer.</td></tr>
+ <tr><td><b>768 to 899</b></td><td>Sidebar collapses to the icon rail. Strip becomes two by two. Export CSV and HST worklist move under the strip.</td><td>Same as above.</td><td>Full-height drawer.</td></tr>
+ <tr><td><b>Below 768</b></td><td>Sync all in the title row, strip two by two, unit cards with Sync or Retry, scrolling filter chips.</td><td>Cards per client; short Copy labels.</td><td>Bottom sheets.</td></tr>
+</tbody></table></div></section>`);
+
+document.getElementById('board').innerHTML = out.join('');
+document.getElementById('zoom').addEventListener('click',e=>{const b=e.target.closest('[data-z]');if(!b)return;document.getElementById('board').style.setProperty('--z',b.dataset.z);document.querySelectorAll('#zoom button').forEach(x=>x.classList.toggle('on',x===b));});
+})();
+</script>
+</body>
+</html>

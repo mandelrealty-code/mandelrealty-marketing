@@ -53,11 +53,14 @@ import {
 } from "./ui";
 import { ClientsHubApp } from "../ops-hub/clients";
 import { PropertiesHubApp } from "../ops-hub/properties";
+import { RevenueHubApp, HubSubscriptionsSheet } from "../ops-hub/revenue";
 
 /** Flip to false to roll back to the dark OPS Clients chrome. */
 const CLIENTS_HUB = true;
 /** Flip to false to roll back to the dark OPS Properties chrome. */
 const PROPERTIES_HUB = true;
+/** Flip to false to roll back to the dark OPS Revenue chrome. */
+const REVENUE_HUB = true;
 
 /** An old OPS route for something that lives in Copilot now: open it there. */
 function MovedToCopilot({ screen }: { screen: "tasks" | "reviews" }) {
@@ -2403,6 +2406,16 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     );
   }
 
+  if (REVENUE_HUB && tab === "month") {
+    return (
+      <RevenueHubApp
+        route={route}
+        setRoute={setRoute}
+        onModeChange={hubModeChange}
+      />
+    );
+  }
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[#0a0a0a] text-[#f5f5f5]">
       {header}
@@ -2963,31 +2976,42 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
         </Sheet>
       ) : null}
 
-      {settingsSheet === "list" ? (
-        <SubscriptionsSheet
-          desktop={desktop}
-          onCancel={() => setSettingsSheet(null)}
-          onAdd={() => {
-            setSettingsEditSub(null);
-            setSettingsSheet("edit");
-          }}
-          onEdit={(sub) => {
-            setSettingsEditSub(sub);
-            setSettingsSheet("edit");
-          }}
-          onChanged={() => undefined}
-        />
-      ) : null}
-      {settingsSheet === "edit" ? (
-        <EditSubscriptionSheet
-          desktop={desktop}
-          initial={settingsEditSub}
-          onCancel={() => setSettingsSheet("list")}
-          onSaved={() => {
-            setSettingsEditSub(null);
-            setSettingsSheet("list");
-          }}
-        />
+      {settingsSheet === "list" || settingsSheet === "edit" ? (
+        REVENUE_HUB ? (
+          <HubSubscriptionsSheet
+            phone={!desktop}
+            standalone
+            onClose={() => {
+              setSettingsEditSub(null);
+              setSettingsSheet(null);
+            }}
+            onToast={setToast}
+          />
+        ) : settingsSheet === "list" ? (
+          <SubscriptionsSheet
+            desktop={desktop}
+            onCancel={() => setSettingsSheet(null)}
+            onAdd={() => {
+              setSettingsEditSub(null);
+              setSettingsSheet("edit");
+            }}
+            onEdit={(sub) => {
+              setSettingsEditSub(sub);
+              setSettingsSheet("edit");
+            }}
+            onChanged={() => undefined}
+          />
+        ) : (
+          <EditSubscriptionSheet
+            desktop={desktop}
+            initial={settingsEditSub}
+            onCancel={() => setSettingsSheet("list")}
+            onSaved={() => {
+              setSettingsEditSub(null);
+              setSettingsSheet("list");
+            }}
+          />
+        )
       ) : null}
 
       {editPropertySheet && propertyDetail ? (
