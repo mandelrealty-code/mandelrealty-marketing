@@ -18,9 +18,11 @@ export type ClientsHubAppProps = {
   route: AdminRoute;
   setRoute: (next: AdminRoute, opts?: { push?: boolean }) => void;
   onModeChange: (mode: AdminProductMode, patch?: Partial<AdminRoute>) => void;
+  /** When true, parent owns HubShell — render body only. */
+  embedded?: boolean;
 };
 
-export function ClientsHubApp({ route, setRoute, onModeChange }: ClientsHubAppProps) {
+export function ClientsHubApp({ route, setRoute, onModeChange, embedded = false }: ClientsHubAppProps) {
   const phone = useIsPhone();
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [loadError, setLoadError] = useState("");
@@ -382,15 +384,18 @@ export function ClientsHubApp({ route, setRoute, onModeChange }: ClientsHubAppPr
     );
   }
 
+  const main =
+    bare || embedded ? (
+      body
+    ) : (
+      <HubShell active="clients" onNavigate={onNavigate} phone={phone} fab={fab}>
+        {body}
+      </HubShell>
+    );
+
   return (
-    <div className={`mrgc${phone ? " is-phone" : ""}`}>
-      {bare ? (
-        body
-      ) : (
-        <HubShell active="clients" onNavigate={onNavigate} phone={phone} fab={fab}>
-          {body}
-        </HubShell>
-      )}
+    <div className={`mrgc${phone ? " is-phone" : ""}${embedded ? " hub-embed" : ""}`}>
+      {main}
       {route.createClient ? (
         <AddClientSheet
           phone={phone}

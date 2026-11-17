@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { LOGO } from "./logo";
 import { Icon, type IconName } from "./icons";
+import { OPS_SB_KEY } from "./hubNav";
 
 type NavItem = { id: string; icon: IconName; label: string };
 type NavGroup = { title: string | null; items: NavItem[] };
@@ -13,6 +14,7 @@ const NAV: NavGroup[] = [
       { id: "onboarding", icon: "clip", label: "Onboarding" },
       { id: "properties", icon: "building", label: "Properties" },
       { id: "team", icon: "team", label: "Team" },
+      { id: "sops", icon: "book", label: "SOPs" },
     ],
   },
   {
@@ -30,13 +32,32 @@ const MOBILE_NAV: NavItem[] = [
   { id: "dashboard", icon: "home", label: "Dashboard" },
   { id: "crm", icon: "users", label: "CRM" },
   { id: "onboarding", icon: "clip", label: "Onboarding" },
-  { id: "team", icon: "team", label: "Team" },
+  { id: "sops", icon: "book", label: "SOPs" },
   { id: "settings", icon: "gear", label: "Settings" },
 ];
 
 const isMac =
   typeof navigator !== "undefined" &&
   /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(OPS_SB_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Sidebar panel toggle — matches the design icon (rail + chevron). */
+function SideToggleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className || "i sm"} viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M9 4v16" />
+      <path className="chv" d="m15.5 10-2 2 2 2" />
+    </svg>
+  );
+}
 
 export function HubShell({
   active = "clients",
@@ -51,6 +72,16 @@ export function HubShell({
   phone?: boolean;
   fab?: { label: string; onClick: () => void } | null;
 }) {
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(OPS_SB_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [collapsed]);
+
   if (phone) {
     return (
       <div className="phn">
@@ -88,14 +119,21 @@ export function HubShell({
   }
 
   return (
-    <div className="app">
+    <div className={`app${collapsed ? " is-collapsed" : ""}`}>
       <aside className="side" aria-label="Main navigation">
         <div className="brand">
           <img src={LOGO} alt="" width={34} height={34} />
           <b>Mandel Realty</b>
-          <span className="iconbtn" aria-hidden>
-            <Icon name="back" className="i sm" />
-          </span>
+          <button
+            type="button"
+            className="iconbtn sidetog"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-pressed={collapsed}
+            onClick={() => setCollapsed((v) => !v)}
+          >
+            <SideToggleIcon className="i sm" />
+          </button>
         </div>
         <div className="jump" aria-hidden>
           <Icon name="search" className="i sm" />
@@ -111,6 +149,7 @@ export function HubShell({
                 type="button"
                 className={`nb${active === item.id ? " on" : ""}`}
                 onClick={() => onNavigate(item.id)}
+                title={item.label}
               >
                 <Icon name={item.icon} />
                 <span className="nl">{item.label}</span>
@@ -123,6 +162,7 @@ export function HubShell({
           type="button"
           className={`nb${active === "settings" ? " on" : ""}`}
           onClick={() => onNavigate("settings")}
+          title="Settings"
         >
           <Icon name="gear" />
           <span className="nl">Settings</span>

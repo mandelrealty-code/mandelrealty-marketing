@@ -29,6 +29,8 @@ export type SettingsHubAppProps = {
    * (same as Copilot's Log out).
    */
   onLogout?: () => void;
+  /** When true, parent owns HubShell — render body only. */
+  embedded?: boolean;
 };
 
 type SettingsPayload = {
@@ -48,7 +50,7 @@ function bpsToField(bps: number): string {
   return String(Math.round(bps) / 100);
 }
 
-export function SettingsHubApp({ route, setRoute, onModeChange, onLogout }: SettingsHubAppProps) {
+export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedded = false }: SettingsHubAppProps) {
   const phone = useIsPhone();
 
   const [loading, setLoading] = useState(true);
@@ -379,10 +381,14 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout }: Sett
   }
 
   return (
-    <div className={`mrgc tm-hub${phone ? " is-phone" : ""}`}>
-      <HubShell active="settings" onNavigate={onNavigate} phone={phone}>
-        {body}
-      </HubShell>
+    <div className={`mrgc tm-hub${phone ? " is-phone" : ""}${embedded ? " hub-embed" : ""}`}>
+      {embedded ? (
+        body
+      ) : (
+        <HubShell active="settings" onNavigate={onNavigate} phone={phone}>
+          {body}
+        </HubShell>
+      )}
       {sheetEl}
       <Toast message={toast} />
     </div>

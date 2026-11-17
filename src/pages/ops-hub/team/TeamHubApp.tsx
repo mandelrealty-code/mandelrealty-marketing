@@ -29,13 +29,15 @@ export type TeamHubAppProps = {
   route: AdminRoute;
   setRoute: (next: AdminRoute, opts?: { push?: boolean }) => void;
   onModeChange: (mode: AdminProductMode, patch?: Partial<AdminRoute>) => void;
+  /** When true, parent owns HubShell — render body only. */
+  embedded?: boolean;
 };
 
 type InviteState = null | { name: string; prefilled: boolean };
 
 type ConfirmState = null | { kind: "delete"; user: StaffRow } | { kind: "remove"; row: RosterRow };
 
-export function TeamHubApp({ route, setRoute, onModeChange }: TeamHubAppProps) {
+export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: TeamHubAppProps) {
   const phone = useIsPhone();
   const selectedId = route.employeeId;
 
@@ -397,10 +399,14 @@ export function TeamHubApp({ route, setRoute, onModeChange }: TeamHubAppProps) {
   }
 
   return (
-    <div className={`mrgc tm-hub${phone ? " is-phone" : ""}`}>
-      <HubShell active="team" onNavigate={onNavigate} phone={phone}>
-        {body}
-      </HubShell>
+    <div className={`mrgc tm-hub${phone ? " is-phone" : ""}${embedded ? " hub-embed" : ""}`}>
+      {embedded ? (
+        body
+      ) : (
+        <HubShell active="team" onNavigate={onNavigate} phone={phone}>
+          {body}
+        </HubShell>
+      )}
       {invite ? (
         <InviteSheet
           phone={phone}

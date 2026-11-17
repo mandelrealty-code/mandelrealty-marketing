@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, startTransition, type FormEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   LEAD_STATUSES,
@@ -25,12 +25,13 @@ import { LeadSaleBlock, type LeadOnboarding } from "./crm/LeadSale";
 import { NewLeadForm } from "./crm/NewLeadForm";
 import { askOnboardingToOpen } from "./onboarding/OnboardingApp";
 import { setCurrentPlaybookStep, type PlaybookStep } from "../../shared/playbookTypes";
+/* Eager light hubs — sidebar switches stay mounted and skip Suspense white flashes. */
+import ClientsApp from "./clients/ClientsApp";
+import OnboardingApp from "./onboarding/OnboardingApp";
+import CrmApp from "./crm-hub/CrmApp";
 
-const ClientsApp = lazy(() => import("./clients/ClientsApp"));
 const CopilotApp = lazy(() => import("./copilot/CopilotApp"));
-const OnboardingApp = lazy(() => import("./onboarding/OnboardingApp"));
 const EmployeeTasksApp = lazy(() => import("./tasks/EmployeeTasksApp"));
-const CrmApp = lazy(() => import("./crm-hub/CrmApp"));
 
 /** The light CRM hub (crm-hub/). The dark CRM below stays in place behind this flag until the hub has fully replaced it. */
 const CRM_HUB = true;
@@ -914,7 +915,9 @@ export function AdminPage() {
 
   const switchProduct = (mode: AdminProductMode, patch?: Partial<AdminRoute>) => {
     writeStoredAdminMode(mode);
-    setRoute({ ...emptyAdminRoute(mode), ...patch, mode }, { push: true });
+    startTransition(() => {
+      setRoute({ ...emptyAdminRoute(mode), ...patch, mode }, { push: true });
+    });
   };
 
   /* The CRM and Onboarding link both ways: a lead opens its unit, a sold lead starts onboarding, a unit opens its lead. */
@@ -1699,9 +1702,7 @@ export function AdminPage() {
 
   if (authed !== false && productMode === "onboarding") {
     return (
-      <Suspense fallback={<div className="flex min-h-dvh items-center justify-center bg-[#ffffff] text-[#6b6b66]">Loading Onboarding…</div>}>
-        <OnboardingApp onModeChange={switchProduct} onOpenLead={openLeadFromOnboarding} onNewLead={newLeadFromOnboarding} />
-      </Suspense>
+      <OnboardingApp onModeChange={switchProduct} onOpenLead={openLeadFromOnboarding} onNewLead={newLeadFromOnboarding} />
     );
   }
 
@@ -1772,32 +1773,17 @@ export function AdminPage() {
 
   if (productMode === "ops") {
     return (
-      <Suspense
-        fallback={
-          <div className="flex min-h-dvh items-center justify-center bg-[#0a0a0a] text-[#9a9590]">
-            Loading OPS…
-          </div>
-        }
-      >
-        <ClientsApp
-          route={route}
-          setRoute={setRoute}
-          onModeChange={switchProduct}
-          onLogout={logout}
-        />
-      </Suspense>
+      <ClientsApp
+        route={route}
+        setRoute={setRoute}
+        onModeChange={switchProduct}
+        onLogout={logout}
+      />
     );
   }
 
   if (CRM_HUB) {
     return (
-      <Suspense
-        fallback={
-          <div className="flex min-h-dvh items-center justify-center bg-white text-[#6b6b66]">
-            Loading CRM…
-          </div>
-        }
-      >
         <CrmApp
           initialTab={route.crmTab}
           initialLeadId={route.leadId}
@@ -1820,7 +1806,6 @@ export function AdminPage() {
             setSelectedId(null);
           }}
         />
-      </Suspense>
     );
   }
 

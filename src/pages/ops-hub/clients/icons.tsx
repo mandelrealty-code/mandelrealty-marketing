@@ -1,5 +1,5 @@
 /** SVG path sets from docs/mrg-clients-design.html */
-export type IconName = "home" | "users" | "clip" | "building" | "team" | "brief" | "chart" | "spark" | "gear" | "search" | "plus" | "chev" | "back" | "x" | "check" | "phone" | "mail" | "pin" | "link" | "refresh" | "more" | "up" | "copy" | "trash" | "upload" | "file" | "text" | "bell" | "key" | "out" | "edit" | "pause" | "play" | "alert" | "clock" | "cal" | "inbox" | "book" | "sms" | "rec" | "arrow" | "eye" | "ext" | "next" | "user" | "move" | "sign" | "font" | "box" | "down" | "hst" | "cloud" | "hosp" | "img" | "lock" | "star" | "receipt" | "permit" | "tax" | "import" | "portal" | "task" | "sub";
+export type IconName = "home" | "users" | "clip" | "building" | "team" | "brief" | "chart" | "spark" | "gear" | "search" | "plus" | "chev" | "back" | "x" | "check" | "phone" | "mail" | "pin" | "link" | "refresh" | "more" | "up" | "copy" | "trash" | "upload" | "file" | "text" | "bell" | "key" | "out" | "edit" | "pause" | "play" | "alert" | "clock" | "cal" | "inbox" | "book" | "sms" | "rec" | "arrow" | "eye" | "ext" | "next" | "user" | "move" | "sign" | "font" | "box" | "down" | "hst" | "cloud" | "hosp" | "img" | "lock" | "star" | "receipt" | "permit" | "tax" | "import" | "portal" | "task" | "sub" | "spot" | "blur" | "black" | "pinT" | "undo" | "eyeoff" | "video" | "json" | "snap" | "stop" | "recdot";
 
 const PATHS: Record<IconName, string> = {
   home: "<path d=\"M3 10.5 12 3l9 7.5\"/><path d=\"M5 9.5V21h14V9.5\"/><path d=\"M10 21v-6h4v6\"/>",
@@ -65,6 +65,17 @@ const PATHS: Record<IconName, string> = {
   portal: "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"2\"/><path d=\"M9 12h6M12 9v6\"/><path d=\"M8 20v-4h8v4\"/>",
   task: "<rect x=\"5\" y=\"3\" width=\"14\" height=\"18\" rx=\"2\"/><path d=\"M9 8h6M9 12h6M9 16h4\"/>",
   sub: "<path d=\"M4 7h16M4 12h16M4 17h10\"/><circle cx=\"18\" cy=\"17\" r=\"2\"/>",
+  spot: "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4\"/>",
+  blur: "<circle cx=\"7\" cy=\"7\" r=\"1.5\"/><circle cx=\"12\" cy=\"7\" r=\"1.5\"/><circle cx=\"17\" cy=\"7\" r=\"1.5\"/><circle cx=\"7\" cy=\"12\" r=\"1.5\"/><circle cx=\"12\" cy=\"12\" r=\"1.5\"/><circle cx=\"17\" cy=\"12\" r=\"1.5\"/><circle cx=\"7\" cy=\"17\" r=\"1.5\"/><circle cx=\"12\" cy=\"17\" r=\"1.5\"/><circle cx=\"17\" cy=\"17\" r=\"1.5\"/>",
+  black: "<rect x=\"4\" y=\"7\" width=\"16\" height=\"10\" rx=\"1.5\" fill=\"currentColor\"/>",
+  pinT: "<path d=\"M12 21s-6-5.6-6-10.5A6 6 0 0 1 18 10.5C18 15.4 12 21 12 21z\"/><circle cx=\"12\" cy=\"10.5\" r=\"2\"/>",
+  undo: "<path d=\"M9 14 4 9l5-5\"/><path d=\"M4 9h10a6 6 0 0 1 0 12h-3\"/>",
+  eyeoff: "<path d=\"M3 3l18 18\"/><path d=\"M10.6 6.1A9.8 9.8 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3.2 3.8M6.6 6.6C3.6 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 4.4-1\"/>",
+  video: "<rect x=\"3\" y=\"6\" width=\"13\" height=\"12\" rx=\"2\"/><path d=\"m16 10 5-3v10l-5-3z\"/>",
+  json: "<path d=\"M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z\"/><path d=\"M14 3v5h5\"/><path d=\"M10 12c-1 0-1 1-1 2s-1 1-1 1 1 0 1 1 0 2 1 2M14 12c1 0 1 1 1 2s1 1 1 1-1 0-1 1 0 2-1 2\"/>",
+  snap: "<path d=\"M4 8h3l2-3h6l2 3h3v11H4z\"/><circle cx=\"12\" cy=\"13\" r=\"3.5\"/>",
+  stop: "<rect x=\"6\" y=\"6\" width=\"12\" height=\"12\" rx=\"2\" fill=\"currentColor\"/>",
+  recdot: "<circle cx=\"12\" cy=\"12\" r=\"8\"/><circle cx=\"12\" cy=\"12\" r=\"3.5\" fill=\"currentColor\"/>",
 };
 
 export function Icon({ name, className = 'i' }: { name: IconName | string; className?: string }) {

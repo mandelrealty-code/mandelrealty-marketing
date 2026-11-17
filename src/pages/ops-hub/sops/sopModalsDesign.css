@@ -1,0 +1,165 @@
+/*
+ * Light skin for the Image Redactor and Video Studio when they are mounted inside the ops hub.
+ * Everything is scoped under .mrgc (tokens come from ../clients/clientsDesign.css), so the dark
+ * SopsPanel, which portals to document.body, never sees any of it.
+ *
+ *  - Redactor: markup is the hub branch in ImageRedactorModal (classes .sopr-*), styled here.
+ *  - Studio:  markup is unchanged; its light re-skin is in clientsDesign.css (see note below).
+ *  - Recording bar (.mrg-sop-hud): stays dark, as drawn in the design, and moves to bottom centre.
+ */
+
+/* the wrapper the Frames render; must not add page height or paint */
+.mrgc.sop-host{min-height:0;background:transparent}
+
+/* ===================== Image Redactor ===================== */
+.mrgc .sopr{position:fixed;inset:0;z-index:200;background:oklch(0.97 0.002 95);display:flex;flex-direction:column;color:var(--ink2);font-family:Inter,system-ui,-apple-system,sans-serif}
+.mrgc .sopr-top{display:flex;align-items:center;gap:8px;padding:12px 16px;background:#fff;border-bottom:1px solid var(--line);flex:none}
+.mrgc .sopr-title{flex:1;min-width:0;order:0}
+.mrgc .sopr-title b{display:block;font-size:var(--t-md);color:var(--ink);font-weight:650}
+.mrgc .sopr-replace{order:1}
+.mrgc .sopr-undo{order:2}
+.mrgc .sopr-clear{order:3}
+.mrgc .sopr-vsep{order:4}
+.mrgc .sopr-cancel{order:5}
+.mrgc .sopr-apply{order:6}
+.mrgc .sopr-br{display:none}
+.mrgc .sopr-layers-btn{display:none;order:9}
+.mrgc .sopr-undo kbd{margin-left:2px}
+.mrgc .sopr-main{flex:1;min-height:0;display:grid;grid-template-columns:200px minmax(0,1fr) 280px;position:relative}
+.mrgc .sopr-tools{background:#fff;border-right:1px solid var(--line-2);padding:14px 12px;display:flex;flex-direction:column;gap:6px;overflow:auto}
+.mrgc .rtool{display:flex;align-items:center;gap:10px;height:44px;padding:0 10px;border-radius:10px;border:1px solid transparent;font-size:var(--t-sm);font-weight:500;color:var(--ink2);text-align:left;width:100%;flex:none}
+.mrgc .rtool span{flex:1}
+.mrgc .rtool:hover{background:var(--hover)}
+.mrgc .rtool.on{border-color:rgb(0 0 0 / .38);background:rgb(0 0 0 / .045);color:var(--ink);font-weight:600}
+.mrgc .sopr-tool-hint{margin-top:10px}
+.mrgc .sopr-canvas{display:flex;align-items:center;justify-content:center;padding:28px;min-width:0;min-height:0;overflow:auto;user-select:none}
+.mrgc .sopr-canvas.over{outline:2px dashed var(--ink);outline-offset:-12px}
+.mrgc .sopr-stage{max-width:100%;border-radius:10px;box-shadow:0 10px 30px rgb(0 0 0 / .12);flex:none}
+.mrgc .sopr-img{max-width:100%;max-height:calc(100dvh - 190px);border-radius:10px;width:auto;height:auto}
+.mrgc .dropzone{width:100%;max-width:720px;height:100%;max-height:520px;border:2px dashed oklch(0.75 0.005 285);border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--ink2);text-align:center;background:#fff;cursor:pointer;padding:24px}
+.mrgc .dropzone b{color:var(--ink);font-size:var(--t-md)}
+.mrgc .dropzone svg.i{width:28px;height:28px}
+.mrgc .sopr-canvas.over .dropzone{border-color:var(--ink)}
+.mrgc .dropzone button.lnk{background:none;border:0;padding:0;color:var(--tealink);font-weight:600;font-size:inherit;text-decoration:underline;text-underline-offset:2px}
+.mrgc .sopr-layers{background:#fff;border-left:1px solid var(--line-2);padding:14px;display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:0}
+.mrgc .sopr-layer{display:flex;flex-direction:column;gap:6px}
+.mrgc .lay{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 10px;border:1px solid var(--line);border-radius:10px;font-size:var(--t-sm);color:var(--ink);cursor:pointer;background:#fff}
+.mrgc .lay .n{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrgc .lay.sel{border-color:rgb(0 0 0 / .38)}
+.mrgc .lay.hid{opacity:.5}
+.mrgc .sopr-fields{padding:0 0 4px 10px}
+.mrgc .sopr-fields.two{display:flex;gap:8px}
+.mrgc .sopr-fields .input{height:36px}
+.mrgc .sopr-fields .field label{margin-bottom:3px}
+/* selected pin popover drawn on the image */
+.mrgc .sopr-pop{background:rgb(255 255 255 / .96);border:1px solid var(--line);box-shadow:0 8px 24px rgb(0 0 0 / .16);color:var(--ink)}
+.mrgc .sopr-pop *{color:inherit}
+.mrgc .sopr-pop input{background:#fff;border:1px solid var(--line);border-radius:8px;color:var(--ink);font-family:inherit}
+.mrgc .sopr-pop label,.mrgc .sopr-pop span{color:var(--muted)}
+.mrgc .sopr-pop button{color:var(--redink)}
+
+@media (max-width:1239px){
+  .mrgc .sopr-main{grid-template-columns:200px minmax(0,1fr)}
+  .mrgc .sopr-layers-btn{display:inline-flex}
+  .mrgc .sopr-layers{display:none;position:absolute;right:0;top:0;bottom:0;width:min(300px,70%);z-index:5;box-shadow:-20px 0 60px rgb(0 0 0 / .12)}
+  .mrgc .sopr.layers-open .sopr-layers{display:flex}
+}
+@media (max-width:899px){
+  /* tool rail turns into a top bar of icons; shortcuts live in the tooltip */
+  .mrgc .sopr-main{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .mrgc .sopr-tools{flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid var(--line-2);padding:8px 12px;overflow-x:auto}
+  .mrgc .sopr-tools-label,.mrgc .sopr-tool-hint,.mrgc .rtool kbd,.mrgc .rtool span{display:none}
+  .mrgc .rtool{width:44px;justify-content:center;padding:0}
+  .mrgc .sopr-canvas{padding:16px}
+}
+@media (max-width:767px){
+  .mrgc .sopr-top{flex-wrap:wrap;padding:8px 10px;gap:6px}
+  .mrgc .sopr-cancel{order:0}
+  .mrgc .sopr-cancel,.mrgc .sopr-apply{height:32px;padding:0 11px;font-size:var(--t-xs);border-radius:8px}
+  .mrgc .sopr-title{order:1;text-align:center}
+  .mrgc .sopr-title b{font-size:var(--t-base)}
+  .mrgc .sopr-apply{order:2}
+  .mrgc .sopr-br{display:block;order:3;flex-basis:100%;height:0}
+  .mrgc .sopr-replace{order:4}
+  .mrgc .sopr-undo{order:5}
+  .mrgc .sopr-undo kbd{display:none}
+  .mrgc .sopr-clear{order:6}
+  .mrgc .sopr-vsep{display:none}
+  .mrgc .sopr-layers-btn{order:7;margin-left:auto}
+  /* tools move to the bottom, layers become a sheet */
+  .mrgc .sopr-main{display:flex;flex-direction:column}
+  .mrgc .sopr-canvas{order:1;flex:1;padding:12px 0}
+  .mrgc .sopr-img{max-height:calc(100dvh - 260px)}
+  .mrgc .sopr-tools{order:2;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;border-top:1px solid var(--line);border-bottom:0;padding:10px 12px 26px;overflow:visible;flex:none}
+  .mrgc .rtool{width:auto;height:56px;flex-direction:column;gap:3px;justify-content:center;padding:0;font-size:11px;border:1px solid var(--line);background:#fff}
+  .mrgc .rtool span{display:block;flex:none}
+  .mrgc .rtool.on{border-color:rgb(0 0 0 / .38);background:rgb(0 0 0 / .045)}
+  .mrgc .sopr-layers{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-height:60dvh;border-left:0;border-radius:20px 20px 0 0;border-top:1px solid var(--line);box-shadow:0 -12px 40px rgb(0 0 0 / .16);padding:16px 14px 28px;z-index:6}
+}
+
+/* ===================== Studio / legacy modal remaps (moved from clientsDesign.css) ===================== */
+/* ---- Redactor + Video Studio: light skin over the existing (Tailwind, dark) modals ----
+   The modals keep their own markup and logic. SopsFrames.tsx mounts them inside `.mrgc.sop-host`, and
+   these rules re-colour them by matching the exact utility classes they already carry. Only chrome is
+   re-coloured: the screenshot artwork (`.mrg-sop-art`: spotlight, blur, blackout, pins) stays as baked,
+   and the floating recording bar (`[data-sop-capture-ignore]`) stays dark, as drawn in the design. */
+.mrgc.sop-host{min-height:0;height:0;background:transparent;overflow:visible}
+/* `.mrgc button/input/...` resets (padding, border, font) would flatten the modals' own utilities; hand
+   those properties back to the utility layer for everything inside the host (incl. the dark bar). */
+.mrgc .sop-host :is(button,input,select,textarea):not(.sopr *){padding:revert-layer;border:revert-layer;background:revert-layer;font:revert-layer;color:revert-layer}
+.mrgc .mrg-sop-modal{padding:0;background:oklch(0.97 0.002 95);backdrop-filter:none;color:var(--ink2);font-family:Inter,system-ui,-apple-system,sans-serif}
+.mrgc .mrg-sop-modal>div{height:100%;max-width:none;border-radius:0;border:0;box-shadow:none;background:oklch(0.97 0.002 95);color:var(--ink2)}
+/* surfaces */
+.mrgc .mrg-sop-modal :is([class~="bg-[#0a0a0a]"],[class~="bg-[#0e0e0e]"],[class~="bg-[#0b0b0b]"],[class~="bg-[#0c0c0e]"],[class~="bg-[#0f0f0f]"],[class~="bg-[#111111]"],[class~="bg-[#14120c]"],[class~="bg-[#16140f]"],[class~="bg-[#161310]"]):not(.mrg-sop-art *){background-color:oklch(0.975 0.002 95)}
+.mrgc .mrg-sop-modal :is([class~="bg-[#141414]"],[class~="bg-[#161616]"],[class~="bg-[#1a1a1a]"],[class~="bg-[#1c1c1c]"],[class~="bg-[#222224]"],[class~="bg-[#1a1712]"],[class~="bg-[#1c1913]"]):not(.mrg-sop-art *){background-color:#fff}
+.mrgc .mrg-sop-modal :is([class~="bg-white/5"],[class~="bg-white/9"],[class~="bg-white/10"],[class~="bg-[#c4a35a]/10"],[class~="bg-[#c4a35a]/15"],[class~="bg-[#c4a35a]/20"]):not(.mrg-sop-art *){background-color:rgb(0 0 0 / .06)}
+.mrgc .mrg-sop-modal :is([class~="bg-[#cf603c]/10"],[class~="hover:bg-[#cf603c]/20"]):not(.mrg-sop-art *){background-color:oklch(0.6 0.19 25 / .08)}
+.mrgc .mrg-sop-modal [class*="bg-[radial-gradient"]:not(.mrg-sop-art *){background-image:radial-gradient(rgb(0 0 0 / .08) 1px,transparent 1px)}
+.mrgc .mrg-sop-modal [class*="hover:bg-"]:hover:not(.mrg-sop-art *){background-color:var(--press)}
+/* text */
+.mrgc .mrg-sop-modal :is([class~="text-[#f5f5f5]"],[class~="text-[#f4f2ee]"],[class~="text-white"],[class~="text-[#dcc084]"],[class~="text-[#c4a35a]"],[class~="hover:text-[#f4f2ee]"],[class~="hover:text-[#f5f5f5]"],[class~="hover:text-white"],[class~="hover:text-[#dcc084]"],[class~="group-hover:text-white"]):not(.mrg-sop-art *){color:var(--ink)}
+.mrgc .mrg-sop-modal :is([class~="text-[#cfc9c2]"],[class~="text-[#f4f2ee]/80"],[class~="text-[#f4f2ee]/75"],[class~="text-[#f4f2ee]/70"]):not(.mrg-sop-art *){color:var(--ink2)}
+.mrgc .mrg-sop-modal :is([class~="text-[#9a9590]"],[class~="text-[#6f6a65]"],[class~="text-[#f4f2ee]/60"],[class~="text-[#f4f2ee]/50"],[class~="text-[#f4f2ee]/45"],[class~="text-[#f4f2ee]/40"],[class~="text-[#f4f2ee]/35"]):not(.mrg-sop-art *){color:var(--muted)}
+.mrgc .mrg-sop-modal :is([class~="text-[#cf603c]"],[class~="text-[#cf603c]/70"],[class~="text-[#cf7f7b]"],[class~="text-[#e8a48a]"],[class~="hover:text-[#cf603c]"],[class~="hover:text-[#cf7f7b]"],[class~="hover:text-[#e8a48a]"]):not(.mrg-sop-art *){color:var(--redink)}
+.mrgc .mrg-sop-modal [class~="text-[#4ea882]"]:not(.mrg-sop-art *){color:var(--greenink)}
+.mrgc .mrg-sop-modal :is([class~="placeholder:text-[#6f6a65]"],[class~="placeholder:text-[#4d4a47]"]):not(.mrg-sop-art *)::placeholder{color:oklch(0.55 0.008 285)}
+/* borders, focus, rings */
+.mrgc .mrg-sop-modal :is([class~="border-white/7"],[class~="border-white/8"],[class~="border-white/9"],[class~="border-white/10"],[class~="border-white/12"],[class~="border-white/14"],[class~="border-white/15"],[class~="border-white/20"],[class~="border-white/30"],[class~="border-white/40"],[class~="border-[#c4a35a]/25"],[class~="border-[#c4a35a]/30"],[class~="border-[#c4a35a]/40"],[class~="border-[#c4a35a]/45"],[class~="border-[#c4a35a]/50"]):not(.mrg-sop-art *){border-color:var(--line)}
+.mrgc .mrg-sop-modal :is([class~="border-[#cf603c]/30"]):not(.mrg-sop-art *){border-color:oklch(0.6 0.19 25 / .35)}
+.mrgc .mrg-sop-modal [class*="hover:border-"]:hover:not(.mrg-sop-art *){border-color:rgb(0 0 0 / .3)}
+.mrgc .mrg-sop-modal :is([class*="ring-[#c4a35a]"],[class*="rgba(196,163,90"]):not(.mrg-sop-art *){box-shadow:none}
+.mrgc .mrg-sop-modal [class~="border-[#c4a35a]"]:not(.mrg-sop-art *){border-color:rgb(0 0 0 / .38);box-shadow:inset 0 0 0 1px rgb(0 0 0 / .38)}
+.mrgc .mrg-sop-modal [class*="focus:border-"]:focus:not(.mrg-sop-art *){border-color:oklch(0.6 0.15 255 / .6);box-shadow:0 0 0 3px oklch(0.6 0.15 255 / .12)}
+.mrgc .mrg-sop-modal [class~="accent-[#c4a35a]"]{accent-color:var(--primary)}
+.mrgc .mrg-sop-modal :is([class~="border-l-[#dcc084]"]):not(.mrg-sop-art *){border-left-color:var(--ink)}
+/* the gold solid (active tool, Apply, Publish, Start, step numbers, play) becomes the primary button */
+.mrgc .mrg-sop-modal [class~="bg-[#c4a35a]"]:not([class*="bg-[#c4a35a]/"]):not(.mrg-sop-art *),
+.mrgc .mrg-sop-modal [class~="bg-[#dcc084]"]:not(.mrg-sop-art *){background-color:var(--primary);color:#fff;border-color:transparent;box-shadow:none}
+.mrgc .mrg-sop-modal [class~="bg-[#c4a35a]"]:not([class*="bg-[#c4a35a]/"]):not(.mrg-sop-art *):hover{background-color:#2c2c31}
+.mrgc .mrg-sop-modal [class~="bg-[#c4a35a]"]:not([class*="bg-[#c4a35a]/"]):not(.mrg-sop-art *) :is([class~="bg-black"],[class~="bg-[#0a0a0a]"]){background-color:#fff}
+.mrgc .mrg-sop-modal [class~="bg-[#c4a35a]"]:not([class*="bg-[#c4a35a]/"]):not(.mrg-sop-art *) [class~="border-l-[#0a0a0a]"]{border-left-color:#fff}
+.mrgc .mrg-sop-modal [class~="bg-[#c4a35a]"]:not([class*="bg-[#c4a35a]/"]):not(.mrg-sop-art *) [class~="bg-black/20"]{background-color:rgb(255 255 255 / .2)}
+/* red tint buttons (Delete Guide) */
+.mrgc .mrg-sop-modal [class~="bg-[#cf603c]/10"]:not(.mrg-sop-art *){color:var(--redink)}
+
+
+/* ===================== Video Studio ===================== */
+/* The light re-skin of the Studio itself (surfaces, text, borders, gold -> primary) lives in the
+   "Redactor + Video Studio" block of ../clients/clientsDesign.css. This file only adds what that block
+   can't reach: ClientsApp mounts the Studio frame outside any .mrgc ancestor, so the descendant-only
+   `.mrgc .sop-host` reset in that block never matches. Hand padding/border/font back to the modal's own
+   utility classes (Tailwind v4 utilities sit in a cascade layer, so `revert-layer` returns to them). */
+.mrgc.sop-host .mrg-sop-studio :is(button,input,select,textarea),
+.mrgc.sop-host .mrg-sop-hud :is(button,input,select,textarea){padding:revert-layer;border:revert-layer;background:revert-layer;font:revert-layer;color:revert-layer}
+.mrgc .mrg-sop-studio,.mrgc .mrg-sop-hud{font-family:Inter,system-ui,-apple-system,sans-serif}
+
+/* ===================== Recording bar (stays dark, as drawn) ===================== */
+.mrgc .mrg-sop-hud{left:50%;right:auto;bottom:28px;transform:translateX(-50%);z-index:99999;max-width:calc(100vw - 24px)}
+.mrgc .mrg-sop-hud>div:last-child{background:rgb(24 24 27 / .92);border-color:transparent;box-shadow:0 10px 30px rgb(0 0 0 / .35);padding:6px 6px 6px 14px;flex-wrap:wrap;justify-content:center}
+.mrgc .mrg-sop-hud [class~="bg-[#c4a35a]"]{background:rgb(255 255 255 / .12);color:#fff;box-shadow:none}
+.mrgc .mrg-sop-hud [class~="bg-[#5fbf7d]"]{background:oklch(0.6 0.2 25);color:#fff;box-shadow:none}
+.mrgc .mrg-sop-hud [class~="bg-[#5fbf7d]"] span{background-color:#fff}
+.mrgc .mrg-sop-hud [class~="bg-[#222224]"]{background:rgb(255 255 255 / .12)}
+.mrgc .mrg-sop-hud [class~="text-[#0a0a0a]"]{color:#fff}
+.mrgc .mrg-sop-hud [class~="bg-[#c4a35a]"] [class*="bg-black"]{background:rgb(255 255 255 / .18)}
+.mrgc.sop-host .toast{z-index:200}

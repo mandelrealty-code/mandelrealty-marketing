@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import {
   openHostPortalPreview,
   pmGet,
@@ -52,10 +52,15 @@ import {
   TextInput,
 } from "./ui";
 import { ClientsHubApp } from "../ops-hub/clients";
+import { HubShell } from "../ops-hub/clients/HubShell";
+import { hubActiveFromOpsTab, navigateHub } from "../ops-hub/clients/hubNav";
+import "../ops-hub/clients/clientsDesign.css";
 import { PropertiesHubApp } from "../ops-hub/properties";
 import { RevenueHubApp, HubSubscriptionsSheet } from "../ops-hub/revenue";
 import { TeamHubApp } from "../ops-hub/team";
 import { SettingsHubApp } from "../ops-hub/settings";
+import { SopsHubApp, SopVideoStudioFrame } from "../ops-hub/sops";
+import { Toast as HubToast, useIsPhone } from "../ops-hub/clients/uiBits";
 
 /** Flip to false to roll back to the dark OPS Clients chrome. */
 const CLIENTS_HUB = true;
@@ -67,6 +72,8 @@ const REVENUE_HUB = true;
 const TEAM_HUB = true;
 /** Flip to false to roll back to the dark OPS Settings chrome. */
 const SETTINGS_HUB = true;
+/** Flip to false to roll back to the dark OPS SOPs chrome (SopsPanel + the bare Video Studio modal). */
+const SOPS_HUB = true;
 
 /** An old OPS route for something that lives in Copilot now: open it there. */
 function MovedToCopilot({ screen }: { screen: "tasks" | "reviews" }) {
@@ -225,6 +232,7 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
   const [videoStudioOpen, setVideoStudioOpen] = useState(false);
   const [editingVideoSop, setEditingVideoSop] = useState<SopItem | null>(null);
   const [sopsRefreshTrigger, setSopsRefreshTrigger] = useState(0);
+  const hubPhone = useIsPhone();
   const coverInputRef = useRef<HTMLInputElement>(null);
   const appliedOpsKey = useRef("");
 
@@ -2377,6 +2385,58 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
     main = selectedPropertyId && propertyDetail ? propertyDetailView : propertiesList;
   }
 
+  // Video Studio publish / delete. Shared by the dark OPS shell and the SOPs hub so both behave the same.
+  type StudioSaveSop = NonNullable<ComponentProps<typeof VideoSopStudioModal>["onSaveSop"]>;
+  const handleStudioDeleteSop = async (idOrSlug: string) => {
+    try {
+      await pmPost("sops", {
+        op: "delete",
+        id: idOrSlug,
+        slug: idOrSlug,
+      });
+      setToast("SOP Video Guide deleted.");
+      setVideoStudioOpen(false);
+      setEditingVideoSop(null);
+      setSopsRefreshTrigger((k) => k + 1);
+    } catch (err: any) {
+      setToast(`Could not delete SOP: ${err.message || err}`);
+    }
+  };
+
+  const handleStudioSaveSop = async (...[generatedSteps, metadata]: Parameters<StudioSaveSop>) => {
+    const newSop: SopItem = {
+      id: metadata.id || editingVideoSop?.id || "",
+      slug: metadata.slug || editingVideoSop?.slug || `sop-${Date.now()}`,
+      title: metadata.title || "Video SOP Guide",
+      category: metadata.category || "outreach",
+      target_role: metadata.target_role || "va",
+      summary: metadata.summary || "",
+      estimated_minutes: Math.max(5, generatedSteps.length * 2),
+      video_url: metadata.video_url || editingVideoSop?.video_url || "",
+      is_published: true,
+      author: metadata.author || editingVideoSop?.author || "Shane M. (Video Studio)",
+      created_at: metadata.created_at || editingVideoSop?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      steps: generatedSteps,
+      transcript: (metadata.transcript as any) || editingVideoSop?.transcript,
+    };
+    try {
+      const res = await pmPost<{ sop: SopItem }>("sops", {
+        op: "save",
+        ...newSop,
+      });
+      if (!res.sop) {
+        throw new Error("Save succeeded but no SOP was returned.");
+      }
+      setToast("SOP published to Playbook.");
+      setVideoStudioOpen(false);
+      setEditingVideoSop(null);
+      setSopsRefreshTrigger((k) => k + 1);
+    } catch (err: any) {
+      setToast(`Could not save SOP: ${err.message || err}`);
+    }
+  };
+
   const hubModeChange = (mode: AdminProductMode, patch?: Partial<AdminRoute>) => {
     if (mode === "ops") {
       navOps({
@@ -2393,54 +2453,80 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
     onModeChange(mode, patch);
   };
 
-  if (CLIENTS_HUB && tab === "clients") {
-    return (
-      <ClientsHubApp
-        route={route}
-        setRoute={setRoute}
-        onModeChange={hubModeChange}
-      />
-    );
-  }
+  /* Persistent OPS shell: one HubShell for every hub tab so the sidebar never remounts,
+     crunches, or flashes white between SOPs / Clients / Properties / Revenue / Team / Settings. */
+  const opsHubTab =
+    (SOPS_HUB && tab === "sops") ||
+    (CLIENTS_HUB && tab === "clients") ||
+    (PROPERTIES_HUB && tab === "properties") ||
+    (REVENUE_HUB && tab === "month") ||
+    (TEAM_HUB && tab === "employees") ||
+    (SETTINGS_HUB && tab === "settings");
 
-  if (PROPERTIES_HUB && tab === "properties") {
+  if (opsHubTab) {
+    const hubHost = { route, setRoute, onModeChange: hubModeChange };
     return (
-      <PropertiesHubApp
-        route={route}
-        setRoute={setRoute}
-        onModeChange={hubModeChange}
-      />
-    );
-  }
-
-  if (REVENUE_HUB && tab === "month") {
-    return (
-      <RevenueHubApp
-        route={route}
-        setRoute={setRoute}
-        onModeChange={hubModeChange}
-      />
-    );
-  }
-
-  if (TEAM_HUB && tab === "employees") {
-    return (
-      <TeamHubApp
-        route={route}
-        setRoute={setRoute}
-        onModeChange={hubModeChange}
-      />
-    );
-  }
-
-  if (SETTINGS_HUB && tab === "settings") {
-    return (
-      <SettingsHubApp
-        route={route}
-        setRoute={setRoute}
-        onModeChange={hubModeChange}
-        onLogout={onLogout}
-      />
+      <>
+        <div className={`mrgc${hubPhone ? " is-phone" : ""}`}>
+          <HubShell
+            active={hubActiveFromOpsTab(tab)}
+            onNavigate={(id) => navigateHub(hubHost, id)}
+            phone={hubPhone}
+          >
+            {SOPS_HUB && tab === "sops" ? (
+              <SopsHubApp
+                embedded
+                route={route}
+                setRoute={setRoute}
+                onModeChange={hubModeChange}
+                refreshTrigger={sopsRefreshTrigger}
+                onOpenVideoStudio={(sopToEdit?: SopItem) => {
+                  setEditingVideoSop(sopToEdit || null);
+                  setVideoStudioOpen(true);
+                }}
+              />
+            ) : null}
+            {CLIENTS_HUB && tab === "clients" ? (
+              <ClientsHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
+            ) : null}
+            {PROPERTIES_HUB && tab === "properties" ? (
+              <PropertiesHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
+            ) : null}
+            {REVENUE_HUB && tab === "month" ? (
+              <RevenueHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
+            ) : null}
+            {TEAM_HUB && tab === "employees" ? (
+              <TeamHubApp embedded route={route} setRoute={setRoute} onModeChange={hubModeChange} />
+            ) : null}
+            {SETTINGS_HUB && tab === "settings" ? (
+              <SettingsHubApp
+                embedded
+                route={route}
+                setRoute={setRoute}
+                onModeChange={hubModeChange}
+                onLogout={onLogout}
+              />
+            ) : null}
+          </HubShell>
+        </div>
+        {SOPS_HUB ? (
+          <>
+            <SopVideoStudioFrame
+              isOpen={videoStudioOpen}
+              initialSop={editingVideoSop}
+              onClose={() => {
+                setVideoStudioOpen(false);
+                setEditingVideoSop(null);
+              }}
+              onDeleteSop={handleStudioDeleteSop}
+              onSaveSop={handleStudioSaveSop}
+            />
+            <div className="mrgc sop-host">
+              <HubToast message={toast} />
+            </div>
+          </>
+        ) : null}
+      </>
     );
   }
 
@@ -3441,54 +3527,8 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
           setVideoStudioOpen(false);
           setEditingVideoSop(null);
         }}
-        onDeleteSop={async (idOrSlug) => {
-          try {
-            await pmPost("sops", {
-              op: "delete",
-              id: idOrSlug,
-              slug: idOrSlug,
-            });
-            setToast("SOP Video Guide deleted.");
-            setVideoStudioOpen(false);
-            setEditingVideoSop(null);
-            setSopsRefreshTrigger((k) => k + 1);
-          } catch (err: any) {
-            setToast(`Could not delete SOP: ${err.message || err}`);
-          }
-        }}
-        onSaveSop={async (generatedSteps, metadata) => {
-          const newSop: SopItem = {
-            id: metadata.id || editingVideoSop?.id || "",
-            slug: metadata.slug || editingVideoSop?.slug || `sop-${Date.now()}`,
-            title: metadata.title || "Video SOP Guide",
-            category: metadata.category || "outreach",
-            target_role: metadata.target_role || "va",
-            summary: metadata.summary || "",
-            estimated_minutes: Math.max(5, generatedSteps.length * 2),
-            video_url: metadata.video_url || editingVideoSop?.video_url || "",
-            is_published: true,
-            author: metadata.author || editingVideoSop?.author || "Shane M. (Video Studio)",
-            created_at: metadata.created_at || editingVideoSop?.created_at || new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            steps: generatedSteps,
-            transcript: (metadata.transcript as any) || editingVideoSop?.transcript,
-          };
-          try {
-            const res = await pmPost<{ sop: SopItem }>("sops", {
-              op: "save",
-              ...newSop,
-            });
-            if (!res.sop) {
-              throw new Error("Save succeeded but no SOP was returned.");
-            }
-            setToast("SOP published to Playbook.");
-            setVideoStudioOpen(false);
-            setEditingVideoSop(null);
-            setSopsRefreshTrigger((k) => k + 1);
-          } catch (err: any) {
-            setToast(`Could not save SOP: ${err.message || err}`);
-          }
-        }}
+        onDeleteSop={handleStudioDeleteSop}
+        onSaveSop={handleStudioSaveSop}
       />
     </div>
   );

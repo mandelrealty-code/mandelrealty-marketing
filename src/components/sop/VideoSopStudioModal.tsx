@@ -77,6 +77,8 @@ interface VideoSopStudioModalProps {
   initialSop?: SopItem | null;
   onClose: () => void;
   onDeleteSop?: (idOrSlug: string) => void;
+  /** Forwarded to the nested ImageRedactorModal portal (ops-hub light skin mount point). */
+  portalContainer?: HTMLElement | null;
   onSaveSop: (
     steps: SopStep[],
     meta: {
@@ -119,6 +121,7 @@ export function VideoSopStudioModal({
   onClose,
   onDeleteSop,
   onSaveSop,
+  portalContainer,
 }: VideoSopStudioModalProps) {
   const [stage, setStage] = useState<"setup" | "recording" | "review" | "trimming" | "saved">("setup");
   const [recordMode, setRecordMode] = useState<"snapshots" | "video">("snapshots");
@@ -1313,7 +1316,7 @@ export function VideoSopStudioModal({
     <div
       ref={recordingHudRef}
       data-sop-capture-ignore
-      className={`font-['Manrope',system-ui,sans-serif] pointer-events-auto select-none ${
+      className={`mrg-sop-hud font-['Manrope',system-ui,sans-serif] pointer-events-auto select-none ${
         pipMountNode ? "" : "fixed bottom-6 left-6 z-[99999] animate-fadeIn"
       }`}
     >
@@ -1450,7 +1453,7 @@ export function VideoSopStudioModal({
   return (
     <>
       {hiddenLivePreview}
-      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/88 backdrop-blur-md p-3 sm:p-6 font-['Manrope',system-ui,sans-serif] animate-fadeIn">
+      <div className="mrg-sop-modal mrg-sop-studio fixed inset-0 z-[120] flex items-center justify-center bg-black/88 backdrop-blur-md p-3 sm:p-6 font-['Manrope',system-ui,sans-serif] animate-fadeIn">
       {/* Container */}
       <div className="relative flex h-[92vh] w-full max-w-[1400px] flex-col rounded-2xl border border-white/10 bg-[#0a0a0a] text-[#f4f2ee] shadow-2xl overflow-hidden">
         
@@ -2490,6 +2493,7 @@ export function VideoSopStudioModal({
       {/* Embedded Image Redactor Modal for Scribe Annotation & Redaction */}
       {activeRedactorStepIdx !== null && steps[activeRedactorStepIdx] && (
         <ImageRedactorModal
+          portalContainer={portalContainer}
           isOpen={true}
           initialImageUrl={steps[activeRedactorStepIdx].image_url}
           rawImageUrl={steps[activeRedactorStepIdx].raw_image_url}

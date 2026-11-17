@@ -2,8 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { pmGet, pmPost } from "./api";
 import type { SopItem, SopStep, SopCategory, SopTargetRole } from "../../../shared/pm/sopTypes";
 import { ImageRedactorModal } from "../../components/sop/ImageRedactorModal";
-
-const SOP_DRAFT_KEY = "mrg_sop_editor_draft";
+import {
+  clearSopDraft,
+  persistSopDraft,
+  sopBackupFilename,
+  sopBackupJsonString,
+} from "../../../shared/pm/sopBackup";
 
 function dataUrlParts(dataUrl: string): { mime: string; b64: string } | null {
   const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/i.exec(dataUrl);
@@ -33,26 +37,6 @@ function compressDataUrl(dataUrl: string, maxW = 1400, quality = 0.72): Promise<
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
   });
-}
-
-async function persistSopDraft(sop: SopItem) {
-  try {
-    localStorage.setItem(SOP_DRAFT_KEY, JSON.stringify(sop));
-  } catch {
-    try {
-      const slim: SopItem = {
-        ...sop,
-        steps: (sop.steps || []).map((s) => ({
-          ...s,
-          image_url: s.image_url?.startsWith("data:") ? "[screenshot in memory — re-save after deploy]" : s.image_url,
-          raw_image_url: s.raw_image_url?.startsWith("data:") ? undefined : s.raw_image_url,
-        })),
-      };
-      localStorage.setItem(SOP_DRAFT_KEY, JSON.stringify(slim));
-    } catch {
-      /* ignore quota */
-    }
-  }
 }
 
 const CATS: { id: string; label: string; catKey?: SopCategory }[] = [
@@ -239,11 +223,7 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
           return [res.sop, ...prev];
         });
       }
-      try {
-        localStorage.removeItem(SOP_DRAFT_KEY);
-      } catch {
-        /* ignore */
-      }
+      clearSopDraft();
       setEditorOpen(false);
       setEditingSop(null);
     } catch (err: any) {
@@ -255,12 +235,12 @@ export function SopsPanel({ onOpenVideoStudio, refreshTrigger }: SopsPanelProps)
 
   const downloadSopBackup = () => {
     if (!editingSop) return;
-    const json = JSON.stringify(editingSop);
+    const json = sopBackupJsonString(editingSop);
     void persistSopDraft(editingSop);
     const blob = new Blob([json], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `${editingSop.slug || "sop"}-backup.json`;
+    a.download = sopBackupFilename(editingSop);
     a.click();
     URL.revokeObjectURL(a.href);
   };

@@ -8,6 +8,17 @@
   line-height:1.5;
   -webkit-font-smoothing:antialiased;
 }
+/* Nested page body inside the persistent HubShell — fill the main pane, don’t force another viewport. */
+.mrgc.hub-embed{
+  min-height:0;
+  height:100%;
+  background:transparent;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.mrgc.hub-embed > .content,
+.mrgc.hub-embed > .main{flex:1;min-height:0}
 .mrgc *,.mrgc *::before,.mrgc *::after{box-sizing:border-box}
 .mrgc .content{overflow:auto}
 .mrgc .app{height:100dvh}
@@ -117,24 +128,45 @@
 .mrgc .fgrid .full{grid-column:1 / -1}
 
 /* ===================== App shell (desktop) ===================== */
-.mrgc .app{display:grid;grid-template-columns:232px minmax(0,1fr);height:100%}
-.mrgc .side{border-right:1px solid var(--line);display:flex;flex-direction:column;padding:20px 12px 14px}
+.mrgc .app{--sw:232px;display:grid;grid-template-columns:var(--sw) minmax(0,1fr);height:100dvh;transition:grid-template-columns var(--med,180ms) var(--ease,cubic-bezier(.65,0,.35,1))}
+.mrgc .side{border-right:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;padding:20px 12px 14px;overflow-y:auto;min-height:0}
 .mrgc .brand{display:flex;align-items:center;gap:10px;padding:0 8px}
-.mrgc .brand img{width:34px;height:34px}
-.mrgc .brand b{flex:1;font-size:var(--t-md);font-weight:650;color:var(--ink);white-space:nowrap}
-.mrgc .jump{display:flex;align-items:center;gap:10px;margin:18px 0 6px;height:40px;padding:0 10px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);color:var(--ink2)}
+.mrgc .brand img{width:34px;height:34px;flex:none}
+.mrgc .brand b{flex:1;min-width:0;font-size:var(--t-md);font-weight:650;color:var(--ink);white-space:nowrap;overflow:hidden;letter-spacing:-.2px}
+.mrgc .sidetog{margin-right:-6px;flex:none}
+.mrgc .sidetog .chv{transition:transform var(--med,180ms) var(--ease,cubic-bezier(.65,0,.35,1));transform-origin:14.5px 12px}
+.mrgc .jump{display:flex;align-items:center;gap:10px;margin:18px 0 6px;width:100%;height:40px;padding:0 10px;border-radius:var(--r-ctl);border:1px solid var(--line);background:var(--bg);font-size:var(--t-sm);color:var(--ink2);text-align:left}
+.mrgc .jump:hover{background:var(--hover)}
 .mrgc .jump span{flex:1}
 .mrgc kbd{font:600 11px/1 Inter,sans-serif;color:var(--ink2);background:#fff;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:3px 5px}
 .mrgc .ng{margin-top:16px}
 .mrgc .ng h4{font-size:var(--t-xs);font-weight:600;color:var(--muted);padding:0 12px 4px}
-.mrgc .nb{display:flex;align-items:center;gap:11px;height:40px;padding:0 12px;border-radius:10px;border:1px solid transparent;font-size:var(--t-base);font-weight:500;color:var(--ink2);position:relative}
+/* Active tab = pill only. No gold rail — matches the approved screenshot. */
+.mrgc .nb{display:flex;align-items:center;gap:11px;width:100%;height:40px;padding:0 12px;border-radius:10px;border:1px solid transparent;font-size:var(--t-base);font-weight:500;color:var(--ink2);position:relative;text-align:left;background:none}
+.mrgc .nb:hover{background:var(--hover)}
+.mrgc .nb:active{background:var(--press)}
 .mrgc .nb.on{border-color:rgb(0 0 0 / .1);background:rgb(0 0 0 / .045);color:var(--ink);font-weight:600}
-.mrgc .nb.on::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--gold)}
+.mrgc .nb.on::before{content:none;display:none}
 .mrgc .nb.on svg.i{stroke-width:2.1}
-.mrgc .side .spc{flex:1}
+.mrgc .side .spc{flex:1;min-height:16px}
 .mrgc .me{display:flex;align-items:center;gap:10px;padding:12px 12px 0;border-top:1px solid var(--line-2);margin-top:8px;font-size:var(--t-sm);color:var(--ink);font-weight:500}
 .mrgc .me small{display:block;color:var(--muted);font-size:var(--t-xs);font-weight:400}
-.mrgc .main{min-width:0;display:flex;flex-direction:column;height:100%;overflow:hidden}
+.mrgc .main{min-width:0;display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg)}
+/* Manual collapse (toggle) — same icon rail as the 899px breakpoint */
+.mrgc .app.is-collapsed{--sw:68px}
+.mrgc .app.is-collapsed .side{padding-left:10px;padding-right:10px}
+.mrgc .app.is-collapsed .side .brand{flex-direction:column;gap:12px;padding:0}
+.mrgc .app.is-collapsed .side .brand b,
+.mrgc .app.is-collapsed .side .nl,
+.mrgc .app.is-collapsed .jump span,
+.mrgc .app.is-collapsed kbd,
+.mrgc .app.is-collapsed .ng h4,
+.mrgc .app.is-collapsed .me div{display:none}
+.mrgc .app.is-collapsed .sidetog{margin:0}
+.mrgc .app.is-collapsed .sidetog .chv{transform:scaleX(-1)}
+.mrgc .app.is-collapsed .jump{justify-content:center;padding:0}
+.mrgc .app.is-collapsed .nb{justify-content:center;padding:0;gap:0}
+.mrgc .app.is-collapsed .me{justify-content:center;padding:12px 0 0}
 .mrgc .head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:26px 32px 0}
 .mrgc .head .date{color:var(--muted);font-size:var(--t-sm);font-weight:500}
 .mrgc .head h1{font-size:var(--t-lg);font-weight:700;letter-spacing:-.4px;line-height:1.25}
@@ -637,14 +669,14 @@
   .mrgc table th:nth-child(2), .mrgc table td:nth-child(2){ /* stays column may drop on month at 900 */ }
 }
 @media (max-width:899px){
-  .mrgc .app{grid-template-columns:68px minmax(0,1fr)}
+  .mrgc .app{--sw:68px}
   .mrgc .side{padding-left:10px;padding-right:10px}
   .mrgc .side .brand{flex-direction:column;gap:12px;padding:0}
   .mrgc .side .brand b, .mrgc .side .nl, .mrgc .jump span, .mrgc kbd, .mrgc .ng h4, .mrgc .me div{display:none}
+  .mrgc .sidetog{display:none}
   .mrgc .jump{justify-content:center;padding:0}
   .mrgc .nb{justify-content:center;padding:0;gap:0}
   .mrgc .nb span.nl{display:none}
-  .mrgc .nb.on::before{left:-10px}
   .mrgc .me{justify-content:center;padding:12px 0 0}
   .mrgc .stats.four{grid-template-columns:1fr 1fr}
   .mrgc .plhint{display:none}
@@ -710,4 +742,95 @@
   .mrgc .tm-typesel .input{width:116px}
   .mrgc .tm-tpl-row{flex-wrap:wrap;row-gap:6px}
   .mrgc .tm-tpl-acts{flex-basis:100%;justify-content:flex-end}
+}
+
+/* ===================== SOPs additions (docs/mrg-sops-design.html) ===================== */
+/* ---- list ---- */
+.mrgc .sopt td{vertical-align:middle}
+.mrgc .soptitle b{display:flex;align-items:center;gap:7px;color:var(--ink);font-weight:600;font-size:var(--t-base)}
+.mrgc .vid{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:99px;background:oklch(0.55 0.15 300 / .12);color:oklch(0.42 0.14 300);font-size:11px;font-weight:700;white-space:nowrap}
+.mrgc .sp-import{cursor:pointer;overflow:hidden}
+.mrgc .sp-import input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
+.mrgc .sp-pactions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.mrgc .sp-filters{justify-content:space-between}
+.mrgc .sp-search{flex:0 1 300px;max-width:300px}
+.mrgc .pfilters.scroll{overflow-x:auto;scrollbar-width:none}
+.mrgc .pfilters.scroll::-webkit-scrollbar{display:none}
+.mrgc .pfilters button{flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2);background:var(--bg);white-space:nowrap}
+.mrgc .pfilters button.on{background:var(--primary);color:#fff;border-color:transparent;font-weight:600}
+.mrgc .sp-acts{display:inline-flex;gap:6px;align-items:center;justify-content:flex-end}
+.mrgc .sp-inline{display:inline-flex;gap:6px;align-items:center}
+.mrgc .sp-more{display:none;position:relative}
+.mrgc .sp-more .menu{display:block;right:0;top:calc(100% + 6px);width:190px;text-align:left}
+.mrgc .menu button{display:flex;align-items:center;gap:10px;width:100%;height:40px;padding:0 10px;border-radius:9px;font-size:var(--t-sm);font-weight:500;color:var(--ink);background:none;text-align:left}
+.mrgc .menu button:hover{background:var(--press)}
+.mrgc .menu button.dng{color:var(--redink)}
+.mrgc .sp-upd-fold{display:none}
+.mrgc.sp-hub .spin{animation:sp-spin .8s linear infinite}
+@keyframes sp-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.mrgc.sp-hub .spin{animation:none}}
+
+/* ---- editor panel (780px side panel; full screen on phone) ---- */
+.mrgc .sp-scrim{z-index:38}
+.mrgc .sp-panel{position:fixed;top:0;right:0;bottom:0;width:780px;max-width:100%;z-index:39;background:#fff;border-left:1px solid var(--line);box-shadow:-20px 0 60px rgb(0 0 0 / .12);display:flex;flex-direction:column}
+.mrgc .ptopbar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line-2);flex:none}
+.mrgc .ptopbar .t{flex:1;min-width:0}
+.mrgc .ptopbar .t b{display:block;font-size:var(--t-md);color:var(--ink);font-weight:650}
+.mrgc .ptopbar .t .meta{display:inline-flex;align-items:center;gap:4px}
+.mrgc .pbody2{flex:1;min-height:0;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;background:oklch(0.985 0.002 95)}
+.mrgc .pbody2>*{flex:none}
+.mrgc .pfoot{display:flex;align-items:center;gap:8px;padding:12px 16px;border-top:1px solid var(--line);flex:none;background:#fff}
+.mrgc .sp-del{color:var(--redink)}
+.mrgc .sp-publish .spin{border-color:rgb(255 255 255 / .3);border-top-color:#fff}
+.mrgc .sp-details{grid-template-columns:2fr 1fr 1fr 1fr}
+.mrgc .sp-addstep{border-style:dashed}
+.mrgc .step{border:1px solid var(--line);border-radius:16px;background:#fff;overflow:hidden}
+.mrgc .steph{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line-2)}
+.mrgc .stepn{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+.mrgc .stepb{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.mrgc .shot{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--panel)}
+.mrgc .shot img{display:block;width:100%;max-height:340px;object-fit:contain}
+.mrgc .shot .ov{position:absolute;right:10px;bottom:10px}
+.mrgc .sp-drop{width:100%;text-align:left;background:var(--bg);padding:10px 12px;cursor:pointer}
+.mrgc .sp-drop:hover{background:var(--hover)}
+.mrgc .xbox{border-radius:12px;padding:10px 12px;font-size:var(--t-sm);color:var(--ink)}
+.mrgc .xbox .xh{display:flex;align-items:center;gap:6px;font-size:var(--t-xs);font-weight:700;margin-bottom:4px}
+.mrgc .xbox .xh>span{flex:1}
+.mrgc .xbox .xh>span.meta{flex:none;font-weight:500}
+.mrgc .xbox .xclose{display:grid;place-items:center;width:24px;height:24px;border-radius:7px;color:inherit;opacity:.7;background:none}
+.mrgc .xbox .xclose:hover{opacity:1;background:var(--hover)}
+.mrgc .xbox textarea,.mrgc .xbox input{display:block;width:100%;border:0;background:transparent;outline:none;padding:0;color:var(--ink);font:inherit;resize:none;line-height:1.5}
+.mrgc .xbox textarea{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+.mrgc .xbox.script{background:var(--panel)}
+.mrgc .xbox.tip{background:oklch(0.6 0.11 185 / .1)}
+.mrgc .xbox.tip .xh{color:var(--tealink)}
+.mrgc .xbox.warn{background:oklch(0.6 0.14 65 / .12)}
+.mrgc .xbox.warn .xh{color:var(--amberink)}
+.mrgc .addx{display:flex;gap:6px;flex-wrap:wrap}
+.mrgc .addx .btn{height:30px;font-size:var(--t-xs);border-style:dashed}
+
+/* ---- Redactor + Video Studio light skin ----
+   Lives in ../sops/sopModalsDesign.css (imported by SopsFrames / SopsHubApp)
+   so shared clientsDesign.css stays free of dark-hex attribute selectors that
+   break other hub harnesses. */
+
+@media (max-width:1239px){
+  .mrgc .sp-filters{flex-direction:column;align-items:stretch}
+  .mrgc .sp-search{flex:none;max-width:none}
+  .mrgc .sp-upd-col{display:none}
+  .mrgc .sp-upd-fold{display:inline}
+  .mrgc .sp-panel{width:70%}
+}
+@media (max-width:899px){
+  .mrgc .sp-inline{display:none}
+  .mrgc .sp-more{display:inline-block}
+  .mrgc .sp-panel{width:100%;border-left:0}
+  .mrgc .sp-details{grid-template-columns:1fr 1fr}
+  .mrgc .sp-details .sp-title{grid-column:1 / -1}
+}
+@media (max-width:767px){
+  .mrgc .sp-panel .ptopbar{padding:8px 10px;gap:4px}
+  .mrgc .sp-panel .pbody2{padding:12px}
+  .mrgc .sp-panel .pfoot{flex-wrap:wrap;padding:10px 12px 24px}
+  .mrgc .sp-panel .sp-publish{flex-basis:100%;height:48px;margin-top:6px}
 }

@@ -42,6 +42,8 @@ export type RevenueHubAppProps = {
   route: AdminRoute;
   setRoute: (next: AdminRoute, opts?: { push?: boolean }) => void;
   onModeChange: (mode: AdminProductMode, patch?: Partial<AdminRoute>) => void;
+  /** When true, parent owns HubShell — render body only. */
+  embedded?: boolean;
 };
 
 type View = "portfolio" | "hst";
@@ -58,7 +60,7 @@ function defaultMonth(): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-export function RevenueHubApp({ route, setRoute, onModeChange }: RevenueHubAppProps) {
+export function RevenueHubApp({ route, setRoute, onModeChange, embedded = false }: RevenueHubAppProps) {
   const phone = useIsPhone();
   const narrow = useIsPhone(1239);
   const mid = useIsPhone(899);
@@ -532,10 +534,14 @@ export function RevenueHubApp({ route, setRoute, onModeChange }: RevenueHubAppPr
   }
 
   return (
-    <div className={`mrgc${phone ? " is-phone" : ""}`}>
-      <HubShell active="revenue" onNavigate={onNavigate} phone={phone}>
-        {body}
-      </HubShell>
+    <div className={`mrgc${phone ? " is-phone" : ""}${embedded ? " hub-embed" : ""}`}>
+      {embedded ? (
+        body
+      ) : (
+        <HubShell active="revenue" onNavigate={onNavigate} phone={phone}>
+          {body}
+        </HubShell>
+      )}
       {sheetEl}
       <Toast message={toast} />
     </div>

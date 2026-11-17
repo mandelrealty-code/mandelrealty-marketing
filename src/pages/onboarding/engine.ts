@@ -51,7 +51,7 @@ const tone = (h,c) => ({c:ok(h,c), t:ok(h,c*0.9,0.45), bg:ok(h,c,0.6,0.15), soft
 
 const NAV_GROUPS = [
   {title:null,          items:[{id:'dashboard',label:'Dashboard',icon:'home'}]},
-  {title:'Operations',  items:[{id:'onboarding',label:'Onboarding',icon:'clip'},{id:'properties',label:'Properties',icon:'building'},{id:'team',label:'Team',icon:'team'}]},
+  {title:'Operations',  items:[{id:'onboarding',label:'Onboarding',icon:'clip'},{id:'properties',label:'Properties',icon:'building'},{id:'team',label:'Team',icon:'team'},{id:'sops',label:'SOPs',icon:'book'}]},
   {title:'Business',    items:[{id:'crm',label:'CRM',icon:'users'},{id:'clients',label:'Clients',icon:'brief'},{id:'revenue',label:'Revenue',icon:'chart'}]},
   {title:'Assistant',   items:[{id:'copilot',label:'Copilot',icon:'spark'}]}
 ];
@@ -640,11 +640,12 @@ function renderNav(){
   $('#phText').textContent = cur.id==='copilot' ? 'Copilot lives here as one section of the hub — no separate tab.' : `${cur.label} moves into this hub next. Onboarding is the live section in this mockup.`;
 }
 function setNav(id){
-  const modeMap = {crm:'crm', ops:'ops', clients:'ops', properties:'ops', team:'ops', copilot:'copilot', settings:'ops', dashboard:'onboarding', onboarding:'onboarding', revenue:'ops'};
+  const modeMap = {crm:'crm', ops:'ops', clients:'ops', properties:'ops', team:'ops', sops:'ops', copilot:'copilot', settings:'ops', dashboard:'onboarding', onboarding:'onboarding', revenue:'ops'};
   if(id!=='onboarding' && id!=='dashboard' && host.go && modeMap[id] && modeMap[id]!=='onboarding'){
     if (id === 'clients') { host.go('ops', { opsTab: 'clients' }); return; }
     if (id === 'properties') { host.go('ops', { opsTab: 'properties' }); return; }
     if (id === 'team') { host.go('ops', { opsTab: 'employees' }); return; }
+    if (id === 'sops') { host.go('ops', { opsTab: 'sops' }); return; }
     if (id === 'revenue' || id === 'settings') { host.go('ops', { opsTab: id === 'revenue' ? 'month' : 'settings' }); return; }
     host.go(modeMap[id]);
     return;

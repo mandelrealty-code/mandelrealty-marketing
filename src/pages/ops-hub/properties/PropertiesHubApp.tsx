@@ -35,6 +35,8 @@ export type PropertiesHubAppProps = {
   route: AdminRoute;
   setRoute: (next: AdminRoute, opts?: { push?: boolean }) => void;
   onModeChange: (mode: AdminProductMode, patch?: Partial<AdminRoute>) => void;
+  /** When true, parent owns HubShell — render body only. */
+  embedded?: boolean;
 };
 
 type SheetState =
@@ -65,7 +67,7 @@ function readPropertiesFilterFromHub(): string {
 
 const MAT_SCHEMA_ERR = /mat_filings|pm_mat|relation .* does not exist|does not exist|schema cache|column/i;
 
-export function PropertiesHubApp({ route, setRoute, onModeChange }: PropertiesHubAppProps) {
+export function PropertiesHubApp({ route, setRoute, onModeChange, embedded = false }: PropertiesHubAppProps) {
   const phone = useIsPhone();
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [properties, setProperties] = useState<PropertyRow[]>([]);
@@ -712,8 +714,8 @@ export function PropertiesHubApp({ route, setRoute, onModeChange }: PropertiesHu
   }
 
   return (
-    <div className={`mrgc${phone ? " is-phone" : ""}`}>
-      {bare ? (
+    <div className={`mrgc${phone ? " is-phone" : ""}${embedded ? " hub-embed" : ""}`}>
+      {bare || embedded ? (
         body
       ) : (
         <HubShell active="properties" onNavigate={onNavigate} phone={phone} fab={fab}>

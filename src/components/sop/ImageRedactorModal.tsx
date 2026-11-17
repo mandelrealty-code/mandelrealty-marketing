@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { SopStepBox, SopStepPin } from "../../../shared/pm/sopTypes";
+import { Icon } from "../../pages/ops-hub/clients/icons";
 
 type ToolType = "spotlight" | "blur" | "blackout" | "pin";
 
@@ -20,6 +21,11 @@ interface ImageRedactorModalProps {
     pins: SopStepPin[],
     rawImageUrl?: string
   ) => void;
+  /**
+   * Optional mount point for the portal (defaults to document.body). The ops-hub SOPs
+   * screen passes an element inside `.mrgc` so its scoped light skin applies.
+   */
+  portalContainer?: HTMLElement | null;
 }
 
 const TOOLS: {
@@ -72,6 +78,7 @@ export function ImageRedactorModal({
   initialBoxes,
   initialPins,
   onSave,
+  portalContainer,
 }: ImageRedactorModalProps) {
   const seedBoxes = initialBoxes ?? EMPTY_BOXES;
   const seedPins = initialPins ?? EMPTY_PINS;
@@ -79,6 +86,7 @@ export function ImageRedactorModal({
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [cleanImageSrc, setCleanImageSrc] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(false);
 
   const [boxes, setBoxes] = useState<SopStepBox[]>([]);
   const [pins, setPins] = useState<SopStepPin[]>([]);
@@ -663,8 +671,339 @@ export function ImageRedactorModal({
       } spotlight · ${pins.filter((p) => !hiddenIds[p.id]).length} pins`
     : "No annotations yet";
 
+  // Boxes, drag preview and pins drawn over the image (shared by both skins).
+  const overlaysNode = (
+    <>
+          {/* Render Applied Annotation Boxes */}
+          {boxes.map((box) => {
+            if (hiddenIds[box.id]) return null;
+            const isSelected = selectedLayerId === box.id;
+            return (
+              <div
+                key={box.id}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  setSelectedLayerId(box.id);
+                }}
+                className={`absolute cursor-pointer transition-all ${
+                  box.type === "spotlight"
+                    ? `border-2 border-[#c4a35a] bg-[#c4a35a]/15 rounded-[3px] ${
+                        isSelected
+                          ? "ring-2 ring-white shadow-[0_0_20px_rgba(196,163,90,0.6)]"
+                          : "shadow-[0_0_16px_rgba(196,163,90,0.35)]"
+                      }`
+                    : box.type === "blur"
+                      ? `backdrop-blur-md bg-black/40 border rounded-[2px] ${
+                          isSelected ? "border-[#c4a35a] ring-2 ring-[#c4a35a]/50" : "border-white/20"
+                        }`
+                      : `bg-[#0a0a0a] border rounded-[2px] ${
+                          isSelected ? "border-[#c4a35a] ring-2 ring-[#c4a35a]/50" : "border-white/10"
+                        }`
+                }`}
+                style={{
+                  left: `${box.x * 100}%`,
+                  top: `${box.y * 100}%`,
+                  width: `${box.w * 100}%`,
+                  height: `${box.h * 100}%`,
+                }}
+              />
+            );
+          })}
+    
+          {/* Active Drag Preview */}
+          {currentDragBox && (
+            <div
+              className={`absolute pointer-events-none ${
+                activeTool === "spotlight"
+                  ? "border-2 border-[#c4a35a] bg-[#c4a35a]/20"
+                  : activeTool === "blur"
+                    ? "bg-white/20 backdrop-blur-sm border border-white/40"
+                    : "bg-black/90 border border-white/30"
+              }`}
+              style={{
+                left: `${currentDragBox.x * 100}%`,
+                top: `${currentDragBox.y * 100}%`,
+                width: `${currentDragBox.w * 100}%`,
+                height: `${currentDragBox.h * 100}%`,
+              }}
+            />
+          )}
+    
+          {/* Render Applied Pins */}
+          {pins.map((pin) => {
+            if (hiddenIds[pin.id]) return null;
+            const isSelected = selectedLayerId === pin.id;
+            const pinText = String(pin.number ?? "");
+    
+            return (
+              <div
+                key={pin.id}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  setSelectedLayerId(pin.id);
+                }}
+                className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer group/pin z-20"
+                style={{
+                  left: `${pin.x * 100}%`,
+                  top: `${pin.y * 100}%`,
+                }}
+              >
+                {/* Combined number + caption pill (no standalone pin when caption exists) */}
+                {pin.label?.trim() && !isSelected ? (
+                  <div
+                    className={`pointer-events-none absolute top-1/2 z-10 flex max-w-[240px] -translate-y-1/2 items-center gap-1.5 rounded-full border border-black/30 bg-[#c4a35a] px-2 py-1 shadow-lg ${
+                      pin.x > 0.68 ? "right-0 translate-x-1/4 flex-row-reverse" : "left-0 -translate-x-1/4"
+                    }`}
+                  >
+                    <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#0a0a0a] px-1.5 font-mono text-[10px] font-bold text-[#c4a35a]">
+                      {pinText}
+                    </span>
+                    <span className="pr-1 text-[11px] font-bold leading-snug text-[#0a0a0a]">
+                      {pin.label.trim()}
+                    </span>
+                  </div>
+                ) : (
+                  <div
+                    className={`flex h-7 min-w-[28px] px-1 items-center justify-center rounded-full border-2 border-black bg-[#c4a35a] font-mono text-xs font-bold text-black shadow-lg transition-transform ${
+                      isSelected
+                        ? "scale-125 ring-4 ring-white shadow-[0_0_15px_rgba(255,255,255,0.7)]"
+                        : "ring-4 ring-[#c4a35a]/25 group-hover/pin:scale-110"
+                    }`}
+                  >
+                    {pinText}
+                  </div>
+                )}
+    
+                {/* Floating In-Place Caption Popover / Bubble (when selected) */}
+                {isSelected && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="sopr-pop absolute left-1/2 -translate-x-1/2 bottom-full mb-2.5 w-72 rounded-lg border border-[#c4a35a]/40 bg-[#141414]/95 backdrop-blur-md p-3 shadow-2xl z-30 flex flex-col gap-2"
+                  >
+                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[#c4a35a]">
+                      <span>Edit Pin #{pinText}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => deleteLayer(pin.id, e)}
+                        className="text-[#cf7f7b] hover:text-white px-1 py-0.5 rounded text-[10px]"
+                        title="Delete pin"
+                      >
+                        ✕ Delete
+                      </button>
+                    </div>
+    
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-1 w-16 shrink-0">
+                        <label className="text-[9px] font-bold uppercase tracking-wider text-[#9a9590]">
+                          Pin #
+                        </label>
+                        <input
+                          type="text"
+                          value={pin.number ?? ""}
+                          onChange={(e) => updatePinNumber(pin.id, e.target.value)}
+                          className="w-full text-center font-mono font-bold rounded border border-white/10 bg-[#0a0a0a] px-1 py-1.5 text-xs text-[#c4a35a] outline-none focus:border-[#c4a35a]"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 flex-1 min-w-0">
+                        <label className="text-[9px] font-bold uppercase tracking-wider text-[#9a9590]">
+                          Caption
+                        </label>
+                        <input
+                          ref={activeInputRef}
+                          type="text"
+                          value={pin.label || ""}
+                          onChange={(e) => updatePinCaption(pin.id, e.target.value)}
+                          placeholder="e.g. Click 'Listings' tab..."
+                          className="w-full rounded border border-white/10 bg-[#0a0a0a] px-2.5 py-1.5 text-xs text-[#f5f5f5] placeholder:text-[#6f6a65] outline-none focus:border-[#c4a35a]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+    </>
+  );
+
+  // Light ops-hub skin: same state and handlers, markup follows docs/mrg-sops-design.html.
+  if (portalContainer) {
+    const TOOL_ICON: Record<ToolType, string> = { spotlight: "spot", blur: "blur", blackout: "black", pin: "pinT" };
+    const browse = () => fileInputRef.current?.click();
+    return createPortal(
+      <div className={`mrg-sop-redactor sopr${layersOpen ? " layers-open" : ""}`} role="dialog" aria-label="Image Redactor">
+        <div className="sopr-top">
+          <div className="t sopr-title">
+            <b>Image Redactor</b>
+          </div>
+          {imageSrc ? (
+            <button type="button" className="btn sm sopr-replace" onClick={browse} title="Replace image with a new file or screenshot">
+              <Icon name="img" className="i xs" />
+              Replace Image
+            </button>
+          ) : null}
+          <button type="button" className="btn sm sopr-undo" onClick={handleUndo} disabled={!history.length} title="Undo last action (⌘Z)">
+            <Icon name="undo" className="i xs" />
+            Undo <kbd>⌘Z</kbd>
+          </button>
+          <button type="button" className="btn sm sopr-clear" onClick={handleClearAll} disabled={!allLayers.length} title="Remove all redactions and pins">
+            Clear all
+          </button>
+          <span className="vsep sopr-vsep" />
+          <button type="button" className="btn sopr-cancel" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn primary sopr-apply" onClick={handleSaveAndBake} disabled={!imageSrc}>
+            <Icon name="check" className="i sm" />
+            Apply to Step
+          </button>
+          <span className="sopr-br" />
+          <button type="button" className="btn sm sopr-layers-btn" onClick={() => setLayersOpen((v) => !v)} aria-expanded={layersOpen}>
+            Layers <span className="count">{allLayers.length}</span>
+          </button>
+        </div>
+
+        <div className="sopr-main">
+          <div className="sopr-tools">
+            <div className="flabel sopr-tools-label">Tools</div>
+            {TOOLS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`rtool${activeTool === t.id ? " on" : ""}`}
+                title={t.hint}
+                onClick={() => {
+                  setActiveTool(t.id);
+                  if (t.id !== "pin") setSelectedLayerId(null);
+                }}
+              >
+                <Icon name={TOOL_ICON[t.id]} className="i sm" />
+                <span>{t.id === "blur" ? "Blur" : t.label}</span>
+                <kbd>{t.key}</kbd>
+              </button>
+            ))}
+            <div className="hint sopr-tool-hint">
+              {activeTool === "pin" ? "Click to drop a numbered pin, then type its caption." : "Drag on the image to draw."}
+            </div>
+          </div>
+
+          <div className={`sopr-canvas rdcanvas${isDragOver ? " over" : ""}`} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileInputChange} className="hidden" style={{ display: "none" }} />
+            {imageSrc ? (
+              <div
+                ref={containerRef}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                className="sopr-stage relative cursor-crosshair touch-none"
+              >
+                <img ref={imageRef} src={imageSrc} alt="Workspace" draggable={false} className="sopr-img pointer-events-none block select-none" />
+                {overlaysNode}
+              </div>
+            ) : (
+              <div className="dropzone" role="button" tabIndex={0} onClick={browse} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && browse()}>
+                <Icon name="upload" />
+                <b>Drop an image here</b>
+                <span>
+                  or{" "}
+                  <button
+                    type="button"
+                    className="lnk"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      browse();
+                    }}
+                  >
+                    browse
+                  </button>
+                  , or paste with <kbd>⌘V</kbd>
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="sopr-layers rdlayers">
+            <div className="flabel">
+              Layers <span className="meta">· {allLayers.length}</span>
+            </div>
+            {allLayers.length === 0 ? (
+              <span className="meta">Nothing drawn yet.</span>
+            ) : (
+              allLayers.map((layer) => {
+                const isHidden = Boolean(hiddenIds[layer.id]);
+                const isSelected = selectedLayerId === layer.id;
+                const isPin = layer.kind === "pin";
+                const pinItem = isPin ? pins.find((p) => p.id === layer.id) : null;
+                const boxItem = !isPin ? boxes.find((b) => b.id === layer.id) : null;
+                const icon = isPin ? "pinT" : layer.type === "blur" ? "blur" : layer.type === "blackout" ? "black" : "spot";
+                return (
+                  <div key={layer.id} className="sopr-layer">
+                    <div className={`lay${isSelected ? " sel" : ""}${isHidden ? " hid" : ""}`} onClick={() => setSelectedLayerId(layer.id)}>
+                      <Icon name={icon} className="i sm" />
+                      <span className="n">{isPin ? `Pin #${pinItem?.number ?? layer.number}` : layer.name}</span>
+                      <button
+                        type="button"
+                        className="iconbtn"
+                        style={{ width: 30, height: 30 }}
+                        title={isHidden ? "Show layer" : "Hide layer"}
+                        aria-label={isHidden ? "Show layer" : "Hide layer"}
+                        onClick={(e) => toggleLayerVisibility(layer.id, e)}
+                      >
+                        <Icon name={isHidden ? "eyeoff" : "eye"} className="i sm" />
+                      </button>
+                      <button
+                        type="button"
+                        className="iconbtn"
+                        style={{ width: 30, height: 30 }}
+                        title="Delete element"
+                        aria-label="Delete element"
+                        onClick={(e) => deleteLayer(layer.id, e)}
+                      >
+                        <Icon name="trash" className="i sm" />
+                      </button>
+                    </div>
+                    {isPin ? (
+                      <div className="sopr-fields two" onClick={(e) => e.stopPropagation()}>
+                        <div className="field" style={{ width: 64 }}>
+                          <label>Pin #</label>
+                          <input className="input" value={pinItem?.number ?? ""} onChange={(e) => updatePinNumber(layer.id, e.target.value)} />
+                        </div>
+                        <div className="field" style={{ flex: 1, minWidth: 0 }}>
+                          <label>Pin {pinItem?.number ?? layer.number} caption</label>
+                          <input
+                            className="input"
+                            value={pinItem?.label || ""}
+                            onChange={(e) => updatePinCaption(layer.id, e.target.value)}
+                            placeholder="e.g. Click 'Listings' tab..."
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="sopr-fields" onClick={(e) => e.stopPropagation()}>
+                        <div className="field">
+                          <label>Region note</label>
+                          <input
+                            className="input"
+                            value={boxItem?.label || ""}
+                            onChange={(e) => updateBoxLabel(layer.id, e.target.value)}
+                            placeholder="e.g. Blur guest door code..."
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>,
+      portalContainer,
+    );
+  }
+
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/88 backdrop-blur-md p-3 sm:p-5">
+    <div className="mrg-sop-modal mrg-sop-redactor fixed inset-0 z-[200] flex items-center justify-center bg-black/88 backdrop-blur-md p-3 sm:p-5">
       <div className="flex h-[92vh] w-full max-w-7xl flex-col rounded-lg border border-white/10 bg-[#0e0e0e] shadow-2xl overflow-hidden">
         
         {/* Header Toolbar */}
@@ -787,7 +1126,7 @@ export function ImageRedactorModal({
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
-                className="relative cursor-crosshair rounded border border-white/14 shadow-2xl max-h-[72vh] max-w-full overflow-visible touch-none"
+                className="mrg-sop-art relative cursor-crosshair rounded border border-white/14 shadow-2xl max-h-[72vh] max-w-full overflow-visible touch-none"
               >
                 <img
                   ref={imageRef}
@@ -797,155 +1136,7 @@ export function ImageRedactorModal({
                   className="pointer-events-none block max-h-[72vh] max-w-full object-contain select-none"
                 />
 
-                {/* Render Applied Annotation Boxes */}
-                {boxes.map((box) => {
-                  if (hiddenIds[box.id]) return null;
-                  const isSelected = selectedLayerId === box.id;
-                  return (
-                    <div
-                      key={box.id}
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        setSelectedLayerId(box.id);
-                      }}
-                      className={`absolute cursor-pointer transition-all ${
-                        box.type === "spotlight"
-                          ? `border-2 border-[#c4a35a] bg-[#c4a35a]/15 rounded-[3px] ${
-                              isSelected
-                                ? "ring-2 ring-white shadow-[0_0_20px_rgba(196,163,90,0.6)]"
-                                : "shadow-[0_0_16px_rgba(196,163,90,0.35)]"
-                            }`
-                          : box.type === "blur"
-                            ? `backdrop-blur-md bg-black/40 border rounded-[2px] ${
-                                isSelected ? "border-[#c4a35a] ring-2 ring-[#c4a35a]/50" : "border-white/20"
-                              }`
-                            : `bg-[#0a0a0a] border rounded-[2px] ${
-                                isSelected ? "border-[#c4a35a] ring-2 ring-[#c4a35a]/50" : "border-white/10"
-                              }`
-                      }`}
-                      style={{
-                        left: `${box.x * 100}%`,
-                        top: `${box.y * 100}%`,
-                        width: `${box.w * 100}%`,
-                        height: `${box.h * 100}%`,
-                      }}
-                    />
-                  );
-                })}
-
-                {/* Active Drag Preview */}
-                {currentDragBox && (
-                  <div
-                    className={`absolute pointer-events-none ${
-                      activeTool === "spotlight"
-                        ? "border-2 border-[#c4a35a] bg-[#c4a35a]/20"
-                        : activeTool === "blur"
-                          ? "bg-white/20 backdrop-blur-sm border border-white/40"
-                          : "bg-black/90 border border-white/30"
-                    }`}
-                    style={{
-                      left: `${currentDragBox.x * 100}%`,
-                      top: `${currentDragBox.y * 100}%`,
-                      width: `${currentDragBox.w * 100}%`,
-                      height: `${currentDragBox.h * 100}%`,
-                    }}
-                  />
-                )}
-
-                {/* Render Applied Pins */}
-                {pins.map((pin) => {
-                  if (hiddenIds[pin.id]) return null;
-                  const isSelected = selectedLayerId === pin.id;
-                  const pinText = String(pin.number ?? "");
-
-                  return (
-                    <div
-                      key={pin.id}
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        setSelectedLayerId(pin.id);
-                      }}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer group/pin z-20"
-                      style={{
-                        left: `${pin.x * 100}%`,
-                        top: `${pin.y * 100}%`,
-                      }}
-                    >
-                      {/* Combined number + caption pill (no standalone pin when caption exists) */}
-                      {pin.label?.trim() && !isSelected ? (
-                        <div
-                          className={`pointer-events-none absolute top-1/2 z-10 flex max-w-[240px] -translate-y-1/2 items-center gap-1.5 rounded-full border border-black/30 bg-[#c4a35a] px-2 py-1 shadow-lg ${
-                            pin.x > 0.68 ? "right-0 translate-x-1/4 flex-row-reverse" : "left-0 -translate-x-1/4"
-                          }`}
-                        >
-                          <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#0a0a0a] px-1.5 font-mono text-[10px] font-bold text-[#c4a35a]">
-                            {pinText}
-                          </span>
-                          <span className="pr-1 text-[11px] font-bold leading-snug text-[#0a0a0a]">
-                            {pin.label.trim()}
-                          </span>
-                        </div>
-                      ) : (
-                        <div
-                          className={`flex h-7 min-w-[28px] px-1 items-center justify-center rounded-full border-2 border-black bg-[#c4a35a] font-mono text-xs font-bold text-black shadow-lg transition-transform ${
-                            isSelected
-                              ? "scale-125 ring-4 ring-white shadow-[0_0_15px_rgba(255,255,255,0.7)]"
-                              : "ring-4 ring-[#c4a35a]/25 group-hover/pin:scale-110"
-                          }`}
-                        >
-                          {pinText}
-                        </div>
-                      )}
-
-                      {/* Floating In-Place Caption Popover / Bubble (when selected) */}
-                      {isSelected && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2.5 w-72 rounded-lg border border-[#c4a35a]/40 bg-[#141414]/95 backdrop-blur-md p-3 shadow-2xl z-30 flex flex-col gap-2"
-                        >
-                          <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[#c4a35a]">
-                            <span>Edit Pin #{pinText}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => deleteLayer(pin.id, e)}
-                              className="text-[#cf7f7b] hover:text-white px-1 py-0.5 rounded text-[10px]"
-                              title="Delete pin"
-                            >
-                              ✕ Delete
-                            </button>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <div className="flex flex-col gap-1 w-16 shrink-0">
-                              <label className="text-[9px] font-bold uppercase tracking-wider text-[#9a9590]">
-                                Pin #
-                              </label>
-                              <input
-                                type="text"
-                                value={pin.number ?? ""}
-                                onChange={(e) => updatePinNumber(pin.id, e.target.value)}
-                                className="w-full text-center font-mono font-bold rounded border border-white/10 bg-[#0a0a0a] px-1 py-1.5 text-xs text-[#c4a35a] outline-none focus:border-[#c4a35a]"
-                              />
-                            </div>
-                            <div className="flex flex-col gap-1 flex-1 min-w-0">
-                              <label className="text-[9px] font-bold uppercase tracking-wider text-[#9a9590]">
-                                Caption
-                              </label>
-                              <input
-                                ref={activeInputRef}
-                                type="text"
-                                value={pin.label || ""}
-                                onChange={(e) => updatePinCaption(pin.id, e.target.value)}
-                                placeholder="e.g. Click 'Listings' tab..."
-                                className="w-full rounded border border-white/10 bg-[#0a0a0a] px-2.5 py-1.5 text-xs text-[#f5f5f5] placeholder:text-[#6f6a65] outline-none focus:border-[#c4a35a]"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {overlaysNode}
               </div>
             ) : (
               <div
@@ -1148,6 +1339,6 @@ export function ImageRedactorModal({
 
       </div>
     </div>,
-    document.body
+    portalContainer ?? document.body
   );
 }
