@@ -177,21 +177,31 @@
 .mrgc .me{display:flex;align-items:center;gap:10px;padding:12px 14px 0;border-top:1px solid var(--line-2);margin-top:8px;font-size:var(--t-sm);color:var(--ink);font-weight:500}
 .mrgc .me small{display:block;color:var(--muted);font-size:var(--t-xs);font-weight:400}
 .mrgc .main{min-width:0;display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--bg)}
-/* Manual collapse (toggle) — same icon rail as the 899px breakpoint */
+/* Manual collapse (toggle). Smooth both ways: only the width animates. Nothing changes height or jumps sideways:
+   icons sit on the same x in both states (centred in the 68px rail), labels fade out and are clipped by the shrinking
+   column, and the toggle slides with the sidebar's edge. When collapsed, hover the logo to show the expand button. */
+.mrgc .side{overflow-x:hidden}
+.mrgc .brand{position:relative;padding:0 5px;min-height:36px}
+.mrgc .brand b{padding-right:30px}
+.mrgc .brand img{transition:opacity var(--fast,110ms) var(--ease,ease)}
+.mrgc .sidetog{position:absolute;top:50%;right:-6px;margin:0;transform:translateY(-50%);transition:right var(--med,180ms) var(--ease,ease),opacity var(--fast,110ms) var(--ease,ease)}
+.mrgc .jump{padding:0 13px;overflow:hidden;white-space:nowrap}
+.mrgc .nb{padding:0 12px;overflow:hidden;white-space:nowrap}
+.mrgc .ng h4{padding:0 13px 4px;white-space:nowrap;overflow:hidden}
+.mrgc .me{padding:12px 8px 0;overflow:hidden;white-space:nowrap}
+.mrgc .side .brand b,.mrgc .side .nl,.mrgc .side .jump span,.mrgc .side kbd,.mrgc .side .ng h4,.mrgc .side .me div{transition:opacity var(--fast,110ms) var(--ease,ease) 70ms}
 .mrgc .app.is-collapsed{--sw:68px}
-.mrgc .app.is-collapsed .side{padding-left:10px;padding-right:10px}
-.mrgc .app.is-collapsed .side .brand{flex-direction:column;gap:12px;padding:0}
 .mrgc .app.is-collapsed .side .brand b,
 .mrgc .app.is-collapsed .side .nl,
-.mrgc .app.is-collapsed .jump span,
-.mrgc .app.is-collapsed kbd,
-.mrgc .app.is-collapsed .ng h4,
-.mrgc .app.is-collapsed .me div{display:none}
-.mrgc .app.is-collapsed .sidetog{margin:0}
+.mrgc .app.is-collapsed .side .jump span,
+.mrgc .app.is-collapsed .side kbd,
+.mrgc .app.is-collapsed .side .ng h4,
+.mrgc .app.is-collapsed .side .me div{opacity:0;transition-delay:0s}
+.mrgc .app.is-collapsed .sidetog{right:4px;opacity:0}
+.mrgc .app.is-collapsed .brand:hover .sidetog,
+.mrgc .app.is-collapsed .sidetog:focus-visible{opacity:1}
+.mrgc .app.is-collapsed .brand:hover img{opacity:0}
 .mrgc .app.is-collapsed .sidetog .chv{transform:scaleX(-1)}
-.mrgc .app.is-collapsed .jump{justify-content:center;padding:0}
-.mrgc .app.is-collapsed .nb{justify-content:center;padding:0;gap:0}
-.mrgc .app.is-collapsed .me{justify-content:center;padding:12px 0 0}
 .mrgc .head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:26px 32px 0}
 .mrgc .head .date{color:var(--muted);font-size:var(--t-sm);font-weight:500}
 .mrgc .head h1{font-size:var(--t-lg);font-weight:700;letter-spacing:-.4px;line-height:1.25}
