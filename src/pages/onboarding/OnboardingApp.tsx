@@ -45,7 +45,18 @@ async function onboardingAct(op: string, payload: Record<string, unknown>): Prom
   return data;
 }
 
-export default function OnboardingApp({ onModeChange, onOpenLead, onNewLead }: { onModeChange: (mode: AdminProductMode, patch?: Partial<import("../../lib/adminRoute").AdminRoute>) => void; onOpenLead?: (leadId: string) => void; onNewLead?: () => void }) {
+export default function OnboardingApp({
+  onModeChange,
+  onOpenLead,
+  onNewLead,
+  embedded = false,
+}: {
+  onModeChange: (mode: AdminProductMode, patch?: Partial<import("../../lib/adminRoute").AdminRoute>) => void;
+  onOpenLead?: (leadId: string) => void;
+  onNewLead?: () => void;
+  /** Parent HubShell owns the product sidebar — hide Onboarding's duplicate chrome. */
+  embedded?: boolean;
+}) {
   const holder = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -77,7 +88,7 @@ export default function OnboardingApp({ onModeChange, onOpenLead, onNewLead }: {
         const style = document.createElement("style");
         style.textContent = ONBOARDING_CSS;
         const root = document.createElement("div");
-        root.className = "onb";
+        root.className = embedded ? "onb embed" : "onb";
         shadow.append(style, root);
         const host = {
           data,
@@ -113,7 +124,8 @@ export default function OnboardingApp({ onModeChange, onOpenLead, onNewLead }: {
     <div
       style={{
         background: "#ffffff",
-        height: "100dvh",
+        height: embedded ? "100%" : "100dvh",
+        minHeight: 0,
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",

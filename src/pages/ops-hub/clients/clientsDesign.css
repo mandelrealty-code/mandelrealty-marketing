@@ -26,7 +26,18 @@
 .mrgc.hub-embed > .main{width:100%;min-width:0}
 .mrgc.hub-embed > .content,
 .mrgc.hub-embed > .main{flex:1;min-height:0;overflow:auto}
+.mrgc .hub-pane{
+  flex:1;
+  min-height:0;
+  min-width:0;
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
 .mrgc .hub-pane-off{display:none!important}
+.mrgc .pbody{display:flex;flex-direction:column}
+.mrgc .pbody > .hub-pane{flex:1;min-height:0}
 .mrgc *,.mrgc *::before,.mrgc *::after{box-sizing:border-box}
 .mrgc .content{overflow:auto}
 .mrgc .app{height:100dvh}

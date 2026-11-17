@@ -27,10 +27,7 @@ import { askOnboardingToOpen } from "./onboarding/OnboardingApp";
 import { setCurrentPlaybookStep, type PlaybookStep } from "../../shared/playbookTypes";
 /* Eager light hubs — sidebar switches stay mounted and skip Suspense white flashes. */
 import ClientsApp from "./clients/ClientsApp";
-import OnboardingApp from "./onboarding/OnboardingApp";
-import CrmApp from "./crm-hub/CrmApp";
 
-const CopilotApp = lazy(() => import("./copilot/CopilotApp"));
 const EmployeeTasksApp = lazy(() => import("./tasks/EmployeeTasksApp"));
 
 /** The light CRM hub (crm-hub/). The dark CRM below stays in place behind this flag until the hub has fully replaced it. */
@@ -939,8 +936,7 @@ export function AdminPage() {
     switchProduct("onboarding");
   };
   const openLeadFromOnboarding = (leadId: string) => {
-    writeStoredAdminMode("crm");
-    setRoute({ ...emptyAdminRoute("crm"), crmTab: "contacts", leadId }, { push: true });
+    switchProduct("crm", { crmTab: "contacts", leadId });
   };
   const newLeadFromOnboarding = () => {
     switchProduct("crm");
@@ -1694,26 +1690,6 @@ export function AdminPage() {
     );
   }
 
-  if (authed !== false && productMode === "copilot") {
-    return (
-      <Suspense
-        fallback={
-          <div className="flex min-h-dvh items-center justify-center bg-[#0a0a0a] text-[#9a9590]">
-            Loading Copilot…
-          </div>
-        }
-      >
-        <CopilotApp onModeChange={switchProduct} />
-      </Suspense>
-    );
-  }
-
-  if (authed !== false && productMode === "onboarding") {
-    return (
-      <OnboardingApp onModeChange={switchProduct} onOpenLead={openLeadFromOnboarding} onNewLead={newLeadFromOnboarding} />
-    );
-  }
-
   if (authed === null) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mrg-bg text-mrg-muted">
@@ -1779,41 +1755,35 @@ export function AdminPage() {
     );
   }
 
-  if (productMode === "ops") {
+  /* One persistent shell for OPS / CRM / Onboarding / Copilot — sidebar never remounts. */
+  if (CRM_HUB || productMode === "ops" || productMode === "crm" || productMode === "onboarding" || productMode === "copilot") {
     return (
       <ClientsApp
         route={route}
         setRoute={setRoute}
         onModeChange={switchProduct}
         onLogout={logout}
-      />
-    );
-  }
-
-  if (CRM_HUB) {
-    return (
-        <CrmApp
-          initialTab={route.crmTab}
-          initialLeadId={route.leadId}
-          openNewLead={newLeadOpen}
-          onNewLeadHandled={onCrmNewLeadHandled}
-          onModeChange={switchProduct}
-          onRouteChange={({ tab: nextTab, leadId }) =>
-            setRoute({ ...emptyAdminRoute("crm"), crmTab: nextTab, leadId }, { push: true })
-          }
-          onOpenOnboardingUnit={openOnboardingUnit}
-          onStartOnboarding={(leadId) => {
+        crmHub={{
+          openNewLead: newLeadOpen,
+          onNewLeadHandled: onCrmNewLeadHandled,
+          onOpenOnboardingUnit: openOnboardingUnit,
+          onStartOnboarding: (leadId) => {
             const lead = leads.find((l) => l.id === leadId);
             startOnboardingFromLead(lead ?? { id: leadId });
-          }}
-          onConvertLeadToOpsClient={convertLeadToOpsClient}
-          onUnauthorized={() => setAuthed(false)}
-          onLoggedOut={() => {
+          },
+          onConvertLeadToOpsClient: convertLeadToOpsClient,
+          onUnauthorized: () => setAuthed(false),
+          onLoggedOut: () => {
             setAuthed(false);
             setLeads([]);
             setSelectedId(null);
-          }}
-        />
+          },
+        }}
+        onboardingHub={{
+          onOpenLead: openLeadFromOnboarding,
+          onNewLead: newLeadFromOnboarding,
+        }}
+      />
     );
   }
 

@@ -12,6 +12,14 @@ export function hubActiveFromOpsTab(opsTab: AdminRoute["opsTab"] | string | null
   return "sops";
 }
 
+/** Highlight for the persistent shell across OPS / CRM / Onboarding / Copilot. */
+export function hubActiveFromRoute(route: Pick<AdminRoute, "mode" | "opsTab">): string {
+  if (route.mode === "crm") return "crm";
+  if (route.mode === "onboarding") return "onboarding";
+  if (route.mode === "copilot") return "copilot";
+  return hubActiveFromOpsTab(route.opsTab);
+}
+
 export type HubNavHost = {
   route: AdminRoute;
   setRoute: (next: AdminRoute, opts?: { push?: boolean }) => void;

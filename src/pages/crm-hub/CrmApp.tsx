@@ -75,6 +75,8 @@ export type CrmAppProps = {
   /** The session cookie is gone or was rejected. */
   onUnauthorized?: () => void;
   onLoggedOut: () => void;
+  /** Parent HubShell owns the product sidebar — hide CRM's duplicate chrome. */
+  embedded?: boolean;
 };
 
 const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref) {
@@ -194,7 +196,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
     const style = document.createElement("style");
     style.textContent = CRM_CSS;
     const root = document.createElement("div");
-    root.className = "crm";
+    root.className = propsRef.current.embedded ? "crm embed" : "crm";
     shadow.append(style, root);
     mounted.current = mountCrm(root, host) as Mounted;
     setReady(true);
@@ -206,22 +208,28 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
   }, []);
 
   /* The URL changed outside the CRM (back button, a link from Onboarding): show that tab and lead. */
-  const { initialTab, initialLeadId, openNewLead, onNewLeadHandled } = props;
+  const { initialTab, initialLeadId, openNewLead, onNewLeadHandled, embedded } = props;
   useEffect(() => {
     mounted.current?.applyRoute({ tab: initialTab ?? "contacts", leadId: initialLeadId ?? null, newLead: Boolean(openNewLead) });
     if (openNewLead) onNewLeadHandled?.();
   }, [initialTab, initialLeadId, openNewLead, onNewLeadHandled]);
 
   return (
-    <div style={{ background: "#ffffff", minHeight: "100dvh" }}>
+    <div
+      style={
+        embedded
+          ? { background: "#ffffff", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }
+          : { background: "#ffffff", minHeight: "100dvh" }
+      }
+    >
       {error ? (
-        <div role="alert" style={{ padding: "12px 20px", background: "#fdf3e3", color: "#7a4b00", fontFamily: "Inter, system-ui, sans-serif", fontSize: 14, display: "flex", gap: 12, justifyContent: "space-between" }}>
+        <div role="alert" style={{ padding: "12px 20px", background: "#fdf3e3", color: "#7a4b00", fontFamily: "Inter, system-ui, sans-serif", fontSize: 14, display: "flex", gap: 12, justifyContent: "space-between", flex: "none" }}>
           <span>{error}</span>
           <button type="button" onClick={() => setError("")} style={{ border: 0, background: "none", cursor: "pointer", color: "#7a4b00", fontSize: 13 }}>Dismiss</button>
         </div>
       ) : null}
       {!ready && !error ? <div style={{ padding: 24, fontFamily: "Inter, system-ui, sans-serif", color: "#6b6b66" }}>Loading CRM…</div> : null}
-      <div ref={holder} />
+      <div ref={holder} style={embedded ? { flex: 1, minHeight: 0, height: "100%" } : undefined} />
     </div>
   );
 });

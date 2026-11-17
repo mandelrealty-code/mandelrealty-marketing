@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
   openHostPortalPreview,
   pmGet,
@@ -9,6 +9,10 @@ import {
   type PropertyDetail,
   type PropertyRow,
 } from "./api";
+import CrmApp, { type CrmLeadForClient } from "../crm-hub/CrmApp";
+import OnboardingApp from "../onboarding/OnboardingApp";
+
+const CopilotApp = lazy(() => import("../copilot/CopilotApp"));
 import {
   BillingTermsForm,
   dealSummaryLabel,
@@ -53,7 +57,7 @@ import {
 } from "./ui";
 import { ClientsHubApp } from "../ops-hub/clients";
 import { HubShell } from "../ops-hub/clients/HubShell";
-import { hubActiveFromOpsTab, navigateHub } from "../ops-hub/clients/hubNav";
+import { hubActiveFromRoute, navigateHub } from "../ops-hub/clients/hubNav";
 import "../ops-hub/clients/clientsDesign.css";
 import { PropertiesHubApp } from "../ops-hub/properties";
 import { RevenueHubApp, HubSubscriptionsSheet } from "../ops-hub/revenue";
@@ -86,11 +90,28 @@ function MovedToCopilot({ screen }: { screen: "tasks" | "reviews" }) {
 
 type Tab = "tasks" | "reviews" | "clients" | "properties" | "month" | "sops" | "employees" | "settings";
 
+type ShellModePane = "crm" | "onboarding" | "copilot";
+
 type Props = {
   onModeChange: (mode: AdminProductMode, patch?: Partial<AdminRoute>) => void;
   route: AdminRoute;
   setRoute: (next: AdminRoute, opts?: { push?: boolean }) => void;
   onLogout?: () => void;
+  /** Bridge props so CRM stays inside the persistent HubShell. */
+  crmHub?: {
+    openNewLead?: boolean;
+    onNewLeadHandled?: () => void;
+    onOpenOnboardingUnit: (unitId: string) => void;
+    onStartOnboarding: (leadId: string) => void;
+    onConvertLeadToOpsClient: (lead: CrmLeadForClient) => void;
+    onUnauthorized?: () => void;
+    onLoggedOut: () => void;
+  };
+  /** Bridge props so Onboarding stays inside the persistent HubShell. */
+  onboardingHub?: {
+    onOpenLead?: (leadId: string) => void;
+    onNewLead?: () => void;
+  };
 };
 
 function useIsDesktop() {
@@ -129,7 +150,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: Props) {
+export default function ClientsApp({ onModeChange, route, setRoute, onLogout, crmHub, onboardingHub }: Props) {
   const desktop = useIsDesktop();
   const [tab, setTab] = useState<Tab>(() => route.opsTab);
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -235,8 +256,23 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
   const hubPhone = useIsPhone();
   const coverInputRef = useRef<HTMLInputElement>(null);
   const appliedOpsKey = useRef("");
-  /* OPS hubs stay mounted after first visit so tab switches don't white-flash. */
-  const visitedHubs = useRef<Set<Tab>>(new Set([route.opsTab]));
+  /* OPS hubs stay mounted for the life of the shell so every sidebar click is instant.
+     CRM / Onboarding / Copilot mount on first visit, then stay mounted. */
+  const visitedHubs = useRef<Set<Tab>>(
+    new Set<Tab>(["sops", "clients", "properties", "month", "employees", "settings"]),
+  );
+  const visitedModes = useRef<Set<ShellModePane>>(
+    new Set(
+      route.mode === "crm" || route.mode === "onboarding" || route.mode === "copilot"
+        ? [route.mode]
+        : [],
+    ),
+  );
+
+  /* Warm Copilot chunk so the first Copilot click does not blank the main pane. */
+  useEffect(() => {
+    void import("../copilot/CopilotApp");
+  }, []);
 
   const [crmLeads, setCrmLeads] = useState<CrmLead[]>([]);
   const [crmLeadsLoading, setCrmLeadsLoading] = useState(false);
@@ -2473,9 +2509,12 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
      (blank white main) between navigateHub and the appliedOpsKey effect. */
   const hubTab: Tab = route.mode === "ops" ? route.opsTab : tab;
   if (route.mode === "ops") visitedHubs.current.add(hubTab);
+  if (route.mode === "crm" || route.mode === "onboarding" || route.mode === "copilot") {
+    visitedModes.current.add(route.mode);
+  }
 
-  /* Persistent OPS shell: one HubShell for every hub tab so the sidebar never remounts,
-     crunches, or flashes white between SOPs / Clients / Properties / Revenue / Team / Settings. */
+  /* Persistent shell: one HubShell for OPS hubs + CRM + Onboarding + Copilot so the sidebar
+     never remounts and tab switches never flash white or drop icons. */
   const opsHubTab =
     (SOPS_HUB && hubTab === "sops") ||
     (CLIENTS_HUB && hubTab === "clients") ||
@@ -2483,12 +2522,27 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
     (REVENUE_HUB && hubTab === "month") ||
     (TEAM_HUB && hubTab === "employees") ||
     (SETTINGS_HUB && hubTab === "settings");
+  const shellMode =
+    route.mode === "crm" ||
+    route.mode === "onboarding" ||
+    route.mode === "copilot" ||
+    (route.mode === "ops" && opsHubTab);
 
-  if (opsHubTab) {
+  if (shellMode) {
     const hubHost = { route, setRoute, onModeChange: hubModeChange };
+    const opsOn = route.mode === "ops";
     const pane = (id: Tab, node: ReactNode) =>
       visitedHubs.current.has(id) ? (
-        <div className={hubTab === id ? undefined : "hub-pane-off"} aria-hidden={hubTab !== id}>
+        <div
+          className={`hub-pane${opsOn && hubTab === id ? "" : " hub-pane-off"}`}
+          aria-hidden={!(opsOn && hubTab === id)}
+        >
+          {node}
+        </div>
+      ) : null;
+    const modePane = (id: ShellModePane, node: ReactNode) =>
+      visitedModes.current.has(id) ? (
+        <div className={`hub-pane${route.mode === id ? "" : " hub-pane-off"}`} aria-hidden={route.mode !== id}>
           {node}
         </div>
       ) : null;
@@ -2496,8 +2550,12 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
       <>
         <div className={`mrgc${hubPhone ? " is-phone" : ""}`}>
           <HubShell
-            active={hubActiveFromOpsTab(hubTab)}
+            active={hubActiveFromRoute(route)}
             onNavigate={(id) => {
+              if (id === "crm" || id === "onboarding" || id === "copilot") {
+                navigateHub(hubHost, id);
+                return;
+              }
               setTab(
                 id === "team"
                   ? "employees"
@@ -2569,6 +2627,50 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: 
                   />,
                 )
               : null}
+            {crmHub
+              ? modePane(
+                  "crm",
+                  <CrmApp
+                    embedded
+                    initialTab={route.crmTab}
+                    initialLeadId={route.leadId}
+                    openNewLead={crmHub.openNewLead}
+                    onNewLeadHandled={crmHub.onNewLeadHandled}
+                    onModeChange={hubModeChange}
+                    onRouteChange={({ tab: nextTab, leadId }) =>
+                      setRoute({ ...emptyAdminRoute("crm"), crmTab: nextTab, leadId }, { push: true })
+                    }
+                    onOpenOnboardingUnit={crmHub.onOpenOnboardingUnit}
+                    onStartOnboarding={crmHub.onStartOnboarding}
+                    onConvertLeadToOpsClient={crmHub.onConvertLeadToOpsClient}
+                    onUnauthorized={crmHub.onUnauthorized}
+                    onLoggedOut={crmHub.onLoggedOut}
+                  />,
+                )
+              : null}
+            {onboardingHub
+              ? modePane(
+                  "onboarding",
+                  <OnboardingApp
+                    embedded
+                    onModeChange={hubModeChange}
+                    onOpenLead={onboardingHub.onOpenLead}
+                    onNewLead={onboardingHub.onNewLead}
+                  />,
+                )
+              : null}
+            {modePane(
+              "copilot",
+              <Suspense
+                fallback={
+                  <div style={{ padding: 24, fontFamily: "Inter, system-ui, sans-serif", color: "#6b6b66" }}>
+                    Loading Copilot…
+                  </div>
+                }
+              >
+                <CopilotApp embedded onModeChange={hubModeChange} />
+              </Suspense>,
+            )}
           </HubShell>
         </div>
         {SOPS_HUB ? (

@@ -895,7 +895,14 @@ function Mark({ size }: { size: number }) {
   return <img className="cp-mark" src="/mrg-logo.png" alt="" width={size} height={size} style={{ width: size, height: size, borderRadius: size > 28 ? 12 : 6 }} />;
 }
 
-export default function CopilotApp({ onModeChange }: { onModeChange: (mode: AdminProductMode) => void }) {
+export default function CopilotApp({
+  onModeChange,
+  embedded = false,
+}: {
+  onModeChange: (mode: AdminProductMode) => void;
+  /** Parent HubShell owns product nav — hide Copilot's duplicate mode switcher chrome. */
+  embedded?: boolean;
+}) {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     try {
       return localStorage.getItem("mrg_copilot_theme") === "dark" ? "dark" : "light";
@@ -2076,7 +2083,12 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
   }
 
   return (
-    <div className={`cp${screen === "board" ? " board" : ""}`} data-theme={theme}>
+    <div
+      className={`cp${screen === "board" ? " board" : ""}${embedded ? " embed" : ""}`}
+      data-theme={theme}
+      style={embedded ? { height: "100%", minHeight: 0 } : undefined}
+    >
+      {embedded ? null : (
       <header className="cp-top desk">
         <div className="cp-brand">
           <Mark size={22} />
@@ -2087,6 +2099,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           <ThemeIcon theme={theme} />
         </button>
       </header>
+      )}
       {screen === "board" ? (
         <WorkflowBuilder
           key={`${boardSkillId ?? boardSeed.id}-${boardTick}`}
@@ -2119,7 +2132,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           <div className="cp-chatpane">
           <header className="cp-mobilebar">
             <Mark size={22} />
-            <Switcher onModeChange={onModeChange} />
+            {embedded ? null : <Switcher onModeChange={onModeChange} />}
             <button type="button" className="cp-theme" aria-label={theme === "dark" ? "Light mode" : "Night mode"} onClick={() => setThemeAndSave(theme === "dark" ? "light" : "dark")}>
               <ThemeIcon theme={theme} />
             </button>
@@ -3262,7 +3275,7 @@ export default function CopilotApp({ onModeChange }: { onModeChange: (mode: Admi
           <div className="cp-sheet">
             <header className="cp-mobilebar">
               <Mark size={22} />
-              <Switcher onModeChange={onModeChange} />
+              {embedded ? null : <Switcher onModeChange={onModeChange} />}
               <button type="button" className="cp-theme" aria-label={theme === "dark" ? "Light mode" : "Night mode"} onClick={() => setThemeAndSave(theme === "dark" ? "light" : "dark")}>
                 <ThemeIcon theme={theme} />
               </button>
