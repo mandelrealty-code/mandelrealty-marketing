@@ -1,6 +1,7 @@
 /** The onboarding pipeline rules: stage movement, flags, assignment by staff type, due dates and the derived schedule. No database. */
 
-import { BLOCK_DEFAULT, STAGES, advance, allTasksDone, assigneeFor, currentIndex, dueFor, flowFor, mondayOf, peopleFrom, requestChanges, scheduleFromTasks, toggleFlag, type StageStatus } from "./onboardingLogic.js";
+import { BLOCK_DEFAULT, STAGES, advance, allTasksDone, assigneeFor, currentIndex, dueFor, flowFor, mondayOf, peopleFrom, requestChanges, scheduleFromTasks, toggleFlag, crmStage, leadEligibility, leadGaps, normalizeFee, LEAD_SOURCES, CONTRACT_LABEL, type StageStatus } from "./onboardingLogic.js";
+import { readFileSync } from "node:fs";
 
 function fail(label: string): never {
   throw new Error("Onboarding harness failed: " + label);
@@ -90,5 +91,45 @@ eq([people.Alex!.role, people.Rita!.role, people.Shane!.role, people.Pat!.role, 
 
 // Weeks start on Monday.
 eq([mondayOf("2026-11-16"), mondayOf("2026-11-22"), mondayOf("2026-11-15")], ["2026-11-16", "2026-11-16", "2026-11-09"], "monday");
+
+// Entry flow: only a Won lead can start, and only once.
+eq(crmStage("won"), { label: "Sold", group: "sold" }, "won is sold");
+eq(["new", "engaging", "nurturing", "interested", "booked", "call_done", "low_fit", "skip"].map((x) => crmStage(x).group), ["new", "new", "new", "new", "booked", "booked", "lost", "lost"], "stage groups");
+eq(leadEligibility("won", null), "ready", "sold lead is ready");
+eq(leadEligibility("won", "unit-1"), "in_onboarding", "sold lead with a unit links to it");
+eq(leadEligibility("booked", null), "not_sold", "booked lead cannot start");
+eq(leadEligibility("call_done", "unit-1"), "in_onboarding", "any lead with a live unit links to it");
+
+// Gaps are flagged, never silent.
+eq(leadGaps({ plan: "Standard", contract: "signed", addr: "1 King St" }), ["handoff"], "complete lead still flags handoff");
+eq(leadGaps({ plan: "", contract: "", addr: "" }), ["plan", "contract", "address", "handoff"], "missing lead flags every gap");
+
+// Fee variants.
+eq(normalizeFee({ status: "Charged", amount: 500 }), { status: "charged", amount: 500, reason: "" }, "charged fee");
+eq(normalizeFee({ status: "Charged", amount: 0 }), { status: "charged", amount: null, reason: "" }, "charged with no amount");
+eq(normalizeFee({ status: "Waived", reason: " Referral from Ryan " }), { status: "waived", amount: null, reason: "Referral from Ryan" }, "waived fee keeps reason");
+eq(normalizeFee({ status: "TBC", amount: 300 }), { status: "tbc", amount: null, reason: "" }, "tbc drops amount");
+eq([...LEAD_SOURCES], ["Referral", "Meta ad", "Furniture contest", "Airbnb outreach", "Other"], "lead sources");
+eq(Object.keys(CONTRACT_LABEL), ["signed", "sent", "not_sent"], "contract states");
+
+// The shipped entry flow carries no design demo data, no cleaning-company task, and keeps the archive control.
+const engine = readFileSync(new URL("../../src/pages/onboarding/engine.ts", import.meta.url), "utf8");
+for (const demo of ["Mark Smith", "Laura Johnson", "Kevin Park", "Priya Patel", "Tom Nguyen", "Grace Okafor", "Sam Martin", "Ana Silva", "example.com", "(416) 555-0131", "123 King St W", "45 Forest Ave", "sunrise-maple"]) {
+  if (engine.includes(demo)) fail("demo data shipped: " + demo);
+}
+if (/Cleaning company assigned/i.test(engine)) fail("the cleaning-company task is back");
+if (!engine.includes("archiveYes") || !engine.includes("archive_unit")) fail("the archive control is gone");
+if (engine.includes("data-add")) fail("the old single Add Unit entry is still there");
+for (const must of ["startScrim", "pickScrim", "Start onboarding without a signed contract", "Also create a CRM lead", "From CRM", "Add manually"]) {
+  if (!engine.includes(must)) fail("entry flow missing: " + must);
+}
+// Furniture program options are exactly the four, no Financeit.
+for (const opt of ["none", "client", "fip", "contest"]) if (!engine.includes('name=\\"fFurn\\" value=\\"' + opt + '\\"')) fail("furniture option missing: " + opt);
+if ((engine.match(/name=\\"fFurn\\" value=/g) || []).length !== 4) fail("furniture options changed");
+if (/financeit/i.test(engine)) fail("Financeit appeared");
+// Unit creation sends no email.
+const store = readFileSync(new URL("./onboardingStore.ts", import.meta.url), "utf8");
+const addUnitBody = store.slice(store.indexOf("export async function addUnit"), store.indexOf("export class AlreadyOnboarding"));
+if (/notifyAssignees\(|sendTaskAssignedEmail|sendResendEmail|sendPartnerText/.test(addUnitBody)) fail("addUnit sends a notification");
 
 console.log("Onboarding harness passed.");

@@ -21,6 +21,9 @@ import {
 import { emptyAdminRoute, useAdminRoute } from "../lib/adminRoute";
 import { ModeSwitcher, MrgMark } from "./clients/ui";
 import { DraftCard, type PendingDraft } from "./crm/DraftCard";
+import { LeadSaleBlock, type LeadOnboarding } from "./crm/LeadSale";
+import { NewLeadForm } from "./crm/NewLeadForm";
+import { askOnboardingToOpen } from "./onboarding/OnboardingApp";
 import { setCurrentPlaybookStep, type PlaybookStep } from "../../shared/playbookTypes";
 
 const ClientsApp = lazy(() => import("./clients/ClientsApp"));
@@ -65,6 +68,13 @@ type Lead = {
   needs_you?: NeedsYouReason[];
   last_activity_at?: string;
   pending_draft?: PendingDraft | null;
+  source?: string;
+  plan?: string;
+  booked_by?: string;
+  closed_by?: string;
+  contract_status?: "" | "signed" | "sent" | "not_sent";
+  referred_by?: string;
+  onboarding?: LeadOnboarding;
 };
 
 type KnowledgeDoc = {
@@ -307,6 +317,7 @@ export function AdminPage() {
     route.mode === "crm" ? route.leadId : null,
   );
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [filterPath, setFilterPath] = useState<OfferPath | "all">("all");
   const [filterStage, setFilterStage] = useState<LeadStatus | "all">("all");
   const [filterAi, setFilterAi] = useState<"all" | "live" | "paused">("all");
@@ -899,6 +910,25 @@ export function AdminPage() {
   const switchProduct = (mode: AdminProductMode) => {
     writeStoredAdminMode(mode);
     setRoute(emptyAdminRoute(mode), { push: true });
+  };
+
+  /* The CRM and Onboarding link both ways: a lead opens its unit, a sold lead starts onboarding, a unit opens its lead. */
+  const openOnboardingUnit = (unitId: string) => {
+    askOnboardingToOpen({ unit: unitId });
+    switchProduct("onboarding");
+  };
+  const startOnboardingFromLead = (lead: { id: string; onboarding?: LeadOnboarding }) => {
+    if (lead.onboarding) { openOnboardingUnit(lead.onboarding.unitId); return; }
+    askOnboardingToOpen({ startLead: lead.id });
+    switchProduct("onboarding");
+  };
+  const openLeadFromOnboarding = (leadId: string) => {
+    writeStoredAdminMode("crm");
+    setRoute({ ...emptyAdminRoute("crm"), crmTab: "contacts", leadId }, { push: true });
+  };
+  const newLeadFromOnboarding = () => {
+    switchProduct("crm");
+    setNewLeadOpen(true);
   };
 
   const convertLeadToOpsClient = (lead: Lead) => {
@@ -1664,7 +1694,7 @@ export function AdminPage() {
   if (authed !== false && productMode === "onboarding") {
     return (
       <Suspense fallback={<div className="flex min-h-dvh items-center justify-center bg-[#ffffff] text-[#6b6b66]">Loading Onboarding…</div>}>
-        <OnboardingApp onModeChange={switchProduct} />
+        <OnboardingApp onModeChange={switchProduct} onOpenLead={openLeadFromOnboarding} onNewLead={newLeadFromOnboarding} />
       </Suspense>
     );
   }
@@ -2372,6 +2402,14 @@ export function AdminPage() {
                   <p className="mb-3 text-xs text-[#9a9590]">{saveMsg}</p>
                 )}
 
+                <LeadSaleBlock
+                  compact
+                  lead={selected}
+                  saving={saving}
+                  onPatch={(body) => patchLead(body)}
+                  onStart={(l) => startOnboardingFromLead(l)}
+                  onOpenUnit={openOnboardingUnit}
+                />
                 <div className="flex flex-col gap-2.5">
                   <button
                     type="button"
@@ -2866,6 +2904,14 @@ export function AdminPage() {
         </div>
       </div>
 
+      <LeadSaleBlock
+        lead={selected}
+        saving={saving}
+        onPatch={(body) => patchLead(body)}
+        onStart={(l) => startOnboardingFromLead(l)}
+        onOpenUnit={openOnboardingUnit}
+      />
+
       <div className="flex items-center justify-between gap-3 border-b border-white/8 px-5 py-3.5">
         <div className="min-w-0">
           <p className="text-[10.5px] font-medium uppercase tracking-[0.1em] text-[#7d7873]">
@@ -3151,6 +3197,16 @@ export function AdminPage() {
       transition={{ duration: 0.3 }}
       className="crm-shell flex h-dvh flex-col overflow-hidden bg-[#0a0a0a] text-[#f5f5f5]"
     >
+      <NewLeadForm
+        open={newLeadOpen}
+        onClose={() => setNewLeadOpen(false)}
+        onCreated={(lead) => {
+          const created = lead as unknown as Lead;
+          setNewLeadOpen(false);
+          setLeads((prev) => [created, ...prev.filter((l) => l.id !== created.id)]);
+          openLead(created.id);
+        }}
+      />
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/8 px-4 pt-[env(safe-area-inset-top)] lg:h-14 lg:px-5">
         <div className="flex min-w-0 items-center justify-between gap-3 w-full">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -3277,7 +3333,7 @@ export function AdminPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => goCrmTab("settings")}
+                    onClick={() => setNewLeadOpen(true)}
                     className="h-[42px] shrink-0 rounded-xl bg-[#c4a35a] px-4 text-sm font-bold text-[#14100a] hover:bg-[#dcc084] lg:h-9 lg:px-3 lg:text-[12.5px]"
                   >
                     + Lead

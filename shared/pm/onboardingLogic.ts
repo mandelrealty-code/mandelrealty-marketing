@@ -176,3 +176,58 @@ export function mondayOf(iso: string): string {
   d.setUTCDate(d.getUTCDate() - (dow === 0 ? 6 : dow - 1));
   return d.toISOString().slice(0, 10);
 }
+
+/* =========================================================
+   The entry flow: which CRM leads may start onboarding, and what the CRM did not record
+   ========================================================= */
+
+/** Where a lead can come from. The order is the dropdown order. */
+export const LEAD_SOURCES = ["Referral", "Meta ad", "Furniture contest", "Airbnb outreach", "Other"] as const;
+
+export const CONTRACT_LABEL: Record<string, string> = { signed: "Signed", sent: "Sent, awaiting signature", not_sent: "Not sent" };
+
+/**
+ * The CRM's real pipeline (new, engaging, nurturing, interested, booked, call_done, won, low_fit, skip) shown the way the
+ * design groups it: New, Call booked, Sold, Lost. "won" is the only sold state, so it is the only one that can start onboarding.
+ */
+export function crmStage(status: string): { label: string; group: "new" | "booked" | "sold" | "lost" } {
+  switch (status) {
+    case "won": return { label: "Sold", group: "sold" };
+    case "booked": return { label: "Call booked", group: "booked" };
+    case "call_done": return { label: "Call done", group: "booked" };
+    case "low_fit": return { label: "Low fit", group: "lost" };
+    case "skip": return { label: "Skip", group: "lost" };
+    case "engaging": return { label: "Engaging", group: "new" };
+    case "nurturing": return { label: "Nurturing", group: "new" };
+    case "interested": return { label: "Interested", group: "new" };
+    default: return { label: "New", group: "new" };
+  }
+}
+
+export type LeadEligibility = "ready" | "in_onboarding" | "not_sold";
+
+/** Only a sold lead starts onboarding, and only once: a lead with a live unit links to it instead. */
+export function leadEligibility(status: string, unitId: string | null | undefined): LeadEligibility {
+  if (unitId) return "in_onboarding";
+  return status === "won" ? "ready" : "not_sold";
+}
+
+export type LeadGap = "plan" | "contract" | "address" | "handoff";
+
+/** What the CRM did not record for this lead. Handoff details never live in the CRM, so they are always a gap to fill. */
+export function leadGaps(lead: { plan?: string | null; contract?: string | null; addr?: string | null }): LeadGap[] {
+  const out: LeadGap[] = [];
+  if (!lead.plan) out.push("plan");
+  if (!lead.contract) out.push("contract");
+  if (!lead.addr) out.push("address");
+  out.push("handoff");
+  return out;
+}
+
+/** The onboarding fee as stored: charged needs an amount, waived needs a reason, otherwise it is still to be confirmed. */
+export function normalizeFee(input: { status?: string; amount?: number | null; reason?: string }): { status: "charged" | "waived" | "tbc"; amount: number | null; reason: string } {
+  const s = String(input.status || "").toLowerCase();
+  if (s === "charged") return { status: "charged", amount: typeof input.amount === "number" && Number.isFinite(input.amount) && input.amount > 0 ? input.amount : null, reason: "" };
+  if (s === "waived") return { status: "waived", amount: null, reason: String(input.reason || "").trim() };
+  return { status: "tbc", amount: null, reason: "" };
+}

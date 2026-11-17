@@ -5,6 +5,7 @@ import {
   addDoc as addOnboardingDoc,
   addLineItem as addOnboardingLineItem,
   addScheduleItem as addOnboardingScheduleItem,
+  AlreadyOnboarding,
   addUnit as addOnboardingUnit,
   advanceUnit as advanceOnboardingUnit,
   archiveUnit as archiveOnboardingUnit,
@@ -1563,7 +1564,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resource === "onboarding") {
         const unit = str(body.unit_id);
         if (op === "add_unit") {
-          const made = await addOnboardingUnit(
+          let made;
+          try {
+            made = await addOnboardingUnit(
             {
               address: str(body.address),
               type: str(body.type),
@@ -1584,10 +1587,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               buildingName: str(body.building_name) || undefined,
               unitFloor: str(body.unit_floor) || undefined,
               startedOn: str(body.started_on) || undefined,
+              ownerEmail: str(body.owner_email) || undefined,
+              leadSource: str(body.lead_source) || undefined,
+              referredBy: str(body.referred_by) || undefined,
+              bookedBy: str(body.booked_by) || undefined,
+              closedBy: str(body.closed_by) || undefined,
+              feeReason: str(body.onboarding_fee_reason) || undefined,
+              leadId: str(body.lead_id) || undefined,
+              createLead: body.create_lead === true,
             },
             torontoToday(),
           );
-          return res.status(200).json({ unit_id: made.id, notified: made.notified });
+          } catch (err) {
+            // The same client never starts twice: send the partner to the unit that already exists.
+            if (err instanceof AlreadyOnboarding) return res.status(409).json({ error: err.message, existing_unit_id: err.unitId, address: err.address });
+            throw err;
+          }
+          return res.status(200).json({ unit_id: made.id, lead_id: made.leadId, notified: made.notified });
         }
         if (op === "toggle_task") {
           await toggleOnboardingTask(str(body.id), body.done === true, str(body.done_by) || undefined);

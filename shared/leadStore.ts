@@ -53,6 +53,14 @@ export type LeadRow = {
   playbook_steps: import("./playbookTypes.js").PlaybookStep[];
   offer_path: OfferPath;
   sms_last_read_at: string | null;
+  /** Sale details, filled on the call or when onboarding starts. Empty until then. */
+  plan: string;
+  booked_by: string;
+  closed_by: string;
+  contract_status: "" | "signed" | "sent" | "not_sent";
+  referred_by: string;
+  /** The onboarding unit this lead became, once onboarding has started. */
+  onboarding_unit_id: string | null;
 };
 
 export type InsertLeadInput = {
@@ -76,6 +84,11 @@ export type InsertLeadInput = {
   notes?: string;
   aiPaused?: boolean;
   offerPath?: OfferPath;
+  plan?: string;
+  bookedBy?: string;
+  closedBy?: string;
+  contractStatus?: "signed" | "sent" | "not_sent";
+  referredBy?: string;
 };
 
 export type QualifierInput = {
@@ -99,7 +112,17 @@ export type LeadCrmUpdate = {
   listingTitle?: string;
   phone?: string;
   hasListing?: HasListing;
+  plan?: string;
+  bookedBy?: string;
+  closedBy?: string;
+  contractStatus?: "" | "signed" | "sent" | "not_sent";
+  referredBy?: string;
+  onboardingUnitId?: string | null;
 };
+
+const SALE_COLUMNS = ["plan", "booked_by", "closed_by", "contract_status", "referred_by", "onboarding_unit_id"];
+const saleColumnMissing = (message: string) => SALE_COLUMNS.filter((c) => new RegExp(c, "i").test(message));
+export const SALE_COLUMNS_NOTE = "Run supabase/onboarding_v4.sql in Supabase, then retry.";
 
 function mapLead(row: Record<string, unknown>): LeadRow {
   return {
@@ -134,6 +157,12 @@ function mapLead(row: Record<string, unknown>): LeadRow {
       : [],
     offer_path: normalizeOfferPath(row.offer_path as string),
     sms_last_read_at: (row.sms_last_read_at as string | null) ?? null,
+    plan: String(row.plan ?? ""),
+    booked_by: String(row.booked_by ?? ""),
+    closed_by: String(row.closed_by ?? ""),
+    contract_status: (["signed", "sent", "not_sent"].includes(String(row.contract_status ?? "")) ? String(row.contract_status) : "") as LeadRow["contract_status"],
+    referred_by: String(row.referred_by ?? ""),
+    onboarding_unit_id: (row.onboarding_unit_id as string | null) ?? null,
   };
 }
 
@@ -166,9 +195,17 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
         })
       : "new");
 
+  const sale: Record<string, unknown> = {};
+  if (input.plan) sale.plan = input.plan;
+  if (input.bookedBy) sale.booked_by = input.bookedBy;
+  if (input.closedBy) sale.closed_by = input.closedBy;
+  if (input.contractStatus) sale.contract_status = input.contractStatus;
+  if (input.referredBy) sale.referred_by = input.referredBy;
+
   const { data, error } = await sb
     .from("leads")
     .insert({
+      ...sale,
       name: input.name,
       email: input.email,
       phone: input.phone,
@@ -200,6 +237,9 @@ export async function insertLead(input: InsertLeadInput): Promise<string | null>
     .single();
 
   if (error) {
+    if (Object.keys(sale).length && saleColumnMissing(error.message).length) {
+      throw new Error("The CRM is missing the sale columns. " + SALE_COLUMNS_NOTE);
+    }
     // Retry without offer_path if migration crm_ai_v2 not applied yet
     if (/offer_path/i.test(error.message)) {
       const retry = await sb
@@ -363,6 +403,12 @@ export async function updateLeadCrm(
   if (patch.hasListing !== undefined) {
     update.has_listing = patch.hasListing;
   }
+  if (patch.plan !== undefined) update.plan = patch.plan || null;
+  if (patch.bookedBy !== undefined) update.booked_by = patch.bookedBy || null;
+  if (patch.closedBy !== undefined) update.closed_by = patch.closedBy || null;
+  if (patch.contractStatus !== undefined) update.contract_status = patch.contractStatus || null;
+  if (patch.referredBy !== undefined) update.referred_by = patch.referredBy || null;
+  if (patch.onboardingUnitId !== undefined) update.onboarding_unit_id = patch.onboardingUnitId;
 
   if (Object.keys(update).length === 0) return null;
 
@@ -374,6 +420,9 @@ export async function updateLeadCrm(
     .single();
 
   if (error) {
+    if (saleColumnMissing(error.message).some((c) => update[c] !== undefined)) {
+      throw new Error("The CRM is missing the sale columns. " + SALE_COLUMNS_NOTE);
+    }
     const missing =
       /call_notes|playbook_steps|ai_send_mode/i.test(error.message) &&
       ["call_notes", "playbook_steps", "ai_send_mode"].filter(

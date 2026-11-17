@@ -73,6 +73,12 @@ function mapLeadRow(row: Record<string, unknown>): LeadRow {
       : [],
     offer_path: (row.offer_path as LeadRow["offer_path"]) || "unknown",
     sms_last_read_at: (row.sms_last_read_at as string | null) ?? null,
+    plan: String(row.plan ?? ""),
+    booked_by: String(row.booked_by ?? ""),
+    closed_by: String(row.closed_by ?? ""),
+    contract_status: (["signed", "sent", "not_sent"].includes(String(row.contract_status ?? "")) ? String(row.contract_status) : "") as LeadRow["contract_status"],
+    referred_by: String(row.referred_by ?? ""),
+    onboarding_unit_id: (row.onboarding_unit_id as string | null) ?? null,
   };
 }
 

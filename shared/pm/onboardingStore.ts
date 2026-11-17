@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "../supabase.js";
 import { sendTaskAssignedEmail, type AssignedTask } from "../staffEmails.js";
 import { listStaffUsers } from "./staffUserStore.js";
 import { listPmTeamMembers } from "./teamStore.js";
+import { getLeadById, insertLead, listLeads, updateLeadCrm, type LeadRow } from "../leadStore.js";
 import {
   STAGES,
   advance,
@@ -16,6 +17,9 @@ import {
   requestChanges,
   scheduleFromTasks,
   toggleFlag,
+  crmStage,
+  leadEligibility,
+  normalizeFee,
   type SchedItem,
   type Stage,
   type StageStatus,
@@ -27,7 +31,11 @@ function db() {
   return sb;
 }
 
+const V4_COLUMNS = /lead_id|owner_email|lead_source|referred_by|booked_by|closed_by|onboarding_fee_reason|onboarding_unit_id/i;
 const missing = (e: { message?: string } | null) =>
+  e && V4_COLUMNS.test(e.message || "") && /column|does not exist|schema cache/i.test(e.message || "")
+    ? new Error("Onboarding needs the v4 columns. Run supabase/onboarding_v4.sql in Supabase, then retry.")
+    :
   e && /onboarding_|relation|does not exist/i.test(e.message || "")
     ? new Error("Onboarding tables missing. Run supabase/onboarding_v1.sql (and onboarding_v2.sql) in Supabase, then retry.")
     : e;
@@ -175,6 +183,38 @@ export type OnboardingUnitView = {
   docs: UnitDoc[];
   history: HistoryEntry[];
   lines: LineItem[];
+  /** The CRM lead this unit came from, when it came from one. */
+  leadId: string | null;
+  leadName: string;
+  leadSource: string;
+  ownerEmail: string;
+  referredBy: string;
+  bookedBy: string;
+  closedBy: string;
+  feeReason: string;
+};
+
+/** A CRM lead as the "From CRM" picker shows it. unitId is the live onboarding unit it already became, if any. */
+export type LeadPick = {
+  id: string;
+  name: string;
+  addr: string;
+  phone: string;
+  email: string;
+  source: string;
+  status: string;
+  stage: string;
+  stageGroup: "new" | "booked" | "sold" | "lost";
+  eligibility: "ready" | "in_onboarding" | "not_sold";
+  bookedBy: string;
+  closedBy: string;
+  callDate: string;
+  plan: string;
+  contract: string;
+  referredBy: string;
+  createdAt: string;
+  notes: string;
+  unitId: string | null;
 };
 
 export type OnboardingSnapshot = {
@@ -185,6 +225,7 @@ export type OnboardingSnapshot = {
   people: Record<string, { i: string; bg: string; fg: string; role: string }>;
   today: string;
   base: string;
+  leads: LeadPick[];
 };
 
 function activeFlowForRow(u: Record<string, unknown>): string[] {
@@ -380,6 +421,31 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
       docs: docsByUnit[id] ?? [],
       history: historyByUnit[id] ?? [],
       lines: linesByUnit[id] ?? [],
+      leadId: u.lead_id ? String(u.lead_id) : null,
+      leadName: "",
+      leadSource: str(u.lead_source),
+      ownerEmail: str(u.owner_email),
+      referredBy: str(u.referred_by),
+      bookedBy: str(u.booked_by),
+      closedBy: str(u.closed_by),
+      feeReason: str(u.onboarding_fee_reason),
+    };
+  });
+
+  // The CRM, for the "From CRM" picker and the link on each unit. A lead is "in onboarding" when a live unit points at it.
+  const leadRows = await listLeads(500).catch(() => [] as LeadRow[]);
+  const unitByLead = new Map<string, string>();
+  for (const u of outUnits) if (u.leadId) unitByLead.set(u.leadId, u.id);
+  const leadById = new Map(leadRows.map((l) => [l.id, l]));
+  for (const u of outUnits) if (u.leadId) u.leadName = leadById.get(u.leadId)?.name ?? "";
+  const leads: LeadPick[] = leadRows.map((l) => {
+    const stage = crmStage(l.status);
+    const unitId = unitByLead.get(l.id) ?? null;
+    return {
+      id: l.id, name: l.name, addr: l.address, phone: l.phone, email: l.email, source: l.source, status: l.status,
+      stage: stage.label, stageGroup: stage.group, eligibility: leadEligibility(l.status, unitId),
+      bookedBy: l.booked_by, closedBy: l.closed_by, callDate: l.call_start_iso ? l.call_start_iso.slice(0, 10) : "",
+      plan: l.plan, contract: l.contract_status, referredBy: l.referred_by, createdAt: l.created_at.slice(0, 10), notes: l.notes, unitId,
     };
   });
 
@@ -409,7 +475,35 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
     people: peopleFrom(rosterRows),
     today,
     base: mondayOf(today),
+    leads,
   };
+}
+
+/** For the CRM: each lead's live onboarding unit, with where it is in the flow. Read only. */
+export async function leadOnboardingSummary(): Promise<Record<string, { unitId: string; address: string; stage: string; step: number; total: number; live: boolean }>> {
+  const sb = db();
+  const { data: units, error } = await sb.from("onboarding_units").select("id, address, lead_id, plan, plan_tier, furniture").eq("archived", false).not("lead_id", "is", null);
+  if (error) {
+    if (V4_COLUMNS.test(error.message || "")) return {};
+    throw missing(error);
+  }
+  const rows = (units ?? []) as Record<string, unknown>[];
+  if (!rows.length) return {};
+  const { data: stages } = await sb.from("onboarding_unit_stages").select("unit_id, stage, position, status").in("unit_id", rows.map((u) => String(u.id)));
+  const byUnit: Record<string, { stage: string; position: number; status: string }[]> = {};
+  for (const r of (stages ?? []) as { unit_id: string; stage: string; position: number; status: string }[]) (byUnit[r.unit_id] ??= []).push(r);
+  const out: Record<string, { unitId: string; address: string; stage: string; step: number; total: number; live: boolean }> = {};
+  for (const u of rows) {
+    const id = String(u.id);
+    const active = activeFlowForRow(u);
+    const st = (byUnit[id] ?? []).sort((a, b) => a.position - b.position);
+    const cur = st.find((r) => r.status !== "done");
+    const live = st.length > 0 && !cur;
+    const stage = cur ? cur.stage : active[active.length - 1] ?? "Live";
+    const step = Math.max(1, active.indexOf(stage) + 1);
+    out[String(u.lead_id)] = { unitId: id, address: str(u.address), stage, step, total: active.length, live };
+  }
+  return out;
 }
 
 async function unitRow(unitId: string): Promise<Record<string, unknown>> {
@@ -475,11 +569,31 @@ export async function addUnit(
     buildingName?: string;
     unitFloor?: string;
     startedOn?: string;
+    ownerEmail?: string;
+    leadSource?: string;
+    referredBy?: string;
+    bookedBy?: string;
+    closedBy?: string;
+    feeReason?: string;
+    /** The CRM lead this unit starts from. It must be sold and not already in onboarding. */
+    leadId?: string;
+    /** A manual entry also becomes a CRM lead, marked sold and linked to the unit. */
+    createLead?: boolean;
   },
   today: string,
-): Promise<{ id: string; notified: Notified }> {
+): Promise<{ id: string; leadId: string | null; notified: Notified }> {
   const address = str(input.address);
   if (!address) throw new Error("Address is required.");
+
+  // From CRM: the lead must exist, be sold, and not already have a live unit. The same lead never starts twice.
+  let lead: LeadRow | null = null;
+  if (str(input.leadId)) {
+    lead = await getLeadById(str(input.leadId));
+    if (!lead) throw new Error("That CRM lead was not found. Nothing was created.");
+    const { data: existing } = await db().from("onboarding_units").select("id, address").eq("lead_id", lead.id).eq("archived", false).limit(1).maybeSingle();
+    if (existing) throw new AlreadyOnboarding(String((existing as { id: string }).id), str((existing as { address?: string }).address));
+    if (lead.status !== "won") throw new Error(lead.name + " is not sold yet in the CRM. Only sold clients can start onboarding.");
+  }
   const roster = (await listPmTeamMembers()).map((r) => ({ name: r.name, staff_type: r.staff_type }));
   const assignee = str(input.assignee) || roster.find((r) => r.staff_type === "onboarder")?.name || roster[0]?.name || "";
   const plan = str(input.plan);
@@ -509,8 +623,20 @@ export async function addUnit(
     building_name: str(input.buildingName) || null,
     unit_floor: str(input.unitFloor) || null,
   };
+  const fee = normalizeFee({ status: input.feeStatus, amount: input.feeAmount ?? null, reason: input.feeReason });
+  insert.onboarding_fee_status = fee.status;
+  insert.onboarding_fee_amount = fee.amount;
+  const v4: Record<string, unknown> = {
+    owner_email: str(input.ownerEmail).toLowerCase() || null,
+    lead_source: str(input.leadSource) || (lead ? lead.source : null) || null,
+    referred_by: str(input.referredBy) || null,
+    booked_by: str(input.bookedBy) || null,
+    closed_by: str(input.closedBy) || null,
+    onboarding_fee_reason: fee.reason || null,
+    lead_id: lead ? lead.id : null,
+  };
 
-  const { data, error } = await db().from("onboarding_units").insert(insert).select("id").single();
+  const { data, error } = await db().from("onboarding_units").insert({ ...insert, ...v4 }).select("id").single();
   if (error) throw missing(error);
   const id = String((data as { id: string }).id);
 
@@ -542,8 +668,63 @@ export async function addUnit(
     if (ie) throw missing(ie);
   }
   await logHistory(id, "Unit added", `${address} · ${plan || "no plan"}`);
-  // Creating a unit does not email assignees — assignment emails are only for later schedule reassigns.
-  return { id, notified: { emailed: [], failed: [], noLogin: [] } };
+  const contract = str(input.contractStatus) || "signed";
+  if (contract !== "signed") await logHistory(id, "Started without a signed contract", contract === "sent" ? "Sent, awaiting signature" : "Not sent");
+
+  // Link to the CRM: the lead it came from, or a new sold lead for a manual entry.
+  let leadId: string | null = lead ? lead.id : null;
+  const sale = {
+    status: "won" as const,
+    plan: plan || undefined,
+    contractStatus: (contract === "sent" || contract === "not_sent" ? contract : "signed") as "signed" | "sent" | "not_sent",
+    bookedBy: str(input.bookedBy) || undefined,
+    closedBy: str(input.closedBy) || undefined,
+  };
+  if (lead) {
+    await updateLeadCrm(lead.id, { ...sale, onboardingUnitId: id, ...(str(input.referredBy) ? { referredBy: str(input.referredBy) } : {}) });
+    await logHistory(id, "Linked to CRM lead", lead.name);
+  } else if (input.createLead) {
+    // The AI closer stays off for a lead that is already sold: nothing is ever texted to a client from here.
+    leadId = await insertLead({
+      name: str(input.owner) || address,
+      email: str(input.ownerEmail).toLowerCase(),
+      phone: str(input.ownerPhone),
+      address,
+      earnings: "",
+      hasListing: "unknown",
+      callStartIso: "",
+      callBooking: "",
+      source: str(input.leadSource) || "Other",
+      marketingOptIn: false,
+      status: "won",
+      aiPaused: true,
+      notes: "Created from a manual onboarding entry.",
+      plan: plan || undefined,
+      bookedBy: sale.bookedBy,
+      closedBy: sale.closedBy,
+      contractStatus: sale.contractStatus,
+      referredBy: str(input.referredBy) || undefined,
+    });
+    if (leadId) {
+      await updateLeadCrm(leadId, { onboardingUnitId: id });
+      const { error: le } = await db().from("onboarding_units").update({ lead_id: leadId }).eq("id", id);
+      if (le) throw missing(le);
+      await logHistory(id, "CRM lead created", str(input.owner) || address);
+    }
+  }
+  // Creating a unit does not email anyone: the team is scheduled in Monday, not by the app.
+  return { id, leadId, notified: { emailed: [], failed: [], noLogin: [] } };
+}
+
+/** Thrown when a lead already has a live unit, so the caller can send the partner to it instead of creating a second one. */
+export class AlreadyOnboarding extends Error {
+  unitId: string;
+  address: string;
+  constructor(unitId: string, address: string) {
+    super("This client is already in onboarding" + (address ? " at " + address : "") + ".");
+    this.unitId = unitId;
+    this.address = address;
+  }
 }
 
 export async function toggleTask(id: string, done: boolean, doneBy?: string) {
@@ -621,6 +802,8 @@ export async function archiveUnit(unitId: string, by?: string) {
     .eq("id", unitId);
   if (error) throw missing(error);
   await db().from("onboarding_schedule").delete().eq("unit_id", unitId);
+  // The lead is free to start again once its unit is gone.
+  if (row.lead_id) await updateLeadCrm(String(row.lead_id), { onboardingUnitId: null }).catch(() => null);
   await logHistory(unitId, "Unit archived", str(row.address), by || "Admin");
 }
 

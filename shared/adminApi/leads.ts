@@ -29,10 +29,13 @@ import { startClickToCall } from "../clickToCall.js";
 import {
   LEAD_STATUSES,
   deleteLead,
+  insertLead,
   updateLeadCrm,
   type LeadStatus,
   type OfferPath,
 } from "../leadStore.js";
+import { LEAD_SOURCES } from "../pm/onboardingLogic.js";
+import { leadOnboardingSummary } from "../pm/onboardingStore.js";
 import { isSupabaseConfigured } from "../supabase.js";
 
 const STATUS_SET = new Set<LeadStatus>(LEAD_STATUSES);
@@ -94,7 +97,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const q = typeof req.query.q === "string" ? req.query.q : "";
       const leads = await listLeadsInbox(200, q);
-      return res.status(200).json({ leads });
+      // Which leads are in onboarding, and where. Read only; a missing onboarding table just means nobody is.
+      const onboarding: Awaited<ReturnType<typeof leadOnboardingSummary>> = await leadOnboardingSummary().catch(() => ({}));
+      return res.status(200).json({ leads: leads.map((l) => ({ ...l, onboarding: onboarding[l.id] ?? null })) });
     } catch {
       return res.status(500).json({ error: "Could not load leads." });
     }
@@ -102,6 +107,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     const body = readBody(req);
+
+    // "+ Lead": a referral or walk-in typed in by a partner. It lands at New with the AI closer off, so nothing is texted
+    // to the person until a partner turns it on for that lead.
+    if (body.createLead === true) {
+      const name = String(body.name ?? "").replace(/\s+/g, " ").trim();
+      if (!name) return res.status(400).json({ error: "Name is required." });
+      const source = String(body.source ?? "").trim();
+      if (!(LEAD_SOURCES as readonly string[]).includes(source)) return res.status(400).json({ error: "Choose a lead source." });
+      const referredBy = source === "Referral" ? String(body.referredBy ?? body.referred_by ?? "").trim() : "";
+      const id = await insertLead({
+        name,
+        email: String(body.email ?? "").trim().toLowerCase(),
+        phone: String(body.phone ?? "").trim(),
+        address: String(body.address ?? "").replace(/\s+/g, " ").trim(),
+        earnings: "",
+        hasListing: "unknown",
+        callStartIso: "",
+        callBooking: "",
+        source,
+        marketingOptIn: false,
+        status: "new",
+        aiPaused: true,
+        notes: String(body.notes ?? "").trim(),
+        referredBy: referredBy || undefined,
+      });
+      if (!id) return res.status(500).json({ error: "Could not create the lead." });
+      const { getLeadById } = await import("../leadStore.js");
+      const lead = await getLeadById(id);
+      return res.status(200).json({ ok: true, lead: lead ? { ...lead, onboarding: null } : { id } });
+    }
+
     const paste = String(body.paste ?? "");
     const parseOnly = Boolean(body.parseOnly);
 
@@ -210,6 +246,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const patch: {
       status?: LeadStatus;
+      plan?: string;
+      bookedBy?: string;
+      closedBy?: string;
+      referredBy?: string;
+      contractStatus?: "" | "signed" | "sent" | "not_sent";
       notes?: string;
       whatsNext?: string;
       callNotes?: string;
@@ -254,6 +295,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (body.listingTitle !== undefined || body.listing_title !== undefined) {
       patch.listingTitle = String(body.listingTitle ?? body.listing_title ?? "").trim();
+    }
+    if (body.plan !== undefined) patch.plan = String(body.plan).trim();
+    if (body.bookedBy !== undefined || body.booked_by !== undefined) patch.bookedBy = String(body.bookedBy ?? body.booked_by ?? "").trim();
+    if (body.closedBy !== undefined || body.closed_by !== undefined) patch.closedBy = String(body.closedBy ?? body.closed_by ?? "").trim();
+    if (body.referredBy !== undefined || body.referred_by !== undefined) patch.referredBy = String(body.referredBy ?? body.referred_by ?? "").trim();
+    if (body.contractStatus !== undefined || body.contract_status !== undefined) {
+      const raw = String(body.contractStatus ?? body.contract_status ?? "").trim();
+      if (raw !== "" && raw !== "signed" && raw !== "sent" && raw !== "not_sent") return res.status(400).json({ error: "contractStatus must be signed, sent, not_sent or empty." });
+      patch.contractStatus = raw as "" | "signed" | "sent" | "not_sent";
     }
     if (body.notes !== undefined) patch.notes = String(body.notes);
     if (body.callNotes !== undefined) patch.callNotes = String(body.callNotes);
