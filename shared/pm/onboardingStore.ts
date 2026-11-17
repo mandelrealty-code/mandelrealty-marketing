@@ -925,6 +925,35 @@ export async function skipStage(unitId: string, stageId: string, by: string) {
   await logHistory(unitId, "Stage skipped", stage, by);
 }
 
+/** Undo "not applicable": clear the skip flag and put this stage back as the active one. */
+export async function unskipStage(unitId: string, stageId: string, by: string) {
+  const active = await activeStagesOf(unitId);
+  const stage = str(stageId);
+  if (!active.includes(stage)) throw new Error("Stage not in this unit's flow.");
+  const now = new Date().toISOString();
+  const stages = await stagesOf(unitId, active);
+  const i = active.indexOf(stage);
+  stages[i] = "active";
+  // The stage that was opened by the skip goes back to todo so this one is current again
+  for (let j = i + 1; j < stages.length; j++) {
+    if (stages[j] === "active") stages[j] = "todo";
+  }
+  await saveStages(unitId, stages, active);
+  const { error } = await db()
+    .from("onboarding_unit_stages")
+    .update({
+      skipped: false,
+      skipped_at: null,
+      skipped_by: null,
+      status: "active",
+      updated_at: now,
+    })
+    .eq("unit_id", unitId)
+    .eq("stage", stage);
+  if (error) throw missing(error);
+  await logHistory(unitId, "Stage restored", stage, by || "Admin");
+}
+
 export async function markTaskNa(taskId: string, na: boolean) {
   const now = new Date().toISOString();
   const { data: before } = await db().from("onboarding_tasks").select("unit_id, label").eq("id", taskId).maybeSingle();

@@ -16,6 +16,7 @@ import {
   removeLineItem as removeOnboardingLineItem,
   requestChangesOnUnit,
   skipStage as skipOnboardingStage,
+  unskipStage as unskipOnboardingStage,
   submitStage as submitOnboardingStage,
   toggleTask as toggleOnboardingTask,
   logHistory as logOnboardingHistory,
@@ -1658,6 +1659,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (op === "submit") { await submitOnboardingStage(unit); return res.status(200).json({ ok: true }); }
         if (op === "skip_stage") {
           await skipOnboardingStage(unit, str(body.stage), "Admin");
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "unskip_stage") {
+          await unskipOnboardingStage(unit, str(body.stage), "Admin");
           return res.status(200).json({ ok: true });
         }
         if (op === "na_task") {
